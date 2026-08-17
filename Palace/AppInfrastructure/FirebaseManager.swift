@@ -91,6 +91,7 @@ final class FirebaseManager: @unchecked Sendable {
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
         case continuationCardsEnabled = "continuation_cards_enabled"
         case sideLoadingEnabled = "side_loading_enabled"
+        case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
         // App-rating prompt (Epic PP-4086). Master switch + tunable thresholds.
         case appRatingPromptEnabled = "app_rating_prompt_enabled"
         case appRatingMinSessions = "app_rating_min_sessions"
@@ -146,6 +147,7 @@ final class FirebaseManager: @unchecked Sendable {
             RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.continuationCardsEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.sideLoadingEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.lcpAudiobookStreamingEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.appRatingPromptEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.appRatingMinSessions.rawValue: NSNumber(value: RatingConfig.fallback.minSessions),
             RemoteConfigKey.appRatingMinBooksCompleted.rawValue: NSNumber(value: RatingConfig.fallback.minBooksCompleted),

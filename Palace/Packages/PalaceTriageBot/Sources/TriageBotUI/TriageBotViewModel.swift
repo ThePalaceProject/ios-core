@@ -82,6 +82,27 @@ public final class TriageBotViewModel: ObservableObject {
             }
         case .emitTelemetry(let event):
             telemetry.emit(event)
+        case .persistResolutionTrace(let trace):
+            // Route the trace through telemetry rather than a new store. What it
+            // answers — which remedy actually resolved which class of problem —
+            // is only useful in aggregate across the fleet, and telemetry is
+            // already the aggregating channel. A local log would sit on one
+            // device and be read by nobody.
+            //
+            // Parameters stay enumerable (ids, an outcome, a count) so
+            // TelemetryContract's no-free-text rule holds: nothing a patron typed
+            // can ride along.
+            telemetry.emit(.init(
+                name: "triage_resolution_trace",
+                parameters: [
+                    "entry_id": trace.entryId,
+                    "outcome": trace.outcome.rawValue,
+                    "attempts": String(trace.attempts.count),
+                    // Which step ended it — the field the pre-registered re-rank
+                    // rule needs, and the reason this effect exists.
+                    "final_step_id": trace.attempts.last?.stepId ?? "(none)",
+                ]
+            ))
         case .runAIFallback(let userText, let category, let context):
             Task { [fallbackClassifier, knowledgeBase] in
                 guard let fallback = fallbackClassifier else {

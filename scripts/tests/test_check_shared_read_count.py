@@ -111,6 +111,38 @@ def test_baseline_comments_ignored(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+# One real read; the rest are `.shared` mentions inside comments that must NOT count.
+_BODY_COMMENTS = """
+let real = AccountStateStore.shared
+// Prefer the injected seam over RemoteFeatureFlags.shared here.
+let x = 1  // legacy path used ImageCache.shared before the extraction
+/// doc: TPPBookCoverRegistry.shared is the old ambient reach
+/* AnotherStore.shared named in a block comment */
+"""
+
+
+def test_comment_mentions_not_counted(tmp_path):
+    """THE FIX: a `.shared` named in a `//`, `///`, or block comment is documentation,
+    not a read — only the one real `AccountStateStore.shared` counts."""
+    root = _scan_root(tmp_path, _BODY_COMMENTS)
+    baseline = tmp_path / "b.txt"
+    baseline.write_text("1\n")
+    r = _run(root, baseline, mode="--count")
+    assert r.returncode == 0
+    assert r.stdout.strip() == "1", r.stdout
+
+
+def test_url_double_slash_not_mistaken_for_comment(tmp_path):
+    """A `://` inside a string URL must not be treated as a comment start, so a real
+    read on the same line is still counted."""
+    body = 'let u = URL(string: "https://x.example/shared")!; let r = ImageCache.shared\n'
+    root = _scan_root(tmp_path, body)
+    baseline = tmp_path / "b.txt"
+    baseline.write_text("1\n")
+    r = _run(root, baseline, mode="--count")
+    assert r.stdout.strip() == "1", r.stdout
+
+
 def test_live_repo_baseline_passes():
     """Checked-in baseline must PASS against today's Palace/ tree."""
     r = subprocess.run(["bash", str(_SCRIPT)], capture_output=True, text=True, timeout=60)

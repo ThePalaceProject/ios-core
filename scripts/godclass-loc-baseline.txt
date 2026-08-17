@@ -1,8 +1,18 @@
 # God-class LOC freeze baseline — Wave 0 ratchet.
 # Consumed by scripts/check-godclass-loc-freeze.sh.
-# Format: <loc> <repo-relative-path>. A file may NOT exceed its count.
+# Format: <code-loc> <repo-relative-path>. A file may NOT exceed its count.
 # When a file SHRINKS, the script prints the new number; ratchet this DOWN by hand.
-# Captured 2026-07-23 (live wc -l). See docs/architecture/god-class-decomposition-plan.md §3a.
+# Captured 2026-07-23. See docs/architecture/god-class-decomposition-plan.md §3a.
+#
+# ┌── 2026-07-31: COUNTING CHANGED to CODE LINES, all numbers recomputed ──────────┐
+# │ The detector now counts non-blank, non-comment-only lines (see the script      │
+# │ header), retiring the "Wave 0 debt" flagged in the Wave 1a note below. The      │
+# │ per-wave narrative in this file was written against the OLD physical `wc -l`    │
+# │ counts and is preserved as the campaign's decision ledger — but the six NUMBERS │
+# │ at the bottom are now CODE lines and are NOT comparable to the deltas below.    │
+# │ For the physical-line history, see this file's git log. The freeze still only   │
+# │ tightens by hand; a doc-comment or blank-line edit no longer moves the number.  │
+# └────────────────────────────────────────────────────────────────────────────────┘
 # Wave 1a (+1 on 4 files): each gained a single `import PalacePreferences` line when
 # TPPSettings moved to the leaf package — a decomposition import that REDUCES coupling,
 # not accretion. Re-baselined by exactly the import delta. (Follow-up: make the ratchet
@@ -60,6 +70,31 @@
 #   seams were inverted behind the injected `AccountSwitchDependencies` bundle; the
 #   net is slightly NEGATIVE (the extracted nav-pop closure + deleted inline reaches
 #   outweigh the stored dependency + its docs). Re-baselined by the exact delta.
+# Wave 3 / 3a-5 (-40 on AccountsManager, 955 -> 915): per-account credential resolution
+#   (the per-library TPPUserAccount cache + lock, the currentUserAccount ride-out over the
+#   account-switch nil window, and the fresh-install placeholder) EXTRACTED to the injected
+#   AccountCredentialResolver (a final class, not an actor). The hub keeps the @objc
+#   TPPUserAccountResolving facades. Preserves F-034 (single-lock-span cache) + F-016 (ride-out)
+#   verbatim. Fifth of the 3a splits. Re-baselined DOWN.
+# Wave 3 / 3a-4 (-954 on AccountsManager, 1910 -> 956): the catalog LOAD orchestration
+#   (loadCatalogs stale-while-revalidate pipeline, the first-page/paginate network crawl +
+#   direct-GET fallbacks, CP-D1 preload + slim-snapshot hydrate/carve/write, the owned
+#   background-crawl task registry + its test-boundary drain choreography, and the
+#   loading-completion handler dedupe) EXTRACTED to the injected `AccountRegistryLoader`
+#   (a `final class`, not an actor). The hub keeps thin facades (loadCatalogs,
+#   loadAccountSetsAndAuthDoc, preloadAccountsFromDiskCacheSync, the drain/join seams) +
+#   static shims (carveSlimFeed). `_explicitCancelCalled` + the live-instance registry STAY
+#   on the hub; the hub cancel/drain facades set the flag before delegating. Largest of the
+#   3a splits (~950 LOC). Re-baselined DOWN.
+# Wave 3 / 3a-3 (-172 on AccountsManager, 2082 -> 1910): the per-account auth-document
+#   fetch + state-machine wiring (the single-flight `inflightAuthDocFetches` map + lock,
+#   `authDocInflightTimeout`, `fetchAuthDocumentWithStateMachine`, `fetchCompletionMayWriteTerminal`,
+#   `driveCurrentAccountAuthDocIfNeeded` with the `.detailsEvicted` disambiguation + the
+#   forward-compat exhaustiveness block, and the DEBUG single-flight seeds) EXTRACTED to the
+#   injected `AuthDocumentLoader` (a `final class`, not an actor — drive is called
+#   synchronously from the currentAccount setter). The hub keeps thin forwarders + a
+#   `static let authDocInflightTimeout` alias. Third of the 3a collaborator splits;
+#   strongly NEGATIVE. Re-baselined DOWN.
 # Wave 3 / 3a-2 (-91 on AccountsManager, 2173 -> 2082): the account-registry STATE +
 #   thread-safe access (the current-hash, `accountSets`, the lockstep `accountByUUID`
 #   index, the slim fallback, the concurrent `accountSetsLock` sync-read/barrier-write
@@ -88,9 +123,31 @@
 #   NEGATIVE at the 3a/3b package move, when the MBDC cluster leaves the hub for
 #   PalaceDownloads and the account-scope wiring goes with it. Re-baselined by the exact
 #   delta; the freeze still catches any further unrelated growth.
-3093 Palace/Audiobooks/AudiobookSessionManager.swift
-2082 Palace/Accounts/Library/AccountsManager.swift
-2184 Palace/MyBooks/MyBooksDownloadCenter.swift
-1378 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
-1261 Palace/SignInLogic/TPPSignInBusinessLogic.swift
-968 Palace/MyBooks/BorrowOperation.swift
+# Code-line counts (2026-07-31 recount). Physical `wc -l` at this same tree was:
+#   AudiobookSessionManager 3093, AccountsManager 915, MyBooksDownloadCenter 2184,
+#   BookDetailViewModel 1378, TPPSignInBusinessLogic 1261, BorrowOperation 968.
+# 3.2.3 build-492 forward-port (+12 MyBooksDownloadCenter, +15 BookDetailViewModel).
+#   Carrying PR #1362 from main into develop: the duplicate-LCP-archive-download guard, the
+#   half-sheet progress cue, and the stop-offering-Listen-before-audio-exists fix. This code
+#   ALREADY SHIPS to patrons on main; refusing it here would mean 3.3.0 regressing behavior
+#   the 3.2.x hotfix line already fixed, which the freeze was never meant to do.
+#   Both deltas are code, not doc accretion — measured with the code-line counter, and the
+#   third frozen file the raw diff appeared to grow (AudiobookSessionManager, +2 physical)
+#   is +0 here because that growth was entirely comments.
+#   Why not extracted instead: MBDC's +12 is post-init wiring of the progress reporter into
+#   the three collaborators MBDC itself OWNS (localContentService, startCoordinator,
+#   cancellationHandler) plus the publisher property and two closures — a wiring type would
+#   relocate the same lines and add an indirection. BookDetailViewModel's +15 is its own
+#   `@Published isDownloadingLCPContent`, the seed-from-registry read, and the Combine
+#   subscription — view-model state belongs in the view model. Extracting either would also
+#   make develop's LCP code structurally DIVERGE from main's, which is what makes the next
+#   hotfix port hard; this port exists precisely to stop that divergence.
+#   Nets negative at the 3b package move, when the MBDC cluster leaves the hub for
+#   PalaceDownloads. Re-baselined by the exact delta; the freeze still catches any further
+#   unrelated growth.
+1579 Palace/Audiobooks/AudiobookSessionManager.swift
+374 Palace/Accounts/Library/AccountsManager.swift
+1257 Palace/MyBooks/MyBooksDownloadCenter.swift
+981 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+638 Palace/SignInLogic/TPPSignInBusinessLogic.swift
+575 Palace/MyBooks/BorrowOperation.swift

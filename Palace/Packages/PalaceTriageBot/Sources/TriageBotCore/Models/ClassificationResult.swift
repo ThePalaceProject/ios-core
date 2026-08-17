@@ -29,18 +29,44 @@ public struct ClassificationResult: Equatable, Sendable {
     /// Nil for a genuine no-match. On `.suggest` the id is in the decision, so
     /// this stays nil there.
     public let recognizedEntryId: String?
+    /// Whether `recognizedEntryId` rests on STRONG evidence (a decisive phrase)
+    /// or only on corroborating words.
+    ///
+    /// The two uses of a recognized entry have very different tolerances:
+    ///
+    ///  - Tagging the outgoing ticket is support-facing metadata the patron never
+    ///    sees. A wrong hint costs a triager a moment; a missing one costs them
+    ///    the whole diagnosis. Do this on ANY recognition.
+    ///  - Asking the entry's targeted follow-up is patron-facing, and every such
+    ///    prompt in the catalog presumes its bug ("is it wired CarPlay or
+    ///    wireless?"). Asked off a lone generic word it is baffling and reads as
+    ///    the bot inventing a problem. Do this only when this flag is true.
+    ///
+    /// False for a genuine no-match, and irrelevant on `.suggest` (which already
+    /// requires strong evidence by construction).
+    let recognitionIsStrong: Bool
+    /// How many DISTINCT strong concepts the patron's text matched on the winning
+    /// entry. One is enough to suggest — that is the fix for QA's complaint — but
+    /// one is also the thinnest evidence that can produce a suggestion, so the UI
+    /// hedges there rather than asserting. Two or more distinct concepts is a
+    /// coincidence worth stating plainly.
+    let strongRegionCount: Int
 
     public init(
         decision: Decision,
         confidence: Double,
         matchedKeywords: [String] = [],
         consideredEntryIds: [String] = [],
-        recognizedEntryId: String? = nil
+        recognizedEntryId: String? = nil,
+        recognitionIsStrong: Bool = false,
+        strongRegionCount: Int = 0
     ) {
         self.decision = decision
         self.confidence = confidence
         self.matchedKeywords = matchedKeywords
         self.consideredEntryIds = consideredEntryIds
         self.recognizedEntryId = recognizedEntryId
+        self.recognitionIsStrong = recognitionIsStrong
+        self.strongRegionCount = strongRegionCount
     }
 }

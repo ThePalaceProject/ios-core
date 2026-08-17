@@ -32,6 +32,14 @@ public protocol AccountScopeProviding: Sendable {
     /// `nil` = anonymous library (no `loansUrl` after ready). Throws = the
     /// account failed to become ready (the registry reverts state to `.loaded`
     /// and retries via its own policy — unchanged).
-    /// (adapter: `accountsManager.account(id)?.awaitReady().loansUrl`.)
-    func loansURL(forAccount accountID: String) async throws -> URL?
+    /// (adapter: `accountsManager.account(id)?.awaitReady(timeout:).loansUrl`.)
+    ///
+    /// - Parameter readinessTimeout: Seconds to wait for the account to reach a
+    ///   terminal load state before throwing. The registry — which owns the retry
+    ///   cadence — supplies the bound; conformers MUST NOT wait longer than it.
+    ///   An unbounded implementation reintroduces the HelpSpot #18414 wedge: a
+    ///   dropped `authentication_document` completion parks the account at
+    ///   `.detailsLoading`, registry sync never completes, and My Books spins
+    ///   forever with no self-heal short of a sign-out.
+    func loansURL(forAccount accountID: String, readinessTimeout: TimeInterval) async throws -> URL?
 }

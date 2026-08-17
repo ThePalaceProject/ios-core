@@ -239,16 +239,24 @@ final class LocalClassifierTests: XCTestCase {
     // MARK: - Distinct-region match counting (nested-variant guard)
 
     func testNestedKeywordVariants_singleWord_doesNotOverPromise() {
-        // "hangs" substring-matches BOTH "hang" and "hangs". Counting raw
-        // keyword hits gave 2 → cleared the >=2 confidence guard → a confident
+        // "hangs" substring-matches BOTH "hang" and "hangs". Counting raw keyword
+        // hits gave 2 → cleared the old >=2 confidence guard → a confident
         // suggestion off ONE word. Distinct-region counting collapses the nested
-        // variants to a single region, so one word escalates instead.
+        // variants to a single region.
+        //
+        // Region merging alone no longer decides this, since one region can now
+        // suggest — what stops it is that "hang"/"hangs"/"stuck" are generic and
+        // therefore CORROBORATING, mirroring how they sit in the shipped catalog.
+        // Both mechanisms are load-bearing: merging stops one word from posing as
+        // several, and the strength tier stops a vague word from carrying a
+        // suggestion at all.
         let kb = makeKB([
             KBEntry(
                 id: "KI-001",
                 category: .audiobook,
                 status: .open,
-                symptomKeywords: ["hang", "hangs", "stuck", "won't play"],
+                symptomKeywords: ["won't play"],
+                corroboratingKeywords: ["hang", "hangs", "stuck"],
                 userFacingWorkaround: "Tap back, tap again.",
                 confidenceThreshold: 0.1
             )

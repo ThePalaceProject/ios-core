@@ -93,6 +93,16 @@ public struct ConversationState: Equatable, Sendable {
     /// every pre-PP-4843 flow) sends normally — only reducer-driven fresh
     /// previews arm the gate.
     public var pendingSendConsent: Bool
+    /// Remedies the patron said, in their own description, that they already
+    /// tried. Guided flows skip these rather than asking someone who has
+    /// reinstalled three times to reinstall again — 10% of real tickets open by
+    /// listing what they have already done.
+    var alreadyTriedRemedies: Set<Remedy>
+    /// The patron said they had tried everything, without naming steps. Cannot
+    /// skip any specific rung, but must suppress the remedy ladder entirely —
+    /// walking someone through remedies after they told us they had exhausted
+    /// them is the not-listening defect in its purest form.
+    var claimsExhaustedEffort: Bool
 
     public init(
         step: Step = .welcome,
@@ -100,7 +110,9 @@ public struct ConversationState: Equatable, Sendable {
         context: ContextSnapshot? = nil,
         lastClassification: ClassificationResult? = nil,
         inputText: String = "",
-        pendingSendConsent: Bool = false
+        pendingSendConsent: Bool = false,
+        alreadyTriedRemedies: Set<Remedy> = [],
+        claimsExhaustedEffort: Bool = false
     ) {
         self.step = step
         self.messages = messages
@@ -108,6 +120,8 @@ public struct ConversationState: Equatable, Sendable {
         self.lastClassification = lastClassification
         self.inputText = inputText
         self.pendingSendConsent = pendingSendConsent
+        self.alreadyTriedRemedies = alreadyTriedRemedies
+        self.claimsExhaustedEffort = claimsExhaustedEffort
     }
 }
 
@@ -132,6 +146,10 @@ public enum ConversationAction: Equatable, Sendable {
     /// either advances to the next step or, if exhausted, escalates with
     /// the full ResolutionTrace attached.
     case userConfirmedStepDidNotResolve(stepId: String)
+    /// The patron reports the step did not apply to them (already on the newest
+    /// build, no such button, nothing to clear). Advances like
+    /// `userConfirmedStepDidNotResolve` but records `notApplicable`.
+    case userReportedStepNotApplicable(stepId: String)
     /// User picked a specific response on a step with explicit
     /// `responses` defined. Reducer routes by the response's
     /// `outcome` (resolved / advance / escalate) — semantically richer

@@ -821,87 +821,200 @@ private final class ContinuationGuard {
     }
 }
 
+/// Bridges structured-concurrency cancellation into the completion-handler API.
+///
+/// A `CheckedContinuation` is resumed ONLY by its completion handler.
+/// `Task.cancel()` sets a flag; it cannot resume a suspended continuation. So a
+/// bare `withCheckedThrowingContinuation` bridge whose HTTP completion never
+/// fires leaves the awaiting Task suspended forever — and, because every
+/// `Task.isCancelled` check in a caller sits BETWEEN awaits, that task is
+/// permanently undrainable. `AccountRegistryLoader`'s crawl hit exactly this:
+/// `cancelAndDrainBackgroundWork TIMED OUT ... crawl did not observe cancellation`,
+/// repeating every 3s and degrading a whole test run.
+///
+/// This box makes cancellation terminal from either side, resuming exactly once:
+///   • the HTTP completion arrives  → `finish(_:)`
+///   • the awaiting Task is cancelled → `cancel()` cancels the URLSession task
+///     (when the underlying call exposes one) AND resumes with `CancellationError`.
+///
+/// Cancellation that arrives BEFORE the continuation is installed is retained
+/// and applied on `install(_:)`, so the early-cancel race cannot strand a caller.
+/// Mirrors `CancellableTaskBox` in `URLSessionNetworkClient`, which already
+/// solved this for the newer client.
+private final class CancellableContinuationBox<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+    private var task: URLSessionTask?
+    nonisolated(unsafe) private var pendingResult: Result<T, Error>?
+    private var settled = false
+
+    /// Install the continuation. If cancellation (or a completion) already
+    /// landed, resume immediately rather than suspending forever.
+    func install(_ continuation: CheckedContinuation<T, Error>) {
+        lock.lock()
+        if let pending = pendingResult {
+            pendingResult = nil
+            lock.unlock()
+            continuation.resume(with: pending)
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    /// Store the in-flight request so cancellation can tear it down. If
+    /// cancellation already arrived, cancel it on the spot.
+    func setTask(_ task: URLSessionTask?) {
+        lock.lock()
+        if settled {
+            lock.unlock()
+            task?.cancel()
+            return
+        }
+        self.task = task
+        lock.unlock()
+    }
+
+    /// Resume with the network outcome. No-op once settled.
+    func finish(_ result: sending Result<T, Error>) {
+        lock.lock()
+        if settled { lock.unlock(); return }
+        settled = true
+        let continuation = self.continuation
+        self.continuation = nil
+        self.task = nil
+        // Consume `result` on exactly ONE path. Storing it and also resuming
+        // with it puts the same value in two regions, which the Swift 6 sending
+        // check rejects (`T` is not constrained Sendable here).
+        if let continuation {
+            lock.unlock()
+            continuation.resume(with: result)
+        } else {
+            pendingResult = result
+            lock.unlock()
+        }
+    }
+
+    /// Cancel the request and unblock the awaiting Task.
+    func cancel() {
+        lock.lock()
+        let inFlight = task
+        task = nil
+        lock.unlock()
+        inFlight?.cancel()
+        finish(.failure(CancellationError()))
+    }
+}
+
 // MARK: - Async/Await API
 
 extension TPPNetworkExecutor {
 
     /// Async version of GET that bridges to the completion-handler API.
     /// Timeout is handled by the URLSession configuration, not by a manual timer.
-    /// The `ContinuationGuard` ensures the continuation is resumed exactly
-    /// once even if a future regression in the completion path invokes the
-    /// callback twice (e.g. through the token-refresh / retry paths).
+    ///
+    /// `CancellableContinuationBox` makes the bridge cancellation-aware AND
+    /// resume-exactly-once (superseding the old `ContinuationGuard` here). Note
+    /// this overload's underlying call returns no `URLSessionDataTask`, so the
+    /// HTTP request is not torn down — but the awaiting Task is still unblocked,
+    /// which is what makes it drainable. A stray late completion is swallowed by
+    /// the box.
     func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
-                guard guarded.tryConsume() else { return }
-                switch result {
-                case let .success(data, response):
-                    continuation.resume(returning: (data, response))
-                case let .failure(error, _):
-                    continuation.resume(throwing: error)
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
+                    switch result {
+                    case let .success(data, response):
+                        box.finish(.success((data, response)))
+                    case let .failure(error, _):
+                        box.finish(.failure(error))
+                    }
                 }
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 
     /// Async version of GET with full request control.
     func GET(request: URLRequest, cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            GET(request: request, cachePolicy: cachePolicy, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                guard guarded.tryConsume() else { return }
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: (data ?? Data(), response))
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = GET(request: request, cachePolicy: cachePolicy, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                    if let error = error {
+                        box.finish(.failure(error))
+                    } else {
+                        box.finish(.success((data ?? Data(), response)))
+                    }
                 }
+                box.setTask(task)
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 
     /// Async version of PUT.
     func PUT(_ reqURL: URL, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            PUT(reqURL, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                guard guarded.tryConsume() else { return }
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: (data ?? Data(), response))
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = PUT(reqURL, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                    if let error = error {
+                        box.finish(.failure(error))
+                    } else {
+                        box.finish(.success((data ?? Data(), response)))
+                    }
                 }
+                box.setTask(task)
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 
     /// Async version of POST.
     func POST(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            POST(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                guard guarded.tryConsume() else { return }
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: (data ?? Data(), response))
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = POST(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                    if let error = error {
+                        box.finish(.failure(error))
+                    } else {
+                        box.finish(.success((data ?? Data(), response)))
+                    }
                 }
+                box.setTask(task)
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 
     /// Async version of DELETE.
     func DELETE(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            DELETE(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                guard guarded.tryConsume() else { return }
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: (data ?? Data(), response))
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = DELETE(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                    if let error = error {
+                        box.finish(.failure(error))
+                    } else {
+                        box.finish(.success((data ?? Data(), response)))
+                    }
                 }
+                box.setTask(task)
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 }

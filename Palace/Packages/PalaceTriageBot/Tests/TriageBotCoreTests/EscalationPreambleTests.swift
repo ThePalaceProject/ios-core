@@ -38,7 +38,12 @@ final class EscalationPreambleTests: XCTestCase {
                                symptomKeywords: ["frobnicate widget"],
                                userFacingWorkaround: "Try turning it off and on again please.",
                                escalationFollowUp: KBEscalationFollowUp(prompt: "Which widget model is it?"),
-                               confidenceThreshold: 0.1)]
+                               confidenceThreshold: 0.1,
+                               // escalate_anyway = recognized confidently, but no
+                               // safe self-serve fix. The strong-recognition
+                               // escalation, which is exactly when the targeted
+                               // question is warranted.
+                               escalateAnyway: true)]
         let r = ConversationReducer(knowledgeBase: KnowledgeBase(
             catalog: KBCatalog(version: "test", updatedAt: "2026-07-20", entries: entries)))
         let state = drive(r, category: .other, text: "my frobnicate widget is broken")

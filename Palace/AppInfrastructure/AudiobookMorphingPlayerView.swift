@@ -92,6 +92,12 @@ struct AudiobookMorphingPlayerView: View {
     @State private var toastText = ""
     @State private var showToast = false
 
+    /// Drives the "Stop Playback?" confirmation presented when the patron taps
+    /// the mini-player's close (✕) control (PP-4910). Closing the player stops
+    /// playback and tears the session down, so it is confirmed rather than
+    /// instant. The alert takes VoiceOver focus when presented.
+    @State private var showStopConfirmation = false
+
     /// VoiceOver focus target — moved to the title when the full player expands
     /// (mirrors toolkit `isTitleFocused`).
     @AccessibilityFocusState private var isTitleFocused: Bool
@@ -204,17 +210,37 @@ struct AudiobookMorphingPlayerView: View {
     @ViewBuilder
     private func card(expanded: Bool, size: CGSize, landscape: Bool) -> some View {
         ZStack(alignment: .top) {
-            Color(.systemBackground)
             if expanded {
+                Color(.systemBackground)
                 fullContent(size: size, landscape: landscape)
             } else {
+                // Elevated surface so the floating mini bar reads as a distinct
+                // card. Its former `systemBackground` fill was pure black in dark
+                // mode and its shadow is invisible on the near-black catalog, so
+                // the bar blended into the page. A material (plus a hairline
+                // stroke below) lifts it off the background in both appearances.
+                Rectangle().fill(.regularMaterial)
                 miniContent
             }
         }
         .frame(height: expanded ? size.height : Self.miniBarHeight)
         .clipShape(RoundedRectangle(cornerRadius: expanded ? 0 : 16, style: .continuous))
-        .shadow(color: .black.opacity(expanded ? 0 : 0.18),
-                radius: expanded ? 0 : 10, y: -2)
+        .overlay {
+            if !expanded {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+            }
+        }
+        // Even 360° ambient elevation (no vertical offset) so the floating mini
+        // card lifts uniformly off the page on every side. The color adapts by
+        // appearance: a dark DROP shadow in light mode, but a light HIGHLIGHT glow
+        // in dark mode — a black shadow is invisible on the near-black page, so
+        // the card is lifted by a soft light halo instead.
+        .shadow(color: expanded ? .clear : Color(UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor.white.withAlphaComponent(0.16)
+                : UIColor.black.withAlphaComponent(0.18)
+        }), radius: expanded ? 0 : 12, y: 0)
         .padding(.horizontal, expanded ? 0 : Self.miniMargin)
         // Float the mini card clear of the tab bar + home indicator. Prefer the
         // host-measured inset (LIVE tab-bar height, injected via
@@ -419,8 +445,7 @@ struct AudiobookMorphingPlayerView: View {
                 // discoverable way out. In the slot the Help entry point used to
                 // hold — Help now lives on book-detail + sign-in only.
                 Button { presenter.closePlayer() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .medium))
+                    abGlyph(Self.icClose, size: 17)
                         .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
@@ -537,27 +562,76 @@ struct AudiobookMorphingPlayerView: View {
     /// `Color.primary.opacity(0.12)` circle with a `.primary` glyph (adapts to
     /// the system appearance).
     private func transportRow(metrics: ControlMetrics) -> some View {
-        HStack(spacing: metrics.transportSpacing) {
-            transportButton("gobackward.\(skipBackInterval)", label: Strings.Generic.skipBackSeconds(skipBackInterval), size: metrics.skipGlyph) {
+        // Alissa's revised transport (PP-4911): skip-back / skip-forward glyphs
+        // (keeping the interval value INSIDE the arrow via `gobackward.N`) on
+        // light-gray circles, flanking an emphasized play/pause circle. The skip
+        // circles are a touch smaller than the play button so play reads as the
+        // primary action, matching the Figma.
+        let skipButton = (metrics.playButton * 0.8).rounded()
+        return HStack(spacing: metrics.transportSpacing) {
+            skipCircleButton(asset: Self.icSkipBack, interval: skipBackInterval,
+                             label: Strings.Generic.skipBackSeconds(skipBackInterval),
+                             glyph: metrics.skipGlyph, diameter: skipButton) {
                 audiobookSession.skipBack()
             }
+            // Play/pause — the emphasized button: a SOLID `Color.primary` circle
+            // with the glyph in `systemBackground`. That inverts by appearance
+            // automatically — black circle + white glyph in light, white circle +
+            // dark glyph in dark — exactly the Figma treatment + its dark variant.
             Button(action: { audiobookSession.togglePlayPause() }) {
                 ZStack {
-                    Circle().fill(Color.primary.opacity(0.12))
-                    Image(systemName: presenter.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: metrics.playGlyph))
-                        .foregroundStyle(.primary)
-                        .contentTransition(.symbolEffect(.replace))
+                    Circle().fill(Color.primary)
+                    abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: metrics.playGlyph * 0.82)
+                        .foregroundStyle(Color(.systemBackground))
                 }
                 .frame(width: metrics.playButton, height: metrics.playButton)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
-            transportButton("goforward.\(skipForwardInterval)", label: Strings.Generic.skipForwardSeconds(skipForwardInterval), size: metrics.skipGlyph) {
+            skipCircleButton(asset: Self.icSkipForward, interval: skipForwardInterval,
+                             label: Strings.Generic.skipForwardSeconds(skipForwardInterval),
+                             glyph: metrics.skipGlyph, diameter: skipButton) {
                 audiobookSession.skipForward()
             }
         }
         .frame(height: metrics.transportHeight)
+    }
+
+    /// Asset names for Alissa's revised audiobook icon set (PP-4911), vectorized
+    /// from her design exports into template imagesets so they tint by appearance
+    /// and stay crisp at any size — replacing the SF Symbols that didn't match.
+    private static let icClose = "ABPlayerClose"
+    private static let icSkipBack = "ABPlayerSkipBack"
+    private static let icSkipForward = "ABPlayerSkipForward"
+    private static let icPlay = "ABPlayerPlay"
+    private static let icPause = "ABPlayerPause"
+    private static let icSource = "ABPlayerSource"
+    private static let icSleep = "ABPlayerSleep"
+    private static let icBookmark = "ABPlayerBookmark"
+
+    /// A template-rendered custom glyph at a point size. Template rendering tints
+    /// it with the surrounding foreground color, matching the old SF Symbols.
+    private func abGlyph(_ name: String, size: CGFloat) -> some View {
+        Image(name)
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+    }
+
+    /// The mini-player skip control: Alissa's arrow glyph with the interval value
+    /// overlaid inside, on the same gray circle as the full player (PP-4911 —
+    /// the mini player uses the circular treatment too, just smaller).
+    private func miniSkipGlyph(asset: String, interval: Int) -> some View {
+        ZStack {
+            Circle().fill(Color(.secondarySystemFill))
+            abGlyph(asset, size: 25)
+            Text("\(interval)")
+                .font(.system(size: 7, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+        }
+        .foregroundStyle(.primary)
+        .frame(width: 40, height: 40)
     }
 
     /// Bottom control row, mirroring the toolkit `controlPanelView`
@@ -568,17 +642,27 @@ struct AudiobookMorphingPlayerView: View {
     /// comes straight from the toolkit. Chips use `Color.primary.opacity(0.10)`
     /// with a `.primary.opacity(0.9)` foreground — adapts to the system appearance.
     private func bottomControls(metrics: ControlMetrics) -> some View {
-        let chipBg = Color.primary.opacity(0.10)
+        // Alissa's revised bottom row (PP-4911): the speed control stays a text
+        // PILL; AirPlay, sleep, and bookmark become gray circular buttons.
+        // Semantic `secondarySystemFill` adapts light/dark automatically. The
+        // sleep control expands from a circle to a capsule when a countdown is
+        // active so the remaining-time text has room.
+        let controlBg = Color(.secondarySystemFill)
+        // Larger than the old toolkit chips to match the Figma (the chip-height
+        // sizing read too small). ~1.4× the chip height for the circle, glyph
+        // scaled to match.
+        let circle = (metrics.chipHeight * 1.4).rounded()
+        let glyph = (metrics.iconSize * 1.28).rounded()
 
         return HStack(spacing: metrics.chipSpacing) {
-            // Speed → opens the stepped speed sheet.
+            // Speed → opens the stepped speed sheet. Text, so it stays a pill.
             Button { showSpeedSheet = true } label: {
                 Text(currentRate.displayLabel)
-                    .font(.system(size: metrics.fontSize, weight: .semibold, design: .rounded))
+                    .font(.system(size: metrics.fontSize + 2, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .padding(.horizontal, metrics.chipPadH + 2)
-                    .frame(height: metrics.chipHeight)
-                    .background(chipBg)
+                    .padding(.horizontal, metrics.chipPadH + 4)
+                    .frame(height: circle)
+                    .background(controlBg)
                     .clipShape(Capsule())
                     .contentShape(Capsule())
             }
@@ -587,18 +671,28 @@ struct AudiobookMorphingPlayerView: View {
 
             Spacer(minLength: 0)
 
-            // AirPlay route picker.
-            AirPlayRoutePicker()
-                .frame(width: 30, height: 30)
-                .frame(height: metrics.chipHeight)
-                .padding(.horizontal, metrics.chipPadH)
-                .background(chipBg)
-                .clipShape(Capsule())
-                .accessibilityLabel(Strings.Generic.airplay)
+            // AirPlay — Alissa's "source" glyph shown over an INVISIBLE route
+            // picker (`tint: .clear`) that still handles the route-selection tap
+            // underneath. Gray circle.
+            ZStack {
+                Circle().fill(controlBg)
+                abGlyph(Self.icSource, size: glyph)
+                    .foregroundStyle(.primary)
+                    .allowsHitTesting(false)
+                AirPlayRoutePicker(tint: .clear)
+            }
+            .frame(width: circle, height: circle)
+            // Collapse the custom glyph + the native route picker into ONE
+            // VoiceOver element so the picker isn't double-spoken or exposed
+            // unlabeled (the route-selection tap still lands on the picker).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Strings.Generic.airplay)
+            .accessibilityAddTraits(.isButton)
 
             Spacer(minLength: 0)
 
-            // Sleep timer → moon.fill + countdown when active.
+            // Sleep timer → moon (outline) + countdown when active. Circle when
+            // idle; expands to a capsule to fit the countdown while running.
             Menu {
                 ForEach(SleepTimerTriggerAt.allCases, id: \.self) { trigger in
                     Button(trigger.displayTitle) {
@@ -607,17 +701,16 @@ struct AudiobookMorphingPlayerView: View {
                 }
             } label: {
                 HStack(spacing: metrics.narrow ? 4 : 6) {
-                    Image(systemName: "moon.fill")
-                        .font(.system(size: metrics.iconSize - 2))
+                    abGlyph(Self.icSleep, size: glyph)
                     if audiobookSession.sleepTimerIsActive {
                         Text(Self.formatTime(audiobookSession.sleepTimerRemaining))
-                            .font(.system(size: metrics.fontSize - 1, weight: .medium, design: .monospaced))
+                            .font(.system(size: metrics.fontSize, weight: .medium, design: .monospaced))
                             .lineLimit(1).minimumScaleFactor(0.6)
                     }
                 }
-                .padding(.horizontal, metrics.chipPadH)
-                .frame(height: metrics.chipHeight)
-                .background(chipBg)
+                .padding(.horizontal, audiobookSession.sleepTimerIsActive ? metrics.chipPadH : 0)
+                .frame(width: audiobookSession.sleepTimerIsActive ? nil : circle, height: circle)
+                .background(controlBg)
                 .clipShape(Capsule())
                 .contentShape(Capsule())
             }
@@ -626,20 +719,18 @@ struct AudiobookMorphingPlayerView: View {
             Spacer(minLength: 0)
 
             // Bookmark ADDS a bookmark (TOC/list stays reachable via the
-            // top-trailing list button).
+            // top-trailing list button) — gray circle.
             Button { addBookmarkFromControl() } label: {
-                Image(systemName: "bookmark")
-                    .font(.system(size: metrics.iconSize))
-                    .padding(.horizontal, metrics.chipPadH)
-                    .frame(height: metrics.chipHeight)
-                    .background(chipBg)
-                    .clipShape(Capsule())
-                    .contentShape(Capsule())
+                abGlyph(Self.icBookmark, size: glyph)
+                    .frame(width: circle, height: circle)
+                    .background(controlBg)
+                    .clipShape(Circle())
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Strings.Generic.addBookmark)
         }
-        .foregroundColor(.primary.opacity(0.9))
+        .foregroundColor(.primary)
         .padding(.horizontal, metrics.outerPadH)
     }
 
@@ -956,99 +1047,107 @@ struct AudiobookMorphingPlayerView: View {
         }
     }
 
-    private func transportButton(_ system: String, label: String, size: CGFloat, action: @escaping () -> Void) -> some View {
+    /// A skip control (PP-4911): Alissa's circular-arrow glyph with the interval
+    /// value overlaid INSIDE the arrow, centered on a light-gray
+    /// (`secondarySystemFill`) circle. Both glyph + number use `.primary`, so the
+    /// button inverts cleanly by appearance. Keeps the toolkit-parity skip haptic.
+    private func skipCircleButton(asset: String, interval: Int, label: String,
+                                  glyph: CGFloat, diameter: CGFloat,
+                                  action: @escaping () -> Void) -> some View {
         Button(action: {
-            // Skip-button haptic (toolkit parity).
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            Image(systemName: system)
-                .resizable().aspectRatio(contentMode: .fit)
-                .frame(width: size, height: size)
-                .frame(width: 44, height: 44)
+            ZStack {
+                Circle().fill(Color(.secondarySystemFill))
+                abGlyph(asset, size: glyph)
+                Text("\(interval)")
+                    .font(.system(size: glyph * 0.27, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(.primary)
+            .frame(width: diameter, height: diameter)
         }
         .buttonStyle(.plain)
-        // `.primary` glyph to match the toolkit skip controls; adapts to the
-        // system appearance now that the player no longer forces `.dark`.
-        .tint(.primary)
         .accessibilityLabel(label)
     }
 
     // MARK: - Mini layout
 
     private var miniContent: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                coverImageOrPlaceholder
-                    .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(presenter.currentBook?.title ?? "")
-                        .font(.subheadline).fontWeight(.medium)
-                        .lineLimit(1).truncationMode(.tail)
-                    if let authors = presenter.currentBook?.authors, !authors.isEmpty {
-                        Text(authors)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.tail)
-                    }
+        // Revised layout (PP-4910): close (✕) at the LEADING edge, then the
+        // cover, the marquee title/author, and the rewind / play-pause / forward
+        // transport controls at the TRAILING edge. No progress bar.
+        HStack(spacing: 12) {
+            // Close — presents the "Stop Playback?" confirmation rather than
+            // stopping instantly, since closing tears the session down.
+            Button { showStopConfirmation = true } label: {
+                ZStack {
+                    Circle().fill(Color(.secondarySystemFill))
+                    abGlyph(Self.icClose, size: 11).foregroundStyle(.primary)
                 }
-                // Tap the cover/title zone to expand.
+                .frame(width: 30, height: 30)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
-                .onTapGesture { expand() }
-
-                Spacer(minLength: 2)
-
-                Button(action: { audiobookSession.skipBack() }) {
-                    Image(systemName: "gobackward.\(skipBackInterval)")
-                        .font(.system(size: 18, weight: .regular))
-                        .frame(width: 40, height: 44)
-                }
-                .buttonStyle(.plain).tint(.primary)
-                .accessibilityLabel(Strings.Generic.skipBackSeconds(skipBackInterval))
-
-                Button(action: { audiobookSession.togglePlayPause() }) {
-                    Image(systemName: presenter.isPlaying ? "pause.fill" : "play.fill")
-                        .resizable().aspectRatio(contentMode: .fit)
-                        .padding(10).frame(width: 42, height: 42)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .buttonStyle(.plain).tint(.accentColor)
-                .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
-
-                Button(action: { audiobookSession.skipForward() }) {
-                    Image(systemName: "goforward.\(skipForwardInterval)")
-                        .font(.system(size: 18, weight: .regular))
-                        .frame(width: 40, height: 44)
-                }
-                .buttonStyle(.plain).tint(.primary)
-                .accessibilityLabel(Strings.Generic.skipForwardSeconds(skipForwardInterval))
-
-                Button(action: stop) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Strings.Generic.stopAudiobook)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
+            .buttonStyle(.plain)
+            .accessibilityLabel(Strings.Generic.closeAudiobookPlayer)
 
-            ProgressView(value: clampedProgress, total: 1.0)
-                .progressViewStyle(.linear)
-                .tint(.accentColor)
-                .frame(height: 2)
-                .accessibilityHidden(true)
+            coverImageOrPlaceholder
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
+
+            VStack(alignment: .leading, spacing: 2) {
+                MarqueeText(text: presenter.currentBook?.title ?? "",
+                            font: .callout.weight(.semibold))
+                if let authors = presenter.currentBook?.authors, !authors.isEmpty {
+                    MarqueeText(text: authors, font: .subheadline, color: .secondary)
+                }
+            }
+            // Tap the cover/title zone to expand.
+            .contentShape(Rectangle())
+            .onTapGesture { expand() }
+
+            Spacer(minLength: 2)
+
+            Button(action: { audiobookSession.skipBack() }) {
+                miniSkipGlyph(asset: Self.icSkipBack, interval: skipBackInterval)
+                    .frame(width: 40, height: 44)
+            }
+            .buttonStyle(.plain).tint(.primary)
+            .accessibilityLabel(Strings.Generic.skipBackSeconds(skipBackInterval))
+
+            Button(action: { audiobookSession.togglePlayPause() }) {
+                ZStack {
+                    Circle().fill(Color.primary)
+                    abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: 25)
+                        .foregroundStyle(Color(.systemBackground))
+                }
+                .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
+
+            Button(action: { audiobookSession.skipForward() }) {
+                miniSkipGlyph(asset: Self.icSkipForward, interval: skipForwardInterval)
+                    .frame(width: 40, height: 44)
+            }
+            .buttonStyle(.plain).tint(.primary)
+            .accessibilityLabel(Strings.Generic.skipForwardSeconds(skipForwardInterval))
         }
+        .padding(.horizontal, 12)
+        .frame(maxHeight: .infinity)
         // Tap anywhere else / pull up on the bar → expand.
         .contentShape(Rectangle())
         .onTapGesture { expand() }
         .gesture(expandDrag)
+        .alert(Strings.Generic.stopPlaybackTitle, isPresented: $showStopConfirmation) {
+            Button(Strings.Generic.stopPlaybackCancel, role: .cancel) { }
+            Button(Strings.Generic.stopPlaybackConfirm, role: .destructive) { stop() }
+        } message: {
+            Text(Strings.Generic.stopPlaybackMessage)
+        }
     }
 
     // MARK: - Shared cover
@@ -1259,12 +1358,6 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Derived
 
-    /// Book-relative progress (0…1 across the whole book) — drives the mini
-    /// player's overall progress bar. NOT the scrubber (see `chapterProgressClamped`).
-    private var clampedProgress: Double {
-        progress.playbackProgress.isFinite ? min(max(progress.playbackProgress, 0), 1) : 0
-    }
-
     /// Chapter-relative progress (0…1 within the current chapter) — drives the
     /// seek scrubber so its thumb position matches `seekWithSlider`'s chapter scale.
     private var chapterProgressClamped: Double {
@@ -1335,14 +1428,22 @@ struct AudiobookMorphingPlayerView: View {
 /// SwiftUI wrapper for the system AirPlay/route picker, matching the original
 /// player's cast control.
 private struct AirPlayRoutePicker: UIViewRepresentable {
+    /// Glyph tint. Pass `.clear` to hide the system AirPlay glyph so a custom
+    /// glyph (Alissa's "source" icon, PP-4911) can be overlaid on top while this
+    /// view still handles the route-selection tap underneath.
+    var tint: UIColor = .label
     func makeUIView(context: Context) -> AVRoutePickerView {
         let v = AVRoutePickerView()
         v.prioritizesVideoDevices = false
-        v.tintColor = .label
+        v.tintColor = tint
+        v.activeTintColor = tint
         v.backgroundColor = .clear
         return v
     }
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+        uiView.tintColor = tint
+        uiView.activeTintColor = tint
+    }
 }
 
 // MARK: - PalaceSeekSliderView

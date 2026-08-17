@@ -25,6 +25,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+@testable import PalaceBookRegistry
 import PalaceBookModel
 
 @MainActor
@@ -694,21 +695,145 @@ final class BookReturnServiceTests: XCTestCase {
 
     // MARK: - Return-to-empty ghost (#18414 / return-your-last-book) — production seam
     //
-    // FORWARD-PORT (main → develop): the 3.2.3 return-to-empty tests that lived
-    // here are intentionally NOT carried over in this merge. They exercise the D1
-    // `serverAuthoritative` plumbing (#18414) — `TPPBookRegistry.removeBook(
-    // forIdentifier:serverAuthoritative:)` / `updateAndRemoveBook(_:serverAuthoritative:)`
-    // and `RegistryFileRecovery.onDiskHasRecords` — which do NOT exist on develop:
-    // Wave 2b moved the registry into `PalaceBookRegistry`, whose copy has the
-    // narrower INV-1 guard and a different `BookRegistrySync` init signature.
+    // The broadened empty-guard REFUSES a non-authoritative empty save over a
+    // non-empty on-disk shelf, which is what stops a wedged sync from clobbering
+    // good data. On its own it would also refuse the LEGITIMATE empty save when a
+    // patron returns their ONLY book: the removal would be non-authoritative, the
+    // empty snapshot refused, the book left on disk — and it would resurrect into
+    // My Books on the next launch, with its download auto-restarting.
     //
-    // Porting D1 is a behavioral change to the data path and deserves its own
-    // reviewed PR rather than riding along inside a 29-commit history merge. The
-    // removed tests are the SPEC for that port — recover them from
-    // `origin/main:PalaceTests/MyBooks/BookReturnServiceTests.swift`.
+    // These tests drive the REAL return → persist → cold-reload wiring against a
+    // real `TPPBookRegistry` + `BookRegistrySync` + on-disk registry.json — NOT the
+    // guard predicate in isolation, and NOT the `TPPBookRegistryMock` the branch
+    // tests above use (that mock ignores the flag entirely, which is precisely why
+    // the branch tests cannot catch a regression here).
     //
-    // NOT a regression: develop keeps its current (narrower) guard, which never
-    // refused these saves in the first place.
+    // Recovered from `origin/main:PalaceTests/MyBooks/BookReturnServiceTests.swift`,
+    // where they were the recorded SPEC for this port. Adapted to develop's shapes:
+    // `RegistryFileRecovery` / `BookRegistryStore` / `BookRegistrySync` live in the
+    // `PalaceBookRegistry` package, and the registry is built through its
+    // `AccountScopeProviding` adapter.
+
+    /// Seeds a fresh-UUID fixture as `currentAccount` so the real registry's
+    /// mutations resolve to an isolated on-disk registry.json. The fresh UUID
+    /// guarantees the fixture is absent from the PRODUCTION accounts manager (which
+    /// `syncAsync()`'s default arg consults), so the post-return sync throws
+    /// `accountNotFound` immediately instead of awaiting a real loans fetch.
+    private func seedFixtureCurrentAccount(on manager: AccountsManager) -> (uuid: String, cleanup: () -> Void) {
+        let fixtureId = "brs-ghost-\(UUID().uuidString)"
+        let pub = OPDS2Publication(
+            links: [OPDS2Link(href: "https://example.com/catalog",
+                              rel: "http://opds-spec.org/catalog")],
+            metadata: OPDS2Publication.Metadata(id: fixtureId, title: "Ghost Fixture"),
+            images: nil
+        )
+        let fixture = Account(publication: pub, imageCache: MockImageCache())
+        let cleanup = manager._seedAccountForTesting(fixture)
+        return (fixtureId, cleanup)
+    }
+
+    /// Records in the on-disk PRIMARY registry.json, or nil if absent/unreadable.
+    /// Uses the same classifier the loader uses.
+    private func onDiskRecordCount(at url: URL) -> Int? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        if case .valid(let records) = RegistryFileRecovery.classify(data: data) {
+            return records.count
+        }
+        return nil
+    }
+
+    /// A real `BookReturnService` wired to a real registry, reusing this file's spy
+    /// collaborators for every non-persistence dependency. The optional feed fetcher
+    /// drives the revoke-error branches against real persistence.
+    private func makeServiceBackedByRealRegistry(
+        _ realRegistry: TPPBookRegistry,
+        feed: StubOPDSFeedFetcher = StubOPDSFeedFetcher()
+    ) -> BookReturnService {
+        let noCredsAccount = TPPUserAccountMock()  // hasCredentials() == false → sync gate closed
+        let svc = BookReturnService(
+            bookRegistry: realRegistry,
+            localContentService: SpyLocalContentService(),
+            opdsFeedService: feed,
+            downloadAnnouncementService: SpyAnnouncementService(),
+            bookmarkDeletionLog: .shared,
+            reauthenticator: TPPReauthenticatorMock(),
+            userRetryTracker: .shared,
+            userAccountProvider: { noCredsAccount }
+        )
+        svc.delegate = spyDelegate
+        return svc
+    }
+
+    /// Shared body for "confirmed-server-error → removeBook empty → persist
+    /// authoritative empty → no resurrect on reload". Used by the
+    /// parsing-as-success and no-active-loan paths: they share the `removeBook`
+    /// mechanism the no-revokeURL path exercises but reach it via a stubbed revoke
+    /// error. Kills the `serverAuthoritative: true → false` mutant on each.
+    private func assertConfirmedReturnError_persistsEmpty_noResurrect(
+        stubbedError: Error,
+        file: StaticString = #file,
+        line: UInt = #line
+    ) async throws {
+        let appContainer = makeTestAppContainer()
+        let manager = appContainer.accountsManager
+        defer { manager.cancelBackgroundWork() }
+        let (uuid, cleanup) = seedFixtureCurrentAccount(on: manager)
+        defer { cleanup() }
+
+        let realRegistry = TPPBookRegistry(
+            accountsManager: manager,
+            imageLoader: ImageLoader(imageCache: MockImageCache())
+        )
+        let registryURL = try XCTUnwrap(realRegistry.registryUrl(for: uuid))
+        defer { try? FileManager.default.removeItem(at: registryURL.deletingLastPathComponent()) }
+
+        let onlyBook = makeBookWithRevokeURL()
+        realRegistry.addBook(onlyBook, state: .downloadSuccessful)
+        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 1 }
+
+        let feed = StubOPDSFeedFetcher()
+        feed.stubbedError = stubbedError
+        let service = makeServiceBackedByRealRegistry(realRegistry, feed: feed)
+        let exp = expectation(description: "return completion")
+        service.returnBook(withIdentifier: onlyBook.identifier) { exp.fulfill() }
+        // Bounded wait, not a deadline poll: bounded — `exp` is fulfilled by returnBook's own completion handler, which the return state machine invokes on every terminal path.
+        await fulfillment(of: [exp], timeout: 10.0)  // STARVE-001-OK
+        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 0 }
+        XCTAssertEqual(onDiskRecordCount(at: registryURL), 0,
+                       "a confirmed server-error return of the last book must persist an EMPTY registry",
+                       file: file, line: line)
+
+        // Cold reload through a fresh store+engine — the resurrect check.
+        let store2 = BookRegistryStore()
+        let sync2 = BookRegistrySync(
+            store: store2,
+            accountsManager: manager,
+            downloadCenterProvider: { appContainer.downloadCenter },
+            opdsFeedServiceProvider: { appContainer.opdsFeedService }
+        )
+        let loaded = expectation(description: "cold reload")
+        sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
+        // Bounded wait, not a deadline poll: bounded — `loaded` is fulfilled by load()'s setState callback, invoked unconditionally.
+        await fulfillment(of: [loaded], timeout: 10.0)  // STARVE-001-OK
+        XCTAssertTrue(store2.allBooks.isEmpty,
+                      "the returned last book must NOT resurrect on relaunch",
+                      file: file, line: line)
+    }
+
+    /// Parsing-as-success (OverDrive's non-OPDS XML) return of the last book.
+    func testReturnLastBook_parsingErrorAsSuccess_persistsEmpty_noResurrect() async throws {
+        try await assertConfirmedReturnError_persistsEmpty_noResurrect(
+            stubbedError: PalaceError.parsing(.opdsFeedInvalid)
+        )
+    }
+
+    /// No-active-loan (server says the loan is already gone) return of the last book.
+    func testReturnLastBook_noActiveLoan_persistsEmpty_noResurrect() async throws {
+        let problemDoc = try makeProblemDoc(type: TPPProblemDocument.TypeNoActiveLoan)
+        try await assertConfirmedReturnError_persistsEmpty_noResurrect(
+            stubbedError: NSError(domain: "test", code: 404, userInfo: ["problemDocument": problemDoc])
+        )
+    }
 
     // MARK: - Helpers
 

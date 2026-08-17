@@ -3,13 +3,16 @@
 //  Palace
 //
 //  Records the wall-clock timestamp at which the user opened each book
-//  (audiobook OR ebook). Used by `RecentlyReadingService` to sort the
-//  Continue Reading row correctly — without this, EPUB / PDF locations
-//  (which don't embed a `timeStamp` in their JSON) fall back to
-//  `book.updated` from the OPDS feed, which is the *catalog* update
-//  date, NOT the read date. The user's "last read book is preloading
-//  some other book than the last read book" symptom was caused by an
-//  older-opened book that had a newer `book.updated` winning the sort.
+//  (audiobook OR ebook). Originally the sort key for the catalog "Continue"
+//  rows (removed in PP-4910), so it is currently write-only: the reader /
+//  audiobook open-paths still record into it, but nothing reads it back
+//  until a future "resume" re-entry point is designed. Kept because the
+//  recording lives in critical-path flows and the data is cheap to retain.
+//
+//  Historical rationale for existing (still valid if a reader returns): EPUB /
+//  PDF locations don't embed a `timeStamp`, so without this an open would fall
+//  back to `book.updated` (the *catalog* update date, not the read date) and a
+//  stale-but-recently-republished book would wrongly win the "last opened" sort.
 //
 //  Persistence: `UserDefaults` keyed by stable storage key. Map
 //  `[String: Date]` of bookId → last-opened wall-clock date. Survives

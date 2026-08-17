@@ -128,6 +128,28 @@ def test_empty_allowlist_counts_the_root_file(tmp_path):
     assert r.stdout.strip() == "3", r.stdout
 
 
+def test_comment_mentions_not_counted(tmp_path):
+    """THE FIX: `AppContainer.production()` named in a `//`, `///`, or block comment is
+    documentation (often warning against its use), not a locator call — only the one
+    real call site counts."""
+    root = tmp_path / "Palace" / "Book"
+    root.mkdir(parents=True)
+    (root / "Doc.swift").write_text(
+        "let am = AppContainer.production().accountsManager\n"          # 1 real call
+        "// Do NOT reach for AppContainer.production() outside a root.\n"  # line comment
+        "let y = 1  // AppContainer.production() also mentioned here\n"    # trailing comment
+        "/// Inject instead of calling AppContainer.production().\n"       # doc comment
+        "/* AppContainer.production() named in a block comment */\n"       # block comment
+    )
+    baseline = tmp_path / "b.txt"
+    baseline.write_text("1\n")
+    empty = tmp_path / "empty.txt"
+    empty.write_text("# none\n")
+    r = _run(tmp_path / "Palace", baseline, empty, mode="--count")
+    assert r.returncode == 0
+    assert r.stdout.strip() == "1", r.stdout
+
+
 def test_live_repo_baseline_passes():
     """Checked-in baseline + allowlist must PASS against today's Palace/ tree."""
     r = subprocess.run(["bash", str(_SCRIPT)], capture_output=True, text=True, timeout=60)

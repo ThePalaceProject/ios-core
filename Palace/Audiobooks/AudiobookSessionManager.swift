@@ -287,10 +287,12 @@ public final class AudiobookSessionManager: ObservableObject {
     /// flag-branch decision is exercised without touching UserDefaults.
     private let inAppPlaybackNavEnabledProvider: () -> Bool
 
-    /// PP-4542 / 323-Cause-1: TRIGGERS the LCP `.lcpa` content download for a
-    /// freshly-borrowed audiobook whose `.lcpl` license landed (flipping the
-    /// book to `.downloadSuccessful`) but whose full content package never
-    /// made it to disk. Content downloads separately from the license and can
+    /// PP-4542 / 323-Cause-1: TRIGGERS the LCP `.lcpa` content download for an
+    /// audiobook whose `.lcpl` license is on disk but whose full content package
+    /// is not. (Before 3.2.3 the license landing also flipped the book to
+    /// `.downloadSuccessful`; it no longer does, so the book this gate rescues
+    /// is typically one whose content was lost or interrupted rather than a
+    /// freshly-borrowed one.) Content downloads separately from the license and can
     /// permanently fail — so the old poll-only gate would spin the whole
     /// 180s window then dead-end at "Audiobook Unavailable", forever (the
     /// #1-volume patron complaint). Production wires
@@ -301,6 +303,14 @@ public final class AudiobookSessionManager: ObservableObject {
     /// in flight). Tests inject a spy to prove the gate TRIGGERS the download
     /// rather than only polling for a file that may never appear.
     private let lcpContentDownloadTrigger: (TPPBook) -> Void
+
+    /// PP-4957: reads the LCP-audiobook-streaming feature flag. When ON, an LCP
+    /// audiobook is playable on its license alone, so the open-time content gate
+    /// (`gateOnLCPContentDownload`) must NOT force a download before opening —
+    /// the player streams via the swift-toolkit #579 fork. Injected so tests
+    /// drive both flag states; production default reads `RemoteFeatureFlags.shared`
+    /// (local override > Firebase remote, default `false` → download-first).
+    private let lcpStreamingEnabledProvider: () -> Bool
 
     // MARK: - F-011 readiness-gate injection points
     //
@@ -343,6 +353,7 @@ public final class AudiobookSessionManager: ObservableObject {
         audiobookSessionPresenterProvider: @escaping @MainActor () -> AudiobookSessionPresenter,
         inAppPlaybackNavEnabledProvider: @escaping () -> Bool,
         lcpContentDownloadTrigger: @escaping (TPPBook) -> Void,
+        lcpStreamingEnabledProvider: @escaping () -> Bool,
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing,
         playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding,
         readinessTimeout: TimeInterval
@@ -356,6 +367,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.audiobookSessionPresenterProvider = audiobookSessionPresenterProvider
         self.inAppPlaybackNavEnabledProvider = inAppPlaybackNavEnabledProvider
         self.lcpContentDownloadTrigger = lcpContentDownloadTrigger
+        self.lcpStreamingEnabledProvider = lcpStreamingEnabledProvider
         self.readinessProbeFactory = readinessProbeFactory
         self.playbackCommandFactory = playbackCommandFactory
         self.readinessTimeout = readinessTimeout
@@ -389,6 +401,7 @@ public final class AudiobookSessionManager: ObservableObject {
         lcpContentDownloadTrigger: @escaping (TPPBook) -> Void = { book in
             AppContainer.production().downloadCenter.redownloadLCPContentFile(for: book)
         },
+        lcpStreamingEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled },
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing = { player in
             PlayerReadinessProbe(isLoadedSnapshot: { [weak player] in player?.isLoaded ?? false })
         },
@@ -407,6 +420,7 @@ public final class AudiobookSessionManager: ObservableObject {
             audiobookSessionPresenterProvider: audiobookSessionPresenterProvider,
             inAppPlaybackNavEnabledProvider: inAppPlaybackNavEnabledProvider,
             lcpContentDownloadTrigger: lcpContentDownloadTrigger,
+            lcpStreamingEnabledProvider: lcpStreamingEnabledProvider,
             readinessProbeFactory: readinessProbeFactory,
             playbackCommandFactory: playbackCommandFactory,
             readinessTimeout: readinessTimeout
@@ -2441,9 +2455,17 @@ public final class AudiobookSessionManager: ObservableObject {
     static func shouldTriggerContentDownloadBeforeOpen(
         isColdLoadRecovery: Bool,
         canOpenLCPBook: Bool,
-        contentIsLocal: Bool
+        contentIsLocal: Bool,
+        streamingEnabled: Bool
     ) -> Bool {
-        !isColdLoadRecovery && canOpenLCPBook && !contentIsLocal
+        // PP-4957: when streaming is ON, an LCP audiobook is playable on its
+        // license alone — never force a content download before opening; let the
+        // player stream via the swift-toolkit #579 fork. When OFF, the original
+        // download-first gate stands: trigger iff the book is openable but its
+        // `.lcpa` content is not yet on disk, and this is not a cold-load re-open
+        // (whose content is already local).
+        if streamingEnabled { return false }
+        return !isColdLoadRecovery && canOpenLCPBook && !contentIsLocal
     }
 
     /// PP-4542 / 323-Cause-1: the upfront LCP content gate. If the audiobook is
@@ -2476,7 +2498,8 @@ public final class AudiobookSessionManager: ObservableObject {
         guard Self.shouldTriggerContentDownloadBeforeOpen(
             isColdLoadRecovery: isColdLoadRecovery,
             canOpenLCPBook: canOpenLCPBook,
-            contentIsLocal: contentIsLocal
+            contentIsLocal: contentIsLocal,
+            streamingEnabled: lcpStreamingEnabledProvider()
         ) else {
             return .proceed
         }

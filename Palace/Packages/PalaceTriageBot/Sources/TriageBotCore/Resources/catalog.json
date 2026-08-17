@@ -1,6 +1,7 @@
 {
   "version": "v1.2-2026-07-20",
   "updated_at": "2026-07-20",
+  "latest_known_app_version": "3.2.3",
   "entries": [
     {
       "id": "KI-2026-001-audiobook-first-open-hang",
@@ -13,25 +14,27 @@
         "wont load",
         "will not play",
         "will not load",
-        "spinning",
-        "spinner",
-        "first time",
-        "hangs",
-        "stuck",
         "sits there",
-        "nothing happens",
         "tap play",
         "tapped play",
         "play button",
-        "blinks",
         "no sound",
         "stops playing",
         "just loads",
         "doesn't start",
         "doesnt start",
         "play and nothing",
+        "loan disappear"
+      ],
+      "corroborating_keywords": [
+        "spinning",
+        "spinner",
+        "first time",
+        "hangs",
+        "stuck",
+        "nothing happens",
+        "blinks",
         "opens but",
-        "loan disappear",
         "reinstall"
       ],
       "distributor_filter": [
@@ -42,6 +45,7 @@
         {
           "id": "ki001-step1-tap-back-tap-again",
           "instruction": "Tap back to your library list, then tap the audiobook title again. This usually clears the hang on the second open.",
+          "remedy": "reopenTitle",
           "check": "Did it start playing this time?",
           "responses": [
             {
@@ -60,6 +64,7 @@
         {
           "id": "ki001-step2-force-quit",
           "instruction": "Force-quit Palace: swipe up from the bottom of the screen and pause, then swipe up on Palace's preview to close it. Reopen Palace and tap the audiobook again.",
+          "remedy": "reopenTitle",
           "check": "Plays now?",
           "responses": [
             {
@@ -78,6 +83,7 @@
         {
           "id": "ki001-step3-sign-out-in",
           "instruction": "In Settings → Libraries, tap your library, scroll down and tap Sign Out. Sign back in and try the audiobook.",
+          "remedy": "signOutIn",
           "check": "Plays after sign-in?",
           "responses": [
             {
@@ -126,8 +132,10 @@
         "switched libraries",
         "changed library",
         "playback crash",
-        "crashed",
         "crash while playing"
+      ],
+      "corroborating_keywords": [
+        "crashed"
       ],
       "distributor_filter": [
         "palace_marketplace"
@@ -137,6 +145,7 @@
         {
           "id": "ki002-step1-update",
           "instruction": "Check the App Store for a Palace update — this crash is fixed in version 3.2.0 or later. Update if available, then try again.",
+          "remedy": "updateApp",
           "check": "Are you now on 3.2.0 or later, and the crash gone?",
           "responses": [
             {
@@ -199,10 +208,12 @@
         "fields look disabled",
         "where to type",
         "where do i type",
-        "placeholder",
-        "boxes",
         "never prompted",
         "looks disabled"
+      ],
+      "corroborating_keywords": [
+        "placeholder",
+        "boxes"
       ],
       "user_facing_workaround": "The field looks grayed out, but it's actually active — tap it and start typing. This is a contrast issue we've already fixed; the next App Store update will look correct.",
       "user_facing_steps": [
@@ -248,17 +259,19 @@
         "not my library",
         "where is my library",
         "where's my library",
-        "can't find",
-        "cant find",
         "missing titles",
         "missing books",
         "demo books",
         "demo collection",
+        "doesn't appear",
+        "doesnt appear"
+      ],
+      "corroborating_keywords": [
+        "can't find",
+        "cant find",
         "bookshelf",
         "these aren't",
         "these arent",
-        "doesn't appear",
-        "doesnt appear",
         "on my ipad",
         "on my phone"
       ],
@@ -349,7 +362,9 @@
         "connecting to car",
         "in the car",
         "in my car",
-        "crash in car",
+        "crash in car"
+      ],
+      "corroborating_keywords": [
         "crashes"
       ],
       "user_facing_workaround": "This CarPlay crash is fixed in the next release. As a workaround, start playback before connecting to your car.",
@@ -357,6 +372,7 @@
         {
           "id": "ki005-step1-update",
           "instruction": "Check the App Store — this CarPlay crash is fixed in version 3.1.0 or later. Update if available.",
+          "remedy": "updateApp",
           "check": "Are you now on 3.1.0+, and the crash gone when you connect to CarPlay?",
           "responses": [
             {
@@ -416,7 +432,6 @@
         "holds disappeared",
         "holds list",
         "still on hold",
-        "still shows",
         "shows as reserved",
         "next in line",
         "got a notification",
@@ -427,6 +442,9 @@
         "list disagrees",
         "not in my holds",
         "hold list"
+      ],
+      "corroborating_keywords": [
+        "still shows"
       ],
       "user_facing_workaround": "Pull down on the Holds list to refresh. If the hold is still missing, sign out and back in — your account will sync from the server.",
       "user_facing_steps": [
@@ -451,6 +469,7 @@
         {
           "id": "ki006-step2-sign-out-in",
           "instruction": "Go to Settings → Libraries → tap your library → Sign Out. Sign back in. Then check the Holds tab again.",
+          "remedy": "signOutIn",
           "check": "Is the ready hold visible after sign-in?",
           "responses": [
             {
@@ -508,6 +527,7 @@
         {
           "id": "ki007-step1-pull-refresh-and-reopen",
           "instruction": "Go to My Books, pull down to refresh, then tap the PDF title to reopen it.",
+          "remedy": "reopenTitle",
           "check": "Did the PDF render this time?",
           "responses": [
             {
@@ -539,7 +559,8 @@
               "diagnostic": "pdf.redownload_resolved"
             }
           ],
-          "diagnostic": "pdf.delete_and_redownload"
+          "diagnostic": "pdf.delete_and_redownload",
+          "remedy": "redownloadTitle"
         }
       ],
       "internal_reference": {
@@ -563,21 +584,25 @@
       "symptom_keywords": [
         "won't download",
         "wont download",
-        "download",
-        "never works",
         "download stuck",
         "download failed",
         "no progress",
         "hasn't moved",
         "hasnt moved",
+        "stuck downloading",
+        "trying to download"
+      ],
+      "corroborating_keywords": [
+        "download",
         "stalled",
-        "stuck downloading"
+        "never works"
       ],
       "user_facing_workaround": "If a download stalls, check that you're connected to WiFi or cellular data, then pull down to refresh your bookshelf. If it still fails, sign out and back in.",
       "user_facing_steps": [
         {
           "id": "ki008-step1-check-connection",
           "instruction": "Check the top-right of your screen — do you see WiFi or cellular signal? If you're in airplane mode or your WiFi dropped, toggle it back on.",
+          "remedy": "toggleNetwork",
           "check": "Is your connection up, and the download resuming?",
           "responses": [
             {
@@ -614,6 +639,7 @@
         {
           "id": "ki008-step3-sign-out-in",
           "instruction": "Go to Settings → Libraries → your library → Sign Out. Sign back in. Then re-attempt the download from My Books or the Catalog.",
+          "remedy": "signOutIn",
           "check": "Does the download complete after sign-in?",
           "responses": [
             {
@@ -653,21 +679,23 @@
       "symptom_keywords": [
         "second library",
         "another library",
-        "add a library",
-        "add library",
         "add a card",
         "second card",
         "additional libraries",
         "does not show",
         "doesn't show",
         "doesnt show",
-        "not showing",
         "no additional",
         "won't let me add",
         "wont let me add",
         "unable to add",
         "can't add",
         "cant add"
+      ],
+      "corroborating_keywords": [
+        "not showing",
+        "add a library",
+        "add library"
       ],
       "user_facing_workaround": "The Add Library list can go stale and stop showing newly-added libraries. On the Add Library screen, pull down and hold for a second to force a refresh — your library should then appear so you can add it.",
       "user_facing_steps": [
@@ -690,22 +718,42 @@
           "diagnostic": "addlibrary.pull_to_refresh"
         },
         {
-          "id": "ki009-step2-signout-reinstall",
-          "instruction": "If it's still missing, sign out of your current library, then delete and reinstall Palace. Open it and try Add Library again.",
-          "check": "Can you add the second library now?",
+          "id": "ki009-step2-clear-cache",
+          "instruction": "Go to Settings, tap Advanced, then tap Clear Cached Data. Your books and sign-in stay put — this only clears the saved copy of the library list. Then try Add Library again.",
+          "remedy": "clearCache",
+          "check": "Is your library there now?",
           "responses": [
             {
-              "label": "Still can't",
-              "outcome": "escalate",
-              "diagnostic": "addlibrary.reinstall_did_not_resolve"
+              "label": "Found it",
+              "outcome": "resolved",
+              "diagnostic": "library.registry.cleared_cache_resolved"
             },
             {
-              "label": "Yes, added",
-              "outcome": "resolved",
-              "diagnostic": "addlibrary.reinstall_resolved"
+              "label": "Still missing",
+              "outcome": "advance",
+              "diagnostic": "library.registry.cleared_cache_no_change"
             }
           ],
-          "diagnostic": "addlibrary.signout_reinstall"
+          "diagnostic": "library.registry.clear_cache"
+        },
+        {
+          "id": "ki009-step2-check-registry",
+          "instruction": "If it is still missing, check whether your library is listed at the Palace web catalog on a computer or browser. If it is not there either, the library may not be participating yet, and support can confirm.",
+          "remedy": "verifyOnWeb",
+          "check": "Did you find your library there?",
+          "responses": [
+            {
+              "label": "Yes, it's listed",
+              "outcome": "escalate",
+              "diagnostic": "library.registry.listed_on_web"
+            },
+            {
+              "label": "No, not listed",
+              "outcome": "escalate",
+              "diagnostic": "library.registry.absent_on_web"
+            }
+          ],
+          "diagnostic": "library.registry.web_check"
         }
       ],
       "internal_reference": {
@@ -721,6 +769,91 @@
       "confidence_threshold": 0.1,
       "escalate_anyway": false,
       "helpspot_tag": "open-issue-add-library-stale-registry",
+      "trust_level": "authoritative",
+      "visibility": "user_facing"
+    },
+    {
+      "id": "KI-2026-010-audiobook-fulfillment-3-2-x",
+      "category": "audiobook",
+      "status": "fixed_in",
+      "fixed_in_version": "3.2.3",
+      "symptom_keywords": [
+        "audio book unavailable",
+        "no longer available",
+        "listen button",
+        "hit listen",
+        "press the listen",
+        "spins in circles",
+        "spinning wheel",
+        "since the update"
+      ],
+      "corroborating_keywords": [
+        "audiobook unavailable",
+        "temporarily unavailable",
+        "times out",
+        "keeps spinning",
+        "just spins",
+        "contact your library"
+      ],
+      "user_facing_workaround": "This was a bug in Palace 3.2.0-3.2.2 that stopped some audiobooks from opening, and it is fixed in Palace 3.2.3. Update Palace from the App Store, then open the title again from My Books. If you are already on 3.2.3 or later and it still will not play, we should take a look.",
+      "user_facing_steps": [
+        {
+          "id": "ki010-step1-update",
+          "instruction": "Open the App Store, search for Palace, and install any available update. The fix for this shipped in version 3.2.3.",
+          "remedy": "updateApp",
+          "check": "Did the App Store offer you an update?",
+          "responses": [
+            {
+              "label": "Updated it",
+              "outcome": "advance",
+              "diagnostic": "audiobook.3_2_x.updated"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "escalate",
+              "diagnostic": "audiobook.3_2_x.already_current"
+            }
+          ],
+          "diagnostic": "audiobook.3_2_x.update_offered"
+        },
+        {
+          "id": "ki010-step2-reopen",
+          "instruction": "Go back to My Books and tap Listen on the title again.",
+          "remedy": "reopenTitle",
+          "check": "Does it play now?",
+          "responses": [
+            {
+              "label": "Yes, playing",
+              "outcome": "resolved",
+              "diagnostic": "audiobook.3_2_x.resolved_after_update"
+            },
+            {
+              "label": "Still not playing",
+              "outcome": "escalate",
+              "diagnostic": "audiobook.3_2_x.persists_after_update"
+            }
+          ],
+          "diagnostic": "audiobook.3_2_x.reopen_after_update"
+        }
+      ],
+      "escalation_follow_up": {
+        "prompt": "Which version of Palace does the App Store show you have, and which audiobook is doing this?",
+        "placeholder": "e.g. 3.2.3, and the title",
+        "diagnostic": "audiobook.3_2_x.version_and_title",
+        "presumes_issue": false
+      },
+      "internal_reference": {
+        "helpspot": [
+          18449,
+          18464,
+          18475,
+          18486,
+          18571
+        ]
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "audiobook-fulfillment-3-2-x",
       "trust_level": "authoritative",
       "visibility": "user_facing"
     },
@@ -743,7 +876,19 @@
         "keep it longer",
         "borrow it again"
       ],
+      "corroborating_keywords": [
+        "renew",
+        "renewal",
+        "renewed",
+        "extend"
+      ],
       "user_facing_workaround": "Palace doesn't renew loans inside the app — when your lending period ends, the book returns itself automatically. To keep reading, just borrow the title again from the catalog. If someone else has it on hold, place a hold to get back in line.",
+      "escalation_follow_up": {
+        "prompt": "Which library issued the card you're using? Loan and renewal rules are set by each library, so support can check yours.",
+        "placeholder": "City, county, or system name",
+        "diagnostic": "howto.renewals",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "helpspot": [
           18028,
@@ -775,7 +920,18 @@
         "give it back early",
         "send it back"
       ],
+      "corroborating_keywords": [
+        "return",
+        "returning",
+        "give back"
+      ],
       "user_facing_workaround": "To return a book before it's due, go to My Books, swipe left on the title, and tap Return (or open the book's menu and choose Return). It goes straight back to the library so the next reader can borrow it.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using, and is this an ebook or an audiobook?",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.early",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "helpspot": [
           17901
@@ -804,7 +960,17 @@
         "go back to my other library",
         "toggle between libraries"
       ],
+      "corroborating_keywords": [
+        "switch",
+        "different library"
+      ],
       "user_facing_workaround": "You can keep more than one library in Palace and switch between them anytime. Go to Settings → Libraries to see your libraries, then tap the one you want to switch to it. To add another, tap Add Library there and search for it by name.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you trying to use? (City, county, or system name is fine.)",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.library",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "helpspot": [
           17930
@@ -833,7 +999,20 @@
         "enable notifications",
         "when my book is due"
       ],
+      "corroborating_keywords": [
+        "notification",
+        "notified",
+        "reminder",
+        "reminders",
+        "alert"
+      ],
       "user_facing_workaround": "Turn on notifications and Palace will alert you when a hold you placed is ready to borrow, and again when a loan is about to expire. You can enable them when you first install the app, or later in your phone's Settings under Palace.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using, and which notifications were you expecting to get?",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.notifications",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "helpspot": [
           18103
@@ -862,7 +1041,19 @@
         "hold pickup deadline",
         "how long to get my hold"
       ],
+      "corroborating_keywords": [
+        "hold",
+        "holds",
+        "pick up",
+        "expires"
+      ],
       "user_facing_workaround": "How long you have to pick up a ready hold varies by library and distributor. When your hold is ready, Palace shows the exact \"pick up by\" date right on it — open the title from your holds to see the deadline.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using? Hold pickup windows are set by each library.",
+        "placeholder": "City, county, or system name",
+        "diagnostic": "howto.window",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
@@ -888,7 +1079,17 @@
         "how many at once",
         "how many titles at once"
       ],
+      "corroborating_keywords": [
+        "limit",
+        "how many"
+      ],
       "user_facing_workaround": "The number of titles you can borrow at once is set by your library, so it varies. If you've reached the limit, returning a title you've finished frees up a slot — or check with your library for its exact borrowing limit.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using? Borrowing limits are set by each library.",
+        "placeholder": "City, county, or system name",
+        "diagnostic": "howto.limit",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
@@ -914,7 +1115,17 @@
         "lending period",
         "loan period"
       ],
+      "corroborating_keywords": [
+        "how long",
+        "due date"
+      ],
       "user_facing_workaround": "Loan length is set by your library, so it varies — you'll see the due date on each title when you borrow it. Palace can't extend or renew a loan in the app: when the lending period ends the book returns automatically, and to keep reading you simply borrow it again (or place a hold if there's a waitlist).",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using? Loan lengths are set by each library.",
+        "placeholder": "City, county, or system name",
+        "diagnostic": "howto.length",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
@@ -941,7 +1152,18 @@
         "put in my library card",
         "register my card"
       ],
+      "corroborating_keywords": [
+        "card",
+        "library card",
+        "add"
+      ],
       "user_facing_workaround": "To add your library card, open Settings → Libraries. If your library isn't listed yet, add it there first, then tap it and sign in with your library card number (barcode) and PIN. Once you're signed in, your loans and holds show up in Palace.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you trying to add? (City, county, or system name is fine.)",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.card",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
@@ -966,7 +1188,18 @@
         "reading format",
         "send to my ereader"
       ],
+      "corroborating_keywords": [
+        "kindle",
+        "format",
+        "e-reader"
+      ],
       "user_facing_workaround": "Palace isn't connected to Kindle — there's no \"send to Kindle\" step. You read your borrowed books right in the Palace app: ebooks open in the built-in reader and audiobooks play in the built-in player, and everything stays in Palace for the length of your loan.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using, and which device were you hoping to read on?",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.kindle",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
@@ -977,6 +1210,310 @@
       "visibility": "user_facing",
       "ui_surface": "my-books",
       "reviewed_at": "2026-07-22"
+    },
+    {
+      "id": "GF-audiobook",
+      "category": "audiobook",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "A couple of things worth trying before we send this to support.",
+      "user_facing_steps": [
+        {
+          "id": "gf-audio-1",
+          "instruction": "Open the App Store and check for a Palace update. Several audiobook problems were fixed in recent releases.",
+          "remedy": "updateApp",
+          "check": "Does it play now?",
+          "responses": [
+            {
+              "label": "It plays now",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-audio-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-audio-1.no_change"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "not_applicable",
+              "diagnostic": "ladder.gf-audio-1.already_current"
+            }
+          ],
+          "diagnostic": "ladder.gf-audio-1"
+        },
+        {
+          "id": "gf-audio-2",
+          "instruction": "Go back to My Books and tap the title again. The second open often works when the first one stalls.",
+          "remedy": "reopenTitle",
+          "check": "Does it play now?",
+          "responses": [
+            {
+              "label": "It plays now",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-audio-2.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-audio-2.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-audio-2"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-audiobook",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
+    },
+    {
+      "id": "GF-download",
+      "category": "download",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "A couple of things worth trying before we send this to support.",
+      "user_facing_steps": [
+        {
+          "id": "gf-dl-1",
+          "instruction": "Check the top of your screen for WiFi or cellular signal. If you're on WiFi, try switching to cellular — or if you're on cellular, try WiFi.",
+          "remedy": "toggleNetwork",
+          "check": "Is the download moving now?",
+          "responses": [
+            {
+              "label": "It's downloading",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-dl-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-dl-1.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-dl-1"
+        },
+        {
+          "id": "gf-dl-2",
+          "instruction": "Open the App Store and check for a Palace update.",
+          "remedy": "updateApp",
+          "check": "Is it downloading now?",
+          "responses": [
+            {
+              "label": "It's downloading",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-dl-2.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-dl-2.no_change"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "not_applicable",
+              "diagnostic": "ladder.gf-dl-2.already_current"
+            }
+          ],
+          "diagnostic": "ladder.gf-dl-2"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-download",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
+    },
+    {
+      "id": "GF-library",
+      "category": "library",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "Two things worth checking before we send this to support.",
+      "user_facing_steps": [
+        {
+          "id": "gf-lib-1",
+          "instruction": "Open Settings, then Libraries, and check which library is selected. If you have more than one card, the books you're looking for may be under a different library.",
+          "remedy": "switchLibrary",
+          "check": "Are your books there?",
+          "responses": [
+            {
+              "label": "Found them",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-lib-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-lib-1.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-lib-1"
+        },
+        {
+          "id": "gf-lib-2",
+          "instruction": "Go back to My Books, pull down from the top of the list, and hold for a second to reload your books.",
+          "remedy": "pullToRefresh",
+          "check": "Are your books there now?",
+          "responses": [
+            {
+              "label": "Found them",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-lib-2.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-lib-2.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-lib-2"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-library",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
+    },
+    {
+      "id": "GF-reader",
+      "category": "reader",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "A couple of things worth trying before we send this to support.",
+      "user_facing_steps": [
+        {
+          "id": "gf-read-1",
+          "instruction": "Go back to My Books and tap the title again.",
+          "remedy": "reopenTitle",
+          "check": "Does it open now?",
+          "responses": [
+            {
+              "label": "It opens now",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-read-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-read-1.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-read-1"
+        },
+        {
+          "id": "gf-read-2",
+          "instruction": "Open the App Store and check for a Palace update.",
+          "remedy": "updateApp",
+          "check": "Does it open now?",
+          "responses": [
+            {
+              "label": "It opens now",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-read-2.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-read-2.no_change"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "not_applicable",
+              "diagnostic": "ladder.gf-read-2.already_current"
+            }
+          ],
+          "diagnostic": "ladder.gf-read-2"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-reader",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
+    },
+    {
+      "id": "GF-other",
+      "category": "other",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "One thing worth trying before we send this to support.",
+      "user_facing_steps": [
+        {
+          "id": "gf-other-1",
+          "instruction": "Open the App Store and check for a Palace update — it's the quickest thing to rule out.",
+          "remedy": "updateApp",
+          "check": "Did that fix it?",
+          "responses": [
+            {
+              "label": "That fixed it",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-other-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-other-1.no_change"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "not_applicable",
+              "diagnostic": "ladder.gf-other-1.already_current"
+            }
+          ],
+          "diagnostic": "ladder.gf-other-1"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-other",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
     }
-  ]
+  ],
+  "category_follow_ups": {
+    "signin": {
+      "prompt": "Is the card you're using one your library gave you, or one you created inside the Palace app?",
+      "placeholder": "Library-issued or created in the app",
+      "diagnostic": "category.signin",
+      "presumes_issue": false
+    },
+    "audiobook": {
+      "prompt": "Does the audiobook fail right when you open it, or does it start and then stop partway through?",
+      "placeholder": "At the start, or partway through",
+      "diagnostic": "category.audiobook",
+      "presumes_issue": false
+    },
+    "download": {
+      "prompt": "Did the download never start, or did it begin and then stop before finishing?",
+      "placeholder": "Never started, or stopped partway",
+      "diagnostic": "category.download",
+      "presumes_issue": false
+    },
+    "library": {
+      "prompt": "Which library are you trying to use, and is it missing from the list or showing the wrong books?",
+      "placeholder": "City or library name",
+      "diagnostic": "category.library",
+      "presumes_issue": false
+    },
+    "reader": {
+      "prompt": "Is this an ebook or a PDF, and does it fail to open at all or fail partway through?",
+      "placeholder": "Ebook or PDF",
+      "diagnostic": "category.reader",
+      "presumes_issue": false
+    },
+    "other": {
+      "prompt": "What were you doing in the app just before this happened?",
+      "placeholder": "e.g. borrowing a book, opening my shelf",
+      "diagnostic": "category.other",
+      "presumes_issue": false
+    }
+  }
 }

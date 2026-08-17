@@ -17,8 +17,12 @@ final class StuckSendReproTests: XCTestCase {
     private func reducer() -> ConversationReducer {
         // An entry with NO escalationFollowUp → an escalating match drafts a
         // ticket directly (reaching the .drafting/preview step we then Discard).
+        // The keyword is corroborating so the match escalates rather than
+        // suggests; a suggestion would land on .matched and never reach the
+        // preview this flow is about.
         let entry = KBEntry(id: "KI-DRAFT", category: .audiobook, status: .open,
-                            symptomKeywords: ["glitchy audio"],
+                            symptomKeywords: ["some unrelated phrase"],
+                            corroboratingKeywords: ["glitchy audio"],
                             userFacingWorkaround: "Please try re-downloading the title.",
                             confidenceThreshold: 0.1)
         return ConversationReducer(knowledgeBase: KnowledgeBase(

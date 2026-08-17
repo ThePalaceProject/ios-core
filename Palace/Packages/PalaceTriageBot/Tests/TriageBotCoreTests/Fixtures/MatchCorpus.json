@@ -1,0 +1,342 @@
+{
+  "_readme": [
+    "Scored corpus for the triage-bot local matcher. Each case is a patron-voice",
+    "input plus the outcome the bot SHOULD produce, so capture rate and misroute",
+    "rate are numbers we can regress against instead of impressions.",
+    "",
+    "PROVENANCE — the slice a case belongs to determines what it proves:",
+    "  mined    — drawn from the HelpSpot tickets the catalog entry itself cites in",
+    "             `internal_reference.helpspot`. The catalog was AUTHORED from these,",
+    "             so a high score here is memorization, not generalization. Treat it",
+    "             as an upper bound only. Expected label = the entry that cites the",
+    "             ticket (support's own resolution), NOT a fixture author's judgment.",
+    "  held_out — HelpSpot tickets from August 2026, postdating every catalog entry's",
+    "             `reviewed_at` (2026-07-20). No keyword was written with these in",
+    "             view. This slice is the honest generalization measure.",
+    "  trap     — generic complaints whose only overlap with an entry is a weak,",
+    "             non-diagnostic word. These MUST escalate. A suggestion here is a",
+    "             misroute: the patron is handed a workaround for a bug they don't",
+    "             have (the chaos-qa F-002 defect class).",
+    "",
+    "`expected` is a KB entry id, or \"escalate\". `also_acceptable` lists entry ids",
+    "that would not count as a misroute if returned instead.",
+    "",
+    "  near_miss — real tickets that CONTAIN a strong keyword but that support resolved to a different cause. The trap slice above only samples inputs whose overlap is a WEAK word, which makes its zero-misroute result circular: the partition decides what is weak, so a mis-partitioned STRONG keyword can never appear there. These are drawn from the strong side and are the real precision test. Expected escalate in every case: the entry that would fire cannot help this patron.",
+    "Patron text is verbatim apart from PII stripping (names, emails, card and",
+    "patron-ID numbers, phone numbers, signatures and mail-client boilerplate",
+    "removed) and trimming to the substantive complaint. Book titles are dropped —",
+    "they carry no signal for a keyword matcher and are needless detail to retain."
+  ],
+  "cases": [
+    {
+      "id": "hs-17964",
+      "source": "helpspot:17964",
+      "provenance": "mined",
+      "category": "audiobook",
+      "text": "Can you help me load books? It is hit or miss. Sometimes they load and sometimes they don't. I have been on hold for it 3 times. All three times it comes available to me, but will not load. Then it eventually goes away.",
+      "expected": "KI-2026-001-audiobook-first-open-hang"
+    },
+    {
+      "id": "hs-17929",
+      "source": "helpspot:17929",
+      "provenance": "mined",
+      "category": "audiobook",
+      "text": "We've been contacted by a patron that the audiobook they've checked out won't play. They've reinstalled the app, rebooted their phone, and it's not working.",
+      "expected": "KI-2026-001-audiobook-first-open-hang"
+    },
+    {
+      "id": "hs-17989",
+      "source": "helpspot:17989",
+      "provenance": "mined",
+      "category": "audiobook",
+      "text": "I have tried to get the audiobook to work and can't seem to get it to play. I've tried on different devices. I've turned it in and checked it back out. I have left it open to download. I push the play button and it just blinks.",
+      "expected": "KI-2026-001-audiobook-first-open-hang"
+    },
+    {
+      "id": "hs-17959",
+      "source": "helpspot:17959",
+      "provenance": "mined",
+      "category": "audiobook",
+      "text": "The app is still not working properly, even after deleting the app on my phone and redownloading. It stops playing and will not load. The audiobook will not load properly.",
+      "expected": "KI-2026-001-audiobook-first-open-hang"
+    },
+    {
+      "id": "hs-17923",
+      "source": "helpspot:17923",
+      "provenance": "mined",
+      "category": "signin",
+      "text": "I am attempting to set up the Palace app, but am not able to login. Instead, I see the following grayed out options at the sign in page, and am never prompted at first use after download to sign in. I have uninstalled, restarted the phone, and reinstalled to no effect.",
+      "expected": "KI-2026-003-signin-placeholder-contrast"
+    },
+    {
+      "id": "hs-17957",
+      "source": "helpspot:17957",
+      "provenance": "mined",
+      "category": "library",
+      "text": "I have a book on my phone that I downloaded that does not appear on my iPad",
+      "expected": "KI-2026-004-wrong-library-palace-bookshelf"
+    },
+    {
+      "id": "hs-17917",
+      "source": "helpspot:17917",
+      "provenance": "mined",
+      "category": "signin",
+      "text": "I have tried to use the app but I keep getting this error when trying to log in. I have confirmed my credentials are correct.",
+      "expected": "KI-2026-004-wrong-library-palace-bookshelf",
+      "note": "Label follows support's citation (KI-004 cites this ticket) rather than the fixture author's reading of the text, which alone would suggest a generic sign-in failure. Kept deliberately: it is a case the text does not support, and it should read as a miss rather than be quietly relabelled."
+    },
+    {
+      "id": "hs-17960",
+      "source": "helpspot:17960",
+      "provenance": "mined",
+      "category": "library",
+      "text": "I love the app, but constantly get messages that my hold is ready but when I go to the list of holds, the book is not ready. Is there a fix?",
+      "expected": "KI-2026-006-hold-ready-desync"
+    },
+    {
+      "id": "hs-17976",
+      "source": "helpspot:17976",
+      "provenance": "mined",
+      "category": "download",
+      "text": "I'm trying to download the book and it never works. I have gone on and off wifi, I have logged out of the app and I have tried uninstalling and reinstalling the app.",
+      "expected": "KI-2026-008-download-no-network"
+    },
+    {
+      "id": "hs-17930",
+      "source": "helpspot:17930",
+      "provenance": "mined",
+      "category": "library",
+      "text": "I have two libraries in my area and both use the palace project app. I currently have one as my library in the app and would like to add the other as well but am unable. When I click add library it only lets me search the palace shelf.",
+      "expected": "KI-2026-009-add-library-stale-registry",
+      "also_acceptable": [
+        "HT-2026-008-add-library-card",
+        "HT-2026-003-switch-library"
+      ]
+    },
+    {
+      "id": "hs-18028",
+      "source": "helpspot:18028",
+      "provenance": "mined",
+      "category": "other",
+      "text": "Could you please tell me how many times a ebook or eaudiobook can be renewed if there are no holds on the item?",
+      "expected": "HT-2026-001-renewals"
+    },
+    {
+      "id": "hs-17901",
+      "source": "helpspot:17901",
+      "provenance": "mined",
+      "category": "other",
+      "text": "I have a patron. She has 2 books that she has not been able to return.",
+      "expected": "HT-2026-002-return-early"
+    },
+    {
+      "id": "hs-18103-a",
+      "source": "helpspot:18103",
+      "provenance": "mined",
+      "category": "other",
+      "text": "When a held item becomes available for the patron to borrow, how long do they have to borrow the hold before it goes to the next person in the queue?",
+      "expected": "HT-2026-005-hold-pickup-window"
+    },
+    {
+      "id": "hs-18103-b",
+      "source": "helpspot:18103",
+      "provenance": "mined",
+      "category": "other",
+      "text": "Does Palace Project send reminders to the borrower when items are coming due?",
+      "expected": "HT-2026-004-notifications"
+    },
+    {
+      "id": "hs-18659",
+      "source": "helpspot:18659",
+      "provenance": "held_out",
+      "category": "audiobook",
+      "text": "I was listening and just finished chapter 46. It says I have 3 hours left, but the book won't continue playing. Any ideas on how I can listen to the last 3 hours of the book?",
+      "expected": "escalate",
+      "note": "KI-002 is switching libraries mid-playback, which this is not. No catalog entry covers a mid-book stall, so escalating is correct."
+    },
+    {
+      "id": "hs-18635",
+      "source": "helpspot:18635",
+      "provenance": "held_out",
+      "category": "audiobook",
+      "text": "I want to report that every time I try to listen to an audio book from this platform I am not able to. I called my library that I have my card with and they said there are no problems with my account. I've been trying to listen to this one book for months.",
+      "expected": "KI-2026-001-audiobook-first-open-hang"
+    },
+    {
+      "id": "hs-18657",
+      "source": "helpspot:18657",
+      "provenance": "held_out",
+      "category": "audiobook",
+      "text": "We're having an issue where a patron is unable to open an audiobook if they do not have a data connection. If they do not have cell service or are in airplane mode, the app asks them to authenticate, which they cannot do if no data connection is available.",
+      "expected": "escalate",
+      "note": "Offline re-authentication has no catalog entry. KI-008 is a download failure with no network, which is adjacent but a different symptom and a different fix."
+    },
+    {
+      "id": "hs-18620",
+      "source": "helpspot:18620",
+      "provenance": "held_out",
+      "category": "library",
+      "text": "Couldn't access my library content this morning. When I went to the Libraries page, I noticed that the only libraries listed are school libraries in another state. I'm guessing this is a bug with the app rather than an issue with my local library dropping palace.",
+      "expected": "escalate",
+      "also_acceptable": [
+        "KI-2026-009-add-library-stale-registry"
+      ],
+      "note": "A stale registry list is a plausible cause, so KI-009 is allowed, but the patron is not on the Add Library screen and its pull-to-refresh instruction may not apply. Escalating is the safe outcome."
+    },
+    {
+      "id": "hs-18619",
+      "source": "helpspot:18619",
+      "provenance": "held_out",
+      "category": "library",
+      "text": "My screen is not showing any books",
+      "expected": "escalate",
+      "also_acceptable": [
+        "KI-2026-004-wrong-library-palace-bookshelf"
+      ],
+      "note": "Genuinely underspecified. Either escalating or offering the wrong-library check is defensible; misrouting to an unrelated entry is not."
+    },
+    {
+      "id": "hs-18651",
+      "source": "helpspot:18651",
+      "provenance": "held_out",
+      "category": "signin",
+      "text": "When trying to log in on a new device it is telling me the card is invalid",
+      "expected": "escalate"
+    },
+    {
+      "id": "hs-18644",
+      "source": "helpspot:18644",
+      "provenance": "held_out",
+      "category": "other",
+      "text": "It doesn't let me borrow ebooks. It just loads for a long time. Then eventually it goes back.",
+      "expected": "escalate"
+    },
+    {
+      "id": "hs-18616",
+      "source": "helpspot:18616",
+      "provenance": "held_out",
+      "category": "other",
+      "text": "It looks like ebooks from our overdrive collection can't currently be borrowed on the Palace app. I attempted to borrow a title I had previously read on my iPad using another app.",
+      "expected": "escalate"
+    },
+    {
+      "id": "hs-18624",
+      "source": "helpspot:18624",
+      "provenance": "held_out",
+      "category": "download",
+      "text": "When downloading a book to either my iPhone or iPad, shouldn't it also sync to the other device and download it there as well? I find I have to download it on both devices. I downloaded a book today to my iPhone and when I try to download it on my iPad, the app never finished searching.",
+      "expected": "escalate"
+    },
+    {
+      "id": "hs-18617",
+      "source": "helpspot:18617",
+      "provenance": "held_out",
+      "category": "other",
+      "text": "Please add the ability to like or favorite a book.",
+      "expected": "escalate"
+    },
+    {
+      "id": "trap-generic-crash-audiobook",
+      "provenance": "trap",
+      "category": "audiobook",
+      "text": "the app crashes when I open it",
+      "expected": "escalate",
+      "note": "Overlaps KI-005 only on the weak word 'crashes'. Suggesting the CarPlay workaround to a patron who has never opened CarPlay is the F-002 defect."
+    },
+    {
+      "id": "trap-generic-stuck",
+      "provenance": "trap",
+      "category": "audiobook",
+      "text": "everything is stuck",
+      "expected": "escalate"
+    },
+    {
+      "id": "trap-generic-hang-launch",
+      "provenance": "trap",
+      "category": "audiobook",
+      "text": "the whole app hangs on launch",
+      "expected": "escalate"
+    },
+    {
+      "id": "trap-generic-download",
+      "provenance": "trap",
+      "category": "download",
+      "text": "I can't download anything since the update",
+      "expected": "escalate"
+    },
+    {
+      "id": "trap-generic-bookshelf",
+      "provenance": "trap",
+      "category": "library",
+      "text": "my bookshelf looks empty",
+      "expected": "escalate"
+    },
+    {
+      "id": "trap-generic-boxes",
+      "provenance": "trap",
+      "category": "signin",
+      "text": "the boxes are weird",
+      "expected": "escalate"
+    },
+    {
+      "id": "trap-generic-crashed-reader",
+      "provenance": "trap",
+      "category": "reader",
+      "text": "it crashed",
+      "expected": "escalate"
+    },
+    {
+      "id": "trap-auth-loop-f002",
+      "provenance": "trap",
+      "category": "library",
+      "text": "I keep getting kicked out and have to sign in to my library again",
+      "expected": "escalate",
+      "note": "The original chaos-qa F-002 input: a generic auth loop that must not route to the wrong-library workaround."
+    },
+    {
+      "id": "nm-18181",
+      "source": "helpspot:18181",
+      "provenance": "near_miss",
+      "category": "other",
+      "text": "There is an e-book not checking out for a member. The page just loads without fully confirming.",
+      "expected": "escalate",
+      "note": "Contains KI-001's strong phrase \"just loads\". Support's cause was location services never being granted — the first-open-hang workaround does nothing."
+    },
+    {
+      "id": "nm-18353",
+      "source": "helpspot:18353",
+      "provenance": "near_miss",
+      "category": "library",
+      "text": "I have not been able to log in to Boston Public Library as a library. I tried looking for how to add a library and could not find it.",
+      "expected": "escalate",
+      "note": "Contains KI-009's strong phrase \"add a library\". Support's cause: a new library must be added before an old one can be deleted — not a stale registry needing pull-to-refresh."
+    },
+    {
+      "id": "nm-18571",
+      "source": "helpspot:18571",
+      "provenance": "near_miss",
+      "category": "download",
+      "text": "The app almost never works. It is so hit or miss on if my audiobook plays or not.",
+      "expected": "escalate",
+      "note": "Contains KI-008's strong phrase \"never works\". Support's cause was the 3.2.x audiobook playback bug fixed in 3.2.3 — telling this patron to check WiFi is wrong."
+    },
+    {
+      "id": "nm-18449",
+      "source": "helpspot:18449",
+      "provenance": "near_miss",
+      "category": "download",
+      "text": "It won't let me download the book. I have a returned date but I can't listen to it.",
+      "expected": "escalate",
+      "note": "Contains KI-008's strong phrase \"won't download\". Support's cause was the same 3.2.3 audiobook defect, not a network failure."
+    },
+    {
+      "id": "nm-17978",
+      "source": "helpspot:17978",
+      "provenance": "near_miss",
+      "category": "other",
+      "text": "I got a notification a book was ready to borrow. When I opened the app, none of the books in my holds were available.",
+      "expected": "escalate",
+      "note": "Contains KI-006's strong phrases \"got a notification\"/\"notification that\". Support reached no diagnosis and escalated to the library — the hold-desync refresh advice is a guess."
+    }
+  ]
+}

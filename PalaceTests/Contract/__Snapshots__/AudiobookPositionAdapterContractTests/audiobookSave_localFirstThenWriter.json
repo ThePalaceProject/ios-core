@@ -14,5 +14,13 @@
       "payloadIsEmpty" : "false"
     },
     "method" : "writer.save"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-audiobook-1",
+      "hasLocation" : "true",
+      "renderer" : "PalaceAudiobookToolkit"
+    },
+    "method" : "registry.setLocation"
   }
 ]

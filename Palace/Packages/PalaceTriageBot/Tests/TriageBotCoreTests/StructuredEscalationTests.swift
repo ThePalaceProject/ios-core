@@ -17,10 +17,11 @@ final class StructuredEscalationTests: XCTestCase {
     // MARK: - Classifier: recognizedEntryId
 
     func testLowConfidenceEscalate_carriesRecognizedEntryId() {
-        // One region hit → below the known_issue floor → escalate. But we DID
-        // recognize the topic, so the id rides along for the hand-off.
+        // A weak-evidence-only hit → cannot carry a suggestion → escalate. But we
+        // DID recognize the topic, so the id rides along for the hand-off.
         let entries = [KBEntry(id: "KI-FU", category: .other, status: .open,
-                               symptomKeywords: ["frobnicate widget"],
+                               symptomKeywords: ["some unrelated phrase"],
+                               corroboratingKeywords: ["frobnicate widget"],
                                userFacingWorkaround: "Try turning it off and on again please.",
                                confidenceThreshold: 0.1)]
         let result = classifier.classify(userText: "my frobnicate widget is broken", knowledgeBase: kb(entries))
@@ -74,7 +75,12 @@ final class StructuredEscalationTests: XCTestCase {
                                symptomKeywords: ["frobnicate widget"],
                                userFacingWorkaround: "Try turning it off and on again please.",
                                escalationFollowUp: KBEscalationFollowUp(prompt: "Which widget model is it?"),
-                               confidenceThreshold: 0.1)]
+                               confidenceThreshold: 0.1,
+                               // escalate_anyway = recognized confidently, but no
+                               // safe self-serve fix. The strong-recognition
+                               // escalation, which is exactly when the targeted
+                               // question is warranted.
+                               escalateAnyway: true)]
         let state = drive(reducer(entries), category: .other, text: "my frobnicate widget is broken")
 
         guard case .awaitingEscalationFollowUp(let prompt, _) = state.step else {

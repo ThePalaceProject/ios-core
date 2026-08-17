@@ -16,6 +16,11 @@
 #
 # What is counted: occurrences of `AppContainer.production()` in Palace/*.swift,
 # EXCLUDING:
+#   - matches inside COMMENTS — `//`/`///` line comments and block-comment lines.
+#     Naming `AppContainer.production()` in a doc comment (explaining why NOT to use it,
+#     say) is documentation, not a locator call; counting it produced false-positive
+#     freezes during the decomposition. (Residual: a same-line trailing `/* … */` block
+#     is still counted — rare.)
 #   - files whose repo-relative path matches an allowlist entry (composition roots:
 #     AppContainer.swift itself, the app/scene delegates — see the allowlist file),
 #   - lines that are an `@Environment` default (SwiftUI environment default value),
@@ -51,6 +56,15 @@ MODE="${1:-}"
 
 [ -d "$SCAN_ROOT" ] || { echo "[locator] ERROR: scan root not found: $SCAN_ROOT"; exit 2; }
 
+# Strip Swift comments so `AppContainer.production()` named in a comment isn't counted:
+# drop block-comment lines, then strip `//` line comments (only when `//` is at
+# line-start or preceded by whitespace, so `://` in a string URL survives). `//` is
+# unambiguously a comment in Swift, so this never removes a real call.
+strip_comments() {
+  awk '{ s=$0; sub(/^[[:space:]]+/,"",s); if (s ~ "^/?[*]") next; print }' \
+    | sed -E 's#(^|[[:space:]])//.*$#\1#'
+}
+
 path_allowlisted() {  # 0 (true) if $1 contains any allowlist entry
   local path="$1"
   [ -f "$ALLOWLIST" ] || return 1
@@ -69,9 +83,10 @@ count_locator() {
   local total=0 file
   while IFS= read -r file; do
     path_allowlisted "$file" && continue
-    # occurrences in this file that are NOT @Environment defaults
+    # occurrences in this file (comments stripped) that are NOT @Environment defaults
     local c
-    c="$(grep -nE 'AppContainer\.production\(\)' "$file" 2>/dev/null \
+    c="$(strip_comments < "$file" \
+          | grep -E 'AppContainer\.production\(\)' \
           | grep -vE '@Environment' \
           | grep -oE 'AppContainer\.production\(\)' | wc -l | tr -d ' ')"
     total=$((total + c))
@@ -84,7 +99,7 @@ list_locator() {
   local file c
   while IFS= read -r file; do
     path_allowlisted "$file" && continue
-    c="$(grep -nE 'AppContainer\.production\(\)' "$file" 2>/dev/null | grep -vE '@Environment' | grep -cE 'AppContainer\.production\(\)' || true)"
+    c="$(strip_comments < "$file" | grep -E 'AppContainer\.production\(\)' | grep -vE '@Environment' | grep -cE 'AppContainer\.production\(\)' || true)"
     [ "${c:-0}" -gt 0 ] && printf '%4d  %s\n' "$c" "$file"
   done < <(grep -rlE 'AppContainer\.production\(\)' "$SCAN_ROOT" --include='*.swift' --exclude-dir='Packages' 2>/dev/null) | sort -rn
 }

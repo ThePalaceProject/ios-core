@@ -138,6 +138,15 @@ func makeTestAppContainer(
     authCoordinator: authCoordinator
   )
 
+  // PP-4957: force the LCP-audiobook-streaming flag OFF for the test download
+  // center. `MyBooksDownloadCenter.contentPresence` consults this provider, and
+  // its production default reads `RemoteFeatureFlags.shared` — a global whose
+  // value in the test host is non-deterministic (FirebaseManager init state +
+  // `.standard` + parallel ordering). Pinning it OFF keeps every reconcile /
+  // download-first test deterministic (the pre-PP-4957 behavior they assert);
+  // streaming tests opt IN by setting the provider on their own instance.
+  downloadCenter.lcpStreamingEnabledProvider = { false }
+
   // `UserAccountPublisher.shared` is `@MainActor`-isolated; resolve it via the
   // same `assumeIsolated` hop the production builder uses at
   // `AppContainer.swift:478` (XCTest dispatches on main, so the assumption is

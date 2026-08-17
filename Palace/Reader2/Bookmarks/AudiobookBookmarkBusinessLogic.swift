@@ -170,10 +170,27 @@ import PalaceBookModel
                 }
 
                 // Conflict resolution against the current local state.
-                // Preserved verbatim from swarm_f3b9b087 P0 #4/#5: the
-                // timestamp-newer race check (5s window) and the strict-
-                // zero isAtBeginning guard protect a valid local position
-                // from being overwritten by a stale upload result.
+                // Preserved from swarm_f3b9b087 P0 #4/#5: the timestamp-newer
+                // race check and the strict-zero isAtBeginning guard protect a
+                // valid local position from being overwritten by a STALE upload
+                // result — stale meaning older.
+                //
+                // The tolerance is 0, and that is load-bearing. `isDate` computes
+                // `d1 + delay > d2`, so any positive delay makes an EQUAL pair
+                // report "local is newer" unconditionally, and makes a local up to
+                // `delay` staler win as well. `lastSavedTimeStamp` is ISO8601 at
+                // second granularity and a save round-trips in far less than a
+                // second, so with a 1.0 window every real resolution tied and took
+                // this branch: a 37-minute locked-screen run on device produced 10
+                // resolutions, all 10 ties, all 10 discarding the just-saved
+                // position in favour of a local `track=0` — including one 331s into
+                // track 003. Zero gives the strict `d1 > d2` this guard is
+                // documented to want.
+                //
+                // Do NOT "fix" this by changing `isDate` itself. Its two other
+                // callers (BookAvailabilityFormatter:31, BookDetailViewModel:1328)
+                // use the delay deliberately, as a grace window that favours a
+                // lagging server timestamp, and ~60 assertions pin that meaning.
                 if let currentLocal = self.registry.location(forIdentifier: self.book.identifier),
                    let currentDict = currentLocal.locationStringDictionary(),
                    let currentBookmark = AudioBookmark.create(locatorData: currentDict) {
@@ -181,7 +198,7 @@ import PalaceBookModel
                     let currentLocalTimestamp = currentBookmark.lastSavedTimeStamp ?? ""
 
                     if !currentLocalTimestamp.isEmpty && !sentTimestamp.isEmpty,
-                       String.isDate(currentLocalTimestamp, moreRecentThan: sentTimestamp, with: 1.0) {
+                       String.isDate(currentLocalTimestamp, moreRecentThan: sentTimestamp, with: 0) {
                         Log.warn(#file, "⚠️ Race condition detected: Local position is newer. Keeping local.")
                         Log.warn(#file, "  Sent: track=\(sentTrackKey), time=\(sentPlaybackTime), timestamp=\(sentTimestamp)")
                         Log.warn(#file, "  Current local: track=\(currentBookmark.chapter ?? "?"), timestamp=\(currentLocalTimestamp)")
