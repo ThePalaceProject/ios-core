@@ -9,7 +9,7 @@ owners: [support, infrastructure]
 description: Technical documentation for the Palace triage bot V1 - behavioral contracts, component architecture, corpus schema, and the iOS reference implementation.
 ---
 
-<!-- audit-verified: all file/line citations checked against the working tree 2026-07-28; catalog stats recomputed from catalog.json; test counts recomputed via grep (re-verified 2026-07-29: 293 tests across 40 files, Core 285 across 37; ResponseQuality corpus 70 Case literals, the 71st grep hit being the substring in testEveryCatalogEntry_hasABenchmarkCase); commit SHAs daadfc696/defb3abe6/d465a6b07/2613ed069 and dates verified via git log; PP/ticket ids and plan line refs carried from the PP-4858 verified analysis report. Cold-review pass re-verified at source 2026-07-28: 15 redaction patterns + 2 phase-3 helper regexes; 29 action cases; 7 explicit Date() sites in reduce; duplicate_of filtered at query time in entries(in:) only; clipboard path receives the raw (unsanitized) draft; palace-logs.txt conditional; test targets Swift 5 mode; region merge is strict-overlap; chip labels come from KBCategory.displayName -->
+<!-- audit-verified REFRESH 2026-08-17, before merge: PP-4865 (PR #1382, merged to develop as 88d760284) landed after the audit below and changed two documented facts. (1) KBStepResponse.Outcome gained a fourth case, not_applicable, used four times in the shipped catalog.json — the step-shape schema and the reduce sequence diagram both stated a three-outcome union, which would have led a port to reject live catalog entries. Corrected, and the semantic difference from advance is now spelled out, because collapsing the two corrupts the rung re-ranking input. (2) Test counts re-derived with the same grep methodology: 399 across 60 files, Core 390 across 56, IOS 4, UI 5. The ResponseQuality corpus is UNCHANGED at 70 labeled cases (the 71st grep hit is still the substring in hasABenchmarkCase, exactly as recorded below). Everything else below was NOT re-verified in this refresh and keeps its original 2026-07-28/29 date. --><!-- audit-verified: all file/line citations checked against the working tree 2026-07-28; catalog stats recomputed from catalog.json; test counts recomputed via grep (re-verified 2026-07-29: 293 tests across 40 files, Core 285 across 37; ResponseQuality corpus 70 Case literals, the 71st grep hit being the substring in testEveryCatalogEntry_hasABenchmarkCase); commit SHAs daadfc696/defb3abe6/d465a6b07/2613ed069 and dates verified via git log; PP/ticket ids and plan line refs carried from the PP-4858 verified analysis report. Cold-review pass re-verified at source 2026-07-28: 15 redaction patterns + 2 phase-3 helper regexes; 29 action cases; 7 explicit Date() sites in reduce; duplicate_of filtered at query time in entries(in:) only; clipboard path receives the raw (unsanitized) draft; palace-logs.txt conditional; test targets Swift 5 mode; region merge is strict-overlap; chip labels come from KBCategory.displayName -->
 
 # Palace Triage Bot V1
 
@@ -315,7 +315,7 @@ sequenceDiagram
     M-->>V: render KB match card
     P->>V: taps "Try the steps"
     V->>M: send(.userTappedStartGuidedFlow)
-    M->>R: reduce(...) per step: instruction, check question,<br/>resolved / advance outcomes recorded as StepAttempts
+    M->>R: reduce(...) per step: instruction, check question,<br/>resolved / advance / not_applicable outcomes recorded as StepAttempts
     Note over R: outcomes: resolved -> done,<br/>exhausted -> escalate carrying ResolutionTrace
 ```
 
@@ -475,7 +475,9 @@ Enum value sets (JSON raw values):
 
 Category ids are NOT the chip labels. The mapping (source of truth: `KBCategory.displayName`, shared by the chips and the ticket preview) is `audiobook` = "Audiobook", `reader` = "Reading", `signin` = "Sign in", `download` = "Download", `library` = "Library", `other` = "Other".
 
-`user_facing_steps` element shape: `id` (string, required), `instruction` (string, required), `check` (string, required), `responses` (optional array of `{label: string, outcome: "resolved" | "advance" | "escalate", diagnostic: string?}`; when absent the UI renders a legacy Yes/No pair), `diagnostic` (string, optional telemetry tag).
+`user_facing_steps` element shape: `id` (string, required), `instruction` (string, required), `check` (string, required), `responses` (optional array of `{label: string, outcome: "resolved" | "advance" | "escalate" | "not_applicable", diagnostic: string?}`; when absent the UI renders a legacy Yes/No pair), `diagnostic` (string, optional telemetry tag).
+
+The four outcomes are not interchangeable, and a port must keep them distinct. `resolved` closes the conversation out. `advance` moves to the next step. `escalate` skips the remainder and files a ticket, carrying the trace. `not_applicable` advances exactly as `advance` does and differs only in what it records: the step is marked as never attempted rather than as attempted and failed. That distinction is the whole point of the case — the resolution trace feeds a re-ranking rule that scores each rung by its resolution rate, so a patron who could not perform a step (already on the newest build, for instance) must not be counted as a patron for whom that step failed. A port that collapses `not_applicable` into `advance` will silently deflate the affected rung.
 
 `escalation_follow_up` shape: `prompt` (string, required), `placeholder` (string, optional input hint), `diagnostic` (string, optional telemetry tag).
 
@@ -661,7 +663,7 @@ The gate runs against warm build products from the package suite that precedes i
 
 ## 9. Test posture
 
-293 `func test` definitions across 40 files: 285 in `TriageBotCoreTests` (37 files, macOS-runnable via `swift test --package-path Palace/Packages/PalaceTriageBot`), 3 in `TriageBotIOSTests`, 5 in `TriageBotUITests`; the latter two are `canImport(UIKit)`-gated and run on the iOS simulator in CI.[^test-targets] App-target tests cover the Palace-side wiring.[^test-targets]
+399 `func test` definitions across 60 files: 390 in `TriageBotCoreTests` (56 files, macOS-runnable via `swift test --package-path Palace/Packages/PalaceTriageBot`), 4 in `TriageBotIOSTests`, 5 in `TriageBotUITests`; the latter two are `canImport(UIKit)`-gated and run on the iOS simulator in CI.[^test-targets] App-target tests cover the Palace-side wiring.[^test-targets]
 
 The three test targets are deliberately Swift 5 language mode while all source targets are Swift 6 (`PKG/Package.swift`: XCTestCase is not Sendable, so Swift 6 checking churns the test infrastructure; see PR #1130). Anyone adding a test target should keep it in v5 mode.
 
