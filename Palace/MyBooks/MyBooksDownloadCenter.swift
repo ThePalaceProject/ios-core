@@ -1680,7 +1680,9 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         task: URLSessionTask,
         didReceive challenge: URLAuthenticationChallenge
     ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        TPPBasicAuth(credentialsProvider: userAccount).response(to: challenge)
+        // PP-4969: the account the download was STARTED for, not whichever is
+        // current now — see MyBooksDownloadCenter+ChallengeAccount.swift.
+        TPPBasicAuth(credentialsProvider: await challengeAccount(for: task, challenge: challenge)).response(to: challenge)
     }
 
     func urlSession(
