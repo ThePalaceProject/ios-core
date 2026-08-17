@@ -75,6 +75,17 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
     /// libraries intact. Strictly better than a reinstall when the problem is
     /// isolated to one library, and still destructive.
     case resetLibrary
+    /// Delete one title's downloaded copy and fetch it again.
+    ///
+    /// The narrowest repair for a file that arrived corrupt or half-written,
+    /// and the catalog already walks patrons through it (KI-2026-007) — it was
+    /// simply untagged, so it could not be skipped for someone who had already
+    /// done it and produced no telemetry of its own.
+    ///
+    /// Scoped destruction, not a free retry: the loan survives, but the copy on
+    /// the device does not, and re-fulfilment is not something we can promise
+    /// (PP-4951). Same tier as `resetLibrary` for that reason.
+    case redownloadTitle
 
     /// What the remedy costs the patron if it does NOT work.
     ///
@@ -114,7 +125,8 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
         // Returning a loan to fix it can cost the patron their place in a hold
         // queue, which they cannot undo. A smaller blast radius than reinstalling,
         // the same kind of loss.
-        case .signOutIn, .reinstall, .returnAndReborrow, .resetLibrary: return .destructive
+        case .signOutIn, .reinstall, .returnAndReborrow, .resetLibrary,
+             .redownloadTitle: return .destructive
         }
     }
 
@@ -135,6 +147,7 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
         case .waitForFix:    return "waiting for the fix"
         case .clearCache:    return "clearing cached data"
         case .resetLibrary:  return "resetting that library"
+        case .redownloadTitle: return "deleting the title and downloading it again"
         }
     }
 }
@@ -224,6 +237,12 @@ struct RemedyDetector: Sendable {
         .clearCache: [
             "cleared the cache", "cleared cache", "clear cached data",
             "cleared cached data", "cleared my cache", "clearing the cache",
+        ],
+        .redownloadTitle: [
+            "deleted the book and downloaded it again", "deleted the title and downloaded it again",
+            "deleted the book and re-downloaded", "deleted the title and re-downloaded",
+            "removed the book and downloaded it again", "removed the title and re-downloaded",
+            "deleted it and downloaded it again", "deleted it and re-downloaded",
         ],
         .resetLibrary: [
             "reset this library", "reset the library", "reset my library",

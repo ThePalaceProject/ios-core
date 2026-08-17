@@ -280,50 +280,65 @@ if [ "$MUTATION_ONLY" = "true" ]; then
   TEST_PASS=0
   TEST_FAIL=0
 else
+# Pin the result bundle. Reading "the newest .xcresult in DerivedData" is not
+# safe: DerivedData is shared across worktrees, so a parallel session's run is
+# routinely newer than this one's, and its failures would be reported as ours.
+RESULT_BUNDLE="${TMPDIR:-/tmp}/verify-pr-$$.xcresult"
+rm -rf "$RESULT_BUNDLE"
 TEST_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination "id=$SIM_ID" test 2>&1 || true)
-# Count only the top-level "All tests" rollups (one per .xctest bundle).
-# Each XCTestCase suite ALSO emits "Executed N" + each bundle emits its own
-# "Selected tests" wrapper, so the prior `grep -o ... | awk '{s+=$1}'` summed
-# the same tests 4-5× and inflated the headline by ~3.5× (e.g. 5,867 unique
-# tests reported as 17,640). The `-A1` after "Test Suite 'All tests' (passed|failed)"
-# captures the bundle-rollup `Executed N tests` line per bundle.
-ROLLUP_LINES=$(echo "$TEST_OUTPUT" | grep -A1 "Test Suite '\(All tests\|Selected tests\)' \(passed\|failed\)")
-TEST_PASS=$(echo "$ROLLUP_LINES" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
-# Failed-bundle rollups say "and 3 failures" (no "with" prefix); passed
-# bundles say "with 0 failures". Match on the trailing " failure" word.
-TEST_FAIL=$(echo "$ROLLUP_LINES" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  -destination "id=$SIM_ID" -resultBundlePath "$RESULT_BUNDLE" test 2>&1 || true)
+
+# The xcresult is the authoritative tally; stdout is a fallback.
+#
+# Scraping stdout for "Test Suite 'All tests' passed" + "Executed N tests" only
+# works in serial mode. Under parallel clones - how both CI and the optimized
+# script run - xcodebuild emits per-test-case lines and those rollups are
+# absent or partial. Same tree, three consecutive runs, this gate reported
+# "2815 tests, 1 failures", "4786 tests, 1 failures" and "0 tests, 0 failures"
+# while the xcresults held 8246/7, 8250/5 and a full green. A gate that
+# under-reports failures is worse than no gate, because it is believed.
+TEST_PASS=""
+TEST_FAIL=""
+if [ -d "$RESULT_BUNDLE" ] && [ -f scripts/xcresult_summary.py ]; then
+  XCR_TALLY=$(python3 scripts/xcresult_summary.py --path "$RESULT_BUNDLE" --mode tally 2>/dev/null || true)
+  if [ -n "$XCR_TALLY" ]; then
+    TEST_PASS=$(echo "$XCR_TALLY" | awk '{print $1}')
+    TEST_FAIL=$(echo "$XCR_TALLY" | awk '{print $2}')
+  fi
+fi
+if [ -z "$TEST_PASS" ]; then
+  ROLLUP_LINES=$(echo "$TEST_OUTPUT" | grep -A1 "Test Suite '\(All tests\|Selected tests\)' \(passed\|failed\)")
+  TEST_PASS=$(echo "$ROLLUP_LINES" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  TEST_FAIL=$(echo "$ROLLUP_LINES" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+fi
+
+# A timeout or a restarted runner is a FAILURE even when the tally reads clean
+# (CLAUDE.md). Neither shows up in passed/failed counts.
+if echo "$TEST_OUTPUT" | grep -qE 'exceeded execution time allowance|Restarting after .* test timeout'; then
+  TEST_FAIL=$((TEST_FAIL + 1))
+fi
 if [ "$TEST_FAIL" -eq 0 ] && [ "$TEST_PASS" -gt 0 ]; then
   record "unit_tests" "pass" "$TEST_PASS tests, 0 failures"
 elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
   # --diff-baseline: distinguish pre-existing test-isolation flakes from
-  # branch-introduced regressions. Extract failing class names from the
-  # most recent xcresult, re-run each class in isolation, and only fail
-  # the gate if a class fails in isolation too. Mirrors the manual triage
-  # for PR #1018 (9 "failures" all passed in isolation).
-  XCRESULT=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -mmin -30 -type d 2>/dev/null | head -1)
-  if [ -n "$XCRESULT" ] && command -v xcrun >/dev/null 2>&1; then
-    # Walk xcresult JSON to extract failing test-case node names → class names
-    FAILING_CLASSES=$(xcrun xcresulttool get test-results tests --path "$XCRESULT" --format json 2>/dev/null | \
-      python3 -c "
-import json, sys, re
-data = json.load(sys.stdin)
-classes = set()
-def walk(node, parent=''):
-    name = node.get('name', '')
-    full = f'{parent}/{name}' if parent else name
-    if node.get('result') == 'Failed':
-        # Test case path looks like 'Palace > PalaceTests > <Class> > <test>()'
-        parts = full.split(' > ')
-        if len(parts) >= 3:
-            cls = parts[-2]
-            if cls and re.match(r'^[A-Za-z_][A-Za-z0-9_]*Tests?$', cls):
-                classes.add(cls)
-    for child in node.get('children', []) + node.get('testNodes', []):
-        walk(child, full)
-walk(data)
-print('\n'.join(sorted(classes)))
-" 2>/dev/null | head -20)
+  # branch-introduced regressions. Extract failing class names from THIS
+  # run's result bundle, re-run each class in isolation, and only fail the
+  # gate if a class fails in isolation too. Mirrors the manual triage for
+  # PR #1018 (9 "failures" all passed in isolation).
+  #
+  # If a class cannot be re-run - a name -only-testing does not recognise -
+  # it counts as a real failure, not a flake. That direction is deliberate:
+  # xcodebuild silently ignores unknown -only-testing selectors and still
+  # prints ** TEST SUCCEEDED **, so the alternative fails open.
+  # Use the pinned bundle from this run, not "newest in DerivedData" - a
+  # parallel worktree's run is routinely newer, and its failures are not ours.
+  XCRESULT="$RESULT_BUNDLE"
+  if [ -d "$XCRESULT" ] && [ -f scripts/xcresult_summary.py ]; then
+    # Shared extractor, covered by scripts/tests/test_xcresult_summary.py. The
+    # inline version this replaces keyed on "failed leaf node", but a failed
+    # test case is NOT a leaf - its children are Failure Message nodes - so it
+    # returned nothing on every real bundle and silently skipped triage.
+    FAILING_CLASSES=$(python3 scripts/xcresult_summary.py --path "$XCRESULT" --mode classes 2>/dev/null | head -20)
 
     if [ -n "$FAILING_CLASSES" ]; then
       echo "  → --diff-baseline: re-running $(echo "$FAILING_CLASSES" | wc -l | tr -d ' ') failed class(es) in isolation..."
@@ -337,17 +352,31 @@ print('\n'.join(sorted(classes)))
       # one build is much faster than N separate builds with cold derivedData.
       ISOLATED_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
         -destination "id=$SIM_ID" $ONLY_TESTING_ARGS test 2>&1 || true)
+      # Did the isolated run happen at all? If the build failed or the simulator
+      # was busy, NO suite lines are printed, and the loop below would score
+      # every class as a real regression — an infrastructure problem reported as
+      # a code problem. That misfired on this very branch: four classes were
+      # called regressions and all four passed when re-run by hand.
+      ISO_SUITES=$(echo "$ISOLATED_OUTPUT" | grep -cE "Test Suite '[A-Za-z_][A-Za-z0-9_]*' (passed|failed)")
+      if [ "$ISO_SUITES" -eq 0 ]; then
+        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — isolation re-run produced no suites (build or simulator problem), so flake-vs-regression is UNDETERMINED for:$(echo "$FAILING_CLASSES" | tr '\n' ' ')"
+      else
+      REAL_FAIL_NAMES=""
       for cls in $FAILING_CLASSES; do
         if echo "$ISOLATED_OUTPUT" | grep -qE "Test Suite '$cls' passed"; then
           FLAKE_COUNT=$((FLAKE_COUNT + 1))
         else
           REAL_FAIL=$((REAL_FAIL + 1))
+          REAL_FAIL_NAMES="$REAL_FAIL_NAMES $cls"
         fi
       done
       if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
         record "unit_tests" "pass" "$TEST_PASS tests, $TEST_FAIL fails — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
       else
-        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL classes fail IN ISOLATION (real regression), $FLAKE_COUNT classes are isolation flakes"
+        # NAME them. Reporting only a count leaves the reader to guess which
+        # classes to open — the same defect this gate is being fixed for.
+        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL class(es) fail IN ISOLATION (real regression):$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
+      fi
       fi
     else
       record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline could not extract class names from xcresult)"
@@ -508,7 +537,11 @@ elif [ -f scripts/check-blast-radius.py ]; then
   if [ "$BR_EXIT" -eq 0 ]; then
     record "blast_radius" "pass" "No high-severity blast-radius findings"
   else
-    record "blast_radius" "fail" "High-severity findings: $(echo "$BR_OUT" | head -3 | tr '\n' ' ')"
+    # Report the COUNT and every finding. `head -3` silently hid 24 of 27 on
+    # one PR, so fixing the three shown looked like fixing them all and the
+    # gate came back red with what looked like new findings.
+    BR_COUNT=$(echo "$BR_OUT" | grep -c 'BR-[0-9]')
+    record "blast_radius" "fail" "$BR_COUNT high-severity finding(s): $(echo "$BR_OUT" | tr '\n' ' ')"
   fi
 else
   record "blast_radius" "pass" "check-blast-radius.py not found (skipped)"

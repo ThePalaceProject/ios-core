@@ -115,9 +115,14 @@ enum CatalogValidator {
                     // Always refusable. `responses` nil means the UI renders the
                     // legacy yes/no pair, where "no" advances — which is a way
                     // out — so only an explicit response set that offers no
-                    // advance/escalate route is a trap.
+                    // route onward is a trap. `notApplicable` advances too, so
+                    // it counts: a patron saying "this does not apply to me" has
+                    // left the step, which is exactly what refusable means.
                     if let responses = step.responses,
-                       !responses.contains(where: { $0.outcome == .advance || $0.outcome == .escalate }) {
+                       !responses.contains(where: {
+                           $0.outcome == .advance || $0.outcome == .escalate
+                               || $0.outcome == .notApplicable
+                       }) {
                         problems.append(
                             "\(entry.id)/\(step.id): \(remedy.rawValue) is destructive and must remain refusable — no response advances or escalates")
                     }

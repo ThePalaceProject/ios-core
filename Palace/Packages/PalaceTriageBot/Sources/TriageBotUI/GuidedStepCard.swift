@@ -116,6 +116,12 @@ private struct ResponseButtons: View {
                 return (.white, Color(.systemBlue), "arrow.right")
             case .escalate:
                 return (Color(.systemBlue), Color(.systemBlue).opacity(0.12), nil)
+            case .notApplicable:
+                // "This does not apply to me" moves on like `advance`, so it
+                // keeps the forward arrow — but it is not a report that the step
+                // failed, and styling it like one would invite the patron to
+                // read it as another dead end. Neutral, secondary.
+                return (Color(.secondaryLabel), Color(.secondarySystemFill), "arrow.right")
             }
         }()
         Button(action: action) {
