@@ -272,18 +272,28 @@ import PalaceBookModel
     }
 }
 
+/// The conformance is isolated because `setupStreamingFor` is: it hands this
+/// object to `StreamingCapablePlayer.setStreamingProvider`, which is main-actor
+/// state. The other two requirements are explicitly `nonisolated` and MUST stay
+/// that way — `getPublication()` is called from AVFoundation's resource-loader
+/// thread inside a polling loop in `LCPResourceLoaderDelegate`, so isolating it
+/// would either fail to compile or trap.
 extension LCPAudiobooks: LCPStreamingProvider {
 
-    public func getPublication() -> Publication? {
+    nonisolated public func getPublication() -> Publication? {
         return publicationCacheQueue.sync {
             return cachedPublication
         }
     }
 
-    public func supportsStreaming() -> Bool {
+    nonisolated public func supportsStreaming() -> Bool {
         return true
     }
 
+    /// `@MainActor` to match the isolated `LCPStreamingProvider` requirement:
+    /// it hands itself to `StreamingCapablePlayer.setStreamingProvider`, which
+    /// is main-actor state. The caller, the toolkit's player factory, is
+    /// already isolated.
     public func setupStreamingFor(_ player: Any) -> Bool {
         guard let streamingPlayer = player as? StreamingCapablePlayer else {
             return false
@@ -291,7 +301,18 @@ extension LCPAudiobooks: LCPStreamingProvider {
         if isReleasedSnapshot() {
             return false
         }
-        streamingPlayer.setStreamingProvider(self)
+        // `setStreamingProvider` is main-actor state on the player, but this
+        // conformance CANNOT be isolated: `LCPStreamingProvider` inherits
+        // `DRMDecryptor`, and isolating the conformance isolates that too —
+        // "main actor-isolated conformance ... cannot be used in nonisolated
+        // context", because decryption legitimately runs off-main.
+        //
+        // `assumeIsolated` is sound here rather than hopeful: the only call path
+        // is `AudiobookLoader` (@MainActor) -> finalizeBuild -> Audiobook.init ->
+        // DynamicPlayerFactory.createPlayer (@MainActor) -> here.
+        MainActor.assumeIsolated {
+            streamingPlayer.setStreamingProvider(self)
+        }
 
         let hasPublication = publicationCacheQueue.sync {
             return cachedPublication != nil
