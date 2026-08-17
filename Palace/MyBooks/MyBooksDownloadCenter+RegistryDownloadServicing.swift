@@ -88,6 +88,18 @@ extension MyBooksDownloadCenter: RegistryDownloadServicing {
         if LCPAudiobooks.canOpenBook(book) {
             let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
             if FileManager.default.fileExists(atPath: licenseURL.path) {
+                // PP-4957: when streaming is ON, an LCP audiobook is playable on its
+                // `.lcpl` license alone — report it as `.present` so load-time
+                // reconciliation keeps it `.downloadSuccessful` across launches
+                // instead of downgrading `.downloadSuccessful`+`.licenseOnly` to
+                // `.downloadNeeded` (BookRegistrySync arms) and re-fetching the
+                // `.lcpa`. This restores the pre-3.2.3 "a license is enough to play"
+                // semantic that the `.licenseOnly` case was introduced to disable
+                // while streaming was broken upstream (#579). Flag OFF → the
+                // original `.licenseOnly` download-first distinction stands.
+                if lcpStreamingEnabledProvider() {
+                    return .present
+                }
                 return .licenseOnly
             }
         }

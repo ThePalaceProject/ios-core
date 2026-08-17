@@ -19,6 +19,7 @@ import XCTest
 @testable import Palace
 import PalaceBookRegistry
 import PalaceBookModel
+import PalaceCatalog
 
 final class RegistryDownloadServicingSeamTests: XCTestCase {
 
@@ -65,4 +66,65 @@ final class RegistryDownloadServicingSeamTests: XCTestCase {
         XCTAssertTrue(center.contentFileSatisfied(for: book, account: account),
                       "present content file → satisfied")
     }
+
+    #if LCP
+    /// PP-4957: `contentPresence` must report a license-only LCP audiobook as
+    /// `.present` (playable) when streaming is ON, so load-time reconciliation
+    /// keeps it `.downloadSuccessful` across launches instead of downgrading
+    /// `.downloadSuccessful`+`.licenseOnly` → `.downloadNeeded` and re-fetching the
+    /// `.lcpa`. Flag OFF → `.licenseOnly` (download-first, unchanged). This is the
+    /// seam side of the reconcile-durability fix (the reconcile arm for `.present`
+    /// is covered by BookRegistryReconciliationTableTests). Deleting the
+    /// streaming branch flips the ON assertion back to `.licenseOnly`.
+    func testContentPresence_licenseOnlyLCPAudiobook_streamingOnReportsPresent() throws {
+        let center = makeCenter()
+        let book = makeLCPAudiobook()
+        try XCTSkipUnless(LCPAudiobooks.canOpenBook(book),
+                          "fixture must be recognized as an openable LCP audiobook")
+        let account = "seam-\(UUID().uuidString)"
+
+        guard let contentURL = center.fileUrl(for: book, account: account) else {
+            throw XCTSkip("fileUrl unavailable for the mock LCP audiobook in this environment")
+        }
+        // License (.lcpl) present, content (.lcpa) absent — the streaming state.
+        try? FileManager.default.removeItem(at: contentURL)
+        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try FileManager.default.createDirectory(at: licenseURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: licenseURL.path, contents: Data("{}".utf8))
+        defer { try? FileManager.default.removeItem(at: licenseURL) }
+
+        center.lcpStreamingEnabledProvider = { false }
+        XCTAssertEqual(center.contentPresence(for: book, account: account), .licenseOnly,
+                       "streaming OFF: a license without content is .licenseOnly (download-first)")
+
+        center.lcpStreamingEnabledProvider = { true }
+        XCTAssertEqual(center.contentPresence(for: book, account: account), .present,
+                       "streaming ON: the license alone is playable, so reconcile keeps the book .downloadSuccessful on reload")
+    }
+
+    /// Marketplace LCP audiobook in the `/loans/`-feed acquisition shape
+    /// `LCPAudiobooks.canOpenBook` accepts (LCP license MIME on the default
+    /// acquisition, `application/audiobook+lcp` as the terminal indirect child).
+    private func makeLCPAudiobook() -> TPPBook {
+        let lcpLicenseMIME = "application/vnd.readium.lcp.license.v1.0+json"
+        let acquisition = TPPOPDSAcquisition(
+            relation: .generic,
+            type: lcpLicenseMIME,
+            hrefURL: URL(string: "https://library.test/book.lcpl")!,
+            indirectAcquisitions: [
+                TPPOPDSIndirectAcquisition(type: "application/audiobook+lcp", indirectAcquisitions: [])
+            ],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        return TPPBook(
+            acquisitions: [acquisition], authors: [], categoryStrings: [], distributor: "Test",
+            identifier: UUID().uuidString, imageURL: nil, imageThumbnailURL: nil, published: Date(),
+            publisher: "Test", subtitle: nil, summary: nil, title: "Test LCP Audiobook", updated: Date(),
+            annotationsURL: nil, analyticsURL: nil, alternateURL: nil, relatedWorksURL: nil, previewLink: nil,
+            seriesURL: nil, revokeURL: nil, reportURL: nil, timeTrackingURL: nil, contributors: [:],
+            bookDuration: nil, imageCache: MockImageCache()
+        )
+    }
+    #endif
 }
