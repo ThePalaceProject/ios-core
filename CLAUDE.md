@@ -123,7 +123,42 @@ false positives. Wiring bugs (a scan-only detector called with `--diff`) are
 invisible to a fixture that only ever stages a violation — always assert the
 clean path passes too.
 
-**5. Retire the admin-merge reflex.** Once the board is trustworthy (1–4), red
+**5. A red test is a question about HISTORY, not a prompt to theorise.** Before
+explaining WHY a test fails, establish WHOSE it is — mechanically, from other
+runs and other suites. Two axes, two tools, both cheap:
+
+```bash
+# Axis 1 — across CI runs: is it new here, pre-existing, or retry-masked?
+python3 scripts/ci-test-history.py <TestClass>[.method] [--limit N]
+
+# Axis 2 — across suites: does it pass alone? then who dirties it?
+scripts/find-test-polluter.sh --victim <TestClass>
+```
+
+Read the **per-iteration** results, not the run verdict. `-retry-tests-on-failure
+-test-iterations 3` means a test that passes 2 of 3 reports the job GREEN while a
+real regression sits underneath — so "passed · FAILED · passed" is a finding, not
+noise. A test that flips with unrelated load is measuring the machine and cannot
+gate CI; make it assert a property of the code (see
+`AccountRegistryStorePoolStarvationTests` for the shape: assert operations
+COMPLETE, keep the load-sensitive variant behind an env flag).
+
+Incident (PR #1380, 2026-08-14): a toolkit-bump PR went red and the first
+diagnosis offered was runner oversubscription — plausible, self-consistent, and
+wrong. One command against the previous green run settled it:
+
+    #1377 (green)  passed 0.183s · passed 0.004s · passed 0.004s
+    #1380 (red)    passed 0.215s · FAILED 69.186s · passed 0.003s
+
+Same test, same runner shape, different code — the branch DID introduce it. No
+amount of reasoning about runners produces that table; only the history does.
+Reviewer pushback ("others aren't having this issue") was correct and the theory
+was not. **Get the table first.** Corollaries worth knowing: a test that never
+appears in a run may have been renamed or never registered, which is
+indistinguishable from passing; and NEW-here + passes-in-isolation means your
+branch newly EXPOSED pollution rather than broke logic — a different fix.
+
+**6. Retire the admin-merge reflex.** Once the board is trustworthy (1–5), red
 means **stop**. `--admin` over a red check is allowed ONLY when the failure is a
 specific, named, already-tracked flake that passes in isolation — and that flake
 must have a de-flake item per #2. Never `--admin` over a red board whose failure
