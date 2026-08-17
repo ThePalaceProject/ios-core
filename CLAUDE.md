@@ -226,6 +226,14 @@ See [`docs/architecture/architectural-triad.md`](./docs/architecture/architectur
 - Book state: `TPPBookRegistry` is the single source of truth
 - Test mocks: centralized in `PalaceTests/Mocks/`, use `TPPBookMocker` for book factories
 - Test HTTP stubbing: `HTTPStubURLProtocol` + `URLSession.stubbedSession()`
+- Triage bot (`Palace/Packages/PalaceTriageBot/`): **read
+  [`docs/architecture/triage-bot-v1-as-built.md`](./docs/architecture/triage-bot-v1-as-built.md)
+  before changing it.** The classifier's scoring and guards, the redaction pattern
+  set and its ordering, and the corpus schema are behavioral contracts with
+  non-obvious rationale, and several code comments in the package are stale where
+  that document is correct. The forward design for the shared server and Android
+  client is
+  [`triage-bot-shared-architecture-proposal.md`](./docs/architecture/triage-bot-shared-architecture-proposal.md).
 
 ## TDD & Test Quality — MANDATORY
 
