@@ -48,6 +48,7 @@ DETECTORS=(
   "NOTIFICATION_CENTER_OBSERVER_STORAGE|check-notification-center-observer-storage.py|warn|diff"
   "UNSYNCHRONIZED_SENDABLE_MOCK|check-unsynchronized-sendable-mock.py|block|scan"
   "ADDOPERATION_LITERAL_BAN|check-addoperation-literal-ban.py|block|diff"
+  "AUTH_CHALLENGE_ASYNC_FORM|check-auth-challenge-async-form.py|block|diff"
 )
 
 OVERALL_EXIT=0

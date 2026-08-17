@@ -21,5 +21,21 @@ jobs:
         run: ./scripts/build-3rd-party-dependencies.sh --no-private
         env:
           BUILD_CONTEXT: ci
+      # tee to a log so the @objc-witness-drift gate below can scan the build
+      # warnings. `set -o pipefail` is set EXPLICITLY: GitHub's default bash does
+      # NOT enable it, so `cmd | tee` would return tee's exit 0 and mask a
+      # failing build as a green step.
       - name: Build Palace without DRM support
-        run: ./scripts/xcode-build-nodrm.sh
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/xcode-build-nodrm.sh 2>&1 | tee nodrm-build-output.log
+
+      # PP-4895: the noDRM target is where the URLSession auth-challenge witness
+      # drift was visible. Which target sees it is decided by ClangImporter
+      # frontend-batch membership, so the DRM log this gate already scans in
+      # unit-testing.yml is only one draw of that lottery — the same source was
+      # clean there and drifted here. Scanning both logs is what closes it.
+      - name: Guard against @objc witness drift (silent delegate skip)
+        if: always()
+        run: scripts/check-objc-witness-nearly-matches.sh nodrm-build-output.log

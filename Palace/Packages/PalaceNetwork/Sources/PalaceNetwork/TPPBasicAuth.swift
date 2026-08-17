@@ -56,4 +56,33 @@ import Foundation
             completion(.rejectProtectionSpace, nil)
         }
     }
+
+    /// Returns the answer to `challenge` directly, for the `async` URLSession
+    /// delegate callbacks.
+    ///
+    /// Those callbacks return their disposition rather than passing it to a
+    /// completion handler — deliberately, because the completion-handler form of
+    /// the delegate requirement can silently fail to register at all under the
+    /// Xcode 26.2 ClangImporter (PP-4895; see the callbacks in
+    /// `MyBooksDownloadCenter` / `TPPNetworkResponder` for the full reasoning).
+    /// This is the one place that adapts between the two shapes, so both sites
+    /// stay identical and the assumption they rest on is stated once.
+    ///
+    /// Safe because `handleChallenge` always calls its completion synchronously.
+    /// If that ever stopped being true, this returns `.performDefaultHandling`
+    /// — a challenge left to the system — rather than hanging the request.
+    /// Not `@objc` — the tuple return has no Objective-C representation, and no
+    /// Objective-C caller needs it.
+    // PUBLIC_INTENT: PalaceNetwork is an SPM package and both consumers of this
+    // are in the app target (MyBooksDownloadCenter, TPPNetworkResponder), so
+    // `internal` would not reach them. Same visibility as `handleChallenge`,
+    // which it wraps; it adds no new capability, only the returning shape the
+    // async URLSession delegate callbacks need.
+    public func response(
+        to challenge: URLAuthenticationChallenge
+    ) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        var response: (URLSession.AuthChallengeDisposition, URLCredential?) = (.performDefaultHandling, nil)
+        handleChallenge(challenge) { response = ($0, $1) }
+        return response
+    }
 }

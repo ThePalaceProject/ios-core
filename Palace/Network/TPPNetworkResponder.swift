@@ -54,15 +54,28 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
     private var taskInfo: [TaskID: TPPNetworkTaskInfo]
     private let useFallbackCaching: Bool
     /// WEAK on purpose: the responder reads the provider ONCE per auth challenge
-    /// (synchronously, with a `?? currentUserAccount` fallback — see
-    /// `urlSession(_:didReceive:...)`), and never retains it beyond a method-local
-    /// `TPPBasicAuth`. A strong reference here closed a retain cycle for any
-    /// provider that also (transitively) owns the executor — the
-    /// `AccountDetailViewModel` case: VM → businessLogic → networkExecutor →
-    /// responder → credentialsProvider(=VM). The only non-nil provider in the app
-    /// is that VM, and it is the ROOT owner of its executor chain, so it is alive
-    /// whenever a challenge fires; every other site passes nil and already relies
-    /// on the fallback. Holding it weakly breaks the leak with no behavior change.
+    /// (with a `?? currentUserAccount` fallback — see `urlSession(_:task:didReceive:)`),
+    /// and never retains it beyond a method-local `TPPBasicAuth`. A strong
+    /// reference here closed a retain cycle for any provider that also
+    /// (transitively) owns the executor — the `AccountDetailViewModel` case:
+    /// VM → businessLogic → networkExecutor → responder → credentialsProvider(=VM).
+    /// The only non-nil provider in the app is that VM, and it is the ROOT owner of
+    /// its executor chain, so it is normally alive whenever a challenge fires;
+    /// every other site passes nil and already relies on the fallback.
+    ///
+    /// KNOWN RACE, and PP-4895 widened the window rather than introducing it. The
+    /// read is no longer synchronous on the session's delegate queue: the callback
+    /// is now the SDK's `async` requirement, so the compiler-generated thunk hops
+    /// to a Task before the body runs. If the VM is released inside that hop — or,
+    /// as was already possible, before the challenge arrived at all — the weak
+    /// reference is nil and the fallback substitutes the CURRENT library's account.
+    /// On a credential-validation request aimed at a different library, that means
+    /// sending the wrong library's barcode. A nil provider is indistinguishable
+    /// from "no provider was ever supplied", which is the deliberate configuration
+    /// at every other call site, so the fallback cannot simply be removed. Tracked
+    /// separately (PP-4969) rather than fixed here: closing it means distinguishing
+    /// "died" from "never had one" and deciding to cancel instead of substitute,
+    /// which is a behavior change on a credential path and needs its own ticket.
     private weak var credentialsProvider: NYPLBasicAuthCredentialsProvider?
 
     /// Tracks URLs that have been retried after a 401 to prevent infinite retry loops.
@@ -762,13 +775,31 @@ extension URLSessionTask {
 // ----------------------------------------------------------------------------
 // MARK: - URLSessionTaskDelegate
 extension TPPNetworkResponder: URLSessionTaskDelegate {
-    func urlSession(_ session: URLSession,
-                    task: URLSessionTask,
-                    didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    /// Answers an authentication challenge on any request routed through the
+    /// network layer.
+    ///
+    /// PP-4895 — deliberately the SDK's **async** spelling, and it must stay that
+    /// way. The completion-handler requirement shares its block type with
+    /// `WKNavigationDelegate.webView(_:didReceive:completionHandler:)`, which
+    /// WebKit annotates `WK_SWIFT_UI_ACTOR`; under Xcode 26.2 the ClangImporter
+    /// caches one imported type per canonical block type per frontend process, so
+    /// whichever framework is imported first decides whether the requirement
+    /// carries `@MainActor`. When WebKit wins, a plain `@escaping` handler stops
+    /// matching, the method is never exported to the ObjC runtime, and URLSession
+    /// — which invokes optional delegate methods only when the delegate
+    /// `respondsToSelector:` — never calls it. The async requirement has no block
+    /// parameter and so registers under both import orders. Full reasoning and the
+    /// two-order reproduction are on the download center's copy of this callback
+    /// (`MyBooksDownloadCenter`), the app's only other challenge site.
+    ///
+    /// Guarded by `NetworkResponderAuthChallengeWitnessTests`.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
         let credsProvider = credentialsProvider ?? AppContainer.production().accountsManager.currentUserAccount
-        let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
-        authChallenger.handleChallenge(challenge, completion: completionHandler)
+        return TPPBasicAuth(credentialsProvider: credsProvider).response(to: challenge)
     }
 
     func refreshToken(userAccount: TPPUserAccount = AppContainer.production().accountsManager.currentUserAccount) async throws {

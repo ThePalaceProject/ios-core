@@ -56,7 +56,18 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
 ///     • `session` (`URLSession!`) — created during `setupSession()` at init and
 ///       only re-created via main-thread flows (`recreateSessionForMockBackend`,
 ///       DEBUG-only, and the reset path); the session's own `delegateQueue` is
-///       `.main`, so every delegate callback lands on the main thread.
+///       `.main`, so every delegate callback lands on the main thread — with ONE
+///       explicit exception, below.
+///   EXCEPTION (PP-4895) — `urlSession(_:task:didReceive:)`, the authentication
+///   challenge, is the SDK's `async` requirement rather than a completion-handler
+///   one (see the callback for why it has to be). It is `nonisolated`, so its body
+///   runs on the cooperative pool, NOT on the `.main` delegate queue. It stays
+///   sound without relying on the main-queue serialization above: it reads only
+///   `injectedUserAccount` (a `let`) and `accountsManager`, resolves credentials
+///   through `AccountCredentialResolver` (deliberately lock-backed rather than an
+///   actor, precisely so it is reachable synchronously from any thread), and
+///   `TPPUserAccount` serializes its own keychain access on `accountInfoQueue`. It
+///   writes no MBDC state. Do not read the main-queue guarantee as universal.
 ///     • `bookIdentifierOfBookToRemove` — scratch state for the remove-from-device
 ///       confirmation alert, written and read only on the main-thread UI flow.
 ///     • `reachabilityCancellable` — installed once by `bindReachability()` during
@@ -1633,13 +1644,43 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
 }
 
 extension MyBooksDownloadCenter: URLSessionTaskDelegate {
+    /// Answers an authentication challenge on a download — the path that hands a
+    /// library's server the patron's barcode and PIN when the book file itself is
+    /// behind HTTP basic auth.
+    ///
+    /// PP-4895 — this is deliberately the SDK's **async** spelling rather than the
+    /// completion-handler one, and it must stay that way. The completion-handler
+    /// requirement's block type,
+    /// `void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *)`, is
+    /// shared with `WKNavigationDelegate.webView(_:didReceive:completionHandler:)`,
+    /// which WebKit blanket-annotates `WK_SWIFT_UI_ACTOR` (@MainActor). Under
+    /// Xcode 26.2 the ClangImporter caches one imported Swift type per canonical
+    /// block type per frontend process, first use wins — so when a WebKit
+    /// declaration is imported ahead of Foundation's, the requirement surfaces as
+    /// `@escaping @MainActor @Sendable` and a plain `@escaping` handler silently
+    /// stops matching it. A method that fails to match an `@objc` optional
+    /// requirement is not exported to the ObjC runtime at all, and URLSession
+    /// invokes optional delegate methods only when the delegate
+    /// `respondsToSelector:` — so the callback simply never fires and every
+    /// basic-auth download proceeds with no credential.
+    ///
+    /// Annotating the handler to match is not a fix: it repairs the poisoned
+    /// import order and breaks the clean one, since which side loses is decided by
+    /// frontend batch membership. Forcing the selector with an explicit
+    /// `@objc(URLSession:task:didReceiveChallenge:completionHandler:)` is a hard
+    /// compile error. The async requirement carries no block parameter, so there
+    /// is nothing to poison — it registers under both import orders. Same defect
+    /// class as the `WKNavigationDelegate` sign-in break in #1205 and the
+    /// `NSOperationQueue` off-main trap in #1338.
+    ///
+    /// Guarded by `DownloadAuthChallengeWitnessTests`, which asserts the selector
+    /// is present in the ObjC runtime rather than trusting the compiler.
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        let handler = TPPBasicAuth(credentialsProvider: userAccount)
-        handler.handleChallenge(challenge, completion: completionHandler)
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        TPPBasicAuth(credentialsProvider: userAccount).response(to: challenge)
     }
 
     func urlSession(

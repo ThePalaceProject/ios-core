@@ -145,9 +145,12 @@
 #   Nets negative at the 3b package move, when the MBDC cluster leaves the hub for
 #   PalaceDownloads. Re-baselined by the exact delta; the freeze still catches any further
 #   unrelated growth.
+# PP-4895 (-1 on MyBooksDownloadCenter, 1257 -> 1256): the URLSession auth-challenge
+#   callback moved to the SDK's async spelling, and the shape adaptation both challenge
+#   sites needed now lives once on TPPBasicAuth.response(to:) instead of twice inline.
 1579 Palace/Audiobooks/AudiobookSessionManager.swift
 374 Palace/Accounts/Library/AccountsManager.swift
-1257 Palace/MyBooks/MyBooksDownloadCenter.swift
+1256 Palace/MyBooks/MyBooksDownloadCenter.swift
 981 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 638 Palace/SignInLogic/TPPSignInBusinessLogic.swift
 575 Palace/MyBooks/BorrowOperation.swift
