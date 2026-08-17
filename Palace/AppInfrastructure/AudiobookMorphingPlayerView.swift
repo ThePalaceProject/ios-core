@@ -1416,8 +1416,29 @@ struct AudiobookMorphingPlayerView: View {
         // progress fraction. `durationToSelf()` is the book-elapsed time; deriving
         // `total * scrubberFraction` would leap whenever the (chapter-scoped)
         // scrubber moved. This reads the true book position independently.
-        let total = position.tracks.totalDuration
-        let remaining = max(0, total - position.durationToSelf())
+        let bookTimeRemaining = position.tracks.totalDuration - position.durationToSelf()
+        return Self.wholeBookRemainingText(bookTimeRemaining: bookTimeRemaining, rate: currentRate)
+    }
+
+    /// PP-4971: phrase the whole-book figure in wall-clock time at the speed the
+    /// patron is listening at, not in book time.
+    ///
+    /// This is the "how much longer will this take me" number, so it has to
+    /// answer that question — a 2× listener was previously told hours remained
+    /// on a book they were about to finish. The chapter timecode beside the
+    /// scrubber deliberately does NOT get this treatment: it has to keep
+    /// agreeing with the scrubber position and the chapter length.
+    ///
+    /// The rate division itself is `AudiobookPlaybackModel.remainingWallClock`,
+    /// shared with the toolkit player so the two cannot drift apart again.
+    nonisolated static func wholeBookRemainingText(
+        bookTimeRemaining: TimeInterval,
+        rate: PlaybackRate
+    ) -> String {
+        let remaining = AudiobookPlaybackModel.remainingWallClock(
+            bookTimeRemaining: bookTimeRemaining,
+            rate: rate
+        )
         let hrs = Int(remaining) / 3600
         let mins = (Int(remaining) % 3600) / 60
         if hrs > 0 { return String(format: "%d hr %02d min remaining", hrs, mins) }
