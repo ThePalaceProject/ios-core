@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalaceAudiobookToolkit
 @testable import Palace
 
 @MainActor
@@ -427,6 +428,89 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.cachedContentDictionary())
         #else
         XCTAssertTrue(true, "LCP not enabled - test skipped")
+        #endif
+    }
+    // MARK: - setupStreamingFor (PP-4724)
+
+    /// Records what a `StreamingCapablePlayer` was asked to do.
+    ///
+    /// The conformance carries `@MainActor` (SE-0470), not just the class.
+    /// Class-level isolation alone does NOT satisfy the compiler here — it still
+    /// reports "conformance ... crosses into main actor-isolated code" and
+    /// fix-its to this exact form. Safe here, unlike on `LCPAudiobooks`, because
+    /// this spy inherits no `DRMDecryptor` to drag onto the main actor with it.
+    @MainActor
+    private final class SpyStreamingPlayer: @MainActor StreamingCapablePlayer {
+        private(set) var setProviderCallCount = 0
+        private(set) var publicationDidLoadCallCount = 0
+
+        func setStreamingProvider(_ provider: StreamingResourceProvider) {
+            setProviderCallCount += 1
+            _ = provider
+        }
+
+        func publicationDidLoad() {
+            publicationDidLoadCallCount += 1
+        }
+    }
+
+    /// A player that does not conform must be rejected. The killable mutant is
+    /// flipping this `return false` — dropping the `as?` guard outright would
+    /// not compile, since the binding is used.
+    func testSetupStreamingFor_whenPlayerIsNotStreamingCapable_returnsFalse() throws {
+        #if LCP
+        let audiobook = try XCTUnwrap(
+            LCPAudiobooks(for: URL(fileURLWithPath: "/tmp/pp4724-not-capable.lcpa")),
+            "LCPAudiobooks must construct for a file URL; if this fails the streaming path is untestable and PP-4982 needs the seam changed"
+        )
+        let result = audiobook.setupStreamingFor(NSObject())
+
+        XCTAssertFalse(result, "A non-StreamingCapablePlayer must be rejected")
+        #else
+        throw XCTSkip("LCP not enabled in this configuration")
+        #endif
+    }
+
+    /// A released instance is a dead one-shot. It must refuse BEFORE handing
+    /// itself to the player — kills a mutant that reorders the release guard
+    /// after `setStreamingProvider`, which would wire a dead decryptor into a
+    /// live player.
+    func testSetupStreamingFor_whenReleased_refusesWithoutHandingItselfOver() throws {
+        #if LCP
+        let audiobook = try XCTUnwrap(
+            LCPAudiobooks(for: URL(fileURLWithPath: "/tmp/pp4724-released.lcpa"))
+        )
+        let spy = SpyStreamingPlayer()
+        audiobook.releaseResources()
+
+        let result = audiobook.setupStreamingFor(spy)
+
+        XCTAssertFalse(result, "A released instance must not set up streaming")
+        XCTAssertEqual(spy.setProviderCallCount, 0, "A released instance must not hand itself to a player")
+        #else
+        throw XCTSkip("LCP not enabled in this configuration")
+        #endif
+    }
+
+    /// The live path hands the provider over exactly once.
+    func testSetupStreamingFor_whenLive_handsProviderToPlayerExactlyOnce() throws {
+        #if LCP
+        let audiobook = try XCTUnwrap(
+            LCPAudiobooks(for: URL(fileURLWithPath: "/tmp/pp4724-live.lcpa"))
+        )
+        // `setupStreamingFor` reaches the !hasPublication branch and kicks off a
+        // background publication load. Cancel it deterministically rather than
+        // letting it outlive the test — background work outliving a test is this
+        // repo's most common flake source.
+        addTeardownBlock { audiobook.releaseResources() }
+        let spy = SpyStreamingPlayer()
+
+        let result = audiobook.setupStreamingFor(spy)
+
+        XCTAssertTrue(result, "A live instance with a streaming-capable player must report success — pins the return value, so flipping it fails here")
+        XCTAssertEqual(spy.setProviderCallCount, 1, "The player must be given the provider exactly once")
+        #else
+        throw XCTSkip("LCP not enabled in this configuration")
         #endif
     }
 }

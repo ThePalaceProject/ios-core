@@ -272,18 +272,51 @@ import PalaceBookModel
     }
 }
 
+/// This conformance is deliberately NOT isolated, and must stay that way.
+///
+/// `LCPStreamingProvider` inherits `DRMDecryptor`, so isolating the conformance
+/// isolates decryption too: `error: main actor-isolated conformance of
+/// 'LCPAudiobooks' to 'DRMDecryptor' cannot be used in nonisolated context`.
+/// Decryption legitimately runs off-main, and `getPublication()` is called from
+/// AVFoundation's resource-loader thread inside a polling loop in
+/// `LCPResourceLoaderDelegate`.
+///
+/// Two shapes were tried and both failed to compile — do not reintroduce them:
+///   1. `@MainActor` on `setupStreamingFor` alone → Swift then demands the whole
+///      conformance be isolated.
+///   2. `extension LCPAudiobooks: @MainActor LCPStreamingProvider` → the
+///      `DRMDecryptor` error above.
+///
+/// What works: a nonisolated witness satisfies the `@MainActor` requirement
+/// (the permissive direction), and the one statement touching main-actor state
+/// hops explicitly. See `setupStreamingFor` below.
 extension LCPAudiobooks: LCPStreamingProvider {
 
-    public func getPublication() -> Publication? {
+    nonisolated public func getPublication() -> Publication? {
         return publicationCacheQueue.sync {
             return cachedPublication
         }
     }
 
-    public func supportsStreaming() -> Bool {
+    nonisolated public func supportsStreaming() -> Bool {
         return true
     }
 
+    /// Nonisolated on purpose — see the note on the extension. This is a
+    /// nonisolated witness of a `@MainActor` protocol requirement, which Swift
+    /// allows because it is the permissive direction.
+    ///
+    /// It still runs on the main actor in practice, and the `assumeIsolated`
+    /// below depends on that. Two independent guarantees, not one:
+    ///   - the protocol requirement is `@MainActor`
+    ///     (`StreamingResourceProvider.swift`), so every protocol-dispatched
+    ///     caller is already there — compiler-enforced;
+    ///   - the sole PRODUCTION call site is `Audiobook.swift`'s
+    ///     `DynamicPlayerFactory.createPlayer`, itself `@MainActor`.
+    ///
+    /// Nothing enforces this for a *direct* Swift call on the concrete type, so
+    /// that would trap. Objective-C cannot reach it: extension members get no
+    /// implicit `@objc`, and this witnesses a plain Swift protocol.
     public func setupStreamingFor(_ player: Any) -> Bool {
         guard let streamingPlayer = player as? StreamingCapablePlayer else {
             return false
@@ -291,7 +324,18 @@ extension LCPAudiobooks: LCPStreamingProvider {
         if isReleasedSnapshot() {
             return false
         }
-        streamingPlayer.setStreamingProvider(self)
+        // `setStreamingProvider` is main-actor state on the player, but this
+        // conformance CANNOT be isolated: `LCPStreamingProvider` inherits
+        // `DRMDecryptor`, and isolating the conformance isolates that too —
+        // "main actor-isolated conformance ... cannot be used in nonisolated
+        // context", because decryption legitimately runs off-main.
+        //
+        // `assumeIsolated` is sound here rather than hopeful: the only call path
+        // is `AudiobookLoader` (@MainActor) -> finalizeBuild -> Audiobook.init ->
+        // DynamicPlayerFactory.createPlayer (@MainActor) -> here.
+        MainActor.assumeIsolated {
+            streamingPlayer.setStreamingProvider(self)
+        }
 
         let hasPublication = publicationCacheQueue.sync {
             return cachedPublication != nil
