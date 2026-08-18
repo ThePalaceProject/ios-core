@@ -106,6 +106,12 @@ protocol AnnotationsManager {
     nonisolated(unsafe) static var executorOverride: TPPNetworkExecutor?
     nonisolated(unsafe) static var accountsManagerOverride: TPPLibraryAccountsProvider?
 
+    /// Test-only seam for observing what this type reports to error logging.
+    /// PP-4965: whether a failed position write is reported at all — and with
+    /// what underlying error — is now behaviour worth asserting, so it needs to
+    /// be observable. Never set from production code.
+    nonisolated(unsafe) static var errorLoggerOverride: ErrorLogging?
+
     /// Test-only override for the annotations URL. When set, `annotationsURL`
     /// returns this value instead of deriving from `TPPConfiguration.mainFeedURL()`.
     /// CI runners boot with no signed-in library, so `mainFeedURL()` is nil and
@@ -185,6 +191,14 @@ protocol AnnotationsManager {
     /// setting `accountsManagerOverride` lets the test inject a mock.
     fileprivate static var currentAccountsManager: TPPLibraryAccountsProvider {
         return accountsManagerOverride ?? AppContainer.production().accountsManager
+    }
+
+    private static let defaultErrorLogger = DefaultErrorLogger()
+
+    /// Returns the error logger TPPAnnotations should report to. In tests,
+    /// setting `errorLoggerOverride` lets the test observe what was reported.
+    fileprivate static var currentErrorLogger: ErrorLogging {
+        return errorLoggerOverride ?? defaultErrorLogger
     }
 
     // MARK: - Reading Position
@@ -272,22 +286,37 @@ protocol AnnotationsManager {
                                        selectorValue: selectorValue)
         let parameters = bookmark.dictionaryForJSONSerialization()
 
-        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true) { (success, id, timeStamp) in
-            guard success else {
-                Log.warn(#file, "Annotation POST failed for \(bookID)")
-                TPPErrorLogger.logError(withCode: .apiCall,
-                                        summary: "Error posting annotation",
-                                        metadata: [
-                                            "bookID": bookID,
-                                            "annotationID": id ?? "N/A",
-                                            "annotationURL": annotationsURL,
-                                            "motivation": motivation.rawValue])
-                completion?(nil)
-                return
-            }
+        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true) { result in
+            switch result {
+            case let .succeeded(id, timeStamp):
+                Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
+                completion?(AnnotationResponse(serverId: id, timeStamp: timeStamp))
 
-            Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
-            completion?(AnnotationResponse(serverId: id, timeStamp: timeStamp))
+            case .queuedForRetry:
+                // NOT an error. The position is already in local storage and the
+                // write is queued for delivery. Reporting this was the bulk of
+                // the "Error posting annotation" volume (PP-4965).
+                Log.debug(#file, "Reading position for \(bookID) queued for retry")
+                completion?(nil)
+
+            case let .failed(underlying, statusCode):
+                Log.warn(#file, "Annotation POST failed for \(bookID)")
+                var metadata: [String: Any] = [
+                    "bookID": bookID,
+                    "annotationURL": annotationsURL,
+                    "motivation": motivation.rawValue
+                ]
+                if let statusCode {
+                    metadata["statusCode"] = statusCode
+                }
+                // Pass `underlying` so the logger's classifier can file genuinely
+                // transient conditions ("No Internet Connection", "Request
+                // Timeout") in their own buckets instead of here.
+                Self.currentErrorLogger.logError(underlying,
+                                                 summary: "Error posting annotation",
+                                                 metadata: metadata)
+                completion?(nil)
+            }
         }
     }
 
@@ -318,7 +347,16 @@ protocol AnnotationsManager {
 
         let parameters = spec.dictionaryForJSONSerialization()
 
-        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (_, id, timeStamp) in
+        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { result in
+            // Behaviour deliberately unchanged by PP-4965: a bookmark POST that
+            // fails still calls back with an empty response and reports nothing.
+            // That silence is a real gap — bookmark failures produce no
+            // telemetry at all — but fixing it changes behaviour patrons see,
+            // so it is tracked separately rather than folded in here.
+            guard case let .succeeded(id, timeStamp) = result else {
+                completion(AnnotationResponse(serverId: nil, timeStamp: nil))
+                return
+            }
             completion(AnnotationResponse(serverId: id, timeStamp: timeStamp))
         }
     }
@@ -348,9 +386,47 @@ protocol AnnotationsManager {
 
         let parameters = spec.dictionaryForJSONSerialization()
 
-        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (_, id, timeStamp) in
+        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { result in
+            // Behaviour deliberately unchanged by PP-4965: a bookmark POST that
+            // fails still calls back with an empty response and reports nothing.
+            // That silence is a real gap — bookmark failures produce no
+            // telemetry at all — but fixing it changes behaviour patrons see,
+            // so it is tracked separately rather than folded in here.
+            guard case let .succeeded(id, timeStamp) = result else {
+                completion(AnnotationResponse(serverId: nil, timeStamp: nil))
+                return
+            }
             completion(AnnotationResponse(serverId: id, timeStamp: timeStamp))
         }
+    }
+
+    /// How a POST to the annotations endpoint concluded.
+    ///
+    /// PP-4965: this exists because the previous `(Bool, String?, String?)`
+    /// callback had nowhere to put "queued for retry" or a status code, so five
+    /// very different outcomes all arrived at the caller as a bare `false`. The
+    /// caller then reported every one of them as "Error posting annotation",
+    /// which made that the largest error in the app while most of the traffic
+    /// was patrons going through a tunnel.
+    ///
+    /// Keeping `queuedForRetry` distinct from `failed` is the whole point: a
+    /// queued write has not been lost, and must not be reported as a failure.
+    enum AnnotationPostResult {
+        /// The server accepted the annotation. Both values may still be nil if
+        /// the response body was missing or unparseable.
+        case succeeded(annotationID: String?, timeStamp: String?)
+
+        /// Transport failed, but the request was handed to the offline queue
+        /// and will be retried. Delivery is pending, not lost — do NOT report
+        /// this as an error.
+        case queuedForRetry
+
+        /// The write did not happen and nothing will retry it. `underlying`
+        /// carries the transport error where there was one, so the logger's
+        /// existing classifier can separate transient conditions (no
+        /// connection, timeout) from real defects. `statusCode` is present
+        /// when the server answered and refused.
+        case failed(underlying: NSError?, statusCode: Int?)
     }
 
     /// Serializes the `parameters` into JSON and POSTs them to the server.
@@ -359,11 +435,11 @@ protocol AnnotationsManager {
                               withParameters parameters: [String: Any],
                               timeout: TimeInterval = TPPDefaultRequestTimeout,
                               queueOffline: Bool,
-                              _ completionHandler: @escaping (_ success: Bool, _ annotationID: String?, _ timeStamp: String?) -> Void) {
+                              _ completionHandler: @escaping (_ result: AnnotationPostResult) -> Void) {
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted]) else {
             Log.error(#file, "Network request abandoned. Could not create JSON from given parameters.")
-            completionHandler(false, nil, nil)
+            completionHandler(.failed(underlying: nil, statusCode: nil))
             return
         }
 
@@ -383,14 +459,16 @@ protocol AnnotationsManager {
                 if willQueueOffline {
                     Log.debug(#file, "Queued for offline retry")
                     self.addToOfflineQueue(bookID, url, parameters)
+                    completionHandler(.queuedForRetry)
+                    return
                 }
 
-                completionHandler(false, nil, nil)
+                completionHandler(.failed(underlying: error, statusCode: nil))
                 return
             }
             guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
                 Log.error(#file, "Annotation POST error: No response received from server")
-                completionHandler(false, nil, nil)
+                completionHandler(.failed(underlying: nil, statusCode: nil))
                 return
             }
 
@@ -398,10 +476,10 @@ protocol AnnotationsManager {
                 Log.debug(#file, "Annotation POST: Success 200.")
                 let serverAnnotationID = annotationID(fromNetworkData: data)
                 let timeStamp = timeStamp(fromNetworkData: data)
-                completionHandler(true, serverAnnotationID, timeStamp)
+                completionHandler(.succeeded(annotationID: serverAnnotationID, timeStamp: timeStamp))
             } else {
                 Log.error(#file, "Annotation POST: Response Error. Status Code: \(statusCode)")
-                completionHandler(false, nil, nil)
+                completionHandler(.failed(underlying: nil, statusCode: statusCode))
             }
         }
         task?.resume()

@@ -422,7 +422,7 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: parameters,
             timeout: 10,
             queueOffline: false
-        ) { _, _, _ in
+        ) { _ in
             expectation.fulfill()
         }
 
@@ -470,7 +470,11 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: ["test": "data"],
             timeout: 10,
             queueOffline: false
-        ) { success, annotationID, timestamp in
+        ) { result in
+            var success = false
+            var annotationID: String?
+            var timestamp: String?
+            if case let .succeeded(sid, sts) = result { success = true; annotationID = sid; timestamp = sts }
             receivedSuccess = success
             receivedAnnotationID = annotationID
             receivedTimestamp = timestamp
@@ -505,7 +509,9 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: ["test": "data"],
             timeout: 10,
             queueOffline: false
-        ) { success, _, _ in
+        ) { result in
+            var success = false
+            if case .succeeded = result { success = true }
             receivedSuccess = success
             expectation.fulfill()
         }
@@ -540,7 +546,9 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: ["test": "data"],
             timeout: 10,
             queueOffline: false
-        ) { success, _, _ in
+        ) { result in
+            var success = false
+            if case .succeeded = result { success = true }
             receivedSuccess = success
             expectation.fulfill()
         }
@@ -860,7 +868,9 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: emptyParameters,
             timeout: 10,
             queueOffline: false
-        ) { success, _, _ in
+        ) { result in
+            var success = false
+            if case .succeeded = result { success = true }
             receivedSuccess = success
             expectation.fulfill()
         }
@@ -1218,6 +1228,8 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         // suite (or any test it could call into) might have set.
         TPPAnnotations.executorOverride = nil
         TPPAnnotations.accountsManagerOverride = nil
+        TPPAnnotations.errorLoggerOverride = nil
+        TPPAnnotations.annotationsURLOverride = nil
         AnnotationDevice.accountsManagerOverride = nil
         AnnotationDevice.firebaseDeviceIDOverride = nil
         mock = nil
@@ -1230,26 +1242,41 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         HTTPURLResponse(url: url, statusCode: code, httpVersion: "HTTP/1.1", headerFields: nil)!
     }
 
-    private func postAndWait(parameters: [String: Any] = ["k": "v"],
-                             queueOffline: Bool = false,
-                             timeout: TimeInterval = 17,
-                             file: StaticString = #file,
-                             line: UInt = #line)
-    -> (success: Bool, id: String?, ts: String?) {
+    /// Raw outcome, for tests that care WHICH way a post concluded (PP-4965).
+    private func postAndWaitResult(parameters: [String: Any] = ["k": "v"],
+                                   queueOffline: Bool = false,
+                                   timeout: TimeInterval = 17)
+    -> TPPAnnotations.AnnotationPostResult {
         let exp = expectation(description: "post completion")
-        var result: (Bool, String?, String?) = (false, nil, nil)
+        var outcome: TPPAnnotations.AnnotationPostResult = .failed(underlying: nil, statusCode: nil)
         TPPAnnotations.postAnnotation(
             forBook: bookID,
             withAnnotationURL: url,
             withParameters: parameters,
             timeout: timeout,
             queueOffline: queueOffline
-        ) { success, id, ts in
-            result = (success, id, ts)
+        ) { result in
+            outcome = result
             exp.fulfill()
         }
         wait(for: [exp], timeout: 1.0)
-        return result
+        return outcome
+    }
+
+    /// Success/id/timestamp view, preserved so the pre-PP-4965 assertions in
+    /// this suite keep exercising exactly what they did before.
+    private func postAndWait(parameters: [String: Any] = ["k": "v"],
+                             queueOffline: Bool = false,
+                             timeout: TimeInterval = 17,
+                             file: StaticString = #file,
+                             line: UInt = #line)
+    -> (success: Bool, id: String?, ts: String?) {
+        if case let .succeeded(id, ts) = postAndWaitResult(parameters: parameters,
+                                                           queueOffline: queueOffline,
+                                                           timeout: timeout) {
+            return (true, id, ts)
+        }
+        return (false, nil, nil)
     }
 
     // MARK: - POST: request shape
@@ -1391,13 +1418,171 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         XCTAssertFalse(ok)
     }
 
-    func testPostAnnotation_NetworkErrorWithQueueOfflineTrue_DoesNotCrashAndReportsFailure() {
-        // Use a status code that is in NetworkQueue.StatusCodes (notConnectedToInternet)
+    // PP-4965: this test previously asserted that a request handed to the
+    // offline queue "reports failure", and its comment noted the queue branch
+    // "does not affect the callback". That was the defect, pinned as if it were
+    // the contract: the caller reported every one of these as "Error posting
+    // annotation", which made that the app's largest error while the writes
+    // were in fact queued and delivered. A queued write is pending, not lost.
+    func testPostAnnotation_QueuedForRetry_IsReportedAsPendingNotFailure() {
+        // notConnectedToInternet is in NetworkQueue.StatusCodes, so with
+        // queueOffline the request is enqueued rather than abandoned.
         mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
                                            code: NSURLErrorNotConnectedToInternet))
-        let (ok, _, _) = postAndWait(queueOffline: true)
-        XCTAssertFalse(ok)
-        // The offline-queue branch is taken but does not affect the callback.
+
+        guard case .queuedForRetry = postAndWaitResult(queueOffline: true) else {
+            return XCTFail("A request accepted by the offline queue must report .queuedForRetry, not a failure")
+        }
+    }
+
+    /// The same transport error WITHOUT the offline queue is a genuine loss,
+    /// and must carry the underlying error so the logger's classifier can file
+    /// it as a transient condition rather than an unexplained API error.
+    func testPostAnnotation_TransportErrorNotQueued_ReportsFailedCarryingUnderlyingError() {
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        guard case let .failed(underlying, statusCode) = postAndWaitResult(queueOffline: false) else {
+            return XCTFail("An un-queued transport error must report .failed")
+        }
+        XCTAssertEqual(underlying?.code, NSURLErrorNotConnectedToInternet,
+                       "The underlying error must survive to the caller — dropping it is what defeated the classifier")
+        XCTAssertNil(statusCode, "No HTTP response means no status code")
+    }
+
+    /// A server refusal must carry the status, so 401 and 500 are separable.
+    func testPostAnnotation_ServerRefusal_ReportsFailedCarryingStatusCode() {
+        mock.postStub = (nil, httpResponse(500), nil)
+
+        guard case let .failed(underlying, statusCode) = postAndWaitResult() else {
+            return XCTFail("A non-200 response must report .failed")
+        }
+        XCTAssertEqual(statusCode, 500, "The status code must reach the caller so refusals are diagnosable")
+        XCTAssertNil(underlying, "A server refusal is not a transport error")
+    }
+
+    func testPostAnnotation_NonHTTPResponse_ReportsFailedWithNeitherErrorNorStatus() {
+        mock.postStub = (Data(), URLResponse(url: url, mimeType: nil,
+                                             expectedContentLength: 0,
+                                             textEncodingName: nil), nil)
+
+        guard case let .failed(underlying, statusCode) = postAndWaitResult() else {
+            return XCTFail("A non-HTTP response must report .failed")
+        }
+        XCTAssertNil(underlying)
+        XCTAssertNil(statusCode)
+    }
+
+    func testPostAnnotation_Success_ReportsSucceededWithServerValues() {
+        mock.postStub = (Data(#"{"id":"srv-77"}"#.utf8), httpResponse(200), nil)
+
+        guard case let .succeeded(id, _) = postAndWaitResult() else {
+            return XCTFail("A 200 must report .succeeded")
+        }
+        XCTAssertEqual(id, "srv-77")
+    }
+
+    // MARK: - PP-4965: what postReadingPosition actually REPORTS
+    //
+    // The tests above pin the classification. These pin the thing that made it
+    // matter — what reaches error reporting. Testing only the enum would leave
+    // the producer free to keep reporting everything as one error.
+    //
+    // Every test here asserts the POST actually went out. `postReadingPosition`
+    // is gated by `syncIsPossibleAndPermitted()`, and a blocked gate returns
+    // early having logged nothing — which is indistinguishable from correct
+    // behaviour. Without the call-count assertion these would pass vacuously.
+
+    private func makeLoggerSpy() -> ErrorLoggerSpy {
+        let spy = ErrorLoggerSpy()
+        TPPAnnotations.errorLoggerOverride = spy
+        TPPAnnotations.annotationsURLOverride = url
+
+        // Open the sync gate. `postReadingPosition` early-returns unless the
+        // patron is signed in AND the library both supports and permits sync —
+        // and an early return logs nothing, which looks exactly like the
+        // correct behaviour these tests are trying to prove. Hence the
+        // postCallCount assertion in each test.
+        let provider = TPPLibraryAccountMock()
+        let signedIn = TPPUserAccountMock()
+        signedIn._credentials = .token(authToken: "tok",
+                                       barcode: "12345",
+                                       pin: "1234",
+                                       expirationDate: Date().addingTimeInterval(3600))
+        provider.userAccountResolver = { _ in signedIn }
+        provider.currentAccount?.details?.syncPermissionGranted = true
+        TPPAnnotations.accountsManagerOverride = provider
+        return spy
+    }
+
+    /// The defect this ticket exists for: a write that is safely queued for
+    /// retry must not be reported as an error.
+    func testPostReadingPosition_QueuedForRetry_ReportsNothingToErrorLogging() {
+        let spy = makeLoggerSpy()
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(mock.postCallCount, 1,
+                       "Guard against a vacuous pass: the sync gate must have opened and the POST gone out")
+        XCTAssertEqual(spy.loggedSummaries, [],
+                       "A queued write is pending, not failed — reporting it is what made this the app's largest error")
+    }
+
+    /// A genuine transport loss must still be reported, and must carry the
+    /// underlying error so the logger's classifier can file transient
+    /// conditions ("No Internet Connection") separately from real defects.
+    func testPostReadingPosition_GenuineTransportLoss_ReportsWithUnderlyingErrorAttached() {
+        let spy = makeLoggerSpy()
+
+        // This test needs a transport error the offline queue will NOT retry —
+        // a retried one is pending, not lost, and correctly reports nothing.
+        // Asserted rather than assumed: an earlier draft picked
+        // `cannotFindHost`, which IS queueable, so the test failed for the
+        // right reason. If someone adds this code to the queueable set later,
+        // this precondition says so instead of the test quietly inverting.
+        let unretryable = NSURLErrorBadServerResponse
+        XCTAssertFalse(NetworkQueue.StatusCodes.contains(unretryable),
+                       "Precondition: this test requires an error the offline queue does not retry")
+
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain, code: unretryable))
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
+        XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
+        // `loggedErrors` is [Error?], so `.first` is doubly optional — flatten
+        // before bridging, or the cast silently compares against nil.
+        let reported = (spy.loggedErrors.first ?? nil) as NSError?
+        XCTAssertEqual(reported?.code, unretryable,
+                       "Dropping the underlying error is what defeated the logger's transient-condition classifier")
+    }
+
+    /// A server refusal must reach reporting WITH its status, so 401 and 500
+    /// are distinguishable in telemetry rather than both being "api call".
+    func testPostReadingPosition_ServerRefusal_ReportsStatusCodeInMetadata() {
+        let spy = makeLoggerSpy()
+        mock.postStub = (nil, httpResponse(401), nil)
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
+        XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
+        XCTAssertEqual(spy.loggedMetadata.first?["statusCode"] as? Int, 401,
+                       "Without the status code every refusal looks the same in telemetry")
     }
 
     // MARK: - DELETE
@@ -1598,5 +1783,35 @@ class AnnotationDeviceIDTests: XCTestCase {
             XCTAssertTrue(id.contains(firebaseID),
                           "Call #\(i): annotation device ID must contain the FirebaseManager deviceID — broken derivation breaks cross-device detection")
         }
+    }
+}
+
+/// Records what was reported to error logging so tests can assert on it (PP-4965).
+private final class ErrorLoggerSpy: ErrorLogging {
+    private(set) var loggedSummaries: [String] = []
+    private(set) var loggedErrors: [Error?] = []
+    private(set) var loggedMetadata: [[String: Any]] = []
+
+    func logError(_ error: Error?, summary: String, metadata: [String: Any]?) {
+        loggedSummaries.append(summary)
+        loggedErrors.append(error)
+        loggedMetadata.append(metadata ?? [:])
+    }
+
+    func logError(withCode code: TPPErrorCode, summary: String, metadata: [String: Any]?) {
+        loggedSummaries.append(summary)
+        loggedErrors.append(nil)
+        loggedMetadata.append(metadata ?? [:])
+    }
+
+    func logNetworkError(_ originalError: Error?,
+                         code: TPPErrorCode,
+                         summary: String?,
+                         request: URLRequest?,
+                         response: URLResponse?,
+                         metadata: [String: Any]?) {
+        loggedSummaries.append(summary ?? "")
+        loggedErrors.append(originalError)
+        loggedMetadata.append(metadata ?? [:])
     }
 }

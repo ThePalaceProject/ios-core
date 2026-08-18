@@ -38,7 +38,12 @@ protocol ErrorLogging: AnyObject {
 // MARK: - Default Implementation
 
 /// Default implementation that forwards to `TPPErrorLogger`'s static methods.
-final class DefaultErrorLogger: ErrorLogging {
+///
+/// `Sendable` because it holds no state — every method forwards straight to a
+/// static. That lets callers hold a single shared instance instead of either
+/// allocating one per report or reaching for `nonisolated(unsafe)`; the
+/// compiler checks the claim rather than us asserting it.
+final class DefaultErrorLogger: ErrorLogging, Sendable {
 
     func logError(_ error: Error?, summary: String, metadata: [String: Any]?) {
         TPPErrorLogger.logError(error, summary: summary, metadata: metadata)
