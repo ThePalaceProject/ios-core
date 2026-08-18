@@ -48,6 +48,28 @@ final class KBMatchBadgePolicyTests: XCTestCase {
         )
     }
 
+    /// The three statuses no shipped entry uses. `testKnownIssueStatuses_…`
+    /// below walks the real catalog, so its `default: break` silently skips
+    /// these — they had no coverage at all. Synthetic entries reach them.
+    func testStatusesWithNoShippedEntry_StillMapToTheirOwnBadge() {
+        let expected: [(KBStatus, KBMatchBadge)] = [
+            (.userError, .setupMixUp),
+            (.wontfix, .byDesign),
+            (.duplicateOf, .tracked),
+        ]
+        for (status, badge) in expected {
+            let entry = KBEntry(
+                id: "SYNTH-\(status.rawValue)",
+                category: .library,
+                status: status,
+                symptomKeywords: ["x"],
+                userFacingWorkaround: "...",
+                confidenceThreshold: 0.1
+            )
+            XCTAssertEqual(KBMatchBadgePolicy.badge(for: entry), badge, "status \(status.rawValue)")
+        }
+    }
+
     /// Known-issue statuses are untouched by the change.
     func testKnownIssueStatuses_AreUnchanged() throws {
         let entries = try catalog().entries

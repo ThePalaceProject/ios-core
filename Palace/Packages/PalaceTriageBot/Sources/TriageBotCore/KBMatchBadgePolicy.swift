@@ -6,6 +6,7 @@ import Foundation
 /// (testable under macOS `swift test`) while `TriageBotUI` — which sits behind
 /// `canImport(UIKit)` and cannot be reached by the package's own tests — only
 /// maps a case to a string, an SF Symbol, and a colour.
+// PUBLIC_INTENT: consumed by KBMatchCard in TriageBotUI (separate module).
 public enum KBMatchBadge: Equatable, Sendable {
     case fixedIn(version: String)
     case knownIssueFixComing(version: String)
@@ -38,8 +39,10 @@ public enum KBMatchBadge: Equatable, Sendable {
 ///
 /// Kind is checked before status precisely because status cannot distinguish
 /// them: both arms are `nil`.
+// PUBLIC_INTENT: consumed by KBMatchCard in TriageBotUI (separate module).
 public enum KBMatchBadgePolicy {
 
+    // PUBLIC_INTENT: the entry point TriageBotUI calls.
     public static func badge(for entry: KBEntry) -> KBMatchBadge {
         // Kind first — a generic ladder and a how-to are indistinguishable by
         // status (both carry none), and conflating them is the defect.

@@ -19,7 +19,7 @@ The iOS implementation is the reference implementation. Sections describing beha
 
 File paths are relative to the repo root; the package root `Palace/Packages/PalaceTriageBot/` is abbreviated `PKG/`.
 
-> Where code comments and this document disagree, this document is correct. Several load-bearing comments are stale, and a code-first reader will build the wrong model from them. Known-stale as of 2026-07-28: `LocalClassifier.swift:6-10` still describes the retired raw-count scoring (actual scoring is by distinct match regions, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the comment on `LocalClassifier.distinctMatchRegionCount` says touching ranges merge (they do not, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the `KnowledgeBase.entries(in:)` comment claims `wontfix` entries are hidden (the code checks only `duplicate_of`); `PKG/Package.swift` claims every Core type has a 1:1 Kotlin analogue (no Kotlin exists); and comments in `ConversationReducer.swift:948-950`, `Protocols/Protocols.swift:11-14`, and `Palace/FeatureFlags/RemoteFeatureFlags.swift` describe a HelpSpot HTTP POST that has never existed (the only gateways are email and clipboard).
+> Where code comments and this document disagree, this document is correct. Several load-bearing comments are stale, and a code-first reader will build the wrong model from them. Known-stale as of 2026-07-28: `LocalClassifier.swift:6-10` still describes the retired raw-count scoring (actual scoring is by distinct match regions, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the comment on `LocalClassifier.distinctMatchRegionCount` says touching ranges merge (they do not, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the `KnowledgeBase.entries(matchableFrom:)` comment claims `wontfix` entries are hidden (the code checks only `duplicate_of`); `PKG/Package.swift` claims every Core type has a 1:1 Kotlin analogue (no Kotlin exists); and comments in `ConversationReducer.swift:948-950`, `Protocols/Protocols.swift:11-14`, and `Palace/FeatureFlags/RemoteFeatureFlags.swift` describe a HelpSpot HTTP POST that has never existed (the only gateways are email and clipboard).
 
 ## At a glance
 
@@ -213,14 +213,6 @@ String semantics an alternate implementation must match exactly (this is the sam
 - **Case folding is locale-independent** Unicode default lowercasing (Swift `lowercased()`). A locale-sensitive fold breaks the contract: a naive Kotlin `toLowerCase()` on a Turkish-locale device maps I to dotless ı, so "SIGN IN" folds to "sıgn ın" and every sign-in keyword stops matching. Use `lowercase(Locale.ROOT)` or the platform's locale-free equivalent.
 - **Substring matching honors Unicode canonical equivalence** on iOS: both the `contains` check and the first-occurrence lookup go through Foundation's `range(of:)`, so composed and decomposed forms of the same character match. Kotlin's `String.contains` compares code units exactly. A conformant port must either NFC-normalize both sides before matching or use a canonical-equivalence search.
 - **Match positions live in one consistent index space** over the normalized text (the iOS implementation compares string positions returned by the Foundation search). The merge rule that consumes those positions is specified in [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits); what matters for conformance is that both the positions and the comparisons use the same unit, whichever the platform picks.
-
-**Filler variation.** A keyword token that is a determiner or possessive (`a an the this that these those my your his her its our their`) matches a DIFFERENT filler in the patron's text, so `keep the book longer` matches "keep this book longer". A port must reproduce all three halves of this rule, because two of them are refusals that keep precision:
-
-- **Substitution is allowed.** The run stays contiguous and equal-length; only a filler's identity varies, so a keyword covers no more text than it did before.
-- **Insertion is refused.** Skipping a filler the keyword lacks (so `on kindle` would match "on my kindle") widens the keyword. Measured: it made "the app switched my library on its own and lost my place" match KI-002's `switched library` and hand over an LCP playback workaround for a reading-position complaint.
-- **Elision is refused,** and a keyword with fewer than TWO non-filler tokens gets no variation at all. `notification that` has one content word; letting its trailing `that` — a complementizer, not a determiner — stand in for any other filler collapses it to "notification + <any determiner>", so any patron mentioning a notification strongly matches KI-006. Both refusals exist to keep chaos-qa F-002 closed.
-
-A cross-entry consequence a port inherits: two keywords in DIFFERENT entries that differ only by a filler become the same keyword to the matcher, and the classifier then disambiguates instead of answering. `KeywordCanonicalCollisionTests` asserts no such collision exists.
 
 ### 3.2 Candidate filtering
 
@@ -538,6 +530,37 @@ Several capabilities exist in code but are exercised by zero shipped data. Evalu
 - `internal_reference` (jira / wall_failure / helpspot id arrays): provenance for humans; never read by code.
 - `KBStatus.wontfix` and `.duplicateOf`: no entries. `duplicate_of` is filtered at query time, and only on the category-scoped `entries(matchableFrom:)` path; the category-less path and `wontfix` are not filtered at all ([section 3.2](#32-candidate-filtering)).[^kbentry-schema]
 - `TicketPriority.high` is defined but never assigned (drafts are `.low` on file-anyway, `.normal` on escalations).
+
+### 3.6 The match card's badge
+
+The badge above a match card is a claim about how much to trust the card, and a
+port must derive it from `kind` BEFORE `status`, because the two cases that
+matter most are indistinguishable by status: a `how_to` and a `generic_flow`
+both carry none.
+
+| Entry | Badge |
+|---|---|
+| `generic_flow` (any status) | "Let's narrow it down" |
+| `status: fixed_in` | "Fixed in <version>" |
+| `status: open` + `fixed_in_version` | "Known issue — fix coming in <version>" |
+| `status: open` | "Known issue — workaround available" |
+| `status: user_error` | "Likely a setup mix-up" |
+| `status: wontfix` | "By design" |
+| `status: duplicate_of` | "Tracked" |
+| no status (a `how_to`) | "How to" |
+
+A generic ladder is NOT a how-to. A how-to states a fact the patron asked for; a
+ladder is what the bot shows when it did not recognise the problem, and its body
+opens "Two things worth checking before we send this to support." Badging the
+second as the first makes a failed match read as an answer — observed on device,
+a patron asking how to renew a loan got a "How to" card whose first step was
+"check which library is selected… are your books there?".
+
+The decision lives in `KBMatchBadgePolicy` (TriageBotCore) rather than in the
+SwiftUI card, because `TriageBotUI` sits behind `canImport(UIKit)` and macOS
+`swift test` cannot reach it — the rule would otherwise be untestable. The card
+maps a badge to a string, an SF Symbol and a colour, and reuses the same string
+for its VoiceOver label.
 
 ### Staleness governance
 

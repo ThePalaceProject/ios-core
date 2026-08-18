@@ -74,7 +74,7 @@ struct KBMatchCard: View {
         // Was "Known issue match: <id>" — factually wrong for a how-to or a
         // generic ladder, and it read an internal id aloud. Announce what the
         // card actually claims, in the same words a sighted patron sees.
-        .accessibilityLabel("\(badgePresentation.label). \(entry.userFacingWorkaround)")
+        .accessibilityLabel(badgePresentation.label)
     }
 
     /// Badge presentation. The DECISION lives in TriageBotCore so it can be

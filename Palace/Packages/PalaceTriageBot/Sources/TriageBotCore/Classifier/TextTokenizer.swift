@@ -47,94 +47,19 @@ enum TextTokenizer {
         return out
     }
 
-    /// Determiners and possessives. These vary freely between patrons describing
-    /// the same thing ("on kindle" / "on my kindle", "keep the book longer" /
-    /// "keep this book longer") and carry no diagnostic content of their own.
-    ///
-    /// Pronouns are deliberately absent. "it" reads like filler but is the only
-    /// thing standing between `give it back early` and `give back`, and dropping
-    /// that class widens keywords far more than determiners do.
-    static let fillerTokens: Set<String> = [
-        "a", "an", "the", "this", "that", "these", "those",
-        "my", "your", "his", "her", "its", "our", "their"
-    ]
-
-    /// Token-index ranges where `keyword` occurs inside `text`. Empty when the
-    /// keyword does not occur, or is empty.
+    /// Token-index ranges where `keyword` occurs as a contiguous run inside
+    /// `text`. Empty when the keyword does not occur, or is empty.
     ///
     /// Returns EVERY occurrence, not just the first: a phrase repeated in a long
     /// complaint is still one concept, and leaving the merge to the caller keeps
     /// that decision in one place.
-    ///
-    /// With `allowingFillerVariation` a filler token in the keyword may be
-    /// matched by a DIFFERENT filler token in the text — `keep the book longer`
-    /// matches "keep this book longer", `return the book` matches "return my
-    /// book". The match stays a contiguous, equal-length run; only the identity
-    /// of a filler is allowed to vary.
-    ///
-    /// Two looser rules were implemented, measured, and REJECTED — both widen
-    /// what a keyword covers rather than just tolerating how it is spelled:
-    ///
-    ///  - **Insertion** (skipping a text filler the keyword lacks, so `on
-    ///    kindle` matches "on my kindle"). Measured against the rejection
-    ///    corpus, this made "the app switched my library on its own and lost my
-    ///    place" match KI-002's `switched library` and suggest an LCP playback
-    ///    workaround for what is a reading-position complaint. It bought four
-    ///    paraphrase cells and cost a real misroute.
-    ///  - **Elision** (a keyword filler matching nothing). An audit of all 257
-    ///    shipped keywords found this collapses the STRONG keywords
-    ///    "notification that" / "notifications that" (KI-006) to the bare words,
-    ///    so any patron who typed "notification" would strongly match the
-    ///    hold-desync issue — chaos-qa F-002 rebuilt from scratch.
-    ///
-    /// Both refusals are pinned by `FillerVariationMatchingTests`.
-    ///
-    /// Callers that need the exact-run rule (RemedyDetector, which matches
-    /// destructive-action claims) simply omit the flag.
-    static func matchRanges(
-        of keyword: [String],
-        in text: [String],
-        allowingFillerVariation: Bool = false
-    ) -> [Range<Int>] {
+    static func matchRanges(of keyword: [String], in text: [String]) -> [Range<Int>] {
         guard !keyword.isEmpty, keyword.count <= text.count else { return [] }
-
-        guard allowingFillerVariation else {
-            var ranges: [Range<Int>] = []
-            for start in 0...(text.count - keyword.count) {
-                if Array(text[start..<(start + keyword.count)]) == keyword {
-                    ranges.append(start..<(start + keyword.count))
-                }
-            }
-            return ranges
-        }
-
-        // A keyword thin enough that fillers carry its specificity gets NO
-        // variation. `notification that` has one content word; letting its
-        // trailing `that` stand in for any other filler collapses it to
-        // "notification + <any determiner>", which is the bare-word F-002 the
-        // elision refusal above was written to prevent, reached by a different
-        // route. Both SoD reviewers found this independently on the shipped
-        // catalog: "I never received a notification my book was due" was handed
-        // the KI-006 hold-desync workaround. Enforced at authoring time too, by
-        // `CatalogSchemaLintTests`.
-        guard keyword.filter({ !fillerTokens.contains($0) }).count >= 2 else {
-            return matchRanges(of: keyword, in: text)
-        }
-
-        // Equal-length run, exactly as in strict mode — only filler IDENTITY may
-        // differ, so the window arithmetic is unchanged.
         var ranges: [Range<Int>] = []
         for start in 0...(text.count - keyword.count) {
-            var matched = true
-            for offset in 0..<keyword.count {
-                let kw = keyword[offset], tx = text[start + offset]
-                if kw == tx { continue }
-                // A keyword filler is CONSUMED by a text filler, never elided.
-                if fillerTokens.contains(kw), fillerTokens.contains(tx) { continue }
-                matched = false
-                break
+            if Array(text[start..<(start + keyword.count)]) == keyword {
+                ranges.append(start..<(start + keyword.count))
             }
-            if matched { ranges.append(start..<(start + keyword.count)) }
         }
         return ranges
     }

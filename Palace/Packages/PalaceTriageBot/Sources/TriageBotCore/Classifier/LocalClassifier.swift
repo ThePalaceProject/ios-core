@@ -75,8 +75,7 @@ public struct LocalClassifier: Sendable {
             func hits(_ keyword: String) -> Bool {
                 !TextTokenizer.matchRanges(
                     of: TextTokenizer.tokens(TextNormalizer.normalize(keyword)),
-                    in: textTokens,
-                    allowingFillerVariation: true
+                    in: textTokens
                 ).isEmpty
             }
             let strongMatched = entry.symptomKeywords.filter(hits)
@@ -170,8 +169,10 @@ public struct LocalClassifier: Sendable {
         // Gating on strength instead of count keeps F-002 closed — a weak word
         // alone still cannot suggest, which is what that defect actually was —
         // while letting one decisive phrase through, which is how patrons write.
-        // how_to entries are unaffected: they carry no corroborating keywords, so
-        // every match they can make is strong and their floor stays effectively 1.
+        // how_to entries get the same floor. (An older comment here claimed they
+        // "carry no corroborating keywords" and were therefore unaffected — that
+        // is false for all nine shipped how-tos, and now matters in every
+        // category rather than one, since how-tos are category-agnostic.)
         //
         // The partition is enforced by CatalogSchemaLintTests, so a generic word
         // cannot drift back into `symptom_keywords` and quietly become sufficient.
@@ -276,9 +277,7 @@ public struct LocalClassifier: Sendable {
             // First occurrence only: a concept the patron mentioned once counts
             // once, and a phrase repeated across a long complaint is still one
             // concept.
-            if let first = TextTokenizer.matchRanges(
-                of: kw, in: textTokens, allowingFillerVariation: true
-            ).first {
+            if let first = TextTokenizer.matchRanges(of: kw, in: textTokens).first {
                 ranges.append(first)
             }
         }
