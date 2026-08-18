@@ -218,6 +218,46 @@ final class ParaphraseChipRobustnessTests: XCTestCase {
         }
     }
 
+    /// Per-intent floors, pinned at the values measured when this landed.
+    ///
+    /// The reachability floor above only asserts ≥1 cell per intent, which is
+    /// loose for the four single-chip intents the chip-invariance test skips
+    /// entirely — `audiobook-hang` could fall 6/6 → 1/6 with nothing failing.
+    /// Raised by SoD review, and the objection that stopped me gating the rate
+    /// does not apply here: an authored corpus cannot support a QUALITY claim
+    /// ("the bot answers 70% of real patrons"), but it can support a
+    /// DON'T-REGRESS claim ("this wording answered yesterday and must today").
+    ///
+    /// Raise a floor when reach improves; never lower one to make a build pass.
+    func testPerIntentReach_DoesNotRegress() throws {
+        let floors: [String: Int] = [
+            "renew": 6, "return-early": 4, "add-card": 8, "kindle": 4,
+            "switch-library": 6, "hold-pickup": 6, "notifications": 5,
+            "borrow-limit": 4, "loan-length": 1, "audiobook-hang": 5,
+            "download-stuck": 4, "signin-greyed": 3,
+        ]
+        let kb = KnowledgeBase(catalog: try BundledCatalogSource.loadCatalogSync())
+
+        // Every intent must have a floor, or a new intent silently escapes.
+        XCTAssertEqual(
+            Set(floors.keys), Set(Self.intents.map(\.name)),
+            "intent list and floor table disagree — add the new intent's floor"
+        )
+
+        for intent in Self.intents {
+            let answered = intent.phrasings.reduce(0) { total, phrasing in
+                total + intent.chips.filter {
+                    outcome(phrasing, $0, intent.expected, kb) == .answered
+                }.count
+            }
+            let floor = floors[intent.name] ?? 0
+            XCTAssertGreaterThanOrEqual(
+                answered, floor,
+                "\(intent.name) reach regressed: \(answered) < \(floor) cells"
+            )
+        }
+    }
+
     /// Reported, never asserted — see the type comment. Printed so a regression
     /// in reach shows up in the log even though it cannot fail the build.
     func testReportAnswerRate() throws {

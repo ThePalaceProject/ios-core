@@ -135,6 +135,13 @@ final class HowToCategoryAgnosticTests: XCTestCase {
     /// patron reporting that symptom would pick.
     private static let decisivePhrases: [(text: String, home: KBCategory, entry: String)] = [
         ("It won't open, I just get a blank screen", .reader, "KI-2026-007-lcp-pdf-fail-to-open"),
+        // The longer wording is the one the deleted `StillWins` test used, kept
+        // because it and the short form win on DIFFERENT margins (2 strong
+        // regions vs 1) against the same 9 competing how-tos. My "subsumed"
+        // claim when deleting that test was imprecise: the short form is the
+        // harder contest, but it is not the same input.
+        ("My audiobook won't play. I tap play and nothing happens.", .audiobook,
+         "KI-2026-001-audiobook-first-open-hang"),
         ("I tap play and nothing happens", .audiobook, "KI-2026-001-audiobook-first-open-hang"),
         ("the download is stuck at no progress", .download, "KI-2026-008-download-no-network"),
         ("the sign-in fields are greyed out", .signin, "KI-2026-003-signin-placeholder-contrast"),

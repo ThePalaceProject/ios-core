@@ -138,10 +138,13 @@ final class KBMatchBadgePolicyTests: XCTestCase {
         for entry in entries where entry.resolvedKind == .knownIssue {
             let badge = KBMatchBadgePolicy.badge(for: entry)
             switch entry.status {
-            case .open where entry.fixedInVersion == nil:
-                XCTAssertEqual(badge, .knownIssueWorkaround, "\(entry.id)")
             case .open:
-                XCTAssertEqual(badge, .knownIssueFixComing(version: entry.fixedInVersion!), "\(entry.id)")
+                // No `where fixedInVersion == nil` split: `CatalogSchemaLintTests
+                // .testFixVersionImpliesFixedInStatus` forbids a version on an
+                // `open` entry, so this arm is the only reachable one. The arm
+                // that handled the other case was dead and is gone; the
+                // corresponding CODE branch is covered synthetically above.
+                XCTAssertEqual(badge, .knownIssueWorkaround, "\(entry.id)")
             case .fixedIn:
                 XCTAssertEqual(badge, .fixedIn(version: entry.fixedInVersion ?? "next release"), "\(entry.id)")
             default:

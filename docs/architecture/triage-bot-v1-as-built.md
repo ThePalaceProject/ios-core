@@ -541,9 +541,10 @@ both carry none.
 | Entry | Badge |
 |---|---|
 | `generic_flow` (any status) | "Let's narrow it down" |
-| `status: fixed_in` | "Fixed in <version>" |
-| `status: open` + `fixed_in_version` | "Known issue — fix coming in <version>" |
+| `status: fixed_in` + `fixed_in_version` | "Fixed in &lt;version&gt;" |
+| `status: fixed_in`, no version | "Fixed in next release" |
 | `status: open` | "Known issue — workaround available" |
+| `status: open` + `fixed_in_version` | "Known issue — fix coming in &lt;version&gt;" — **schema-forbidden, defensive only** |
 | `status: user_error` | "Likely a setup mix-up" |
 | `status: wontfix` | "By design" |
 | `status: duplicate_of` | "Tracked" |
@@ -562,11 +563,23 @@ second as the first makes a failed match read as an answer — observed on devic
 a patron asking how to renew a loan got a "How to" card whose first step was
 "check which library is selected… are your books there?".
 
-The decision lives in `KBMatchBadgePolicy` (TriageBotCore) rather than in the
-SwiftUI card, because `TriageBotUI` sits behind `canImport(UIKit)` and macOS
-`swift test` cannot reach it — the rule would otherwise be untestable. The card
-maps a badge to a string, an SF Symbol and a colour, and reuses the same string
-for its VoiceOver label.
+Two rows need care from a porter:
+
+- **`open` + `fixed_in_version` is forbidden by the catalog schema**
+  (`CatalogSchemaLintTests.testFixVersionImpliesFixedInStatus`: a fix version
+  implies `status: fixed_in`). The badge arm exists defensively and is covered by
+  a synthetic test; a port should implement it but must not treat that pairing as
+  a legitimate authoring state.
+- **`fixed_in` with no version is NOT forbidden** — the lint constrains
+  version ⇒ `fixed_in`, not the converse — so the "next release" fallback is
+  genuinely reachable and must be ported.
+
+Both decision and TEXT live in TriageBotCore (`KBMatchBadgePolicy.badge(for:)`
+and `KBMatchBadge.label`) rather than in the SwiftUI card, because `TriageBotUI`
+sits behind `canImport(UIKit)` and macOS `swift test` cannot reach it — a table
+published as contract but defined in the UI layer is a table no test can pin.
+The card decides only the SF Symbol and colour, and renders `badge.label` for
+both the visible badge and the VoiceOver announcement, so the two cannot drift.
 
 ### Staleness governance
 
