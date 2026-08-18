@@ -82,22 +82,23 @@ struct KBMatchCard: View {
     /// `swift test` never sees it. Here we only map a semantic badge to its
     /// presentation, and reuse the label for VoiceOver.
     private var badgePresentation: (label: String, symbol: String, color: Color) {
-        switch KBMatchBadgePolicy.badge(for: entry) {
-        case .fixedIn(let version):
-            return ("Fixed in \(version)", "checkmark.seal.fill", .green)
-        case .knownIssueFixComing(let version):
-            return ("Known issue — fix coming in \(version)", "wrench.and.screwdriver.fill", .orange)
-        case .knownIssueWorkaround:
-            return ("Known issue — workaround available", "exclamationmark.triangle.fill", .orange)
-        case .setupMixUp: return ("Likely a setup mix-up", "info.circle.fill", .blue)
-        case .byDesign: return ("By design", "info.circle", .gray)
-        case .tracked: return ("Tracked", "tag.fill", .gray)
-        case .howTo: return ("How to", "questionmark.circle.fill", .blue)
-        case .narrowingDown:
+        let badge = KBMatchBadgePolicy.badge(for: entry)
+        // Text comes from Core (`KBMatchBadge.label`) so it is testable and the
+        // port shares it; only the symbol and colour are decided here.
+        let (symbol, color): (String, Color) = {
+            switch badge {
+            case .fixedIn:               return ("checkmark.seal.fill", .green)
+            case .knownIssueFixComing:   return ("wrench.and.screwdriver.fill", .orange)
+            case .knownIssueWorkaround:  return ("exclamationmark.triangle.fill", .orange)
+            case .setupMixUp:            return ("info.circle.fill", .blue)
+            case .byDesign:              return ("info.circle", .gray)
+            case .tracked:               return ("tag.fill", .gray)
+            case .howTo:                 return ("questionmark.circle.fill", .blue)
             // A generic ladder, not an answer — must not read as one.
-            // COPY PENDING PRODUCT SIGN-OFF.
-            return ("Let's narrow it down", "arrow.triangle.branch", .gray)
-        }
+            case .narrowingDown:         return ("arrow.triangle.branch", .gray)
+            }
+        }()
+        return (badge.label, symbol, color)
     }
 
     @ViewBuilder private var statusBadge: some View {

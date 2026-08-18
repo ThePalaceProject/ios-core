@@ -18,6 +18,29 @@ public enum KBMatchBadge: Equatable, Sendable {
     case howTo
     /// A generic troubleshooting ladder — NOT an answer. See the policy below.
     case narrowingDown
+
+    /// The patron-visible text. Lives here, not in the SwiftUI card, for two
+    /// reasons: `TriageBotUI` is behind `canImport(UIKit)` so a string defined
+    /// there cannot be tested by macOS `swift test`, and the as-built doc
+    /// publishes this table as PORT CONTRACT — a table no test pins is a table
+    /// the Kotlin port can silently diverge from.
+    ///
+    /// The card renders this string AND announces it to VoiceOver, so the two
+    /// cannot drift apart the way they had (the card announced "Known issue
+    /// match: <entry id>" for every kind, including how-tos and ladders).
+    public var label: String {
+        switch self {
+        case .fixedIn(let version):             return "Fixed in \(version)"
+        case .knownIssueFixComing(let version): return "Known issue — fix coming in \(version)"
+        case .knownIssueWorkaround:             return "Known issue — workaround available"
+        case .setupMixUp:                       return "Likely a setup mix-up"
+        case .byDesign:                         return "By design"
+        case .tracked:                          return "Tracked"
+        case .howTo:                            return "How to"
+        // COPY PENDING PRODUCT SIGN-OFF.
+        case .narrowingDown:                    return "Let's narrow it down"
+        }
+    }
 }
 
 /// Chooses the badge for a KB entry.

@@ -152,6 +152,9 @@ final class ParaphraseChipRobustnessTests: XCTestCase {
                 let results = intent.chips.map {
                     ($0, outcome(phrasing, $0, intent.expected, kb))
                 }
+                // Only compares chips against each other. A phrasing that is
+                // blind on EVERY chip is not a chip-sensitivity failure and is
+                // covered by the per-intent floor below instead.
                 guard results.contains(where: { $0.1 == .answered }) else { continue }
                 for (chip, result) in results where result == .blind {
                     XCTFail(
@@ -162,6 +165,34 @@ final class ParaphraseChipRobustnessTests: XCTestCase {
                     )
                 }
             }
+        }
+    }
+
+    /// The floor that stops the chip-invariance test above from weakening
+    /// itself. That test compares chips against each other, so a phrasing that
+    /// regresses to BLIND on every chip satisfies it vacuously — the worst
+    /// outcome would have been the quietest. Raised by SoD review.
+    ///
+    /// Asserted per intent rather than per phrasing: a single phrasing may
+    /// legitimately be beyond the catalog's wording (several are, and they are
+    /// listed as known gaps), but an INTENT the catalog answers must stay
+    /// reachable by at least one of the phrasings a patron might use.
+    func testEveryIntent_RemainsReachable_ByAtLeastOnePhrasing() throws {
+        let kb = KnowledgeBase(catalog: try BundledCatalogSource.loadCatalogSync())
+
+        for intent in Self.intents {
+            let answered = intent.phrasings.contains { phrasing in
+                intent.chips.contains { chip in
+                    outcome(phrasing, chip, intent.expected, kb) == .answered
+                }
+            }
+            XCTAssertTrue(
+                answered,
+                """
+                No phrasing of "\(intent.name)" reaches \(intent.expected) on any chip. \
+                The catalog holds the answer and no patron wording in this corpus finds it.
+                """
+            )
         }
     }
 
@@ -206,5 +237,14 @@ final class ParaphraseChipRobustnessTests: XCTestCase {
             print(String(format: "  %-16s %d/%d", (intent.name as NSString).utf8String!, iAnswered, iCells))
         }
         print("  TOTAL \(answered)/\(cells)")
+
+        // The rate is deliberately NOT asserted (see the type comment). The
+        // COVERAGE is, because otherwise this reporter could quietly measure
+        // nothing — a corpus that stopped evaluating would print 0/0 and read
+        // as healthy. Flagged as MISSING-001 by `lint-test-quality.py`, which
+        // was right: a test with no assertion cannot fail.
+        let expectedCells = Self.intents.reduce(0) { $0 + $1.phrasings.count * $1.chips.count }
+        XCTAssertEqual(cells, expectedCells, "the corpus did not evaluate every phrasing x chip cell")
+        XCTAssertFalse(Self.intents.isEmpty, "empty corpus reports a perfect score")
     }
 }

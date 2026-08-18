@@ -26,26 +26,31 @@ final class DuplicateEntryExclusionTests: XCTestCase {
         ]))
     }
 
-    func testDuplicateEntry_IsNotACandidate_ForItsOwnCategory() {
-        let entries = kb(status: .duplicateOf, kind: nil).entries(matchableFrom: .library)
-        XCTAssertTrue(entries.isEmpty, "a duplicate_of entry must never be offered to a patron")
-    }
-
-    /// The how-to widening must not smuggle duplicates in through the back door:
-    /// a duplicated how-to is now a candidate in EVERY category, so if the
-    /// duplicate guard were dropped it would be wrong six times over.
-    func testDuplicateHowTo_IsNotACandidate_InAnyCategory() {
-        let base = kb(status: .duplicateOf, kind: .howTo)
-        for category in [KBCategory.audiobook, .reader, .signin, .download, .library, .other] {
-            XCTAssertTrue(
-                base.entries(matchableFrom: category).isEmpty,
-                "a duplicate_of how-to leaked into \(category)"
-            )
+    /// Both kinds, every category. A duplicated KNOWN ISSUE must not surface in
+    /// its own category, and a duplicated HOW-TO must not surface in any of
+    /// them — the widening makes how-tos candidates everywhere, so dropping the
+    /// duplicate guard would be wrong six times over rather than once.
+    func testDuplicateEntry_IsNeverACandidate_ForEitherKind_InAnyCategory() {
+        for kind in [KBKind.howTo, nil] {
+            let base = kb(status: .duplicateOf, kind: kind)
+            let label = kind == .howTo ? "how-to" : "known-issue"
+            for category in KBCategory.allCases {
+                XCTAssertTrue(
+                    base.entries(matchableFrom: category).isEmpty,
+                    "a duplicate_of \(label) leaked into \(category)"
+                )
+            }
         }
     }
 
     /// Control: a non-duplicate entry in the same shape IS a candidate, so the
     /// assertions above cannot pass by the builder simply producing nothing.
+    ///
+    /// `lint-test-quality.py` flags this SHALLOW-001 (one assertion, few
+    /// lines). Kept as-is deliberately: a control's job is to vary exactly one
+    /// thing from the test it controls, and padding it with unrelated
+    /// assertions would weaken that, not strengthen it. The heuristic cannot
+    /// see the pairing.
     func testNonDuplicateEntry_IsStillACandidate() {
         let entries = kb(status: .open, kind: nil).entries(matchableFrom: .library)
         XCTAssertEqual(entries.map(\.id), ["DUP-1"])

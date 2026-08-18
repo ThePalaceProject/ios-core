@@ -53,11 +53,14 @@ final class HowToCategoryAgnosticTests: XCTestCase {
 
     /// HT-008 is filed under `library`, but "where do I enter my card" is a
     /// sign-in question to anyone typing it.
-    func testAddCardQuestion_IsAnswered_UnderSignIn() throws {
-        XCTAssertEqual(
-            try decision("Where do I enter my library card?", .signin),
-            .suggest(entryId: "HT-2026-008-add-library-card")
-        )
+    func testAddCardQuestion_IsAnswered_FromEveryPlausibleChip() throws {
+        for category in [KBCategory.signin, .library, .other] {
+            XCTAssertEqual(
+                try decision("Where do I enter my library card?", category),
+                .suggest(entryId: "HT-2026-008-add-library-card"),
+                "chip: \(category)"
+            )
+        }
     }
 
     /// The misroute this fix closes. Under `library` the notifications how-to was
@@ -91,33 +94,50 @@ final class HowToCategoryAgnosticTests: XCTestCase {
     /// rather than "fall back across all categories when nothing matches":
     /// "won't open" is a decisive phrase for the LCP PDF entry, so a blanket
     /// fallback would hand a PDF workaround to an audiobook patron.
-    func testKnownIssue_DoesNotLeakAcrossCategories() throws {
-        // Positive assertion: this text has no audiobook entry to match, so the
-        // ONLY correct outcome is a non-suggestion. Written as "must not suggest
-        // anything" rather than "must not suggest KI-007", which would still
-        // pass if it started suggesting some other unrelated entry.
-        let result = try decision("It won't open, I just get a blank screen", .audiobook)
-        if case .suggest(let id) = result {
-            XCTFail("no audiobook entry describes this, yet it suggested \(id)")
+    /// Every decisive phrase, against every WRONG category. Previously two spot
+    /// checks of one phrase under one chip each — which samples two cells of the
+    /// space and would miss a leak into any other. Widened after SoD review
+    /// flagged them as too shallow to catch a regression.
+    ///
+    /// Each phrase is decisive for a known issue in one category; under every
+    /// OTHER category the only correct outcome is a non-suggestion.
+    func testKnownIssue_DoesNotLeakIntoAnyOtherCategory() throws {
+        for probe in Self.decisivePhrases {
+            for category in KBCategory.allCases where category != probe.home {
+                if case .suggest(let id) = try decision(probe.text, category) {
+                    XCTFail(
+                        "\"\(probe.text)\" is decisive for \(probe.home) but suggested "
+                            + "\(id) under \(category). Known issues must stay chip-scoped."
+                    )
+                }
+            }
         }
     }
 
-    /// The symmetric guard: a decisive AUDIOBOOK phrase must not reach someone
-    /// who said they have a downloading problem.
-    func testKnownIssue_AudiobookPhrase_DoesNotReachDownloadCategory() throws {
-        let result = try decision("I tap play and nothing happens", .download)
-        if case .suggest(let id) = result {
-            XCTFail("an audiobook phrase reached the download chip as \(id)")
+    /// Positive control for the table above. Without it, the leak test would
+    /// pass just as well if the classifier stopped suggesting anything at all.
+    ///
+    /// Also the guard that making how-tos ubiquitous did not let one outrank a
+    /// real symptom in its own category: a patron describing a broken audiobook
+    /// must still get the known issue, not a formats FAQ. That was a separate
+    /// single-assertion test until this table subsumed it.
+    func testDecisivePhrases_StillAnswer_UnderTheirOwnCategory() throws {
+        for probe in Self.decisivePhrases {
+            XCTAssertEqual(
+                try decision(probe.text, probe.home),
+                .suggest(entryId: probe.entry),
+                probe.text
+            )
         }
     }
 
-    /// Making how-tos ubiquitous must not let them outrank a real symptom in
-    /// their own category — a patron describing a broken audiobook still gets
-    /// the known issue, not a formats FAQ.
-    func testKnownIssue_StillWins_AgainstNowUbiquitousHowTos() throws {
-        XCTAssertEqual(
-            try decision("My audiobook won't play. I tap play and nothing happens.", .audiobook),
-            .suggest(entryId: "KI-2026-001-audiobook-first-open-hang")
-        )
-    }
+    /// Phrases that decisively identify one known issue, with the category a
+    /// patron reporting that symptom would pick.
+    private static let decisivePhrases: [(text: String, home: KBCategory, entry: String)] = [
+        ("It won't open, I just get a blank screen", .reader, "KI-2026-007-lcp-pdf-fail-to-open"),
+        ("I tap play and nothing happens", .audiobook, "KI-2026-001-audiobook-first-open-hang"),
+        ("the download is stuck at no progress", .download, "KI-2026-008-download-no-network"),
+        ("the sign-in fields are greyed out", .signin, "KI-2026-003-signin-placeholder-contrast"),
+    ]
+
 }
