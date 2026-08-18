@@ -15,7 +15,7 @@ import PalaceBookModel
 import PalaceBookRegistry
 
 final class MockBackgroundDownloadDelegate: BackgroundDownloadHandlerDelegate {
-    let stateManager = DownloadStateManager()
+    let stateManager: DownloadStateManager
     let progressReporter: DownloadProgressReporter
     let bookRegistry: TPPBookRegistryProvider
     let userAccount: TPPUserAccount
@@ -30,10 +30,19 @@ final class MockBackgroundDownloadDelegate: BackgroundDownloadHandlerDelegate {
     var fulfillLCPCalls: [(fileUrl: URL, book: TPPBook)] = []
     var fileUrls: [String: URL] = [:]
 
+    /// PP-4978: accounts this spy will return from `userAccount(forCapturedId:)`.
+    /// Unset ids fall back to `userAccount`, mirroring the production resolver's
+    /// no-record behaviour.
+    var accountsForCapturedId: [String: TPPUserAccount] = [:]
+
     init(
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistryMock(),
-        userAccount: TPPUserAccount = TPPUserAccountMock()
+        userAccount: TPPUserAccount = TPPUserAccountMock(),
+        /// Injectable so a suite can point the durable started-task store at a
+        /// per-test file instead of the process-wide default.
+        stateManager: DownloadStateManager = DownloadStateManager()
     ) {
+        self.stateManager = stateManager
         self.bookRegistry = bookRegistry
         self.userAccount = userAccount
         self.tokenInterceptor = TokenRefreshInterceptor()
@@ -43,6 +52,10 @@ final class MockBackgroundDownloadDelegate: BackgroundDownloadHandlerDelegate {
                 isVoiceOverRunning: { false }
             )
         )
+    }
+
+    func userAccount(forCapturedId capturedAccountId: String) -> TPPUserAccount {
+        accountsForCapturedId[capturedAccountId] ?? userAccount
     }
 
     func handleDownloadCompletion(session: URLSession, task: URLSessionDownloadTask, location: URL) async {

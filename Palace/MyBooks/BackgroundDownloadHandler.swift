@@ -21,6 +21,11 @@ protocol BackgroundDownloadHandlerDelegate: AnyObject {
     var progressReporter: DownloadProgressReporter { get }
     var bookRegistry: TPPBookRegistryProvider { get }
     var userAccount: TPPUserAccount { get }
+    /// Resolves a specific account by its captured id. PP-4978: follow-up work on
+    /// a download must use the account the download STARTED under, which is not
+    /// necessarily `userAccount` (the current one) after a library switch.
+    /// `MyBooksDownloadCenter` already implements this — no new production code.
+    func userAccount(forCapturedId capturedAccountId: String) -> TPPUserAccount
     var tokenInterceptor: TokenRefreshInterceptor { get }
 
     func handleDownloadCompletion(session: URLSession, task: URLSessionDownloadTask, location: URL) async
@@ -175,6 +180,15 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
                     await stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: info)
                 }
             } else if AppContainer.production().accountsManager.currentUserAccount.isTokenRefreshRequired() {
+                // PP-4978 deliberately does NOT redirect this to the started-for
+                // account. Doing so looked correct and is not: the refresh rebuilds
+                // every queued request through `TPPNetworkExecutor.request(for:)`,
+                // whose one-argument overload resolves `accountId: nil` — the
+                // CURRENT account — so the rebuilt requests carry the current
+                // library's bearer regardless of which account was refreshed.
+                // Fixing the decision without that would move the leak, not close
+                // it. Tracked as PP-4986, which must carry the account through
+                // that rebuild before this decision can safely follow.
                 NSLog("Authentication might be needed after all")
                 AppContainer.production().networkExecutor.refreshTokenAndResume(task: task)
                 return
@@ -225,6 +239,53 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
         return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
     }
 
+    /// The account whose credentials a download's re-issued request should use —
+    /// the account it was STARTED under, not whichever is current now.
+    ///
+    /// Resolved from the durable started-task record, keyed by book id.
+    ///
+    /// KNOWN BOUND on that record, stated because it is the premise this rests on:
+    /// it is written at download start AND rewritten on each transfer-retry
+    /// re-issue (`persistStartedTaskRecord`, called from `addDownloadTask` and
+    /// from the retry path), and `DownloadTaskPersistence.record` upserts by book
+    /// id. So a transfer retry that happens AFTER a library switch overwrites the
+    /// captured account with the then-current one, and this resolver would then
+    /// return that. It is a narrowing, not a guarantee: the record is the best
+    /// available approximation of "the account this download started under", not a
+    /// true capture of it. Closing that needs the retry to preserve the original
+    /// account, which is out of scope here.
+    ///
+    /// Degrades to `delegate.userAccount` — today's
+    /// behaviour — when there is no record or its account is empty, so this can
+    /// only ever narrow the set of requests carrying the wrong library's
+    /// credential via THOSE ARMS — never widen it. Scoped deliberately: the
+    /// retry bound above admits one narrow widening sequence (start under A,
+    /// switch to B, transient retry rewrites the record to B, switch back to A,
+    /// re-issue then resolves B where today's current-account read would have
+    /// resolved A). Two switches plus an intervening retry, against a defect
+    /// that fires on one switch — strongly narrowing on net, but not an
+    /// absolute. The start path writes
+    /// `account: currentAccountID ?? ""`, so the empty case is real, not defensive.
+    ///
+    /// Same two-hop shape as the challenge-side resolver PP-4969 added; keyed by
+    /// book rather than task because a re-issued task has no record of its own.
+    ///
+    /// Takes the delegate rather than reading `self.delegate`: every call site has
+    /// already unwrapped it, so there is no nil arm to invent a fallback for — and
+    /// the fallback an earlier draft used reached `AppContainer.production()` from
+    /// a collaborator, which is the composition-root rule this project holds.
+    func startedForAccount(for book: TPPBook, delegate: BackgroundDownloadHandlerDelegate) -> TPPUserAccount {
+        guard let startedAccountID = delegate.stateManager
+            .persistedRecords()
+            .first(where: { $0.bookID == book.identifier })?
+            .account,
+            !startedAccountID.isEmpty
+        else {
+            return delegate.userAccount
+        }
+        return delegate.userAccount(forCapturedId: startedAccountID)
+    }
+
     /// Shared follow-up step for both OPDS-entry XML and OPDS2 JSON publication
     /// paths. Given a book whose `defaultAcquisition` resolves to a direct
     /// content URL (not another opds-catalog), this swaps the original task
@@ -264,7 +325,10 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
         let newRights = detectRightsManagement(from: acquisition.type)
 
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
-        if let token = delegate.userAccount.authToken {
+        // PP-4978: the account this download STARTED under. Keyed on
+        // `originalBook` because the record was written under it at download start;
+        // the follow-up may carry an updated book.
+        if let token = startedForAccount(for: originalBook, delegate: delegate).authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 

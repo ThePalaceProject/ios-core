@@ -145,7 +145,13 @@ enum DownloadReconciliation {
 /// Crash-durable mirror of the in-flight download records. Persists to its OWN
 /// JSON file in Application Support — deliberately NOT the registry file (WS-B
 /// owns that). The in-memory `SafeDictionary`s in `DownloadStateManager` remain
-/// the hot cache; this cold store is consulted only at launch reconciliation.
+/// the hot cache. This store was originally consulted only at launch
+/// reconciliation; as of PP-4978 it is ALSO read on the download path, to
+/// recover which account a download was started under when re-issuing its
+/// request (`BackgroundDownloadHandler.startedForAccount(for:delegate:)`).
+/// That read is once per re-issue, not per progress callback, but it is no
+/// longer launch-only — a change to this file's read cost now has a runtime
+/// consumer.
 ///
 /// `@unchecked Sendable`: the sole mutable state is the on-disk file, guarded by
 /// `lock`; every accessor takes the lock for the read-modify-write.
