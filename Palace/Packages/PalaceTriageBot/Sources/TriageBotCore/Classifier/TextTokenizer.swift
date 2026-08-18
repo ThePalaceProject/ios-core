@@ -108,6 +108,19 @@ enum TextTokenizer {
             return ranges
         }
 
+        // A keyword thin enough that fillers carry its specificity gets NO
+        // variation. `notification that` has one content word; letting its
+        // trailing `that` stand in for any other filler collapses it to
+        // "notification + <any determiner>", which is the bare-word F-002 the
+        // elision refusal above was written to prevent, reached by a different
+        // route. Both SoD reviewers found this independently on the shipped
+        // catalog: "I never received a notification my book was due" was handed
+        // the KI-006 hold-desync workaround. Enforced at authoring time too, by
+        // `CatalogSchemaLintTests`.
+        guard keyword.filter({ !fillerTokens.contains($0) }).count >= 2 else {
+            return matchRanges(of: keyword, in: text)
+        }
+
         // Equal-length run, exactly as in strict mode — only filler IDENTITY may
         // differ, so the window arithmetic is unchanged.
         var ranges: [Range<Int>] = []

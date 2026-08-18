@@ -68,11 +68,19 @@ final class HowToCategoryAgnosticTests: XCTestCase {
     /// handing over the desync workaround is not.
     func testNotificationQuestion_UnderLibrary_IsNotHandedTheHoldDesyncWorkaround() throws {
         let result = try decision("Can I get notified when my hold is ready?", .library)
-        if case .suggest(let id) = result {
-            XCTAssertNotEqual(
-                id, "KI-2026-006-hold-ready-desync",
-                "a how-to question was answered with a known issue's workaround"
+        // Asserted positively. An `if case .suggest` guard would pass vacuously
+        // on escalate/disambiguate, so it could not tell "we fixed the misroute"
+        // apart from "the classifier stopped answering at all".
+        switch result {
+        case .suggest(let id):
+            XCTAssertEqual(id, "HT-2026-004-notifications", "answered with the wrong entry")
+        case .disambiguate(let candidates):
+            XCTAssertTrue(
+                candidates.contains("HT-2026-004-notifications"),
+                "asking is acceptable, but the how-to must be one of the options"
             )
+        case .escalate:
+            XCTFail("the catalog answers this; escalating is a reach regression")
         }
     }
 
@@ -84,12 +92,13 @@ final class HowToCategoryAgnosticTests: XCTestCase {
     /// "won't open" is a decisive phrase for the LCP PDF entry, so a blanket
     /// fallback would hand a PDF workaround to an audiobook patron.
     func testKnownIssue_DoesNotLeakAcrossCategories() throws {
+        // Positive assertion: this text has no audiobook entry to match, so the
+        // ONLY correct outcome is a non-suggestion. Written as "must not suggest
+        // anything" rather than "must not suggest KI-007", which would still
+        // pass if it started suggesting some other unrelated entry.
         let result = try decision("It won't open, I just get a blank screen", .audiobook)
         if case .suggest(let id) = result {
-            XCTAssertNotEqual(
-                id, "KI-2026-007-lcp-pdf-fail-to-open",
-                "a reader-category known issue reached an audiobook patron"
-            )
+            XCTFail("no audiobook entry describes this, yet it suggested \(id)")
         }
     }
 
@@ -98,7 +107,7 @@ final class HowToCategoryAgnosticTests: XCTestCase {
     func testKnownIssue_AudiobookPhrase_DoesNotReachDownloadCategory() throws {
         let result = try decision("I tap play and nothing happens", .download)
         if case .suggest(let id) = result {
-            XCTAssertNotEqual(id, "KI-2026-001-audiobook-first-open-hang")
+            XCTFail("an audiobook phrase reached the download chip as \(id)")
         }
     }
 

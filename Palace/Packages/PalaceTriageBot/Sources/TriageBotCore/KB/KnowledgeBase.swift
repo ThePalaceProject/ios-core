@@ -56,15 +56,6 @@ public struct KnowledgeBase: Sendable {
         catalog.entries.first { $0.id == id }
     }
 
-    /// Entries in a given category that are still relevant to surface — i.e.
-    /// not duplicates and not in `wontfix` (unless we ever want to explain
-    /// "we won't fix this and here's why", but Phase 1 hides them).
-    public func entries(in category: KBCategory) -> [KBEntry] {
-        catalog.entries.filter { entry in
-            entry.category == category && entry.status != .duplicateOf
-        }
-    }
-
     /// Everything a patron who picked `category` should be matched against:
     /// that category's entries, PLUS every how-to regardless of category.
     ///
@@ -82,7 +73,7 @@ public struct KnowledgeBase: Sendable {
     /// cross-category fallback was the alternative and is unsafe, because
     /// decisive phrases collide across areas ("won't open" belongs to the LCP
     /// PDF entry but is a perfectly natural thing to say about an audiobook).
-    public func entries(matchableFrom category: KBCategory) -> [KBEntry] {
+    func entries(matchableFrom category: KBCategory) -> [KBEntry] {
         catalog.entries.filter { entry in
             guard entry.status != .duplicateOf else { return false }
             return entry.category == category || entry.resolvedKind == .howTo

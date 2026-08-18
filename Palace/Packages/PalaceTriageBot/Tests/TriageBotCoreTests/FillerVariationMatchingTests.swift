@@ -78,6 +78,42 @@ final class FillerVariationMatchingTests: XCTestCase {
         XCTAssertFalse(matches("notifications that", in: "i turned on notifications"))
     }
 
+    /// The SoD-review regression. Both reviewers independently found that
+    /// `"that"` in `fillerTokens` is a COMPLEMENTIZER in the only two shipped
+    /// keywords that use it (`notification that` / `notifications that`,
+    /// KI-006), not a determiner. Substitution therefore collapsed them to
+    /// "notification + <any determiner>" — the bare-word F-002 outcome the
+    /// elision refusal was written to prevent, reached by another route.
+    ///
+    /// Fixed structurally rather than by deleting `"that"` from the set: a
+    /// keyword with fewer than two CONTENT tokens gets no variation at all, so
+    /// the next thin keyword someone authors is safe without anyone
+    /// remembering this incident. `"that"` stays usable as a real determiner
+    /// ("keep that book longer"), which deleting it would have cost.
+    func testThinKeyword_GetsNoVariation_SoAComplementizerCannotBecomeAWildcard() throws {
+        for text in [
+            "I never received a notification my book was due",
+            "Can I get a notification the day before my book is due?",
+            "I turned off notifications the other week and now my holds are a mess",
+        ] {
+            let r = LocalClassifier().classify(
+                userText: text, category: .library, context: nil, knowledgeBase: try kb()
+            )
+            if case .suggest(let id) = r.decision {
+                XCTAssertNotEqual(
+                    id, "KI-2026-006-hold-ready-desync",
+                    "\"\(text)\" was handed the hold-desync workaround"
+                )
+            }
+        }
+    }
+
+    /// The variation a thin keyword must still make: `that` as a genuine
+    /// determiner, in a keyword with enough content to carry itself.
+    func testThatIsStillUsable_AsARealDeterminer() {
+        XCTAssertTrue(matches("keep the book longer", in: "i want to keep that book longer"))
+    }
+
     /// End-to-end version of the same guard, through the real classifier and
     /// catalog: mentioning notifications must not produce the desync workaround.
     func testMentioningNotifications_IsNotHandedTheHoldDesyncWorkaround() throws {

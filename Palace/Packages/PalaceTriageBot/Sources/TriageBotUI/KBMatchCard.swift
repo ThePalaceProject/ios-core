@@ -71,31 +71,37 @@ struct KBMatchCard: View {
         .background(BotUI.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: BotUI.cardCornerRadius, style: .continuous))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Known issue match: \(entry.id)")
+        // Was "Known issue match: <id>" — factually wrong for a how-to or a
+        // generic ladder, and it read an internal id aloud. Announce what the
+        // card actually claims, in the same words a sighted patron sees.
+        .accessibilityLabel("\(badgePresentation.label). \(entry.userFacingWorkaround)")
+    }
+
+    /// Badge presentation. The DECISION lives in TriageBotCore so it can be
+    /// tested — this target is behind `canImport(UIKit)` and macOS
+    /// `swift test` never sees it. Here we only map a semantic badge to its
+    /// presentation, and reuse the label for VoiceOver.
+    private var badgePresentation: (label: String, symbol: String, color: Color) {
+        switch KBMatchBadgePolicy.badge(for: entry) {
+        case .fixedIn(let version):
+            return ("Fixed in \(version)", "checkmark.seal.fill", .green)
+        case .knownIssueFixComing(let version):
+            return ("Known issue — fix coming in \(version)", "wrench.and.screwdriver.fill", .orange)
+        case .knownIssueWorkaround:
+            return ("Known issue — workaround available", "exclamationmark.triangle.fill", .orange)
+        case .setupMixUp: return ("Likely a setup mix-up", "info.circle.fill", .blue)
+        case .byDesign: return ("By design", "info.circle", .gray)
+        case .tracked: return ("Tracked", "tag.fill", .gray)
+        case .howTo: return ("How to", "questionmark.circle.fill", .blue)
+        case .narrowingDown:
+            // A generic ladder, not an answer — must not read as one.
+            // COPY PENDING PRODUCT SIGN-OFF.
+            return ("Let's narrow it down", "arrow.triangle.branch", .gray)
+        }
     }
 
     @ViewBuilder private var statusBadge: some View {
-        // The decision lives in TriageBotCore so it can be tested — this target
-        // is behind `canImport(UIKit)` and macOS `swift test` never sees it.
-        // Here we only map a semantic badge to its presentation.
-        let (label, symbol, color): (String, String, Color) = {
-            switch KBMatchBadgePolicy.badge(for: entry) {
-            case .fixedIn(let version):
-                return ("Fixed in \(version)", "checkmark.seal.fill", .green)
-            case .knownIssueFixComing(let version):
-                return ("Known issue — fix coming in \(version)", "wrench.and.screwdriver.fill", .orange)
-            case .knownIssueWorkaround:
-                return ("Known issue — workaround available", "exclamationmark.triangle.fill", .orange)
-            case .setupMixUp: return ("Likely a setup mix-up", "info.circle.fill", .blue)
-            case .byDesign: return ("By design", "info.circle", .gray)
-            case .tracked: return ("Tracked", "tag.fill", .gray)
-            case .howTo: return ("How to", "questionmark.circle.fill", .blue)
-            case .narrowingDown:
-                // A generic ladder, not an answer — must not read as one.
-                // COPY PENDING PRODUCT SIGN-OFF.
-                return ("Let's narrow it down", "arrow.triangle.branch", .gray)
-            }
-        }()
+        let (label, symbol, color) = badgePresentation
         Label {
             Text(label)
                 .font(.caption.weight(.semibold))
