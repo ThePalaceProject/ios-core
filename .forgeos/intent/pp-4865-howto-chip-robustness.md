@@ -23,7 +23,8 @@ the KI-006 hold-desync workaround.
 - How-to entries are matched from EVERY category; known issues stay scoped to
   the selected chip. `KnowledgeBase.entries(matchableFrom:)` replaces
   `entries(in:)`, which is deleted (it had one caller, and its semantics are the
-  defect).
+  defect). Net public-surface change is a reduction: `entries(in:)` was `public`;
+  its replacement is `internal`, since its only consumer is in the same module.
 - The match card's badge is derived from `kind` before `status`, so a
   `generic_flow` ladder no longer badges as "How to". The decision moves to
   `KBMatchBadgePolicy` in TriageBotCore, because `TriageBotUI` is behind

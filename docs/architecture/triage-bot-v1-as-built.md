@@ -549,6 +549,12 @@ both carry none.
 | `status: duplicate_of` | "Tracked" |
 | no status (a `how_to`) | "How to" |
 
+That last row is only unambiguous because `CatalogSchemaLintTests` forces every
+`known_issue` to declare a status. The code arm is kind-agnostic
+(`resolvedKind = kind ?? .knownIssue`), so a port that adopts the badge table
+WITHOUT that lint will badge a status-less known issue "How to" — reintroducing
+the mislabel this section exists to prevent. Port the lint with the table.
+
 A generic ladder is NOT a how-to. A how-to states a fact the patron asked for; a
 ladder is what the bot shows when it did not recognise the problem, and its body
 opens "Two things worth checking before we send this to support." Badging the
