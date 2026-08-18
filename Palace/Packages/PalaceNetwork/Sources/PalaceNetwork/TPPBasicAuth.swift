@@ -32,6 +32,11 @@ import Foundation
     /// - Parameters:
     ///   - challenge: The authentication challenge to respond to.
     ///   - completion: Always called, synchronously.
+    /// COUPLED (PP-4969): `MyBooksDownloadCenter+ChallengeAccount.swift` skips its
+    /// account lookup for any protection space this switch answers WITHOUT
+    /// reading `credentialsProvider` — today everything except HTTP basic. Adding
+    /// a credential-consuming space here means updating that guard too, or the
+    /// download path will answer the new space with the wrong account.
     @objc public func handleChallenge(_ challenge: URLAuthenticationChallenge,
                                       completion: BasicAuthCompletionHandler) {
         switch challenge.protectionSpace.authenticationMethod {

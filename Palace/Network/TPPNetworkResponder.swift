@@ -40,7 +40,10 @@ private struct TPPNetworkTaskInfo {
 /// crosses concurrency boundaries. All mutable state is guarded: `taskInfo` by the
 /// serial `taskInfoQueue`, `retriedURLs` and `tokenRefreshAttempts` by
 /// `retriedURLsLock`; `credentialsProvider` is a `weak var` written once in `init`
-/// and only read thereafter; the remaining stored members are immutable `let`s.
+/// and only read thereafter; the remaining stored members are immutable `let`s —
+/// including `fallbackCredentialsProvider`, a non-`Sendable` closure written once
+/// in `init` and only invoked (never reassigned), and
+/// `wasSuppliedCredentialsProvider`, a `Bool` captured at init (PP-4969).
 /// Documented invariant, not a bare waiver. (Critical-path: isolation via existing
 /// locks only — no broadening of the 401/auth decision.)
 class TPPNetworkResponder: NSObject, @unchecked Sendable {
@@ -117,13 +120,68 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
     /// caching headers. The default is `false`.
     /// - Parameter credentialsProvider: The object providing the credentials
     /// to respond to an authentication challenge.
+    /// - Parameter fallbackCredentialsProvider: Overrides the credentials used
+    /// when NO provider was supplied at all — the deliberate configuration at
+    /// every call site but `AccountDetailViewModel`. Injectable so that path can
+    /// be exercised without warming the production container (PP-4969).
+    ///
+    /// `nil` (the default) means "resolve the current account", and that read
+    /// stays where it always was: inside the challenge callback.
+    ///
+    /// The hazard being avoided, stated precisely because an earlier version of
+    /// this comment stated it WRONGLY: `AppContainer._cachedValue()` holds an
+    /// `OSAllocatedUnfairLock` while it BUILDS the container, and the container
+    /// builds this object, so any container read that EXECUTES during `init`
+    /// re-enters that non-recursive lock and aborts the process at launch
+    /// (`_os_unfair_lock_recursive_abort`). A default argument that CALLS
+    /// `production()` — a value-typed default, no braces — does exactly that,
+    /// because value defaults are evaluated at the call site. A default that
+    /// returns a CLOSURE which calls it later does not; the generator only makes
+    /// the closure. That distinction was verified three ways: two standalone
+    /// reproductions during review, and a clean-build run of this file with the
+    /// closure default restored, which passed.
+    ///
+    /// A live example of the dangerous form is `TPPNetworkExecutor.swift`'s
+    /// DI-friendly init, whose `accountsManager` default calls
+    /// `AppContainer.production()`. It is safe today only because overload
+    /// ranking prefers the `@objc` init for the container's own call — safe by
+    /// accident, not by design.
+    ///
+    /// `nil` is used here regardless: it keeps container reads off every
+    /// construction path by shape rather than by argument-evaluation rules, which
+    /// is the property worth having when the container builds you.
     init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
-         useFallbackCaching: Bool = false) {
+         useFallbackCaching: Bool = false,
+         fallbackCredentialsProvider: (() -> NYPLBasicAuthCredentialsProvider)? = nil) {
         self.taskInfo = [Int: TPPNetworkTaskInfo]()
         self.useFallbackCaching = useFallbackCaching
         self.credentialsProvider = credentialsProvider
+        // PP-4969: a nil `credentialsProvider` READ LATER cannot distinguish
+        // "released since" from "never supplied", and the two must be answered
+        // differently. Recorded here, where the difference is still knowable.
+        self.wasSuppliedCredentialsProvider = credentialsProvider != nil
+        self.fallbackCredentialsProvider = fallbackCredentialsProvider
         super.init()
     }
+
+    /// True when a credentials provider was supplied at construction. See the
+    /// challenge callback for why this cannot be inferred later.
+    private let wasSuppliedCredentialsProvider: Bool
+
+    /// See the `init` parameter doc. `nil` means "use the current account".
+    ///
+    /// Obligation on whoever injects one: it is invoked from the auth-challenge
+    /// callback, which is `nonisolated` and runs on the cooperative pool, so the
+    /// closure must be safe to call off any particular executor. Not enforced by
+    /// the type (it is not `@Sendable` — see below), so it is stated here.
+    ///
+    /// Covered by the class's `@unchecked Sendable`
+    /// conformance on the same terms as its other stored members: `let`-bound,
+    /// written once in `init`, only ever read. NOT `@Sendable`, because the value
+    /// it returns is a `NYPLBasicAuthCredentialsProvider` existential — which is
+    /// not `Sendable` — and requiring it would force every caller to launder a
+    /// credentials object through an unchecked box to inject one.
+    private let fallbackCredentialsProvider: (() -> NYPLBasicAuthCredentialsProvider)?
 
     // MARK: - Retry Tracking
 
@@ -798,8 +856,38 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
         task: URLSessionTask,
         didReceive challenge: URLAuthenticationChallenge
     ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        let credsProvider = credentialsProvider ?? AppContainer.production().accountsManager.currentUserAccount
-        return TPPBasicAuth(credentialsProvider: credsProvider).response(to: challenge)
+        return TPPBasicAuth(credentialsProvider: challengeCredentialsProvider()).response(to: challenge)
+    }
+
+    /// Decides WHOSE credentials answer this challenge (PP-4969).
+    ///
+    /// Three cases, and the middle one is the fix:
+    ///   * the supplied provider is still alive — use it.
+    ///   * a provider WAS supplied and has since been released — answer with no
+    ///     credentials. Falling back here would hand the challenging library the
+    ///     CURRENT library's barcode, which is the cross-account leak this
+    ///     guards (same boundary as F-034 / PP-4020).
+    ///   * none was ever supplied — use the fallback. This is the deliberate
+    ///     configuration at every call site except `AccountDetailViewModel`, so
+    ///     the fallback must stay intact for them.
+    ///
+    /// The released case returns a credential-less PROVIDER rather than a
+    /// hard-coded disposition on purpose: `TPPBasicAuth` then still answers each
+    /// protection space correctly — basic auth is declined, server trust is left
+    /// to the system (cancelling it would break every HTTPS request), and an
+    /// unsupported method is still rejected. One decision point, no drift.
+    private func challengeCredentialsProvider() -> NYPLBasicAuthCredentialsProvider {
+        if let live = credentialsProvider {
+            return live
+        }
+        if wasSuppliedCredentialsProvider {
+            Log.warn(#file, "Auth challenge: the supplied credentials provider was released before the challenge arrived; answering with no credentials rather than substituting the current account's (PP-4969). For a basic-auth challenge that means declining it; a server-trust challenge is still left to the system.")
+            return NoCredentialsProvider()
+        }
+        if let injected = fallbackCredentialsProvider {
+            return injected()
+        }
+        return AppContainer.production().accountsManager.currentUserAccount
     }
 
     func refreshToken(userAccount: TPPUserAccount = AppContainer.production().accountsManager.currentUserAccount) async throws {
@@ -818,4 +906,13 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
             throw error
         }
     }
+}
+
+/// A credentials provider that has no credentials, used to answer an
+/// authentication challenge when the provider that WOULD have answered it has
+/// been released (PP-4969). Routing that case through `TPPBasicAuth` with this
+/// keeps every protection space's disposition decided in one place.
+private final class NoCredentialsProvider: NSObject, NYPLBasicAuthCredentialsProvider {
+    var username: String? { nil }
+    var pin: String? { nil }
 }
