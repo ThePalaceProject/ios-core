@@ -38,12 +38,17 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     private var userAccount: TPPUserAccountMock!
     private var executorA: TPPNetworkExecutor!
     private var executorB: TPPNetworkExecutor!
-    /// Device A with no connectivity: NoNetworkURLProtocol answers every
-    /// request with NSURLErrorNotConnectedToInternet, which is in
-    /// NetworkQueue.StatusCodes and therefore queueable (PP-4965).
+    /// Device A with no connectivity. NoNetworkURLProtocol answers every
+    /// request with NSURLErrorNotConnectedToInternet — but note that is NOT
+    /// what `postAnnotation` ends up seeing. TPPNetworkResponder discards the
+    /// transport error when no HTTP response arrives and substitutes code 914,
+    /// which is not in NetworkQueue.StatusCodes, so the write is never queued.
+    /// That is PP-4987, and the offline test below pins the 914 rather than
+    /// the error this protocol emits.
     private var executorAOffline: TPPNetworkExecutor!
 
     private var savedExecutorOverride: TPPNetworkExecutor?
+    private var savedErrorLoggerOverride: ErrorLogging?
     private var savedAccountsOverride: TPPLibraryAccountsProvider?
     private var savedDeviceAccountsOverride: TPPUserAccountResolving?
     private var savedFirebaseDeviceOverride: String?
@@ -61,6 +66,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         savedDeviceAccountsOverride = AnnotationDevice.accountsManagerOverride
         savedFirebaseDeviceOverride = AnnotationDevice.firebaseDeviceIDOverride
         savedAnnotationsURLOverride = TPPAnnotations.annotationsURLOverride
+        savedErrorLoggerOverride = TPPAnnotations.errorLoggerOverride
 
         // Reset shared user-account state so credential writes here don't
         // leak across tests.
@@ -146,6 +152,11 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         AnnotationDevice.accountsManagerOverride = savedDeviceAccountsOverride
         AnnotationDevice.firebaseDeviceIDOverride = savedFirebaseDeviceOverride
         TPPAnnotations.annotationsURLOverride = savedAnnotationsURLOverride
+        // Restored here, not only via a per-test `defer`: a spy left installed
+        // silently swallows every annotation error report for the rest of the
+        // process, which no later test would attribute to this suite.
+        TPPAnnotations.errorLoggerOverride = savedErrorLoggerOverride
+        executorAOffline = nil
 
         HTTPStubURLProtocol.reset()
         backend?.clear()
@@ -353,8 +364,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         try skipIfSyncGateClosed()
 
         let spy = ErrorLoggerSpy()
-        TPPAnnotations.errorLoggerOverride = spy
-        defer { TPPAnnotations.errorLoggerOverride = nil }
+        TPPAnnotations.errorLoggerOverride = spy   // also restored in tearDown
 
         let selectorValue = epubSelectorValue(
             href: "/chapter9.xhtml",

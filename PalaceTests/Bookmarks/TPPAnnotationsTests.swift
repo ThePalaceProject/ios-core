@@ -1248,7 +1248,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
                                    timeout: TimeInterval = 17)
     -> TPPAnnotations.AnnotationPostResult {
         let exp = expectation(description: "post completion")
-        var outcome: TPPAnnotations.AnnotationPostResult = .failed(underlying: nil, statusCode: nil)
+        var outcome: TPPAnnotations.AnnotationPostResult = .failed(underlying: nil, response: nil)
         TPPAnnotations.postAnnotation(
             forBook: bookID,
             withAnnotationURL: url,
@@ -1442,22 +1442,23 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
                                            code: NSURLErrorNotConnectedToInternet))
 
-        guard case let .failed(underlying, statusCode) = postAndWaitResult(queueOffline: false) else {
+        guard case let .failed(underlying, response) = postAndWaitResult(queueOffline: false) else {
             return XCTFail("An un-queued transport error must report .failed")
         }
         XCTAssertEqual(underlying?.code, NSURLErrorNotConnectedToInternet,
                        "The underlying error must survive to the caller — dropping it is what defeated the classifier")
-        XCTAssertNil(statusCode, "No HTTP response means no status code")
+        XCTAssertNil(response, "No HTTP response means none to carry")
     }
 
     /// A server refusal must carry the status, so 401 and 500 are separable.
     func testPostAnnotation_ServerRefusal_ReportsFailedCarryingStatusCode() {
         mock.postStub = (nil, httpResponse(500), nil)
 
-        guard case let .failed(underlying, statusCode) = postAndWaitResult() else {
+        guard case let .failed(underlying, response) = postAndWaitResult() else {
             return XCTFail("A non-200 response must report .failed")
         }
-        XCTAssertEqual(statusCode, 500, "The status code must reach the caller so refusals are diagnosable")
+        XCTAssertEqual(response?.statusCode, 500,
+                       "The response must reach the caller so refusals are diagnosable AND classifiable as server-origin")
         XCTAssertNil(underlying, "A server refusal is not a transport error")
     }
 
@@ -1466,11 +1467,11 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
                                              expectedContentLength: 0,
                                              textEncodingName: nil), nil)
 
-        guard case let .failed(underlying, statusCode) = postAndWaitResult() else {
+        guard case let .failed(underlying, response) = postAndWaitResult() else {
             return XCTFail("A non-HTTP response must report .failed")
         }
         XCTAssertNil(underlying)
-        XCTAssertNil(statusCode)
+        XCTAssertNil(response)
     }
 
     func testPostAnnotation_Success_ReportsSucceededWithServerValues() {
@@ -1532,6 +1533,13 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
                        "Guard against a vacuous pass: the sync gate must have opened and the POST gone out")
         XCTAssertEqual(spy.loggedSummaries, [],
                        "A queued write is pending, not failed — reporting it is what made this the app's largest error")
+        // GAP, deliberate: nothing here asserts `addToOfflineQueue` actually
+        // enqueued the write, because it reaches AppContainer.production()
+        // .networkQueue with no seam. Suppressing the report on the promise of
+        // a retry is only safe if the retry exists — so that assertion belongs
+        // to PP-4987, where this branch first becomes reachable in production
+        // and the promise starts being load-bearing. Adding a seam now would
+        // test a path that cannot execute.
     }
 
     /// A genuine transport loss must still be reported, and must carry the
@@ -1560,8 +1568,42 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
 
         XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
         XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
+        XCTAssertEqual(spy.loggedCodes, [.apiCall],
+                       "Must stay on 902. Reporting via the bare logError overload silently files this under .ignore, "
+                       + "which moves the bucket and flips error_origin to unknown — a telemetry regression that reads "
+                       + "as a fix when the 902 volume is re-measured.")
         XCTAssertEqual(spy.firstReportedNSError?.code, unretryable,
                        "Dropping the underlying error is what defeated the logger's transient-condition classifier")
+    }
+
+    /// The shape production ACTUALLY delivers on this path.
+    ///
+    /// The tests above inject NSURLError codes, which is what an offline device
+    /// emits — but not what `postAnnotation` receives. TPPNetworkResponder
+    /// discards the transport error when no HTTP response arrives and hands up
+    /// code 914 instead (PP-4987), proved by the two-device test. Asserting
+    /// only the injected shape is how a fixture drifts from production bytes,
+    /// so this pins the real one: it must still report, still carry 902, and
+    /// must NOT be mistaken for something queueable.
+    func testPostReadingPosition_ProductionNoResponseShape_ReportsUnder902() {
+        let spy = makeLoggerSpy()
+        let asProductionDelivers = NSError(domain: "Api call with failure HTTP status",
+                                           code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue)
+        XCTAssertFalse(NetworkQueue.StatusCodes.contains(asProductionDelivers.code),
+                       "Precondition (this IS PP-4987): the code production delivers is not queueable")
+        mock.postStub = (nil, nil, asProductionDelivers)
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
+        XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"],
+                       "Today's real offline failure is a genuine loss and must be reported")
+        XCTAssertEqual(spy.loggedCodes, [.apiCall],
+                       "It must stay in the 902 bucket, or re-measuring that bucket after PP-4987 reads a false win")
     }
 
     /// A server refusal must reach reporting WITH its status, so 401 and 500
@@ -1578,6 +1620,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
 
         XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
         XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
+        XCTAssertEqual(spy.loggedCodes, [.apiCall], "A server refusal must stay in the 902 annotation bucket")
         XCTAssertEqual(spy.loggedMetadata.first?["statusCode"] as? Int, 401,
                        "Without the status code every refusal looks the same in telemetry")
     }

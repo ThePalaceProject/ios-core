@@ -299,22 +299,35 @@ protocol AnnotationsManager {
                 Log.debug(#file, "Reading position for \(bookID) queued for retry")
                 completion?(nil)
 
-            case let .failed(underlying, statusCode):
+            case let .failed(underlying, response):
                 Log.warn(#file, "Annotation POST failed for \(bookID)")
                 var metadata: [String: Any] = [
                     "bookID": bookID,
                     "annotationURL": annotationsURL,
                     "motivation": motivation.rawValue
                 ]
-                if let statusCode {
+                if let statusCode = response?.statusCode {
                     metadata["statusCode"] = statusCode
                 }
-                // Pass `underlying` so the logger's classifier can file genuinely
-                // transient conditions ("No Internet Connection", "Request
-                // Timeout") in their own buckets instead of here.
-                Self.currentErrorLogger.logError(underlying,
-                                                 summary: "Error posting annotation",
-                                                 metadata: metadata)
+                // `logNetworkError` rather than `logError`, deliberately.
+                //
+                // The bare `logError(_:summary:metadata:)` overload hardcodes
+                // `code: .ignore`, which would have quietly moved this bucket
+                // OFF 902 (`.apiCall`) — to the raw NSError code for transport
+                // failures and to 0 for server refusals — and flipped
+                // `error_origin` from "server" to "unknown". Since the whole
+                // plan is to re-measure what remains in the 902 bucket once
+                // PP-4987 lands, that would have read as a fix while nothing
+                // improved. `logNetworkError` keeps `.apiCall`, still routes
+                // through `fixUpSummary` so transient conditions are split out
+                // first, and takes the response so 400...599 classifies as
+                // `.server`.
+                Self.currentErrorLogger.logNetworkError(underlying,
+                                                        code: .apiCall,
+                                                        summary: "Error posting annotation",
+                                                        request: nil,
+                                                        response: response,
+                                                        metadata: metadata)
                 completion?(nil)
             }
         }
@@ -429,12 +442,15 @@ protocol AnnotationsManager {
         /// behaviour is already covered by tests.
         case queuedForRetry
 
-        /// The write did not happen and nothing will retry it. `underlying`
-        /// carries the transport error where there was one, so the logger's
-        /// existing classifier can separate transient conditions (no
-        /// connection, timeout) from real defects. `statusCode` is present
-        /// when the server answered and refused.
-        case failed(underlying: NSError?, statusCode: Int?)
+        /// The write did not happen and nothing will retry it.
+        ///
+        /// `underlying` carries the transport error where there was one, so the
+        /// logger's existing classifier can separate transient conditions (no
+        /// connection, timeout) from real defects. `response` is present when
+        /// the server answered and refused — it is carried whole rather than as
+        /// a bare status code so `TPPErrorOrigin.classify` can read 400...599
+        /// off it and attribute the failure to the server.
+        case failed(underlying: NSError?, response: HTTPURLResponse?)
     }
 
     /// Serializes the `parameters` into JSON and POSTs them to the server.
@@ -447,7 +463,7 @@ protocol AnnotationsManager {
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted]) else {
             Log.error(#file, "Network request abandoned. Could not create JSON from given parameters.")
-            completionHandler(.failed(underlying: nil, statusCode: nil))
+            completionHandler(.failed(underlying: nil, response: nil))
             return
         }
 
@@ -471,12 +487,12 @@ protocol AnnotationsManager {
                     return
                 }
 
-                completionHandler(.failed(underlying: error, statusCode: nil))
+                completionHandler(.failed(underlying: error, response: nil))
                 return
             }
             guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
                 Log.error(#file, "Annotation POST error: No response received from server")
-                completionHandler(.failed(underlying: nil, statusCode: nil))
+                completionHandler(.failed(underlying: nil, response: nil))
                 return
             }
 
@@ -487,7 +503,7 @@ protocol AnnotationsManager {
                 completionHandler(.succeeded(annotationID: serverAnnotationID, timeStamp: timeStamp))
             } else {
                 Log.error(#file, "Annotation POST: Response Error. Status Code: \(statusCode)")
-                completionHandler(.failed(underlying: nil, statusCode: statusCode))
+                completionHandler(.failed(underlying: nil, response: response as? HTTPURLResponse))
             }
         }
         task?.resume()
