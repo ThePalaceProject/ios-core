@@ -1560,10 +1560,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
 
         XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
         XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
-        // `loggedErrors` is [Error?], so `.first` is doubly optional — flatten
-        // before bridging, or the cast silently compares against nil.
-        let reported = (spy.loggedErrors.first ?? nil) as NSError?
-        XCTAssertEqual(reported?.code, unretryable,
+        XCTAssertEqual(spy.firstReportedNSError?.code, unretryable,
                        "Dropping the underlying error is what defeated the logger's transient-condition classifier")
     }
 
@@ -1783,35 +1780,5 @@ class AnnotationDeviceIDTests: XCTestCase {
             XCTAssertTrue(id.contains(firebaseID),
                           "Call #\(i): annotation device ID must contain the FirebaseManager deviceID — broken derivation breaks cross-device detection")
         }
-    }
-}
-
-/// Records what was reported to error logging so tests can assert on it (PP-4965).
-private final class ErrorLoggerSpy: ErrorLogging {
-    private(set) var loggedSummaries: [String] = []
-    private(set) var loggedErrors: [Error?] = []
-    private(set) var loggedMetadata: [[String: Any]] = []
-
-    func logError(_ error: Error?, summary: String, metadata: [String: Any]?) {
-        loggedSummaries.append(summary)
-        loggedErrors.append(error)
-        loggedMetadata.append(metadata ?? [:])
-    }
-
-    func logError(withCode code: TPPErrorCode, summary: String, metadata: [String: Any]?) {
-        loggedSummaries.append(summary)
-        loggedErrors.append(nil)
-        loggedMetadata.append(metadata ?? [:])
-    }
-
-    func logNetworkError(_ originalError: Error?,
-                         code: TPPErrorCode,
-                         summary: String?,
-                         request: URLRequest?,
-                         response: URLResponse?,
-                         metadata: [String: Any]?) {
-        loggedSummaries.append(summary ?? "")
-        loggedErrors.append(originalError)
-        loggedMetadata.append(metadata ?? [:])
     }
 }

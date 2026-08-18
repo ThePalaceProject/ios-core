@@ -419,6 +419,14 @@ protocol AnnotationsManager {
         /// Transport failed, but the request was handed to the offline queue
         /// and will be retried. Delivery is pending, not lost — do NOT report
         /// this as an error.
+        ///
+        /// NOTE (PP-4987): unreachable in production today. The networking
+        /// layer discards the underlying transport error when no HTTP response
+        /// arrives, substituting a generic no-response code that is not in
+        /// `NetworkQueue.StatusCodes`, so `willQueueOffline` is never true.
+        /// This case becomes live the moment PP-4987 preserves that error —
+        /// which is why it is modelled now rather than after, and why its
+        /// behaviour is already covered by tests.
         case queuedForRetry
 
         /// The write did not happen and nothing will retry it. `underlying`
