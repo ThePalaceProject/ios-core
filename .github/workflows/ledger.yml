@@ -19,6 +19,12 @@ on:
       - '**.m'
       - '**.h'
       - 'tools/ledger/**'
+      # The reporting pipeline runs on its own changes, so a PR that edits the
+      # analysis or the comment rendering demonstrates the result instead of
+      # merging unexercised. Both were silently broken for a month precisely
+      # because nothing re-ran them.
+      - '.github/workflows/ledger.yml'
+      - 'scripts/ledger_scc.py'
 
   # Allow manual trigger for testing
   workflow_dispatch:
