@@ -51,6 +51,27 @@ FLUFF_PATTERNS = [
     # Pattern: enum raw value assertion
     (r'XCTAssertEqual\(\w+\.\w+\.rawValue,\s*["\d]',
      "FLUFF-004: Enum raw value assertion. Tests the enum definition, not behavior."),
+
+    # Pattern: an assertion on a literal. `XCTAssertTrue(true)` /
+    # `XCTAssertFalse(false)` / `XCTAssertEqual(1, 1)` cannot fail, so the test
+    # reports green having proven nothing — and still counts toward coverage.
+    #
+    # This is the shape that hides behind a `#else` arm or a `guard let ... else`
+    # escape: the file looks like coverage in the tree and in the numbers, and is
+    # vacuous in that configuration. Found 2026-08-18 in
+    # PalaceTests/LCP/LCPAudiobooksTests.swift (34 instances on a DRM path) by a
+    # reviewer, while this linter reported the file clean — 76 across 14 files
+    # corpus-wide. CLAUDE.md bans assertions "mathematically guaranteed to pass";
+    # nothing enforced it until now.
+    #
+    # A deliberate no-op needs `XCTSkip` (which reports as skipped) or
+    # `// lint-ignore: FLUFF-005` with a reason — not a green assertion.
+    (r'XCTAssert(?:True\(\s*true\s*[,)]|False\(\s*false\s*[,)])',
+     "FLUFF-005: Assertion on a literal. Cannot fail; reports green having proven "
+     "nothing. Use XCTSkip for a deliberate no-op, or assert the real behavior."),
+
+    (r'XCTAssertEqual\(\s*(\w+)\s*,\s*\1\s*[,)]',
+     "FLUFF-006: Self-comparison (XCTAssertEqual(x, x)). Always passes."),
 ]
 
 # Methods/calls that act as assertions (raise XCTFail on failure). The linter

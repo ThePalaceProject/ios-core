@@ -323,3 +323,91 @@ def test_changed_mode_end_to_end_clean_passes(tmp_path):
         capture_output=True, text=True, cwd=repo,
     )
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# --- FLUFF-005 / FLUFF-006: assertions that cannot fail ---------------------
+#
+# Added 2026-08-18. A reviewer found 34 `XCTAssertTrue(true, ...)` in
+# PalaceTests/LCP/LCPAudiobooksTests.swift — a DRM path — while this linter
+# reported the file clean. 76 across 14 files corpus-wide. CLAUDE.md bans
+# assertions "mathematically guaranteed to pass"; nothing enforced it.
+
+def _lint_source(tmp_path, body: str) -> list:
+    """Run the file-level linter over a synthetic test file."""
+    f = tmp_path / "SomeTests.swift"
+    f.write_text(body)
+    return _LTQ.lint_file(str(f))
+
+
+def _codes(violations) -> str:
+    return " ".join(str(getattr(v, "message", v)) for v in violations)
+
+
+def test_fluff005_flags_assert_true_on_literal(tmp_path):
+    v = _lint_source(tmp_path, """
+import XCTest
+final class SomeTests: XCTestCase {
+    func testThing() {
+        XCTAssertTrue(true, "LCP not enabled - test skipped")
+    }
+}
+""")
+    assert "FLUFF-005" in _codes(v), "an assertion on a literal must be flagged"
+
+
+def test_fluff005_flags_assert_false_on_literal(tmp_path):
+    v = _lint_source(tmp_path, """
+import XCTest
+final class SomeTests: XCTestCase {
+    func testThing() {
+        XCTAssertFalse(false)
+    }
+}
+""")
+    assert "FLUFF-005" in _codes(v)
+
+
+def test_fluff006_flags_self_comparison(tmp_path):
+    v = _lint_source(tmp_path, """
+import XCTest
+final class SomeTests: XCTestCase {
+    func testThing() {
+        let total = compute()
+        XCTAssertEqual(total, total)
+    }
+}
+""")
+    assert "FLUFF-006" in _codes(v)
+
+
+def test_fluff005_does_not_flag_a_real_assertion(tmp_path):
+    """The clean path must pass — a detector that flags real assertions is worse
+    than none. Guards the obvious false positives: a variable named `true`-ish,
+    and an assertion whose ARGUMENT is a call returning Bool."""
+    v = _lint_source(tmp_path, """
+import XCTest
+final class SomeTests: XCTestCase {
+    func testThing() {
+        XCTAssertTrue(cart.isEmpty)
+        XCTAssertFalse(player.isPlaying)
+        XCTAssertEqual(cart.total, 15.99)
+        XCTAssertTrue(audiobook.supportsStreaming())
+    }
+}
+""")
+    assert "FLUFF-005" not in _codes(v), "must not flag assertions on real expressions"
+    assert "FLUFF-006" not in _codes(v), "must not flag comparisons of distinct operands"
+
+
+def test_fluff005_skip_is_the_sanctioned_no_op(tmp_path):
+    """`XCTSkip` reports as skipped rather than green, so it is the correct way
+    to express 'not applicable here' and must not be flagged."""
+    v = _lint_source(tmp_path, """
+import XCTest
+final class SomeTests: XCTestCase {
+    func testThing() throws {
+        throw XCTSkip("LCP not enabled in this configuration")
+    }
+}
+""")
+    assert "FLUFF-005" not in _codes(v)
