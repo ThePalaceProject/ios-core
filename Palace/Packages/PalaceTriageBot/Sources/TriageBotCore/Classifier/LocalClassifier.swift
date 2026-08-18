@@ -27,7 +27,11 @@ public struct LocalClassifier: Sendable {
         let normalized = TextNormalizer.normalize(userText)
         let rawCandidates: [KBEntry]
         if let category {
-            rawCandidates = kb.entries(in: category)
+            // How-tos are category-agnostic and join every chip's candidate set;
+            // known issues stay scoped to the chip. See
+            // `KnowledgeBase.entries(matchableFrom:)` for why the widening is
+            // deliberately one-sided.
+            rawCandidates = kb.entries(matchableFrom: category)
                 .filter { entry in passesContextFilters(entry: entry, context: context) }
         } else {
             rawCandidates = kb.entries(matching: context)
@@ -71,7 +75,8 @@ public struct LocalClassifier: Sendable {
             func hits(_ keyword: String) -> Bool {
                 !TextTokenizer.matchRanges(
                     of: TextTokenizer.tokens(TextNormalizer.normalize(keyword)),
-                    in: textTokens
+                    in: textTokens,
+                    allowingFillerVariation: true
                 ).isEmpty
             }
             let strongMatched = entry.symptomKeywords.filter(hits)
@@ -271,7 +276,9 @@ public struct LocalClassifier: Sendable {
             // First occurrence only: a concept the patron mentioned once counts
             // once, and a phrase repeated across a long complaint is still one
             // concept.
-            if let first = TextTokenizer.matchRanges(of: kw, in: textTokens).first {
+            if let first = TextTokenizer.matchRanges(
+                of: kw, in: textTokens, allowingFillerVariation: true
+            ).first {
                 ranges.append(first)
             }
         }

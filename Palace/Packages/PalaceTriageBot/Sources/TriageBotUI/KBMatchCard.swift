@@ -75,22 +75,25 @@ struct KBMatchCard: View {
     }
 
     @ViewBuilder private var statusBadge: some View {
+        // The decision lives in TriageBotCore so it can be tested — this target
+        // is behind `canImport(UIKit)` and macOS `swift test` never sees it.
+        // Here we only map a semantic badge to its presentation.
         let (label, symbol, color): (String, String, Color) = {
-            switch entry.status {
-            case .fixedIn:
-                return ("Fixed in \(entry.fixedInVersion ?? "next release")", "checkmark.seal.fill", .green)
-            case .open:
-                if let version = entry.fixedInVersion {
-                    return ("Known issue — fix coming in \(version)", "wrench.and.screwdriver.fill", .orange)
-                }
+            switch KBMatchBadgePolicy.badge(for: entry) {
+            case .fixedIn(let version):
+                return ("Fixed in \(version)", "checkmark.seal.fill", .green)
+            case .knownIssueFixComing(let version):
+                return ("Known issue — fix coming in \(version)", "wrench.and.screwdriver.fill", .orange)
+            case .knownIssueWorkaround:
                 return ("Known issue — workaround available", "exclamationmark.triangle.fill", .orange)
-            case .userError: return ("Likely a setup mix-up", "info.circle.fill", .blue)
-            case .wontfix: return ("By design", "info.circle", .gray)
-            case .duplicateOf: return ("Tracked", "tag.fill", .gray)
-            case .none:
-                // how_to (general-help) entries have no known-issue status —
-                // render a neutral "how to" badge, not a bug status.
-                return ("How to", "questionmark.circle.fill", .blue)
+            case .setupMixUp: return ("Likely a setup mix-up", "info.circle.fill", .blue)
+            case .byDesign: return ("By design", "info.circle", .gray)
+            case .tracked: return ("Tracked", "tag.fill", .gray)
+            case .howTo: return ("How to", "questionmark.circle.fill", .blue)
+            case .narrowingDown:
+                // A generic ladder, not an answer — must not read as one.
+                // COPY PENDING PRODUCT SIGN-OFF.
+                return ("Let's narrow it down", "arrow.triangle.branch", .gray)
             }
         }()
         Label {
