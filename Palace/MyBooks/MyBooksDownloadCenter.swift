@@ -68,8 +68,6 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
 ///   actor, precisely so it is reachable synchronously from any thread), and
 ///   `TPPUserAccount` serializes its own keychain access on `accountInfoQueue`. It
 ///   writes no MBDC state. Do not read the main-queue guarantee as universal.
-///     • `bookIdentifierOfBookToRemove` — scratch state for the remove-from-device
-///       confirmation alert, written and read only on the main-thread UI flow.
 ///     • `reachabilityCancellable` — installed once by `bindReachability()` during
 ///       main-thread wiring.
 ///   The concurrent teardown/scheduling hops the class performs run through
@@ -257,7 +255,6 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     let overdriveAPIExecutor: OverdriveAPIExecutor
     #endif
 
-    private var bookIdentifierOfBookToRemove: String?
     private var session: URLSession!
 
     // MARK: - Reliability WS-A: background session identity + completion handler
@@ -1895,21 +1892,16 @@ extension MyBooksDownloadCenter {
 extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
     func reset(_ libraryID: String!) {
         contentResetService.reset(account: libraryID)
-        bookIdentifierOfBookToRemove = nil
     }
 
     func reset(account: String) {
         contentResetService.reset(account: account)
-        if accountScope.currentAccountID == account {
-            bookIdentifierOfBookToRemove = nil
-        }
     }
 
     /// Required by MyBooksDownloadCenterProviding. Resets the current
     /// account.
     func reset() {
         contentResetService.reset()
-        bookIdentifierOfBookToRemove = nil
     }
 
     func deleteAudiobooks(forAccount account: String) {
