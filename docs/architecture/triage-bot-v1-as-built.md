@@ -19,7 +19,7 @@ The iOS implementation is the reference implementation. Sections describing beha
 
 File paths are relative to the repo root; the package root `Palace/Packages/PalaceTriageBot/` is abbreviated `PKG/`.
 
-> Where code comments and this document disagree, this document is correct. Several load-bearing comments are stale, and a code-first reader will build the wrong model from them. Known-stale as of 2026-07-28: `LocalClassifier.swift:6-10` still describes the retired raw-count scoring (actual scoring is by distinct match regions, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the comment on `LocalClassifier.distinctMatchRegionCount` says touching ranges merge (they do not, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the `KnowledgeBase.entries(in:)` comment claims `wontfix` entries are hidden (the code checks only `duplicate_of`); `PKG/Package.swift` claims every Core type has a 1:1 Kotlin analogue (no Kotlin exists); and comments in `ConversationReducer.swift:948-950`, `Protocols/Protocols.swift:11-14`, and `Palace/FeatureFlags/RemoteFeatureFlags.swift` describe a HelpSpot HTTP POST that has never existed (the only gateways are email and clipboard).
+> Where code comments and this document disagree, this document is correct. Several load-bearing comments are stale, and a code-first reader will build the wrong model from them. Known-stale as of 2026-07-28: `LocalClassifier.swift:6-10` still describes the retired raw-count scoring (actual scoring is by distinct match regions, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the comment on `LocalClassifier.distinctMatchRegionCount` says touching ranges merge (they do not, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the `KnowledgeBase.entries(matchableFrom:)` comment claims `wontfix` entries are hidden (the code checks only `duplicate_of`); `PKG/Package.swift` claims every Core type has a 1:1 Kotlin analogue (no Kotlin exists); and comments in `ConversationReducer.swift:948-950`, `Protocols/Protocols.swift:11-14`, and `Palace/FeatureFlags/RemoteFeatureFlags.swift` describe a HelpSpot HTTP POST that has never existed (the only gateways are email and clipboard).
 
 ## At a glance
 
@@ -216,9 +216,9 @@ String semantics an alternate implementation must match exactly (this is the sam
 
 ### 3.2 Candidate filtering
 
-With a category selected, candidates are `kb.entries(in: category)` filtered by `passesContextFilters`: an entry with `distributor_filter` or `auth_type_filter` is excluded when the context has a value not in the filter list. A nil context value passes every filter (this matters: production passes nil for both, [section 5](#5-the-local-corpus)), and an absent snapshot behaves exactly as a snapshot whose every field is nil, including for the version gate's app version below. Without a category, `kb.entries(matching: context)` runs the same context filters over the whole catalog.[^context-filters]
+With a category selected, candidates are `kb.entries(matchableFrom: category)` filtered by `passesContextFilters`. That set is the category's own entries **plus every `how_to` entry regardless of category** — the widening is deliberately one-sided, and a port must reproduce the asymmetry. The topic chip is evidence about a SYMPTOM, so scoping known issues to it is what stops a PDF workaround reaching an audiobook patron; a how-to is not a symptom, and the category a how-to is filed under (`renewals`→`other`, `switch-library`→`library`) is filing metadata about the answer, not a claim about how the question is asked. Scoping how-tos too made each answer reachable from exactly one of six chips, and left the category's known issues to win a how-to question by default (measured: a notifications question was answered with the KI-006 hold-desync workaround). Entries are then filtered by `passesContextFilters`: an entry with `distributor_filter` or `auth_type_filter` is excluded when the context has a value not in the filter list. A nil context value passes every filter (this matters: production passes nil for both, [section 5](#5-the-local-corpus)), and an absent snapshot behaves exactly as a snapshot whose every field is nil, including for the version gate's app version below. Without a category, `kb.entries(matching: context)` runs the same context filters over the whole catalog.[^context-filters]
 
-Status filtering is asymmetric and happens at query time, not on load: the category-scoped `entries(in:)` drops `duplicate_of` entries; the category-less `entries(matching:)` applies no status filter at all.[^context-filters] No shipped entry uses `duplicate_of`, but the first one added would still be classifiable whenever the patron's path skips the category (and `wontfix` is not filtered on either path, despite a code comment claiming otherwise).
+Status filtering is asymmetric and happens at query time, not on load: the category-scoped `entries(matchableFrom:)` drops `duplicate_of` entries; the category-less `entries(matching:)` applies no status filter at all.[^context-filters] No shipped entry uses `duplicate_of`, but the first one added would still be classifiable whenever the patron's path skips the category (and `wontfix` is not filtered on either path, despite a code comment claiming otherwise).
 
 **Version gate:** a known-issue entry with `status: fixed_in` is dropped when `FixVersionGate.userAlreadyHasFix` (component-wise `SemanticVersion` compare) says the user's app version is at or past the fix.[^version-gate] The gate applies to the candidate set from either path, category-scoped or category-less, and runs after the context filters. Rationale: a user on the fix version still hitting the symptom is a regression candidate that should escalate, not be told a stale workaround. How_to entries always pass; a "how do I renew?" answer never expires against a build number.
 
@@ -528,8 +528,58 @@ Several capabilities exist in code but are exercised by zero shipped data. Evalu
 - `escalate_anyway`: false on all 18 entries; the code path is data-unreachable.
 - `distributor_filter` is set on KI-001/002/007 (`palace_marketplace`) but cannot engage in production, because the app passes `distributor: nil`[^factory-wiring] and a nil context field passes every filter. The marketplace scoping on those entries is decorative on device.
 - `internal_reference` (jira / wall_failure / helpspot id arrays): provenance for humans; never read by code.
-- `KBStatus.wontfix` and `.duplicateOf`: no entries. `duplicate_of` is filtered at query time, and only on the category-scoped `entries(in:)` path; the category-less path and `wontfix` are not filtered at all ([section 3.2](#32-candidate-filtering)).[^kbentry-schema]
+- `KBStatus.wontfix` and `.duplicateOf`: no entries. `duplicate_of` is filtered at query time, and only on the category-scoped `entries(matchableFrom:)` path; the category-less path and `wontfix` are not filtered at all ([section 3.2](#32-candidate-filtering)).[^kbentry-schema]
 - `TicketPriority.high` is defined but never assigned (drafts are `.low` on file-anyway, `.normal` on escalations).
+
+### 3.6 The match card's badge
+
+The badge above a match card is a claim about how much to trust the card, and a
+port must derive it from `kind` BEFORE `status`, because the two cases that
+matter most are indistinguishable by status: a `how_to` and a `generic_flow`
+both carry none.
+
+| Entry | Badge |
+|---|---|
+| `generic_flow` (any status) | "Let's narrow it down" |
+| `status: fixed_in` + `fixed_in_version` | "Fixed in &lt;version&gt;" |
+| `status: fixed_in`, no version | "Fixed in next release" |
+| `status: open` | "Known issue — workaround available" |
+| `status: open` + `fixed_in_version` | "Known issue — fix coming in &lt;version&gt;" — **schema-forbidden, defensive only** |
+| `status: user_error` | "Likely a setup mix-up" |
+| `status: wontfix` | "By design" |
+| `status: duplicate_of` | "Tracked" |
+| no status (a `how_to`) | "How to" |
+
+That last row is only unambiguous because `CatalogSchemaLintTests` forces every
+`known_issue` to declare a status. The code arm is kind-agnostic
+(`resolvedKind = kind ?? .knownIssue`), so a port that adopts the badge table
+WITHOUT that lint will badge a status-less known issue "How to" — reintroducing
+the mislabel this section exists to prevent. Port the lint with the table.
+
+A generic ladder is NOT a how-to. A how-to states a fact the patron asked for; a
+ladder is what the bot shows when it did not recognise the problem, and its body
+opens "Two things worth checking before we send this to support." Badging the
+second as the first makes a failed match read as an answer — observed on device,
+a patron asking how to renew a loan got a "How to" card whose first step was
+"check which library is selected… are your books there?".
+
+Two rows need care from a porter:
+
+- **`open` + `fixed_in_version` is forbidden by the catalog schema**
+  (`CatalogSchemaLintTests.testFixVersionImpliesFixedInStatus`: a fix version
+  implies `status: fixed_in`). The badge arm exists defensively and is covered by
+  a synthetic test; a port should implement it but must not treat that pairing as
+  a legitimate authoring state.
+- **`fixed_in` with no version is NOT forbidden** — the lint constrains
+  version ⇒ `fixed_in`, not the converse — so the "next release" fallback is
+  genuinely reachable and must be ported.
+
+Both decision and TEXT live in TriageBotCore (`KBMatchBadgePolicy.badge(for:)`
+and `KBMatchBadge.label`) rather than in the SwiftUI card, because `TriageBotUI`
+sits behind `canImport(UIKit)` and macOS `swift test` cannot reach it — a table
+published as contract but defined in the UI layer is a table no test can pin.
+The card decides only the SF Symbol and colour, and renders `badge.label` for
+both the visible badge and the VoiceOver announcement, so the two cannot drift.
 
 ### Staleness governance
 
@@ -788,7 +838,7 @@ V1's shape diverges in places from its May 2026 pre-implementation sketch (`pala
 [^notify-stub]: `ConversationReducer.swift:246-260`.
 [^clipboard-fallback]: `PKG/Sources/TriageBotIOS/EmailTicketGateway.swift:58-70`; the HelpSpot successor marker at `PKG/Sources/TriageBotIOS/ClipboardTicketGateway.swift:12-13`.
 [^ai-degrade]: `ConversationReducer.swift:228-244`.
-[^kbentry-schema]: `PKG/Sources/TriageBotCore/Models/KBEntry.swift` (unused `auth_type_filter`/`ios_version_filter` at `:93-94`); `duplicateOf` filtered at query time in `entries(in:)` only, `KnowledgeBase.swift:20-33` (`entries(matching:)` applies no status filter).
+[^kbentry-schema]: `PKG/Sources/TriageBotCore/Models/KBEntry.swift` (unused `auth_type_filter`/`ios_version_filter` at `:93-94`); `duplicateOf` filtered at query time in `entries(matchableFrom:)` only, `KnowledgeBase.swift` (`entries(matching:)` applies no status filter).
 [^trust-hedge]: `ConversationReducer.swift:133-138`.
 [^visibility-ai]: `AIFallback.swift:70`.
 [^staleness-tests]: `CatalogSchemaLintTests.testFixVersionImpliesFixedInStatus` (pins the status/fix-version contradiction class found on KI-001 during PP-4825); `HowToGovernanceTests.testEveryHowTo_isAnchoredAndDated` and `uiSurfaceChangeLog` at `PKG/Tests/TriageBotCoreTests/HowToGovernanceTests.swift:19-24` (PP-4831).

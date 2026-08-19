@@ -27,7 +27,11 @@ public struct LocalClassifier: Sendable {
         let normalized = TextNormalizer.normalize(userText)
         let rawCandidates: [KBEntry]
         if let category {
-            rawCandidates = kb.entries(in: category)
+            // How-tos are category-agnostic and join every chip's candidate set;
+            // known issues stay scoped to the chip. See
+            // `KnowledgeBase.entries(matchableFrom:)` for why the widening is
+            // deliberately one-sided.
+            rawCandidates = kb.entries(matchableFrom: category)
                 .filter { entry in passesContextFilters(entry: entry, context: context) }
         } else {
             rawCandidates = kb.entries(matching: context)
@@ -165,8 +169,10 @@ public struct LocalClassifier: Sendable {
         // Gating on strength instead of count keeps F-002 closed — a weak word
         // alone still cannot suggest, which is what that defect actually was —
         // while letting one decisive phrase through, which is how patrons write.
-        // how_to entries are unaffected: they carry no corroborating keywords, so
-        // every match they can make is strong and their floor stays effectively 1.
+        // how_to entries get the same floor. (An older comment here claimed they
+        // "carry no corroborating keywords" and were therefore unaffected — that
+        // is false for all nine shipped how-tos, and now matters in every
+        // category rather than one, since how-tos are category-agnostic.)
         //
         // The partition is enforced by CatalogSchemaLintTests, so a generic word
         // cannot drift back into `symptom_keywords` and quietly become sufficient.

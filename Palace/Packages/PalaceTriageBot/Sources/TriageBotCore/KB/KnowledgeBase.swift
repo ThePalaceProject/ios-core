@@ -56,12 +56,27 @@ public struct KnowledgeBase: Sendable {
         catalog.entries.first { $0.id == id }
     }
 
-    /// Entries in a given category that are still relevant to surface — i.e.
-    /// not duplicates and not in `wontfix` (unless we ever want to explain
-    /// "we won't fix this and here's why", but Phase 1 hides them).
-    public func entries(in category: KBCategory) -> [KBEntry] {
+    /// Everything a patron who picked `category` should be matched against:
+    /// that category's entries, PLUS every how-to regardless of category.
+    ///
+    /// The topic chip is evidence about a SYMPTOM ("my audiobook won't play" →
+    /// Audiobook), and scoping known issues to it is what stops a PDF workaround
+    /// reaching an audiobook patron. A how-to is not a symptom: "how do I renew
+    /// my loan?" is not a Library question or an Other question, and the category
+    /// the catalog assigns a how-to (renewals→other, switch-library→library) is
+    /// filing metadata about the answer, not a claim about how the question gets
+    /// asked. Scoping them made each answer reachable from exactly one of six
+    /// chips, and left the category's known issues to win a how-to question by
+    /// default — see `HowToCategoryAgnosticTests` for the measured misroute.
+    ///
+    /// Deliberately asymmetric: how-tos widen, known issues do not. A blanket
+    /// cross-category fallback was the alternative and is unsafe, because
+    /// decisive phrases collide across areas ("won't open" belongs to the LCP
+    /// PDF entry but is a perfectly natural thing to say about an audiobook).
+    func entries(matchableFrom category: KBCategory) -> [KBEntry] {
         catalog.entries.filter { entry in
-            entry.category == category && entry.status != .duplicateOf
+            guard entry.status != .duplicateOf else { return false }
+            return entry.category == category || entry.resolvedKind == .howTo
         }
     }
 
