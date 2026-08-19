@@ -54,8 +54,11 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     ///  1. Secrets at rest. `simplified.db` is an unencrypted SQLite file in
     ///     Application Support. Archiving `Authorization: Bearer …` into it
     ///     writes a live credential to disk in the clear. Until PP-4987 this
-    ///     never executed, because nothing was ever queued — turning the queue
-    ///     on is precisely what would have started it.
+    ///     dormant on CURRENT builds because nothing was being queued — but it
+    ///     DID run historically: up to Release 1.1.0 `postAnnotation` used
+    ///     `URLSession.shared` directly, so the raw NSURLError reached the gate
+    ///     and rows were written carrying `Basic base64(barcode:PIN)`. See
+    ///     `purgeAnyPersistedCredentials`, which cleans those off devices.
     ///  2. Correctness. A write can sit in this queue for days. The token it
     ///     was created with may have expired, been refreshed, or belong to an
     ///     account the patron has since signed out of. Replaying a stored
@@ -150,6 +153,43 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
         headers.filter { $0.key.caseInsensitiveCompare("Authorization") != .orderedSame }
     }
 
+    /// Drops any `Authorization` header left in the store by an older build.
+    ///
+    /// This is NOT hypothetical. Up to and including Release 1.1.0,
+    /// `postAnnotation` issued its request through `URLSession.shared`
+    /// directly, so the raw `NSURLError` reached `NetworkQueue.StatusCodes` and
+    /// offline writes really were queued — with headers of the form
+    /// `Authorization: Basic base64(barcode:PIN)`. That is a patron's library
+    /// card number and PIN, base64 is not encryption, and `simplified.db` is an
+    /// unencrypted file in Application Support. Rows created then can still be
+    /// sitting on a device today.
+    ///
+    /// Expired rows do get deleted after `MaxRetriesInQueue` drains, so most
+    /// are long gone — but "most" is not a basis on which to leave a cleartext
+    /// PIN on disk, and re-deriving the credential at drain means nothing is
+    /// lost by clearing it. Runs on every `migrate()` rather than as a
+    /// versioned step so it also catches a store whose version was already
+    /// current when this shipped.
+    private func purgeAnyPersistedCredentials(_ db: Connection) {
+        do {
+            let rows = try db.prepare(sqlTable)
+            for row in rows {
+                guard let data = row[sqlHeader],
+                      let headers = NSKeyedUnarchiver.unarchiveObject(with: data) as? [String: String],
+                      headers.keys.contains(where: {
+                          $0.caseInsensitiveCompare("Authorization") == .orderedSame
+                      }) else { continue }
+                let cleaned = NSKeyedArchiver.archivedData(
+                    withRootObject: NetworkQueue.headersSafeToPersist(headers))
+                try db.run(sqlTable.filter(sqlID == row[sqlID]).update(sqlHeader <- cleaned))
+                Log.info(#file, "Purged a persisted credential from a legacy offline-queue row")
+            }
+        } catch {
+            Log.error(#file, "Failed to purge persisted credentials from the offline queue")
+        }
+    }
+
+#if DEBUG
     /// What is ACTUALLY on disk, for tests.
     ///
     /// Deliberate test-support surface, and the justification is specific: the
@@ -166,8 +206,14 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
         let updateID: String?
         let url: String
         let headers: [String: String]?
+        /// The POSTed body. Without it, "one row survived a collapse" is
+        /// indistinguishable from "the second write was silently dropped" —
+        /// which is the whole property under test.
+        let parameters: Data?
+        let retries: Int
     }
 
+    /// NOTE: takes `serialQueue.sync` — never call it from inside that queue.
     func persistedRowsForTesting() -> [PersistedRow] {
         serialQueue.sync {
             guard let db = startDatabaseConnection() else { return [] }
@@ -182,10 +228,41 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
                 return PersistedRow(libraryID: row[sqlLibraryID],
                                     updateID: row[sqlUpdateID],
                                     url: row[sqlUrl],
-                                    headers: headers)
+                                    headers: headers,
+                                    parameters: row[sqlParameters],
+                                    retries: Int(row[sqlRetries]))
             }
         }
     }
+
+    /// Writes a row the way a PRE-PP-4987 build did — credential and all.
+    ///
+    /// `addRequest` now strips `Authorization`, so a legacy row cannot be
+    /// created through the normal API, and the purge that exists to clean those
+    /// rows off real devices would be untestable without this. That purge
+    /// guards a cleartext library card number and PIN; shipping it unverified
+    /// is not an option, and every other claim on this branch that rested on
+    /// reading rather than asserting turned out to be wrong.
+    func insertLegacyRowForTesting(libraryID: String,
+                                   updateID: String,
+                                   url: URL,
+                                   headers: [String: String]) {
+        serialQueue.sync {
+            guard let db = startDatabaseConnection() else { return }
+            let headerData = NSKeyedArchiver.archivedData(withRootObject: headers)
+            let dateCreated = NSKeyedArchiver.archivedData(withRootObject: Date())
+            _ = try? db.run(sqlTable.insert(
+                sqlLibraryID <- libraryID,
+                sqlUpdateID <- updateID,
+                sqlUrl <- url.absoluteString,
+                sqlMethod <- HTTPMethodType.POST.rawValue,
+                sqlParameters <- Data("{}".utf8),
+                sqlHeader <- headerData,
+                sqlRetries <- 0,
+                sqlDateCreated <- dateCreated))
+        }
+    }
+#endif
 
     func addRequest(_ libraryID: String,
                     _ updateID: String?,
@@ -237,7 +314,17 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
 
             do {
                 // Try to update row
-                let result = try db.run(query.update(self.sqlParameters <- parameters, self.sqlHeader <- headerData))
+                // Reset `retries` (PP-4987). This row is being SUPERSEDED — the
+                // body is new even though the key is the same. Without the
+                // reset the new write inherits the old one's retry count, and
+                // because `retryQueue` deletes `retries > MaxRetriesInQueue`
+                // BEFORE it drains, a fresh reading position landing on an
+                // exhausted row is deleted having never been sent once. That is
+                // silent loss, and PP-4965 has already removed the error report
+                // for this path — so nothing would have said so.
+                let result = try db.run(query.update(self.sqlParameters <- parameters,
+                                                     self.sqlHeader <- headerData,
+                                                     self.sqlRetries <- 0))
                 if result > 0 {
                     Log.debug(#file, "SQLite: Row Updated")
                 } else {
@@ -278,6 +365,8 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
                 Log.error(#file, "Failed to start database connection for a retry attempt.")
                 return
             }
+
+            self.purgeAnyPersistedCredentials(db)
 
             let tableCount = Int((try? db.scalar("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '\(NetworkQueue.TableName)'") as? Int64) ?? 0)
             if tableCount < 1 {
@@ -329,7 +418,12 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
         }
     }
 
-    @objc private func retryQueue() {
+    /// Not `private`: the drain is normally kicked by a reachability publisher,
+    /// and its behaviour (credential scoping, expiry, retry accounting) is
+    /// exactly the part of this type with the least coverage and the most risk.
+    /// Tests drive it directly rather than through `perform(Selector(…))`,
+    /// which compiles to nothing checkable and breaks silently on a rename.
+    @objc func retryQueue() {
         self.serialQueue.async {
 
             if self.retryRequestCount > 0 {

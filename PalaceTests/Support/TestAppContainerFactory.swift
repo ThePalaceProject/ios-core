@@ -153,10 +153,29 @@ func makeTestAppContainer(
   // sound at runtime regardless of this factory's nonisolated call site).
   let userAccountPublisher = MainActor.assumeIsolated { UserAccountPublisher.shared }
 
+  // Created eagerly: SQLite cannot open a database under a directory that does
+  // not exist, and a failed connection would silently turn every queued write
+  // into a reported drop rather than a stored row.
+  func makeIsolatedQueueDirectory() -> String {
+    let dir = NSTemporaryDirectory() + "test-queue-" + UUID().uuidString
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    return dir
+  }
+
   return AppContainer(
     bookRegistry: resolvedBookRegistry,
     networkExecutor: executor,
-    networkQueue: NetworkQueue(transport: executor.transport, reachability: reachability),
+    // Per-container temp store, never the app's real `simplified.db`. PP-4987
+    // made the offline branch reachable, so any test touching this container
+    // now writes DURABLE rows into Application Support that a later
+    // reachability event can replay as live POSTs. The credential provider is
+    // stubbed out for the same reason: the default reaches the keychain.
+    networkQueue: NetworkQueue(
+      transport: executor.transport,
+      reachability: reachability,
+      databaseDirectory: makeIsolatedQueueDirectory(),
+      authorizationHeaderProvider: { _ in nil }
+    ),
     reachability: reachability,
     accountsManager: resolvedAccountsManager,
     settings: TPPSettings(),

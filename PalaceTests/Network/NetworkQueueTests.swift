@@ -114,12 +114,16 @@ class NetworkQueueTests: XCTestCase {
                        "A write that WAS persisted must report nothing at all")
     }
 
-    /// The queue never sends anything in these tests — it fails (or succeeds)
-    /// at the SQLite step first — so a plain ephemeral transport is enough.
+    /// A transport whose every request is intercepted by
+    /// `HTTPStubURLProtocol` — no real network. The drain test below actually
+    /// issues requests, and a unit test that talks to the internet is both
+    /// banned by CLAUDE.md and non-deterministic.
     private func makeTransport() -> NetworkTransport {
-        NetworkTransport(delegate: nil,
-                         cachingStrategy: .ephemeral,
-                         requestTimeout: 5)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [HTTPStubURLProtocol.self]
+        return NetworkTransport(delegate: nil,
+                                sessionConfiguration: config,
+                                requestTimeout: 5)
     }
 
     /// The OTHER drop path. `guard let db` covers an unopenable database; this
@@ -161,8 +165,9 @@ class NetworkQueueTests: XCTestCase {
     /// callers build headers from `TPPNetworkExecutor.request(for:)` whose
     /// `useTokenIfAvailable` defaults to TRUE — so a live bearer token is in
     /// the header set unless it is stripped. Nothing was ever queued before
-    /// PP-4987, so this never executed; turning the queue on is what would
-    /// have started writing credentials to disk.
+    /// PP-4987 on CURRENT builds — but it did run historically (see
+    /// `testMigrate_PurgesACredentialLeftBehindByAnOlderBuild`), and turning
+    /// the queue back on is what would resume it.
     func testHeadersSafeToPersist_RemovesTheCredentialAndKeepsEverythingElse() {
         let sanitized = NetworkQueue.headersSafeToPersist([
             "Authorization": "Bearer super-secret-token",
@@ -267,6 +272,10 @@ class NetworkQueueTests: XCTestCase {
         let book2 = queue.persistedRowsForTesting().filter { $0.updateID == "book-2" }
         XCTAssertEqual(book2.count, 1,
                        "A newer position supersedes an older one for the same book — collapsing is the desired behaviour here")
+        // "One row" alone cannot distinguish superseding from silently dropping
+        // the second write, which is the property that actually matters.
+        XCTAssertEqual(book2.first?.parameters, Data(#"{"p":2}"#.utf8),
+                       "The surviving row must carry the NEWER position — collapsing must supersede, not discard")
     }
 
     /// The credential must be resolved for the ROW'S library, never the
@@ -280,13 +289,17 @@ class NetworkQueueTests: XCTestCase {
     /// valid token available. Round 4 of review caught exactly that; the
     /// codebase already documents the invariant on
     /// `TPPNetworkExecutor.request(for:accountId:)`.
-    func testDrain_ResolvesTheCredentialForEachRowsOwnLibrary_NotTheSelectedOne() {
-        let asked = AskedLibraries()
+    func testDrain_SendsEachRowsOwnLibraryCredential_OnTheWire() {
+        let seen = SeenAuthorizations()
+        HTTPStubURLProtocol.register { @Sendable request in
+            guard let host = request.url?.host else { return nil }
+            seen.record(host: host,
+                        authorization: request.value(forHTTPHeaderField: "Authorization"))
+            return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+
         let (queue, dir) = makeWritableQueue(
-            authorizationHeaderProvider: { libraryID in
-                asked.record(libraryID)
-                return "Bearer token-for-\(libraryID)"
-            })
+            authorizationHeaderProvider: { libraryID in "Bearer token-for-\(libraryID)" })
         defer { try? FileManager.default.removeItem(atPath: dir) }
 
         queue.addRequest("lib-A", "book-1",
@@ -297,23 +310,69 @@ class NetworkQueueTests: XCTestCase {
                          HTTPMethodType.POST, Data("{}".utf8), nil)
         queue.serialQueue.sync {}
 
-        // `retryQueue` is @objc private and normally fires off a reachability
-        // publisher; drive it directly rather than waiting on the network.
-        queue.perform(Selector(("retryQueue")))
-        queue.serialQueue.sync {}
+        queue.retryQueue()
+        expectEventually("both rows to be retried") { seen.hosts.count >= 2 }
 
-        let requested = asked.all.sorted()
-        XCTAssertEqual(requested, ["lib-A", "lib-B"],
-                       "Each row's credential must be resolved for ITS OWN library — asking once for the selected library would send one library's token to the other's server")
+        // Asserted ON THE WIRE, not at the provider. Round 5 caught the
+        // previous version proving only that the right library was ASKED —
+        // deleting the `setValue(...)` that attaches the answer left the whole
+        // suite green. Resolving a credential and sending it are two claims.
+        XCTAssertEqual(seen.authorization(for: "a.example.org"), "Bearer token-for-lib-A",
+                       "Library A's row must be sent with library A's credential")
+        XCTAssertEqual(seen.authorization(for: "b.example.org"), "Bearer token-for-lib-B",
+                       "…and library B's with B's. Sending one library's token to the other's server is a cross-tenant disclosure")
     }
 
-    /// The provider is `@Sendable` and is invoked on the queue's serial queue,
-    /// so the recorder has to be safe to cross that boundary.
-    private final class AskedLibraries: @unchecked Sendable {
+    /// Records the `Authorization` each host actually received. The stub
+    /// handler is `@Sendable` and runs off the test's thread, so this has to be
+    /// safe to cross that boundary.
+    private final class SeenAuthorizations: @unchecked Sendable {
         private let lock = NSLock()
-        private var _all: [String] = []
-        var all: [String] { lock.withLock { _all } }
-        func record(_ id: String) { lock.withLock { _all.append(id) } }
+        private var byHost: [String: String?] = [:]
+        var hosts: [String] { lock.withLock { Array(byHost.keys) } }
+        func record(host: String, authorization: String?) {
+            lock.withLock { byHost[host] = authorization }
+        }
+        func authorization(for host: String) -> String? {
+            lock.withLock { byHost[host] ?? nil }
+        }
+    }
+
+    /// Legacy rows on real devices can carry a cleartext credential, and
+    /// `migrate()` must clear them.
+    ///
+    /// Not hypothetical: up to Release 1.1.0 `postAnnotation` used
+    /// `URLSession.shared` directly, so the raw NSURLError reached
+    /// `NetworkQueue.StatusCodes` and offline writes really were queued — with
+    /// `Authorization: Basic base64(barcode:PIN)`. That is a patron's card
+    /// number and PIN, base64 is not encryption, and the store is unencrypted.
+    /// I originally claimed such rows could not exist; review proved otherwise
+    /// from the git history, which is why this test exists rather than an
+    /// argument.
+    func testMigrate_PurgesACredentialLeftBehindByAnOlderBuild() {
+        let (queue, dir) = makeWritableQueue()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        queue.insertLegacyRowForTesting(
+            libraryID: "lib-A",
+            updateID: "book-1",
+            url: URL(string: "https://a.example.org/annotations/")!,
+            headers: ["Authorization": "Basic YmFyY29kZTpQSU4=",
+                      "Content-Type": "application/json"])
+
+        XCTAssertEqual(queue.persistedRowsForTesting().first?.headers?["Authorization"],
+                       "Basic YmFyY29kZTpQSU4=",
+                       "precondition: the legacy row really does carry the credential")
+
+        queue.migrate()
+        queue.serialQueue.sync {}
+
+        let row = queue.persistedRowsForTesting().first
+        XCTAssertNotNil(row, "The write itself must be kept — only the credential is dropped")
+        XCTAssertNil(row?.headers?["Authorization"],
+                     "A card number and PIN left on disk by an older build must be cleared on migrate")
+        XCTAssertEqual(row?.headers?["Content-Type"], "application/json",
+                       "…without discarding the headers the retry legitimately needs")
     }
 
     private func unopenableDatabaseDirectory() -> String {

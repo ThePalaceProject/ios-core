@@ -36,10 +36,12 @@
   filed 902 flatly. It now passes the underlying error, which routes through
   `customSummaryAndCode` and re-codes `notConnectedToInternet` / `timedOut` /
   `connectionLost` to `.clientSideTransientError`. So 902 falls for un-queued
-  transients too, independently of queueing — and separately, a non-2xx with a
-  problem-document body is reported TWICE (once by `parseAndLogError` as
-  `.problemDocAvailable`, once by the annotation caller as 902). Group the
-  re-measurement by `metadata.statusCode` rather than reading the total.
+  transients too, independently of queueing. There is also a double-report, but
+  NOT the one first recorded here: `parseAndLogError` early-returns without
+  logging for a first-attempt non-401 problem document, so `.problemDocAvailable`
+  is mostly not it — the real double-reports are `.parseProblemDocFail` (913) on
+  an unparseable body, and failed retries. Group the re-measurement by
+  `metadata.statusCode` rather than reading the total.
 
 - **It does not predict the 914 bucket.** Expect 914 to COLLAPSE app-wide:
   transport failures that were filed under it now carry their real NSURLError
@@ -70,8 +72,11 @@ queue ON rather than about the fix itself:
 - **The credential was about to reach disk.** Callers build headers from
   `TPPNetworkExecutor.request(for:)`, whose `useTokenIfAvailable` defaults to
   TRUE, so `Authorization: Bearer …` was archived into the unencrypted
-  `simplified.db`. Never executed before, because nothing was ever queued —
-  this ticket is what would have started it. Now stripped at enqueue
+  `simplified.db`. Dormant on current builds because nothing was being queued,
+  but NOT hypothetical: up to Release 1.1.0 `postAnnotation` used
+  `URLSession.shared` directly, so the raw NSURLError reached the gate and rows
+  really were written — carrying `Basic base64(barcode:PIN)`, a patron's card
+  number and PIN. `migrate()` now purges those. Now stripped at enqueue
   (`headersSafeToPersist`) and re-derived at drain from the CURRENT credential,
   which also stops a days-old row replaying an expired token.
 
@@ -123,10 +128,42 @@ passed only because that suite's executor happens to hold no token on a clean
 runner — it went red the moment a sibling test left one behind. Both are now
 asserted against the persisted row via `persistedRowsForTesting()`.
 
-No legacy rows can carry a stored credential: nothing was ever queued before
-this ticket (`willQueueOffline` could not be true), and the only other entry
-point, `enqueueOfflineRequest`, has no production caller. So no migration is
-needed to purge them.
+CORRECTED: I originally argued no legacy rows could carry a stored credential,
+because `willQueueOffline` could never be true. That was wrong, and review
+proved it from the git history — up to Release 1.1.0 `postAnnotation` bypassed
+the responder entirely via `URLSession.shared`, so the raw NSURLError reached
+the gate and rows WERE queued, with `Basic base64(barcode:PIN)` headers.
+Expired rows are deleted after `MaxRetriesInQueue` drains, so most are long
+gone, but "most" is not a basis for leaving a cleartext PIN on a device.
+`migrate()` now purges unconditionally, and the purge is tested.
+
+The lesson is the branch's recurring one: an argument from reading is not
+evidence. Every claim on this branch that rested on inspection rather than
+assertion — the status code reaching telemetry, the strip being wired in, the
+credential being attached at drain — turned out to be false.
+
+## Delivery hazards this creates, for the drain-side follow-up
+
+Both are strictly better than the status quo (total loss), neither blocks, both
+would confound the PP-4965 re-measurement if unrecorded:
+
+- **Stale-position overwrite.** A queued position replays with no client
+  timestamp. If a fresher live position lands before the drain completes, the
+  older queued one wins on the server and cross-device sync propagates the
+  regression.
+- **Duplicate bookmark delivery.** A queued audiobook bookmark leaves the local
+  copy with `annotationId == nil`, so the sync path re-posts it while the queue
+  also delivers it — two server copies unless the CM dedupes by selector.
+- **Retry budget on supersede** — FIXED here (`sqlRetries <- 0` on update), but
+  worth naming: without it a fresh position landing on an exhausted row was
+  deleted before ever being sent.
+
+## Follow-up owed
+
+`TPPAnnotations` now carries seven `nonisolated(unsafe) static` overrides. Each
+is justified and torn down, but the honest fix is instance-ification behind the
+`AnnotationsManager` protocol that already exists in that file — not another
+seam. That is a separate branch; this one should not grow an eighth.
 
 ## Files in scope
 

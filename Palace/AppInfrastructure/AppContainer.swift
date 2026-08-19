@@ -732,7 +732,19 @@ struct AppContainer: @unchecked Sendable {
         return AppContainer(
             bookRegistry: bookRegistry,
             networkExecutor: executor,
-            networkQueue: NetworkQueue(transport: executor.transport, reachability: reachability),
+            // Bind the drain-time credential provider HERE, where
+            // `accountsManager` is already in scope — the default closure would
+            // otherwise re-enter `AppContainer.production()` from the queue's
+            // serial queue at drain time. Same reasoning as the featureFlags
+            // note below: the composition root is the binding site.
+            networkQueue: NetworkQueue(
+                transport: executor.transport,
+                reachability: reachability,
+                authorizationHeaderProvider: { [accountsManager] libraryID in
+                    accountsManager.userAccount(for: libraryID)
+                        .credentialSnapshot().authToken.map { "Bearer \($0)" }
+                }
+            ),
             reachability: reachability,
             accountsManager: accountsManager,
             settings: TPPSettings(),
