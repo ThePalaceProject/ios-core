@@ -388,28 +388,20 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
                        "An offline write must never reach the server")
         XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 0,
                        "Backend must hold nothing after an offline write")
-        // PP-4987: today this write is NOT queued, so reporting it is correct.
+        // PP-4987 HAS LANDED — this is the flip the expectation above was
+        // waiting for, and the assertions are now the correct ones.
         //
-        // The networking layer discards the underlying transport error when no
-        // HTTP response arrives — the offline case — and substitutes a generic
-        // "invalid or no HTTP response" code. `postAnnotation` decides
-        // queue-worthiness by matching the error against a list of NSURLError
-        // conditions, and the generic code is not on it, so the offline queue
-        // never receives the write. It is lost, and an error is the honest
-        // report.
-        //
-        // Expressed as an expected failure rather than by asserting the broken
-        // behaviour: when PP-4987 lands, this stops failing, XCTest flags the
-        // unfulfilled expectation, and whoever fixed it flips the assertion to
-        // the correct one below. Asserting the defect directly is how the
-        // pre-PP-4965 suite pinned a bug as a contract.
-        XCTExpectFailure("PP-4987: transport error is discarded, so the write is never queued and is correctly reported. Delete this expectation when PP-4987 lands.") {
-            XCTAssertEqual(spy.loggedSummaries, [],
-                           "Once offline writes are actually queued, a queued write must not be reported as an error")
-        }
-        XCTAssertEqual(spy.firstReportedNSError?.code,
-                       TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
-                       "Documents the PP-4987 mechanism: the offline reason is replaced by a generic no-response code")
+        // `TPPNetworkResponder` no longer replaces the transport error with a
+        // generic no-response code, so the NSURLError survives to
+        // `postAnnotation`, matches `NetworkQueue.StatusCodes`, and the write
+        // goes to the offline queue instead of being lost. A queued write is
+        // pending delivery, not a failure, so nothing is reported — which is
+        // the entire point of PP-4965's `.queuedForRetry` case, unreachable
+        // until now.
+        XCTAssertEqual(spy.loggedSummaries, [],
+                       "A write that was queued for retry must not be reported as an error — it is pending, not lost")
+        XCTAssertNil(spy.firstReportedNSError,
+                     "Nothing at all should be reported for a successfully queued write")
 
         // B sees nothing, and that is correct: the write was never delivered.
         let book = makeBook()

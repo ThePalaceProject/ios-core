@@ -519,7 +519,36 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                     }
                 }
             }
+        } else if let netErr = networkError as NSError? {
+            // PP-4987: surface the UNDERLYING transport error.
+            //
+            // This branch is the no-HTTP-response case — the task never got a
+            // reply, which is what "offline" looks like. It used to discard
+            // `networkError` and substitute `invalidOrNoHTTPResponse` (914),
+            // which erased the one piece of information every downstream
+            // offline check reads: the NSURLError code.
+            //
+            // What that broke, all of it silently:
+            //   - `NetworkQueue.StatusCodes` is composed ENTIRELY of NSURLError
+            //     values, so `willQueueOffline` could never be true and NOT ONE
+            //     write was ever queued for retry. That is PP-4987 itself, and
+            //     it is why patrons lose reading positions rather than having
+            //     them delivered late.
+            //   - The offline/timeout arms of `TPPAlertUtils` (:68, :72),
+            //     `PalaceError` (:596, :598), `TPPSignInBusinessLogic` (:688)
+            //     and `PalaceAuth.AuthReducer` (:264) all match on those same
+            //     codes, so they were unreachable for anything routed through
+            //     this responder. Patrons saw a generic failure where the app
+            //     had a specific "you appear to be offline" message ready.
+            //
+            // Preserving the error re-enables all of the above at once. The
+            // error is passed through unchanged rather than re-wrapped so the
+            // domain stays NSURLErrorDomain, which is what those call sites
+            // check alongside the code.
+            result = .failure(netErr, task.response)
         } else {
+            // Genuinely no response AND no error to explain it — keep the
+            // generic code, which is what 914 was always meant to describe.
             let err = NSError(domain: "Api call with failure HTTP status",
                               code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
                               userInfo: logMetadata)

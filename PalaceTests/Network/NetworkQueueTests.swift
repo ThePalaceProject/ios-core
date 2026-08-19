@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 /// SRS: NET-003 — Offline queue stores failed requests
@@ -32,6 +33,106 @@ class NetworkQueueTests: XCTestCase {
     override func tearDown() {
         appContainer = nil
         super.tearDown()
+    }
+
+    // MARK: - PP-4987: a dropped enqueue must not be silent
+
+    /// PP-4965 stops reporting a write once it is handed to this queue, on the
+    /// grounds that it is pending rather than lost. That trade is only sound if
+    /// the queue actually TAKES the write. Before PP-4987 both failure paths
+    /// here returned without telling anyone — a `guard let db ... else
+    /// { return }` and a `catch` whose only output was a local `Log.error`
+    /// invisible in production telemetry. Combined, a patron's reading position
+    /// could be accepted, dropped, and never reported by anything.
+    ///
+    /// Driven by pointing the store at a path SQLite cannot open, which is the
+    /// only deterministic way to make `startDatabaseConnection()` return nil.
+    func testAddRequest_WhenDatabaseCannotBeOpened_ReportsTheDropInsteadOfSwallowingIt() {
+        let spy = ErrorLoggerSpy()
+        let queue = NetworkQueue(
+            transport: makeTransport(),
+            reachability: Reachability(),
+            // A file, not a directory — `"\(path)/simplified.db"` cannot be
+            // created underneath it, so the connection fails every time.
+            databaseDirectory: unopenableDatabaseDirectory(),
+            errorLogger: spy
+        )
+
+        queue.addRequest("lib-1", "update-1",
+                         URL(string: "https://example.org/annotations/")!,
+                         HTTPMethodType.POST, Data("{}".utf8), nil)
+
+        expectEventually("the drop is reported") { spy.loggedSummaries.isEmpty == false }
+
+        XCTAssertEqual(spy.loggedSummaries, ["Offline queue write dropped"],
+                       "A write the queue could not persist must be reported — the caller has already stopped reporting it")
+        XCTAssertEqual(spy.loggedCodes, [.offlineQueueWriteFailed],
+                       "It needs its own bucket; filing it as a generic api call hides it among server refusals")
+        XCTAssertEqual(spy.loggedMetadata.first?["reason"] as? String, "no database connection",
+                       "The report has to say WHICH drop path fired, or it is not diagnosable")
+        XCTAssertEqual(spy.loggedMetadata.first?["url"] as? String,
+                       "https://example.org/annotations/",
+                       "Without the URL the report cannot be tied back to a lost write")
+    }
+
+    /// The same queue, working normally, must stay silent — otherwise the test
+    /// above would pass for a queue that reports on EVERY write, which would be
+    /// its own defect (and would re-inflate the bucket PP-4965 shrank).
+    func testAddRequest_WhenDatabaseIsWritable_ReportsNothing() {
+        let spy = ErrorLoggerSpy()
+        let dir = NSTemporaryDirectory() + "pp4987-ok-" + UUID().uuidString
+        try? FileManager.default.createDirectory(atPath: dir,
+                                                 withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        let queue = NetworkQueue(
+            transport: makeTransport(),
+            reachability: Reachability(),
+            databaseDirectory: dir,
+            errorLogger: spy
+        )
+        // A fresh database has no table until `migrate()` creates it — without
+        // this the "success" case fails at the insert and reports a drop, which
+        // would make this control test pass for the wrong reason.
+        queue.migrate()
+        expectEventually("the schema to exist") { spy.loggedSummaries.isEmpty }
+
+        queue.addRequest("lib-1", "update-1",
+                         URL(string: "https://example.org/annotations/")!,
+                         HTTPMethodType.POST, Data("{}".utf8), nil)
+
+        // Give the serial queue the same window the failing test gets, so this
+        // is a real "nothing arrived", not a race that has not happened yet.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(spy.loggedSummaries, [],
+                       "A write that WAS persisted must report nothing at all")
+    }
+
+    /// The queue never sends anything in these tests — it fails (or succeeds)
+    /// at the SQLite step first — so a plain ephemeral transport is enough.
+    private func makeTransport() -> NetworkTransport {
+        NetworkTransport(delegate: nil,
+                         cachingStrategy: .ephemeral,
+                         requestTimeout: 5)
+    }
+
+    private func unopenableDatabaseDirectory() -> String {
+        let path = NSTemporaryDirectory() + "pp4987-blocked-" + UUID().uuidString
+        FileManager.default.createFile(atPath: path, contents: Data("not a directory".utf8))
+        return path
+    }
+
+    private func expectEventually(_ what: String,
+                                  timeout: TimeInterval = 2.0,
+                                  _ condition: () -> Bool,
+                                  file: StaticString = #filePath,
+                                  line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        XCTFail("Timed out waiting for \(what)", file: file, line: line)
     }
 
     // MARK: - Static Properties

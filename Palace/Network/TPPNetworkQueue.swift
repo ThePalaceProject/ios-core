@@ -39,9 +39,22 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     private let transport: NetworkTransport
     private let reachability: Reachability
 
-    init(transport: NetworkTransport, reachability: Reachability) {
+    /// Constructor-injected rather than reaching for a static: the drop-report
+    /// guarantee below has to be observable, and this type is already being
+    /// handed its collaborators. Deliberately NOT another `nonisolated(unsafe)
+    /// static var` override — those are what the decomposition campaign is
+    /// removing.
+    private let errorLogger: ErrorLogging
+
+    init(transport: NetworkTransport,
+         reachability: Reachability,
+         databaseDirectory: String = NSSearchPathForDirectoriesInDomains(
+            .applicationSupportDirectory, .userDomainMask, true).first ?? NSTemporaryDirectory(),
+         errorLogger: ErrorLogging = DefaultErrorLogger()) {
+        self.path = databaseDirectory
         self.transport = transport
         self.reachability = reachability
+        self.errorLogger = errorLogger
         super.init()
     }
 
@@ -64,7 +77,13 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     private static let TableName = "offline_queue"
 
     private var retryRequestCount = 0
-    private let path = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first ?? NSTemporaryDirectory()
+    /// Where `simplified.db` lives. Injectable ONLY so the drop paths can be
+    /// tested: PP-4987 makes a failed enqueue report to Crashlytics instead of
+    /// vanishing, and that guarantee is worthless unless something proves it
+    /// fires. Pointing this at an unwritable location is the only way to make
+    /// `startDatabaseConnection()` return nil deterministically. Production
+    /// callers use the default and are unaffected.
+    private let path: String
 
     private let sqlTable = Table(NetworkQueue.TableName)
 
@@ -107,7 +126,21 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
                 headerData = nil
             }
 
-            guard let db = self.startDatabaseConnection() else { return }
+            guard let db = self.startDatabaseConnection() else {
+                // PP-4987: never drop a queued write in silence. The caller has
+                // already been told "queued for retry" and has stopped
+                // reporting on that basis, so this is the last place the loss
+                // can still be seen.
+                self.errorLogger.logError(withCode: .offlineQueueWriteFailed,
+                                          summary: "Offline queue write dropped",
+                                        metadata: [
+                                            "reason": "no database connection",
+                                            "libraryID": libraryID,
+                                            "url": urlString,
+                                            "method": methodString
+                                        ])
+                return
+            }
 
             // Update (not insert) if uniqueID and libraryID match existing row in table
             let query = self.sqlTable.filter(self.sqlLibraryID == libraryID && self.sqlUpdateID == updateID)
@@ -125,6 +158,17 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
                 }
             } catch {
                 Log.error(#file, "SQLite Error: Could not insert or update row")
+                // PP-4987: as above — a local Log.error is invisible in
+                // production telemetry, and the caller believes this write is
+                // safely pending.
+                self.errorLogger.logError(error,
+                                          summary: "Offline queue write dropped",
+                                        metadata: [
+                                            "reason": "insert or update threw",
+                                            "libraryID": libraryID,
+                                            "url": urlString,
+                                            "method": methodString
+                                        ])
             }
         }
     }

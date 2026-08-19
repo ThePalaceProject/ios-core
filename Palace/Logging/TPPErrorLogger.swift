@@ -210,6 +210,13 @@ private let nullString = "null"
     /// (PP-4769, crash 898c0776 — `__DataStorage.init` OOM under memory
     /// pressure). The task is cancelled and its completion fails cleanly.
     case responseTooLarge = 915
+    /// A write handed to the offline retry queue was NOT persisted — the
+    /// database connection was unavailable, or the insert threw. Reported
+    /// because `TPPAnnotations` deliberately stops reporting a write once it
+    /// is queued (PP-4965); if the queue then drops it, the loss would be
+    /// completely silent. Queueing only earns that silence if it actually
+    /// took the write (PP-4987).
+    case offlineQueueWriteFailed = 916
 
     // DRM
     case epubDecodingError = 1000
