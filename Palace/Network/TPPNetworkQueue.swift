@@ -61,15 +61,27 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     ///     account the patron has since signed out of. Replaying a stored
     ///     header retries with a stale credential; re-deriving at drain uses
     ///     whatever is valid NOW, or nothing.
-    private let authorizationHeaderProvider: @Sendable () -> String?
+    ///
+    /// Takes the ROW'S library, never the currently-selected one. `retryQueue`
+    /// drains every row regardless of library, and each row's URL is its own
+    /// library's annotation host — so resolving `currentUserAccount` here would
+    /// send library B's bearer token to library A's server whenever a patron
+    /// queued a write for A and then switched to B. That is a cross-tenant
+    /// credential disclosure, and it also 401s a write that had a perfectly
+    /// good token in the keychain. `TPPNetworkExecutor.request(for:accountId:)`
+    /// exists for precisely this reason — see its "prevent TOCTOU races during
+    /// account switches … causing cross-account credential leaks" note. Here
+    /// the window is not a race; it is days.
+    private let authorizationHeaderProvider: @Sendable (String) -> String?
 
     init(transport: NetworkTransport,
          reachability: Reachability,
          databaseDirectory: String = NSSearchPathForDirectoriesInDomains(
             .applicationSupportDirectory, .userDomainMask, true).first ?? NSTemporaryDirectory(),
          errorLogger: ErrorLogging = DefaultErrorLogger(),
-         authorizationHeaderProvider: @escaping @Sendable () -> String? = {
-            AppContainer.production().accountsManager.currentUserAccount
+         authorizationHeaderProvider: @escaping @Sendable (String) -> String? = { libraryID in
+            AppContainer.production().accountsManager
+                .userAccount(for: libraryID)
                 .credentialSnapshot().authToken.map { "Bearer \($0)" }
          }) {
         self.path = databaseDirectory
@@ -136,6 +148,43 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     /// case-insensitively because HTTP header names are.
     static func headersSafeToPersist(_ headers: [String: String]) -> [String: String] {
         headers.filter { $0.key.caseInsensitiveCompare("Authorization") != .orderedSame }
+    }
+
+    /// What is ACTUALLY on disk, for tests.
+    ///
+    /// Deliberate test-support surface, and the justification is specific: the
+    /// guarantees this type now makes are about PERSISTED BYTES — "the
+    /// credential never reaches the database", "two bookmarks do not collapse
+    /// into one row". Asserting those against a helper, or against a spy that
+    /// stands in front of the database, proves nothing about what was stored;
+    /// round 4 of review caught exactly that mistake here. The alternative —
+    /// re-declaring the schema inside the test target — would drift from this
+    /// file the first time a column changed, which is the same failure wearing
+    /// a different hat.
+    struct PersistedRow {
+        let libraryID: String
+        let updateID: String?
+        let url: String
+        let headers: [String: String]?
+    }
+
+    func persistedRowsForTesting() -> [PersistedRow] {
+        serialQueue.sync {
+            guard let db = startDatabaseConnection() else { return [] }
+            guard let rows = try? db.prepare(sqlTable) else { return [] }
+            return rows.map { row in
+                let headers: [String: String]?
+                if let data = row[sqlHeader] {
+                    headers = NSKeyedUnarchiver.unarchiveObject(with: data) as? [String: String]
+                } else {
+                    headers = nil
+                }
+                return PersistedRow(libraryID: row[sqlLibraryID],
+                                    updateID: row[sqlUpdateID],
+                                    url: row[sqlUrl],
+                                    headers: headers)
+            }
+        }
     }
 
     func addRequest(_ libraryID: String,
@@ -338,13 +387,14 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
             }
         }
 
-        // Attach the CURRENT credential, not the one this row was created with
-        // (PP-4987). Rows carry no `Authorization` by design — see
+        // Attach the credential current for THIS ROW'S LIBRARY (PP-4987).
+        // Rows carry no `Authorization` by design — see
         // `authorizationHeaderProvider`. A row can be days old, so the token it
         // was queued with may be expired or belong to a signed-out account;
-        // this uses whatever is valid now, or sends none and lets the server
-        // refuse (which is the correct outcome for a signed-out patron).
-        if let authorization = authorizationHeaderProvider() {
+        // this uses whatever is valid now for that library, or sends none and
+        // lets the server refuse (correct for a signed-out patron). Keyed on
+        // the row's library, never the selected one — see the provider's doc.
+        if let authorization = authorizationHeaderProvider(requestRow[sqlLibraryID]) {
             urlRequest.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
 

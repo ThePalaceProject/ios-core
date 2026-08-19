@@ -189,6 +189,133 @@ class NetworkQueueTests: XCTestCase {
         }
     }
 
+    // MARK: - PP-4987: proofs against the PERSISTED BYTES, not a helper
+
+    private func makeWritableQueue(
+        _ spy: ErrorLoggerSpy = ErrorLoggerSpy(),
+        authorizationHeaderProvider: @escaping @Sendable (String) -> String? = { _ in nil }
+    ) -> (NetworkQueue, String) {
+        let dir = NSTemporaryDirectory() + "pp4987-db-" + UUID().uuidString
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let queue = NetworkQueue(transport: makeTransport(),
+                                 reachability: Reachability(),
+                                 databaseDirectory: dir,
+                                 errorLogger: spy,
+                                 authorizationHeaderProvider: authorizationHeaderProvider)
+        queue.migrate()
+        queue.serialQueue.sync {}
+        return (queue, dir)
+    }
+
+    /// The security property, asserted where it actually has to hold: on the
+    /// row in the database.
+    ///
+    /// Round 4 caught the previous version of this proof testing
+    /// `headersSafeToPersist` in isolation while NOTHING asserted `addRequest`
+    /// calls it — unwiring the call site left every test green. Testing the
+    /// helper is not testing the producer.
+    func testAddRequest_NeverPersistsTheCredential_EvenThoughCallersPassIt() {
+        let (queue, dir) = makeWritableQueue()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        // Exactly what `TPPAnnotations.addToOfflineQueue` hands over: the
+        // output of `request(for:)`, whose `useTokenIfAvailable` defaults true.
+        queue.addRequest("lib-A", "book-1",
+                         URL(string: "https://a.example.org/annotations/")!,
+                         HTTPMethodType.POST, Data("{}".utf8),
+                         ["Authorization": "Bearer super-secret-token",
+                          "Content-Type": "application/json"])
+        queue.serialQueue.sync {}
+
+        let rows = queue.persistedRowsForTesting()
+        XCTAssertEqual(rows.count, 1, "precondition: the write was stored")
+        XCTAssertNil(rows[0].headers?["Authorization"],
+                     "The credential must not be in the database — simplified.db is unencrypted and on disk")
+        XCTAssertFalse((rows[0].headers ?? [:]).values.contains { $0.contains("super-secret-token") },
+                       "…nor smuggled in under any other header")
+        XCTAssertEqual(rows[0].headers?["Content-Type"], "application/json",
+                       "Everything the retry legitimately needs must survive")
+    }
+
+    /// The data-loss property, asserted against the rows rather than the seam.
+    ///
+    /// `addRequest` UPDATEs the row matching (libraryID, updateID), so this is
+    /// where "two bookmarks must not overwrite each other" is actually decided.
+    /// The annotation-side test proves the KEYS differ; this proves differing
+    /// keys produce two surviving rows.
+    func testAddRequest_DistinctKeysSurviveAsSeparateRows_SharedKeyCollapses() {
+        let (queue, dir) = makeWritableQueue()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let url = URL(string: "https://a.example.org/annotations/")!
+
+        // Two bookmarks in one book — distinct keys, as postReadingPosition
+        // now builds them.
+        queue.addRequest("lib-A", "book-1|{\"chapter\":1}", url,
+                         HTTPMethodType.POST, Data(#"{"n":1}"#.utf8), nil)
+        queue.addRequest("lib-A", "book-1|{\"chapter\":9}", url,
+                         HTTPMethodType.POST, Data(#"{"n":2}"#.utf8), nil)
+        queue.serialQueue.sync {}
+        XCTAssertEqual(queue.persistedRowsForTesting().count, 2,
+                       "Two distinct bookmarks must survive as two rows — sharing a key silently deletes one")
+
+        // Two positions for the same book — shared key, collapse is CORRECT.
+        queue.addRequest("lib-A", "book-2", url,
+                         HTTPMethodType.POST, Data(#"{"p":1}"#.utf8), nil)
+        queue.addRequest("lib-A", "book-2", url,
+                         HTTPMethodType.POST, Data(#"{"p":2}"#.utf8), nil)
+        queue.serialQueue.sync {}
+        let book2 = queue.persistedRowsForTesting().filter { $0.updateID == "book-2" }
+        XCTAssertEqual(book2.count, 1,
+                       "A newer position supersedes an older one for the same book — collapsing is the desired behaviour here")
+    }
+
+    /// The credential must be resolved for the ROW'S library, never the
+    /// currently-selected one.
+    ///
+    /// `retryQueue` drains every row regardless of library, and each row's URL
+    /// is its own library's annotation host. Resolving `currentUserAccount`
+    /// would send library B's bearer token to library A's server whenever a
+    /// patron queued a write for A and then switched to B — a cross-tenant
+    /// credential disclosure, plus a guaranteed 401 for a write that had a
+    /// valid token available. Round 4 of review caught exactly that; the
+    /// codebase already documents the invariant on
+    /// `TPPNetworkExecutor.request(for:accountId:)`.
+    func testDrain_ResolvesTheCredentialForEachRowsOwnLibrary_NotTheSelectedOne() {
+        let asked = AskedLibraries()
+        let (queue, dir) = makeWritableQueue(
+            authorizationHeaderProvider: { libraryID in
+                asked.record(libraryID)
+                return "Bearer token-for-\(libraryID)"
+            })
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        queue.addRequest("lib-A", "book-1",
+                         URL(string: "https://a.example.org/annotations/")!,
+                         HTTPMethodType.POST, Data("{}".utf8), nil)
+        queue.addRequest("lib-B", "book-2",
+                         URL(string: "https://b.example.org/annotations/")!,
+                         HTTPMethodType.POST, Data("{}".utf8), nil)
+        queue.serialQueue.sync {}
+
+        // `retryQueue` is @objc private and normally fires off a reachability
+        // publisher; drive it directly rather than waiting on the network.
+        queue.perform(Selector(("retryQueue")))
+        queue.serialQueue.sync {}
+
+        let requested = asked.all.sorted()
+        XCTAssertEqual(requested, ["lib-A", "lib-B"],
+                       "Each row's credential must be resolved for ITS OWN library — asking once for the selected library would send one library's token to the other's server")
+    }
+
+    /// The provider is `@Sendable` and is invoked on the queue's serial queue,
+    /// so the recorder has to be safe to cross that boundary.
+    private final class AskedLibraries: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _all: [String] = []
+        var all: [String] { lock.withLock { _all } }
+        func record(_ id: String) { lock.withLock { _all.append(id) } }
+    }
+
     private func unopenableDatabaseDirectory() -> String {
         let path = NSTemporaryDirectory() + "pp4987-blocked-" + UUID().uuidString
         FileManager.default.createFile(atPath: path, contents: Data("not a directory".utf8))

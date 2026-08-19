@@ -1453,6 +1453,12 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     // annotation", which made that the app's largest error while the writes
     // were in fact queued and delivered. A queued write is pending, not lost.
     func testPostAnnotation_QueuedForRetry_IsReportedAsPendingNotFailure() {
+        // Never let a test write a durable row into the app's REAL
+        // simplified.db — PP-4987 made this branch reachable, so without the
+        // seam these rows persist in Application Support and a later
+        // reachability event can replay them as live POSTs.
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
         // notConnectedToInternet is in NetworkQueue.StatusCodes, so with
         // queueOffline the request is enqueued rather than abandoned.
         mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
@@ -1573,6 +1579,12 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     /// The defect this ticket exists for: a write that is safely queued for
     /// retry must not be reported as an error.
     func testPostReadingPosition_QueuedForRetry_ReportsNothingToErrorLogging() {
+        // Never let a test write a durable row into the app's REAL
+        // simplified.db — PP-4987 made this branch reachable, so without the
+        // seam these rows persist in Application Support and a later
+        // reachability event can replay them as live POSTs.
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
         let spy = makeLoggerSpy()
         mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
                                            code: NSURLErrorNotConnectedToInternet))
@@ -1587,13 +1599,13 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
                        "Guard against a vacuous pass: the sync gate must have opened and the POST gone out")
         XCTAssertEqual(spy.loggedSummaries, [],
                        "A queued write is pending, not failed — reporting it is what made this the app's largest error")
-        // GAP, deliberate: nothing here asserts `addToOfflineQueue` actually
-        // enqueued the write, because it reaches AppContainer.production()
-        // .networkQueue with no seam. Suppressing the report on the promise of
-        // a retry is only safe if the retry exists — so that assertion belongs
-        // to PP-4987, where this branch first becomes reachable in production
-        // and the promise starts being load-bearing. Adding a seam now would
-        // test a path that cannot execute.
+        // The gap this test used to declare — "nothing asserts the write was
+        // enqueued, because there is no seam" — is closed. The seam exists and
+        // the enqueue is asserted in
+        // `testPostReadingPosition_WhenQueuedForRetry_ActuallyEnqueuesTheWrite`;
+        // this test keeps the narrower job of pinning the SILENCE.
+        XCTAssertEqual(queue.count, 1,
+                       "…and the silence is only defensible because the write really was queued")
     }
 
     /// A genuine transport loss must still be reported, and must carry the
@@ -1632,19 +1644,20 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
 
     /// The shape production ACTUALLY delivers on this path.
     ///
-    /// The tests above inject NSURLError codes, which is what an offline device
-    /// emits — but not what `postAnnotation` receives. TPPNetworkResponder
-    /// discards the transport error when no HTTP response arrives and hands up
-    /// code 914 instead (PP-4987), proved by the two-device test. Asserting
-    /// only the injected shape is how a fixture drifts from production bytes,
-    /// so this pins the real one: it must still report, still carry 902, and
-    /// must NOT be mistaken for something queueable.
+    /// The RESIDUAL no-response shape, after PP-4987.
+    ///
+    /// `TPPNetworkResponder` no longer substitutes 914 for a transport error —
+    /// an offline device's NSURLError now survives, is queueable, and is
+    /// covered by the tests above. 914 remains only for the genuinely
+    /// unexplained case: no response AND no error. That case is still a real
+    /// loss, still reports, and still must not be mistaken for queueable —
+    /// which is what this pins.
     func testPostReadingPosition_ProductionNoResponseShape_ReportsUnder902() {
         let spy = makeLoggerSpy()
         let asProductionDelivers = NSError(domain: "Api call with failure HTTP status",
                                            code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue)
         XCTAssertFalse(NetworkQueue.StatusCodes.contains(asProductionDelivers.code),
-                       "Precondition (this IS PP-4987): the code production delivers is not queueable")
+                       "Precondition: the unexplained-no-response code is not queueable, so this write is genuinely lost")
         mock.postStub = (nil, nil, asProductionDelivers)
 
         let exp = expectation(description: "post reading position")
@@ -1655,7 +1668,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
 
         XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
         XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"],
-                       "Today's real offline failure is a genuine loss and must be reported")
+                       "An unexplained no-response is a genuine loss and must be reported — unlike a transport failure, which PP-4987 makes queueable")
         XCTAssertEqual(spy.loggedCodes, [.apiCall],
                        "It must stay in the 902 bucket, or re-measuring that bucket after PP-4987 reads a false win")
     }

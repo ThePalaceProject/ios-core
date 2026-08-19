@@ -421,8 +421,16 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
                        "The offline write must be handed to the retry queue, not merely go unreported")
         XCTAssertEqual(offlineQueue.enqueued.first?.updateID, Self.bookID,
                        "A reading position keys on the book, so a later position supersedes this one")
-        XCTAssertNil(offlineQueue.enqueued.first?.headers?["Authorization"],
-                     "The credential must never be persisted — simplified.db is unencrypted")
+        // NOTE: deliberately NOT asserting the absence of an Authorization
+        // header here. The spy stands in FRONT of `NetworkQueue`, and
+        // production genuinely does hand a credential across that boundary —
+        // the strip happens inside `addRequest`, downstream of this point. An
+        // assertion here would be asserting a property that is false in
+        // production, and it only ever passed because this suite's executor
+        // has no token on a clean runner; it went red the moment a sibling
+        // test left one behind. The credential guarantee is pinned where it
+        // actually holds, against the persisted row, in
+        // NetworkQueueTests.testAddRequest_NeverPersistsTheCredential…
 
         // B sees nothing, and that is correct: the write was never delivered.
         let book = makeBook()

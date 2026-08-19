@@ -31,6 +31,16 @@
   has no behavioural coverage; it is a follow-up, not something this change
   fixes.
 
+- **It does not predict the 902 bucket either, and there are TWO confounders.**
+  Pre-change, the annotation caller passed `nil` as the error, so every failure
+  filed 902 flatly. It now passes the underlying error, which routes through
+  `customSummaryAndCode` and re-codes `notConnectedToInternet` / `timedOut` /
+  `connectionLost` to `.clientSideTransientError`. So 902 falls for un-queued
+  transients too, independently of queueing — and separately, a non-2xx with a
+  problem-document body is reported TWICE (once by `parseAndLogError` as
+  `.problemDocAvailable`, once by the annotation caller as 902). Group the
+  re-measurement by `metadata.statusCode` rather than reading the total.
+
 - **It does not predict the 914 bucket.** Expect 914 to COLLAPSE app-wide:
   transport failures that were filed under it now carry their real NSURLError
   and re-bucket through `customSummaryAndCode`. A near-zero 914 after this
@@ -90,6 +100,33 @@ erases the transport error into `problemDocument?.dictionaryValue` (nil when
 offline), so `BookReturnService.isOfflineNSURLError` and the OPDS-side
 consumers stay dead. That is a SECOND erasure chokepoint of the same shape as
 this ticket's, and it is worth its own ticket.
+
+## Round 4 — the credential fix had its own leak
+
+Fixing the at-rest problem introduced a worse one in transit, caught by two
+reviewers independently. The drain-time provider resolved
+`currentUserAccount`, while `retryQueue` drains EVERY row regardless of
+library and each row's URL is its own library's host. A patron who queued a
+write for library A and then switched to library B would have sent B's bearer
+token to A's server — a cross-tenant credential disclosure, plus a guaranteed
+401 on a write that had a valid token sitting in the keychain. The provider is
+now keyed on the row's `libraryID` and resolved through
+`accountsManager.userAccount(for:)`, which is the API that exists precisely to
+stop this (see the "prevent TOCTOU races during account switches … causing
+cross-account credential leaks" note on `TPPNetworkExecutor`).
+
+The strip itself was also proven only on the helper: `headersSafeToPersist` had
+unit tests, but nothing asserted `addRequest` CALLS it, and unwiring the call
+site left the whole suite green. The E2E assertion that claimed to cover it sat
+UPSTREAM of the strip, asserting a property that is false in production, and
+passed only because that suite's executor happens to hold no token on a clean
+runner — it went red the moment a sibling test left one behind. Both are now
+asserted against the persisted row via `persistedRowsForTesting()`.
+
+No legacy rows can carry a stored credential: nothing was ever queued before
+this ticket (`willQueueOffline` could not be true), and the only other entry
+point, `enqueueOfflineRequest`, has no production caller. So no migration is
+needed to purge them.
 
 ## Files in scope
 
