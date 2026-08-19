@@ -19,6 +19,12 @@ on:
       - '**.m'
       - '**.h'
       - 'tools/ledger/**'
+      # The reporting pipeline runs on its own changes, so a PR that edits the
+      # analysis or the comment rendering demonstrates the result instead of
+      # merging unexercised. Both were silently broken for a month precisely
+      # because nothing re-ran them.
+      - '.github/workflows/ledger.yml'
+      - 'scripts/ledger_scc.py'
 
   # Allow manual trigger for testing
   workflow_dispatch:
@@ -140,6 +146,8 @@ jobs:
           # Initialize defaults
           echo "components=0" >> $GITHUB_OUTPUT
           echo "cycles=0" >> $GITHUB_OUTPUT
+          echo "scc_count=0" >> $GITHUB_OUTPUT
+          echo "largest_scc=0" >> $GITHUB_OUTPUT
           echo "violations=0" >> $GITHUB_OUTPUT
           echo "hotspots=0" >> $GITHUB_OUTPUT
           echo "changed_files=0" >> $GITHUB_OUTPUT
@@ -269,14 +277,41 @@ jobs:
               "$OBSERVE_DIR/qa/test-matches.json" 2>/dev/null > /tmp/qa_test_matches.md || true
           fi
           
-          # Architecture: Cycle details
+          # Architecture: Cycle details.
+          #
+          # Ledger emits `.cycles` as an INTEGER and `.findings` as an empty
+          # array; ALL detail lives in `.issues[]`. The previous extraction read
+          # `.cycles[] | .components` and `.findings[] | .message`, both of which
+          # error on the real shape — the errors went to /dev/null and every PR
+          # comment silently printed "See full report for cycle details."
+          #
+          # ledger_scc.py additionally collapses the reported cycle PATHS into
+          # the distinct cycles (strongly-connected components) they represent,
+          # and discounts edges `tools/ledger/ledger-config.json` declares
+          # structurally impossible. See scripts/ledger_scc.py for why the raw
+          # path count cannot be trended.
           if [[ -f "$OBSERVE_DIR/arch/analysis.json" ]]; then
-            jq -r 'if .cycles then .cycles[] | "- " + (.components | join(" → ")) else empty end' \
-              "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null > /tmp/arch_cycles.md || true
-            
-            # Findings/issues
-            jq -r '.findings[]? | "- **" + .type + "**: " + .message' \
-              "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null > /tmp/arch_findings.md || true
+            python3 scripts/ledger_scc.py \
+              --analysis "$OBSERVE_DIR/arch/analysis.json" \
+              --config tools/ledger/ledger-config.json \
+              --json /tmp/arch_scc.json \
+              --markdown /tmp/arch_cycles.md || true
+
+            if [[ -f /tmp/arch_scc.json ]]; then
+              echo "scc_count=$(jq -r '.sccCount // 0' /tmp/arch_scc.json)" >> $GITHUB_OUTPUT
+              echo "largest_scc=$(jq -r '.largestSccSize // 0' /tmp/arch_scc.json)" >> $GITHUB_OUTPUT
+            fi
+
+            # Non-cycle findings (layer violations, hotspots, orphans) — also
+            # from `.issues[]`, so a violation is NAMED and not left as a bare
+            # number the reader cannot act on (pr-report-contract.md gap #8).
+            {
+              jq -r '.issues[]? | select(.type != "dependency_cycle")
+                     | "- **" + .type + "**: " + .description' \
+                "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null || true
+              jq -r '.findings[]? | "- **" + .type + "**: " + .message' \
+                "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null || true
+            } > /tmp/arch_findings.md || true
           fi
           
           # Parse diff summary for changed files count
@@ -321,6 +356,11 @@ jobs:
             const changedFiles = '${{ steps.parse.outputs.changed_files }}' || '0';
             const components = '${{ steps.parse.outputs.components }}' || '0';
             const cycles = '${{ steps.parse.outputs.cycles }}' || '0';
+            // Distinct cycles (strongly-connected components), not cycle paths.
+            // `cycles` above is the analyzer's raw path enumeration — see
+            // scripts/ledger_scc.py for why it cannot be trended.
+            const sccCount = '${{ steps.parse.outputs.scc_count }}' || '0';
+            const largestScc = '${{ steps.parse.outputs.largest_scc }}' || '0';
             const violations = '${{ steps.parse.outputs.violations }}' || '0';
             const hotspots = '${{ steps.parse.outputs.hotspots }}' || '0';
             const avgCouplingRaw = '${{ steps.parse.outputs.avg_coupling }}' || '0';
@@ -517,7 +557,8 @@ jobs:
             body += '| Metric | Value | ℹ️ What This Means |\n';
             body += '|--------|-------|-------------------|\n';
             body += `| Components | ${components} | Distinct modules/layers detected in your codebase |\n`;
-            body += `| Dependency Cycles | ${cycles} | Circular dependencies (A→B→C→A). Goal: **0** |\n`;
+            body += `| Dependency Cycles | ${sccCount} | Distinct circular dependencies (A→B→C→A). Goal: **0** |\n`;
+            body += `| Largest Cycle | ${largestScc === '0' ? '—' : largestScc + ' components'} | How many components are mutually tangled in the biggest cycle |\n`;
             body += `| Layer Violations | ${violations} | Dependencies that break architectural boundaries |\n`;
             body += `| Hotspots | ${hotspots} | Files with high complexity + frequent changes |\n`;
             body += `| Avg Coupling | ${avgCoupling} | How interconnected modules are (lower is better, <1.0 is good) |\n\n`;
@@ -532,7 +573,7 @@ jobs:
               body += `> ℹ️ Baseline metrics (whole-repo), not a diff delta. Watch for a value that *moves* vs. \`develop\`, not its absolute level.\n\n`;
             }
 
-            if (parseInt(archIssues) === 0 && cycles === '0' && violations === '0') {
+            if (parseInt(archIssues) === 0 && sccCount === '0' && violations === '0') {
               body += '✅ **Architecture looks healthy!**\n\n';
             } else {
               // Show issues summary
@@ -547,8 +588,8 @@ jobs:
               }
 
               // Expandable: Dependency Cycles
-              if (parseInt(cycles) > 0) {
-                body += '<details>\n<summary><strong>🔄 Dependency Cycles</strong></summary>\n\n';
+              if (parseInt(sccCount) > 0) {
+                body += `<details>\n<summary><strong>🔄 Dependency Cycles (${sccCount})</strong></summary>\n\n`;
                 try {
                   const cyclesDetail = fs.readFileSync('/tmp/arch_cycles.md', 'utf8');
                   if (cyclesDetail.trim()) {

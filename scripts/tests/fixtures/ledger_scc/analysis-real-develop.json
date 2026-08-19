@@ -1,0 +1,679 @@
+{
+  "averageCoupling" : 4.857142857142857,
+  "components" : 42,
+  "cycles" : 36,
+  "dependencies" : 204,
+  "findings" : [
+
+  ],
+  "hotspots" : 12,
+  "issues" : [
+    {
+      "components" : [
+        "Accounts",
+        "Book"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "Book"
+      ],
+      "description" : "Dependency cycle detected: Book → Audiobooks → Book",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "ErrorHandling"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → ErrorHandling → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "ErrorHandling",
+        "Logging"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → ErrorHandling → Logging → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "Book",
+        "ErrorHandling",
+        "Logging"
+      ],
+      "description" : "Dependency cycle detected: Book → Audiobooks → ErrorHandling → Logging → Book",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "ErrorHandling",
+        "Logging",
+        "Network"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → ErrorHandling → Logging → Network → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Logging",
+        "Network"
+      ],
+      "description" : "Dependency cycle detected: Logging → Network → Logging",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "AppRating",
+        "Audiobooks",
+        "Book",
+        "FeatureFlags",
+        "Settings"
+      ],
+      "description" : "Dependency cycle detected: FeatureFlags → AppRating → Settings → Accounts → Book → Audiobooks → FeatureFlags",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "Keychain"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → Keychain → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "Keychain",
+        "Settings"
+      ],
+      "description" : "Dependency cycle detected: Settings → Accounts → Book → Audiobooks → Keychain → Settings",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "MyBooks"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → MyBooks → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "MyBooks"
+      ],
+      "description" : "Dependency cycle detected: Audiobooks → MyBooks → Audiobooks",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "Book",
+        "MyBooks"
+      ],
+      "description" : "Dependency cycle detected: Book → Audiobooks → MyBooks → Book",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "CatalogUI",
+        "MyBooks"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → MyBooks → CatalogUI → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "CatalogUI",
+        "MyBooks"
+      ],
+      "description" : "Dependency cycle detected: Audiobooks → MyBooks → CatalogUI → Audiobooks",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "Book",
+        "CatalogUI",
+        "MyBooks"
+      ],
+      "description" : "Dependency cycle detected: Book → Audiobooks → MyBooks → CatalogUI → Book",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "AppRating",
+        "Audiobooks",
+        "Book",
+        "CatalogUI",
+        "FeatureFlags",
+        "MyBooks",
+        "Settings"
+      ],
+      "description" : "Dependency cycle detected: FeatureFlags → AppRating → Settings → Accounts → Book → Audiobooks → MyBooks → CatalogUI → FeatureFlags",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "CatalogUI",
+        "MyBooks"
+      ],
+      "description" : "Dependency cycle detected: MyBooks → CatalogUI → MyBooks",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "Book",
+        "CatalogUI",
+        "MyBooks",
+        "Platform"
+      ],
+      "description" : "Dependency cycle detected: Book → Audiobooks → MyBooks → CatalogUI → Platform → Book",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "CatalogUI",
+        "MyBooks",
+        "Platform"
+      ],
+      "description" : "Dependency cycle detected: MyBooks → CatalogUI → Platform → MyBooks",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "CatalogUI",
+        "MyBooks",
+        "Settings"
+      ],
+      "description" : "Dependency cycle detected: Settings → Accounts → Book → Audiobooks → MyBooks → CatalogUI → Settings",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "MyBooks",
+        "Notifications"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → MyBooks → Notifications → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "Book",
+        "MyBooks",
+        "Notifications"
+      ],
+      "description" : "Dependency cycle detected: Book → Audiobooks → MyBooks → Notifications → Book",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "MyBooks",
+        "OPDS2"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → MyBooks → OPDS2 → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "Book",
+        "MyBooks",
+        "OPDS2"
+      ],
+      "description" : "Dependency cycle detected: Book → Audiobooks → MyBooks → OPDS2 → Book",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Audiobooks",
+        "Book",
+        "MyBooks",
+        "PDF"
+      ],
+      "description" : "Dependency cycle detected: Book → Audiobooks → MyBooks → PDF → Book",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "MyBooks",
+        "PDF"
+      ],
+      "description" : "Dependency cycle detected: MyBooks → PDF → MyBooks",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "MyBooks",
+        "Settings"
+      ],
+      "description" : "Dependency cycle detected: Settings → Accounts → Book → Audiobooks → MyBooks → Settings",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "MyBooks",
+        "SignInLogic"
+      ],
+      "description" : "Dependency cycle detected: Accounts → Book → Audiobooks → MyBooks → SignInLogic → Accounts",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "MyBooks",
+        "Settings",
+        "SignInLogic"
+      ],
+      "description" : "Dependency cycle detected: Settings → Accounts → Book → Audiobooks → MyBooks → SignInLogic → Settings",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "Settings"
+      ],
+      "description" : "Dependency cycle detected: Settings → Accounts → Book → Audiobooks → Settings",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Book",
+        "Settings"
+      ],
+      "description" : "Dependency cycle detected: Settings → Accounts → Book → Settings",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Settings"
+      ],
+      "description" : "Dependency cycle detected: Settings → Accounts → Settings",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "AppRating",
+        "FeatureFlags",
+        "Settings"
+      ],
+      "description" : "Dependency cycle detected: FeatureFlags → AppRating → Settings → FeatureFlags",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Palace",
+        "TriageBotUI"
+      ],
+      "description" : "Dependency cycle detected: TriageBotUI → Palace → TriageBotUI",
+      "severity" : "high",
+      "type" : "dependency_cycle"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "AppInfrastructure",
+        "Audiobooks",
+        "Book",
+        "CatalogUI",
+        "ErrorHandling",
+        "FeatureFlags",
+        "Holds",
+        "Logging",
+        "MyBooks",
+        "Network",
+        "OPDS",
+        "OPDS2",
+        "PDF",
+        "Palace",
+        "Palace-noDRM",
+        "PalaceAuth",
+        "PalaceCatalog",
+        "Reader2",
+        "Settings",
+        "SignInLogic",
+        "Utilities"
+      ],
+      "description" : "PalaceCatalog is a coupling hotspot with 21 dependents",
+      "severity" : "high",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "CarPlay",
+        "CatalogUI",
+        "ErrorHandling",
+        "Holds",
+        "Keychain",
+        "Logging",
+        "MyBooks",
+        "Network",
+        "Notifications",
+        "OPDS2",
+        "Settings",
+        "SignInLogic"
+      ],
+      "description" : "Accounts is a coupling hotspot with 14 dependents",
+      "severity" : "high",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "AppInfrastructure",
+        "Audiobooks",
+        "Book",
+        "CatalogUI",
+        "MyBooks",
+        "Network",
+        "Palace",
+        "Palace-noDRM",
+        "PalaceCatalog",
+        "PalaceNetwork",
+        "ReaderStreaming",
+        "Settings",
+        "SignInLogic"
+      ],
+      "description" : "PalaceNetwork is a coupling hotspot with 13 dependents",
+      "severity" : "high",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "CarPlay",
+        "CatalogUI",
+        "Holds",
+        "Logging",
+        "Migrations",
+        "MyBooks",
+        "Notifications",
+        "OPDS2",
+        "PDF",
+        "Platform",
+        "Settings"
+      ],
+      "description" : "Book is a coupling hotspot with 13 dependents",
+      "severity" : "high",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "AppInfrastructure",
+        "Audiobooks",
+        "Book",
+        "CarPlay",
+        "CatalogUI",
+        "ErrorHandling",
+        "FeatureFlags",
+        "Holds",
+        "Keychain",
+        "Logging",
+        "Migrations",
+        "MyBooks",
+        "Network",
+        "Notifications",
+        "OPDS",
+        "OPDS2",
+        "PDF",
+        "Palace",
+        "Palace-noDRM",
+        "PalaceAuth",
+        "PalaceCatalog",
+        "PalaceKeychain",
+        "PalaceLogging",
+        "PalaceNetwork",
+        "PalaceReadingPosition",
+        "Reader2",
+        "Settings",
+        "SignInLogic",
+        "Support",
+        "Utilities"
+      ],
+      "description" : "PalaceLogging is a coupling hotspot with 30 dependents",
+      "severity" : "high",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "ErrorHandling",
+        "Keychain",
+        "Logging",
+        "MyBooks",
+        "Network",
+        "Notifications",
+        "OPDS",
+        "Settings",
+        "SignInLogic"
+      ],
+      "description" : "Logging is a coupling hotspot with 11 dependents",
+      "severity" : "high",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "AppInfrastructure",
+        "MyBooks",
+        "Network",
+        "Palace",
+        "Palace-noDRM",
+        "PalaceAuth",
+        "Settings",
+        "SignInLogic"
+      ],
+      "description" : "PalaceAuth is a coupling hotspot with 8 dependents",
+      "severity" : "medium",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "ErrorHandling",
+        "MyBooks",
+        "OPDS2",
+        "Settings",
+        "SignInLogic"
+      ],
+      "description" : "ErrorHandling is a coupling hotspot with 7 dependents",
+      "severity" : "medium",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "AppRating",
+        "Audiobooks",
+        "Book",
+        "CatalogUI",
+        "Holds",
+        "Keychain",
+        "Migrations",
+        "MyBooks",
+        "Settings",
+        "SignInLogic"
+      ],
+      "description" : "Settings is a coupling hotspot with 10 dependents",
+      "severity" : "medium",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "Logging",
+        "Migrations",
+        "MyBooks",
+        "Network",
+        "Notifications",
+        "Settings",
+        "SignInLogic"
+      ],
+      "description" : "Network is a coupling hotspot with 9 dependents",
+      "severity" : "medium",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Book",
+        "MyBooks",
+        "PDF",
+        "Palace",
+        "Palace-noDRM",
+        "PalaceUIKit",
+        "Reader2",
+        "Settings"
+      ],
+      "description" : "PalaceUIKit is a coupling hotspot with 7 dependents",
+      "severity" : "medium",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Accounts",
+        "Audiobooks",
+        "Book",
+        "CatalogUI",
+        "Holds",
+        "MyBooks",
+        "PDF",
+        "Platform",
+        "Settings"
+      ],
+      "description" : "MyBooks is a coupling hotspot with 8 dependents",
+      "severity" : "medium",
+      "type" : "hotspot"
+    },
+    {
+      "components" : [
+        "Palace",
+        "TriageBotUI"
+      ],
+      "description" : "TriageBotUI (Presentation) depends on Palace (Application) - upward dependency",
+      "severity" : "medium",
+      "type" : "layer_violation"
+    },
+    {
+      "components" : [
+        "Catalog"
+      ],
+      "description" : "Catalog has no dependencies and no dependents - possible orphan",
+      "severity" : "low",
+      "type" : "orphan_component"
+    },
+    {
+      "components" : [
+        "BuildSupport"
+      ],
+      "description" : "BuildSupport has no dependencies and no dependents - possible orphan",
+      "severity" : "low",
+      "type" : "orphan_component"
+    }
+  ],
+  "violations" : 1
+}
