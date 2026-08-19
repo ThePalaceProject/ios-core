@@ -423,34 +423,52 @@ class NetworkQueueTests: XCTestCase {
                        "A superseding write is a NEW write and must get a full retry budget — inheriting an exhausted count gets it deleted before it is ever sent")
     }
 
-    /// A header blob that cannot be read must leave the row alone.
+    /// A CORRUPTED header archive must be survived, not crashed on.
     ///
-    /// The purge runs on the launch path (via SEMigrations) over rows written
-    /// by builds up to five years old, so it has to tolerate a blob it cannot
-    /// decode.
+    /// The fixture is a valid archive with one bit flipped — which is what
+    /// real on-disk corruption looks like, and the only shape that actually
+    /// kills the legacy unarchiver. Garbage bytes and truncated archives both
+    /// return nil, so a casual probe finds nothing; an earlier version of this
+    /// test used ASCII garbage and therefore passed against BOTH
+    /// implementations, guarding nothing. Bit-flipping each byte of a valid
+    /// 277-byte archive in turn: the legacy `unarchiveObject(with:)` aborts the
+    /// process on 63 of 277, the modern `unarchivedObject(ofClasses:)` on none.
     ///
-    /// HONESTY NOTE: this test does NOT discriminate between the modern and
-    /// legacy unarchivers — review predicted the legacy one would raise and
-    /// crash, and it does not; both return nil for garbage and for a truncated
-    /// archive. It pins the behaviour that matters (an unreadable row is kept,
-    /// not discarded), not a mutation kill. Labelled rather than dressed up as
-    /// a guard it is not.
-    func testMigrate_WithAnUnreadableHeaderBlob_LeavesTheRowIntact() {
+    /// This matters because the purge runs on the LAUNCH path via SEMigrations,
+    /// over rows written by builds up to five years old.
+    func testMigrate_WithACorruptedHeaderArchive_SurvivesInsteadOfCrashing() {
         let (queue, dir) = makeWritableQueue()
         defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        // A real archive with its CLASS NAME corrupted in place. Targeted
+        // structurally rather than by byte index: a keyed archive stores
+        // "NSDictionary" as ASCII, and destroying it produces exactly the
+        // "missing class information for object" condition that makes the
+        // legacy unarchiver raise. Flipping an arbitrary byte is unreliable —
+        // only 63 of 277 positions abort, and the midpoint is not one of them,
+        // which is how the first version of this fixture ended up guarding
+        // nothing.
+        var corrupted = NSKeyedArchiver.archivedData(
+            withRootObject: ["Authorization": "Bearer secret"])
+        let className = Array("NSDictionary".utf8)
+        if let r = corrupted.range(of: Data(className)) {
+            corrupted.replaceSubrange(r, with: Data(repeating: 0x5A, count: className.count))
+        } else {
+            XCTFail("fixture precondition: the archive should name NSDictionary")
+        }
 
         queue.insertLegacyRowForTesting(
             libraryID: "lib-A",
             updateID: "book-1",
             url: URL(string: "https://a.example.org/annotations/")!,
             headers: [:],
-            rawHeaderData: Data("this is not a keyed archive".utf8))
+            rawHeaderData: corrupted)
 
         queue.migrate()
         queue.serialQueue.sync {}
 
         XCTAssertEqual(queue.persistedRowsForTesting().count, 1,
-                       "The row survives — a blob we cannot read is not a reason to discard a patron's queued write, nor to crash on launch")
+                       "The row survives — a corrupt blob is not a reason to discard a patron's queued write, and must never abort the launch")
     }
 
     private func unopenableDatabaseDirectory() -> String {

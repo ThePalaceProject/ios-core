@@ -165,6 +165,40 @@ is justified and torn down, but the honest fix is instance-ification behind the
 `AnnotationsManager` protocol that already exists in that file — not another
 seam. That is a separate branch; this one should not grow an eighth.
 
+## The unarchiver crash — and how I got it wrong twice
+
+A reviewer flagged that `NSKeyedUnarchiver.unarchiveObject(with:)` raises an
+uncatchable ObjC exception on a corrupt archive, making the credential purge a
+launch crash. I probed it with garbage bytes and a truncated archive, got `nil`
+both times, and recorded "could not reproduce — this is hygiene, not a crash
+fix". That was wrong, and the mistake was the shape of the probe.
+
+Another reviewer fuzzed it properly. Bit-flipping each byte of a valid 277-byte
+header archive in turn:
+
+    legacy  unarchiveObject(with:)        63 of 277 ABORT the process
+    modern  unarchivedObject(ofClasses:)   0 of 277 abort
+
+Garbage and truncation fail early in plist parsing and return nil; real on-disk
+corruption is bit-level, which is the shape that kills it. Both my probes
+happened to pick survivors.
+
+Two consequences:
+
+- **Both production reads are converted**, not just the purge. `retry()` read
+  the same blob with the legacy call, and this ticket is what makes rows exist
+  and the drain run — so the branch was INCREASING exposure to the crash while
+  hardening only one of the two sites.
+- **The test now discriminates.** Its first fixture was ASCII garbage, which
+  passes against both implementations and guarded nothing. It now corrupts the
+  archived class name structurally, which reproduces the raise: with the legacy
+  call the test process crashes; with the modern one it passes.
+
+Worth recording because it is the branch's recurring failure in a new costume:
+a claim resting on a probe too weak to falsify it. The first version was "I
+verified this" when I had not; this one was "I could not verify this" when a
+better probe could.
+
 ## Files in scope
 
 - `Palace/Network/TPPNetworkResponder.swift`

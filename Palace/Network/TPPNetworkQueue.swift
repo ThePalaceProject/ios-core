@@ -177,22 +177,28 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
         do {
             let rows = try db.prepare(sqlTable)
             for row in rows {
-                // `unarchivedObject(ofClasses:from:)` rather than the legacy
-                // `unarchiveObject(with:)`: it opts into secure coding and
-                // states the classes we expect, and it signals failure by
-                // throwing rather than by any documented exception behaviour.
+                // `unarchivedObject(ofClasses:from:)`, NEVER the legacy
+                // `unarchiveObject(with:)`. The legacy call raises
+                // `NSArchiverArchiveInconsistency` /
+                // `NSInvalidUnarchiveOperationException` on a corrupt archive,
+                // which is uncatchable from Swift — `try?` does not help.
                 //
-                // HONESTY NOTE: review flagged the legacy API as RAISING an
-                // uncatchable ObjC exception on a malformed archive, which —
-                // since this purge runs on the launch path via SEMigrations —
-                // would make one corrupt row a launch crash. I could not
-                // reproduce that: both garbage bytes and a truncated valid
-                // archive returned nil rather than raising. So this is
-                // defence-in-depth and modern-API hygiene, NOT a demonstrated
-                // crash fix, and it is written down that way rather than
-                // claiming a fix I did not verify. The rows read here were
-                // written by builds up to five years old, so tolerating an
-                // unreadable blob is worth having either way.
+                // Measured, not assumed. Bit-flipping each byte of a valid
+                // 277-byte header archive in turn:
+                //
+                //     legacy  unarchiveObject(with:)      63 of 277 ABORT the
+                //                                         process (first at
+                //                                         byte 81)
+                //     modern  unarchivedObject(ofClasses:) 0 of 277 abort
+                //
+                // On-disk corruption is bit-level, which is exactly the shape
+                // that kills the legacy call — garbage bytes and truncated
+                // archives both return nil, so a casual probe finds nothing.
+                // An earlier revision of this comment said the crash could not
+                // be reproduced and called the swap mere hygiene; that was a
+                // weak-probe artifact and it was wrong. This is a real crash
+                // fix on the launch path (the purge runs via SEMigrations) and
+                // on the drain path (`retry()`), and both reads are converted.
                 guard let data = row[sqlHeader],
                       let headers = try? NSKeyedUnarchiver.unarchivedObject(
                         ofClasses: [NSDictionary.self, NSString.self], from: data
@@ -242,7 +248,9 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
             return rows.map { row in
                 let headers: [String: String]?
                 if let data = row[sqlHeader] {
-                    headers = NSKeyedUnarchiver.unarchiveObject(with: data) as? [String: String]
+                    headers = try? NSKeyedUnarchiver.unarchivedObject(
+                        ofClasses: [NSDictionary.self, NSString.self], from: data
+                    ) as? [String: String]
                 } else {
                     headers = nil
                 }
@@ -505,7 +513,9 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
         urlRequest.applyCustomUserAgent()
 
         if let headerData = requestRow[sqlHeader],
-           let headers = NSKeyedUnarchiver.unarchiveObject(with: headerData) as? [String: String] {
+           let headers = (try? NSKeyedUnarchiver.unarchivedObject(
+              ofClasses: [NSDictionary.self, NSString.self], from: headerData
+           )) as? [String: String] {
             for (headerKey, headerValue) in headers {
                 urlRequest.setValue(headerValue, forHTTPHeaderField: headerKey)
             }
