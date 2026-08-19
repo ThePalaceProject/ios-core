@@ -6,6 +6,41 @@ import PalaceKeychain
 
 @objcMembers final class TPPKeychainManager: NSObject {
 
+    // MARK: - Safe archive decoding
+    //
+    // `NSKeyedUnarchiver.unarchiveObject(with:)` signals a corrupt archive by
+    // RAISING an ObjC exception, which Swift cannot catch — `try?` does not
+    // help and the process aborts. Measured by bit-flipping each byte of a
+    // valid archive in turn: the raising call aborts on 2 of 156 flips for an
+    // archived String and 63 of 277 for an archived dictionary; the throwing
+    // APIs below abort on none.
+    //
+    // That matters more here than almost anywhere else in the app.
+    // `validateKeychain()` runs from `TPPAppDelegate.performBackgroundStartupTasks()`
+    // on EVERY launch, and reaches both decoders below. A single corrupt
+    // keychain item would therefore crash the app during startup, every time —
+    // a loop a patron can only escape by reinstalling, which costs them their
+    // downloaded books. Returning nil instead lets the item be skipped.
+
+    /// Decodes an archived keychain KEY. Keys are always archived `String`s, so
+    /// the class list is closed.
+    static func decodeKeychainKey(_ data: Data) -> String? {
+        (try? NSKeyedUnarchiver.unarchivedObject(ofClasses: [NSString.self],
+                                                 from: data)) as? String
+    }
+
+    /// Decodes an archived keychain VALUE.
+    ///
+    /// Deliberately untyped: `TPPKeychain` archives whatever callers store, and
+    /// `TPPKeychainStoredVariable` has additionally written raw JSON for
+    /// `Codable` types since the format change — so this cannot assume a class
+    /// list without silently dropping values it should migrate. Uses the
+    /// throwing top-level API, which is what `TPPKeychain.read` already uses
+    /// for the same reason.
+    static func decodeKeychainValue(_ data: Data) -> AnyObject? {
+        (try? NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data)) as AnyObject?
+    }
+
     private static let secClassItems: [String] = [
         kSecClassGenericPassword as String,
         kSecClassInternetPassword as String,
@@ -50,7 +85,7 @@ import PalaceKeychain
                 if let array = result as? [[String: Any]] {
                     for item in array {
                         if let keyData = item[kSecAttrAccount as String] as? Data,
-                           let keyString = NSKeyedUnarchiver.unarchiveObject(with: keyData) as? String {
+                           let keyString = decodeKeychainKey(keyData) {
                             Log.info(#file, "Found keychain item to clean up: \(keyString)")
                         }
                     }
@@ -141,8 +176,8 @@ import PalaceKeychain
             for item in array {
                 if let keyData = item[kSecAttrAccount as String] as? Data,
                    let valueData = item[kSecValueData as String] as? Data,
-                   let keyString = NSKeyedUnarchiver.unarchiveObject(with: keyData) as? String {
-                    let value = NSKeyedUnarchiver.unarchiveObject(with: valueData) as AnyObject
+                   let keyString = decodeKeychainKey(keyData),
+                   let value = decodeKeychainValue(valueData) {
                     values[keyString] = value
                 }
             }

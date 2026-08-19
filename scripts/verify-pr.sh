@@ -797,6 +797,8 @@ run_phase35_detector "addoperation_literal_ban" "check-addoperation-literal-ban.
   "No raw NSOperation-family closure literal (#1338 ClangImporter @MainActor-poisoning risk)" "diff"
 run_phase35_detector "auth_challenge_async_form" "check-auth-challenge-async-form.py" "block" \
   "No completion-handler-form auth-challenge delegate callback (PP-4895 ClangImporter @MainActor-poisoning risk)" "diff"
+run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" \
+  "No NSKeyedUnarchiver.unarchiveObject(with:) — raises uncatchably on a corrupt archive" "diff"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
