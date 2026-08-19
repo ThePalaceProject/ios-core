@@ -177,6 +177,14 @@ import PalaceKeychain
                 if let keyData = item[kSecAttrAccount as String] as? Data,
                    let valueData = item[kSecValueData as String] as? Data,
                    let keyString = decodeKeychainKey(keyData),
+                   // A value that will not decode SKIPS the whole item rather
+                   // than migrating it. That is deliberate and is the safe
+                   // direction: the previous code decoded such an item to
+                   // NSNull and wrote that back over it, destroying whatever
+                   // was there. Not directly testable — this path needs a real
+                   // `SecItemCopyMatching` against the device keychain — so it
+                   // is documented rather than worked around; the decoders
+                   // themselves are pinned by unit tests.
                    let value = decodeKeychainValue(valueData) {
                     values[keyString] = value
                 }

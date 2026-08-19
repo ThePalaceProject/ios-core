@@ -75,6 +75,21 @@ final class TPPKeychainManagerTests: XCTestCase {
         XCTAssertEqual(TPPKeychainManager.decodeKeychainValue(value) as? [String: String],
                        ["token": "abc"],
                        "A legitimate legacy value archive must still decode")
+
+        // The shapes that actually occur in the store, not just a dictionary:
+        // credentials are archived Strings, and `TPPKeychainStoredVariable`'s
+        // pre-JSON format archived `Data`. A silent nil on either would sign a
+        // patron out — the failure mode that is WORSE than the crash this
+        // change removes.
+        let stringValue = NSKeyedArchiver.archivedData(withRootObject: "a-bearer-token")
+        XCTAssertEqual(TPPKeychainManager.decodeKeychainValue(stringValue) as? String,
+                       "a-bearer-token",
+                       "An archived String value must still decode")
+
+        let dataValue = NSKeyedArchiver.archivedData(withRootObject: Data("{\"k\":1}".utf8))
+        XCTAssertEqual(TPPKeychainManager.decodeKeychainValue(dataValue) as? Data,
+                       Data("{\"k\":1}".utf8),
+                       "An archived Data value (the pre-JSON Codable format) must still decode")
     }
 
     /// `TPPKeychainStoredVariable` has written raw JSON for `Codable` types
