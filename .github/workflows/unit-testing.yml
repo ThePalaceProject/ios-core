@@ -332,6 +332,7 @@ jobs:
           
       - name: Generate Test Reports
         if: always()
+        continue-on-error: true
         run: |
           mkdir -p test-report
           
@@ -361,6 +362,7 @@ jobs:
           
       - name: Generate GitHub Step Summary
         if: always()
+        continue-on-error: true
         run: |
           TESTS="${{ steps.parse_results.outputs.tests }}"
           PASSED="${{ steps.parse_results.outputs.passed }}"
@@ -593,6 +595,7 @@ jobs:
           
       - name: Upload Test Report
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: test-report
@@ -602,6 +605,7 @@ jobs:
           
       - name: Upload Test Data JSON
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: test-data
@@ -613,6 +617,7 @@ jobs:
           
       - name: Upload Snapshot Failures
         if: steps.snapshots.outputs.found == 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: snapshot-failures
@@ -620,17 +625,49 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
           
+      # `continue-on-error` because failing to ARCHIVE results is not the same
+      # as failing tests, and the board must not say otherwise. This step uploads
+      # the .xcresult bundle, which Xcode is still finalizing and which contains
+      # filenames the artifact uploader trips over; it has failed with
+      # `ENOENT ... stat '.../Data/data.0~...'` on four separate branches in two
+      # days while the run's own tally read zero failures (PP-4988).
+      #
+      # The pass/fail gate is unaffected: `Fail if tests failed` keys on the test
+      # STEP's outcome, so a genuine test failure still turns the board red. What
+      # this stops is a green test run being reported as a failure because an
+      # archive could not be saved — which trains everyone to ignore red, and is
+      # how a broken commit gate shipped here once before.
       - name: Upload Test Results
         if: steps.find_results.outputs.found == 'true'
+        continue-on-error: true
+        id: upload_results
         uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: ${{ steps.find_results.outputs.path }}
           retention-days: 14
           if-no-files-found: ignore
+
+      # Make the distinct outcome visible without opening the log: the tests ran
+      # and passed, but their archive could not be saved. Previously this was
+      # indistinguishable from a test failure on the checks list.
+      - name: Note if results could not be archived
+        if: always() && steps.upload_results.outcome == 'failure'
+        run: |
+          echo "::warning title=Test results not archived::The tests ran and their result is reported above, but the .xcresult artifact could not be uploaded. This does NOT mean a test failed. See PP-4988."
+          {
+            echo "### ⚠️ Test results were not archived"
+            echo
+            echo "The suite ran and its pass/fail verdict stands. Only the downloadable"
+            echo "\`.xcresult\` artifact failed to upload, so the interactive report and"
+            echo "Xcode-openable bundle are missing for this run."
+            echo
+            echo "This is tracked as **PP-4988** and is not a test failure."
+          } >> "$GITHUB_STEP_SUMMARY"
           
       - name: Deploy Report to GitHub Pages
         if: always()
+        continue-on-error: true
         id: deploy_report
         run: |
           # Create report directory structure
@@ -707,8 +744,12 @@ jobs:
           destination_dir: test-reports
           keep_files: true
           
+      # Same principle as the artifact upload above: failing to POST a summary
+      # comment is not a test failure. Seen reddening a board on
+      # fix/pp-4971-rate-aware-time-remaining while the suite itself was green.
       - name: Post PR Comment with Results
         if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@v9
         with:
           script: |
