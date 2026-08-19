@@ -30,8 +30,10 @@ import Foundation
 /// isolation + auth-surface host classification). Value-only.
 protocol DownloadAccountScopeProviding: Sendable {
     /// The current library's identifier. Backs per-account download-file
-    /// scoping (`BookFileManager.fileUrl(for:)`) and the account-switch reset
-    /// guards. Semantically the defaults-backed `currentAccountId`, not a
+    /// scoping (`BookFileManager.fileUrl(for:)`) and the account stamped on a
+    /// durable started-task record (`MyBooksDownloadCenter.persistStartedTaskRecord`),
+    /// which decides whose credentials answer a resumed background download's auth
+    /// challenge. Semantically the defaults-backed `currentAccountId`, not a
     /// resolved-`Account` uuid — a book file must resolve under the selected
     /// library even before its `Account` object has materialized.
     var currentAccountID: String? { get }

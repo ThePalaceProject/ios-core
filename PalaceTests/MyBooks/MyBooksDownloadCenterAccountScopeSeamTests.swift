@@ -174,17 +174,50 @@ final class MyBooksDownloadCenterAccountScopeSeamTests: XCTestCase {
         let (center, stateManager) = try makeCenterWithIsolatedPersistence(scope: spy)
 
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let url = try XCTUnwrap(URL(string: "https://example.test/\(book.identifier)"))
-        let (task, session) = downloadTask(for: url)
+        // DISTINCT urls: production prefers the LIVE task's `originalRequest` over
+        // the passed request, because a retry re-issues the task against a
+        // refreshed (re-signed) url while the caller still holds the original.
+        // Same url in both slots would let a swapped precedence pass.
+        let taskURL = try XCTUnwrap(URL(string: "https://example.test/live/\(book.identifier)"))
+        let staleRequestURL = try XCTUnwrap(URL(string: "https://example.test/stale/\(book.identifier)"))
+        let (task, session) = downloadTask(for: taskURL)
         defer { session.invalidateAndCancel() }
 
-        center.persistStartedTaskRecord(task: task, book: book, request: URLRequest(url: url))
+        center.persistStartedTaskRecord(task: task, book: book, request: URLRequest(url: staleRequestURL))
 
         let records = stateManager.persistedRecords()
         XCTAssertEqual(records.count, 1, "a started task must produce exactly one durable record")
         XCTAssertEqual(records.first?.bookID, book.identifier)
         XCTAssertEqual(records.first?.account, accountID,
             "the durable record's account must be the injected seam's current id — launch reconciliation is account-scoped, so a wrong stamp recovers the wrong library's download")
+        XCTAssertEqual(records.first?.taskIdentifier, task.taskIdentifier,
+            "the record must carry the LIVE task's identifier — reconciliation matches a resumed background task by it, so a wrong value orphans the download")
+        XCTAssertEqual(records.first?.downloadURL, taskURL,
+            "the live task's originalRequest url must win over the passed request's — a retry re-issues against a refreshed url and the record must track it")
+    }
+
+    /// The empty-string account is a LOAD-BEARING sentinel, not a defensive
+    /// default: `BackgroundDownloadHandler.startedForAccount` and
+    /// `MyBooksDownloadCenter+ChallengeAccount` both branch on
+    /// `!startedAccountID.isEmpty` to decide whether to answer a download auth
+    /// challenge with the CAPTURED account or fall back to the current one. A
+    /// non-empty stand-in (`"unknown"`, `"none"`) reads as a real account id and
+    /// routes credentials to `userAccount(forCapturedId:)` for a library that
+    /// does not exist — a silent download-auth failure. This pins the nil arm of
+    /// the coalescing so that sentinel cannot drift.
+    func testPersistStartedTaskRecord_withNoCurrentAccount_stampsEmptySentinel() throws {
+        let spy = SpyDownloadAccountScope(accountID: nil)
+        let (center, stateManager) = try makeCenterWithIsolatedPersistence(scope: spy)
+
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let url = try XCTUnwrap(URL(string: "https://example.test/\(book.identifier)"))
+        let (task, session) = downloadTask(for: url)
+        defer { session.invalidateAndCancel() }
+
+        center.persistStartedTaskRecord(task: task, book: book, request: URLRequest(url: url))
+
+        XCTAssertEqual(stateManager.persistedRecords().first?.account, "",
+            "with no current account the stamp must be exactly the empty string — consumers test `.isEmpty` to fall back to the current user account, so any other stand-in routes download auth to a nonexistent library")
     }
 
     /// The stamp must be a LIVE seam read at persist time, not an id captured
