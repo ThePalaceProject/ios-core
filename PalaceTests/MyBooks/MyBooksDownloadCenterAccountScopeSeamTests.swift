@@ -21,11 +21,14 @@
 //       account) would resolve a different id here → the assertion fails.
 //
 //    2. `persistStartedTaskRecord` account stamp — the durable started-task
-//       record's `account` is read from the injected seam at persist time. Launch
-//       reconciliation is account-scoped, so a wrong stamp recovers the wrong
-//       library's in-flight download. Asserted both for a single persist and
-//       across a mid-session account change (proving a live read per persist, not
-//       an init-time capture).
+//       record's `account` is read from the injected seam at persist time. Since
+//       PP-4978 that stamp is read back on the DOWNLOAD path to decide whose
+//       credentials answer a re-issued request's auth challenge, so a wrong stamp
+//       authenticates against the wrong library. (Launch reconciliation itself
+//       never reads `.account` — it matches by `bookID`/`taskIdentifier`.)
+//       Asserted for a single persist, across a mid-session account change
+//       (proving a live read per persist, not an init-time capture), and for the
+//       no-current-account sentinel.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -157,10 +160,13 @@ final class MyBooksDownloadCenterAccountScopeSeamTests: XCTestCase {
 
     // MARK: - 2. persistStartedTaskRecord stamps the account from the injected seam
 
-    /// The durable started-task record exists so a mid-download process kill can
-    /// be reconciled at launch — and reconciliation is account-scoped, so the
-    /// `account` stamped on the record decides which library's in-flight download
-    /// is recovered. That stamp reads the injected scope seam
+    /// The durable started-task record survives a mid-download process kill. Its
+    /// `account` is not used by launch reconciliation — that matches by `bookID`
+    /// and `taskIdentifier` — but since PP-4978 it is read back on the download
+    /// path (`BackgroundDownloadHandler.startedForAccount`) to recover which
+    /// library a download was started under when re-issuing its request. A wrong
+    /// stamp therefore answers an auth challenge with the wrong library's
+    /// credentials. That stamp reads the injected scope seam
     /// (`MyBooksDownloadCenter.persistStartedTaskRecord`), so this test asserts
     /// the persisted record carries exactly the id the spy reports.
     ///
@@ -189,7 +195,7 @@ final class MyBooksDownloadCenterAccountScopeSeamTests: XCTestCase {
         XCTAssertEqual(records.count, 1, "a started task must produce exactly one durable record")
         XCTAssertEqual(records.first?.bookID, book.identifier)
         XCTAssertEqual(records.first?.account, accountID,
-            "the durable record's account must be the injected seam's current id — launch reconciliation is account-scoped, so a wrong stamp recovers the wrong library's download")
+            "the durable record's account must be the injected seam's current id — it is read back on the download path to pick the credentials that answer a re-issued request's auth challenge, so a wrong stamp authenticates against the wrong library")
         XCTAssertEqual(records.first?.taskIdentifier, task.taskIdentifier,
             "the record must carry the LIVE task's identifier — reconciliation matches a resumed background task by it, so a wrong value orphans the download")
         XCTAssertEqual(records.first?.downloadURL, taskURL,
@@ -223,7 +229,8 @@ final class MyBooksDownloadCenterAccountScopeSeamTests: XCTestCase {
     /// The stamp must be a LIVE seam read at persist time, not an id captured
     /// when MBDC was constructed. A user switching libraries mid-session and
     /// then starting a download must get the NEW library on the record; an
-    /// init-time capture would stamp the old one and misroute reconciliation.
+    /// init-time capture would stamp the old one and answer that download's auth
+    /// challenge with the previous library's credentials.
     func testPersistStartedTaskRecord_tracksInjectedScopeSeamAcrossAccountChange() throws {
         let firstID = "first-lib-\(UUID().uuidString)"
         let secondID = "second-lib-\(UUID().uuidString)"
