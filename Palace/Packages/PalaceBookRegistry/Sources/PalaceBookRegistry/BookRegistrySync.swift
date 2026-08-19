@@ -180,6 +180,20 @@ final class BookRegistrySync: @unchecked Sendable {
     return _scheduledRedownloads
   }
 
+  /// How many re-downloads this instance has registered so far.
+  ///
+  /// Exists to make the ORDERING invariant assertable rather than probabilistic:
+  /// a test can read this from inside the `setState(.loaded)` callback and prove
+  /// registration already happened, instead of running the suite repeatedly and
+  /// hoping to catch the race. The flake it replaces only reproduced under load,
+  /// which makes it useless as a regression test — this is a property of the
+  /// code and holds on an idle machine.
+  func _scheduledRedownloadCountForTesting() -> Int {
+    _scheduledRedownloadsLock.lock()
+    defer { _scheduledRedownloadsLock.unlock() }
+    return _scheduledRedownloads.count
+  }
+
   /// Test-only NARROW deterministic JOIN seam: awaits every re-download this
   /// instance scheduled, including its delay, so a test can assert on what was (or
   /// was not) scheduled without a wall-clock deadline.
@@ -356,22 +370,27 @@ final class BookRegistrySync: @unchecked Sendable {
         // until an authoritative server sync repopulates the shelf.
         self.needsRebuildFromServer = needsRebuild
 
-        callbacks.setState(.loaded)
-        self.store.registrySubject.send(snapshot)
-
-        for (identifier, state) in bookStates {
-          self.store.bookStateSubject.send((identifier, state))
-        }
-
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-        Log.info(#file, "  Registry loaded with \(bookCount) books")
-
-        // Fire the completion AFTER state is .loaded and subscribers have been
-        // notified — callers that chain sync() off load (e.g. the account-change
-        // observer, AppDelegate cold-launch) need the store populated before
-        // sync's reconciliation runs.
-        callbacks.completion?()
-
+        // Register the delayed recovery work BEFORE announcing the load.
+        //
+        // Ordering, not cosmetics: `setState(.loaded)` and `completion?()` are
+        // the signals every caller — and every test — treats as "load is done".
+        // Scheduling AFTER them meant a caller could observe `.loaded`, ask what
+        // had been scheduled, and be told "nothing", because registration was
+        // still on its way. `_awaitScheduledRedownloadsForTesting()` snapshots
+        // the task list, so a join arriving in that window returned instantly
+        // and the assertion ran too early — the flake behind
+        // `test_load_contentMissingEntirely_schedulesTheOrphanRedownload` and
+        // `test_load_licenseWithoutContent_schedulesTheContentRedownload`, which
+        // failed ALTERNATELY and reproduced in isolation (so it was never the
+        // cross-class pollution it looked like).
+        //
+        // Production behaviour is unchanged: each block is a `Task` that sleeps
+        // for its own delay before firing, so creating it microseconds earlier
+        // does not change when a download starts, and both still re-check the
+        // current account before acting. The documented reason `completion`
+        // fires last — callers chain `sync()` off it and need the store
+        // populated — is untouched; the announcements keep their relative order
+        // and simply now follow registration.
         // PP-4129: schedule recovery for orphaned downloads. Each scheduled block
         // re-checks that the account that ran the load is still current before
         // firing downloads — switching libraries during the wait would otherwise
@@ -419,6 +438,23 @@ final class BookRegistrySync: @unchecked Sendable {
             }
           }
         }
+
+        callbacks.setState(.loaded)
+        self.store.registrySubject.send(snapshot)
+
+        for (identifier, state) in bookStates {
+          self.store.bookStateSubject.send((identifier, state))
+        }
+
+        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        Log.info(#file, "  Registry loaded with \(bookCount) books")
+
+        // Fire the completion AFTER state is .loaded and subscribers have been
+        // notified — callers that chain sync() off load (e.g. the account-change
+        // observer, AppDelegate cold-launch) need the store populated before
+        // sync's reconciliation runs.
+        callbacks.completion?()
+
       }
     }
   }

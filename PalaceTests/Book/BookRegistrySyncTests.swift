@@ -333,6 +333,58 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
     /// Kills the mutant "load() drops the orphan-redownload block". Content gone
     /// from disk with no license is a different recovery path from the one above.
+    /// The ORDERING invariant behind the board flake, asserted deterministically.
+    ///
+    /// `_awaitScheduledRedownloadsForTesting()` snapshots the task list, so it
+    /// can only join work that is already registered. Registration therefore has
+    /// to happen BEFORE `setState(.loaded)` — the signal every caller and every
+    /// test treats as "load is done". It did not: scheduling ran after both
+    /// announcements, so a join arriving in that window returned instantly and
+    /// the assertion ran before anything was scheduled.
+    ///
+    /// That produced a flake which failed ALTERNATELY between
+    /// `test_load_contentMissingEntirely_…` and `test_load_licenseWithoutContent_…`,
+    /// reproduced in isolation (so it was never the cross-class pollution it
+    /// resembled), and only under machine load — which makes the flake itself
+    /// useless as a regression test. This asserts the property instead: read the
+    /// registration count from inside the `.loaded` callback, where a
+    /// zero means the race is back.
+    func test_load_registersScheduledRedownloads_beforeAnnouncingLoaded() async throws {
+        let account = "brs-test-\(UUID().uuidString)"
+        let (sync, _, _) = makeSchedulingSyncManager(currentAccount: account)
+        let url = try XCTUnwrap(sync.registryUrl(for: account))
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "orphan-\(UUID().uuidString)")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadSuccessful)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let countAtLoaded = LockIsolatedCount()
+        let done = expectation(description: "loaded")
+        sync.load(account: account) { state in
+            if state == .loaded {
+                // Sampled AT the announcement, not after it — the whole point.
+                countAtLoaded.set(sync._scheduledRedownloadCountForTesting())
+                done.fulfill()
+            }
+        }
+        // Bounded wait, not a deadline poll: `done` is fulfilled by load()'s own
+        // setState callback, which load invokes unconditionally on every path.
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
+        await sync._awaitScheduledRedownloadsForTesting()
+
+        XCTAssertEqual(countAtLoaded.value, 1,
+                       "the orphan re-download must be REGISTERED before .loaded is announced — otherwise a caller that observes .loaded and joins the scheduled work is told nothing was scheduled")
+    }
+
+    /// Minimal thread-safe box; the callback may arrive off the test's thread.
+    private final class LockIsolatedCount: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value = -1
+        var value: Int { lock.withLock { _value } }
+        func set(_ v: Int) { lock.withLock { _value = v } }
+    }
+
     func test_load_contentMissingEntirely_schedulesTheOrphanRedownload() async throws {
         let account = "brs-test-\(UUID().uuidString)"
         let (sync, spy, _) = makeSchedulingSyncManager(currentAccount: account)
