@@ -148,9 +148,15 @@
 # PP-4895 (-1 on MyBooksDownloadCenter, 1257 -> 1256): the URLSession auth-challenge
 #   callback moved to the SDK's async spelling, and the shape adaptation both challenge
 #   sites needed now lives once on TPPBasicAuth.response(to:) instead of twice inline.
+# PP-4896 (-6 on MyBooksDownloadCenter, 1256 -> 1250): deleted the vestigial
+#   bookIdentifierOfBookToRemove scratch state — the property, its three `= nil`
+#   assignments, the account-match guard that only cleared it, and the doc bullet
+#   describing it. Its reader died in 2020 (b34820563) with the UIAlertViewDelegate
+#   confirm-delete flow, whose writer already had no callers. Pure removal, no
+#   behavior change.
 1579 Palace/Audiobooks/AudiobookSessionManager.swift
 374 Palace/Accounts/Library/AccountsManager.swift
-1256 Palace/MyBooks/MyBooksDownloadCenter.swift
+1250 Palace/MyBooks/MyBooksDownloadCenter.swift
 981 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 638 Palace/SignInLogic/TPPSignInBusinessLogic.swift
 575 Palace/MyBooks/BorrowOperation.swift

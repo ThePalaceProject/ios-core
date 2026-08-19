@@ -20,13 +20,15 @@
 //       retype (BookFileManager reading `AppContainer.production()`'s current
 //       account) would resolve a different id here → the assertion fails.
 //
-//    2. `reset(account:)` seam-consultation — the account-match guard reads the
-//       injected seam. The spy counts `currentAccountID` reads; both guard
-//       branches (matching + non-matching id) must consult it. A mutant that
-//       re-hardcoded the guard onto a concrete manager reads the spy 0 times →
-//       the assertions fail. (The guarded effect is unobservable scratch state,
-//       so the ==/!= flip is not killable without new production surface — see
-//       the test's inline HONEST LIMITATION note.)
+//    2. `persistStartedTaskRecord` account stamp — the durable started-task
+//       record's `account` is read from the injected seam at persist time. Since
+//       PP-4978 that stamp is read back on the DOWNLOAD path to decide whose
+//       credentials answer a re-issued request's auth challenge, so a wrong stamp
+//       authenticates against the wrong library. (Launch reconciliation itself
+//       never reads `.account` — it matches by `bookID`/`taskIdentifier`.)
+//       Asserted for a single persist, across a mid-session account change
+//       (proving a live read per persist, not an init-time capture), and for the
+//       no-current-account sentinel.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -156,52 +158,138 @@ final class MyBooksDownloadCenterAccountScopeSeamTests: XCTestCase {
             "the file-path account must follow the injected seam's current value on each read — proving a live seam read, not an init-time capture")
     }
 
-    // MARK: - 2. reset(account:) consults the injected seam
+    // MARK: - 2. persistStartedTaskRecord stamps the account from the injected seam
 
-    /// `reset(account:)`'s account-match guard compares the argument against the
-    /// injected scope seam's `currentAccountID`. This test drives BOTH sides of
-    /// that guard — a MATCHING id (guard true) and a NON-matching id (guard
-    /// false) — and asserts the seam is the operand consulted in each case.
+    /// The durable started-task record survives a mid-download process kill. Its
+    /// `account` is not used by launch reconciliation — that matches by `bookID`
+    /// and `taskIdentifier` — but since PP-4978 it is read back on the download
+    /// path (`BackgroundDownloadHandler.startedForAccount`) to recover which
+    /// library a download was started under when re-issuing its request. A wrong
+    /// stamp therefore answers an auth challenge with the wrong library's
+    /// credentials. That stamp reads the injected scope seam
+    /// (`MyBooksDownloadCenter.persistStartedTaskRecord`), so this test asserts
+    /// the persisted record carries exactly the id the spy reports.
     ///
-    /// A mutant that re-hardcoded the guard onto a concrete
-    /// `AccountsManager.currentAccountId` reads the spy 0 times → both assertions
-    /// fail. Exercising both branches also pins that the argument actually flows
-    /// into a comparison against the seam value (not ignored).
-    ///
-    /// HONEST LIMITATION — the `==` → `!=` mutant is NOT killed here. The guard's
-    /// only effect is clearing `bookIdentifierOfBookToRemove`, which in the
-    /// current tree is write-only scratch state: it is never assigned a non-nil
-    /// value and never read back through any public/internal surface (verified by
-    /// a whole-tree grep). There is therefore NO observable behavioral difference
-    /// between the guard being true and false. Per the S2b review constraint we do
-    /// NOT add a test-only `_forTesting` getter to production just to observe it;
-    /// the seam-consultation + both-branches pin is the strongest assertion the
-    /// existing surface allows. When the remove-from-device confirmation flow that
-    /// reads this scratch state is (re)wired, this test should be upgraded to
-    /// assert the cleared/retained effect and kill the ==/!= mutant.
-    func testResetAccount_consultsInjectedScopeSeamOnBothGuardBranches() {
-        // Guard-true branch: reset argument MATCHES the seam's current id.
-        let matchingID = "current-lib-\(UUID().uuidString)"
-        let matchSpy = SpyDownloadAccountScope(accountID: matchingID)
-        let matchCenter = MyBooksDownloadCenter(
-            bookRegistry: registry,
-            accountScope: matchSpy
-        )
-        let matchBefore = matchSpy.accountIDReadCount
-        matchCenter.reset(account: matchingID)
-        XCTAssertGreaterThan(matchSpy.accountIDReadCount, matchBefore,
-            "reset(account:) with a MATCHING id must read the injected seam's currentAccountID for its guard, not a hardcoded AccountsManager")
+    /// A mutant that re-hardcoded the stamp onto a concrete
+    /// `AccountsManager.currentAccountId` — or that stamped the empty-string
+    /// fallback unconditionally — persists a different account than the spy's →
+    /// the assertion fails.
+    func testPersistStartedTaskRecord_stampsAccountFromInjectedScopeSeam() throws {
+        let accountID = "stamp-lib-\(UUID().uuidString)"
+        let spy = SpyDownloadAccountScope(accountID: accountID)
+        let (center, stateManager) = try makeCenterWithIsolatedPersistence(scope: spy)
 
-        // Guard-false branch: reset argument does NOT match the seam's current id.
-        let nonMatchSpy = SpyDownloadAccountScope(accountID: "current-lib-\(UUID().uuidString)")
-        let nonMatchCenter = MyBooksDownloadCenter(
-            bookRegistry: registry,
-            accountScope: nonMatchSpy
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        // DISTINCT urls: production prefers the LIVE task's `originalRequest` over
+        // the passed request, because a retry re-issues the task against a
+        // refreshed (re-signed) url while the caller still holds the original.
+        // Same url in both slots would let a swapped precedence pass.
+        let taskURL = try XCTUnwrap(URL(string: "https://example.test/live/\(book.identifier)"))
+        let staleRequestURL = try XCTUnwrap(URL(string: "https://example.test/stale/\(book.identifier)"))
+        let (task, session) = downloadTask(for: taskURL)
+        defer { session.invalidateAndCancel() }
+
+        center.persistStartedTaskRecord(task: task, book: book, request: URLRequest(url: staleRequestURL))
+
+        let records = stateManager.persistedRecords()
+        XCTAssertEqual(records.count, 1, "a started task must produce exactly one durable record")
+        XCTAssertEqual(records.first?.bookID, book.identifier)
+        XCTAssertEqual(records.first?.account, accountID,
+            "the durable record's account must be the injected seam's current id — it is read back on the download path to pick the credentials that answer a re-issued request's auth challenge, so a wrong stamp authenticates against the wrong library")
+        XCTAssertEqual(records.first?.taskIdentifier, task.taskIdentifier,
+            "the record must carry the LIVE task's identifier — reconciliation matches a resumed background task by it, so a wrong value orphans the download")
+        XCTAssertEqual(records.first?.downloadURL, taskURL,
+            "the live task's originalRequest url must win over the passed request's — a retry re-issues against a refreshed url and the record must track it")
+    }
+
+    /// The empty-string account is a LOAD-BEARING sentinel, not a defensive
+    /// default: `BackgroundDownloadHandler.startedForAccount` and
+    /// `MyBooksDownloadCenter+ChallengeAccount` both branch on
+    /// `!startedAccountID.isEmpty` to decide whether to answer a download auth
+    /// challenge with the CAPTURED account or fall back to the current one. A
+    /// non-empty stand-in (`"unknown"`, `"none"`) reads as a real account id and
+    /// routes credentials to `userAccount(forCapturedId:)` for a library that
+    /// does not exist — a silent download-auth failure. This pins the nil arm of
+    /// the coalescing so that sentinel cannot drift.
+    func testPersistStartedTaskRecord_withNoCurrentAccount_stampsEmptySentinel() throws {
+        let spy = SpyDownloadAccountScope(accountID: nil)
+        let (center, stateManager) = try makeCenterWithIsolatedPersistence(scope: spy)
+
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let url = try XCTUnwrap(URL(string: "https://example.test/\(book.identifier)"))
+        let (task, session) = downloadTask(for: url)
+        defer { session.invalidateAndCancel() }
+
+        center.persistStartedTaskRecord(task: task, book: book, request: URLRequest(url: url))
+
+        XCTAssertEqual(stateManager.persistedRecords().first?.account, "",
+            "with no current account the stamp must be exactly the empty string — consumers test `.isEmpty` to fall back to the current user account, so any other stand-in routes download auth to a nonexistent library")
+    }
+
+    /// The stamp must be a LIVE seam read at persist time, not an id captured
+    /// when MBDC was constructed. A user switching libraries mid-session and
+    /// then starting a download must get the NEW library on the record; an
+    /// init-time capture would stamp the old one and answer that download's auth
+    /// challenge with the previous library's credentials.
+    func testPersistStartedTaskRecord_tracksInjectedScopeSeamAcrossAccountChange() throws {
+        let firstID = "first-lib-\(UUID().uuidString)"
+        let secondID = "second-lib-\(UUID().uuidString)"
+        let spy = SpyDownloadAccountScope(accountID: firstID)
+        let (center, stateManager) = try makeCenterWithIsolatedPersistence(scope: spy)
+
+        let firstBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let firstURL = try XCTUnwrap(URL(string: "https://example.test/\(firstBook.identifier)"))
+        let (firstTask, firstSession) = downloadTask(for: firstURL)
+        defer { firstSession.invalidateAndCancel() }
+        center.persistStartedTaskRecord(task: firstTask, book: firstBook, request: URLRequest(url: firstURL))
+
+        spy.setAccountID(secondID)
+
+        let secondBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let secondURL = try XCTUnwrap(URL(string: "https://example.test/\(secondBook.identifier)"))
+        let (secondTask, secondSession) = downloadTask(for: secondURL)
+        defer { secondSession.invalidateAndCancel() }
+        center.persistStartedTaskRecord(task: secondTask, book: secondBook, request: URLRequest(url: secondURL))
+
+        let records = stateManager.persistedRecords()
+        XCTAssertEqual(
+            records.first(where: { $0.bookID == firstBook.identifier })?.account, firstID,
+            "the record written BEFORE the account change must keep the account current at ITS persist time")
+        XCTAssertEqual(
+            records.first(where: { $0.bookID == secondBook.identifier })?.account, secondID,
+            "the record written AFTER the account change must carry the NEW id — proving a live seam read per persist, not an init-time capture")
+    }
+
+    // MARK: - Helpers
+
+    /// MBDC wired to the given scope seam and to a `DownloadStateManager` whose
+    /// durable store is a throwaway file, so the assertions read back only what
+    /// this test wrote and nothing touches the shared production store.
+    private func makeCenterWithIsolatedPersistence(
+        scope: SpyDownloadAccountScope
+    ) throws -> (MyBooksDownloadCenter, DownloadStateManager) {
+        let storeURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("AccountScopeSeamTests-tasks-\(UUID().uuidString).json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: storeURL) }
+
+        let stateManager = DownloadStateManager(
+            taskPersistence: DownloadTaskPersistence(fileURL: storeURL)
         )
-        let nonMatchBefore = nonMatchSpy.accountIDReadCount
-        nonMatchCenter.reset(account: "some-other-lib-\(UUID().uuidString)")
-        XCTAssertGreaterThan(nonMatchSpy.accountIDReadCount, nonMatchBefore,
-            "reset(account:) with a NON-matching id must still read the injected seam's currentAccountID to evaluate its guard")
+        let center = MyBooksDownloadCenter(
+            bookRegistry: registry,
+            accountScope: scope,
+            stateManager: stateManager
+        )
+        return (center, stateManager)
+    }
+
+    /// A real, never-resumed `URLSessionDownloadTask` — `persistStartedTaskRecord`
+    /// reads `task.taskIdentifier` and `task.originalRequest`, both of which are
+    /// populated at creation. The session is returned so the caller can invalidate
+    /// it rather than leaking it onto `URLSession.shared`.
+    private func downloadTask(for url: URL) -> (URLSessionDownloadTask, URLSession) {
+        let session = URLSession(configuration: .ephemeral)
+        return (session.downloadTask(with: url), session)
     }
 }
 
