@@ -20,8 +20,22 @@
   synthesized 909 alongside the response, exactly as before.
 - **It does not add retry logic.** The queue's existing drain/retry path is
   untouched; this only makes writes reach it.
-- **It does not silence anything.** The only new silence is PP-4965's, and it
-  is now paid for by the drop report above.
+- **It does not silence anything NEW at enqueue.** PP-4965's silence is paid
+  for by the drop reports above, both of which now file under 916.
+
+  CORRECTED (round 3): the DRAIN side is still silent. `retryQueue()` deletes
+  rows past `MaxRetriesInQueue = 5` without reporting, `retry()` logs a non-2xx
+  locally only, and both `migrate()` and `retryQueue()` keep a bare
+  `guard let db else { return }`. A write that can never drain is as lost as
+  one never stored. That path has never carried traffic before this ticket and
+  has no behavioural coverage; it is a follow-up, not something this change
+  fixes.
+
+- **It does not predict the 914 bucket.** Expect 914 to COLLAPSE app-wide:
+  transport failures that were filed under it now carry their real NSURLError
+  and re-bucket through `customSummaryAndCode`. A near-zero 914 after this
+  ships is the substitution ending, not a defect being fixed — the exact
+  symmetric trap to the 902 re-measurement PP-4965 warns about.
 - **It does not claim the 902 bucket will fall by a specific amount.** It should
   fall, because genuinely-queued writes stop being reported — but the remaining
   volume is the real defect worth sizing, and that measurement belongs after
@@ -37,6 +51,45 @@ are offline will now get the specific "you appear to be offline" handling those
 sites were written to provide, instead of a generic failure. This is the
 intended consequence, not a side effect — but it is a user-visible change on
 the sign-in path and should be called out in review.
+
+## Round 3 — hardening required before this could land
+
+Review blocked this twice more, and two of the findings were about turning the
+queue ON rather than about the fix itself:
+
+- **The credential was about to reach disk.** Callers build headers from
+  `TPPNetworkExecutor.request(for:)`, whose `useTokenIfAvailable` defaults to
+  TRUE, so `Authorization: Bearer …` was archived into the unencrypted
+  `simplified.db`. Never executed before, because nothing was ever queued —
+  this ticket is what would have started it. Now stripped at enqueue
+  (`headersSafeToPersist`) and re-derived at drain from the CURRENT credential,
+  which also stops a days-old row replaying an expired token.
+
+- **The queue key collapsed distinct writes.** `addRequest` UPDATEs the row for
+  `(libraryID, updateID)` and every annotation passed `updateID = bookID`, so
+  two offline bookmarks in one title silently overwrote each other — with
+  PP-4965 having already removed the report for that path. Keyed on motivation
+  now: positions still collapse on the book (a newer position SHOULD supersede
+  an older one), bookmarks key on book + selector.
+
+- **916 was applied to only one of the two drop paths.** The `catch` used the
+  bare `logError(_:summary:metadata:)` overload, which hardcodes `code:
+  .ignore` — filing under the raw SQLite code with `error_origin = unknown`.
+  Byte-for-byte the defect round 1 blocked this branch for, reintroduced in new
+  code, and caught by all three reviewers. Fixed and now tested.
+
+## Blast radius — what review established
+
+Preserving the error revives `TPPAlertUtils`, `PalaceError`,
+`TPPSignInBusinessLogic` and `PalaceAuth.AuthReducer`. Independently traced:
+all message-only, no sign-out, and `DownloadErrorRecovery`'s retry policies are
+bounded (3 attempts / 25–120s), so no retry storm.
+
+It does NOT reach borrow/return/loans-sync: `TPPOPDSFeed+Networking.swift:113`
+erases the transport error into `problemDocument?.dictionaryValue` (nil when
+offline), so `BookReturnService.isOfflineNSURLError` and the OPDS-side
+consumers stay dead. That is a SECOND erasure chokepoint of the same shape as
+this ticket's, and it is worth its own ticket.
 
 ## Files in scope
 

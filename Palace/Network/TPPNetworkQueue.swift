@@ -46,15 +46,37 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     /// removing.
     private let errorLogger: ErrorLogging
 
+    /// Supplies the `Authorization` header value at DRAIN time.
+    ///
+    /// Queued rows deliberately do NOT store the one they were created with.
+    /// Two reasons, and the second is why this exists at all:
+    ///
+    ///  1. Secrets at rest. `simplified.db` is an unencrypted SQLite file in
+    ///     Application Support. Archiving `Authorization: Bearer …` into it
+    ///     writes a live credential to disk in the clear. Until PP-4987 this
+    ///     never executed, because nothing was ever queued — turning the queue
+    ///     on is precisely what would have started it.
+    ///  2. Correctness. A write can sit in this queue for days. The token it
+    ///     was created with may have expired, been refreshed, or belong to an
+    ///     account the patron has since signed out of. Replaying a stored
+    ///     header retries with a stale credential; re-deriving at drain uses
+    ///     whatever is valid NOW, or nothing.
+    private let authorizationHeaderProvider: @Sendable () -> String?
+
     init(transport: NetworkTransport,
          reachability: Reachability,
          databaseDirectory: String = NSSearchPathForDirectoriesInDomains(
             .applicationSupportDirectory, .userDomainMask, true).first ?? NSTemporaryDirectory(),
-         errorLogger: ErrorLogging = DefaultErrorLogger()) {
+         errorLogger: ErrorLogging = DefaultErrorLogger(),
+         authorizationHeaderProvider: @escaping @Sendable () -> String? = {
+            AppContainer.production().accountsManager.currentUserAccount
+                .credentialSnapshot().authToken.map { "Bearer \($0)" }
+         }) {
         self.path = databaseDirectory
         self.transport = transport
         self.reachability = reachability
         self.errorLogger = errorLogger
+        self.authorizationHeaderProvider = authorizationHeaderProvider
         super.init()
     }
 
@@ -106,6 +128,16 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
             .store(in: &cancellables)
     }
 
+    /// Strips credentials from a header set before it is written to disk.
+    ///
+    /// Internal rather than private so the guarantee is directly assertable —
+    /// "the credential never reaches `simplified.db`" is a security property,
+    /// and proving it by reading the code is not proving it. Matched
+    /// case-insensitively because HTTP header names are.
+    static func headersSafeToPersist(_ headers: [String: String]) -> [String: String] {
+        headers.filter { $0.key.caseInsensitiveCompare("Authorization") != .orderedSame }
+    }
+
     func addRequest(_ libraryID: String,
                     _ updateID: String?,
                     _ requestUrl: URL,
@@ -121,7 +153,15 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
 
             let headerData: Data?
             if let headers = headers {
-                headerData = NSKeyedArchiver.archivedData(withRootObject: headers)
+                // NEVER persist the credential (PP-4987). `simplified.db` is an
+                // unencrypted file in Application Support, and callers build
+                // their headers from `TPPNetworkExecutor.request(for:)`, whose
+                // `useTokenIfAvailable` defaults to TRUE — so `Authorization:
+                // Bearer …` is present unless it is removed here. It is
+                // re-derived at drain time from whatever credential is current.
+                // Matched case-insensitively because HTTP header names are.
+                headerData = NSKeyedArchiver.archivedData(
+                    withRootObject: NetworkQueue.headersSafeToPersist(headers))
             } else {
                 headerData = nil
             }
@@ -161,8 +201,18 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
                 // PP-4987: as above — a local Log.error is invisible in
                 // production telemetry, and the caller believes this write is
                 // safely pending.
-                self.errorLogger.logError(error,
+                // `logNetworkError(_:code:…)`, NOT the bare `logError(_:summary:
+                // metadata:)` overload — that one hardcodes `code: .ignore`,
+                // which would file this under the raw bridged SQLite code with
+                // `error_origin = unknown` instead of 916. Round 1 of review
+                // blocked this branch for exactly that substitution in
+                // `TPPAnnotations`; it was reintroduced here in new code and
+                // caught by all three reviewers in round 3.
+                self.errorLogger.logNetworkError(error,
+                                          code: .offlineQueueWriteFailed,
                                           summary: "Offline queue write dropped",
+                                          request: nil,
+                                          response: nil,
                                         metadata: [
                                             "reason": "insert or update threw",
                                             "libraryID": libraryID,
@@ -286,6 +336,16 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
             for (headerKey, headerValue) in headers {
                 urlRequest.setValue(headerValue, forHTTPHeaderField: headerKey)
             }
+        }
+
+        // Attach the CURRENT credential, not the one this row was created with
+        // (PP-4987). Rows carry no `Authorization` by design — see
+        // `authorizationHeaderProvider`. A row can be days old, so the token it
+        // was queued with may be expired or belong to a signed-out account;
+        // this uses whatever is valid now, or sends none and lets the server
+        // refuse (which is the correct outcome for a signed-out patron).
+        if let authorization = authorizationHeaderProvider() {
+            urlRequest.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
 
         let task = transport.urlSession.dataTask(with: urlRequest) { (_, response, _) in

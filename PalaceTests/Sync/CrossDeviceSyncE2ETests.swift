@@ -39,12 +39,11 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     private var executorA: TPPNetworkExecutor!
     private var executorB: TPPNetworkExecutor!
     /// Device A with no connectivity. NoNetworkURLProtocol answers every
-    /// request with NSURLErrorNotConnectedToInternet — but note that is NOT
-    /// what `postAnnotation` ends up seeing. TPPNetworkResponder discards the
-    /// transport error when no HTTP response arrives and substitutes code 914,
-    /// which is not in NetworkQueue.StatusCodes, so the write is never queued.
-    /// That is PP-4987, and the offline test below pins the 914 rather than
-    /// the error this protocol emits.
+    /// request with NSURLErrorNotConnectedToInternet, and as of PP-4987 that
+    /// IS what `postAnnotation` sees — `TPPNetworkResponder` no longer
+    /// substitutes code 914 for it. The code is in `NetworkQueue.StatusCodes`,
+    /// so the write is queued for retry and, being pending rather than lost,
+    /// is not reported. The offline test below pins exactly that.
     private var executorAOffline: TPPNetworkExecutor!
 
     private var savedExecutorOverride: TPPNetworkExecutor?

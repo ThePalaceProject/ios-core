@@ -94,16 +94,22 @@ class NetworkQueueTests: XCTestCase {
         // A fresh database has no table until `migrate()` creates it — without
         // this the "success" case fails at the insert and reports a drop, which
         // would make this control test pass for the wrong reason.
+        //
+        // `serialQueue.sync {}` is a REAL barrier: every DB operation is
+        // dispatched onto that queue, so this returns only once migrate() has
+        // actually run. The previous `expectEventually { loggedSummaries.isEmpty }`
+        // was true on its first evaluation and returned instantly — not a
+        // barrier at all, just a sleep that happened to work.
         queue.migrate()
-        expectEventually("the schema to exist") { spy.loggedSummaries.isEmpty }
+        queue.serialQueue.sync {}
 
         queue.addRequest("lib-1", "update-1",
                          URL(string: "https://example.org/annotations/")!,
                          HTTPMethodType.POST, Data("{}".utf8), nil)
 
-        // Give the serial queue the same window the failing test gets, so this
-        // is a real "nothing arrived", not a race that has not happened yet.
-        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        // Barrier, not a sleep: once the serial queue has drained, the write
+        // has been attempted and any report would already have been recorded.
+        queue.serialQueue.sync {}
         XCTAssertEqual(spy.loggedSummaries, [],
                        "A write that WAS persisted must report nothing at all")
     }
@@ -114,6 +120,73 @@ class NetworkQueueTests: XCTestCase {
         NetworkTransport(delegate: nil,
                          cachingStrategy: .ephemeral,
                          requestTimeout: 5)
+    }
+
+    /// The OTHER drop path. `guard let db` covers an unopenable database; this
+    /// covers a database that opens and then refuses the write — the insert
+    /// throws because no table exists yet.
+    ///
+    /// Round 3 of review found this path filing under the WRONG code: it used
+    /// the bare `logError(_:summary:metadata:)` overload, which hardcodes
+    /// `code: .ignore`, so the report landed under the raw SQLite code with
+    /// `error_origin = unknown` rather than 916 — while the commit claimed both
+    /// paths reported under 916. Untested code made the false claim possible.
+    func testAddRequest_WhenInsertThrows_ReportsUnderTheSameDedicatedCode() {
+        let spy = ErrorLoggerSpy()
+        let dir = NSTemporaryDirectory() + "pp4987-noschema-" + UUID().uuidString
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        // Deliberately NO migrate() — the database opens, the table does not exist.
+        let queue = NetworkQueue(transport: makeTransport(),
+                                 reachability: Reachability(),
+                                 databaseDirectory: dir,
+                                 errorLogger: spy)
+        queue.addRequest("lib-1", "update-1",
+                         URL(string: "https://example.org/annotations/")!,
+                         HTTPMethodType.POST, Data("{}".utf8), nil)
+        queue.serialQueue.sync {}
+
+        XCTAssertEqual(spy.loggedSummaries, ["Offline queue write dropped"],
+                       "A write the database refused must be reported, not swallowed by a local Log.error")
+        XCTAssertEqual(spy.loggedCodes, [.offlineQueueWriteFailed],
+                       "It must file under 916 like the other drop path — the bare logError overload hardcodes .ignore and would file it under the raw SQLite code")
+        XCTAssertEqual(spy.loggedMetadata.first?["reason"] as? String, "insert or update threw",
+                       "The report must distinguish WHICH drop path fired")
+    }
+
+    // MARK: - PP-4987: the credential must never reach disk
+
+    /// `simplified.db` is an unencrypted file in Application Support, and
+    /// callers build headers from `TPPNetworkExecutor.request(for:)` whose
+    /// `useTokenIfAvailable` defaults to TRUE — so a live bearer token is in
+    /// the header set unless it is stripped. Nothing was ever queued before
+    /// PP-4987, so this never executed; turning the queue on is what would
+    /// have started writing credentials to disk.
+    func testHeadersSafeToPersist_RemovesTheCredentialAndKeepsEverythingElse() {
+        let sanitized = NetworkQueue.headersSafeToPersist([
+            "Authorization": "Bearer super-secret-token",
+            "Content-Type": "application/json",
+            "Accept-Language": ""
+        ])
+
+        XCTAssertNil(sanitized["Authorization"],
+                     "A live credential must never be archived into the unencrypted queue database")
+        XCTAssertFalse(sanitized.values.contains { $0.contains("super-secret-token") },
+                       "The token must not survive under any key")
+        XCTAssertEqual(sanitized["Content-Type"], "application/json",
+                       "Everything the retry needs must survive — stripping too much breaks the replay")
+        XCTAssertEqual(sanitized.count, 2)
+    }
+
+    /// HTTP header names are case-insensitive, so a caller spelling it
+    /// differently must not smuggle the credential past the filter.
+    func testHeadersSafeToPersist_IsCaseInsensitive() {
+        for spelling in ["authorization", "AUTHORIZATION", "AuThOrIzAtIoN"] {
+            let sanitized = NetworkQueue.headersSafeToPersist([spelling: "Bearer t", "X-Keep": "1"])
+            XCTAssertEqual(sanitized, ["X-Keep": "1"],
+                           "\(spelling) must be stripped exactly like the canonical spelling")
+        }
     }
 
     private func unopenableDatabaseDirectory() -> String {

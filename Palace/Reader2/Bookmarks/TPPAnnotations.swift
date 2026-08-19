@@ -286,7 +286,26 @@ protocol AnnotationsManager {
                                        selectorValue: selectorValue)
         let parameters = bookmark.dictionaryForJSONSerialization()
 
-        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true) { result in
+        // The offline queue UPDATES the row matching (libraryID, queueKey), so
+        // the key decides what supersedes what (PP-4987 made this reachable):
+        //
+        //  - readingProgress: key on the book. Collapsing IS correct — a newer
+        //    position supersedes an older one for the same book, and delivering
+        //    only the latest is what the patron wants.
+        //  - bookmark: key on the book AND the selector. Every bookmark is a
+        //    distinct thing the patron created; keying on the book alone made
+        //    two offline bookmarks in one title silently overwrite each other,
+        //    and PP-4965 has already removed the error report for this path, so
+        //    the loss would be invisible.
+        let queueKey: String
+        switch motivation {
+        case .bookmark:
+            queueKey = "\(bookID)|\(selectorValue)"
+        default:
+            queueKey = bookID
+        }
+
+        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true, queueKey: queueKey) { result in
             switch result {
             case let .succeeded(id, timeStamp):
                 Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
@@ -433,13 +452,13 @@ protocol AnnotationsManager {
         /// and will be retried. Delivery is pending, not lost — do NOT report
         /// this as an error.
         ///
-        /// NOTE (PP-4987): unreachable in production today. The networking
-        /// layer discards the underlying transport error when no HTTP response
-        /// arrives, substituting a generic no-response code that is not in
-        /// `NetworkQueue.StatusCodes`, so `willQueueOffline` is never true.
-        /// This case becomes live the moment PP-4987 preserves that error —
-        /// which is why it is modelled now rather than after, and why its
-        /// behaviour is already covered by tests.
+        /// REACHABLE as of PP-4987. It was not when this case was written:
+        /// the networking layer discarded the underlying transport error when
+        /// no HTTP response arrived, substituting a generic no-response code
+        /// absent from `NetworkQueue.StatusCodes`, so `willQueueOffline` could
+        /// never be true. `TPPNetworkResponder` now passes that error through,
+        /// so an offline write genuinely reaches the retry queue and this case
+        /// carries real production traffic.
         case queuedForRetry
 
         /// The write did not happen and nothing will retry it.
@@ -459,6 +478,7 @@ protocol AnnotationsManager {
                               withParameters parameters: [String: Any],
                               timeout: TimeInterval = TPPDefaultRequestTimeout,
                               queueOffline: Bool,
+                              queueKey: String? = nil,
                               _ completionHandler: @escaping (_ result: AnnotationPostResult) -> Void) {
 
         // `isValidJSONObject` FIRST, deliberately. `data(withJSONObject:)`
@@ -493,7 +513,7 @@ protocol AnnotationsManager {
 
                 if willQueueOffline {
                     Log.debug(#file, "Queued for offline retry")
-                    self.addToOfflineQueue(bookID, url, parameters)
+                    self.addToOfflineQueue(queueKey ?? bookID, url, parameters)
                     completionHandler(.queuedForRetry)
                     return
                 }

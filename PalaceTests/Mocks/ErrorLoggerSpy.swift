@@ -57,6 +57,13 @@ final class ErrorLoggerSpy: ErrorLogging, @unchecked Sendable {
 
     func logError(_ error: Error?, summary: String, metadata: [String: Any]?) {
         record(summary: summary, error: error, metadata: metadata)
+        // Record `.ignore` — which is what this overload hardcodes — so
+        // `loggedCodes` stays INDEX-ALIGNED with `loggedSummaries`. It used to
+        // append nothing, so a report through this overload was invisible in
+        // `loggedCodes`: a test asserting `loggedCodes == [.offlineQueueWriteFailed]`
+        // would have passed while a second report silently filed under
+        // `.ignore`. That is exactly how the round-3 916 defect could have hid.
+        lock.withLock { _loggedCodes.append(.ignore) }
     }
 
     func logError(withCode code: TPPErrorCode, summary: String, metadata: [String: Any]?) {
