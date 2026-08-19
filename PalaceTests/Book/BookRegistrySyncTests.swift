@@ -331,8 +331,6 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
                        "a license alone is not a playable book")
     }
 
-    /// Kills the mutant "load() drops the orphan-redownload block". Content gone
-    /// from disk with no license is a different recovery path from the one above.
     /// The ORDERING invariant behind the board flake, asserted deterministically.
     ///
     /// `_awaitScheduledRedownloadsForTesting()` snapshots the task list, so it
@@ -360,14 +358,26 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
 
         let countAtLoaded = LockIsolatedCount()
+        let countAtCompletion = LockIsolatedCount()
         let done = expectation(description: "loaded")
-        sync.load(account: account) { state in
-            if state == .loaded {
-                // Sampled AT the announcement, not after it — the whole point.
-                countAtLoaded.set(sync._scheduledRedownloadCountForTesting())
+        sync.load(
+            account: account,
+            setState: { state in
+                if state == .loaded {
+                    // Sampled AT the announcement, not after it — the whole point.
+                    countAtLoaded.set(sync._scheduledRedownloadCountForTesting())
+                }
+            },
+            completion: {
+                // Sampled at the OTHER "load is done" signal too. Guarding only
+                // `.loaded` would let someone hoist `completion?()` above
+                // registration — passing this test while breaking every caller
+                // that chains `sync()` off completion and then asks what was
+                // scheduled.
+                countAtCompletion.set(sync._scheduledRedownloadCountForTesting())
                 done.fulfill()
             }
-        }
+        )
         // Bounded wait, not a deadline poll: `done` is fulfilled by load()'s own
         // setState callback, which load invokes unconditionally on every path.
         await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
@@ -375,6 +385,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         XCTAssertEqual(countAtLoaded.value, 1,
                        "the orphan re-download must be REGISTERED before .loaded is announced — otherwise a caller that observes .loaded and joins the scheduled work is told nothing was scheduled")
+        XCTAssertEqual(countAtCompletion.value, 1,
+                       "…and before completion fires, which is the signal callers chaining sync() actually wait on")
     }
 
     /// Minimal thread-safe box; the callback may arrive off the test's thread.
@@ -385,6 +397,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         func set(_ v: Int) { lock.withLock { _value = v } }
     }
 
+    /// Kills the mutant "load() drops the orphan-redownload block". Content gone
+    /// from disk with no license is a different recovery path from the one above.
     func test_load_contentMissingEntirely_schedulesTheOrphanRedownload() async throws {
         let account = "brs-test-\(UUID().uuidString)"
         let (sync, spy, _) = makeSchedulingSyncManager(currentAccount: account)
