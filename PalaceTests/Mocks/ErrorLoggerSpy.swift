@@ -46,10 +46,14 @@ final class ErrorLoggerSpy: ErrorLogging, @unchecked Sendable {
         (loggedErrors.first ?? nil) as NSError?
     }
 
-    /// The Crashlytics code the first report would carry. Asserting this is how
-    /// the suite catches a reporting change that silently moves the bucket —
-    /// the defect review caught on this branch (PP-4965).
-    var firstReportedCode: Int? { firstReportedNSError?.code }
+    // NOTE: there is deliberately no `firstReportedCode` convenience here.
+    // An earlier revision had one, documented as "the Crashlytics code the
+    // first report would carry" while actually returning the UNDERLYING
+    // NSError's code (909 for a server refusal, an NSURLError for a transport
+    // failure) — not the `TPPErrorCode` the report is filed under. A test
+    // reaching for it to prove the 902 bucket was preserved would have got a
+    // confident, wrong answer. Use `loggedCodes`, which records what the
+    // caller actually asked to file it as.
 
     func logError(_ error: Error?, summary: String, metadata: [String: Any]?) {
         record(summary: summary, error: error, metadata: metadata)

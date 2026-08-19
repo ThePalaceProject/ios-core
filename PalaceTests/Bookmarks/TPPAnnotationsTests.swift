@@ -1217,6 +1217,13 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     private let url = URL(string: "https://test.library.org/annotations/")!
     private let bookID = "urn:uuid:test-book-hermetic"
 
+    /// `Account.syncPermissionGranted` is not a plain property — its setter
+    /// writes through to `UserDefaults` keyed by the account uuid. Opening the
+    /// sync gate in `makeLoggerSpy()` therefore mutates shared state that
+    /// outlives the test, which is exactly the bleed this suite's tearDown
+    /// exists to prevent. Capture what was there and put it back.
+    private var syncPermissionRestore: (() -> Void)?
+
     override func setUp() {
         super.setUp()
         mock = RecordingExecutorMock()
@@ -1232,6 +1239,8 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         TPPAnnotations.annotationsURLOverride = nil
         AnnotationDevice.accountsManagerOverride = nil
         AnnotationDevice.firebaseDeviceIDOverride = nil
+        syncPermissionRestore?()
+        syncPermissionRestore = nil
         mock = nil
         super.tearDown()
     }
@@ -1240,6 +1249,24 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
 
     private func httpResponse(_ code: Int) -> HTTPURLResponse {
         HTTPURLResponse(url: url, statusCode: code, httpVersion: "HTTP/1.1", headerFields: nil)!
+    }
+
+    /// The exact triple the real stack delivers for a server refusal.
+    ///
+    /// `TPPNetworkResponder` turns EVERY non-2xx into
+    /// `NSError(domain: "Api call with failure HTTP status", code: 909)` and
+    /// returns it alongside the response; `TPPNetworkExecutor.POST` forwards
+    /// both as `(nil, response, error)`. Stubbing `(nil, response, nil)` — an
+    /// error-free non-2xx — describes a shape production never emits, and two
+    /// tests once passed against it while the behaviour they asserted did not
+    /// exist (PP-4965 review round 2). Build refusals through here so that
+    /// cannot recur.
+    private func serverRefusal(_ code: Int) -> (Data?, URLResponse?, Error?) {
+        (nil,
+         httpResponse(code),
+         NSError(domain: "Api call with failure HTTP status",
+                 code: TPPErrorCode.responseFail.rawValue,
+                 userInfo: nil))
     }
 
     /// Raw outcome, for tests that care WHICH way a post concluded (PP-4965).
@@ -1381,7 +1408,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     // MARK: - POST: failure paths
 
     func testPostAnnotation_Non200StatusCode_ReturnsFailure() {
-        mock.postStub = (nil, httpResponse(500), nil)
+        mock.postStub = serverRefusal(500)
         let (ok, id, ts) = postAndWait()
         XCTAssertFalse(ok)
         XCTAssertNil(id)
@@ -1389,13 +1416,13 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     }
 
     func testPostAnnotation_Unauthorized401_ReturnsFailure() {
-        mock.postStub = (nil, httpResponse(401), nil)
+        mock.postStub = serverRefusal(401)
         let (ok, _, _) = postAndWait()
         XCTAssertFalse(ok, "401 should be propagated as failure from postAnnotation")
     }
 
     func testPostAnnotation_NotFound404_ReturnsFailure() {
-        mock.postStub = (nil, httpResponse(404), nil)
+        mock.postStub = serverRefusal(404)
         let (ok, _, _) = postAndWait()
         XCTAssertFalse(ok)
     }
@@ -1451,15 +1478,37 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     }
 
     /// A server refusal must carry the status, so 401 and 500 are separable.
+    ///
+    /// Driven through the production shape (error AND response both present),
+    /// because that is the only one the real executor produces for a non-2xx.
+    /// The earlier version of this test stubbed an error-free 500, which took
+    /// a branch production cannot reach and so asserted nothing real.
     func testPostAnnotation_ServerRefusal_ReportsFailedCarryingStatusCode() {
-        mock.postStub = (nil, httpResponse(500), nil)
+        mock.postStub = serverRefusal(500)
 
         guard case let .failed(underlying, response) = postAndWaitResult() else {
             return XCTFail("A non-200 response must report .failed")
         }
         XCTAssertEqual(response?.statusCode, 500,
                        "The response must reach the caller so refusals are diagnosable AND classifiable as server-origin")
-        XCTAssertNil(underlying, "A server refusal is not a transport error")
+        XCTAssertEqual(underlying?.code, TPPErrorCode.responseFail.rawValue,
+                       "The synthesized 909 the responder attaches to every non-2xx must survive alongside the response — it is what proves this took the error branch, the one production actually uses")
+    }
+
+    /// The remaining `.failed` producer cell. `postAnnotation` bails before it
+    /// ever reaches the network when the parameters will not serialize, and
+    /// without this the branch is free to become `.queuedForRetry` — which
+    /// would SUPPRESS the report for a write that was never queued and never
+    /// sent. A serialization defect would then be silently swallowed.
+    func testPostAnnotation_UnserializableParameters_ReportsFailedWithoutNetwork() {
+        guard case let .failed(underlying, response) =
+                postAndWaitResult(parameters: ["created": Date()], queueOffline: true) else {
+            return XCTFail("A payload that cannot be built must report .failed, never queued")
+        }
+        XCTAssertNil(underlying, "Nothing was sent, so there is no transport error to carry")
+        XCTAssertNil(response, "Nothing was sent, so there is no response to carry")
+        XCTAssertEqual(mock.postCallCount, 0,
+                       "The request must be abandoned before the executor is touched")
     }
 
     func testPostAnnotation_NonHTTPResponse_ReportsFailedWithNeitherErrorNorStatus() {
@@ -1511,6 +1560,10 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
                                        pin: "1234",
                                        expirationDate: Date().addingTimeInterval(3600))
         provider.userAccountResolver = { _ in signedIn }
+        if let details = provider.currentAccount?.details {
+            let previous = details.syncPermissionGranted
+            syncPermissionRestore = { details.syncPermissionGranted = previous }
+        }
         provider.currentAccount?.details?.syncPermissionGranted = true
         TPPAnnotations.accountsManagerOverride = provider
         return spy
@@ -1610,7 +1663,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     /// are distinguishable in telemetry rather than both being "api call".
     func testPostReadingPosition_ServerRefusal_ReportsStatusCodeInMetadata() {
         let spy = makeLoggerSpy()
-        mock.postStub = (nil, httpResponse(401), nil)
+        mock.postStub = serverRefusal(401)
 
         let exp = expectation(description: "post reading position")
         TPPAnnotations.postReadingPosition(forBook: bookID,
@@ -1622,7 +1675,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
         XCTAssertEqual(spy.loggedCodes, [.apiCall], "A server refusal must stay in the 902 annotation bucket")
         XCTAssertEqual(spy.loggedMetadata.first?["statusCode"] as? Int, 401,
-                       "Without the status code every refusal looks the same in telemetry")
+                       "Without the status code every refusal looks the same in telemetry. This is the assertion that was passing vacuously: the fixture used to omit the error the responder always attaches, so the caller took a branch that kept the response — while production took the one that dropped it.")
     }
 
     // MARK: - DELETE

@@ -461,7 +461,18 @@ protocol AnnotationsManager {
                               queueOffline: Bool,
                               _ completionHandler: @escaping (_ result: AnnotationPostResult) -> Void) {
 
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted]) else {
+        // `isValidJSONObject` FIRST, deliberately. `data(withJSONObject:)`
+        // RAISES an ObjC `NSInvalidArgumentException` for an unsupported type
+        // rather than throwing a Swift error, so `try?` does not catch it and
+        // the guard below never fired — an unserializable payload crashed the
+        // app instead of taking the `.failed` path this code models. Not
+        // reachable from today's three in-file callers (every value in
+        // `dictionaryForJSONSerialization()` is a String), so this is defence
+        // for the next caller, not a live bug fix. Found by writing the test
+        // for the branch (PP-4965 review round 2).
+        guard JSONSerialization.isValidJSONObject(parameters),
+              let jsonData = try? JSONSerialization.data(withJSONObject: parameters,
+                                                         options: [.prettyPrinted]) else {
             Log.error(#file, "Network request abandoned. Could not create JSON from given parameters.")
             completionHandler(.failed(underlying: nil, response: nil))
             return
@@ -487,7 +498,17 @@ protocol AnnotationsManager {
                     return
                 }
 
-                completionHandler(.failed(underlying: error, response: nil))
+                // Carry the response. `TPPNetworkResponder` synthesizes an
+                // NSError for EVERY non-2xx and `TPPNetworkExecutor.POST`
+                // forwards (nil, response, error) together, so this branch —
+                // not the `else` below — is the one a server refusal actually
+                // takes. Passing nil here dropped the status code before it
+                // reached telemetry and left `TPPErrorOrigin.classify`'s
+                // 400...599 arm unreachable from this call site, which made
+                // "a refusal carries its status code" false in production
+                // while two tests asserted it (PP-4965 review round 2).
+                completionHandler(.failed(underlying: error,
+                                          response: response as? HTTPURLResponse))
                 return
             }
             guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
