@@ -46,6 +46,12 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// is not reported. The offline test below pins exactly that.
     private var executorAOffline: TPPNetworkExecutor!
 
+    /// Installed for the whole suite because PP-4987 made the offline branch
+    /// reachable: without it, the offline test writes a durable row into the
+    /// app's REAL `simplified.db` in Application Support, which a later
+    /// reachability event could replay as a live POST.
+    private var offlineQueue: OfflineQueueSpy!
+
     private var savedExecutorOverride: TPPNetworkExecutor?
     private var savedErrorLoggerOverride: ErrorLogging?
     private var savedAccountsOverride: TPPLibraryAccountsProvider?
@@ -139,6 +145,9 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         // (no signed-in library defaults), so without this override every
         // POST/GET path early-returns before hitting HTTPStubURLProtocol.
         TPPAnnotations.annotationsURLOverride = Self.baseURL
+
+        offlineQueue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = offlineQueue
     }
 
     override func tearDown() {
@@ -156,6 +165,8 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         // process, which no later test would attribute to this suite.
         TPPAnnotations.errorLoggerOverride = savedErrorLoggerOverride
         executorAOffline = nil
+        TPPAnnotations.offlineQueueOverride = nil
+        offlineQueue = nil
 
         HTTPStubURLProtocol.reset()
         backend?.clear()
@@ -401,6 +412,17 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
                        "A write that was queued for retry must not be reported as an error — it is pending, not lost")
         XCTAssertNil(spy.firstReportedNSError,
                      "Nothing at all should be reported for a successfully queued write")
+
+        // The other half of the claim, and the one that makes the silence
+        // defensible: the write is PENDING, which means it must actually be in
+        // the queue. Asserting only the absence of a report would pass equally
+        // well if the position had simply evaporated.
+        XCTAssertEqual(offlineQueue.count, 1,
+                       "The offline write must be handed to the retry queue, not merely go unreported")
+        XCTAssertEqual(offlineQueue.enqueued.first?.updateID, Self.bookID,
+                       "A reading position keys on the book, so a later position supersedes this one")
+        XCTAssertNil(offlineQueue.enqueued.first?.headers?["Authorization"],
+                     "The credential must never be persisted — simplified.db is unencrypted")
 
         // B sees nothing, and that is correct: the write was never delivered.
         let book = makeBook()

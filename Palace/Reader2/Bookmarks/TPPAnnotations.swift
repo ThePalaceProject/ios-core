@@ -106,6 +106,15 @@ protocol AnnotationsManager {
     nonisolated(unsafe) static var executorOverride: TPPNetworkExecutor?
     nonisolated(unsafe) static var accountsManagerOverride: TPPLibraryAccountsProvider?
 
+    /// Test-only seam for observing what this type hands to the offline queue.
+    /// PP-4987 made `.queuedForRetry` reachable, so "the write actually reached
+    /// the queue" became a real claim — and it was previously unassertable,
+    /// because `addToOfflineQueue` reaches `AppContainer.production()`
+    /// directly. That also meant the cross-device test wrote durable rows into
+    /// the app's REAL `simplified.db`, which a later reachability event could
+    /// replay. Never set from production code.
+    nonisolated(unsafe) static var offlineQueueOverride: AnnotationOfflineQueueing?
+
     /// Test-only seam for observing what this type reports to error logging.
     /// PP-4965: whether a failed position write is reported at all — and with
     /// what underlying error — is now behaviour worth asserting, so it needs to
@@ -191,6 +200,12 @@ protocol AnnotationsManager {
     /// setting `accountsManagerOverride` lets the test inject a mock.
     fileprivate static var currentAccountsManager: TPPLibraryAccountsProvider {
         return accountsManagerOverride ?? AppContainer.production().accountsManager
+    }
+
+    /// Where a queued-for-retry write is handed off. Production resolves to the
+    /// container's queue; tests inject a double.
+    fileprivate static var currentOfflineQueue: AnnotationOfflineQueueing {
+        return offlineQueueOverride ?? AppContainer.production().networkQueue
     }
 
     private static let defaultErrorLogger = DefaultErrorLogger()
@@ -971,9 +986,26 @@ protocol AnnotationsManager {
         let libraryID = manager.currentAccount?.uuid ?? ""
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
         let headers = executor.request(for: url).allHTTPHeaderFields
-        AppContainer.production().networkQueue.addRequest(libraryID, bookID, url, .POST, parameterData, headers)
+        Self.currentOfflineQueue.addRequest(libraryID, bookID, url, .POST, parameterData, headers)
     }
 }
+
+/// The slice of the offline queue that annotation writes actually use.
+///
+/// Exists so `.queuedForRetry` is provable: without it, "the write reached the
+/// queue" can only be verified by reading the code, and PP-4965 removes the
+/// error report on the strength of that claim. `NetworkQueue` already has this
+/// exact signature.
+protocol AnnotationOfflineQueueing: AnyObject {
+    func addRequest(_ libraryID: String,
+                    _ updateID: String?,
+                    _ requestUrl: URL,
+                    _ method: HTTPMethodType,
+                    _ parameters: Data?,
+                    _ headers: [String: String]?)
+}
+
+extension NetworkQueue: AnnotationOfflineQueueing {}
 
 // MARK: - Sendable carriers for the annotation-sync @Sendable-closure captures
 

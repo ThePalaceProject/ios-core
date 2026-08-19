@@ -1236,6 +1236,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         TPPAnnotations.executorOverride = nil
         TPPAnnotations.accountsManagerOverride = nil
         TPPAnnotations.errorLoggerOverride = nil
+        TPPAnnotations.offlineQueueOverride = nil
         TPPAnnotations.annotationsURLOverride = nil
         AnnotationDevice.accountsManagerOverride = nil
         AnnotationDevice.firebaseDeviceIDOverride = nil
@@ -1657,6 +1658,84 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
                        "Today's real offline failure is a genuine loss and must be reported")
         XCTAssertEqual(spy.loggedCodes, [.apiCall],
                        "It must stay in the 902 bucket, or re-measuring that bucket after PP-4987 reads a false win")
+    }
+
+    // MARK: - PP-4987: a queued write must actually BE queued
+
+    /// The claim PP-4965's silence rests on. It stops reporting a write once
+    /// the write is "queued for retry" — which is only defensible if the write
+    /// genuinely reached the queue. Until PP-4987 that branch was unreachable,
+    /// so this was untestable AND unfalsifiable; now it is neither. Every other
+    /// test on this path asserts only that nothing was REPORTED, which would
+    /// pass just as happily if the write evaporated.
+    func testPostReadingPosition_WhenQueuedForRetry_ActuallyEnqueuesTheWrite() {
+        let spy = makeLoggerSpy()
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(queue.count, 1,
+                       "An offline write must be handed to the retry queue — suppressing its error report is only sound if it was")
+        XCTAssertEqual(queue.enqueued.first?.method, .POST)
+        XCTAssertEqual(spy.loggedSummaries, [],
+                       "And having been queued, it must not also be reported")
+    }
+
+    /// Reading positions SHOULD collapse: the queue updates the row matching
+    /// (libraryID, updateID), and a newer position for a book supersedes an
+    /// older one. Delivering only the latest is what the patron wants.
+    func testPostReadingPosition_TwoPositionsSameBook_ShareAKeySoTheLatestWins() {
+        _ = makeLoggerSpy()
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        for selector in ["{\"p\":1}", "{\"p\":2}"] {
+            let exp = expectation(description: "post \(selector)")
+            TPPAnnotations.postReadingPosition(forBook: bookID,
+                                               selectorValue: selector,
+                                               motivation: .readingProgress) { _ in exp.fulfill() }
+            wait(for: [exp], timeout: 2.0)
+        }
+
+        XCTAssertEqual(queue.updateIDs, [bookID, bookID],
+                       "Positions key on the book alone, so the second supersedes the first")
+    }
+
+    /// Bookmarks MUST NOT collapse. Each one is a distinct thing the patron
+    /// created; before PP-4987's hardening they all keyed on the bookID, so two
+    /// offline bookmarks in one title silently overwrote each other — and
+    /// PP-4965 had already removed the error report for this path, making the
+    /// loss invisible.
+    func testPostReadingPosition_TwoBookmarksSameBook_GetDistinctKeysSoNeitherIsLost() {
+        _ = makeLoggerSpy()
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        for selector in ["{\"chapter\":1}", "{\"chapter\":9}"] {
+            let exp = expectation(description: "bookmark \(selector)")
+            TPPAnnotations.postReadingPosition(forBook: bookID,
+                                               selectorValue: selector,
+                                               motivation: .bookmark) { _ in exp.fulfill() }
+            wait(for: [exp], timeout: 2.0)
+        }
+
+        let keys = queue.updateIDs.compactMap { $0 }
+        XCTAssertEqual(keys.count, 2)
+        XCTAssertNotEqual(keys[0], keys[1],
+                          "Two bookmarks in one book must not share a queue key — sharing one deletes a patron's bookmark silently")
+        XCTAssertTrue(keys.allSatisfy { $0.hasPrefix(bookID) },
+                      "The key still scopes to the book; it is the selector that disambiguates")
     }
 
     /// A server refusal must reach reporting WITH its status, so 401 and 500
