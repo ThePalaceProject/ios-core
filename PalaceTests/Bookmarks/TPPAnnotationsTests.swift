@@ -1593,7 +1593,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         TPPAnnotations.postReadingPosition(forBook: bookID,
                                            selectorValue: "{\"k\":\"v\"}",
                                            motivation: .readingProgress) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
 
         XCTAssertEqual(mock.postCallCount, 1,
                        "Guard against a vacuous pass: the sync gate must have opened and the POST gone out")
@@ -1630,7 +1630,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         TPPAnnotations.postReadingPosition(forBook: bookID,
                                            selectorValue: "{\"k\":\"v\"}",
                                            motivation: .readingProgress) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
 
         XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
         XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
@@ -1664,7 +1664,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         TPPAnnotations.postReadingPosition(forBook: bookID,
                                            selectorValue: "{\"k\":\"v\"}",
                                            motivation: .readingProgress) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
 
         XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
         XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"],
@@ -1692,7 +1692,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         TPPAnnotations.postReadingPosition(forBook: bookID,
                                            selectorValue: "{\"k\":\"v\"}",
                                            motivation: .readingProgress) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
 
         XCTAssertEqual(queue.count, 1,
                        "An offline write must be handed to the retry queue — suppressing its error report is only sound if it was")
@@ -1716,7 +1716,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
             TPPAnnotations.postReadingPosition(forBook: bookID,
                                                selectorValue: selector,
                                                motivation: .readingProgress) { _ in exp.fulfill() }
-            wait(for: [exp], timeout: 2.0)
+            wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
         }
 
         XCTAssertEqual(queue.updateIDs, [bookID, bookID],
@@ -1740,7 +1740,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
             TPPAnnotations.postReadingPosition(forBook: bookID,
                                                selectorValue: selector,
                                                motivation: .bookmark) { _ in exp.fulfill() }
-            wait(for: [exp], timeout: 2.0)
+            wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
         }
 
         let keys = queue.updateIDs.compactMap { $0 }
@@ -1761,7 +1761,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         TPPAnnotations.postReadingPosition(forBook: bookID,
                                            selectorValue: "{\"k\":\"v\"}",
                                            motivation: .readingProgress) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
 
         XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
         XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
