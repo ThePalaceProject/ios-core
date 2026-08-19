@@ -31,6 +31,11 @@ class NetworkQueueTests: XCTestCase {
     }
 
     override func tearDown() {
+        // `HTTPStubURLProtocol.register` APPENDS to a process-global array, so
+        // the catch-all handler installed by the drain test would otherwise
+        // outlive this suite and turn "unmatched request fails" into
+        // "unmatched request succeeds" for everything that runs after it.
+        HTTPStubURLProtocol.reset()
         appContainer = nil
         super.tearDown()
     }
@@ -373,6 +378,79 @@ class NetworkQueueTests: XCTestCase {
                      "A card number and PIN left on disk by an older build must be cleared on migrate")
         XCTAssertEqual(row?.headers?["Content-Type"], "application/json",
                        "…without discarding the headers the retry legitimately needs")
+    }
+
+    /// A superseding write must get a FRESH retry budget.
+    ///
+    /// `retryQueue` deletes rows with `retries > MaxRetriesInQueue` BEFORE it
+    /// drains, so a reading position landing on an exhausted row was deleted
+    /// having never been sent once — silent, on the very path PP-4965 removed
+    /// the error report from. Reachable specifically because positions are
+    /// keyed to collapse on the book.
+    ///
+    /// Review caught the fix for this shipping untested: `PersistedRow.retries`
+    /// was added to observe it and then never asserted, so deleting
+    /// `sqlRetries <- 0` left the suite green. That is the same shape as the
+    /// round-5 "resolved but never attached" miss.
+    func testAddRequest_SupersedingAnAttemptedRow_ResetsItsRetryBudget() {
+        HTTPStubURLProtocol.register { @Sendable request in
+            guard request.url?.host != nil else { return nil }
+            return .init(statusCode: 500, headers: nil, body: Data())
+        }
+        let (queue, dir) = makeWritableQueue()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let url = URL(string: "https://a.example.org/annotations/")!
+
+        queue.addRequest("lib-A", "book-1", url,
+                         HTTPMethodType.POST, Data(#"{"p":1}"#.utf8), nil)
+        queue.serialQueue.sync {}
+
+        // Burn a retry: the drain increments the count before sending.
+        queue.retryQueue()
+        expectEventually("the row to record an attempt") {
+            (queue.persistedRowsForTesting().first?.retries ?? 0) > 0
+        }
+
+        // A NEWER position for the same book supersedes it.
+        queue.addRequest("lib-A", "book-1", url,
+                         HTTPMethodType.POST, Data(#"{"p":2}"#.utf8), nil)
+        queue.serialQueue.sync {}
+
+        let row = queue.persistedRowsForTesting().first
+        XCTAssertEqual(row?.parameters, Data(#"{"p":2}"#.utf8),
+                       "precondition: the newer position replaced the older one")
+        XCTAssertEqual(row?.retries, 0,
+                       "A superseding write is a NEW write and must get a full retry budget — inheriting an exhausted count gets it deleted before it is ever sent")
+    }
+
+    /// A header blob that cannot be read must leave the row alone.
+    ///
+    /// The purge runs on the launch path (via SEMigrations) over rows written
+    /// by builds up to five years old, so it has to tolerate a blob it cannot
+    /// decode.
+    ///
+    /// HONESTY NOTE: this test does NOT discriminate between the modern and
+    /// legacy unarchivers — review predicted the legacy one would raise and
+    /// crash, and it does not; both return nil for garbage and for a truncated
+    /// archive. It pins the behaviour that matters (an unreadable row is kept,
+    /// not discarded), not a mutation kill. Labelled rather than dressed up as
+    /// a guard it is not.
+    func testMigrate_WithAnUnreadableHeaderBlob_LeavesTheRowIntact() {
+        let (queue, dir) = makeWritableQueue()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        queue.insertLegacyRowForTesting(
+            libraryID: "lib-A",
+            updateID: "book-1",
+            url: URL(string: "https://a.example.org/annotations/")!,
+            headers: [:],
+            rawHeaderData: Data("this is not a keyed archive".utf8))
+
+        queue.migrate()
+        queue.serialQueue.sync {}
+
+        XCTAssertEqual(queue.persistedRowsForTesting().count, 1,
+                       "The row survives — a blob we cannot read is not a reason to discard a patron's queued write, nor to crash on launch")
     }
 
     private func unopenableDatabaseDirectory() -> String {

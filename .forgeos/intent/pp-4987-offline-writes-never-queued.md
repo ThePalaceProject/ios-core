@@ -170,5 +170,22 @@ seam. That is a separate branch; this one should not grow an eighth.
 - `Palace/Network/TPPNetworkResponder.swift`
 - `Palace/Network/TPPNetworkQueue.swift`
 - `Palace/Logging/TPPErrorLogger.swift`
+- `Palace/AppInfrastructure/AppContainer.swift` — binds the drain credential
+  provider at the composition root
+- `Palace/Reader2/Bookmarks/TPPAnnotations.swift` — queue key + queue seam
 - `PalaceTests/Network/NetworkQueueTests.swift`
 - `PalaceTests/Sync/CrossDeviceSyncE2ETests.swift`
+- `PalaceTests/Bookmarks/TPPAnnotationsTests.swift`
+- `PalaceTests/Mocks/OfflineQueueSpy.swift`
+- `PalaceTests/Support/TestAppContainerFactory.swift`
+- `Palace.xcodeproj/project.pbxproj` — test-target membership for the new mock
+
+## Where the test-support surface actually is
+
+`NetworkQueue`'s seams (`PersistedRow`, `persistedRowsForTesting`,
+`insertLegacyRowForTesting`) are behind `#if DEBUG` and verified absent from
+all three Release configurations. `TPPAnnotations`' two new overrides
+(`offlineQueueOverride`, `errorLoggerOverride`) are NOT gated — they match the
+four pre-existing ungated seams in that file, and gating only the new two would
+be inconsistent. An earlier commit body said "test-support surface is behind
+`#if DEBUG`" without that distinction; this is the correction.

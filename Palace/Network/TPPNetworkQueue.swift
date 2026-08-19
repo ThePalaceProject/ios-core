@@ -82,11 +82,14 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
          databaseDirectory: String = NSSearchPathForDirectoriesInDomains(
             .applicationSupportDirectory, .userDomainMask, true).first ?? NSTemporaryDirectory(),
          errorLogger: ErrorLogging = DefaultErrorLogger(),
-         authorizationHeaderProvider: @escaping @Sendable (String) -> String? = { libraryID in
-            AppContainer.production().accountsManager
-                .userAccount(for: libraryID)
-                .credentialSnapshot().authToken.map { "Bearer \($0)" }
-         }) {
+         // Defaults to NO credential rather than resolving one. The single
+         // production site binds this explicitly at the composition root, so a
+         // resolving default is dead code — and a dangerous one: it would reach
+         // `AppContainer.production()` from the drain's serial queue for any
+         // future caller who forgot to bind it. Sending no credential is the
+         // safe failure (the server refuses); silently reaching for a global is
+         // not.
+         authorizationHeaderProvider: @escaping @Sendable (String) -> String? = { _ in nil }) {
         self.path = databaseDirectory
         self.transport = transport
         self.reachability = reachability
@@ -174,8 +177,26 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
         do {
             let rows = try db.prepare(sqlTable)
             for row in rows {
+                // `unarchivedObject(ofClasses:from:)` rather than the legacy
+                // `unarchiveObject(with:)`: it opts into secure coding and
+                // states the classes we expect, and it signals failure by
+                // throwing rather than by any documented exception behaviour.
+                //
+                // HONESTY NOTE: review flagged the legacy API as RAISING an
+                // uncatchable ObjC exception on a malformed archive, which —
+                // since this purge runs on the launch path via SEMigrations —
+                // would make one corrupt row a launch crash. I could not
+                // reproduce that: both garbage bytes and a truncated valid
+                // archive returned nil rather than raising. So this is
+                // defence-in-depth and modern-API hygiene, NOT a demonstrated
+                // crash fix, and it is written down that way rather than
+                // claiming a fix I did not verify. The rows read here were
+                // written by builds up to five years old, so tolerating an
+                // unreadable blob is worth having either way.
                 guard let data = row[sqlHeader],
-                      let headers = NSKeyedUnarchiver.unarchiveObject(with: data) as? [String: String],
+                      let headers = try? NSKeyedUnarchiver.unarchivedObject(
+                        ofClasses: [NSDictionary.self, NSString.self], from: data
+                      ) as? [String: String],
                       headers.keys.contains(where: {
                           $0.caseInsensitiveCompare("Authorization") == .orderedSame
                       }) else { continue }
@@ -243,13 +264,18 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     /// guards a cleartext library card number and PIN; shipping it unverified
     /// is not an option, and every other claim on this branch that rested on
     /// reading rather than asserting turned out to be wrong.
+    /// `rawHeaderData` overrides `headers`, so a test can plant a blob that is
+    /// not a valid archive at all — which is what a five-year-old row written
+    /// by a long-dead build may actually be.
     func insertLegacyRowForTesting(libraryID: String,
                                    updateID: String,
                                    url: URL,
-                                   headers: [String: String]) {
+                                   headers: [String: String],
+                                   rawHeaderData: Data? = nil) {
         serialQueue.sync {
             guard let db = startDatabaseConnection() else { return }
-            let headerData = NSKeyedArchiver.archivedData(withRootObject: headers)
+            let headerData = rawHeaderData
+                ?? NSKeyedArchiver.archivedData(withRootObject: headers)
             let dateCreated = NSKeyedArchiver.archivedData(withRootObject: Date())
             _ = try? db.run(sqlTable.insert(
                 sqlLibraryID <- libraryID,
@@ -366,13 +392,17 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
                 return
             }
 
-            self.purgeAnyPersistedCredentials(db)
 
             let tableCount = Int((try? db.scalar("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '\(NetworkQueue.TableName)'") as? Int64) ?? 0)
             if tableCount < 1 {
                 self.createTable(db: db)
                 db.userVersion = NetworkQueue.DBVersion
             } else {
+                // Only once the table exists — on a fresh install there is
+                // nothing to purge and the attempt would log a failure for a
+                // non-error.
+                self.purgeAnyPersistedCredentials(db)
+
                 var dbVersion = db.userVersion
                 // TODO: Consider optimizing migrations by checking if
                 // there's a breaking change between current version and target version
