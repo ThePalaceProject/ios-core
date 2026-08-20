@@ -122,10 +122,34 @@ say "Pre-flight gate: verifying the app is code-signed"
 # Keep the command substitution: it has no pipeline, so there is no exit code to
 # misread. Do not "simplify" it back into a pipe.
 CODESIGN_OUT="$(codesign -dvv "$APP" 2>&1 || true)"
-if printf '%s' "$CODESIGN_OUT" | grep -qiE "signature=adhoc|authority=|\(adhoc\)"; then
-  echo "  ✓ signed (keychain + download will work on the sim)"
+# "Signature=adhoc" alone is NOT sufficient. The linker stamps an automatic ad-hoc
+# signature on the Mach-O of any simulator build, so an UNSIGNED bundle still
+# reports Signature=adhoc and passes a naive substring test. The difference is the
+# BUNDLE: a real codesign pass seals the resources and writes
+# _CodeSignature/CodeResources; the linker's stamp does neither and additionally
+# flags itself `linker-signed`.
+#
+#   properly signed : flags=0x2(adhoc)              Sealed Resources version=2 ... 354 files
+#   linker-signed   : flags=0x20002(adhoc,linker-signed)  Sealed Resources=none
+#
+# Only the second form -34018s the keychain and -1s downloads, which is precisely
+# the failure this gate exists to prevent — so the old predicate was blind to the
+# only case that matters. Caught when a chaos QA pass ran against a DerivedData
+# test-host build, hit NSURLError -1 on every fulfill request, and attributed it to
+# "the simulator's background NSURLSession XPC service" instead of to the signature.
+# Require all three: adhoc/authority, sealed resources, and NOT linker-signed.
+if printf '%s' "$CODESIGN_OUT" | grep -qiE "signature=adhoc|authority=|\(adhoc\)" \
+   && printf '%s' "$CODESIGN_OUT" | grep -qi "Sealed Resources version" \
+   && ! printf '%s' "$CODESIGN_OUT" | grep -qi "linker-signed"; then
+  echo "  ✓ signed + resources sealed (keychain + download will work on the sim)"
 else
   echo "$CODESIGN_OUT" >&2
+  if printf '%s' "$CODESIGN_OUT" | grep -qi "linker-signed"; then
+    die "App is LINKER-SIGNED, not codesigned (Sealed Resources=none) — the keychain will
+-34018 and downloads will fail NSURLError -1. This is what you get from a
+DerivedData build product or a build-for-testing artifact. Install the app this
+script builds, not the one under ~/Library/Developer/Xcode/DerivedData."
+  fi
   die "App is NOT signed — keychain will -34018 and downloads will -1. Rebuild with CODE_SIGNING_ALLOWED=YES."
 fi
 

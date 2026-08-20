@@ -226,6 +226,15 @@ fi
     echo "Constraints:"
     echo "  - Palace Bookshelf is the only library you may borrow from."
     echo "  - No simctl erase. Reset state via uninstall+install only."
+    if [[ -n "$APP_PATH" ]]; then
+        echo "  - REINSTALL ONLY FROM: $APP_PATH"
+        echo "    Do NOT install any .app from ~/Library/Developer/Xcode/DerivedData."
+        echo "    A DerivedData build product is LINKER-SIGNED, not codesigned: it has"
+        echo "    Sealed Resources=none, so its keychain fails -34018 and every download"
+        echo "    fails NSURLError -1. Those failures look like app or simulator bugs and"
+        echo "    are neither. If you see -1 on every network request, check the signature"
+        echo "    of the installed bundle BEFORE filing anything."
+    fi
     echo "  - Hard stop at budget. No 'one more path.'"
     echo "  - Every finding requires log evidence from simdrive.logs."
     echo

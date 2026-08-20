@@ -46,6 +46,7 @@ RUN_DIR=""
 AREA_GROUP=""
 DEVICE_CELL="C-iphone-26"
 SIM_ID="${HARNESS_SESSION_SIM_UDID:-}"
+APP_PATH=""
 MAX_PATHS=12
 MAX_MINUTES=8
 DRY_RUN=0
@@ -59,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     --device-cell) DEVICE_CELL="$2"; shift 2 ;;
     --sim-id) SIM_ID="$2"; shift 2 ;;
     --manifest) MANIFEST="$2"; shift 2 ;;
+    --app-path) APP_PATH="$2"; shift 2 ;;
     --max-paths) MAX_PATHS="$2"; shift 2 ;;
     --max-minutes) MAX_MINUTES="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -129,8 +131,16 @@ for area in "${AREAS[@]}"; do
 
   # run-chaos-pass.sh writes to $CHAOS_RUNS_ROOT/<timestamp>/.
   # bash 3.2 throws on "${empty[@]}" under set -u — guard with the [@]+ idiom.
+  # Forward the app under test. Without it the chaos agent has no sanctioned
+  # source to reinstall from when it needs to reset state, and will find a
+  # DerivedData build product instead — which is linker-signed, not codesigned,
+  # so its keychain -34018s and every download fails NSURLError -1. A pass that
+  # tested that bundle is measuring the signature, not the release.
+  app_arg=()
+  [[ -n "$APP_PATH" ]] && app_arg=(--app-path "$APP_PATH")
   CHAOS_RUNS_ROOT="$area_chaos_root" "$CHAOS_PASS" \
     --udid "$SIM_ID" "${seed_args[@]+"${seed_args[@]}"}" \
+    "${app_arg[@]+"${app_arg[@]}"}" \
     --max-paths "$MAX_PATHS" --max-minutes "$MAX_MINUTES" \
     "${dry_arg[@]+"${dry_arg[@]}"}" 2>&1 | sed 's/^/    /' || true
 
