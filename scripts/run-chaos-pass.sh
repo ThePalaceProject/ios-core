@@ -254,8 +254,27 @@ echo "info: budget: ${MAX_PATHS} paths / ${MAX_MINUTES} minutes" >&2
 # `claude -p` runs a single non-interactive prompt and exits.
 # We pin to the chaos-qa agent (project-level definition).
 SUMMARY_FILE="$RUN_DIR/summary.txt"
+# The tools the chaos-qa subagent needs, declared HERE rather than assumed from
+# the ambient session. `claude -p` is non-interactive: an ungranted tool cannot be
+# approved mid-run, so the agent is denied, correctly refuses to invent findings,
+# and the pass reports "returned cleanly / 0 findings" — indistinguishable from a
+# clean chaos run. That happened on the 3.3.0 candidate: only
+# mcp__simdrive__crashes was allowlisted, so every simdrive call was denied and
+# ~30s of a 12-minute budget was spent discovering it.
+# Keep this list in sync with .claude/agents/chaos-qa.md's `tools:` line. Declaring
+# them here also means the orchestrator works on a machine whose (gitignored)
+# settings.local.json has never heard of simdrive.
+CHAOS_ALLOWED_TOOLS="Bash Read Write Edit TaskCreate TaskUpdate TaskList \
+mcp__simdrive__session_start mcp__simdrive__session_end mcp__simdrive__session_status \
+mcp__simdrive__observe mcp__simdrive__tap mcp__simdrive__swipe mcp__simdrive__type_text \
+mcp__simdrive__press_key mcp__simdrive__record_start mcp__simdrive__record_stop \
+mcp__simdrive__replay mcp__simdrive__logs mcp__simdrive__crashes \
+mcp__simdrive__app_state mcp__simdrive__dismiss_first_launch_alerts \
+mcp__simdrive__pre_grant_permissions mcp__simdrive__set_appearance"
+
 if claude -p "$(cat "$PROMPT_FILE")" \
      --append-system-prompt "Use the chaos-qa subagent. Stay strictly within budget." \
+     --allowedTools $CHAOS_ALLOWED_TOOLS \
      > "$SUMMARY_FILE" 2>"$RUN_DIR/stderr.log"; then
     echo "info: chaos-qa returned cleanly" >&2
 else
