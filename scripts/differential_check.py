@@ -83,10 +83,23 @@ def read_window(recover: str, udid: str, start: str, end: str) -> str:
     return r.stdout
 
 
+# A refusal is a statement about the DATA, never about the builds. The
+# distinction is easy to lose once the JSON is pasted into a triage row: a
+# WITNESS-DISPROPORTIONATE on a cluster whose evidence the reader cannot see
+# means "this data cannot answer the question", NOT "the baseline never ran the
+# path" — opposite meanings, identical output. So the tool says so itself rather
+# than relying on whoever reads it to remember.
+NOT_A_FINDING = ("this is a statement about the DATA, not about the builds: "
+                 "the comparison could not be made, which is not evidence that "
+                 "the behaviour is absent on either side")
+
+
 def fail(reason: str, detail: dict) -> int:
-    print(json.dumps({"comparable": False, "reason": reason, **detail}, indent=2))
+    print(json.dumps({"comparable": False, "reason": reason,
+                      "not_a_finding": NOT_A_FINDING, **detail}, indent=2))
     print(f"differential-check: NO COMPARISON EMITTED — {reason}", file=sys.stderr)
     print("  A count from this pair would look like a result and would not be one.", file=sys.stderr)
+    print(f"  {NOT_A_FINDING}.", file=sys.stderr)
     return 5
 
 

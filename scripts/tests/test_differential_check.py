@@ -153,6 +153,28 @@ def test_min_witness_can_require_a_real_exercise(tmp_path):
     assert json.loads(r.stdout)["reason"] == "UNEXERCISED-CANDIDATE"
 
 
+def test_every_refusal_says_it_is_not_a_finding(tmp_path):
+    """A refusal must not be quotable as evidence about the builds.
+
+    The campaign hit this directly: a WITNESS-DISPROPORTIONATE on a cluster whose
+    URL evidence is unreadable means "this data cannot answer the question", not
+    "the baseline never rendered the lane". Identical output, opposite meanings —
+    so the tool carries the disclaimer instead of relying on the reader.
+    """
+    cases = [
+        (IPAD, BASE, {IPAD: "fulcrum\nDECODE-FAIL\n", BASE: "fulcrum\n"}),          # device
+        (IOS18, BASE, {IOS18: "fulcrum\nDECODE-FAIL\n", BASE: "fulcrum\n"}),        # os
+        (CAND, BASE, {CAND: "fulcrum\nDECODE-FAIL\n", BASE: "nothing\n"}),          # unexercised
+    ]
+    for cand_udid, base_udid, per in cases:
+        r = run(tmp_path, cand_udid, base_udid, per)
+        assert r.returncode == 5
+        out = json.loads(r.stdout)
+        assert "not_a_finding" in out, f"{out['reason']} refusal lacks the disclaimer"
+        assert "not evidence" in out["not_a_finding"]
+        assert "not about the builds" in r.stderr
+
+
 def test_refusal_never_shares_an_exit_code_with_a_valid_comparison(tmp_path):
     ok = run(tmp_path, CAND, BASE, {CAND: "fulcrum\nDECODE-FAIL\n", BASE: "fulcrum\n"})
     bad = run(tmp_path, CAND, BASE, {CAND: "fulcrum\nDECODE-FAIL\n", BASE: "nothing\n"})
