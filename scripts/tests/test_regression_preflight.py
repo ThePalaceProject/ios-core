@@ -151,6 +151,64 @@ def test_area_worker_fails_loudly_when_it_executes_no_journeys(tmp_path):
 
 
 # --------------------------------------------------------------------------
+# chaos pass: a run that never drove the simulator is not a clean pass
+# --------------------------------------------------------------------------
+
+def _stub_agent(path: Path, *, open_session_in: Path | None) -> Path:
+    """A fake `claude` that writes a summary; optionally simulates driving."""
+    body = "#!/usr/bin/env bash\necho 'stub agent summary'\n"
+    if open_session_in is not None:
+        body += f'mkdir -p "{open_session_in}/session-$RANDOM$$"\n'
+    body += "exit 0\n"
+    path.write_text(body)
+    path.chmod(0o755)
+    return path
+
+
+def _run_chaos(tmp_path, sessions: Path, agent: Path):
+    runs = tmp_path / "runs"
+    runs.mkdir(exist_ok=True)
+    env = dict(os.environ,
+               CHAOS_SESSIONS_DIR=str(sessions),
+               CHAOS_CLAUDE_BIN=str(agent),
+               CHAOS_RUNS_ROOT=str(runs))
+    return _run(["bash", str(_CHAOS_PASS),
+                 "--udid", FAKE_UDID, "--seed", "cold-launch",
+                 "--max-paths", "3", "--max-minutes", "2"],
+                cwd=str(_REPO), env=env)
+
+
+def test_chaos_pass_fails_when_the_agent_never_drove_the_sim(tmp_path):
+    """
+    The exact 2026-08-20 defect: the agent returns cleanly, writes no findings,
+    and never opens a simdrive session because it was denied every tool.
+    """
+    sessions = tmp_path / "sessions"; sessions.mkdir()
+    agent = _stub_agent(tmp_path / "agent-nodrive.sh", open_session_in=None)
+    r = _run_chaos(tmp_path, sessions, agent)
+    combined = r.stdout + r.stderr
+    assert "NO DRIVE" in combined, (
+        "a chaos pass that opened no simdrive session did not announce it:\n"
+        + combined[-1500:])
+    assert r.returncode != 0, "a chaos pass that drove nothing exited 0"
+
+
+def test_chaos_pass_succeeds_when_the_agent_did_drive_the_sim(tmp_path):
+    """
+    Clean-path assertion. A real chaos pass legitimately finds nothing sometimes;
+    the guard keys on whether a session was opened, never on the finding count,
+    so a genuine clean run must not be blocked.
+    """
+    sessions = tmp_path / "sessions"; sessions.mkdir()
+    agent = _stub_agent(tmp_path / "agent-drive.sh", open_session_in=sessions)
+    r = _run_chaos(tmp_path, sessions, agent)
+    combined = r.stdout + r.stderr
+    assert "NO DRIVE" not in combined, (
+        "guard false-positives on a pass that DID drive the sim:\n" + combined[-1500:])
+    assert r.returncode == 0, f"clean chaos pass exited {r.returncode}:\n{combined[-1500:]}"
+
+
+# --------------------------------------------------------------------------
 # the scripts themselves stay syntactically valid
 # --------------------------------------------------------------------------
 

@@ -281,7 +281,18 @@ mcp__simdrive__replay mcp__simdrive__logs mcp__simdrive__crashes \
 mcp__simdrive__app_state mcp__simdrive__dismiss_first_launch_alerts \
 mcp__simdrive__pre_grant_permissions mcp__simdrive__set_appearance"
 
-if claude -p "$(cat "$PROMPT_FILE")" \
+# LIVENESS BASELINE. A chaos pass that never drives the simulator is worthless,
+# and it is NOT distinguishable from a clean pass by its findings count — a real
+# chaos run legitimately finds nothing sometimes. The discriminator is whether the
+# agent ever opened a simdrive session. Snapshot the session store before the run
+# and require a new one after. (2026-08-20: a whole fan reported "returned
+# cleanly / 0 findings" on every area while being denied every simdrive call.)
+CHAOS_SESSIONS_DIR="${CHAOS_SESSIONS_DIR:-$HOME/.simdrive/sessions}"
+mkdir -p "$CHAOS_SESSIONS_DIR" 2>/dev/null || true
+SESSIONS_BEFORE="$(ls -1 "$CHAOS_SESSIONS_DIR" 2>/dev/null | wc -l | tr -d ' ')"
+
+CHAOS_CLAUDE_BIN="${CHAOS_CLAUDE_BIN:-claude}"
+if "$CHAOS_CLAUDE_BIN" -p "$(cat "$PROMPT_FILE")" \
      --append-system-prompt "Use the chaos-qa subagent. Stay strictly within budget." \
      --allowedTools $CHAOS_ALLOWED_TOOLS \
      > "$SUMMARY_FILE" 2>"$RUN_DIR/stderr.log"; then
@@ -308,6 +319,25 @@ with open(json_path, "w") as f:
     json.dump({"total_findings": total, "by_severity": by_sev}, f, indent=2)
 print(f"summary: {total} finding(s) in {csv_path}")
 PY
+
+# Did the agent actually drive the simulator?
+SESSIONS_AFTER="$(ls -1 "$CHAOS_SESSIONS_DIR" 2>/dev/null | wc -l | tr -d ' ')"
+if [[ "$SESSIONS_AFTER" -le "$SESSIONS_BEFORE" ]]; then
+    {
+      echo ""
+      echo "!!! NO DRIVE — this chaos pass never opened a simdrive session."
+      echo "!!! Sessions in $CHAOS_SESSIONS_DIR: $SESSIONS_BEFORE before, $SESSIONS_AFTER after."
+      echo "!!! It explored 0 paths, so its 0 findings mean NOTHING was tested — that is"
+      echo "!!! not the same as a clean pass, and must not be reported as one."
+      echo "!!! Most common cause: the subagent was denied the mcp__simdrive__* tools."
+      echo "!!! 'claude -p' is non-interactive and cannot approve a permission prompt, so"
+      echo "!!! the tools must be granted at the invocation (--allowedTools)."
+      echo "!!! Diagnose with: scripts/regression-preflight.sh --udid $UDID"
+      echo "!!! Agent summary: $SUMMARY_FILE"
+    } >&2
+    echo "info: run complete (NO DRIVE): $RUN_DIR" >&2
+    exit 4
+fi
 
 echo "info: run complete: $RUN_DIR"
 exit 0
