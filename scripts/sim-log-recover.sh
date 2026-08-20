@@ -12,7 +12,7 @@
 # for every device cell, so 41 findings rested entirely on quoted fragments.)
 #
 # The simulator, however, keeps its own unified-log store on the HOST
-# filesystem, independent of whatever the harness captured, and it survives the
+# filesystem, independent of whatever the QA run captured, and it survives the
 # pass. So the evidence is usually still there. This script reads it.
 #
 # Because it only reads host files, it is safe to run against a simulator that

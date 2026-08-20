@@ -3,7 +3,7 @@
 A QA or chaos pass records the log lines its operator thought to quote. Every
 other line the app and the system emitted during that pass is, by default,
 treated as gone. It usually is not gone: the simulator keeps its own unified-log
-store on the host filesystem, independent of anything the harness captured, and
+store on the host filesystem, independent of anything the QA run captured, and
 that store outlives the pass.
 
 `scripts/sim-log-recover.sh` reads it.
