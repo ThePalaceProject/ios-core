@@ -209,6 +209,52 @@ def test_chaos_pass_succeeds_when_the_agent_did_drive_the_sim(tmp_path):
 
 
 # --------------------------------------------------------------------------
+# the preflight is a PRECONDITION, not a reminder
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("entry", [_AREA_WORKER, _REPO / "scripts" / "regression-chaos-fan.sh"])
+def test_campaign_entry_points_invoke_the_preflight(entry):
+    """
+    The operator must not have to remember to check the chain first. Every
+    campaign entry point runs the preflight itself and refuses on failure.
+    If this test fails, someone unwired it and a broken chain can once again
+    produce a vacuous green.
+    """
+    body = entry.read_text()
+    assert "regression-preflight.sh" in body, (
+        f"{entry.name} no longer invokes the preflight — a campaign can start "
+        "on a chain that cannot test")
+    assert "PREFLIGHT FAILED" in body, f"{entry.name} does not refuse on preflight failure"
+
+
+@pytest.mark.parametrize("entry", [_AREA_WORKER, _REPO / "scripts" / "regression-chaos-fan.sh"])
+def test_campaign_entry_point_refuses_a_chain_that_cannot_test(tmp_path, entry):
+    """Broken chain (sim that does not exist) must stop the campaign, not warn."""
+    args = ["bash", str(entry), "--run-dir", str(tmp_path / entry.stem),
+            "--sim-id", FAKE_UDID, "--area-group", "catalog"]
+    if entry == _AREA_WORKER:
+        args += ["--device-cell", "C-pytest", "--no-keychain-reset"]
+        args[args.index("catalog")] = "auth"
+    else:
+        args += ["--dry-run"]
+    r = _run(args, cwd=str(_REPO))
+    combined = r.stdout + r.stderr
+    assert "PREFLIGHT FAILED" in combined, (
+        f"{entry.name} ran with an untestable chain:\n" + combined[-1200:])
+    assert r.returncode != 0, f"{entry.name} exited 0 on an untestable chain"
+
+
+def test_preflight_precondition_has_a_documented_bypass():
+    """
+    A hard precondition needs one deliberate escape hatch (the harness's own
+    tests must be able to run without a simulator) — but it must be explicit
+    and named, not an accident.
+    """
+    body = _AREA_WORKER.read_text()
+    assert "REGRESSION_SKIP_PREFLIGHT" in body, "no named bypass for harness self-tests"
+
+
+# --------------------------------------------------------------------------
 # the scripts themselves stay syntactically valid
 # --------------------------------------------------------------------------
 

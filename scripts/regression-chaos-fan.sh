@@ -78,6 +78,24 @@ if [[ -z "$SIM_ID" ]]; then
   [[ -n "$SIM_ID" ]] || die "no --sim-id, no HARNESS_SESSION_SIM_UDID, no booted iPhone sim"
 fi
 
+# ── PRECONDITION: prove the chain can test, before spending the budget ────────
+# NOT optional and NOT a reminder. A campaign that cannot drive the simulator
+# produces a vacuous green, and the operator should not have to remember to
+# check first. Set REGRESSION_SKIP_PREFLIGHT=1 to bypass ONLY when you are
+# deliberately exercising the harness itself (the preflight's own tests do this).
+PREFLIGHT="$SCRIPT_DIR/regression-preflight.sh"
+if [[ "${REGRESSION_SKIP_PREFLIGHT:-0}" != "1" && -x "$PREFLIGHT" ]]; then
+  if ! "$PREFLIGHT" --udid "$SIM_ID" --skip-agent >/dev/null 2>&1; then
+    {
+      echo ""
+      echo "!!! PREFLIGHT FAILED — refusing to run. A campaign started now would"
+      echo "!!! report a result it did not earn. Full diagnosis:"
+      echo "!!!   $PREFLIGHT --udid $SIM_ID"
+    } >&2
+    exit 6
+  fi
+fi
+
 # Which areas to fan.
 if [[ -n "$AREA_GROUP" ]]; then
   AREAS=("$AREA_GROUP")
