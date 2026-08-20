@@ -173,8 +173,17 @@ def _analyse(lines: List[str]) -> Dict:
     }
 
 
+_INLINE_EXIT = re.compile(r"\bexit\s+([1-9]\d*)\b")
+_DIE_CALL = re.compile(r"(?:^|;|&&|\|\||\bthen\b)\s*(?:die|abort|fatal)\b")
+
+
 def _guard_exits_nonzero(lines: List[str], start: int) -> bool:
     """Does the conditional beginning at `start` take a non-zero exit?"""
+    # `if [ "$n" -eq 0 ]; then exit 3; fi` — the whole guard on one line.
+    head = _strip_comment(lines[start])
+    if _INLINE_EXIT.search(head) or _DIE_CALL.search(head):
+        return True
+
     base_indent = len(lines[start]) - len(lines[start].lstrip())
     for j in range(start + 1, len(lines)):
         line = _strip_comment(lines[j])

@@ -142,6 +142,24 @@ jobs:
             echo "No contributor-surface gate — skipping."
           fi
 
+      # 8. Silent-success gate. A harness script that counts its work, prints
+      #    the count, and then exits 0 regardless renders "never ran" and "ran
+      #    and found nothing" identically downstream — which is how a release
+      #    regression executed 0 of 96 journeys and reported a clean pass
+      #    (2026-08-20). Scans the campaign scripts whose exit value a report
+      #    consumes. NOT guarded by an `if [ -f ]` fallback: a missing detector
+      #    must fail this job, because "the gate file went away" and "the gate
+      #    passed" are exactly the pair this whole workflow exists to separate.
+      - name: silent-success gate (exit 0 on zero counted work)
+        run: python3 scripts/check-silent-success.py --default-set
+
+      # 9. Off-main completion delivery (PP-4955). A @MainActor caller's closure
+      #    invoked from a non-isolated Task fails Swift's isolation assertion and
+      #    KILLS the process — no error, no saved reading position. Static, pure
+      #    python, no Xcode: it belongs on this runner. Same no-fallback rule.
+      - name: completion-isolation gate
+        run: python3 scripts/check-completion-isolation.py
+
   # Diff-scoped test-flakiness gate. Separate job because it needs the PR's base
   # branch fetched (fetch-depth: 0 + an explicit base fetch) to diff against —
   # the tooling-integrity job runs shallow. Fails the PR if a changed test file
