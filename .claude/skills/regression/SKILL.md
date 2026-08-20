@@ -161,6 +161,15 @@ python3 scripts/generate-regression-campaign-report.py \
   --run-id rc-<ver> --assets-root .regression-runs/rc-<ver>-...
 ```
 
+The report reads per-shard EXECUTION records from `<run-dir>/shards/` (written
+by `regression-area-worker.sh`; no flag to remember) and **exits 4 without a
+verdict** when the campaign executed 0 units, or when it has neither findings
+nor execution evidence. Zero findings from zero executed journeys is not a clean
+regression — that is how a 21-shard, 96-skip campaign rendered as green. The
+report is still written, carrying a refusal banner, and an "Execution (what
+actually ran)" section shows elapsed time per shard so an impossible duration is
+visible in the artifact rather than only in terminal scrollback.
+
 **The fleet campaign and the linear phases are complementary, not either/or.**
 The fleet path parallelizes automated *device coverage* (journeys + chaos + perf
 + crash harvest per cell). The linear skill phases still own the **human matrix**

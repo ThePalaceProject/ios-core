@@ -24,7 +24,13 @@ Usage::
     python3 scripts/generate-regression-campaign-report.py \
         --csv .regression-runs/<run-id>/findings.csv \
         --output .regression-runs/<run-id>/report.html \
-        [--run-id <run-id>] [--assets-root .regression-runs/<run-id>]
+        [--run-id <run-id>] [--assets-root .regression-runs/<run-id>] \
+        [--shards .regression-runs/<run-id>/shards]
+
+Exits 4 WITHOUT a verdict when the campaign executed 0 units, or has neither
+findings nor execution evidence — see "Coverage verdict" below. ``--shards``
+defaults to ``<csv-dir>/shards`` so that check never depends on remembering a
+flag.
 
 Pure stdlib — no third-party dependencies.
 """
