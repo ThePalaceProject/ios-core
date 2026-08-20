@@ -78,18 +78,10 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 
 ### simdrive (E2E sim driving) — maintainer-internal
 
-> **Note for outside contributors:** `simdrive` is the iOS sim-driving MCP tool the maintainers use for E2E regression. It is **not yet publicly distributed** — `pip install --pre simdrive` requires maintainer access. The recorded artifacts under `.simdrive/` ARE in the repo and are exercised by CI (`chaos-replay-on-pr.yml`), so a contributor's PR will run through the regression corpus server-side; you just can't author new recordings locally without simdrive. The scripts below are listed for transparency; "dev/local" means *maintainer dev/local*, not anyone's.
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `simdrive-test.sh` | Builds Palace and runs the simdrive integration tests. | maintainer dev/local, chaos workflows |
-| `simdrive-regress.sh` | Replays every `.simdrive/journeys/*.yaml` against a booted simulator. | `chaos-replay-on-pr.yml`, maintainer dev/local |
-| `simdrive-coverage.sh` | Captures code coverage from simdrive runs and merges with unit coverage. | maintainer dev/local |
-| `simdrive-report.sh` | Generates a Markdown report of simdrive replay results for PR evidence. | maintainer dev/local |
-| `simdrive-structural-check.py` | OPDS-tolerant journey verifier (checks structure, not pixels). | `chaos-replay-on-pr.yml` |
 | `marks-diff.py` | Diffs two simdrive fixture corpora and emits findings rows. | maintainer dev/local |
-| `chaos-targets.py` | Maps changed file paths to fixture flow seeds whose mutation targets cover them. | `chaos-replay-on-pr.yml` |
-| `run-chaos-pass.sh` | Runs a chaos QA pass (mutation + simdrive replay). | `chaos-qa-on-demand.yml` |
 
 ### Mutation and test-quality
 
@@ -98,8 +90,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `palace_mutate.py` | Mutation testing harness: mutates a Swift file, runs tests, reports surviving mutants. | dev/local, `mutation-gate.yml` |
 | `test_palace_mutate.py` | Unit tests for `palace_mutate.py` itself. | dev/local |
 | `summarize-mutation-reports.py` | Aggregates per-file mutation reports into a single summary. | `mutation-gate.yml` |
-| `regression-report.sh` | Orchestrates the regression-testing workflow (workspace + tools + report). | `mutation-gate.yml`, dev/local |
-| `generate-regression-report.py` | Renders an interactive HTML regression report from a findings CSV. | `regression-report.sh` |
 | `generate-jira-tickets.py` | Creates Jira tickets from a regression-findings CSV. | dev/local (post-regression) |
 | `lint-test-quality.py` | Static linter that flags fluff tests (tautologies, no-op asserts, etc.). | dev/local, pre-PR check |
 
@@ -178,3 +168,11 @@ If you need the behavior of one of these scripts, copy + adapt into a new file r
 - `CLAUDE.md` documents the build invocations, project layout, and DRM/no-DRM target split.
 - `RELEASING.md` documents the release-notes flow that ties `create-release-notes.sh` and `release-notes.sh` together.
 - `.github/workflows/` is the source of truth for which scripts CI calls; if a script is not referenced in any workflow under there, it is dev-local or archived.
+
+## QA / regression harness (not in this repo)
+
+The simulator-driving QA apparatus — chaos passes, regression campaign
+fan-out, simdrive journey replay and the visual-diff tooling — is
+maintainer-local and lives outside this repo. It needs a driven simulator
+and an agent runner, so no CI job and no clean clone can run it. Nothing
+here depends on it.
