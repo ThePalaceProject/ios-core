@@ -110,9 +110,22 @@ echo "  ✓ BUILD SUCCEEDED → $APP"
 # app (CODE_SIGNING_ALLOWED=NO) launches but -34018s / -1s. Verify there is a
 # code signature before handing it to simdrive.
 say "Pre-flight gate: verifying the app is code-signed"
-if codesign -dvv "$APP" 2>&1 | grep -qiE "signature=adhoc|authority=|\(adhoc\)"; then
+# Capture FIRST, match second. This gate used to be
+#   codesign -dvv "$APP" 2>&1 | grep -qiE ...
+# which fails NON-DETERMINISTICALLY under this script's `set -euo pipefail`:
+# `grep -q` exits the instant it matches, `codesign` then dies on SIGPIPE (141),
+# and pipefail propagates that 141 to the `if`, so a CORRECTLY ad-hoc-signed app
+# reports "NOT signed" and the build is thrown away. Measured 3 failures in 5 runs
+# against an app that `codesign --verify` calls valid on disk. Whether it trips is
+# a scheduling race between grep exiting and codesign finishing its write, so it
+# looks like a flaky toolchain rather than a bug in this line.
+# Keep the command substitution: it has no pipeline, so there is no exit code to
+# misread. Do not "simplify" it back into a pipe.
+CODESIGN_OUT="$(codesign -dvv "$APP" 2>&1 || true)"
+if printf '%s' "$CODESIGN_OUT" | grep -qiE "signature=adhoc|authority=|\(adhoc\)"; then
   echo "  ✓ signed (keychain + download will work on the sim)"
 else
+  echo "$CODESIGN_OUT" >&2
   die "App is NOT signed — keychain will -34018 and downloads will -1. Rebuild with CODE_SIGNING_ALLOWED=YES."
 fi
 
