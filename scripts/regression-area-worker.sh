@@ -167,6 +167,23 @@ pass_count=0
 fail_count=0
 skip_count=0
 finding_count=0
+SHARD_STARTED_AT="$(date +%s)"
+
+# Execution record for the campaign report. findings.csv says what the shard
+# FOUND; nothing said what it RAN, and "found nothing" is indistinguishable from
+# "ran nothing" downstream unless the executed count is written down. Emitted on
+# EVERY exit path below (clean and NO-COVERAGE) so the report can refuse a
+# verdict on a campaign whose shards executed 0 units.
+SHARD_RECORD="$SCRIPT_DIR/regression_shard_record.py"
+write_shard_record() {
+  local rc="${1:-0}"
+  python3 "$SHARD_RECORD" write \
+    --run-dir "$RUN_DIR" --area "$AREA_GROUP" --device-cell "$DEVICE_CELL" \
+    --passed "$pass_count" --failed "$fail_count" --skipped "$skip_count" \
+    --findings "$finding_count" --started-at "$SHARD_STARTED_AT" \
+    --exit-code "$rc" --commit "$FIRST_SEEN_COMMIT" >/dev/null \
+    || echo "  warn: could not write the shard execution record" >&2
+}
 
 for journey in "${JOURNEYS[@]}"; do
   # Stageability gate (MUST be first): a journey that is NOT "ready" (phase2 =
@@ -685,8 +702,11 @@ if [[ $pass_count -eq 0 && $fail_count -eq 0 && $skip_count -gt 0 ]]; then
       --dedup-cluster no-coverage \
       --disposition "shard executed 0 of $skip_count journeys; result is vacuous, not a pass" \
     || echo "  warn: could not record the no-coverage finding" >&2
+  write_shard_record 3
   exit 3
 fi
+
+write_shard_record 0
 
 if [[ $RUN_CHAOS -eq 1 ]]; then
   echo ""
