@@ -87,6 +87,28 @@ def test_a_renamed_baseline_of_the_same_type_still_compares(tmp_path):
     assert out["candidate"]["device_type"] == out["baseline"]["device_type"]
 
 
+def test_a_zero_signature_carries_the_info_level_caveat(tmp_path):
+    """A zero signature is only meaningful for debug/error-level strings.
+
+    An archive read is ~98% blind to info level, and this cost a real call: four
+    log strings were reported non-existent across three device cells when they
+    were merely info level. The tool cannot know a signature's level, so it
+    flags the case rather than judging it.
+    """
+    r = run(tmp_path, CAND, BASE, {CAND: "fulcrum\n", BASE: "fulcrum\n"})
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["signature_candidate"] == 0 and out["signature_baseline"] == 0
+    assert "zero_signature_caveat" in out
+    assert "info level" in out["zero_signature_caveat"]
+
+
+def test_a_nonzero_comparison_carries_no_zero_caveat(tmp_path):
+    r = run(tmp_path, CAND, BASE, {CAND: "fulcrum\nDECODE-FAIL\n", BASE: "fulcrum\nDECODE-FAIL\n"})
+    assert r.returncode == 0, r.stderr
+    assert "zero_signature_caveat" not in json.loads(r.stdout)
+
+
 def test_valid_comparison_emits_counts(tmp_path):
     r = run(tmp_path, CAND, BASE, {
         CAND: "fulcrum request\nDECODE-FAIL\nDECODE-FAIL\n",

@@ -106,6 +106,26 @@ bites: counting raw lines instead of data lines (an uncovered window then
 reports itself as a real negative) and dropping the `|| true` on the filter
 (a legitimate zero-match then exits non-zero). Both are caught by name.
 
+## If you will want to quote it at info level, capture it live during the run
+
+The archive is complete for debug and error and near-empty for info. So
+anything you expect to quote at info level must be captured **live, while the
+run is happening**, or it does not exist afterward — a shutdown ends the buffer
+and a later boot starts a new one rather than restoring the old.
+
+That makes live capture a property of the RUN, not of the analysis. A QA or
+chaos pass that will cite log evidence should stream its own log to a file for
+the duration:
+
+```bash
+xcrun simctl spawn <UDID> log stream --style compact --info --debug > pass.log &
+```
+
+Everything this page describes is recovery of what survived. It is not a
+substitute for capturing the record in the first place, and the gap is silent:
+a pass that never captured looks identical afterward to one whose evidence was
+merely never quoted.
+
 ## Four ways to get an empty result that is not missing data
 
 Each of these returns zero lines. The script now tells the first three apart

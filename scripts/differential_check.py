@@ -185,11 +185,25 @@ def main() -> int:
         return fail("WITNESS-DISPROPORTIONATE", witness)
 
     cs, bs = len(srx.findall(cand)), len(srx.findall(base))
-    print(json.dumps({
+    result = {
         "comparable": True,
         **witness,
         "signature_candidate": cs,
         "signature_baseline": bs,
+    }
+    # A zero signature deserves one more caveat that this tool cannot resolve
+    # for the caller. If the reads came from a recovered archive, info-level
+    # records are ~98% absent (see docs/Testing/simulator-log-recovery.md), so a
+    # zero says nothing about an info-level string. The tool cannot know a
+    # signature's log level, so it flags the case rather than judging it.
+    if cs == 0 or bs == 0:
+        result["zero_signature_caveat"] = (
+            "a zero here is only meaningful if the signature is emitted at debug or "
+            "error level; an archive read is ~98% blind to info level, so an info-level "
+            "string returns zero from a window that contained hundreds"
+        )
+    print(json.dumps({
+        **result,
         # Evidence, not a verdict. A human decides the disposition; this only
         # says the two numbers are of the same kind and may be compared.
         "note": "preconditions held; these counts are comparable",
