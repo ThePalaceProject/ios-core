@@ -422,7 +422,7 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: parameters,
             timeout: 10,
             queueOffline: false
-        ) { _, _, _ in
+        ) { _ in
             expectation.fulfill()
         }
 
@@ -470,7 +470,11 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: ["test": "data"],
             timeout: 10,
             queueOffline: false
-        ) { success, annotationID, timestamp in
+        ) { result in
+            var success = false
+            var annotationID: String?
+            var timestamp: String?
+            if case let .succeeded(sid, sts) = result { success = true; annotationID = sid; timestamp = sts }
             receivedSuccess = success
             receivedAnnotationID = annotationID
             receivedTimestamp = timestamp
@@ -505,7 +509,9 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: ["test": "data"],
             timeout: 10,
             queueOffline: false
-        ) { success, _, _ in
+        ) { result in
+            var success = false
+            if case .succeeded = result { success = true }
             receivedSuccess = success
             expectation.fulfill()
         }
@@ -540,7 +546,9 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: ["test": "data"],
             timeout: 10,
             queueOffline: false
-        ) { success, _, _ in
+        ) { result in
+            var success = false
+            if case .succeeded = result { success = true }
             receivedSuccess = success
             expectation.fulfill()
         }
@@ -860,7 +868,9 @@ final class TPPAnnotationsTests: XCTestCase {
             withParameters: emptyParameters,
             timeout: 10,
             queueOffline: false
-        ) { success, _, _ in
+        ) { result in
+            var success = false
+            if case .succeeded = result { success = true }
             receivedSuccess = success
             expectation.fulfill()
         }
@@ -1207,6 +1217,13 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     private let url = URL(string: "https://test.library.org/annotations/")!
     private let bookID = "urn:uuid:test-book-hermetic"
 
+    /// `Account.syncPermissionGranted` is not a plain property — its setter
+    /// writes through to `UserDefaults` keyed by the account uuid. Opening the
+    /// sync gate in `makeLoggerSpy()` therefore mutates shared state that
+    /// outlives the test, which is exactly the bleed this suite's tearDown
+    /// exists to prevent. Capture what was there and put it back.
+    private var syncPermissionRestore: (() -> Void)?
+
     override func setUp() {
         super.setUp()
         mock = RecordingExecutorMock()
@@ -1218,8 +1235,13 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         // suite (or any test it could call into) might have set.
         TPPAnnotations.executorOverride = nil
         TPPAnnotations.accountsManagerOverride = nil
+        TPPAnnotations.errorLoggerOverride = nil
+        TPPAnnotations.offlineQueueOverride = nil
+        TPPAnnotations.annotationsURLOverride = nil
         AnnotationDevice.accountsManagerOverride = nil
         AnnotationDevice.firebaseDeviceIDOverride = nil
+        syncPermissionRestore?()
+        syncPermissionRestore = nil
         mock = nil
         super.tearDown()
     }
@@ -1230,26 +1252,59 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         HTTPURLResponse(url: url, statusCode: code, httpVersion: "HTTP/1.1", headerFields: nil)!
     }
 
-    private func postAndWait(parameters: [String: Any] = ["k": "v"],
-                             queueOffline: Bool = false,
-                             timeout: TimeInterval = 17,
-                             file: StaticString = #file,
-                             line: UInt = #line)
-    -> (success: Bool, id: String?, ts: String?) {
+    /// The exact triple the real stack delivers for a server refusal.
+    ///
+    /// `TPPNetworkResponder` turns EVERY non-2xx into
+    /// `NSError(domain: "Api call with failure HTTP status", code: 909)` and
+    /// returns it alongside the response; `TPPNetworkExecutor.POST` forwards
+    /// both as `(nil, response, error)`. Stubbing `(nil, response, nil)` — an
+    /// error-free non-2xx — describes a shape production never emits, and two
+    /// tests once passed against it while the behaviour they asserted did not
+    /// exist (PP-4965 review round 2). Build refusals through here so that
+    /// cannot recur.
+    private func serverRefusal(_ code: Int) -> (Data?, URLResponse?, Error?) {
+        (nil,
+         httpResponse(code),
+         NSError(domain: "Api call with failure HTTP status",
+                 code: TPPErrorCode.responseFail.rawValue,
+                 userInfo: nil))
+    }
+
+    /// Raw outcome, for tests that care WHICH way a post concluded (PP-4965).
+    private func postAndWaitResult(parameters: [String: Any] = ["k": "v"],
+                                   queueOffline: Bool = false,
+                                   timeout: TimeInterval = 17)
+    -> TPPAnnotations.AnnotationPostResult {
         let exp = expectation(description: "post completion")
-        var result: (Bool, String?, String?) = (false, nil, nil)
+        var outcome: TPPAnnotations.AnnotationPostResult = .failed(underlying: nil, response: nil)
         TPPAnnotations.postAnnotation(
             forBook: bookID,
             withAnnotationURL: url,
             withParameters: parameters,
             timeout: timeout,
             queueOffline: queueOffline
-        ) { success, id, ts in
-            result = (success, id, ts)
+        ) { result in
+            outcome = result
             exp.fulfill()
         }
         wait(for: [exp], timeout: 1.0)
-        return result
+        return outcome
+    }
+
+    /// Success/id/timestamp view, preserved so the pre-PP-4965 assertions in
+    /// this suite keep exercising exactly what they did before.
+    private func postAndWait(parameters: [String: Any] = ["k": "v"],
+                             queueOffline: Bool = false,
+                             timeout: TimeInterval = 17,
+                             file: StaticString = #file,
+                             line: UInt = #line)
+    -> (success: Bool, id: String?, ts: String?) {
+        if case let .succeeded(id, ts) = postAndWaitResult(parameters: parameters,
+                                                           queueOffline: queueOffline,
+                                                           timeout: timeout) {
+            return (true, id, ts)
+        }
+        return (false, nil, nil)
     }
 
     // MARK: - POST: request shape
@@ -1354,7 +1409,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     // MARK: - POST: failure paths
 
     func testPostAnnotation_Non200StatusCode_ReturnsFailure() {
-        mock.postStub = (nil, httpResponse(500), nil)
+        mock.postStub = serverRefusal(500)
         let (ok, id, ts) = postAndWait()
         XCTAssertFalse(ok)
         XCTAssertNil(id)
@@ -1362,13 +1417,13 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     }
 
     func testPostAnnotation_Unauthorized401_ReturnsFailure() {
-        mock.postStub = (nil, httpResponse(401), nil)
+        mock.postStub = serverRefusal(401)
         let (ok, _, _) = postAndWait()
         XCTAssertFalse(ok, "401 should be propagated as failure from postAnnotation")
     }
 
     func testPostAnnotation_NotFound404_ReturnsFailure() {
-        mock.postStub = (nil, httpResponse(404), nil)
+        mock.postStub = serverRefusal(404)
         let (ok, _, _) = postAndWait()
         XCTAssertFalse(ok)
     }
@@ -1391,13 +1446,328 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         XCTAssertFalse(ok)
     }
 
-    func testPostAnnotation_NetworkErrorWithQueueOfflineTrue_DoesNotCrashAndReportsFailure() {
-        // Use a status code that is in NetworkQueue.StatusCodes (notConnectedToInternet)
+    // PP-4965: this test previously asserted that a request handed to the
+    // offline queue "reports failure", and its comment noted the queue branch
+    // "does not affect the callback". That was the defect, pinned as if it were
+    // the contract: the caller reported every one of these as "Error posting
+    // annotation", which made that the app's largest error while the writes
+    // were in fact queued and delivered. A queued write is pending, not lost.
+    func testPostAnnotation_QueuedForRetry_IsReportedAsPendingNotFailure() {
+        // Never let a test write a durable row into the app's REAL
+        // simplified.db — PP-4987 made this branch reachable, so without the
+        // seam these rows persist in Application Support and a later
+        // reachability event can replay them as live POSTs.
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
+        // notConnectedToInternet is in NetworkQueue.StatusCodes, so with
+        // queueOffline the request is enqueued rather than abandoned.
         mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
                                            code: NSURLErrorNotConnectedToInternet))
-        let (ok, _, _) = postAndWait(queueOffline: true)
-        XCTAssertFalse(ok)
-        // The offline-queue branch is taken but does not affect the callback.
+
+        guard case .queuedForRetry = postAndWaitResult(queueOffline: true) else {
+            return XCTFail("A request accepted by the offline queue must report .queuedForRetry, not a failure")
+        }
+    }
+
+    /// The same transport error WITHOUT the offline queue is a genuine loss,
+    /// and must carry the underlying error so the logger's classifier can file
+    /// it as a transient condition rather than an unexplained API error.
+    func testPostAnnotation_TransportErrorNotQueued_ReportsFailedCarryingUnderlyingError() {
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        guard case let .failed(underlying, response) = postAndWaitResult(queueOffline: false) else {
+            return XCTFail("An un-queued transport error must report .failed")
+        }
+        XCTAssertEqual(underlying?.code, NSURLErrorNotConnectedToInternet,
+                       "The underlying error must survive to the caller — dropping it is what defeated the classifier")
+        XCTAssertNil(response, "No HTTP response means none to carry")
+    }
+
+    /// A server refusal must carry the status, so 401 and 500 are separable.
+    ///
+    /// Driven through the production shape (error AND response both present),
+    /// because that is the only one the real executor produces for a non-2xx.
+    /// The earlier version of this test stubbed an error-free 500, which took
+    /// a branch production cannot reach and so asserted nothing real.
+    func testPostAnnotation_ServerRefusal_ReportsFailedCarryingStatusCode() {
+        mock.postStub = serverRefusal(500)
+
+        guard case let .failed(underlying, response) = postAndWaitResult() else {
+            return XCTFail("A non-200 response must report .failed")
+        }
+        XCTAssertEqual(response?.statusCode, 500,
+                       "The response must reach the caller so refusals are diagnosable AND classifiable as server-origin")
+        XCTAssertEqual(underlying?.code, TPPErrorCode.responseFail.rawValue,
+                       "The synthesized 909 the responder attaches to every non-2xx must survive alongside the response — it is what proves this took the error branch, the one production actually uses")
+    }
+
+    /// The remaining `.failed` producer cell. `postAnnotation` bails before it
+    /// ever reaches the network when the parameters will not serialize, and
+    /// without this the branch is free to become `.queuedForRetry` — which
+    /// would SUPPRESS the report for a write that was never queued and never
+    /// sent. A serialization defect would then be silently swallowed.
+    func testPostAnnotation_UnserializableParameters_ReportsFailedWithoutNetwork() {
+        guard case let .failed(underlying, response) =
+                postAndWaitResult(parameters: ["created": Date()], queueOffline: true) else {
+            return XCTFail("A payload that cannot be built must report .failed, never queued")
+        }
+        XCTAssertNil(underlying, "Nothing was sent, so there is no transport error to carry")
+        XCTAssertNil(response, "Nothing was sent, so there is no response to carry")
+        XCTAssertEqual(mock.postCallCount, 0,
+                       "The request must be abandoned before the executor is touched")
+    }
+
+    func testPostAnnotation_NonHTTPResponse_ReportsFailedWithNeitherErrorNorStatus() {
+        mock.postStub = (Data(), URLResponse(url: url, mimeType: nil,
+                                             expectedContentLength: 0,
+                                             textEncodingName: nil), nil)
+
+        guard case let .failed(underlying, response) = postAndWaitResult() else {
+            return XCTFail("A non-HTTP response must report .failed")
+        }
+        XCTAssertNil(underlying)
+        XCTAssertNil(response)
+    }
+
+    func testPostAnnotation_Success_ReportsSucceededWithServerValues() {
+        mock.postStub = (Data(#"{"id":"srv-77"}"#.utf8), httpResponse(200), nil)
+
+        guard case let .succeeded(id, _) = postAndWaitResult() else {
+            return XCTFail("A 200 must report .succeeded")
+        }
+        XCTAssertEqual(id, "srv-77")
+    }
+
+    // MARK: - PP-4965: what postReadingPosition actually REPORTS
+    //
+    // The tests above pin the classification. These pin the thing that made it
+    // matter — what reaches error reporting. Testing only the enum would leave
+    // the producer free to keep reporting everything as one error.
+    //
+    // Every test here asserts the POST actually went out. `postReadingPosition`
+    // is gated by `syncIsPossibleAndPermitted()`, and a blocked gate returns
+    // early having logged nothing — which is indistinguishable from correct
+    // behaviour. Without the call-count assertion these would pass vacuously.
+
+    private func makeLoggerSpy() -> ErrorLoggerSpy {
+        let spy = ErrorLoggerSpy()
+        TPPAnnotations.errorLoggerOverride = spy
+        TPPAnnotations.annotationsURLOverride = url
+
+        // Open the sync gate. `postReadingPosition` early-returns unless the
+        // patron is signed in AND the library both supports and permits sync —
+        // and an early return logs nothing, which looks exactly like the
+        // correct behaviour these tests are trying to prove. Hence the
+        // postCallCount assertion in each test.
+        let provider = TPPLibraryAccountMock()
+        let signedIn = TPPUserAccountMock()
+        signedIn._credentials = .token(authToken: "tok",
+                                       barcode: "12345",
+                                       pin: "1234",
+                                       expirationDate: Date().addingTimeInterval(3600))
+        provider.userAccountResolver = { _ in signedIn }
+        if let details = provider.currentAccount?.details {
+            let previous = details.syncPermissionGranted
+            syncPermissionRestore = { details.syncPermissionGranted = previous }
+        }
+        provider.currentAccount?.details?.syncPermissionGranted = true
+        TPPAnnotations.accountsManagerOverride = provider
+        return spy
+    }
+
+    /// The defect this ticket exists for: a write that is safely queued for
+    /// retry must not be reported as an error.
+    func testPostReadingPosition_QueuedForRetry_ReportsNothingToErrorLogging() {
+        // Never let a test write a durable row into the app's REAL
+        // simplified.db — PP-4987 made this branch reachable, so without the
+        // seam these rows persist in Application Support and a later
+        // reachability event can replay them as live POSTs.
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
+        let spy = makeLoggerSpy()
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
+
+        XCTAssertEqual(mock.postCallCount, 1,
+                       "Guard against a vacuous pass: the sync gate must have opened and the POST gone out")
+        XCTAssertEqual(spy.loggedSummaries, [],
+                       "A queued write is pending, not failed — reporting it is what made this the app's largest error")
+        // The gap this test used to declare — "nothing asserts the write was
+        // enqueued, because there is no seam" — is closed. The seam exists and
+        // the enqueue is asserted in
+        // `testPostReadingPosition_WhenQueuedForRetry_ActuallyEnqueuesTheWrite`;
+        // this test keeps the narrower job of pinning the SILENCE.
+        XCTAssertEqual(queue.count, 1,
+                       "…and the silence is only defensible because the write really was queued")
+    }
+
+    /// A genuine transport loss must still be reported, and must carry the
+    /// underlying error so the logger's classifier can file transient
+    /// conditions ("No Internet Connection") separately from real defects.
+    func testPostReadingPosition_GenuineTransportLoss_ReportsWithUnderlyingErrorAttached() {
+        let spy = makeLoggerSpy()
+
+        // This test needs a transport error the offline queue will NOT retry —
+        // a retried one is pending, not lost, and correctly reports nothing.
+        // Asserted rather than assumed: an earlier draft picked
+        // `cannotFindHost`, which IS queueable, so the test failed for the
+        // right reason. If someone adds this code to the queueable set later,
+        // this precondition says so instead of the test quietly inverting.
+        let unretryable = NSURLErrorBadServerResponse
+        XCTAssertFalse(NetworkQueue.StatusCodes.contains(unretryable),
+                       "Precondition: this test requires an error the offline queue does not retry")
+
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain, code: unretryable))
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
+
+        XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
+        XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
+        XCTAssertEqual(spy.loggedCodes, [.apiCall],
+                       "Must stay on 902. Reporting via the bare logError overload silently files this under .ignore, "
+                       + "which moves the bucket and flips error_origin to unknown — a telemetry regression that reads "
+                       + "as a fix when the 902 volume is re-measured.")
+        XCTAssertEqual(spy.firstReportedNSError?.code, unretryable,
+                       "Dropping the underlying error is what defeated the logger's transient-condition classifier")
+    }
+
+    /// The shape production ACTUALLY delivers on this path.
+    ///
+    /// The RESIDUAL no-response shape, after PP-4987.
+    ///
+    /// `TPPNetworkResponder` no longer substitutes 914 for a transport error —
+    /// an offline device's NSURLError now survives, is queueable, and is
+    /// covered by the tests above. 914 remains only for the genuinely
+    /// unexplained case: no response AND no error. That case is still a real
+    /// loss, still reports, and still must not be mistaken for queueable —
+    /// which is what this pins.
+    func testPostReadingPosition_ProductionNoResponseShape_ReportsUnder902() {
+        let spy = makeLoggerSpy()
+        let asProductionDelivers = NSError(domain: "Api call with failure HTTP status",
+                                           code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue)
+        XCTAssertFalse(NetworkQueue.StatusCodes.contains(asProductionDelivers.code),
+                       "Precondition: the unexplained-no-response code is not queueable, so this write is genuinely lost")
+        mock.postStub = (nil, nil, asProductionDelivers)
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
+
+        XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
+        XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"],
+                       "An unexplained no-response is a genuine loss and must be reported — unlike a transport failure, which PP-4987 makes queueable")
+        XCTAssertEqual(spy.loggedCodes, [.apiCall],
+                       "It must stay in the 902 bucket, or re-measuring that bucket after PP-4987 reads a false win")
+    }
+
+    // MARK: - PP-4987: a queued write must actually BE queued
+
+    /// The claim PP-4965's silence rests on. It stops reporting a write once
+    /// the write is "queued for retry" — which is only defensible if the write
+    /// genuinely reached the queue. Until PP-4987 that branch was unreachable,
+    /// so this was untestable AND unfalsifiable; now it is neither. Every other
+    /// test on this path asserts only that nothing was REPORTED, which would
+    /// pass just as happily if the write evaporated.
+    func testPostReadingPosition_WhenQueuedForRetry_ActuallyEnqueuesTheWrite() {
+        let spy = makeLoggerSpy()
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
+
+        XCTAssertEqual(queue.count, 1,
+                       "An offline write must be handed to the retry queue — suppressing its error report is only sound if it was")
+        XCTAssertEqual(queue.enqueued.first?.method, .POST)
+        XCTAssertEqual(spy.loggedSummaries, [],
+                       "And having been queued, it must not also be reported")
+    }
+
+    /// Reading positions SHOULD collapse: the queue updates the row matching
+    /// (libraryID, updateID), and a newer position for a book supersedes an
+    /// older one. Delivering only the latest is what the patron wants.
+    func testPostReadingPosition_TwoPositionsSameBook_ShareAKeySoTheLatestWins() {
+        _ = makeLoggerSpy()
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        for selector in ["{\"p\":1}", "{\"p\":2}"] {
+            let exp = expectation(description: "post \(selector)")
+            TPPAnnotations.postReadingPosition(forBook: bookID,
+                                               selectorValue: selector,
+                                               motivation: .readingProgress) { _ in exp.fulfill() }
+            wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
+        }
+
+        XCTAssertEqual(queue.updateIDs, [bookID, bookID],
+                       "Positions key on the book alone, so the second supersedes the first")
+    }
+
+    /// Bookmarks MUST NOT collapse. Each one is a distinct thing the patron
+    /// created; before PP-4987's hardening they all keyed on the bookID, so two
+    /// offline bookmarks in one title silently overwrote each other — and
+    /// PP-4965 had already removed the error report for this path, making the
+    /// loss invisible.
+    func testPostReadingPosition_TwoBookmarksSameBook_GetDistinctKeysSoNeitherIsLost() {
+        _ = makeLoggerSpy()
+        let queue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = queue
+        mock.postStub = (nil, nil, NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet))
+
+        for selector in ["{\"chapter\":1}", "{\"chapter\":9}"] {
+            let exp = expectation(description: "bookmark \(selector)")
+            TPPAnnotations.postReadingPosition(forBook: bookID,
+                                               selectorValue: selector,
+                                               motivation: .bookmark) { _ in exp.fulfill() }
+            wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
+        }
+
+        let keys = queue.updateIDs.compactMap { $0 }
+        XCTAssertEqual(keys.count, 2)
+        XCTAssertNotEqual(keys[0], keys[1],
+                          "Two bookmarks in one book must not share a queue key — sharing one deletes a patron's bookmark silently")
+        XCTAssertTrue(keys.allSatisfy { $0.hasPrefix(bookID) },
+                      "The key still scopes to the book; it is the selector that disambiguates")
+    }
+
+    /// A server refusal must reach reporting WITH its status, so 401 and 500
+    /// are distinguishable in telemetry rather than both being "api call".
+    func testPostReadingPosition_ServerRefusal_ReportsStatusCodeInMetadata() {
+        let spy = makeLoggerSpy()
+        mock.postStub = serverRefusal(401)
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: bookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline, and there is no dispatch hop anywhere in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is already fulfilled before `wait` is reached and the deadline is structurally unreachable. NOTE the criterion: it is synchronicity, NOT mere unconditionality. A callback that always fires but arrives on another queue is precisely the STARVE-001 shape — see `postAudiobookBookmark`, which resumes via `DispatchQueue.main.async` and would NOT qualify for this hatch.
+
+        XCTAssertEqual(mock.postCallCount, 1, "Guard against a vacuous pass")
+        XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
+        XCTAssertEqual(spy.loggedCodes, [.apiCall], "A server refusal must stay in the 902 annotation bucket")
+        XCTAssertEqual(spy.loggedMetadata.first?["statusCode"] as? Int, 401,
+                       "Without the status code every refusal looks the same in telemetry. This is the assertion that was passing vacuously: the fixture used to omit the error the responder always attaches, so the caller took a branch that kept the response — while production took the one that dropped it.")
     }
 
     // MARK: - DELETE

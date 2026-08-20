@@ -106,6 +106,21 @@ protocol AnnotationsManager {
     nonisolated(unsafe) static var executorOverride: TPPNetworkExecutor?
     nonisolated(unsafe) static var accountsManagerOverride: TPPLibraryAccountsProvider?
 
+    /// Test-only seam for observing what this type hands to the offline queue.
+    /// PP-4987 made `.queuedForRetry` reachable, so "the write actually reached
+    /// the queue" became a real claim — and it was previously unassertable,
+    /// because `addToOfflineQueue` reaches `AppContainer.production()`
+    /// directly. That also meant the cross-device test wrote durable rows into
+    /// the app's REAL `simplified.db`, which a later reachability event could
+    /// replay. Never set from production code.
+    nonisolated(unsafe) static var offlineQueueOverride: AnnotationOfflineQueueing?
+
+    /// Test-only seam for observing what this type reports to error logging.
+    /// PP-4965: whether a failed position write is reported at all — and with
+    /// what underlying error — is now behaviour worth asserting, so it needs to
+    /// be observable. Never set from production code.
+    nonisolated(unsafe) static var errorLoggerOverride: ErrorLogging?
+
     /// Test-only override for the annotations URL. When set, `annotationsURL`
     /// returns this value instead of deriving from `TPPConfiguration.mainFeedURL()`.
     /// CI runners boot with no signed-in library, so `mainFeedURL()` is nil and
@@ -185,6 +200,20 @@ protocol AnnotationsManager {
     /// setting `accountsManagerOverride` lets the test inject a mock.
     fileprivate static var currentAccountsManager: TPPLibraryAccountsProvider {
         return accountsManagerOverride ?? AppContainer.production().accountsManager
+    }
+
+    /// Where a queued-for-retry write is handed off. Production resolves to the
+    /// container's queue; tests inject a double.
+    fileprivate static var currentOfflineQueue: AnnotationOfflineQueueing {
+        return offlineQueueOverride ?? AppContainer.production().networkQueue
+    }
+
+    private static let defaultErrorLogger = DefaultErrorLogger()
+
+    /// Returns the error logger TPPAnnotations should report to. In tests,
+    /// setting `errorLoggerOverride` lets the test observe what was reported.
+    fileprivate static var currentErrorLogger: ErrorLogging {
+        return errorLoggerOverride ?? defaultErrorLogger
     }
 
     // MARK: - Reading Position
@@ -272,22 +301,69 @@ protocol AnnotationsManager {
                                        selectorValue: selectorValue)
         let parameters = bookmark.dictionaryForJSONSerialization()
 
-        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true) { (success, id, timeStamp) in
-            guard success else {
-                Log.warn(#file, "Annotation POST failed for \(bookID)")
-                TPPErrorLogger.logError(withCode: .apiCall,
-                                        summary: "Error posting annotation",
-                                        metadata: [
-                                            "bookID": bookID,
-                                            "annotationID": id ?? "N/A",
-                                            "annotationURL": annotationsURL,
-                                            "motivation": motivation.rawValue])
-                completion?(nil)
-                return
-            }
+        // The offline queue UPDATES the row matching (libraryID, queueKey), so
+        // the key decides what supersedes what (PP-4987 made this reachable):
+        //
+        //  - readingProgress: key on the book. Collapsing IS correct — a newer
+        //    position supersedes an older one for the same book, and delivering
+        //    only the latest is what the patron wants.
+        //  - bookmark: key on the book AND the selector. Every bookmark is a
+        //    distinct thing the patron created; keying on the book alone made
+        //    two offline bookmarks in one title silently overwrite each other,
+        //    and PP-4965 has already removed the error report for this path, so
+        //    the loss would be invisible.
+        let queueKey: String
+        switch motivation {
+        case .bookmark:
+            queueKey = "\(bookID)|\(selectorValue)"
+        default:
+            queueKey = bookID
+        }
 
-            Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
-            completion?(AnnotationResponse(serverId: id, timeStamp: timeStamp))
+        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true, queueKey: queueKey) { result in
+            switch result {
+            case let .succeeded(id, timeStamp):
+                Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
+                completion?(AnnotationResponse(serverId: id, timeStamp: timeStamp))
+
+            case .queuedForRetry:
+                // NOT an error. The position is already in local storage and the
+                // write is queued for delivery. Reporting this was the bulk of
+                // the "Error posting annotation" volume (PP-4965).
+                Log.debug(#file, "Reading position for \(bookID) queued for retry")
+                completion?(nil)
+
+            case let .failed(underlying, response):
+                Log.warn(#file, "Annotation POST failed for \(bookID)")
+                var metadata: [String: Any] = [
+                    "bookID": bookID,
+                    "annotationURL": annotationsURL,
+                    "motivation": motivation.rawValue
+                ]
+                if let statusCode = response?.statusCode {
+                    metadata["statusCode"] = statusCode
+                }
+                // `logNetworkError` rather than `logError`, deliberately.
+                //
+                // The bare `logError(_:summary:metadata:)` overload hardcodes
+                // `code: .ignore`, which would have quietly moved this bucket
+                // OFF 902 (`.apiCall`) — to the raw NSError code for transport
+                // failures and to 0 for server refusals — and flipped
+                // `error_origin` from "server" to "unknown". Since the whole
+                // plan is to re-measure what remains in the 902 bucket once
+                // PP-4987 lands, that would have read as a fix while nothing
+                // improved. `logNetworkError` keeps `.apiCall`, still routes
+                // through `fixUpSummary` so transient conditions are split out
+                // first, and takes the response so 400...599 classifies as
+                // `.server`.
+                Self.currentErrorLogger.logNetworkError(underlying,
+                                                        code: .apiCall,
+                                                        summary: "Error posting annotation",
+                                                        request: nil,
+                                                        response: response,
+                                                        metadata: metadata)
+                completion?(nil)
+            }
         }
     }
 
@@ -318,7 +394,16 @@ protocol AnnotationsManager {
 
         let parameters = spec.dictionaryForJSONSerialization()
 
-        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (_, id, timeStamp) in
+        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { result in
+            // Behaviour deliberately unchanged by PP-4965: a bookmark POST that
+            // fails still calls back with an empty response and reports nothing.
+            // That silence is a real gap — bookmark failures produce no
+            // telemetry at all — but fixing it changes behaviour patrons see,
+            // so it is tracked separately rather than folded in here.
+            guard case let .succeeded(id, timeStamp) = result else {
+                completion(AnnotationResponse(serverId: nil, timeStamp: nil))
+                return
+            }
             completion(AnnotationResponse(serverId: id, timeStamp: timeStamp))
         }
     }
@@ -348,9 +433,58 @@ protocol AnnotationsManager {
 
         let parameters = spec.dictionaryForJSONSerialization()
 
-        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (_, id, timeStamp) in
+        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { result in
+            // Behaviour deliberately unchanged by PP-4965: a bookmark POST that
+            // fails still calls back with an empty response and reports nothing.
+            // That silence is a real gap — bookmark failures produce no
+            // telemetry at all — but fixing it changes behaviour patrons see,
+            // so it is tracked separately rather than folded in here.
+            guard case let .succeeded(id, timeStamp) = result else {
+                completion(AnnotationResponse(serverId: nil, timeStamp: nil))
+                return
+            }
             completion(AnnotationResponse(serverId: id, timeStamp: timeStamp))
         }
+    }
+
+    /// How a POST to the annotations endpoint concluded.
+    ///
+    /// PP-4965: this exists because the previous `(Bool, String?, String?)`
+    /// callback had nowhere to put "queued for retry" or a status code, so five
+    /// very different outcomes all arrived at the caller as a bare `false`. The
+    /// caller then reported every one of them as "Error posting annotation",
+    /// which made that the largest error in the app while most of the traffic
+    /// was patrons going through a tunnel.
+    ///
+    /// Keeping `queuedForRetry` distinct from `failed` is the whole point: a
+    /// queued write has not been lost, and must not be reported as a failure.
+    enum AnnotationPostResult {
+        /// The server accepted the annotation. Both values may still be nil if
+        /// the response body was missing or unparseable.
+        case succeeded(annotationID: String?, timeStamp: String?)
+
+        /// Transport failed, but the request was handed to the offline queue
+        /// and will be retried. Delivery is pending, not lost — do NOT report
+        /// this as an error.
+        ///
+        /// REACHABLE as of PP-4987. It was not when this case was written:
+        /// the networking layer discarded the underlying transport error when
+        /// no HTTP response arrived, substituting a generic no-response code
+        /// absent from `NetworkQueue.StatusCodes`, so `willQueueOffline` could
+        /// never be true. `TPPNetworkResponder` now passes that error through,
+        /// so an offline write genuinely reaches the retry queue and this case
+        /// carries real production traffic.
+        case queuedForRetry
+
+        /// The write did not happen and nothing will retry it.
+        ///
+        /// `underlying` carries the transport error where there was one, so the
+        /// logger's existing classifier can separate transient conditions (no
+        /// connection, timeout) from real defects. `response` is present when
+        /// the server answered and refused — it is carried whole rather than as
+        /// a bare status code so `TPPErrorOrigin.classify` can read 400...599
+        /// off it and attribute the failure to the server.
+        case failed(underlying: NSError?, response: HTTPURLResponse?)
     }
 
     /// Serializes the `parameters` into JSON and POSTs them to the server.
@@ -359,11 +493,23 @@ protocol AnnotationsManager {
                               withParameters parameters: [String: Any],
                               timeout: TimeInterval = TPPDefaultRequestTimeout,
                               queueOffline: Bool,
-                              _ completionHandler: @escaping (_ success: Bool, _ annotationID: String?, _ timeStamp: String?) -> Void) {
+                              queueKey: String? = nil,
+                              _ completionHandler: @escaping (_ result: AnnotationPostResult) -> Void) {
 
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted]) else {
+        // `isValidJSONObject` FIRST, deliberately. `data(withJSONObject:)`
+        // RAISES an ObjC `NSInvalidArgumentException` for an unsupported type
+        // rather than throwing a Swift error, so `try?` does not catch it and
+        // the guard below never fired — an unserializable payload crashed the
+        // app instead of taking the `.failed` path this code models. Not
+        // reachable from today's three in-file callers (every value in
+        // `dictionaryForJSONSerialization()` is a String), so this is defence
+        // for the next caller, not a live bug fix. Found by writing the test
+        // for the branch (PP-4965 review round 2).
+        guard JSONSerialization.isValidJSONObject(parameters),
+              let jsonData = try? JSONSerialization.data(withJSONObject: parameters,
+                                                         options: [.prettyPrinted]) else {
             Log.error(#file, "Network request abandoned. Could not create JSON from given parameters.")
-            completionHandler(false, nil, nil)
+            completionHandler(.failed(underlying: nil, response: nil))
             return
         }
 
@@ -382,15 +528,27 @@ protocol AnnotationsManager {
 
                 if willQueueOffline {
                     Log.debug(#file, "Queued for offline retry")
-                    self.addToOfflineQueue(bookID, url, parameters)
+                    self.addToOfflineQueue(queueKey ?? bookID, url, parameters)
+                    completionHandler(.queuedForRetry)
+                    return
                 }
 
-                completionHandler(false, nil, nil)
+                // Carry the response. `TPPNetworkResponder` synthesizes an
+                // NSError for EVERY non-2xx and `TPPNetworkExecutor.POST`
+                // forwards (nil, response, error) together, so this branch —
+                // not the `else` below — is the one a server refusal actually
+                // takes. Passing nil here dropped the status code before it
+                // reached telemetry and left `TPPErrorOrigin.classify`'s
+                // 400...599 arm unreachable from this call site, which made
+                // "a refusal carries its status code" false in production
+                // while two tests asserted it (PP-4965 review round 2).
+                completionHandler(.failed(underlying: error,
+                                          response: response as? HTTPURLResponse))
                 return
             }
             guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
                 Log.error(#file, "Annotation POST error: No response received from server")
-                completionHandler(false, nil, nil)
+                completionHandler(.failed(underlying: nil, response: nil))
                 return
             }
 
@@ -398,10 +556,10 @@ protocol AnnotationsManager {
                 Log.debug(#file, "Annotation POST: Success 200.")
                 let serverAnnotationID = annotationID(fromNetworkData: data)
                 let timeStamp = timeStamp(fromNetworkData: data)
-                completionHandler(true, serverAnnotationID, timeStamp)
+                completionHandler(.succeeded(annotationID: serverAnnotationID, timeStamp: timeStamp))
             } else {
                 Log.error(#file, "Annotation POST: Response Error. Status Code: \(statusCode)")
-                completionHandler(false, nil, nil)
+                completionHandler(.failed(underlying: nil, response: response as? HTTPURLResponse))
             }
         }
         task?.resume()
@@ -828,9 +986,26 @@ protocol AnnotationsManager {
         let libraryID = manager.currentAccount?.uuid ?? ""
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
         let headers = executor.request(for: url).allHTTPHeaderFields
-        AppContainer.production().networkQueue.addRequest(libraryID, bookID, url, .POST, parameterData, headers)
+        Self.currentOfflineQueue.addRequest(libraryID, bookID, url, .POST, parameterData, headers)
     }
 }
+
+/// The slice of the offline queue that annotation writes actually use.
+///
+/// Exists so `.queuedForRetry` is provable: without it, "the write reached the
+/// queue" can only be verified by reading the code, and PP-4965 removes the
+/// error report on the strength of that claim. `NetworkQueue` already has this
+/// exact signature.
+protocol AnnotationOfflineQueueing: AnyObject {
+    func addRequest(_ libraryID: String,
+                    _ updateID: String?,
+                    _ requestUrl: URL,
+                    _ method: HTTPMethodType,
+                    _ parameters: Data?,
+                    _ headers: [String: String]?)
+}
+
+extension NetworkQueue: AnnotationOfflineQueueing {}
 
 // MARK: - Sendable carriers for the annotation-sync @Sendable-closure captures
 

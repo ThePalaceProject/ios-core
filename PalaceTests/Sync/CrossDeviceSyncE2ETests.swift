@@ -38,8 +38,22 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     private var userAccount: TPPUserAccountMock!
     private var executorA: TPPNetworkExecutor!
     private var executorB: TPPNetworkExecutor!
+    /// Device A with no connectivity. NoNetworkURLProtocol answers every
+    /// request with NSURLErrorNotConnectedToInternet, and as of PP-4987 that
+    /// IS what `postAnnotation` sees — `TPPNetworkResponder` no longer
+    /// substitutes code 914 for it. The code is in `NetworkQueue.StatusCodes`,
+    /// so the write is queued for retry and, being pending rather than lost,
+    /// is not reported. The offline test below pins exactly that.
+    private var executorAOffline: TPPNetworkExecutor!
+
+    /// Installed for the whole suite because PP-4987 made the offline branch
+    /// reachable: without it, the offline test writes a durable row into the
+    /// app's REAL `simplified.db` in Application Support, which a later
+    /// reachability event could replay as a live POST.
+    private var offlineQueue: OfflineQueueSpy!
 
     private var savedExecutorOverride: TPPNetworkExecutor?
+    private var savedErrorLoggerOverride: ErrorLogging?
     private var savedAccountsOverride: TPPLibraryAccountsProvider?
     private var savedDeviceAccountsOverride: TPPUserAccountResolving?
     private var savedFirebaseDeviceOverride: String?
@@ -57,6 +71,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         savedDeviceAccountsOverride = AnnotationDevice.accountsManagerOverride
         savedFirebaseDeviceOverride = AnnotationDevice.firebaseDeviceIDOverride
         savedAnnotationsURLOverride = TPPAnnotations.annotationsURLOverride
+        savedErrorLoggerOverride = TPPAnnotations.errorLoggerOverride
 
         // Reset shared user-account state so credential writes here don't
         // leak across tests.
@@ -112,6 +127,14 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
             sessionConfiguration: configB
         )
 
+        let configOffline = URLSessionConfiguration.ephemeral
+        configOffline.protocolClasses = [NoNetworkURLProtocol.self]
+        executorAOffline = TPPNetworkExecutor(
+            credentialsProvider: nil,
+            cachingStrategy: .ephemeral,
+            sessionConfiguration: configOffline
+        )
+
         // Install the shared library/accounts override now so any read
         // through TPPAnnotations sees a sync-supporting library.
         TPPAnnotations.accountsManagerOverride = libraryAccount
@@ -122,6 +145,9 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         // (no signed-in library defaults), so without this override every
         // POST/GET path early-returns before hitting HTTPStubURLProtocol.
         TPPAnnotations.annotationsURLOverride = Self.baseURL
+
+        offlineQueue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = offlineQueue
     }
 
     override func tearDown() {
@@ -134,6 +160,13 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         AnnotationDevice.accountsManagerOverride = savedDeviceAccountsOverride
         AnnotationDevice.firebaseDeviceIDOverride = savedFirebaseDeviceOverride
         TPPAnnotations.annotationsURLOverride = savedAnnotationsURLOverride
+        // Restored here, not only via a per-test `defer`: a spy left installed
+        // silently swallows every annotation error report for the rest of the
+        // process, which no later test would attribute to this suite.
+        TPPAnnotations.errorLoggerOverride = savedErrorLoggerOverride
+        executorAOffline = nil
+        TPPAnnotations.offlineQueueOverride = nil
+        offlineQueue = nil
 
         HTTPStubURLProtocol.reset()
         backend?.clear()
@@ -164,6 +197,25 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         let prevDev = AnnotationDevice.firebaseDeviceIDOverride
         let prevAccountDeviceID = userAccount.deviceID
         TPPAnnotations.executorOverride = executorA
+        AnnotationDevice.firebaseDeviceIDOverride = Self.deviceA
+        userAccount.setDeviceID(Self.deviceA)
+        defer {
+            TPPAnnotations.executorOverride = prevExec
+            AnnotationDevice.firebaseDeviceIDOverride = prevDev
+            if let prev = prevAccountDeviceID {
+                userAccount.setDeviceID(prev)
+            }
+        }
+        return try block()
+    }
+
+    /// Device A, but with no connectivity. Same device tag as `asDeviceA`, so
+    /// anything that *does* reach the backend is still attributable to A.
+    private func asDeviceAOffline<T>(_ block: () throws -> T) rethrows -> T {
+        let prevExec = TPPAnnotations.executorOverride
+        let prevDev = AnnotationDevice.firebaseDeviceIDOverride
+        let prevAccountDeviceID = userAccount.deviceID
+        TPPAnnotations.executorOverride = executorAOffline
         AnnotationDevice.firebaseDeviceIDOverride = Self.deviceA
         userAccount.setDeviceID(Self.deviceA)
         defer {
@@ -311,6 +363,156 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// environment (no auth doc loaded, no credentials, etc.), the
     /// TPPAnnotations static methods early-return without touching the
     /// network. We skip rather than report a misleading pass.
+    // MARK: - PP-4965: what an offline device does to the other device
+
+    /// Device A loses connectivity. Its position write is handed to the offline
+    /// queue, so nothing reaches the server and device B correctly sees
+    /// nothing — but A must NOT report this as an error. Reporting it is what
+    /// made "Error posting annotation" the largest error in the app while the
+    /// writes themselves were fine.
+    func test_positionWrittenWhileDeviceAOffline_isInvisibleToB_andNotReportedAsAnError() async throws {
+        try skipIfSyncGateClosed()
+
+        let spy = ErrorLoggerSpy()
+        TPPAnnotations.errorLoggerOverride = spy   // also restored in tearDown
+
+        let selectorValue = epubSelectorValue(
+            href: "/chapter9.xhtml",
+            progressInChapter: 0.9,
+            progressInBook: 0.5,
+            title: "Chapter 9"
+        )
+        let postsBefore = backend.postCount
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            asDeviceAOffline {
+                TPPAnnotations.postReadingPosition(
+                    forBook: Self.bookID,
+                    selectorValue: selectorValue,
+                    motivation: .readingProgress
+                ) { _ in cont.resume() }
+            }
+        }
+
+        XCTAssertEqual(backend.postCount, postsBefore,
+                       "An offline write must never reach the server")
+        XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 0,
+                       "Backend must hold nothing after an offline write")
+        // PP-4987 HAS LANDED — this is the flip the expectation above was
+        // waiting for, and the assertions are now the correct ones.
+        //
+        // `TPPNetworkResponder` no longer replaces the transport error with a
+        // generic no-response code, so the NSURLError survives to
+        // `postAnnotation`, matches `NetworkQueue.StatusCodes`, and the write
+        // goes to the offline queue instead of being lost. A queued write is
+        // pending delivery, not a failure, so nothing is reported — which is
+        // the entire point of PP-4965's `.queuedForRetry` case, unreachable
+        // until now.
+        XCTAssertEqual(spy.loggedSummaries, [],
+                       "A write that was queued for retry must not be reported as an error — it is pending, not lost")
+        XCTAssertNil(spy.firstReportedNSError,
+                     "Nothing at all should be reported for a successfully queued write")
+
+        // The other half of the claim, and the one that makes the silence
+        // defensible: the write is PENDING, which means it must actually be in
+        // the queue. Asserting only the absence of a report would pass equally
+        // well if the position had simply evaporated.
+        XCTAssertEqual(offlineQueue.count, 1,
+                       "The offline write must be handed to the retry queue, not merely go unreported")
+        XCTAssertEqual(offlineQueue.enqueued.first?.updateID, Self.bookID,
+                       "A reading position keys on the book, so a later position supersedes this one")
+        // NOTE: deliberately NOT asserting the absence of an Authorization
+        // header here. The spy stands in FRONT of `NetworkQueue`, and
+        // production genuinely does hand a credential across that boundary —
+        // the strip happens inside `addRequest`, downstream of this point. An
+        // assertion here would be asserting a property that is false in
+        // production, and it only ever passed because this suite's executor
+        // has no token on a clean runner; it went red the moment a sibling
+        // test left one behind. The credential guarantee is pinned where it
+        // actually holds, against the persisted row, in
+        // NetworkQueueTests.testAddRequest_NeverPersistsTheCredential…
+
+        // B sees nothing, and that is correct: the write was never delivered.
+        let book = makeBook()
+        let seenByB: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .readingProgress
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
+            }
+        XCTAssertEqual(seenByB.count, 0,
+                       "Device B must not see a position that was never delivered")
+    }
+
+    /// The same position, written once A is back online, does reach B. This is
+    /// what makes the case above a delay rather than a loss.
+    ///
+    /// Note this re-posts directly rather than draining `TPPNetworkQueue` —
+    /// the queue's own retry behaviour is its responsibility and is covered by
+    /// its own suite. What is asserted here is the cross-device consequence:
+    /// an offline write followed by a connected write leaves B holding exactly
+    /// one annotation, A's, not two and not zero.
+    func test_positionRewrittenAfterDeviceAReconnects_reachesDeviceB() async throws {
+        try skipIfSyncGateClosed()
+
+        let selectorValue = epubSelectorValue(
+            href: "/chapter9.xhtml",
+            progressInChapter: 0.9,
+            progressInBook: 0.5,
+            title: "Chapter 9"
+        )
+
+        // Offline attempt — goes nowhere.
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            asDeviceAOffline {
+                TPPAnnotations.postReadingPosition(
+                    forBook: Self.bookID,
+                    selectorValue: selectorValue,
+                    motivation: .readingProgress
+                ) { _ in cont.resume() }
+            }
+        }
+        XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 0,
+                       "Precondition: the offline attempt must not have reached the server")
+
+        // Reconnected attempt — lands.
+        let hasServerId: Bool =
+            await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                asDeviceA {
+                    TPPAnnotations.postReadingPosition(
+                        forBook: Self.bookID,
+                        selectorValue: selectorValue,
+                        motivation: .readingProgress
+                    ) { response in cont.resume(returning: response?.serverId != nil) }
+                }
+            }
+        XCTAssertTrue(hasServerId, "The reconnected write must be accepted by the server")
+
+        let book = makeBook()
+        let seenByB: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .readingProgress
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
+            }
+        XCTAssertEqual(seenByB.count, 1,
+                       "B must end up with exactly one annotation — the offline attempt must not have left a duplicate")
+        XCTAssertEqual(seenByB.first?.device, Self.deviceA,
+                       "The delivered annotation must still be tagged to device A")
+    }
+
     private func skipIfSyncGateClosed() throws {
         guard TPPAnnotations.syncIsPossibleAndPermitted() else {
             throw XCTSkip("Sync gate closed in this environment (no credentials / library auth doc) — skipping E2E sync test")
