@@ -94,7 +94,7 @@ bitten someone.
 3. **Passing a UTC timestamp.** The tool wants local time. Chaos shard
    directories are named in UTC, so a shard named `…T15-06-59Z` is `11:06` in a
    UTC-4 zone. Passing `15:06` yields an empty window.
-4. **Grepping for a symbol the app emits.** Searching a recovered archive for
+ Searching a recovered archive for
    `downloadTaskWithRequest`, a `Log.debug` message, or any other app-authored
    string returns zero — not because it did not happen, but because app `os_log`
    lines cannot be composed here (see the contract above). This one is the most
@@ -102,6 +102,35 @@ bitten someone.
    finding. Once, a recommendation to re-count a confirmed defect this way would
    have returned 0 and retracted it. **Count what the system emitted — task
    UUIDs, connection IDs — never a string the app itself logged.**
+
+## A zero is only a measurement if the command hit something
+
+The section above is about a tool returning nothing. This is the layer beneath
+it, and no tooling catches it: a command that never reached its target prints a
+clean, confident zero.
+
+Three instances turned up in a single afternoon, two of them in the hands of
+people who had just written the warning:
+
+- `git show $ref:path` unquoted in zsh. `:P` is a path modifier, so the ref
+  expands to an absolute path, git fatals, and the piped `grep -c` prints `0`.
+  Two failures stacked, one visible result.
+- A `pytest` invocation piped to `tail`, whose exit status came from `tail`.
+- A grep against `Palace/Book/BookDetailView.swift`, a path that does not
+  exist — the file is at `Palace/Book/UI/BookDetail/BookDetailView.swift`.
+  Correct quoting, clean exit code, still a zero from nothing.
+
+The habit that catches all three: **confirm the target resolves, then count.**
+`git cat-file -e "$ref:$path"` before grepping it; check the file exists before
+searching it; read the exit code rather than the number. When a zero would
+change a decision, prove the command hit something first — show a non-zero
+count of a line you KNOW is there, then run the real query.
+
+This is deliberately written as discipline rather than a script. A guard that
+covered only the wrong-target cases would leave the merely-wrong-pattern case
+returning an identical honest zero, while implying the class was handled —
+which is the failure shape this whole document exists to prevent.
+
 
 ## Usage
 
