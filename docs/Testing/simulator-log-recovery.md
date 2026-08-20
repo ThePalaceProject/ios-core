@@ -173,6 +173,14 @@ searching it; read the exit code rather than the number. When a zero would
 change a decision, prove the command hit something first — show a non-zero
 count of a line you KNOW is there, then run the real query.
 
+The same rule applies to any artifact a pass depends on, not just to a grep.
+A shared build directory once vanished from `/tmp` mid-campaign with no error
+and no warning; it was discovered forty minutes later when an install failed.
+A two-second `ls` in the pass preamble would have caught it at the start. Treat
+a missing artifact as an expected condition to check for, not an incident to
+discover — and note that "we moved it somewhere safer" is not the same as
+knowing what removed it.
+
 This is deliberately written as discipline rather than a script. A guard that
 covered only the wrong-target cases would leave the merely-wrong-pattern case
 returning an identical honest zero, while implying the class was handled —
