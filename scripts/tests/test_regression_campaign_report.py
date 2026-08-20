@@ -95,12 +95,37 @@ def test_cli_writes_report_file(tmp_path):
     assert "run-x" in body
 
 
-def test_empty_findings_renders_without_crash(tmp_path):
+def test_empty_findings_renders_but_no_longer_reports_a_clean_verdict(tmp_path):
+    """An empty findings.csv with no execution evidence is NOT a pass.
+
+    This test used to assert exit 0 here — it encoded the defect. A campaign
+    with nothing found and nothing proven run is indistinguishable from one that
+    never started, which is precisely how 21 shards that executed 0 of 96
+    journeys rendered as a clean regression. The artifact is still produced (the
+    "renders without crash" half of the original intent), now carrying a refusal
+    banner, and the exit code refuses.
+    """
     src = tmp_path / "empty.csv"
     src.write_text(",".join(report.FINDINGS_COLUMNS) + "\n", encoding="utf-8")
     out = tmp_path / "r.html"
+    assert report.main(["--csv", str(src), "--output", str(out)]) == report.REFUSAL_EXIT
+    body = out.read_text(encoding="utf-8")
+    assert "No findings" in body
+    assert "NO VERDICT" in body
+
+
+def test_empty_findings_with_real_execution_evidence_is_a_clean_pass(tmp_path):
+    """The other direction: 0 findings from work that DID run is a pass, and
+    the refusal must not block it."""
+    import regression_shard_record as rsr
+    src = tmp_path / "empty.csv"
+    src.write_text(",".join(report.FINDINGS_COLUMNS) + "\n", encoding="utf-8")
+    rsr.write_record(str(tmp_path), area="auth", device_cell="C-iphone-26",
+                     passed=5, failed=0, skipped=0,
+                     started_at=1000.0, ended_at=1400.0)
+    out = tmp_path / "r.html"
     assert report.main(["--csv", str(src), "--output", str(out)]) == 0
-    assert "No findings" in out.read_text(encoding="utf-8")
+    assert "NO VERDICT" not in out.read_text(encoding="utf-8")
 
 
 # --- cross-module schema contract (QA-required, #1077 SoD) ------------------
