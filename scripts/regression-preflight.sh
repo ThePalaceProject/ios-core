@@ -151,17 +151,23 @@ fi
 # The chaos orchestrator runs `claude -p`, which cannot approve a permission
 # prompt. If the simdrive tools are not granted at the invocation, the agent is
 # denied every call and the pass explores 0 paths while reporting cleanly.
-if (( SKIP_AGENT )); then
-  warn "skipped the headless-agent tool-grant probe (--skip-agent)"
-elif ! command -v claude >/dev/null 2>&1; then
-  bad "'claude' CLI not on PATH" "chaos passes invoke 'claude -p'; install the CLI or pass --skip-agent"
+# The --allowedTools declaration check is a STATIC grep of a script in this
+# repo: it needs no simulator, no agent and no CLI. It used to sit in the `else`
+# branch below, so wherever `claude` was absent the check silently did not run —
+# including every CI runner. A check that quietly stops running is
+# indistinguishable from one that passes, so it is now unconditional and the
+# CLI-presence probe is reported separately.
+if grep -q -- '--allowedTools' "$REPO_ROOT/scripts/run-chaos-pass.sh" 2>/dev/null; then
+  ok "run-chaos-pass.sh declares --allowedTools for the subagent"
 else
-  if grep -q -- '--allowedTools' "$REPO_ROOT/scripts/run-chaos-pass.sh" 2>/dev/null; then
-    ok "run-chaos-pass.sh declares --allowedTools for the subagent"
-  else
-    bad "run-chaos-pass.sh does not pass --allowedTools" \
-        "the headless subagent will be denied every simdrive call and the pass will report 0 findings having run nothing"
-  fi
+  bad "run-chaos-pass.sh does not pass --allowedTools" \
+      "the headless subagent will be denied every simdrive call and the pass will report 0 findings having run nothing"
+fi
+
+if (( SKIP_AGENT )); then
+  warn "skipped the headless-agent CLI probe (--skip-agent)"
+elif ! command -v "${CHAOS_CLAUDE_BIN:-claude}" >/dev/null 2>&1; then
+  bad "'${CHAOS_CLAUDE_BIN:-claude}' CLI not on PATH" "chaos passes invoke it as 'claude -p'; install the CLI or pass --skip-agent"
 fi
 
 # ---- 7. replay corpus (informational, but loudly) ---------------------------

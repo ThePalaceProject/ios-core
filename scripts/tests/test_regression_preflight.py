@@ -40,6 +40,27 @@ def _run(cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=180, **kw)
 
 
+def _env_with_stub_simdrive(tmp_path: Path) -> dict:
+    """Env whose `python3 -c "import simdrive"` succeeds.
+
+    The campaign entry points require the simdrive package before anything else
+    runs. On a machine that has it these tests exercise the real code; on one
+    that does not — every CI runner — the script died at that check and the
+    assertions below never reached the behaviour they name, so the tests failed
+    for a reason unrelated to what they test.
+
+    A stub module makes them hermetic: same path taken everywhere. It does NOT
+    weaken anything, because none of these tests exercise simdrive itself; they
+    exercise what the script does AFTER confirming it is present.
+    """
+    stub = tmp_path / "stub-site"
+    (stub / "simdrive").mkdir(parents=True, exist_ok=True)
+    (stub / "simdrive" / "__init__.py").write_text("", encoding="utf-8")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(stub) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    return env
+
+
 def _mini_repo(tmp_path: Path) -> Path:
     """A throwaway tree with just enough of the repo for the preflight to run."""
     root = tmp_path / "repo"
@@ -269,7 +290,7 @@ def test_campaign_entry_point_refuses_a_chain_that_cannot_test(tmp_path, entry):
         args[args.index("catalog")] = "auth"
     else:
         args += ["--dry-run"]
-    r = _run(args, cwd=str(_REPO))
+    r = _run(args, cwd=str(_REPO), env=_env_with_stub_simdrive(tmp_path))
     combined = r.stdout + r.stderr
     assert "PREFLIGHT FAILED" in combined, (
         f"{entry.name} ran with an untestable chain:\n" + combined[-1200:])
@@ -309,7 +330,7 @@ def test_entry_point_refuses_when_the_precondition_helper_is_missing(tmp_path, e
         args += ["--device-cell", "C-pytest", "--no-keychain-reset"]
     else:
         args += ["--dry-run"]
-    r = _run(args, cwd=str(root))
+    r = _run(args, cwd=str(root), env=_env_with_stub_simdrive(tmp_path))
     combined = r.stdout + r.stderr
     assert "PRECONDITION HELPER MISSING" in combined, (
         f"{entry.name} ran without the precondition helper:\n" + combined[-1200:])
@@ -345,7 +366,7 @@ def test_entry_point_refuses_when_the_preflight_itself_is_not_executable(tmp_pat
         args += ["--device-cell", "C-pytest", "--no-keychain-reset"]
     else:
         args += ["--dry-run"]
-    r = _run(args, cwd=str(root))
+    r = _run(args, cwd=str(root), env=_env_with_stub_simdrive(tmp_path))
     combined = r.stdout + r.stderr
     assert "PREFLIGHT MISSING OR NOT EXECUTABLE" in combined, (
         f"{entry.name} ran with a non-executable preflight:\n" + combined[-1200:])

@@ -251,8 +251,13 @@ if (( DRY_RUN )); then
 fi
 
 # Invoke the subagent via headless Claude Code.
-if ! command -v claude &> /dev/null; then
-    echo "error: 'claude' CLI not found in PATH" >&2
+# Check the binary that will ACTUALLY be invoked. This used to test `claude`
+# while the call below runs "$CHAOS_CLAUDE_BIN", so the documented seam was
+# unusable: a stubbed agent still failed the availability check, and the check
+# was validating something other than what runs.
+CHAOS_CLAUDE_BIN="${CHAOS_CLAUDE_BIN:-claude}"
+if ! command -v "$CHAOS_CLAUDE_BIN" &> /dev/null; then
+    echo "error: '$CHAOS_CLAUDE_BIN' CLI not found in PATH" >&2
     exit 2
 fi
 
@@ -324,7 +329,6 @@ stop_live_capture() {
 }
 trap stop_live_capture EXIT
 
-CHAOS_CLAUDE_BIN="${CHAOS_CLAUDE_BIN:-claude}"
 if "$CHAOS_CLAUDE_BIN" -p "$(cat "$PROMPT_FILE")" \
      --append-system-prompt "Use the chaos-qa subagent. Stay strictly within budget." \
      --allowedTools $CHAOS_ALLOWED_TOOLS \
