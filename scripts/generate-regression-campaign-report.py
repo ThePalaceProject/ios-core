@@ -24,7 +24,13 @@ Usage::
     python3 scripts/generate-regression-campaign-report.py \
         --csv .regression-runs/<run-id>/findings.csv \
         --output .regression-runs/<run-id>/report.html \
-        [--run-id <run-id>] [--assets-root .regression-runs/<run-id>]
+        [--run-id <run-id>] [--assets-root .regression-runs/<run-id>] \
+        [--shards .regression-runs/<run-id>/shards]
+
+Exits 4 WITHOUT a verdict when the campaign executed 0 units, or has neither
+findings nor execution evidence — see "Coverage verdict" below. ``--shards``
+defaults to ``<csv-dir>/shards`` so that check never depends on remembering a
+flag.
 
 Pure stdlib — no third-party dependencies.
 """
@@ -42,6 +48,7 @@ from typing import Dict, List, Optional
 # Shared findings module (single source of truth for the schema + CSV I/O).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import regression_findings as rf  # noqa: E402
+import regression_shard_record as rsr  # noqa: E402
 
 FINDINGS_COLUMNS = list(rf.FINDINGS_COLUMNS)
 
@@ -177,6 +184,13 @@ td.zero { color: #cbd5e1; }
   display: block; margin-top: 4px; }
 .pair .cap { font-size: 11px; color: #64748b; }
 .empty { color: #94a3b8; font-style: italic; }
+.refusal { background: #7f1d1d; color: #fff; padding: 18px 24px; margin: 0;
+  font-size: 14px; line-height: 1.5; }
+.refusal h2 { margin: 0 0 6px; font-size: 18px; color: #fff; }
+.refusal code { background: rgba(255,255,255,.18); padding: 1px 5px;
+  border-radius: 4px; }
+tr.bad td, tr.bad th { background: #fef2f2; }
+.flag { color: #b91c1c; font-weight: 700; }
 """
 
 
@@ -258,7 +272,127 @@ def _render_gallery(rows, assets_root):
     return '<div class="gallery">' + "".join(pairs) + "</div>"
 
 
-def render(rows, run_id, assets_root):
+# ---------------------------------------------------------------------------
+# Coverage verdict — "found nothing" is not "ran nothing"
+# ---------------------------------------------------------------------------
+#
+# THE DEFECT THIS CLOSES. A campaign whose shards skipped every journey produced
+# an empty findings.csv, and this report rendered it as "No findings" — the same
+# artifact a genuinely clean regression produces. The report could not tell the
+# two apart because it only ever saw what was FOUND, never what was RUN.
+#
+# The executed count is the discriminator, and it now arrives as per-shard
+# execution records (scripts/regression_shard_record.py, written by
+# regression-area-worker.sh on every exit path). Three cases:
+#
+#   evidence present, executed > 0   -> render normally.
+#   evidence present, executed == 0  -> REFUSE. Nothing was tested.
+#   evidence absent  AND 0 findings  -> REFUSE. Indistinguishable from a
+#                                       campaign that never ran; a report with
+#                                       neither findings nor execution evidence
+#                                       asserts nothing and must not read clean.
+#
+# Absent evidence WITH findings renders (the campaign demonstrably did work),
+# carrying a visible "coverage unverified" note rather than a silent pass.
+
+VERDICT_OK = "ok"
+VERDICT_NO_EXECUTION = "no-execution"
+VERDICT_NO_EVIDENCE = "no-evidence"
+
+#: Non-zero exit for a refused report. Distinct from 2 (missing CSV) so a caller
+#: can tell "you pointed me at nothing" from "this campaign proved nothing".
+REFUSAL_EXIT = 4
+
+
+def coverage_verdict(rows: List[Dict[str, str]], records: List[Dict]) -> str:
+    if records:
+        executed = sum(int(r.get("executed", 0)) for r in records)
+        return VERDICT_OK if executed > 0 else VERDICT_NO_EXECUTION
+    return VERDICT_OK if rows else VERDICT_NO_EVIDENCE
+
+
+def _refusal_banner(verdict: str, summary: Dict) -> str:
+    if verdict == VERDICT_NO_EXECUTION:
+        detail = (
+            f"{summary['shards']} shard(s) reported "
+            f"<strong>{summary['executed']} executed unit(s)</strong> "
+            f"({summary['skipped']} skipped) in {summary['elapsed_s']}s. "
+            "Zero journeys ran, so zero findings means nothing was tested — "
+            "that is not a clean regression."
+        )
+    else:
+        detail = (
+            "There are no findings AND no per-shard execution records under "
+            "<code>&lt;run-dir&gt;/shards/</code>, so this run is "
+            "indistinguishable from a campaign that never started. "
+            "A report with nothing found and nothing proven run is not a pass."
+        )
+    return (
+        '<div class="refusal"><h2>&#9888; NO VERDICT — this campaign proved nothing</h2>'
+        f"<p>{detail}</p>"
+        "<p>Most common cause: the replay corpus is missing "
+        "(<code>~/.simdrive/recordings/&lt;journey&gt;/recording.yaml</code>) so every "
+        "journey is skipped. Diagnose with "
+        "<code>scripts/regression-preflight.sh --udid &lt;sim&gt;</code>; chaos "
+        "(<code>scripts/regression-chaos-fan.sh</code>) needs no recordings and is "
+        "the supported way to get real coverage.</p></div>"
+    )
+
+
+def _render_execution(records: List[Dict]) -> str:
+    """Per-shard executed/skipped/elapsed table.
+
+    Wall clock belongs in the artifact, not only in terminal scrollback: 21
+    shards finishing in 25 seconds is impossible, and that was visible at the
+    time only to whoever happened to look at the clock.
+    """
+    if not records:
+        return ('<p class="empty">No per-shard execution records '
+                '(&lt;run-dir&gt;/shards/) — coverage is UNVERIFIED for this run.</p>')
+    summary = rsr.execution_summary(records)
+    body = ""
+    for rec in sorted(records, key=lambda r: (r.get("device_cell", ""), r.get("area", ""))):
+        executed = int(rec.get("executed", 0))
+        spu = rsr.seconds_per_unit(rec)
+        implausible = rsr.is_implausibly_fast(rec)
+        bad = executed == 0 or implausible
+        rate = "—" if spu is None else f"{spu:.2f}s/unit"
+        if implausible:
+            rate = f'<span class="flag">{rate} &#9888;</span>'
+        if executed == 0:
+            executed_cell = '<span class="flag">0 &#9888;</span>'
+        else:
+            executed_cell = str(executed)
+        body += (
+            f'<tr class="{"bad" if bad else ""}">'
+            f'<th>{_esc(str(rec.get("device_cell", "?")))}</th>'
+            f'<td>{_esc(str(rec.get("area", "?")))}</td>'
+            f'<td class="num">{executed_cell}</td>'
+            f'<td class="num">{int(rec.get("passed", 0))}</td>'
+            f'<td class="num">{int(rec.get("failed", 0))}</td>'
+            f'<td class="num">{int(rec.get("skipped", 0))}</td>'
+            f'<td class="num">{float(rec.get("elapsed_s", 0.0)):.1f}s</td>'
+            f'<td class="num">{rate}</td>'
+            f'<td class="num">{int(rec.get("exit_code", 0))}</td></tr>'
+        )
+    note = ""
+    if summary["implausible"]:
+        note = ('<p class="muted"><span class="flag">&#9888;</span> shard(s) below '
+                f'{rsr.IMPLAUSIBLE_SECONDS_PER_UNIT:g}s per executed unit: '
+                f'{_esc(", ".join(summary["implausible"]))} — too fast to have '
+                'driven a simulator. Treat their results as unproven.</p>')
+    return (
+        f'<p class="muted">{summary["shards"]} shard(s) · '
+        f'<strong>{summary["executed"]} executed</strong> · '
+        f'{summary["passed"]} passed · {summary["failed"]} failed · '
+        f'{summary["skipped"]} skipped · {summary["elapsed_s"]:.1f}s total</p>'
+        '<table><tr><th>cell</th><th>area</th><th>executed</th><th>passed</th>'
+        '<th>failed</th><th>skipped</th><th>elapsed</th><th>rate</th>'
+        f'<th>exit</th></tr>{body}</table>{note}'
+    )
+
+
+def render(rows, run_id, assets_root, records=None):
     total = len(rows)
     by_sev = _counts(rows, "severity")
     by_cls = _counts(rows, "classification")
@@ -305,6 +439,11 @@ def render(rows, run_id, assets_root):
         _render_cluster(cid, rs, assets_root) for cid, rs in ordered) \
         or '<p class="empty">No clusters.</p>'
 
+    records = list(records or [])
+    verdict = coverage_verdict(rows, records)
+    exec_summary = rsr.execution_summary(records)
+    banner = "" if verdict == VERDICT_OK else _refusal_banner(verdict, exec_summary)
+
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -313,10 +452,13 @@ def render(rows, run_id, assets_root):
 <header>
   <h1>Regression Campaign Report</h1>
   <div class="meta">{('run: ' + _esc(run_id) + ' · ') if run_id else ''}\
-generated {now} · {total} findings · {len(groups)} dedup clusters</div>
+generated {now} · {total} findings · {len(groups)} dedup clusters · \
+{exec_summary['executed']} executed unit(s)</div>
 </header>
+{banner}
 <main>
   <section><h2>Summary</h2><div class="cards">{cards}</div></section>
+  <section><h2>Execution (what actually ran)</h2>{_render_execution(records)}</section>
   <section><h2>Device / OS coverage matrix</h2>{matrix}</section>
   <section><h2>Breakdowns</h2>
     <p><strong>Severity:</strong> {breakdown(by_sev, SEVERITY_COLORS)}</p>
@@ -336,19 +478,55 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--assets-root", default=None,
                     help="path prefix for evidence/screenshot links "
                          "(relative to the report's location)")
+    # Deliberately DEFAULTED, not required: the coverage verdict must not
+    # depend on the operator remembering a flag. The shards dir sits next to
+    # findings.csv in the run dir, which is where the worker writes it.
+    ap.add_argument("--shards", default=None, type=Path,
+                    help="dir of per-shard execution records "
+                         "(default: <csv-dir>/shards)")
     args = ap.parse_args(argv)
 
     if not args.csv.exists():
         print(f"Error: findings CSV not found: {args.csv}", file=sys.stderr)
         return 2
 
+    shards_path = args.shards or (args.csv.parent / rsr.SHARDS_DIRNAME)
+    records = rsr.load_records(str(shards_path))
+
     rows = load_findings(args.csv)
-    html_doc = render(rows, args.run_id, args.assets_root)
+    html_doc = render(rows, args.run_id, args.assets_root, records)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(html_doc, encoding="utf-8")
+
+    summary = rsr.execution_summary(records)
     print(f"Wrote report: {args.output} "
           f"({len(rows)} findings, {len(cluster_groups(rows))} clusters, "
+          f"{summary['executed']} executed units across {summary['shards']} shard(s), "
           f"{len(html_doc)} bytes)")
+
+    # Fail CLOSED. The report is still written — with the refusal banner at the
+    # top — because a silently-absent artifact is its own kind of nothing; but
+    # the exit code says loudly that no verdict was earned.
+    verdict = coverage_verdict(rows, records)
+    if verdict != VERDICT_OK:
+        if verdict == VERDICT_NO_EXECUTION:
+            reason = (f"{summary['shards']} shard(s) executed "
+                      f"{summary['executed']} unit(s) "
+                      f"({summary['skipped']} skipped)")
+        else:
+            reason = (f"no findings and no execution records under {shards_path}")
+        print(
+            "\n!!! NO VERDICT — this campaign proved nothing.\n"
+            f"!!! {reason}.\n"
+            "!!! Zero findings from zero executed journeys is NOT a clean regression.\n"
+            "!!! Diagnose: scripts/regression-preflight.sh --udid <sim>\n"
+            f"!!! Report (with refusal banner): {args.output}",
+            file=sys.stderr)
+        return REFUSAL_EXIT
+    if summary["implausible"]:
+        print(f"warn: implausibly fast shard(s): {', '.join(summary['implausible'])}"
+              f" (<{rsr.IMPLAUSIBLE_SECONDS_PER_UNIT:g}s per executed unit)",
+              file=sys.stderr)
     return 0
 
 

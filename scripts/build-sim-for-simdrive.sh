@@ -164,11 +164,33 @@ if [ "$DO_INSTALL" = "1" ] && [ -n "$UDID" ]; then
   # "Enable Hidden Libraries" toggle needed to add the A1QA test library). The
   # menu is gated on @AppStorage("showDeveloperSettings"); seed it ON. NOTE: the
   # toggle itself still must be flipped in-app — it fires the QA-registry refetch
-  # that the simctl default alone does not.
+  # that seeding the default alone does not.
+  #
+  # This used to be `simctl spawn <udid> defaults write <bundle-id> …` followed
+  # by `echo "✓ seeded"`. That writes the simulator HOST domain, NOT the app's
+  # container, so @AppStorage never saw it — the checkmark was false every single
+  # time, and the operator went looking for a Testing menu that was never going
+  # to appear. Write the container plist with the app terminated, then READ IT
+  # BACK. A seeded default is verified or it is not claimed.
   say "Seeding showDeveloperSettings=YES (reveals the Enable Hidden Libraries toggle)"
-  xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" showDeveloperSettings -bool YES 2>/dev/null \
-    && echo "  ✓ showDeveloperSettings seeded (relaunch to take effect)" \
-    || echo "  (could not seed showDeveloperSettings — set it in-app if needed)"
+  # shellcheck source=lib/sim-seed-defaults.sh
+  . "$REPO_ROOT/scripts/lib/sim-seed-defaults.sh"
+  xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
+  PREFS_PLIST="$(app_prefs_plist "$UDID" "$BUNDLE_ID" || true)"
+  if [ -z "$PREFS_PLIST" ]; then
+    die "Could not resolve the app's data container on $UDID.
+The app must be installed before its defaults can be seeded. Diagnose with:
+    xcrun simctl get_app_container $UDID $BUNDLE_ID data"
+  fi
+  if seed_app_default_bool "$PREFS_PLIST" showDeveloperSettings true; then
+    echo "  ✓ showDeveloperSettings=true — READ BACK from $PREFS_PLIST"
+  else
+    die "showDeveloperSettings did NOT land in the app's container.
+Without it the hidden Testing menu never appears and every A1QA / hidden-library
+journey silently tests the wrong thing. Diagnose with:
+    plutil -p \"$PREFS_PLIST\"
+Fallback that always works: long-press the version label in Settings for 5s."
+  fi
 
   if [ "$DO_LAUNCH" = "1" ]; then
     say "Launch-smoke (catch a FrontBoard SBMainWorkspace denial before handing to simdrive)"
@@ -179,9 +201,28 @@ if [ "$DO_INSTALL" = "1" ] && [ -n "$UDID" ]; then
       die "LAUNCH FAILED — $PID
 The app installed but the simulator refused to launch it. Do not hand to simdrive."
     fi
+    # Did the seeded default survive first launch? If the sim's cfprefsd had an
+    # older copy of this domain cached for the boot, it flushes that copy over
+    # the file we wrote and the key disappears — the one failure mode the
+    # pre-launch read-back cannot see. Reported, not fatal: it is a property of
+    # the simulator's boot state, not of this build, and the remedy is an erase.
+    if ! verify_app_default_bool "$PREFS_PLIST" showDeveloperSettings true; then
+      echo "  ⚠ showDeveloperSettings was seeded but is GONE after launch —" >&2
+      echo "    the sim's cfprefsd had this domain cached and overwrote it." >&2
+      echo "    The hidden Testing menu will NOT appear. Remedy:" >&2
+      echo "      xcrun simctl shutdown $UDID && xcrun simctl erase $UDID" >&2
+      echo "    then re-run this script, or long-press the version label 5s in-app." >&2
+    fi
   fi
 elif [ "$DO_INSTALL" = "1" ]; then
   echo "  (no -u UDID given — skipping install; build verified)"
+fi
+
+# The summary line below must describe what was CHECKED, not what was attempted.
+if [ -n "${PREFS_PLIST:-}" ]; then
+  DEV_MENU_LINE='showDeveloperSettings=true, read back from the app container → flip "Enable Hidden Libraries" in-app to add A1QA'
+else
+  DEV_MENU_LINE='not seeded (no install) — set it in-app: long-press the version label for 5s'
 fi
 
 # ── 4. summary ────────────────────────────────────────────────────────────────
@@ -193,7 +234,7 @@ cat <<EOF
   bundle id  : $BUNDLE_ID
   udid       : ${UDID:-<none — pass -u to install>}
   signing    : ad-hoc signed → keychain + download work on the sim (no entitlement / no fallback needed)
-  dev menu   : showDeveloperSettings seeded → flip "Enable Hidden Libraries" in-app to add A1QA
+  dev menu   : $DEV_MENU_LINE
 
   simdrive:  session_start(device_udid="${UDID:-<udid>}", app_bundle_id="$BUNDLE_ID")
 ────────────────────────────────────────────────────────────────────────────

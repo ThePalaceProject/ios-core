@@ -32,6 +32,9 @@
 # Exit codes:
 #   0 — fan completed (findings, if any, in findings.csv).
 #   2 — config error.
+#   4 — at least one area's chaos pass never drove the simulator (NO DRIVE).
+#       It explored 0 paths, so its 0 findings prove nothing about that area.
+#   6 — preflight failed; the chain cannot test, so the fan refused to start.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -140,6 +143,7 @@ echo "run-dir:     $RUN_DIR"
 echo ""
 
 total_ingested=0
+no_drive_areas=()
 
 for area in "${AREAS[@]}"; do
   SEEDS=()
@@ -170,11 +174,33 @@ for area in "${AREAS[@]}"; do
   # tested that bundle is measuring the signature, not the release.
   app_arg=()
   [[ -n "$APP_PATH" ]] && app_arg=(--app-path "$APP_PATH")
+  # The exit status has to survive BOTH the pipe and the `|| true`. It did not:
+  # `cmd | sed || true` reports sed's status, and `|| true` then discards even
+  # that — so run-chaos-pass.sh's NO-DRIVE exit 4 (a pass that never opened a
+  # simdrive session, i.e. explored 0 paths) arrived here as success and the fan
+  # went on to report "ingested 0 chaos finding(s)" as though the area were
+  # clean. That is the guard-shaped version of the original defect: the signal
+  # existed and nothing carried it. Read PIPESTATUS, and let a chaos pass that
+  # drove nothing fail its area rather than silently contribute zero.
+  # NOTE: this script runs `set -uo pipefail` WITHOUT -e. Do not add a
+  # `set +e`/`set -e` pair around this call — restoring -e would enable errexit
+  # for the rest of the loop and abort the fan on the first benign non-zero
+  # (e.g. the `ls -dt` glob miss just below).
   CHAOS_RUNS_ROOT="$area_chaos_root" "$CHAOS_PASS" \
     --udid "$SIM_ID" "${seed_args[@]+"${seed_args[@]}"}" \
     "${app_arg[@]+"${app_arg[@]}"}" \
     --max-paths "$MAX_PATHS" --max-minutes "$MAX_MINUTES" \
-    "${dry_arg[@]+"${dry_arg[@]}"}" 2>&1 | sed 's/^/    /' || true
+    "${dry_arg[@]+"${dry_arg[@]}"}" 2>&1 | sed 's/^/    /'
+  pass_rc=${PIPESTATUS[0]}
+  if [[ $pass_rc -eq 4 ]]; then
+    echo "    !!! NO DRIVE — chaos for area '$area' never opened a simdrive session." >&2
+    echo "    !!! It explored 0 paths, so its 0 findings prove nothing about $area." >&2
+    echo "    !!! Diagnose: scripts/regression-preflight.sh --udid $SIM_ID" >&2
+    no_drive_areas+=("$area")
+    continue
+  elif [[ $pass_rc -ne 0 ]]; then
+    echo "    warn: chaos pass for area '$area' exited $pass_rc (partial findings kept)" >&2
+  fi
 
   if [[ $DRY_RUN -eq 1 ]]; then
     # Dry-run produced a prompt.txt under the timestamp dir — that's the wiring
@@ -255,4 +281,13 @@ echo ""
 echo "=== chaos-fan summary ==="
 echo "  areas fanned:      ${#AREAS[@]}"
 echo "  findings ingested: $total_ingested → $FINDINGS_DIR/${DEVICE_CELL}__<area>.csv"
+
+# An area whose chaos pass never drove the simulator was not tested. Reporting
+# the fan as successful would re-launder exactly what run-chaos-pass.sh exits 4
+# to prevent.
+if [[ ${#no_drive_areas[@]} -gt 0 ]]; then
+  echo "  areas with NO DRIVE: ${no_drive_areas[*]}" >&2
+  echo "  This fan proved nothing about those areas — not a clean chaos pass." >&2
+  exit 4
+fi
 exit 0
