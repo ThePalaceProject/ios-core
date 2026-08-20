@@ -291,6 +291,36 @@ CHAOS_SESSIONS_DIR="${CHAOS_SESSIONS_DIR:-$HOME/.simdrive/sessions}"
 mkdir -p "$CHAOS_SESSIONS_DIR" 2>/dev/null || true
 SESSIONS_BEFORE="$(ls -1 "$CHAOS_SESSIONS_DIR" 2>/dev/null | wc -l | tr -d ' ')"
 
+# LIVE LOG CAPTURE — start before the agent, stop after.
+#
+# The simulator's on-disk store is near-blind to INFO level: measured 78
+# persisted against 4,472 live in one window (~98% absent), and the buffer
+# holding them dies with the device. A finding that quotes an info-level line
+# is therefore unverifiable the moment the run ends unless the run captured it
+# itself. rc-3.3.0-20260820 took no capture; hours later four quoted network
+# strings could not be checked at all, and the resulting zeros were misread as
+# evidence the lines never existed.
+#
+# --level debug includes info. Capture to the RUN DIR so the evidence travels
+# with the findings it backs.
+CHAOS_LOG_BIN="${CHAOS_LOG_BIN:-xcrun}"
+LIVE_LOG="$RUN_DIR/live.log"
+LOG_PID=""
+if (( ! DRY_RUN )); then
+    "$CHAOS_LOG_BIN" simctl spawn "$UDID" log stream --level debug \
+        --style compact >"$LIVE_LOG" 2>/dev/null &
+    LOG_PID=$!
+    # Give the stream a moment to attach, so early agent actions are covered.
+    sleep 1
+fi
+stop_live_capture() {
+    [[ -n "$LOG_PID" ]] || return 0
+    kill "$LOG_PID" 2>/dev/null || true
+    wait "$LOG_PID" 2>/dev/null || true
+    LOG_PID=""
+}
+trap stop_live_capture EXIT
+
 CHAOS_CLAUDE_BIN="${CHAOS_CLAUDE_BIN:-claude}"
 if "$CHAOS_CLAUDE_BIN" -p "$(cat "$PROMPT_FILE")" \
      --append-system-prompt "Use the chaos-qa subagent. Stay strictly within budget." \
@@ -345,7 +375,23 @@ fi
 # cause — see check-chaos-cause-discipline.py for the 3.3.0 cases that cost a
 # triage cycle each. --strict: a NEW run must emit the columns.
 CAUSE_CHECK="$REPO_ROOT/scripts/check-chaos-cause-discipline.py"
-if [[ -f "$CAUSE_CHECK" ]]; then
+# An ABSENT gate must shout, not skip. Guarding this with `-f` made the gate
+# optional in precisely the case where it is most needed — a tree that does not
+# carry the detector ran the whole check as a silent no-op and still printed
+# "run complete", which is indistinguishable from passing. Absence is now a hard
+# failure; CHAOS_SKIP_CAUSE_CHECK=1 is the only way past, and it is named so the
+# bypass appears in the command that used it.
+if [[ "${CHAOS_SKIP_CAUSE_CHECK:-0}" != "1" ]]; then
+    if [[ ! -f "$CAUSE_CHECK" ]]; then
+        {
+          echo ""
+          echo "!!! CAUSE GATE MISSING — expected $CAUSE_CHECK"
+          echo "!!! Refusing rather than skipping: a pass that cannot check its"
+          echo "!!! findings' cause discipline must not report them as clean."
+          echo "!!! Set CHAOS_SKIP_CAUSE_CHECK=1 to bypass deliberately."
+        } >&2
+        exit 5
+    fi
     if ! python3 "$CAUSE_CHECK" --strict "$FINDINGS_CSV"; then
         {
           echo ""
@@ -358,6 +404,24 @@ if [[ -f "$CAUSE_CHECK" ]]; then
         echo "info: run complete (CAUSE DISCIPLINE FAILED): $RUN_DIR" >&2
         exit 5
     fi
+fi
+
+stop_live_capture
+if (( ! DRY_RUN )) && [[ ! -s "$LIVE_LOG" ]]; then
+    {
+      echo ""
+      echo "!!! NO CAPTURE — this pass recorded no live log."
+      echo "!!! Expected: $LIVE_LOG"
+      echo "!!! The on-disk store is ~98% blind to INFO level and its buffer dies"
+      echo "!!! with the device, so any info-level line a finding quotes is"
+      echo "!!! unverifiable the moment this run ends. Findings produced without"
+      echo "!!! a capture cannot be evidenced later by anyone, which is the same"
+      echo "!!! class of defect as a pass that never drove the simulator."
+      echo "!!! Most common cause: the sim is not booted, or 'log stream' was"
+      echo "!!! denied. Check: xcrun simctl spawn $UDID log stream --level debug"
+    } >&2
+    echo "info: run complete (NO CAPTURE): $RUN_DIR" >&2
+    exit 6
 fi
 
 echo "info: run complete: $RUN_DIR"

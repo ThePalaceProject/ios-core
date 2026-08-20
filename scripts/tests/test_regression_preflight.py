@@ -165,12 +165,29 @@ def _stub_agent(path: Path, *, open_session_in: Path | None) -> Path:
     return path
 
 
+def _stub_log_bin(path: Path) -> Path:
+    """A fake `xcrun` whose `log stream` emits lines, so the live-capture guard
+    sees a real capture. A chaos pass now REQUIRES one: findings that quote
+    info-level lines are unverifiable once the run ends unless the run captured
+    them itself (see test_run_chaos_pass_live_capture.sh)."""
+    path.write_text(
+        "#!/usr/bin/env bash\n"
+        'for a in "$@"; do [ "$a" = "stream" ] && S=1; done\n'
+        'if [ "${S:-0}" = "1" ]; then\n'
+        "  while true; do echo '2026-01-01 00:00:00.000 I  Palace[1] line'; sleep 0.05; done\n"
+        "fi\n"
+        "exit 0\n")
+    path.chmod(0o755)
+    return path
+
+
 def _run_chaos(tmp_path, sessions: Path, agent: Path):
     runs = tmp_path / "runs"
     runs.mkdir(exist_ok=True)
     env = dict(os.environ,
                CHAOS_SESSIONS_DIR=str(sessions),
                CHAOS_CLAUDE_BIN=str(agent),
+               CHAOS_LOG_BIN=str(_stub_log_bin(tmp_path / "xcrun-stub.sh")),
                CHAOS_RUNS_ROOT=str(runs))
     return _run(["bash", str(_CHAOS_PASS),
                  "--udid", FAKE_UDID, "--seed", "cold-launch",

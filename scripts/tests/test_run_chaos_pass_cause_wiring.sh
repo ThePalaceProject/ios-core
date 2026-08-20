@@ -80,4 +80,32 @@ grep -q 'exit 5' "$RUNNER" \
   || fail "runner has no distinct exit code for a cause-discipline failure"
 pass "runner invokes --strict on \$FINDINGS_CSV and exits 5 on failure"
 
+# --- 6. AN ABSENT GATE MUST SHOUT, NOT SKIP --------------------------------
+#
+# A gate guarded by a file-existence test makes itself optional in exactly the
+# case where you most need it: when the file is missing or non-executable, the
+# campaign proceeds and prints "run complete". That is indistinguishable from
+# passing, and it is how a gate propagates to nothing. Review of #1401 showed
+# all three of this repo's new gates had the shape; these assertions pin the
+# fix so it cannot regress.
+for pair in \
+  "$RUNNER|CHAOS_SKIP_CAUSE_CHECK" \
+  "$REPO_ROOT/scripts/regression-area-worker.sh|REGRESSION_SKIP_PREFLIGHT" \
+  "$REPO_ROOT/scripts/regression-chaos-fan.sh|REGRESSION_SKIP_PREFLIGHT"
+do
+  f="${pair%%|*}"; bypass="${pair##*|}"
+  [[ -f "$f" ]] || continue
+  # The gate's own guard must not be a bare file/exec test that skips silently.
+  if grep -qE 'if \[\[ +-f +"\$CAUSE_CHECK" +\]\]' "$f"; then
+    fail "$(basename "$f"): gate guarded by a bare -f test — absent file skips it silently"
+  fi
+  if grep -qE '&& +-x +"\$PREFLIGHT" +\]\]' "$f"; then
+    fail "$(basename "$f"): gate guarded by -x — a non-executable or missing preflight skips it silently"
+  fi
+  # And the ONLY way past a missing gate must be the named bypass.
+  grep -q "$bypass" "$f" \
+    || fail "$(basename "$f"): no named bypass ($bypass); absence must be either a hard failure or an explicit opt-out"
+done
+pass "an absent or non-executable gate fails hard; the named bypass is the only way past"
+
 echo "ALL WIRING CHECKS PASSED"

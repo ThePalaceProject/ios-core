@@ -84,7 +84,21 @@ fi
 # check first. Set REGRESSION_SKIP_PREFLIGHT=1 to bypass ONLY when you are
 # deliberately exercising the harness itself (the preflight's own tests do this).
 PREFLIGHT="$SCRIPT_DIR/regression-preflight.sh"
-if [[ "${REGRESSION_SKIP_PREFLIGHT:-0}" != "1" && -x "$PREFLIGHT" ]]; then
+# `-x "$PREFLIGHT"` made the precondition optional whenever the file was
+# missing or non-executable — the campaign proceeded silently, which is
+# indistinguishable from a passing preflight. Absence is now a hard refusal;
+# REGRESSION_SKIP_PREFLIGHT=1 remains the single named bypass.
+if [[ "${REGRESSION_SKIP_PREFLIGHT:-0}" != "1" ]]; then
+  if [[ ! -x "$PREFLIGHT" ]]; then
+    {
+      echo ""
+      echo "!!! PREFLIGHT MISSING OR NOT EXECUTABLE — expected $PREFLIGHT"
+      echo "!!! Refusing rather than skipping: a campaign that cannot verify its"
+      echo "!!! chain must not start, because a vacuous green looks like a pass."
+      echo "!!! Set REGRESSION_SKIP_PREFLIGHT=1 to bypass deliberately."
+    } >&2
+    exit 2
+  fi
   if ! "$PREFLIGHT" --udid "$SIM_ID" --skip-agent >/dev/null 2>&1; then
     {
       echo ""
