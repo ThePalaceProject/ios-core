@@ -102,7 +102,7 @@ auto-moves to *In Progress* once any sub-task is *In Progress*; that's expected.
 
 ---
 
-## 3. Two gotchas that will bite you
+## 3. Three gotchas that will bite you
 
 1. **`jira_create_issue` `description` stores `\n` literally.** Passed as a plain
    parameter, the two-character sequence `\n` is saved verbatim (you get literal `\n` in
@@ -113,6 +113,25 @@ auto-moves to *In Progress* once any sub-task is *In Progress*; that's expected.
    `comment` param rejects markdown ("Operation value must be an Atlassian Document").
    Just omit the comment on the transition; if you want a note, post it separately with
    `jira_add_comment` after the transition.
+3. **The create response is NOT what Jira stored — read the issue back and *diff* it.**
+   `jira_create_issue` echoes a cleaned-up `description` in its result. That echo is a
+   rendering of what you sent, not a read of what the server holds, so it looks like
+   verification and is not. One create call on PP-4997 produced **three** independent
+   corruptions, none visible in the echo:
+   - Markdown headings persisted escaped (`**Heading**` -> `\*\*Heading\*\*`) and render
+     as literal asterisks. Use Jira wiki `h3.` headings instead of `**bold**`.
+   - Every blank line was eaten, gluing headings to their paragraphs.
+   - `+` characters were silently dropped: a quoted PR title, "durable downloads +
+     registry resilience + offline-safe loans", stored double-spaced where each `+` had
+     been — a misquoted citation in a ticket whose argument rested on citing that PR.
+     (`+text+` is also Jira wiki underline, so avoid `+` in prose entirely.)
+
+   After creating, call `jira_get_issue ... fields=description` and **compare the stored
+   text against what you sent**. Do not skim it for the problem you already suspect: on
+   PP-4997 a reviewer did read the issue back and still caught only one of the three,
+   because they went looking for the escaped asterisks and read straight past the dropped
+   plus signs sitting in the same response. Reading the artifact back is necessary and
+   not sufficient — diff, don't scan. Fix what you find with `jira_update_issue`.
 
 ---
 
@@ -135,5 +154,6 @@ of the board is that it reflects reality right now.
 - [ ] Reads well to a non-engineer; no diff-dump, no `file:line` soup.
 - [ ] Story + Sub-tasks (or Epic + Stories) shape fits the size; each child self-contained.
 - [ ] Real newlines in descriptions (not literal backslash-n).
+- [ ] Issue read back with `jira_get_issue` and DIFFED against what was sent (the create echo is not the stored text).
 - [ ] Pointed with a Fibonacci value on `customfield_10033`; assigned; parent Story in the active sprint.
 - [ ] Statuses reflect reality (In Progress / Code Review / Done set as work moves).
