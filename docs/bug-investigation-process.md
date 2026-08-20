@@ -12,6 +12,11 @@ culture, half **enforced gate** — see "Enforcement".
    ground truth: fetch the live feed/payload, pull the actual crash log, or
    reproduce on device/sim. Confirm the failing *shape* matches your
    hypothesis. Do NOT collapse to a fix off a plausible-sounding cause.
+   If the moment has passed and all you have is a quoted log fragment, the
+   simulator's own log store usually still holds the full window — see
+   [`Testing/simulator-log-recovery.md`](./Testing/simulator-log-recovery.md).
+   Recovering it beats re-driving: it is evidence about the ORIGINAL
+   observation, not a new one.
 2. **Enumerate ≥3 rival causes** and kill each by *evidence*, not plausibility.
    The first diagnosis is a hypothesis, not a conclusion. (The shape-preflight
    `hypothesis-ledger` nudge says the same thing.)
