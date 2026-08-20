@@ -635,6 +635,41 @@ echo "  failed:   $fail_count"
 echo "  skipped:  $skip_count"
 echo "  findings: $finding_count → $FINDINGS_CSV"
 
+# A shard that executed NOTHING must not be able to report a clean pass.
+# This worker used to `exit 0` after skipping every journey in the group, so a
+# campaign whose replay corpus was missing produced 0 passes, 0 failures, 0
+# findings — which merges into findings.csv and report.html as a green
+# regression. Measured on the 3.3.0 candidate: 21 shards, 96 SKIPs, 0 journeys
+# executed, 0 evidence files, and a report that read as "no findings".
+# Zero coverage is a blocker, not a pass. Say so loudly, record it with the skip
+# log as evidence, and exit non-zero so the caller cannot mistake it for success.
+if [[ $pass_count -eq 0 && $fail_count -eq 0 && $skip_count -gt 0 ]]; then
+  echo ""
+  echo "!!! NO COVERAGE — $skip_count/$skip_count journeys skipped, 0 executed."
+  echo "!!! This shard proved NOTHING about $AREA_GROUP on $DEVICE_CELL."
+  echo "!!! Most common cause: no recording at ~/.simdrive/recordings/<journey>/recording.yaml."
+  echo "!!! Chaos (scripts/regression-chaos-fan.sh) does NOT need recordings and is the"
+  echo "!!! supported way to get real coverage for this area."
+  novc="$RUN_DIR/logs/$DEVICE_CELL/${AREA_GROUP}__no-coverage.txt"
+  mkdir -p "$(dirname "$novc")"
+  {
+    echo "area-group:  $AREA_GROUP"
+    echo "device-cell: $DEVICE_CELL"
+    echo "sim:         $SIM_ID"
+    echo "passed=$pass_count failed=$fail_count skipped=$skip_count"
+    echo "commit:      $FIRST_SEEN_COMMIT"
+  } > "$novc"
+  python3 "$FINDINGS" append "$FINDINGS_CSV" \
+      --id "${AREA_GROUP}-${DEVICE_CELL}-NO-COVERAGE" \
+      --area "$AREA_GROUP" --device-cell "$DEVICE_CELL" \
+      --severity blocker --classification other \
+      --evidence "$novc" --first-seen-commit "$FIRST_SEEN_COMMIT" \
+      --dedup-cluster no-coverage \
+      --disposition "shard executed 0 of $skip_count journeys; result is vacuous, not a pass" \
+    || echo "  warn: could not record the no-coverage finding" >&2
+  exit 3
+fi
+
 if [[ $RUN_CHAOS -eq 1 ]]; then
   echo ""
   echo "--- chaos fan for area '$AREA_GROUP' ---"
