@@ -95,7 +95,7 @@ def test_build_rows_severity_by_class():
 _EXPECTED_COLUMNS = [
     "id", "area", "device_cell", "severity", "classification", "verified",
     "evidence_paths", "screenshot_pair", "first_seen_commit", "dedup_cluster",
-    "disposition",
+    "disposition", "suspected_cause", "cause_status",
 ]
 
 

@@ -121,7 +121,7 @@ def test_harvest_missing_dir_returns_empty(tmp_path):
 _EXPECTED_COLUMNS = [
     "id", "area", "device_cell", "severity", "classification", "verified",
     "evidence_paths", "screenshot_pair", "first_seen_commit", "dedup_cluster",
-    "disposition",
+    "disposition", "suspected_cause", "cause_status",
 ]
 
 

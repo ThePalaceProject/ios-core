@@ -213,10 +213,14 @@ def test_csv_row_matches_buildplan_schema(fixtures, tmp_path):
     assert rows[0] == vd.CSV_HEADER
     assert rows[0] == ["id", "area", "device_cell", "severity", "classification",
                        "verified", "evidence_paths", "screenshot_pair",
-                       "first_seen_commit", "dedup_cluster", "disposition"]
+                       "first_seen_commit", "dedup_cluster", "disposition",
+                       "suspected_cause", "cause_status"]
     row = rows[1]
     assert row[4] == "visual-parity"     # classification
     assert row[5] == "false"             # verified starts false
+    # A pixel diff observes a difference and claims no mechanism for it.
+    assert row[11] == ""                 # suspected_cause
+    assert row[12] == "none"             # cause_status
     assert "subtype=empty_skeleton" in row[6]
 
 

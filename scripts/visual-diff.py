@@ -71,10 +71,12 @@ from PIL import Image, ImageDraw
 # ---------------------------------------------------------------------------
 # Shared campaign findings.csv schema (BUILD-PLAN contract).
 # ---------------------------------------------------------------------------
+# Mirrors regression_findings.FINDINGS_COLUMNS; the pinned-order equality is
+# asserted by test_visual_diff.test_writes_through_real_shared_module.
 CSV_HEADER = [
     "id", "area", "device_cell", "severity", "classification", "verified",
     "evidence_paths", "screenshot_pair", "first_seen_commit", "dedup_cluster",
-    "disposition",
+    "disposition", "suspected_cause", "cause_status",
 ]
 
 # Tuning defaults. Calibratable per-area (design open-question #3).
@@ -113,6 +115,9 @@ class Finding:
             self.fid, self.area, self.device_cell, self.severity, self.classification,
             "false", self._evidence(), self.screenshot_pair, self.first_seen_commit,
             "", "",
+            # A pixel diff reports a difference; it never claims a mechanism.
+            # `none` is the honest cause status, not an empty placeholder.
+            "", "none",
         ]
 
     def to_dict(self) -> dict:

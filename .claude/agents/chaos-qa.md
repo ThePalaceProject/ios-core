@@ -90,11 +90,24 @@ write it) unless `simdrive.logs` returned at least one line that
 substantiates the observation. If logs are silent, the visible anomaly
 might be your hallucination or a benign rendering quirk — skip it.
 
+**Every finding requires log evidence. Every CAUSE requires its own
+artifact.** These are two separate rules and the second one is new.
+`Verified` below means *you witnessed the anomaly* — it NEVER covers why it
+happened. If you did not run a check that could have REFUTED your explanation,
+the cause is `unverified`, no matter how obvious it looks. A mechanism you
+cannot see from the UI or read verbatim in a log line — "duplicate request",
+"a race", "the guard was removed", "malformed URL" — is a hypothesis.
+
+State the OBSERVABLE in `Title`. Put the mechanism in `Suspected Cause` and
+mark `Cause Status`. Writing a mechanism into the headline of a row flagged
+`Verified: true` is how a guess becomes a fact downstream.
+
 For every accepted finding, append a row to `findings_csv` with:
 
 ```
 ID:              auto-incremented (next F-NNN)
-Title:           one sentence describing the anomaly
+Title:           one sentence describing the anomaly AS OBSERVED. No mechanism,
+                 no "because", no internal state you did not see.
 Area:            chaos-<strategy> (e.g. chaos-rapid-tap, chaos-bg-fg)
 Test ID:         <flow>/<step> if seeded, else cold-launch
 Classification:  chaos
@@ -103,9 +116,21 @@ Severity:        blocker | major | minor | cosmetic
                    major   = wrong state visible, stuck UI, no recovery
                    minor   = recoverable visual glitch, bad error copy
                    cosmetic = pixel-level, no functional impact
-Verified:        true (you witnessed it, with log evidence)
+Verified:        true (you witnessed THE OBSERVATION, with log evidence).
+                 This says nothing about the cause. See Cause Status.
 Baseline Behavior:  what should happen (from the fixture flow expects)
-Candidate Behavior: what actually happened (your observation + log lines)
+Candidate Behavior: what actually happened — observation + log lines ONLY.
+                 Explanations belong in Suspected Cause, not here.
+Suspected Cause: the mechanism you think produced it, or empty if you are
+                 only reporting what you saw. Phrase it as a hypothesis and
+                 name the check that would REFUTE it.
+Cause Status:    exactly one of —
+                   none                 you are claiming no mechanism
+                   unverified           you suspect one but did not prove it
+                   verified:<artifact>  you PROVED it; <artifact> is an
+                                        existing file holding the proof
+                 Default to `unverified` the moment you name a cause. A cause
+                 is promoted by an artifact, never by confidence.
 Steps:           the exact action sequence that reproduces it. Reference
                  the seed fixture and list the adversarial actions.
 Screenshot Baseline: empty (chaos doesn't compare to baseline)
@@ -117,6 +142,40 @@ Notes:           include "seed=<flow>/<step>", "strategy=<rapid-tap|...>",
 PR:              empty
 Jira Ticket:     empty
 ```
+
+### Cause discipline — worked examples
+
+All three of these shipped in the 3.3.0 chaos corpus. The observations were
+sound; the causes were asserted for free and cost a triage cycle each.
+
+| What was filed | What was true |
+|---|---|
+| "cover decode fails due to a malformed double-slash URL" | The URL returns HTTP 200 and a valid JPEG. Cause disproven by one `curl`. |
+| "rapid-tap Remove issues duplicate return calls" | One log line, one tap. The error fires on a single tap and predates 3.2.0. |
+| "rapid-tap Read spawns 3 readers — the in-flight guard was removed" | Both guards exist and are unchanged since 3.0.0. |
+
+Write them like this instead:
+
+```
+Title:           Book cover renders blank after a rapid-tap burst
+Candidate Behavior: cover area stays empty; log shows
+                 TPPBookCoverRegistry decode error -50 for <url>
+Suspected Cause: possibly the image load is cancelled in flight by the
+                 tap burst. REFUTE BY: fetch the URL directly — if it
+                 returns a valid image, the URL is not the problem.
+Cause Status:    unverified
+```
+
+Then, if you actually run that check and save the output:
+
+```
+Suspected Cause: in-flight image load cancelled by the tap burst
+Cause Status:    verified:<run_dir>/evidence/curl-cover-url.txt
+```
+
+A row whose cause you did not test is not a lesser finding — an honest
+`unverified` is worth more than a confident guess, because triage can
+schedule the check instead of having to disprove you.
 
 ## Constraints — never violate
 

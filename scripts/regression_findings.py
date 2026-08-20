@@ -11,7 +11,13 @@ writer elsewhere.
 findings.csv schema (one row per raw finding) — FINDINGS_COLUMNS, order is the
 contract:
     id, area, device_cell, severity, classification, verified, evidence_paths,
-    screenshot_pair, first_seen_commit, dedup_cluster, disposition
+    screenshot_pair, first_seen_commit, dedup_cluster, disposition,
+    suspected_cause, cause_status
+
+  - `verified` scopes to the OBSERVATION only. Whether the finding's stated
+    mechanism is established is carried separately in `cause_status`
+    (none | unverified | verified:<artifact>). Collapsing the two is how a
+    guess reads as a fact downstream; see check-chaos-cause-discipline.py.
 
   - classification ∈ FINDING_CLASSIFICATIONS
   - verified = "false" until the coordinator hermetic re-verify flips it true.
@@ -67,6 +73,8 @@ FINDINGS_COLUMNS = [
     "first_seen_commit",
     "dedup_cluster",
     "disposition",
+    "suspected_cause",
+    "cause_status",
 ]
 # Back-compat alias for internal callers that referenced the header by name.
 FINDINGS_HEADER = FINDINGS_COLUMNS
@@ -172,6 +180,8 @@ class Finding:
     first_seen_commit: str = ""
     dedup_cluster: str = ""
     disposition: str = ""
+    suspected_cause: str = ""
+    cause_status: str = ""
 
     def to_row(self) -> dict[str, str]:
         if self.classification not in FINDING_CLASSIFICATIONS:
@@ -195,6 +205,8 @@ class Finding:
             "first_seen_commit": self.first_seen_commit,
             "dedup_cluster": self.dedup_cluster,
             "disposition": self.disposition,
+            "suspected_cause": self.suspected_cause,
+            "cause_status": self.cause_status,
         }
 
     def has_evidence(self) -> bool:
@@ -266,6 +278,11 @@ def translate_chaos_row(
         screenshot_pair=sshot,
         severity=(row.get("Severity") or "").strip().lower(),
         first_seen_commit=first_seen_commit,
+        suspected_cause=(row.get("Suspected Cause") or "").strip(),
+        # A legacy row has no Cause Status column. It is NOT "no cause claimed"
+        # — its Title may well assert a mechanism — so it degrades to
+        # `unverified`, the honest reading, rather than to `none`.
+        cause_status=(row.get("Cause Status") or "").strip() or "unverified",
     )
 
 

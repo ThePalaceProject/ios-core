@@ -51,11 +51,15 @@ rf = _load_module()
 # ── 1. pinned module API ──────────────────────────────────────────────────────
 
 
-def test_columns_are_the_pinned_eleven():
+def test_columns_are_the_pinned_thirteen():
+    # `verified` scopes to the OBSERVATION; `cause_status` carries whether the
+    # finding's stated MECHANISM is established. They were one field until the
+    # 3.3.0 campaign, where three clusters had a sound observation and a wrong
+    # stated cause that read as verified downstream.
     assert rf.FINDINGS_COLUMNS == [
         "id", "area", "device_cell", "severity", "classification", "verified",
         "evidence_paths", "screenshot_pair", "first_seen_commit",
-        "dedup_cluster", "disposition",
+        "dedup_cluster", "disposition", "suspected_cause", "cause_status",
     ]
     # alias kept for internal callers
     assert rf.FINDINGS_HEADER == rf.FINDINGS_COLUMNS

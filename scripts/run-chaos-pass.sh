@@ -154,7 +154,7 @@ PROMPT_FILE="$RUN_DIR/prompt.txt"
 
 # CSV header (so the file is valid even if no findings emitted).
 cat > "$FINDINGS_CSV" <<'CSV'
-ID,Title,Area,Test ID,Classification,Severity,Verified,Baseline Behavior,Candidate Behavior,Steps,Screenshot Baseline,Screenshot Candidate,Notes,PR,Jira Ticket
+ID,Title,Area,Test ID,Classification,Severity,Verified,Baseline Behavior,Candidate Behavior,Suspected Cause,Cause Status,Steps,Screenshot Baseline,Screenshot Candidate,Notes,PR,Jira Ticket
 CSV
 
 # Pre-launch state injection. Skip during dry-run — these have real side
@@ -337,6 +337,27 @@ if [[ "$SESSIONS_AFTER" -le "$SESSIONS_BEFORE" ]]; then
     } >&2
     echo "info: run complete (NO DRIVE): $RUN_DIR" >&2
     exit 4
+fi
+
+# Cause discipline: a finding may report what it SAW for free, but a stated
+# mechanism has to declare whether it was actually established. Without this,
+# `Verified: true` (scoped to the observation) reads downstream as a verified
+# cause — see check-chaos-cause-discipline.py for the 3.3.0 cases that cost a
+# triage cycle each. --strict: a NEW run must emit the columns.
+CAUSE_CHECK="$REPO_ROOT/scripts/check-chaos-cause-discipline.py"
+if [[ -f "$CAUSE_CHECK" ]]; then
+    if ! python3 "$CAUSE_CHECK" --strict "$FINDINGS_CSV"; then
+        {
+          echo ""
+          echo "!!! CAUSE DISCIPLINE — findings assert causes they did not establish."
+          echo "!!! Every finding needs a Cause Status: none | unverified |"
+          echo "!!! verified:<artifact>. Default to 'unverified' the moment you name"
+          echo "!!! a mechanism; a cause is promoted by an artifact, never by"
+          echo "!!! confidence. Findings CSV: $FINDINGS_CSV"
+        } >&2
+        echo "info: run complete (CAUSE DISCIPLINE FAILED): $RUN_DIR" >&2
+        exit 5
+    fi
 fi
 
 echo "info: run complete: $RUN_DIR"
