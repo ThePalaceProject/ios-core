@@ -44,14 +44,41 @@ claimed, and a pass running on that device is not disturbed. This is the point:
 evidence recovery must never require taking a simulator away from whoever is
 using it.
 
-**It reads system subsystems, not the app's own narration.** The shim carries
-partial metadata, so the app's `os_log` output renders as
-`<compose failure [UUID]>`. `com.apple.CFNetwork`, `com.apple.network`,
-`runningboard`, and WebKit come through complete. That is enough to settle
-network- and lifecycle-shaped questions — how many requests were issued, whether
-they succeeded, whether a process was respawned — and not enough to read what
-the app said about itself. Know which kind of question you have before you
-start.
+**It reads what was PERSISTED, which is not everything the device logged.**
+Two separate gaps, and the second one is easy to miss because it looks like a
+real negative:
+
+- The app's own `os_log` output renders as `<compose failure [UUID]>` — the
+  shim carries partial metadata and cannot resolve app format strings.
+- **Info-level records are ~98% absent.** Measured on one window: debug 5,861
+  of 5,972 and error 133 of 139 came through; info, 78 of 4,472. Info records
+  live in a buffer that is never written to disk, so no combination of log-level
+  flags recovers them from an archive.
+
+The second gap has teeth because ordinary network chatter is info level. TLS
+teardown, `nw_endpoint_handler_cancel`, boringssl warning alerts — grep this
+store for any of them and you get a confident zero from a window that held
+hundreds. An earlier version of this page claimed system subsystems "come
+through complete." That was wrong, and it produced exactly that false zero
+during a live investigation: four quoted log strings were reported as
+non-existent across three device cells when they were simply info level.
+
+**Info records are recoverable while the simulator is still booted**, with a
+live read that sees the unpersisted buffer:
+
+```bash
+xcrun simctl spawn <UDID> log show --start '...' --end '...' \
+    --style compact --info --debug
+```
+
+That spawns a process on the device, so it requires owning the simulator —
+the trade this script otherwise avoids. **Shut the simulator down and the info
+records are gone permanently.** If a pass produced evidence you may need, read
+it live before the device is reclaimed.
+
+So: this script for debug- and error-level evidence — CFNetwork task lifecycle,
+process spawns, WebKit errors. A live read for anything info level. Neither for
+the app's own narration.
 
 **Coverage is finite.** The store rotates. Check what a device still holds
 before assuming a window is recoverable:

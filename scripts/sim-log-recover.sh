@@ -39,11 +39,33 @@
 #      (this script's optional 4th argument).
 #
 # The same missing metadata means the app's OWN os_log lines render as
-# `<compose failure [UUID]>`. System subsystems come through complete:
-# com.apple.CFNetwork, com.apple.network:connection, runningboard, WebKit.
-# In practice that is enough to settle network- and lifecycle-shaped questions
-# (how many requests were issued, did they succeed, was a process respawned)
-# but not to read the app's own narration.
+# `<compose failure [UUID]>`.
+#
+#   3. INFO-LEVEL RECORDS ARE MOSTLY NOT THERE. This store holds what was
+#      PERSISTED. Measured on one window: debug 5,861 of 5,972 and error 133 of
+#      139 come through, but info 78 of 4,472 — 98% absent. Info records live in
+#      a buffer that is not written to disk, so an archive read simply cannot
+#      see them, at any log level flag.
+#
+#      This is not a small caveat. Ordinary network chatter — TLS teardown,
+#      nw_endpoint_handler_cancel, boringssl warning alerts — is info level, so
+#      grepping this store for it returns a confident zero from a window that
+#      contained hundreds. An earlier version of this header claimed system
+#      subsystems "come through complete"; that was wrong and it produced
+#      exactly that false zero on a live investigation.
+#
+#      IF THE SIMULATOR IS STILL BOOTED, info records are recoverable with a
+#      LIVE read, which sees the unpersisted buffer:
+#        xcrun simctl spawn <UDID> log show --start ... --end ... \
+#            --style compact --info --debug
+#      That spawns a process on the device, so it needs ownership of the sim —
+#      which is the trade this script otherwise avoids. Shut the sim down and
+#      the info records are gone permanently.
+#
+# So: use this script for debug/error-level evidence — CFNetwork task
+# lifecycle, process spawns, WebKit errors — which is enough for "how many
+# requests were issued, did they succeed, was a process respawned". Use a live
+# read for anything info level, and for the app's own narration use neither.
 #
 # TIME IS LOCAL. Chaos shard directories are named in UTC; the timestamps this
 # tool wants are local, so a shard named ...T15-06-59Z is 11:06 in a UTC-4 zone.
