@@ -24,14 +24,21 @@ SCRIPT = Path(__file__).resolve().parents[1] / "differential_check.py"
 SIMCTL = {
     "devices": {
         "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
-            {"udid": "AAAA0000-0000-0000-0000-000000000001", "name": "iPhone 16 Pro"},
-            {"udid": "AAAA0000-0000-0000-0000-000000000002", "name": "iPhone 16 Pro"},
+            {"udid": "AAAA0000-0000-0000-0000-000000000001", "name": "iPhone 16 Pro",
+             "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro"},
+            # Custom-named on purpose: a purpose-built baseline sim is renamed,
+            # and comparing names instead of types refuses it. That was a real
+            # false DEVICE-MISMATCH on the first pair this tool was asked to run.
+            {"udid": "AAAA0000-0000-0000-0000-000000000002", "name": "baseline-iphone16pro-260",
+             "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro"},
         ],
         "com.apple.CoreSimulator.SimRuntime.iOS-26-1": [
-            {"udid": "BBBB0000-0000-0000-0000-000000000003", "name": "iPad Pro 11-inch (M5)"},
+            {"udid": "BBBB0000-0000-0000-0000-000000000003", "name": "iPad Pro 11-inch (M5)",
+             "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M5-12GB"},
         ],
         "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
-            {"udid": "CCCC0000-0000-0000-0000-000000000004", "name": "iPhone 16 Pro"},
+            {"udid": "CCCC0000-0000-0000-0000-000000000004", "name": "iPhone 16 Pro",
+             "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro"},
         ],
     }
 }
@@ -63,6 +70,21 @@ def run(tmp_path: Path, cand_udid: str, base_udid: str, per_udid: dict[str, str]
          "--signature", signature, "--witness", witness,
          "--recover-cmd", make_recover(tmp_path, per_udid), "--simctl-json", str(sim)],
         capture_output=True, text=True)
+
+
+def test_a_renamed_baseline_of_the_same_type_still_compares(tmp_path):
+    """CAND and BASE differ in NAME and share a deviceTypeIdentifier.
+
+    The first real pair this tool was handed refused with DEVICE-MISMATCH
+    because the baseline sim had been given a descriptive name. Comparing the
+    type identifier is the fix; this pins it.
+    """
+    r = run(tmp_path, CAND, BASE, {CAND: "fulcrum\nDECODE-FAIL\n", BASE: "fulcrum\n"})
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["comparable"] is True
+    assert out["candidate"]["device"] != out["baseline"]["device"], "fixture must differ in name"
+    assert out["candidate"]["device_type"] == out["baseline"]["device_type"]
 
 
 def test_valid_comparison_emits_counts(tmp_path):

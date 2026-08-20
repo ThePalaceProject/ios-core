@@ -59,8 +59,16 @@ from pathlib import Path
 DEFAULT_RECOVER = str(Path(__file__).resolve().parent / "sim-log-recover.sh")
 
 
-def device_of(udid: str, simctl_json: str | None) -> tuple[str, str]:
-    """Return (device_name, os_version) for a UDID, or raise."""
+def device_of(udid: str, simctl_json: str | None) -> tuple[str, str, str]:
+    """Return (device_type_identifier, os_version, display_name) for a UDID.
+
+    The TYPE identifier is what the device check compares, never the name. A
+    purpose-built baseline simulator is routinely given a custom name
+    ("baseline-ipad11m5-261") while being the same device type as the candidate
+    cell it is meant to match — comparing names refuses those pairs, which is a
+    false DEVICE-MISMATCH on exactly the comparison the tool exists to make.
+    The name is carried only so the output is readable.
+    """
     if simctl_json:
         blob = json.loads(Path(simctl_json).read_text())
     else:
@@ -71,7 +79,10 @@ def device_of(udid: str, simctl_json: str | None) -> tuple[str, str]:
         for d in devices:
             if d.get("udid", "").upper() == udid.upper():
                 os_ver = runtime.split(".")[-1].replace("iOS-", "").replace("-", ".")
-                return d.get("name", "?"), os_ver
+                dtype = d.get("deviceTypeIdentifier") or ""
+                if not dtype:
+                    raise KeyError(f"no deviceTypeIdentifier for {udid}; cannot compare device type")
+                return dtype, os_ver, d.get("name", "?")
     raise KeyError(f"UDID not found in simctl output: {udid}")
 
 
@@ -133,8 +144,8 @@ def main() -> int:
         print(f"differential-check: {exc}", file=sys.stderr)
         return 1
 
-    devices = {"candidate": {"device": cand_dev[0], "os": cand_dev[1]},
-               "baseline": {"device": base_dev[0], "os": base_dev[1]}}
+    devices = {"candidate": {"device": cand_dev[2], "device_type": cand_dev[0], "os": cand_dev[1]},
+               "baseline": {"device": base_dev[2], "device_type": base_dev[0], "os": base_dev[1]}}
 
     if cand_dev[0] != base_dev[0]:
         return fail("DEVICE-MISMATCH", devices)
