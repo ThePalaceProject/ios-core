@@ -86,31 +86,30 @@ fi
 # produces a vacuous green, and the operator should not have to remember to
 # check first. Set REGRESSION_SKIP_PREFLIGHT=1 to bypass ONLY when you are
 # deliberately exercising the harness itself (the preflight's own tests do this).
-PREFLIGHT="$SCRIPT_DIR/regression-preflight.sh"
-# `-x "$PREFLIGHT"` made the precondition optional whenever the file was
-# missing or non-executable — the campaign proceeded silently, which is
-# indistinguishable from a passing preflight. Absence is now a hard refusal;
-# REGRESSION_SKIP_PREFLIGHT=1 remains the single named bypass.
-if [[ "${REGRESSION_SKIP_PREFLIGHT:-0}" != "1" ]]; then
-  if [[ ! -x "$PREFLIGHT" ]]; then
+#
+# The helper's own absence is a hard refusal: these scripts run `set -uo
+# pipefail` with no `-e`, so a failed `source` would NOT abort, and the
+# precondition would silently vanish — the same bug one level up.
+# The named bypass is consulted FIRST. If the operator has deliberately said
+# "run without the precondition", requiring the helper that implements it would
+# break the documented escape hatch — which the harness's own tests rely on.
+if [[ "${REGRESSION_SKIP_PREFLIGHT:-0}" == "1" ]]; then
+  echo "warn: preflight bypassed (REGRESSION_SKIP_PREFLIGHT=1) — results are unearned" >&2
+else
+  PRECONDITION_LIB="$SCRIPT_DIR/regression-preflight-precondition.sh"
+  if [[ ! -r "$PRECONDITION_LIB" ]]; then
     {
       echo ""
-      echo "!!! PREFLIGHT MISSING OR NOT EXECUTABLE — expected $PREFLIGHT"
-      echo "!!! Refusing rather than skipping: a campaign that cannot verify its"
-      echo "!!! chain must not start, because a vacuous green looks like a pass."
+      echo "!!! PRECONDITION HELPER MISSING — expected $PRECONDITION_LIB"
+      echo "!!! Refusing: the preflight cannot be enforced without it, and a"
+      echo "!!! campaign that skips it silently reports a result it did not earn."
       echo "!!! Set REGRESSION_SKIP_PREFLIGHT=1 to bypass deliberately."
     } >&2
     exit 2
   fi
-  if ! "$PREFLIGHT" --udid "$SIM_ID" --skip-agent >/dev/null 2>&1; then
-    {
-      echo ""
-      echo "!!! PREFLIGHT FAILED — refusing to run. A campaign started now would"
-      echo "!!! report a result it did not earn. Full diagnosis:"
-      echo "!!!   $PREFLIGHT --udid $SIM_ID"
-    } >&2
-    exit 6
-  fi
+  # shellcheck source=scripts/regression-preflight-precondition.sh
+  source "$PRECONDITION_LIB"
+  regression_require_preflight "$SCRIPT_DIR" "$SIM_ID"
 fi
 
 # Which areas to fan.

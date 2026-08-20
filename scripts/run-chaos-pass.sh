@@ -307,8 +307,11 @@ CHAOS_LOG_BIN="${CHAOS_LOG_BIN:-xcrun}"
 LIVE_LOG="$RUN_DIR/live.log"
 LOG_PID=""
 if (( ! DRY_RUN )); then
+    # Keep the stream's stderr: discarding it threw away the reason a capture
+    # failed, leaving the banner below to guess. Same defect as a gate that
+    # discards its own diagnosis.
     "$CHAOS_LOG_BIN" simctl spawn "$UDID" log stream --level debug \
-        --style compact >"$LIVE_LOG" 2>/dev/null &
+        --style compact >"$LIVE_LOG" 2>"$LIVE_LOG.err" &
     LOG_PID=$!
     # Give the stream a moment to attach, so early agent actions are covered.
     sleep 1
@@ -407,7 +410,17 @@ if [[ "${CHAOS_SKIP_CAUSE_CHECK:-0}" != "1" ]]; then
 fi
 
 stop_live_capture
-if (( ! DRY_RUN )) && [[ ! -s "$LIVE_LOG" ]]; then
+# `-s` alone is not enough. `log stream --style compact` emits a header line
+# ("Timestamp  Ty  Process[PID:TID]") before any record, so a capture holding
+# ONLY that header is non-empty and would pass while containing zero evidence.
+# Require at least one line that is not the header. Measured on a booted sim:
+# the stream is block-buffered to a file — 0 bytes at 2s, 219KB/1509 lines at
+# 15s — so a very short pass can also reach here before the first flush.
+LIVE_RECORDS=0
+if [[ -s "$LIVE_LOG" ]]; then
+    LIVE_RECORDS=$(grep -cv '^Timestamp  *Ty  *Process' "$LIVE_LOG" 2>/dev/null || echo 0)
+fi
+if (( ! DRY_RUN )) && (( LIVE_RECORDS == 0 )); then
     {
       echo ""
       echo "!!! NO CAPTURE — this pass recorded no live log."
@@ -419,6 +432,11 @@ if (( ! DRY_RUN )) && [[ ! -s "$LIVE_LOG" ]]; then
       echo "!!! class of defect as a pass that never drove the simulator."
       echo "!!! Most common cause: the sim is not booted, or 'log stream' was"
       echo "!!! denied. Check: xcrun simctl spawn $UDID log stream --level debug"
+      if [[ -s "$LIVE_LOG.err" ]]; then
+          echo "--- log stream stderr ---"
+          cat "$LIVE_LOG.err"
+          echo "--- end log stream stderr ---"
+      fi
     } >&2
     echo "info: run complete (NO CAPTURE): $RUN_DIR" >&2
     exit 6

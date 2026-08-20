@@ -238,10 +238,25 @@ def test_campaign_entry_points_invoke_the_preflight(entry):
     produce a vacuous green.
     """
     body = entry.read_text()
-    assert "regression-preflight.sh" in body, (
-        f"{entry.name} no longer invokes the preflight — a campaign can start "
-        "on a chain that cannot test")
-    assert "PREFLIGHT FAILED" in body, f"{entry.name} does not refuse on preflight failure"
+    # The block was extracted into a sourced helper to stop the two copies
+    # drifting. The entry point must still ENFORCE it: source the helper and
+    # call it. `set -uo pipefail` has no `-e`, so a failed source would not
+    # abort — hence the entry point also has to refuse if the helper is gone.
+    assert "regression-preflight-precondition.sh" in body, (
+        f"{entry.name} no longer sources the precondition helper — a campaign "
+        "can start on a chain that cannot test")
+    assert "regression_require_preflight" in body, (
+        f"{entry.name} sources the helper but never calls it")
+    assert "PRECONDITION HELPER MISSING" in body, (
+        f"{entry.name} does not refuse when the helper is absent — a missing "
+        "helper would silently remove the precondition")
+
+    helper = _REPO / "scripts" / "regression-preflight-precondition.sh"
+    hbody = helper.read_text()
+    assert "regression-preflight.sh" in hbody, "helper no longer invokes the preflight"
+    assert "PREFLIGHT FAILED" in hbody, "helper does not refuse on preflight failure"
+    assert "PREFLIGHT MISSING OR NOT EXECUTABLE" in hbody, (
+        "helper does not refuse when the preflight itself is absent")
 
 
 @pytest.mark.parametrize("entry", [_AREA_WORKER, _REPO / "scripts" / "regression-chaos-fan.sh"])
@@ -259,6 +274,82 @@ def test_campaign_entry_point_refuses_a_chain_that_cannot_test(tmp_path, entry):
     assert "PREFLIGHT FAILED" in combined, (
         f"{entry.name} ran with an untestable chain:\n" + combined[-1200:])
     assert r.returncode != 0, f"{entry.name} exited 0 on an untestable chain"
+
+
+@pytest.mark.parametrize("entry", [_AREA_WORKER, _REPO / "scripts" / "regression-chaos-fan.sh"])
+def test_entry_point_refuses_when_the_precondition_helper_is_missing(tmp_path, entry):
+    """Extracting the block must not recreate the silent skip one level up.
+
+    The scripts run `set -uo pipefail` with no `-e`, so a failed `source` does
+    NOT abort. Without an explicit check, deleting the helper would remove the
+    precondition and the campaign would proceed — indistinguishable from a
+    passing preflight, which is the exact bug the hard-fail was added to kill.
+
+    Runs a COPY of the tree with the helper removed, so the real one is intact.
+    """
+    # Mirror the repo as a symlink farm so manifest/asset lookups still resolve,
+    # then replace scripts/ with a real copy that is missing only the helper.
+    root = tmp_path / "repo"
+    root.mkdir()
+    for entry_path in _REPO.iterdir():
+        if entry_path.name != "scripts":
+            (root / entry_path.name).symlink_to(entry_path)
+    sandbox = root / "scripts"
+    sandbox.mkdir()
+    for f in (_REPO / "scripts").iterdir():
+        if f.is_file():
+            shutil.copy2(f, sandbox / f.name)
+        elif f.is_dir():
+            (sandbox / f.name).symlink_to(f)
+    (sandbox / "regression-preflight-precondition.sh").unlink()
+
+    args = ["bash", str(sandbox / entry.name), "--run-dir", str(tmp_path / "run"),
+            "--sim-id", FAKE_UDID, "--area-group", "auth"]
+    if entry == _AREA_WORKER:
+        args += ["--device-cell", "C-pytest", "--no-keychain-reset"]
+    else:
+        args += ["--dry-run"]
+    r = _run(args, cwd=str(root))
+    combined = r.stdout + r.stderr
+    assert "PRECONDITION HELPER MISSING" in combined, (
+        f"{entry.name} ran without the precondition helper:\n" + combined[-1200:])
+    assert r.returncode != 0, f"{entry.name} exited 0 with no precondition helper"
+
+
+@pytest.mark.parametrize("entry", [_AREA_WORKER, _REPO / "scripts" / "regression-chaos-fan.sh"])
+def test_entry_point_refuses_when_the_preflight_itself_is_not_executable(tmp_path, entry):
+    """The preflight-missing branch must FIRE, not merely exist in the file.
+
+    A string assertion that "PREFLIGHT MISSING OR NOT EXECUTABLE" appears in the
+    helper passes even when the branch is unreachable: replacing the condition
+    with `if false` left all other tests green, because the banner text is still
+    present inside the dead branch. Only driving it catches that.
+    """
+    root = tmp_path / "repo"
+    root.mkdir()
+    for entry_path in _REPO.iterdir():
+        if entry_path.name != "scripts":
+            (root / entry_path.name).symlink_to(entry_path)
+    sandbox = root / "scripts"
+    sandbox.mkdir()
+    for f in (_REPO / "scripts").iterdir():
+        if f.is_file():
+            shutil.copy2(f, sandbox / f.name)
+        elif f.is_dir():
+            (sandbox / f.name).symlink_to(f)
+    (sandbox / "regression-preflight.sh").chmod(0o644)   # present, not executable
+
+    args = ["bash", str(sandbox / entry.name), "--run-dir", str(tmp_path / "run"),
+            "--sim-id", FAKE_UDID, "--area-group", "auth"]
+    if entry == _AREA_WORKER:
+        args += ["--device-cell", "C-pytest", "--no-keychain-reset"]
+    else:
+        args += ["--dry-run"]
+    r = _run(args, cwd=str(root))
+    combined = r.stdout + r.stderr
+    assert "PREFLIGHT MISSING OR NOT EXECUTABLE" in combined, (
+        f"{entry.name} ran with a non-executable preflight:\n" + combined[-1200:])
+    assert r.returncode != 0, f"{entry.name} exited 0 with a non-executable preflight"
 
 
 def test_preflight_precondition_has_a_documented_bypass():
