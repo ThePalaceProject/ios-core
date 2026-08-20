@@ -1154,10 +1154,38 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
 PHASE2_JOURNEYS = {
     "PP-4161-streaming-html-reader",
     "audiobook-download-indicator-stateful",
+    # Adopted into area groups 2026-08-20 (they were on disk but claimed by NO
+    # area group, so no cell ever fanned them — "recorded, committed, dormant").
+    # Adoption makes them CLAIMED; it does not make them EXECUTABLE. Each still
+    # needs a staging recipe, so they classify phase2 (recipe pending), NOT ready.
+    # Do not read their presence in the manifest as coverage.
+    "app-rating-sentiment-gate",          # needs the engagement trigger; the
+                                          # Force-Rating-Eligible flag alone does
+                                          # not raise the gate (verified on-device
+                                          # 2026-08-20) — a recipe must borrow.
+    "audiobook-sleep-timer-45",           # needs a PLAYING audiobook: borrow +
+                                          # download + Listen, like the other
+                                          # audiobook recipes.
+    "holds-reservations-empty",           # needs sign-in + an account with no
+                                          # holds; cheap recipe, just unwritten.
+    "reader3-pdf-open-and-page",          # needs a downloaded PDF ("Comedias y
+                                          # tragedias (PDF)" is on the A1QA shelf).
+    "triage-bot-category-chip-rapid-tap", # Get Help is reachable without auth, so
+    "triage-bot-redaction-adversarial-input",  # these two are the cheapest to
+                                          # promote to ready once someone writes
+                                          # the recipe.
 }
 
 # Chairman-blocked (creds/OTP) — recipes pending.
-BLOCKED_JOURNEYS = {"danny-saml-signin-init", "icarus-oidc-signin"}
+# PP-4529 is blocked on CAPABILITY, not credentials: the assertion is a VoiceOver
+# rotor action, and rotor items are not in the accessibility tree the driver
+# observes and do not appear in screenshots. No recipe can fix that; it needs a
+# driver that can operate VoiceOver, or it stays manual.
+BLOCKED_JOURNEYS = {
+    "danny-saml-signin-init",
+    "icarus-oidc-signin",
+    "PP-4529-print-page-navigation-voiceover",
+}
 
 # Journeys DEMOTED from the determinism-gate must-pass set because their recording
 # precondition is structurally over-specified / irreducibly variable (multi-library-
