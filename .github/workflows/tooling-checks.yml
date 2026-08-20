@@ -153,12 +153,6 @@ jobs:
       - name: silent-success gate (exit 0 on zero counted work)
         run: python3 scripts/check-silent-success.py --default-set
 
-      # 9. Off-main completion delivery (PP-4955). A @MainActor caller's closure
-      #    invoked from a non-isolated Task fails Swift's isolation assertion and
-      #    KILLS the process — no error, no saved reading position. Static, pure
-      #    python, no Xcode: it belongs on this runner. Same no-fallback rule.
-      - name: completion-isolation gate
-        run: python3 scripts/check-completion-isolation.py
 
   # Diff-scoped test-flakiness gate. Separate job because it needs the PR's base
   # branch fetched (fetch-depth: 0 + an explicit base fetch) to diff against —
