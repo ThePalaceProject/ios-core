@@ -87,7 +87,14 @@ def real_skip_details() -> list[tuple[str, str]]:
     """
     with open(VPR, encoding="utf-8") as fh:
         text = fh.read()
-    return re.findall(r'record "([a-z_0-9]+)" "skip" "([^"]*)"', text)
+    literal = re.findall(r'record "([a-z_0-9]+)" "skip" "([^"]*)"', text)
+    # `run_phase35_detector` records through `record "$key" …`, so a literal-key
+    # regex cannot see those sites and their keys silently fall back to an
+    # invented detail. Pick them up separately rather than let the derivation
+    # narrow without saying so.
+    dynamic = [("<phase35>", d) for d in
+               re.findall(r'record "\$key" "skip" "([^"]*)"', text)]
+    return literal + dynamic
 
 
 def every_declared_key() -> list[str]:
@@ -97,6 +104,31 @@ def every_declared_key() -> list[str]:
     keys.discard("leg_accounting")
     keys.discard("leg_accounting_reason")
     return sorted(keys)
+
+
+def test_the_derivation_has_not_silently_narrowed():
+    """A derived fixture with no floor derives nothing and passes.
+
+    The regex missed the two dynamic-key sites, so ten phase-3.5 detectors fell
+    back to an invented detail — the same keys that were round 5's attack-C
+    hole. `EXPECTED_KEYS` has a floor in the script; this had none, which is the
+    silent-narrowing shape one level out.
+    """
+    details = real_skip_details()
+    assert len(details) >= 60, (
+        f"derived only {len(details)} skip details; the extraction has narrowed "
+        f"and every fixture built from it is quietly thinner than it claims"
+    )
+    # A TOTAL floor cannot see the narrowing mode that actually happened: the
+    # literal-key regex yields 67 on its own, so dropping the two dynamic-key
+    # sites entirely leaves the total comfortably above any round number. Pin
+    # the arm, not the sum.
+    dynamic = [d for k, d in details if k == "<phase35>"]
+    assert dynamic, (
+        "no dynamic-key (`record \"$key\"`) skip sites were derived. Those are "
+        "the phase-3.5 detectors — round 5's attack-C hole — and a literal-key "
+        "regex cannot see them."
+    )
 
 
 def test_the_owed_set_is_derived_not_a_short_hardcoded_list():
@@ -146,6 +178,25 @@ def test_an_empty_derivation_fails_instead_of_passing_vacuously():
     assert "derivation broken" in out or "derived only" in out
 
 
+@pytest.mark.parametrize("n_keys", [0, 1, 5, 29])
+def test_the_vacuity_floor_rejects_an_implausibly_small_derivation(n_keys, tmp_path):
+    """The floor that stops an empty derivation passing was not itself pinned.
+
+    A reviewer changed `-lt 30` to `-lt 1` and all fifteen tests stayed green,
+    then drove the block with five keys and got `[PASS] 5/5 legs accounted for`
+    while 31 legs went unreconciled. A floor nothing tests is a number, not a
+    guard.
+    """
+    stub = tmp_path / "stub-verify-pr.sh"
+    stub.write_text("\n".join(f'record "leg{i}" "pass" "x"' for i in range(n_keys)),
+                    encoding="utf-8")
+    results = [rec(f"leg{i}") for i in range(n_keys)]
+    fails, out = drive(results, argv=[], script_path=str(stub))
+    assert fails >= 1, (
+        f"a {n_keys}-leg derivation was accepted as a full accounting:\n{out}"
+    )
+
+
 def test_attack_b_impossible_skip_reason_is_caught():
     """Inverting `[ "$MUTATION_ONLY" = "true" ]` sends an ORDINARY run down the
     skip arm: the key is recorded, so the reconciliation passes. The reason is
@@ -189,25 +240,26 @@ def test_an_ordinary_run_emitting_the_scripts_own_skip_reasons_passes():
                 return False
         return True
 
-    # Prefer the opt-in arm where a key has one: a dict comprehension keeps the
-    # LAST detail per key, which silently dropped exactly the arms this test is
-    # about. The control below caught that.
-    details: dict[str, str] = {}
-    for k, d in real_skip_details():
-        if not reachable_without_flags(d):
-            continue
-        prefer = ("pass --" in d) or ("opt-in" in d)
-        if k not in details or prefer:
-            details[k] = d
-    assert any("pass --simdrive" in d or "opt-in" in d for d in details.values()), (
+    # EVERY reachable (key, detail) pair, driven one at a time. A dict keyed by
+    # leg keeps one detail per key and drops the rest — it silently discarded the
+    # opt-in arms once already, and two reviewers flagged it again as the shape
+    # this file has been wrong about twice. There is no reason to collapse: the
+    # census inspects entries independently, so the pairs can be too.
+    reachable = [(k, d) for k, d in real_skip_details() if reachable_without_flags(d)]
+    assert any("pass --simdrive" in d or "opt-in" in d for _, d in reachable), (
         "the opt-in arms are missing from the fixture — this test would then be "
         "blind to exactly the defect it exists for"
     )
-    results = [rec(k, "skip", details[k]) if k in details else rec(k)
-               for k in every_declared_key()]
-    for argv in ([], ["--quick"]):
-        fails, out = drive(results, argv=argv)
-        assert fails == 0, f"an honest run with argv={argv} was blocked:\n{out}"
+    keys = every_declared_key()
+    for key, detail in reachable:
+        target = key if key in keys else "simdrive"
+        results = [rec(k, "skip", detail) if k == target else rec(k) for k in keys]
+        for argv in ([], ["--quick"]):
+            fails, out = drive(results, argv=argv)
+            assert fails == 0, (
+                f"an honest run with argv={argv} was blocked by "
+                f"{target}={detail!r}:\n{out}"
+            )
 
 
 @pytest.mark.parametrize("flag,detail", [
@@ -228,6 +280,11 @@ def test_present_polarity_reasons_are_censused(flag, detail):
 @pytest.mark.parametrize("detail", [
     "Not run (pass --simdrive to enable)",
     "not run (opt-in; pass --chaos to enable)",
+    # WITNESS FOR THE `opt-in` ARM ITSELF. Both cases above also contain
+    # `pass --<flag>`, so they exempt through the OTHER clause and deleting the
+    # opt-in clause left every test green — the round-7 defect's own guard, half
+    # pinned. This one has no `pass --`, so only the opt-in clause can exempt it.
+    "not run (opt-in; --chaos enables it)",
 ])
 def test_optin_polarity_reasons_are_exempt(detail):
     """The flag's ABSENCE is the reason. Flagging these blocked every real run."""

@@ -249,6 +249,13 @@ if [ "$DOCS_ONLY" = "true" ]; then
   echo "  Passed: $PASS_COUNT"
   echo "  Failed: $FAIL_COUNT"
   echo "  Skipped: $SKIP_COUNT (ran nothing — not a pass)"
+  # NOTE: this lane exits before the leg accounting below, so the 28 legs it
+  # never reaches are not reconciled here. That is a real gap, not a design:
+  # a reviewer measured 12 docs-only commits in the last 400 on develop. It is
+  # stated rather than closed because closing it means recording 28 docs-only
+  # skips, which is a larger change than this branch should carry. The lane
+  # does announce itself in stdout and in `"fast_path":"docs-only"`, so a
+  # wrongly-taken fast path is legible even though a missing leg is not.
 
   if [ -n "$REPORT_FILE" ]; then
     RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
@@ -1418,9 +1425,12 @@ else
         *"$flag"*) ;;
         *) continue ;;
       esac
-      # Opt-in phrasing means the flag's ABSENCE is the reason. Not impossible.
+      # Opt-in phrasing means THIS flag's ABSENCE is the reason, so the entry is
+      # not impossible. Both spellings are scoped to the flag under test: a bare
+      # `*"opt-in"*` would exempt an entry for all five flags at once because
+      # this runs inside the per-flag loop.
       case "$entry" in
-        *"pass $flag"*|*"opt-in"*) continue ;;
+        *"pass $flag"*|*"opt-in; $flag"*|*"opt-in; pass $flag"*) continue ;;
       esac
       case "$ARGV_TEXT" in
         *" $flag "*) ;;
@@ -1435,8 +1445,8 @@ else
     RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"unreported legs:$MISSING_KEYS\"}")
   elif [ -n "$IMPOSSIBLE" ]; then
     FAIL_COUNT=$((FAIL_COUNT + 1))
-    echo "  [FAIL] leg_accounting — skipped for a flag the caller never passed:$IMPOSSIBLE"
-    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"impossible skip reason:$IMPOSSIBLE\"}")
+    echo "  [FAIL] leg_accounting — reason names a flag the caller never passed:$IMPOSSIBLE"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"impossible reason:$IMPOSSIBLE\"}")
   else
     # RECORD THE SUCCESS. Without this the accounting is silent when it passes,
     # so a run where the block was disabled outright looks exactly like a run

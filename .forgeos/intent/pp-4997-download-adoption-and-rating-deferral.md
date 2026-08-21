@@ -31,6 +31,13 @@ fixed here).
 
 ## Anti-claims
 
+- The contested-URL guard is NOT free, and the cost is not only PP-5023. It runs
+  BEFORE `adoptableTask`, so two records sharing a URL are both refused even in
+  the sub-case where identifiers survived and the exact branch would have been
+  right for each. Versus develop, that case goes from correct adoption to both
+  restarting. The trade is deliberate — "identifiers survived" is precisely the
+  assumption this fix declines to make, and a retry is cheaper than delivering
+  the wrong book — but a reader of PP-5023 should not infer the guard is free.
 - This does NOT make adoption safe when a live task exists with no persisted
   record. `contestedURLs` is computed from persisted records only, so a live
   unpersisted task on another book's URL is invisible to it and that book's
