@@ -125,15 +125,36 @@ clean path passes too.
 
 **5. A red test is a question about HISTORY, not a prompt to theorise.** Before
 explaining WHY a test fails, establish WHOSE it is — mechanically, from other
-runs and other suites. Two axes, two tools, both cheap:
+runs and other suites. Three axes, two tools, all cheap:
 
 ```bash
+# Axis 0 — inside ONE run: which tests failed an iteration? (works on GREEN runs)
+python3 scripts/ci-test-history.py --scan [--run <id>] [--limit N]
+
 # Axis 1 — across CI runs: is it new here, pre-existing, or retry-masked?
 python3 scripts/ci-test-history.py <TestClass>[.method] [--limit N]
 
 # Axis 2 — across suites: does it pass alone? then who dirties it?
 scripts/find-test-polluter.sh --victim <TestClass>
 ```
+
+**Axis 0 exists because axes 1 and 2 both need a name you do not have.** They
+answer "is THIS failure ours?"; nothing tells you a failure happened at all when
+the run reported success. Run 32508244803 (PR #1404, **conclusion: success**)
+contains **nine** tests that failed an iteration, two on the borrow/auth critical
+path, and one — `TPPNetworkResponderAuthCoordinatorTests.testResponder_401_…` —
+that failed only on iteration **three** after passing one and two. Scan a green
+run before you trust it; then feed each name to axis 1.
+
+**Read the sampling depth the scan prints, because a green verdict does not fix
+it.** `-test-iterations 3` relaunches the whole plan when anything fails, so a
+run that passes iteration 1 stops at 1×, while a run that stumbles goes to 3× —
+from a **byte-identical** xcodebuild command. Run 32508244803 sampled 2.9×
+(24,864 executions / 8,621 tests); run 32501563719, also green, sampled 1.0×
+(8,613 / 8,613). The clean board is the *thinly sampled* one: zero failures out
+of one sample per test is weak evidence, and comparing it against a 3× run as if
+both were the same measurement is a mistake. The scan prints the ratio for
+exactly this reason.
 
 Read the **per-iteration** results, not the run verdict. `-retry-tests-on-failure
 -test-iterations 3` means a test that passes 2 of 3 reports the job GREEN while a

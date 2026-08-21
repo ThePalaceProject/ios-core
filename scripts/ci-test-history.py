@@ -33,8 +33,21 @@ the two together are the protocol: history says whose it is, the polluter script
 says why. A test that is NEW here but passes in isolation locally is pollution
 your branch newly exposed, not necessarily logic your branch broke.
 
-    python3 scripts/ci-test-history.py <TestName>[.method] [options]
+DISCOVERY vs LOOKUP. The form above needs a name, and the failures that cost
+the most are the ones nobody has a name for — they are inside runs that reported
+GREEN. `--scan` is the discovery half: it reads a run's log and lists every test
+that failed an iteration, whatever the run's verdict says. Measured on run
+32508244803 (PR #1404, conclusion=success): nine of them. It also prints the
+run's sampling depth, because `-test-iterations 3` relaunches the whole plan
+only when something fails — so a run that passes first time samples each test
+1x and a run that stumbles samples 3x, from an identical command. A green board
+at 1x is the thinly-measured one, not the healthy one.
 
+    python3 scripts/ci-test-history.py <TestName>[.method] [options]
+    python3 scripts/ci-test-history.py --scan [--run <id>] [options]
+
+      --scan          list every test that failed an iteration in the run(s)
+      --run ID        scan one specific run (implies --scan)
       --limit N       CI runs to scan (default 10)
       --branch B      restrict to one branch
       --workflow W    workflow name (default "Unit Tests")
@@ -116,9 +129,139 @@ def results_for(log: str, cls: str, method: str | None) -> list[tuple[str, str, 
     return found
 
 
+# A run log we cannot have measured must never answer "no failures" — that
+# reading is indistinguishable from a healthy run. 100 is far below any real
+# suite (the Palace scheme emits ~8,250) and far above any stub.
+MIN_TEST_LINES = 100
+
+
+class NotATestLog(Exception):
+    """Raised when the input has too few test results to have measured anything."""
+
+
+def _iter_results(log: str):
+    """-> (position, "Class.method", passed|failed) in document order.
+
+    Only `passed`/`failed` match. "recorded an expected failure" is an
+    XCTExpectFailure outcome — a passing one — and counting it would report
+    every deliberately-failing test as a flake forever.
+    """
+    hits = []
+    for rx, groups in ((PARALLEL, (1, 2, 3)), (SERIAL, (1, 2, 3))):
+        for m in rx.finditer(log):
+            c, meth, verdict = (m.group(g) for g in groups)
+            hits.append((m.start(), f"{c}.{meth}", verdict))
+    hits.sort(key=lambda h: h[0])
+    return hits
+
+
+def log_shape(log: str) -> tuple[int, int]:
+    """-> (executions, distinct tests).
+
+    The ratio is how a green verdict should be read. `-retry-tests-on-failure
+    -test-iterations 3` relaunches the WHOLE plan when anything fails, so a run
+    that passes iteration 1 stops at 1x while a run that stumbles goes to 3x —
+    from a byte-identical xcodebuild command. Measured 2026-08-21: run
+    32508244803 = 24,777 executions / 8,263 tests (3x), run 32501563719 =
+    8,258 / 8,257 (1x). Both green. The clean one sampled every test once, so
+    its "zero failures" carries a third of the evidence the dirty one's does.
+    """
+    hits = _iter_results(log)
+    return len(hits), len({name for _, name, _ in hits})
+
+
+def scan_log(log: str) -> dict[str, list[str]]:
+    """-> {"Class.method": [verdict per iteration]} for tests that failed >=1.
+
+    Unguarded on purpose so the pure parse can be tested against small inputs;
+    callers handling real logs want scan_run().
+    """
+    per_test: dict[str, list[str]] = defaultdict(list)
+    for _, name, verdict in _iter_results(log):
+        per_test[name].append(verdict)
+    return {k: v for k, v in per_test.items() if "failed" in v}
+
+
+def scan_run(log: str) -> dict[str, list[str]]:
+    """scan_log() that refuses input it cannot have measured."""
+    if len(_iter_results(log)) < MIN_TEST_LINES:
+        raise NotATestLog(
+            "log contains too few test results to scan — this is a refusal, not "
+            "a clean bill of health (an empty or truncated download looks exactly "
+            "like a healthy run to a counter)")
+    return scan_log(log)
+
+
+def run_meta(repo: str, run_id: int) -> dict:
+    """Metadata for one run, so the scan can print the verdict it is contradicting.
+
+    Falls back to placeholders rather than failing: the failures are the
+    payload, and a missing branch label must not cost you the scan.
+    """
+    import json
+    out = sh(["gh", "run", "view", str(run_id), "--repo", repo,
+              "--json", "headBranch,headSha,conclusion,createdAt"])
+    try:
+        r = json.loads(out)
+    except json.JSONDecodeError:
+        r = {}
+    r.setdefault("headBranch", "?")
+    r.setdefault("headSha", "?" * 8)
+    r.setdefault("conclusion", "?")
+    r.setdefault("createdAt", "-" * 16)
+    r["databaseId"] = run_id
+    return r
+
+
+def run_scan_mode(repo: str, args) -> int:
+    if args.run:
+        found = [run_meta(repo, int(args.run))]
+    else:
+        found = runs(repo, args.workflow, args.limit, args.branch)
+    if not found:
+        print(f"no runs of workflow {args.workflow!r} on {repo}")
+        return 0
+
+    total_masked = 0
+    for r in found:
+        log = log_for(repo, r["databaseId"], not args.no_cache)
+        stamp = f"{r['createdAt'][5:16]}  {(r['headBranch'] or '?')[:32]:32s}  run={r['conclusion'] or '-'}"
+        try:
+            failures = scan_run(log)
+        except NotATestLog as exc:
+            print(f"  {stamp}")
+            print(f"    REFUSED: {exc}")
+            continue
+        execs, distinct = log_shape(log)
+        depth = execs / distinct if distinct else 0
+        print(f"  {stamp}  [{execs} executions / {distinct} tests = {depth:.1f}x sampling]")
+        if not failures:
+            print("    no test failed an iteration"
+                  + ("" if depth >= 2 else "  (at 1x, that is one sample per test — weak evidence)"))
+            continue
+        total_masked += len(failures)
+        for name, verdicts in sorted(failures.items()):
+            where = ", ".join(f"#{i + 1} {v}" for i, v in enumerate(verdicts))
+            print(f"    FAILED AN ITERATION  {name}\n                         {where}")
+
+    print()
+    if total_masked:
+        print(f"VERDICT: {total_masked} test(s) failed an iteration inside the scanned run(s).")
+        print("  If the run reported green, retry masked every one of them. A green verdict")
+        print("  over a masked failure is not a pass; it is an unread failure. Take each name")
+        print("  to `ci-test-history.py <name>` for whose it is, then find-test-polluter.sh.")
+    else:
+        print("VERDICT: no masked failures in the scanned window.")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(add_help=True)
-    ap.add_argument("test", help="TestClass or TestClass.method")
+    ap.add_argument("test", nargs="?", help="TestClass or TestClass.method")
+    ap.add_argument("--scan", action="store_true",
+                    help="discovery mode: list every test that failed an iteration "
+                         "in the scanned run(s), including runs that reported green")
+    ap.add_argument("--run", help="scan one specific run id (implies --scan)")
     ap.add_argument("--limit", type=int, default=10)
     ap.add_argument("--branch")
     ap.add_argument("--workflow", default="Unit Tests")
@@ -126,9 +269,15 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--no-cache", action="store_true")
     args = ap.parse_args(argv[1:])
 
+    repo = args.repo or infer_repo()
+
+    if args.scan or args.run:
+        return run_scan_mode(repo, args)
+    if not args.test:
+        ap.error("give a TestClass[.method], or --scan to discover masked failures")
+
     cls, _, method = args.test.partition(".")
     method = method or None
-    repo = args.repo or infer_repo()
 
     found = runs(repo, args.workflow, args.limit, args.branch)
     if not found:
