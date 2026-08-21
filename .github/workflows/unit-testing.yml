@@ -516,7 +516,7 @@ jobs:
           echo "> can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, AppDelegate/SceneDelegate " >> $GITHUB_STEP_SUMMARY
           echo "> lifecycle (see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ " >> $GITHUB_STEP_SUMMARY
           echo "> logic is tested, not that we shipped less UI. Total coverage is kept for continuity. " >> $GITHUB_STEP_SUMMARY
-          echo "> The excluded paths are NOT covered by CI. They are exercised only by local pre-PR validation (\`scripts/verify-pr.sh --simdrive --chaos\`), which is maintainer-only." >> $GITHUB_STEP_SUMMARY
+          echo "> The excluded paths are NOT covered by any CI job. They are exercised only if a maintainer opts in locally (\`scripts/verify-pr.sh --simdrive --chaos\`), which needs a booted simulator and a QA harness that is not in this repo — so on a contributor's clone, and on every CI run, nothing exercises them." >> $GITHUB_STEP_SUMMARY
           
           # History/Trends
           if [ -n "$NEW_FAILURES" ] || [ -n "$FIXED_TESTS" ] || [ -n "$FLAKY_TESTS" ] || [ -n "$TEST_COUNT_CHANGE" ]; then
@@ -862,7 +862,7 @@ jobs:
             body += `can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, lifecycle `;
             body += `(see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ logic is tested, `;
             body += `not that we shipped less UI. Total coverage is kept for continuity. `;
-            body += `The excluded paths are **not covered by CI**. They are exercised only by local pre-PR validation (\`scripts/verify-pr.sh --simdrive --chaos\`), which is maintainer-only.\n\n`;
+            body += `The excluded paths are **not covered by any CI job**. They are exercised only if a maintainer opts in locally (\`scripts/verify-pr.sh --simdrive --chaos\`), which needs a booted simulator and a QA harness that is not in this repo — so on a contributor's clone, and on every CI run, nothing exercises them.\n\n`;
             
             // What changed vs. base — the orchestrator's first question
             // (contract §1). Delta-or-silent: this whole section renders only
