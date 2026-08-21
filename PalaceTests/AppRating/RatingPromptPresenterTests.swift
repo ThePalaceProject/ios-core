@@ -375,7 +375,11 @@ final class RatingPromptPresenterTests: XCTestCase {
     let presenter = makePresenter(eligible: true)
     presenter.noteBookCompleted()
     XCTAssertEqual(settings.appRatingBooksCompleted, 1, "completion is recorded synchronously")
-    await waitUntil { presenter.step == .sentiment }
+    // Wait for SOMETHING to be presented, then assert it is the right thing.
+    // Waiting on `== .sentiment` and then asserting `== .sentiment` cannot
+    // distinguish "showed the wrong step" from "showed nothing" — both leave the
+    // wait to time out silently and the assertion to report the same nil.
+    await waitUntil { presenter.step != nil }
     XCTAssertEqual(presenter.step, .sentiment, "the scheduled trigger shows the gate when eligible")
   }
 
@@ -383,8 +387,9 @@ final class RatingPromptPresenterTests: XCTestCase {
     let presenter = makePresenter(eligible: true)
     presenter.noteBorrowSucceeded()
     XCTAssertEqual(settings.appRatingBooksCompleted, 0, "a borrow is not a book completion")
-    await waitUntil { presenter.step == .sentiment }
-    XCTAssertEqual(presenter.step, .sentiment)
+    await waitUntil { presenter.step != nil }
+    XCTAssertEqual(presenter.step, .sentiment,
+                   "a borrow should schedule the sentiment gate, not another step")
   }
 
   func testNoteBookCompleted_whenIneligible_recordsButShowsNoGate() async {
