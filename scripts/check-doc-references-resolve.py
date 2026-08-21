@@ -45,16 +45,21 @@ BASELINE_NAME = "doc-references-baseline.json"
 # `scripts/foo.py`, optionally prefixed by the maintainer-local harness root.
 # The harness prefix means "deliberately not in this repo" and is never dangling.
 SCRIPT_RE = re.compile(r"(?P<harness>~/harness/[A-Za-z0-9_./-]*?)?(?P<path>scripts/[A-Za-z0-9_.-]+\.(?:py|sh|rb))")
-WORKFLOW_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?P<wf>[A-Za-z0-9_-]+\.yml)")
+# A .yml reference, with the same harness escape the script arm has. Without it
+# the tool's own remedy ("write it as ~/harness/...") does not work on this arm.
+WORKFLOW_RE = re.compile(
+    r"(?P<harness>~/harness/[A-Za-z0-9_./-]*?)?(?<![A-Za-z0-9_.-])(?P<wf>[A-Za-z0-9_-]+\.yml)")
 
 # Directories whose contents are archival records of what was true at the time,
 # not live instructions. Rewriting history to keep a linter quiet is worse than
 # the dangling link.
 SKIP_PREFIXES = (".forgeos/", ".claude/", "tools/ledger/vendor/")
 
-# A .yml named in prose is only a workflow reference if it plausibly IS one; many
-# docs mention unrelated yaml (manifests, configs) that live elsewhere.
-NON_WORKFLOW_YML = {"qaatlas.yml", "codeatlas.yml", "manifest.yml", "docker-compose.yml"}
+# A .yml named in prose is not necessarily a WORKFLOW: this repo also tracks
+# dependabot.yml, orchestrator configs, and atlas manifests, none of which live
+# under .github/workflows/. Resolving only against that directory reported all of
+# them as dangling. So a yaml reference is satisfied by a file of that basename
+# ANYWHERE in the tree, and only a name that exists nowhere is a finding.
 
 
 def tracked_docs(root: str) -> list[str]:
@@ -73,9 +78,19 @@ def tracked_docs(root: str) -> list[str]:
     ]
 
 
+def yaml_basenames(root: str) -> set:
+    """Every tracked .yml/.yaml basename, so a reference to a non-workflow yaml
+    that genuinely exists is not reported as a broken workflow link."""
+    out = subprocess.run(
+        ["git", "-C", root, "ls-files", "*.yml", "*.yaml"],
+        capture_output=True, text=True, check=True,
+    ).stdout.split("\n")
+    return {os.path.basename(f) for f in out if f}
+
+
 def find_dangling(root: str) -> list[dict]:
     findings: list[dict] = []
-    workflow_dir = os.path.join(root, ".github", "workflows")
+    known_yaml = yaml_basenames(root)
     for rel in tracked_docs(root):
         full = os.path.join(root, rel)
         try:
@@ -92,10 +107,10 @@ def find_dangling(root: str) -> list[dict]:
                 findings.append({"doc": rel, "kind": "script", "target": path})
 
         for m in WORKFLOW_RE.finditer(text):
+            if m.group("harness"):
+                continue  # maintainer-local by construction
             wf = m.group("wf")
-            if wf in NON_WORKFLOW_YML:
-                continue
-            if not os.path.exists(os.path.join(workflow_dir, wf)):
+            if wf not in known_yaml:
                 findings.append({"doc": rel, "kind": "workflow", "target": wf})
 
     # Stable, de-duplicated.
@@ -124,12 +139,30 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
     ap.add_argument("--update-baseline", action="store_true")
+    ap.add_argument("--accept-new", action="store_true",
+                    help="allow --update-baseline to ADD entries (it refuses by default)")
     args = ap.parse_args()
     root = os.path.abspath(args.root)
 
     found = find_dangling(root)
 
     if args.update_baseline:
+        # Regenerating silently absorbs any NEW dangling reference, which would
+        # make the gate self-defeating: the fix for a red run must never be to
+        # re-run it with a flag. Report the delta so the change is visible in
+        # the diff AND in the console, and require --accept-new to grow it.
+        existing = {key(f) for f in load_baseline(root)}
+        added = [f for f in found if key(f) not in existing]
+        removed = [f for f in load_baseline(root) if key(f) not in {key(x) for x in found}]
+        for f in added:
+            print(f"  + {f['doc']} -> {f['kind']} '{f['target']}'")
+        for f in removed:
+            print(f"  - {f['doc']} -> {f['kind']} '{f['target']}' (now resolves)")
+        if added and not args.accept_new:
+            print(f"\nRefusing to grow the baseline by {len(added)} entry(ies).\n"
+                  "Fix the reference, or pass --accept-new if it is genuinely "
+                  "pre-existing and you intend to record it.")
+            return 1
         out = os.path.join(root, "scripts", BASELINE_NAME)
         with open(out, "w", encoding="utf-8") as fh:
             json.dump(

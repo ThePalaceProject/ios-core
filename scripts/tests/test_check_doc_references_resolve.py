@@ -144,6 +144,87 @@ def test_archival_directories_are_skipped(tmp_path):
     assert run(root).returncode == 0
 
 
+def test_non_workflow_yaml_that_exists_is_not_dangling(tmp_path):
+    """Not every `.yml` in prose is a workflow.
+
+    Resolving yaml names against `.github/workflows/` ALONE reported
+    `dependabot.yml`, an orchestrator config, and an atlas manifest as broken
+    links — all three tracked and present. A yaml reference is satisfied by that
+    basename existing anywhere in the tree.
+    """
+    root = make_repo(
+        tmp_path,
+        docs={
+            "docs/a.md": "Config in `.github/dependabot.yml` and `tools/x/test-matrix.yml`.\n",
+            ".github/dependabot.yml": "version: 2\n",
+            "tools/x/test-matrix.yml": "matrix: []\n",
+        },
+        baseline=[],
+    )
+    r = run(root)
+    assert r.returncode == 0, r.stdout
+
+
+def test_harness_prefixed_workflow_is_not_dangling(tmp_path):
+    """The harness escape must work on the YAML arm too.
+
+    It was implemented only for scripts, so the tool's own printed remedy
+    ("write it as ~/harness/...") did not work for a yaml reference.
+    """
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": "Registered in `~/harness/projects/palace-ios.yml`.\n"},
+        baseline=[],
+    )
+    r = run(root)
+    assert r.returncode == 0, r.stdout
+
+
+def test_yaml_that_exists_nowhere_still_blocks(tmp_path):
+    """Control for the two above — the relaxation must not blind the arm."""
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": "Gated by `no-such-gate.yml`.\n"},
+        baseline=[],
+    )
+    r = run(root)
+    assert r.returncode == 1
+    assert "no-such-gate.yml" in r.stdout
+
+
+def test_update_baseline_refuses_to_absorb_a_new_finding(tmp_path):
+    """The fix for a red run must never be re-running it with a flag.
+
+    Without this, `--update-baseline` is an amnesty button and the gate cannot
+    hold: anyone hitting it can make the failure disappear without fixing it.
+    """
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": "Run `scripts/brand-new-gone.py`.\n"},
+        baseline=[],
+    )
+    r = subprocess.run([sys.executable, DETECTOR, "--root", str(root), "--update-baseline"],
+                       capture_output=True, text=True)
+    assert r.returncode == 1, r.stdout
+    assert "Refusing to grow the baseline" in r.stdout
+    kept = json.loads((tmp_path / "scripts" / "doc-references-baseline.json").read_text())
+    assert kept["known_dangling"] == [], "the baseline was written despite refusing"
+
+
+def test_update_baseline_grows_only_with_accept_new(tmp_path):
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": "Run `scripts/brand-new-gone.py`.\n"},
+        baseline=[],
+    )
+    r = subprocess.run(
+        [sys.executable, DETECTOR, "--root", str(root), "--update-baseline", "--accept-new"],
+        capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout
+    kept = json.loads((tmp_path / "scripts" / "doc-references-baseline.json").read_text())
+    assert len(kept["known_dangling"]) == 1
+
+
 def test_real_repo_is_clean(tmp_path):
     """The live tree must pass against its committed baseline."""
     repo = os.path.abspath(os.path.join(HERE, "..", ".."))

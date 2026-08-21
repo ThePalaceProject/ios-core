@@ -81,13 +81,22 @@ enum DownloadReconciliation {
     ///
     /// Requiring identifier AND url (the first attempt at PP-4997) is only correct
     /// in the first world. In the second it refuses to adopt a download that is
-    /// still running, falls through to `.restart`, and `startDownload` has no
-    /// live-task guard — so it would cause the double-start INV-4 exists to
-    /// prevent, in the COMMON case, while fixing a rare one.
+    /// still running and falls through to `.restart`.
+    ///
+    /// That is NOT the double-start INV-4 forbids, and an earlier version of this
+    /// comment wrongly said it was. `startDownload` returns early on
+    /// `.downloading` (DownloadStartCoordinator), which is the state a book
+    /// killed mid-download is in, so the restart is inert there. The cost is
+    /// quieter: nothing maps the live task's identifier to a book, so its
+    /// callbacks are dropped, the book sits in `.downloading` with no task, and
+    /// registry sync later heals it to `.downloadFailed`. A download that was
+    /// running fine becomes a failure the patron has to retry.
     ///
     /// Ambiguity is declined rather than guessed: two live tasks on the same URL
     /// cannot be told apart, so unless one of them carries this record's exact
-    /// identifier, neither is adopted and the registry restarts the book.
+    /// identifier, neither is adopted. The same inertness applies — `.restart`
+    /// will not re-drive a `.downloading` book, so the practical outcome is the
+    /// heal to `.downloadFailed` above, not a fresh download.
     ///
     /// The exact discriminator would be `URLSessionTask.taskDescription` carrying
     /// the book id — it survives relaunch and needs no inference. Nothing sets it
@@ -339,10 +348,29 @@ final class LiveDownloadTaskBox: @unchecked Sendable {
     func capture(_ task: URLSessionDownloadTask) -> Bool {
         let id = task.taskIdentifier
         map[id] = task
-        guard let url = task.originalRequest?.url ?? task.currentRequest?.url else {
+        guard let url = Self.downloadURL(original: task.originalRequest?.url,
+                                         current: task.currentRequest?.url) else {
             return false
         }
         urls[id] = url
         return true
+    }
+
+    /// The URL a live task is fetching, given what its two requests report.
+    ///
+    /// Split out because the branches are NOT reachable through
+    /// `URLSessionDownloadTask`: a task built from a URL reports the same value
+    /// for `originalRequest` and `currentRequest`, and one with neither cannot
+    /// be constructed at all. Mutating the fallback or the nil arm inside
+    /// `capture` therefore left every test green. Whether a branch can be
+    /// exercised is a property of the seam, not of the diligence of the test —
+    /// so the decision moved somewhere it can be driven exhaustively.
+    ///
+    /// `originalRequest` wins because it survives a redirect: `currentRequest`
+    /// holds the redirected URL, and the persisted record carries the URL the
+    /// download STARTED from. Preferring `currentRequest` would stop a
+    /// redirected download from ever matching its own record.
+    static func downloadURL(original: URL?, current: URL?) -> URL? {
+        original ?? current
     }
 }

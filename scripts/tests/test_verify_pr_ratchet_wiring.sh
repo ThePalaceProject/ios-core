@@ -140,6 +140,50 @@ fi
 # ---------------------------------------------------------------------------
 # 4. verify-pr.sh still parses.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# The aggregation must ACT on the ratchets' exit codes.
+#
+# A reviewer changed the comparison to `-eq 999` — making it impossible for any
+# ratchet failure to be recorded — and every assertion above still passed. They
+# all grep the call site or run the detectors standalone, which proves the
+# detectors work and says nothing about whether verify-pr.sh believes them. That
+# is the same "the tests pass" != "the gate runs" split this file exists to
+# close, one level up.
+#
+# HONESTY ABOUT WHAT THIS IS: a STRUCTURAL assertion, not a behavioural one. It
+# kills the demonstrated mutant but cannot prove the recorded outcome end to end,
+# because the ratchet block is inline in a script whose other legs build the app.
+# Making it genuinely behavioural means extracting the loop into its own script
+# a stub ratchet can be pointed at; that is deferred, and named here so the limit
+# is visible rather than assumed away.
+echo "5. ratchet failures are acted on, not just collected"
+
+AGG="$(sed -n '/for ratchet in check-appcontainer/,/decomposition_ratchets" "pass"/p' "$REPO_ROOT/scripts/verify-pr.sh")"
+[ -n "$AGG" ] || fail "could not locate the ratchet aggregation block"
+
+echo "$AGG" | grep -qE 'RATCHET_RC" -ne 0' \
+  || fail "aggregation does not compare the ratchet exit code against 0 — a failing ratchet may be unrecordable"
+pass "compares each ratchet's exit code against 0"
+
+echo "$AGG" | grep -q 'RATCHET_FAILED="yes"' \
+  || fail "a non-zero ratchet does not set the failure flag"
+pass "a non-zero ratchet sets the failure flag"
+
+echo "$AGG" | grep -q 'record "decomposition_ratchets" "fail"' \
+  || fail "the failure flag is never recorded as a fail"
+pass "the failure flag is recorded as a fail"
+
+# Assert the ASSIGNMENT, not a mention. Grepping for the bare variable name
+# passes on a block that merely reads it — the same defect as a detector that
+# counts a comment mentioning the thing it is supposed to find.
+echo "$AGG" | grep -qE 'RATCHET_MISSING="\$RATCHET_MISSING' \
+  || fail "a missing ratchet is never accumulated — deleting a ratchet would read as green"
+pass "a missing ratchet is accumulated"
+
+echo "$AGG" | grep -qE 'record "decomposition_ratchets" "skip"' \
+  || fail "missing ratchets are not surfaced as a skip — the report would claim they passed"
+pass "missing ratchets are reported as skip, not pass"
+
 echo "4. verify-pr.sh syntax"
 bash -n "$VERIFY" || fail "verify-pr.sh does not parse"
 pass "bash -n clean"

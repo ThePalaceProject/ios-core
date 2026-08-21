@@ -154,6 +154,62 @@ final class DownloadReconciliationTests: XCTestCase {
                        + "would go to whichever book applied last")
     }
 
+    /// THE CONTESTED ARM ACROSS REGISTRY STATES.
+    ///
+    /// Declining adoption sends a record to `.restart` while a live task is
+    /// still fetching that URL — the only arm in this function that does so.
+    /// From `.downloading` that is inert (`startDownload` returns early), but
+    /// from `.downloadNeeded` / `.SAMLStarted` it starts a SECOND task.
+    ///
+    /// That is deliberate and is the lesser harm: the alternative is adopting an
+    /// ambiguous task, and `taskIdentifierToBook` is last-write-wins, so the
+    /// finished file would be delivered to the wrong book. A duplicated download
+    /// costs bandwidth; a misrouted one hands the patron a title they did not
+    /// borrow. This table pins the choice so a later refactor cannot quietly
+    /// reverse it.
+    func testContestedURL_decisionIsRestart_inEveryWantsContentState() {
+        let shared = URL(string: "https://example.org/shared-open-access")!
+        func rec(_ id: String, _ task: Int) -> PersistedDownloadRecord {
+            PersistedDownloadRecord(
+                bookID: id, taskIdentifier: task, downloadURL: shared,
+                account: "acct-1", expectedBytes: 1_000,
+                startedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        }
+
+        for state in [TPPBookState.downloading, .downloadNeeded, .SAMLStarted] {
+            let decisions = DownloadReconciliation.reconcile(
+                persisted: [rec("book-A", 1), rec("book-B", 2)],
+                liveTasks: [1: shared],
+                registryStates: ["book-A": state, "book-B": state]
+            )
+            XCTAssertEqual(decisions, [.restart(bookID: "book-A"), .restart(bookID: "book-B")],
+                           "contested url under \(state) did not decline adoption")
+        }
+    }
+
+    /// A contested url whose books are already DONE must not be restarted at all
+    /// — the guard declines adoption, and the registry must still get the last
+    /// word. Without this cell the guard could plausibly route a finished book
+    /// back into a download.
+    func testContestedURL_completedBooks_areCleanedUpNotRestarted() {
+        let shared = URL(string: "https://example.org/shared-open-access")!
+        func rec(_ id: String, _ task: Int) -> PersistedDownloadRecord {
+            PersistedDownloadRecord(
+                bookID: id, taskIdentifier: task, downloadURL: shared,
+                account: "acct-1", expectedBytes: 1_000,
+                startedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        }
+
+        let decisions = DownloadReconciliation.reconcile(
+            persisted: [rec("book-A", 1), rec("book-B", 2)],
+            liveTasks: [1: shared],
+            registryStates: ["book-A": .downloadSuccessful, "book-B": .used]
+        )
+
+        XCTAssertEqual(decisions, [.cleanup(bookID: "book-A"), .cleanup(bookID: "book-B")],
+                       "a finished book was routed back into a download")
+    }
+
     /// The guard is scoped to the CONTESTED url only — an unrelated record in
     /// the same pass still adopts normally.
     func testContestedURL_doesNotBlockAnUnrelatedRecordInTheSamePass() {

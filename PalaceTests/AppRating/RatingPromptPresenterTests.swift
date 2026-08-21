@@ -207,6 +207,17 @@ final class RatingPromptPresenterTests: XCTestCase {
     presenter.handleTrigger(.borrowSucceeded)
     await waitUntil { self.modalChecks >= 3 }
 
+    // THE PRECONDITION MUST BE ASSERTED, NOT ASSUMED. This test only exercises
+    // its cell if a re-arm hop is still SLEEPING when the next trigger arrives,
+    // and that window is ~30ms wide. If the poll arrives late the chain has
+    // already come to rest, there is no clobber to observe, and the assertion
+    // below passes while proving nothing — the test would go green against the
+    // live defect. Pinning the exact count makes a lost race RED instead of a
+    // silent success.
+    XCTAssertEqual(modalChecks, 3,
+                   "the re-arm window had already closed (\(modalChecks) hops) — "
+                   + "this run did not reach the cell under test")
+
     // A new positive moment arrives while that hop is still asleep. The sheet
     // must STAY UP across the new trigger's own first check — otherwise it
     // takes the show path, where the budget is never consulted and the clobber

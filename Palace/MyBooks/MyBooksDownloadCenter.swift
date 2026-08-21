@@ -2092,7 +2092,16 @@ extension MyBooksDownloadCenter {
 
     /// Persist a started task so a mid-download kill can be reconciled at launch.
     /// Called on the initial start (`addDownloadTask`) and on each transfer retry
-    /// re-issue so the persisted `taskIdentifier` always tracks the live task.
+    /// re-issue.
+    ///
+    /// It does NOT track every live task, and an earlier version of this comment
+    /// claimed it did. Two paths create a download task without coming through
+    /// here — `followAcquisitionLink` and the bearer-token hop in
+    /// `RightsManagementDispatcher` — so a record can name a task that is no
+    /// longer the live one, under a URL that is no longer being fetched. That
+    /// bounds reconciliation's reach: such a record fails to match and its book
+    /// restarts. It can only cause a decline-to-adopt, never a wrong adoption,
+    /// which is why it is a gap and not a defect.
     func persistStartedTaskRecord(task: URLSessionDownloadTask, book: TPPBook, request: URLRequest) {
         guard let url = task.originalRequest?.url ?? request.url else { return }
         stateManager.persistStartedTask(
