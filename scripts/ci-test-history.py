@@ -170,6 +170,24 @@ def log_shape(log: str) -> tuple[int, int]:
     return len(hits), len({name for _, name, _ in hits})
 
 
+def depth_histogram(log: str) -> dict[int, int]:
+    """-> {iterations: how many tests were sampled that many times}.
+
+    Depth is a property of a TEST, not of a run, and a single mean hides that.
+    Run 32508244803 averages 2.9x while a handful of its tests were sampled
+    once; printing 2.9x alone averages the thinly-measured ones into the crowd
+    and reports the crowd — the same failure as a count that quietly under-
+    matches. Show the distribution and the gap is visible instead of absorbed.
+    """
+    per_test: dict[str, int] = defaultdict(int)
+    for _, name, _ in _iter_results(log):
+        per_test[name] += 1
+    hist: dict[int, int] = defaultdict(int)
+    for count in per_test.values():
+        hist[count] += 1
+    return dict(sorted(hist.items(), key=lambda kv: -kv[1]))
+
+
 def scan_log(log: str) -> dict[str, list[str]]:
     """-> {"Class.method": [verdict per iteration]} for tests that failed >=1.
 
@@ -233,11 +251,15 @@ def run_scan_mode(repo: str, args) -> int:
             print(f"    REFUSED: {exc}")
             continue
         execs, distinct = log_shape(log)
-        depth = execs / distinct if distinct else 0
-        print(f"  {stamp}  [{execs} executions / {distinct} tests = {depth:.1f}x sampling]")
+        hist = depth_histogram(log)
+        spread = "  ".join(f"{d}x:{n}" for d, n in hist.items())
+        print(f"  {stamp}  [{execs} executions / {distinct} tests — depth {spread}]")
+        thin = hist.get(1, 0)
+        if thin:
+            print(f"    {thin} test(s) sampled ONCE — a green verdict over those is one "
+                  f"sample each, not three")
         if not failures:
-            print("    no test failed an iteration"
-                  + ("" if depth >= 2 else "  (at 1x, that is one sample per test — weak evidence)"))
+            print("    no test failed an iteration")
             continue
         total_masked += len(failures)
         for name, verdicts in sorted(failures.items()):

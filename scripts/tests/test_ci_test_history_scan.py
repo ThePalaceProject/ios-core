@@ -127,3 +127,40 @@ def test_scan_run_acceptsARealSizedLogAndStillFindsTheFailure():
         line("TPPAlertUtilsTests", "testPresentAlert", "passed"),
     ])
     assert list(cth.scan_run(log)) == ["TPPAlertUtilsTests.testPresentAlert"]
+
+
+# ------------------------------------------------- depth is per test, not per run
+
+def test_depthHistogram_showsMixedDepthsInsteadOfAveragingThem():
+    """A single mean hides the thing you need to see.
+
+    Raised by a peer against the first version of this output, and true of the
+    very run it was built on: 32508244803 prints 2.9x on average while a handful
+    of its tests were sampled ONCE. `-test-iterations` relaunches the plan, but
+    which tests a relaunch actually re-runs is not uniform — so one number for a
+    whole run averages a 1x-sampled test into a 3x-sampled crowd and reports the
+    crowd. That is the same defect as a regex that returns a plausible smaller
+    number instead of an error: an answer whose shape hides its own gap.
+    """
+    log = "\n".join(
+        [line("DeepTests", f"testDeep{i}", "passed", clone=it + 1)
+         for it in range(3) for i in range(50)]
+        + [line("ShallowTests", f"testShallow{i}", "passed") for i in range(4)]
+    )
+    assert cth.depth_histogram(log) == {3: 50, 1: 4}
+
+
+def test_depthHistogram_isEmptyForAnEmptyLog():
+    assert cth.depth_histogram("") == {}
+
+
+def test_scan_run_reportsThinlySampledTestsEvenWhenTheMeanLooksHealthy():
+    """The mean here is 2.85x — comfortably 'deep' — yet 4 tests got one sample."""
+    log = "\n".join(
+        [line("DeepTests", f"testDeep{i}", "passed", clone=it + 1)
+         for it in range(3) for i in range(50)]
+        + [line("ShallowTests", f"testShallow{i}", "passed") for i in range(4)]
+    )
+    execs, distinct = cth.log_shape(log)
+    assert execs / distinct > 2.8
+    assert cth.depth_histogram(log)[1] == 4
