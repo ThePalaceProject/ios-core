@@ -5,98 +5,120 @@ author: claude-opus-5
 type: bugfix
 ---
 
-**ADR refs:** none — this repo has no `docs/adr/`. The governing texts are the
-INV-4 ownership contract stated in `DownloadTaskPersistence.swift`, the
-green-board contract in `CLAUDE.md`, and the god-class freeze recorded in
-`scripts/godclass-loc-baseline.txt`.
+**ADR refs:** none — this repo has no `docs/adr/`. Governing texts are the INV-4
+ownership contract stated in `DownloadTaskPersistence.swift`, the green-board
+contract in `CLAUDE.md`, and the freeze in `scripts/godclass-loc-baseline.txt`.
 
 **Jira:** PP-4997 (download adoption), PP-5020 (rating deferral), PP-4976
 (pre-PR verification reporting green on checks it declined to run — partly
-closed here).
+closed here), PP-5023 (unpersisted download tasks — filed from this work, not
+fixed here).
 
-## Summary
+## Claims
 
-Two patron-visible defects and a set of gates that were reporting work they had
-not done.
+- A persisted download record is adopted only by a live task fetching the SAME
+  URL, and the adoption carries that live task's identifier rather than the
+  persisted one.
+- Two persisted records claiming one download URL are both refused adoption.
+- The rating deferral budget is restored for every positive moment, and a
+  sleeping re-arm hop cannot overwrite a newer trigger's reset.
+- `verify-pr.sh` records `skip`, never `pass`, for a leg that did not run, and a
+  leg that never executes at all is reported as an accounting failure.
+- Every bash test under `scripts/tests/` is invoked by a workflow, and absence
+  of a tracked test file fails the job rather than skipping it.
+- Every script and workflow named in a tracked doc either resolves, or is
+  recorded in `scripts/doc-references-baseline.json`.
 
-**PP-4997.** A background download that outlived the app was re-attached to a
-book on `taskIdentifier` alone. That number is unique only within one session,
-so after a relaunch a leftover record for task 1 could match a different book's
-live task 1, and the finished file was delivered to a title the patron never
-asked for. Silent: no error, no alert, no log line.
+## Anti-claims
 
-**PP-5020.** The rating gate defers when a sheet would cover it, but the
-deferral budget was only restored on the path that actually showed the gate. A
-patron whose first positive moment was fully occluded left the counter at zero
-and the app stopped asking permanently, without ever spending the lifetime cap
-it was protecting.
+- This does NOT make adoption safe when a live task exists with no persisted
+  record. `contestedURLs` is computed from persisted records only, so a live
+  unpersisted task on another book's URL is invisible to it and that book's
+  record will adopt it. That is a wrong adoption, not a decline. Root fix is
+  PP-5023; the exposure is stated in-source rather than papered over.
+- This does NOT verify anything on a device. Simulator only.
+- This does NOT prove `URLSessionTask.taskIdentifier` behaviour across a
+  relaunch. The fix is deliberately agnostic to it.
+- This does NOT close PP-4976. Audiobook path classification, submodule
+  visibility, and the quick-mode scope question are untouched.
+- This does NOT repair the 53 baselined dangling doc references; it bounds them.
+- The `capture` argument binding is NOT covered and cannot be — a task built
+  from a URL reports the same value for both requests. The mutation run reports
+  those lines uncovered rather than counting them.
 
-**PP-4976 (partial).** `verify-pr.sh` recorded `pass` for 60 checks whose own
-detail line said they had been skipped, and `skip_count` never reached the main
-summary or the main JSON report.
+## Files in scope
+
+- `Palace/MyBooks/DownloadTaskPersistence.swift`
+- `Palace/MyBooks/MyBooksDownloadCenter.swift`
+- `Palace/AppRating/RatingPromptPresenter.swift`
+- `PalaceTests/MyBooks/DownloadReconciliationTests.swift`
+- `PalaceTests/MyBooks/LiveDownloadTaskBoxTests.swift`
+- `PalaceTests/MyBooks/DownloadReconciliationLaunchOrderContractTests.swift`
+- `PalaceTests/Decomp/BackgroundReconciliationContractTests.swift`
+- `PalaceTests/AppRating/RatingPromptPresenterTests.swift`
+- `scripts/verify-pr.sh`
+- `scripts/check-doc-references-resolve.py`, `scripts/doc-references-baseline.json`
+- `scripts/tests/` — doc-reference pytests, the ratchet-aggregation behaviour
+  harness, the wiring tests, and the anti-orphan gate
+- `.github/workflows/tooling-checks.yml`
+- `scripts/godclass-loc-baseline.txt`, `scripts/README.md`, `CONTRIBUTING.md`,
+  `scripts/coverage-exclude.json`, `.github/PULL_REQUEST_TEMPLATE.md`,
+  `docs/regression-suite/DESIGN.md`, `docs/Testing/3.3.0-REGRESSION-PLAN.md`
 
 ## Reproduction
 
 PP-4997 is source-verified rather than observed: `reconcile` compared only
-`record.taskIdentifier` against the live set, and the record already carried the
-download URL that distinguishes the two. Two people read it independently and
+`record.taskIdentifier` against the live set, while the record already carried
+the download URL that distinguishes them. Two people read it independently and
 reached the same conclusion.
 
 PP-5020 reproduces in a unit test: drive a trigger with a modal presented, let
-the budget exhaust, then drive a second trigger. Before the fix the second is
-dropped on entry.
+the budget exhaust, drive a second trigger. Before the fix the second is dropped
+on entry, permanently.
 
 The reporting defects reproduce by reading the script: 60 `record … "pass"`
-calls whose detail string begins "Skipped".
+calls whose own detail string began "Skipped".
 
-## What changed
+## Root cause
 
-- Adoption matches on the download URL and carries the LIVE task's identifier,
-  so it is correct whether or not identifiers survive a relaunch — a question
-  two reviewers disagreed about and nobody had settled on device.
-- Records whose URL is claimed by more than one book are refused rather than
-  guessed at. Three reviewers found this cell independently; it is PP-4997's own
-  symptom re-entered through its fix, because `taskIdentifierToBook` is
-  last-write-wins.
-- The rating budget is restored per trigger, and a sleeping re-arm hop no longer
-  writes its stale count over a newer trigger's reset.
-- `LiveDownloadTaskBox` moved to `DownloadTaskPersistence.swift` with a
-  `capture(_:)` method. Carrying URLs grew the hub 7 lines past its freeze; the
-  ratchet asks for extraction rather than a raised baseline, and extraction net
-  **-1** (baseline ratcheted 1250 → 1249).
-- All 60 unrun `verify-pr.sh` legs record `skip`; the count reaches both
-  summaries and both JSON emitters; a MISSING ratchet is reported instead of
-  being stepped past and counted as "at or under baseline".
-- New `check-doc-references-resolve.py` + baseline + CI wiring, because the
-  coverage summary had been telling reviewers that excluded paths were "covered
-  by simdrive E2E journeys (see `chaos-replay-on-pr.yml`)" — a workflow that does
-  not exist, for a corpus with zero tracked files.
+**PP-4997.** `URLSessionTask.taskIdentifier` is unique only within a session. A
+relaunch starts a new session and renumbers from 1, so a leftover record for
+task 1 matched a different book's live task 1. The discriminating field — the
+download URL — was on the record and never read.
+
+**PP-5020.** The deferral budget was restored only on the code path that showed
+the gate. A positive moment that was fully occluded therefore consumed the
+budget and never replenished it, leaving the counter latched at zero for the
+life of the presenter.
+
+**The reporting defects.** `record()` had two outcomes, pass and fail, so a leg
+that declined to run had no way to say so and reported the only non-failing
+value available.
 
 ## Verification
 
 Every fix was confirmed by reintroducing the defect and requiring a NAMED
 failing test, not by the suite passing.
 
+Mutation on the changed lines of `DownloadTaskPersistence.swift`
+(`palace_mutate.py --diff-only`): 6 killed, 0 survived, 0 errored, 1 uncovered.
+The first run of this reported 4 killed / 1 errored / 2 uncovered because it
+named only one test class; a reviewer pointed out that `LiveDownloadTaskBoxTests`
+covers two of those lines, so the gap was a test-selection artifact and not a
+real one. The single remaining uncovered line is the `return false` arm that
+cannot be reached through `URLSessionDownloadTask` at all. Rating: four mutants —
+latch, clobber, decrement removed, budget guard removed — each killed by a named
+test, re-run after the `armHop` extraction.
+
 The rating clobber test needed four attempts. Three passed against the live
 defect: two never reached the cell they named, and one depended on winning a
 ~30ms race that a reviewer measured it losing 10 times in 12. It now injects a
 clock and drives both wake orders; the mutant dies 12/12.
 
-The ratchet-wiring check needed two. The first asserted the aggregation by
-grepping the script's own source; two reviewers between them walked through it
-seven ways, each leaving every searched-for string intact while making the
-branch unreachable — including piping into `head` and reading the wrong exit
-status, a trap already written down in this repo. The replacement lifts the
-block, stubs `record` and the ratchets, and asserts the recorded outcome. It
-catches all seven; the grep version caught none.
-
-**Not done:** on-device verification — simulator only. `.restart` being inert
-for a `.downloading` book is pre-existing and wants its own ticket. The full
-suite has one failure, `BookSignInRedirectHandlerTests.testHandleProblem_alreadySAMLStarted_setsFailedAndPresentsReauthModal`,
-which passes in isolation and has been failing intermittently on five unrelated
-branches since 19 August with retry reporting those runs green — recorded
-against PP-4991, not caused here.
-
-**Deferred:** `taskDescription` carrying the book id would be an exact
-discriminator and make the collision guard unnecessary; nothing sets it today.
-The 24 baselined dangling doc references are recorded, not repaired.
+The ratchet-wiring check needed two. The first asserted by grepping the script's
+own source; two reviewers between them walked through it seven ways, each
+leaving every searched-for string intact while making the branch unreachable.
+The replacement lifts the block, stubs its inputs, and asserts the recorded
+outcome: 7/7 versus 0/7. A third attack class — disabling the whole section so
+it records nothing — is caught by the expected-key manifest, which fails the run
+when a leg reports neither pass, fail, nor skip.

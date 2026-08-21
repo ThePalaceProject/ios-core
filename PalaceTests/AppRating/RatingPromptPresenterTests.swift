@@ -44,6 +44,7 @@ final class RatingPromptPresenterTests: XCTestCase {
   override func tearDown() {
     defaults.removePersistentDomain(forName: suiteName)
     settings = nil; defaults = nil; suiteName = nil
+    clock?.drain()
     requester = nil; feedback = nil; clock = nil
     super.tearDown()
   }
@@ -112,6 +113,14 @@ final class RatingPromptPresenterTests: XCTestCase {
     func resumeNewest() {
       guard !parked.isEmpty else { return }
       parked.removeLast().resume()
+    }
+
+    /// Resume everything still parked. A `CheckedContinuation` that is never
+    /// resumed leaks its task, and the clobber test parks several per
+    /// iteration; draining in tearDown keeps a test that deliberately leaves
+    /// hops asleep from accumulating them across the suite.
+    func drain() {
+      while !parked.isEmpty { parked.removeFirst().resume() }
     }
   }
 

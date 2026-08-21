@@ -1335,6 +1335,35 @@ else
   fi
 fi
 
+# --- Every leg must ACCOUNT for itself -------------------------------------
+#
+# A leg that never executes records nothing, and a summary built only from what
+# ran cannot tell "clean" from "never reached". Three separate attacks in review
+# exploited exactly that: wrapping a section in `if false; then … fi`, inverting
+# an outer guard, and moving a block into a function nobody calls. All three
+# leave the code present, `bash -n` clean, and every string a source-grep looks
+# for intact — while the leg silently stops running.
+#
+# So the run declares up front what it OWES, and reconciles at the end. A
+# missing key is a FAILURE, not an absence: it means a check this script claims
+# to perform did not happen and nobody was told.
+EXPECTED_KEYS="build unit_tests test_quality coverage_floors mutation \
+decomposition_ratchets completion_isolation committed_signing doc_hygiene \
+blast_radius contract_reconciliation accessibility audiobook_smoke"
+
+MISSING_KEYS=""
+for key in $EXPECTED_KEYS; do
+  case " ${RESULTS[*]} " in
+    *"\"check\":\"$key\""*) ;;
+    *) MISSING_KEYS="$MISSING_KEYS $key" ;;
+  esac
+done
+if [ -n "$MISSING_KEYS" ]; then
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  echo "  [FAIL] leg_accounting — these checks recorded NOTHING, so they did not run:$MISSING_KEYS"
+  RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"unreported legs:$MISSING_KEYS\"}")
+fi
+
 # Summary
 echo ""
 echo "=== Summary ==="

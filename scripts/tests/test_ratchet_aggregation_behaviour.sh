@@ -34,7 +34,11 @@ pass() { echo "  ok  $*"; }
 # "<nothing>", which is a legible failure rather than a silent pass.
 BLOCK="$(sed -n '/^  RATCHET_FAILED=""/,/decomposition_ratchets" "pass"/p' "$VPR")
   fi"
-[ -n "$BLOCK" ] || fail "could not lift the ratchet aggregation block from $VPR"
+# NOT `[ -n "$BLOCK" ]`: the closing `fi` is appended unconditionally, so BLOCK
+# is never empty and that check could never fire. Assert the thing that actually
+# distinguishes a successful lift — the loop the block is named for.
+echo "$BLOCK" | grep -q 'for ratchet in check-appcontainer' \
+  || fail "lifted block does not contain the ratchet loop — the extraction range has drifted"
 echo "$BLOCK" | bash -n - 2>/dev/null || fail "lifted block does not parse — the extraction range has drifted"
 
 # Runs the lifted block against stubbed ratchets and echoes the recorded outcome.

@@ -2100,8 +2100,15 @@ extension MyBooksDownloadCenter {
     /// `RightsManagementDispatcher` — so a record can name a task that is no
     /// longer the live one, under a URL that is no longer being fetched. That
     /// bounds reconciliation's reach: such a record fails to match and its book
-    /// restarts. It can only cause a decline-to-adopt, never a wrong adoption,
-    /// which is why it is a gap and not a defect.
+    /// restarts.
+    ///
+    /// An earlier version of this comment said that can only cause a
+    /// decline-to-adopt and never a wrong adoption. That is FALSE and was shown
+    /// so in review: reconciliation's contested-URL guard is computed from
+    /// persisted records only, so a live unpersisted task on another book's
+    /// download URL is invisible to it, and that book's record adopts this
+    /// task. Tracked as PP-5023 — the fix is for these paths to persist, which
+    /// makes them visible to the guard.
     func persistStartedTaskRecord(task: URLSessionDownloadTask, book: TPPBook, request: URLRequest) {
         guard let url = task.originalRequest?.url ?? request.url else { return }
         stateManager.persistStartedTask(

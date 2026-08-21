@@ -134,10 +134,25 @@ enum DownloadReconciliation {
     ///   identifies at most one book. The URL is only a safe discriminator
     ///   because of that. Two books CAN legitimately share one — the same
     ///   open-access title surfaced by two catalogs — so the invariant is
-    ///   enforced here rather than assumed: records whose URL is claimed by
-    ///   more than one book are refused adoption. Adopting them would route the
-    ///   finished file to whichever book wrote `taskIdentifierToBook` last,
-    ///   which is PP-4997's own failure mode re-entered through its fix.
+    ///   enforced here for records, and NOT enforced for live tasks — a limit
+    ///   worth stating precisely, because an earlier version of this comment
+    ///   overclaimed. Records whose URL is claimed by more than one book are
+    ///   refused adoption; adopting them would route the finished file to
+    ///   whichever book wrote `taskIdentifierToBook` last, which is PP-4997's
+    ///   own failure mode re-entered through its fix.
+    ///
+    ///   WHAT IT DOES NOT COVER: `contestedURLs` is computed from `persisted`
+    ///   alone, because that is all this function is given. A live task created
+    ///   WITHOUT a persisted record — `followAcquisitionLink` and the
+    ///   bearer-token hop in `RightsManagementDispatcher` both do this — is
+    ///   invisible to it. If book B has such a task on book A's URL, A's record
+    ///   sees exactly one live task on its URL and adopts B's download. That is
+    ///   a wrong adoption, not a decline, and this guard does not prevent it.
+    ///   The root fix is for those two paths to persist their tasks (PP-5023);
+    ///   until then the exposure is real and bounded by how rarely two books
+    ///   share an acquisition URL — measured at zero in a 100-entry DPLA feed
+    ///   with 400 acquisition links and 200 distinct hrefs, but unconstrained
+    ///   by the data model.
     /// PURE — no URLSession, no I/O. Unit-testable exhaustively over the
     /// {live task / dead task} × {registry state} matrix.
     ///

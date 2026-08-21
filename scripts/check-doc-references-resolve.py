@@ -45,12 +45,15 @@ BASELINE_NAME = "doc-references-baseline.json"
 # `scripts/foo.py`, optionally prefixed by the maintainer-local harness root.
 # The harness prefix means "deliberately not in this repo" and is never dangling.
 SCRIPT_RE = re.compile(r"(?P<harness>~/harness/[A-Za-z0-9_./-]*?)?(?P<path>scripts/[A-Za-z0-9_.-]+\.(?:py|sh|rb))")
-# A .yml reference, with the same harness escape the script arm has. Without it
-# the tool's own remedy ("write it as ~/harness/...") does not work on this arm.
+# A .yml OR .yaml reference, with the same harness escape the script arm has.
+# Matching only `.yml` left every `.yaml` reference invisible — including a pile
+# of `.simdrive/journeys/*.yaml` paths that have not existed since the QA
+# harness was extracted. A detector blind to half its own file extension reports
+# clean for the wrong reason.
 WORKFLOW_RE = re.compile(
     r"(?P<harness>~/harness/[A-Za-z0-9_./-]*?)?"
     r"(?P<dir>(?:[A-Za-z0-9_.-]+/)+)?"
-    r"(?<![A-Za-z0-9_.-])(?P<wf>[A-Za-z0-9_-]+\.yml)")
+    r"(?<![A-Za-z0-9_.-])(?P<wf>[A-Za-z0-9_-]+\.ya?ml)")
 
 # Directories whose contents are archival records of what was true at the time,
 # not live instructions. Rewriting history to keep a linter quiet is worse than

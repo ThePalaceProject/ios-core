@@ -2,9 +2,19 @@
   "_comment": "Pre-existing dangling doc references, tolerated so the gate could land. Nothing new may be added. Fix an entry and delete its line \u2014 the gate fails on baseline entries that now resolve, so this cannot go stale.",
   "known_dangling": [
     {
+      "doc": ".claude/skills/swarm/SKILL.md",
+      "kind": "workflow",
+      "target": "SWARM_ID/manifest.yaml"
+    },
+    {
       "doc": "docs/SystemRequirements.md",
       "kind": "script",
       "target": "scripts/mutate.py"
+    },
+    {
+      "doc": "docs/Testing/3.3.0-REGRESSION-PLAN.md",
+      "kind": "workflow",
+      "target": "recording.yaml"
     },
     {
       "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
@@ -20,6 +30,56 @@
       "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
       "kind": "script",
       "target": "scripts/test-sync.sh"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "concurrent-borrow.yaml"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "hold-to-loan-adobe.yaml"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "hold-to-loan-lcp.yaml"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "multi-library-credential-isolation.yaml"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "reauth-on-401-token.yaml"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "sign-in-oidc.yaml"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "sign-in-saml.yaml"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "sign-in-token.yaml"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "sign-out-oidc.yaml"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "workflow",
+      "target": "sign-out-saml-slo.yaml"
     },
     {
       "doc": "docs/Testing/TESTING_POSTURE.md",
@@ -44,12 +104,72 @@
     {
       "doc": "docs/Testing/TESTING_POSTURE.md",
       "kind": "workflow",
+      "target": "recording.yaml"
+    },
+    {
+      "doc": "docs/Testing/TESTING_POSTURE.md",
+      "kind": "workflow",
       "target": "ui-testing.yml"
+    },
+    {
+      "doc": "docs/Testing/accessibility-audit-coverage.md",
+      "kind": "workflow",
+      "target": ".simdrive/journeys/PP-4529-print-page-navigation-voiceover.yaml"
     },
     {
       "doc": "docs/architecture/areas/auth/verification-checklist.md",
       "kind": "script",
       "target": "scripts/find-auth-call-sites.py"
+    },
+    {
+      "doc": "docs/architecture/areas/holds/verification-checklist.md",
+      "kind": "workflow",
+      "target": "hold-to-loan-adobe.yaml"
+    },
+    {
+      "doc": "docs/architecture/areas/holds/verification-checklist.md",
+      "kind": "workflow",
+      "target": "hold-to-loan-lcp.yaml"
+    },
+    {
+      "doc": "docs/architecture/areas/mybooks/verification-checklist.md",
+      "kind": "workflow",
+      "target": "concurrent-borrow.yaml"
+    },
+    {
+      "doc": "docs/architecture/areas/mybooks/verification-checklist.md",
+      "kind": "workflow",
+      "target": "hold-to-loan-adobe.yaml"
+    },
+    {
+      "doc": "docs/architecture/areas/mybooks/verification-checklist.md",
+      "kind": "workflow",
+      "target": "hold-to-loan-lcp.yaml"
+    },
+    {
+      "doc": "docs/architecture/areas/reader/verification-checklist.md",
+      "kind": "workflow",
+      "target": "reader2-back-button.yaml"
+    },
+    {
+      "doc": "docs/architecture/areas/reader/verification-checklist.md",
+      "kind": "workflow",
+      "target": "reader2-bookmark-toggle.yaml"
+    },
+    {
+      "doc": "docs/architecture/areas/reader/verification-checklist.md",
+      "kind": "workflow",
+      "target": "reader2-page-forward.yaml"
+    },
+    {
+      "doc": "docs/architecture/areas/reader/verification-checklist.md",
+      "kind": "workflow",
+      "target": "reader2-settings-sheet.yaml"
+    },
+    {
+      "doc": "docs/architecture/areas/reader/verification-checklist.md",
+      "kind": "workflow",
+      "target": "reader2-toc-navigate.yaml"
     },
     {
       "doc": "docs/architecture/mutation-testing.md",
@@ -72,6 +192,21 @@
       "target": "scripts/check-notification-observer-storage.py"
     },
     {
+      "doc": "docs/architecture/phase-3.5-class-scan.md",
+      "kind": "workflow",
+      "target": ".simdrive/replays/chaos/lock-screen-engage.yaml"
+    },
+    {
+      "doc": "docs/architecture/pp4156-retro-2026-05-04.md",
+      "kind": "workflow",
+      "target": ".simdrive/journeys/audiobook-download-indicator-stateful.yaml"
+    },
+    {
+      "doc": "docs/architecture/pp4156-retro-2026-05-04.md",
+      "kind": "workflow",
+      "target": "recording.yaml"
+    },
+    {
       "doc": "docs/architecture/triage-bot-shared-architecture-proposal.md",
       "kind": "script",
       "target": "scripts/contributor_names.py"
@@ -80,6 +215,16 @@
       "doc": "docs/architecture/triage-bot-shared-architecture-proposal.md",
       "kind": "workflow",
       "target": "build.yml"
+    },
+    {
+      "doc": "docs/architecture/triage-bot-shared-architecture-proposal.md",
+      "kind": "workflow",
+      "target": "openapi.yaml"
+    },
+    {
+      "doc": "docs/architecture/ws4-mac-validation-runbook.md",
+      "kind": "workflow",
+      "target": ".simdrive/journeys/ws4-ipad-on-mac-exit-adobe-drm.yaml"
     },
     {
       "doc": "docs/bug-investigation-process.md",
