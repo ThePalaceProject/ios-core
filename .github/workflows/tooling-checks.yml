@@ -77,6 +77,53 @@ jobs:
             echo "No hook fixture test — skipping."
           fi
 
+      # 3b. verify-pr detector wiring test. The three decomposition ratchets
+      #     (locator count, god-class LOC, .shared reads) each shipped with a
+      #     baseline and a passing pytest while being invoked by NOTHING
+      #     (audited 2026-08-20). A detector's own unit tests are silent about
+      #     whether anything calls it, so this asserts the CALL SITE — and
+      #     asserts the clean path passes, not just that a violation blocks.
+      #
+      #     NOTE: deliberately does not spell out the completion-isolation
+      #     detector's filename. test_check_completion_isolation.py guards
+      #     "is this detector a CI step yet?" with a substring scan of THIS
+      #     file, so naming it here — even in a comment — trips that ratchet.
+      #     (Same shape as the ratchet-detectors-count-comment-mentions trap.)
+      - name: verify-pr detector wiring test
+        run: |
+          if [ -f scripts/tests/test_verify_pr_ratchet_wiring.sh ]; then
+            bash scripts/tests/test_verify_pr_ratchet_wiring.sh
+          else
+            echo "No verify-pr wiring test — skipping."
+          fi
+
+      # 3c. Documentation references must resolve. A tooling extraction left the
+      #     docs pointing at scripts and workflows that no longer exist, and one
+      #     of those pointers was the coverage summary telling reviewers that
+      #     excluded paths were "covered by simdrive E2E journeys" via a workflow
+      #     that did not exist. Hand-aimed audits missed it twice; this one is
+      #     mechanical and covers every tracked doc. A pre-existing backlog is
+      #     baselined — new dangling references fail, and baseline entries that
+      #     start resolving fail too, so the amnesty cannot quietly grow.
+      - name: doc references resolve
+        run: |
+          if [ -f scripts/check-doc-references-resolve.py ]; then
+            python3 scripts/check-doc-references-resolve.py
+          else
+            echo "No doc-reference detector — skipping."
+          fi
+
+      # 3d. ...and prove the gate above is actually wired, with an interface it
+      #     accepts, and that it passes on a clean tree. A bash test, so pytest
+      #     does not collect it.
+      - name: doc-reference gate wiring test
+        run: |
+          if [ -f scripts/tests/test_doc_reference_gate_wiring.sh ]; then
+            bash scripts/tests/test_doc_reference_gate_wiring.sh
+          else
+            echo "No doc-reference wiring test — skipping."
+          fi
+
       # 4. @objc-witness-drift detector (bash test — not collected by pytest).
       #    Proves the same-name-drift block path, the benign different-name
       #    pass path, and the allowlist. Guards the Unit-Tests workflow gate.
@@ -117,6 +164,8 @@ jobs:
           else
             echo "No contributor-surface gate — skipping."
           fi
+
+
   # Diff-scoped test-flakiness gate. Separate job because it needs the PR's base
   # branch fetched (fetch-depth: 0 + an explicit base fetch) to diff against —
   # the tooling-integrity job runs shallow. Fails the PR if a changed test file

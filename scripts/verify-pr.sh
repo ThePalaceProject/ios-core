@@ -177,13 +177,23 @@ fi
 
 PASS_COUNT=0
 FAIL_COUNT=0
+SKIP_COUNT=0
 RESULTS=()
 
 record() {
   local check="$1" status="$2" detail="$3"
+  # THREE outcomes, not two. A leg that did not run is not a leg that passed —
+  # that conflation is the exact defect this branch exists to remove, and it was
+  # re-introduced here by reporting an absent maintainer tool as "pass". `skip`
+  # keeps the run green (a missing private tool is not a defect in the PR under
+  # test) while saying plainly, in the console and in the JSON, that nothing was
+  # verified. Anyone reading the report can tell "clean" from "did not look".
   if [ "$status" = "pass" ]; then
     PASS_COUNT=$((PASS_COUNT + 1))
     echo "  [PASS] $check"
+  elif [ "$status" = "skip" ]; then
+    SKIP_COUNT=$((SKIP_COUNT + 1))
+    echo "  [SKIP] $check — $detail"
   else
     FAIL_COUNT=$((FAIL_COUNT + 1))
     echo "  [FAIL] $check — $detail"
@@ -226,6 +236,7 @@ if [ "$DOCS_ONLY" = "true" ]; then
   echo "=== Summary ==="
   echo "  Passed: $PASS_COUNT"
   echo "  Failed: $FAIL_COUNT"
+  echo "  Skipped: $SKIP_COUNT (ran nothing — not a pass)"
 
   if [ -n "$REPORT_FILE" ]; then
     RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
@@ -236,6 +247,7 @@ if [ "$DOCS_ONLY" = "true" ]; then
   "fast_path": "docs-only",
   "pass_count": $PASS_COUNT,
   "fail_count": $FAIL_COUNT,
+  "skip_count": $SKIP_COUNT,
   "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
   "checks": [$RESULTS_JSON]
 }
@@ -632,6 +644,69 @@ elif [ -f scripts/check-palacedownloads-package-purity.sh ]; then
   fi
 else
   record "palacedownloads_package_purity" "pass" "check-palacedownloads-package-purity.sh not found (skipped)"
+fi
+
+# 3b6. Decomposition ratchets — locator count, god-class LOC, `.shared` reads.
+# Three whole-tree scans that each hold a baseline file. They were written with
+# baselines and pytests but wired into NOTHING, so the lines they exist to hold
+# could drift upward silently (audited 2026-08-20: all three orphaned). A check
+# nothing invokes is inert — see memory `fixes-must-be-systemic-not-remembered`.
+# Each exits non-zero only when the tree regresses PAST its committed baseline,
+# so they are no-ops on a clean tree and cost ~7s total.
+echo "--- Decomposition ratchets (locator / god-class LOC / .shared reads) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "decomposition_ratchets" "pass" "Skipped (--mutation-only)"
+else
+  RATCHET_FAILED=""
+  RATCHET_DETAIL=""
+  for ratchet in check-appcontainer-locator-count.sh check-godclass-loc-freeze.sh check-shared-read-count.sh; do
+    [ -f "scripts/$ratchet" ] || continue
+    RATCHET_OUT=$(bash "scripts/$ratchet" 2>&1)
+    if [ "$?" -ne 0 ]; then
+      RATCHET_FAILED="yes"
+      RATCHET_DETAIL="$RATCHET_DETAIL $ratchet: $(echo "$RATCHET_OUT" | grep -m1 -iE 'FAIL|exceed|over baseline' | head -c 160);"
+    fi
+  done
+  if [ -n "$RATCHET_FAILED" ]; then
+    record "decomposition_ratchets" "fail" "$RATCHET_DETAIL"
+  else
+    record "decomposition_ratchets" "pass" "locator / god-class LOC / .shared reads all at or under baseline"
+  fi
+fi
+
+# 3b7. Completion-isolation (diff-scoped).
+# Flags a completion handler invoked from a Task inside a non-main-actor
+# function: a @MainActor caller's closure then fails an isolation assertion and
+# the process is killed outright, with no error and no saved reading position
+# (PP-4955). Swift emits no warning for this.
+#
+# DIFF-SCOPED ON PURPOSE. A whole-tree run currently exits 1 on 11 pre-existing
+# violations in LCPAudiobooks + AudiobookBookmarkBusinessLogic, which is exactly
+# why this detector was never wired: as a scan-all gate it would block every
+# commit on debt it did not introduce. Passing only the changed Swift files
+# blocks NEW violations while leaving the known backlog to its own tickets.
+echo "--- Completion isolation (changed files) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "completion_isolation" "pass" "Skipped (--mutation-only)"
+elif [ ! -f scripts/check-completion-isolation.py ]; then
+  record "completion_isolation" "pass" "check-completion-isolation.py not found (skipped)"
+elif [ -z "$CHANGED_SWIFT" ]; then
+  record "completion_isolation" "pass" "No changed production Swift files"
+else
+  CI_FILES=()
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$f" ] && CI_FILES+=("$f")
+  done <<< "$CHANGED_SWIFT"
+  if [ "${#CI_FILES[@]}" -eq 0 ]; then
+    record "completion_isolation" "pass" "No changed production Swift files on disk"
+  else
+    CI_OUT=$(python3 scripts/check-completion-isolation.py "${CI_FILES[@]}" 2>&1)
+    if [ "$?" -eq 0 ]; then
+      record "completion_isolation" "pass" "${#CI_FILES[@]} changed file(s); no completion delivered off the main actor"
+    else
+      record "completion_isolation" "fail" "$(echo "$CI_OUT" | head -1)"
+    fi
+  fi
 fi
 
 # 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
@@ -1140,11 +1215,11 @@ fi
 SIMDRIVE_REGRESS="${PALACE_QA_HARNESS:-$HOME/harness/palace-qa}/scripts/simdrive-regress.sh"
 echo "--- simdrive Replay ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "simdrive" "pass" "Skipped (--mutation-only)"
+  record "simdrive" "skip" "Not run (--mutation-only)"
 elif [ "$SIMDRIVE" != "true" ]; then
-  record "simdrive" "pass" "Skipped (pass --simdrive to enable)"
+  record "simdrive" "skip" "Not run (pass --simdrive to enable)"
 elif [ ! -x "$SIMDRIVE_REGRESS" ]; then
-  record "simdrive" "pass" "Unavailable (maintainer-only; not in this repo)"
+  record "simdrive" "skip" "Not run (maintainer-only tooling absent from this repo)"
 elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
   record "simdrive" "fail" "simdrive package not installed (pip3 install --pre simdrive)"
 else
