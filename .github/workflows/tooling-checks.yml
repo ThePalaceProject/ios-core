@@ -71,11 +71,13 @@ jobs:
       #    interface it accepts (the bug that would have blocked every commit).
       - name: pre-commit detector hook fixture test
         run: |
-          if [ -f scripts/tests/test_pre_commit_phase35_detectors.sh ]; then
-            bash scripts/tests/test_pre_commit_phase35_detectors.sh
-          else
-            echo "No hook fixture test — skipping."
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Skipping here turns a removed test into a green check.
+          if [ ! -f scripts/tests/test_pre_commit_phase35_detectors.sh ]; then
+            echo "::error::scripts/tests/test_pre_commit_phase35_detectors.sh is missing — the gate cannot be verified."
+            exit 1
           fi
+          bash scripts/tests/test_pre_commit_phase35_detectors.sh
 
       # 3b. verify-pr detector wiring test. The three decomposition ratchets
       #     (locator count, god-class LOC, .shared reads) each shipped with a
@@ -117,6 +119,24 @@ jobs:
           fi
           python3 scripts/check-doc-references-resolve.py
 
+      # 3e. The ratchet aggregation's BEHAVIOUR. This is the check that two
+      #     reviewers between them walked through SEVEN ways when it asserted by
+      #     grepping source text — every attack left the searched-for strings in
+      #     place while making the branch unreachable. The replacement runs the
+      #     block with stubbed inputs and asserts the outcome it records.
+      #
+      #     It shipped INVOKED BY NOTHING, which is the exact defect this branch
+      #     is about, in the file arguing against it. Its only mention anywhere
+      #     was a COMMENT in a sibling test — a mention, not a call. Wired here,
+      #     failing closed like its siblings.
+      - name: ratchet aggregation behaviour test
+        run: |
+          if [ ! -f scripts/tests/test_ratchet_aggregation_behaviour.sh ]; then
+            echo "::error::scripts/tests/test_ratchet_aggregation_behaviour.sh is missing — the gate cannot be verified."
+            exit 1
+          fi
+          bash scripts/tests/test_ratchet_aggregation_behaviour.sh
+
       # 3d. ...and prove the gate above is actually wired, with an interface it
       #     accepts, and that it passes on a clean tree. A bash test, so pytest
       #     does not collect it.
@@ -148,22 +168,26 @@ jobs:
       #    provided via a gitignored xcconfig — flipping it blind would break it.
       - name: committed-signing detector test
         run: |
-          if [ -f scripts/tests/test_check_no_committed_signing.sh ]; then
-            bash scripts/tests/test_check_no_committed_signing.sh
-          else
-            echo "No committed-signing detector test — skipping."
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Skipping here turns a removed test into a green check.
+          if [ ! -f scripts/tests/test_check_no_committed_signing.sh ]; then
+            echo "::error::scripts/tests/test_check_no_committed_signing.sh is missing — the gate cannot be verified."
+            exit 1
           fi
+          bash scripts/tests/test_check_no_committed_signing.sh
 
       # 5b. doc-hygiene detector: blocks process/generated docs (swarm transcripts/
       #     contracts, campaign scaffolding, generated .arch IR) from being committed;
       #     passes legit ADRs/READMEs. Asserts BOTH directions (see the shell test).
       - name: doc-hygiene detector test
         run: |
-          if [ -f scripts/tests/test_check_doc_hygiene.sh ]; then
-            bash scripts/tests/test_check_doc_hygiene.sh
-          else
-            echo "No doc-hygiene detector test — skipping."
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Skipping here turns a removed test into a green check.
+          if [ ! -f scripts/tests/test_check_doc_hygiene.sh ]; then
+            echo "::error::scripts/tests/test_check_doc_hygiene.sh is missing — the gate cannot be verified."
+            exit 1
           fi
+          bash scripts/tests/test_check_doc_hygiene.sh
       - name: contributor-surface gate
         run: |
           if [ -f scripts/check-contributor-surface.py ]; then

@@ -70,10 +70,13 @@ pull request:
 - Coverage floors (`scripts/enforce_coverage_floors.py`)
 - Snapshot tests
 - Lint / accessibility lint
-- Chaos replay on PR (simdrive-driven E2E regression for critical flows)
-- Mutation gate on changed Swift files
 
 A red CI run blocks merge regardless of who opened the PR.
+
+Mutation testing and simulator-driven E2E are **not** CI gates. Both need
+something CI does not have — a booted simulator for E2E, and a long serial run
+for mutation — so they are local pre-PR steps (`scripts/palace_mutate.py`,
+`scripts/verify-pr.sh --simdrive --chaos`). Nothing in CI enforces them.
 
 ### Local self-check (anyone can run)
 

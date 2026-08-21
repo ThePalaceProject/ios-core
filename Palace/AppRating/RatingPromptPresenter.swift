@@ -112,7 +112,22 @@ final class RatingPromptPresenter: ObservableObject {
   }
 
   private func scheduleTrigger(_ trigger: AppRatingTrigger) {
+    // The reset is the ONLY difference between this and a re-arm hop. Keeping
+    // the hop itself in one place means the two can never drift apart on the
+    // axis this fix is about.
     deferralsRemaining = Self.maxDeferrals
+    armHop(trigger)
+  }
+
+  /// Wait the trigger delay, then re-enter `handleTrigger`.
+  ///
+  /// Deliberately does NOT touch `deferralsRemaining` after waking. The budget
+  /// is instance state, and a positive moment arriving during the delay window
+  /// performs its own synchronous reset in `scheduleTrigger`; writing this
+  /// chain's decremented value back afterwards would clobber that reset and
+  /// hand the NEW trigger an old chain's exhausted budget — the same bug this
+  /// fix exists to remove, reintroduced for the width of the delay.
+  private func armHop(_ trigger: AppRatingTrigger) {
     let delay = triggerDelayNanoseconds
     Task { @MainActor in
       await self.sleep(delay)
@@ -147,20 +162,17 @@ final class RatingPromptPresenter: ObservableObject {
       // restore the budget every hop and the bound would be decorative.
       //
       // Do NOT write the count back to `self` after the sleep. The budget is
-      // instance state, and a positive moment arriving during the delay window
-      // performs its own synchronous reset in scheduleTrigger; restoring this
-      // chain's decremented value afterwards would clobber it and hand the NEW
-      // trigger an old chain's exhausted budget — the same bug this fix exists
-      // to remove, reintroduced for the width of the delay.
-      let delay = triggerDelayNanoseconds
-      Task { @MainActor in
-        await self.sleep(delay)
-        self.handleTrigger(trigger)
-      }
+      // budget the newer trigger just restored (see armHop).
+      armHop(trigger)
       return
     }
 
-    deferralsRemaining = Self.maxDeferrals
+    // NOT reset here. `scheduleTrigger` restores the budget for every positive
+    // moment, so resetting again on the way out is a second encoding of the
+    // same rule that no test can tell from the first — and two encodings of one
+    // invariant is how the original defect survived: the reset lived ONLY here,
+    // on the path that showed the gate, so a fully-occluded moment never got it
+    // back.
     service.recordPromptShown()
     step = .sentiment
   }
