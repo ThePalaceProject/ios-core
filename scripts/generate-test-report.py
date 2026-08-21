@@ -124,6 +124,25 @@ def generate_report(data: Dict[str, Any], commit: str = "", branch: str = "", sn
             lines.append(f"| {status} | {class_name} | {total} | {cls_passed} | {failed_cell} | {cls_duration} |")
         lines.append("")
     
+    # Flaky tests — passed only after a retry. Not failures: the retry contract
+    # and ci-parity-local.sh's gate both count them as passes, and nothing here
+    # changes that. But a reader told "0 failed" learns nothing about them, and
+    # on run 32508244803 that silence covered nine tests, two on the borrow/auth
+    # critical path.
+    flaky_tests = data.get('flaky_tests', [])
+    if flaky_tests:
+        lines.append(f"## ⚠️ Flaky — {len(flaky_tests)} test(s) passed only after a retry")
+        lines.append("")
+        lines.append("The run is GREEN over these. They are listed because retry hides them,")
+        lines.append("not because they failed the gate.")
+        lines.append("")
+        lines.append("| Class | Method | Iterations |")
+        lines.append("|-------|--------|------------|")
+        for test in flaky_tests:
+            iters = " · ".join(test.get('iterations') or []) or '-'
+            lines.append(f"| {test.get('class', '-')} | `{test.get('method', '-')}` | {iters} |")
+        lines.append("")
+
     # Failed Tests Details
     failed_tests = data.get('failed_tests', [])
     if failed_tests:
@@ -142,6 +161,11 @@ def generate_report(data: Dict[str, Any], commit: str = "", branch: str = "", sn
             failures = test.get('failures', [])
             if failures:
                 for failure in failures[:3]:  # Show up to 3 failure messages
+                    # Two producers, two shapes: the node walker emits dicts,
+                    # the legacy branch emitted bare strings. Accept both rather
+                    # than crash the report on the first failing test.
+                    if isinstance(failure, str):
+                        failure = {'message': failure}
                     message = failure.get('message', '')
                     file_name = failure.get('file', '')
                     line_num = failure.get('line', '')
