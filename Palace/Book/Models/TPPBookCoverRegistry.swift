@@ -428,9 +428,39 @@ actor TPPBookCoverRegistry {
             let key = url.absoluteString as NSString
 
             do {
-                let (data, _) = try await self.urlSession.data(
+                let (data, response) = try await self.urlSession.data(
                     for: URLRequest.withoutHTTP3Assumption(url: url)
                 )
+                // The response used to be discarded into `_`, so a non-2xx body
+                // (an HTML error page) and a 200 with a zero-length body were
+                // both treated as a successful fetch AND cached under the URL
+                // key. Neither can decode, so the cover fell back to a generated
+                // TenPrint placeholder — and because the bad bytes were cached,
+                // every later fetch was served them too, so the placeholder
+                // became permanent for the process lifetime instead of
+                // recovering on the next scroll. This session sets
+                // `urlCache = nil`, so there is no layer underneath to recover
+                // through either.
+                //
+                // Empty is the only body state that matters here: a TRUNCATED
+                // JPEG still decodes (verified at 10/25/50/75/90% prefixes of a
+                // real cover), while zero bytes is exactly and only the input
+                // that makes `downsampleImage` return nil.
+                //
+                // The refusal is reported rather than silent. Declining here
+                // means the decode is never attempted, so the decode-side
+                // `logImageDecodeFail` that used to fire for these responses no
+                // longer does — the signal MOVES to this call rather than
+                // disappearing. Without it a fix would make the symptom stop
+                // being logged instead of stop happening, and nobody could tell
+                // "bad responses stopped arriving" from "we stopped noticing".
+                let status = (response as? HTTPURLResponse)?.statusCode
+                let statusIsUsable = status.map { (200..<300).contains($0) } ?? true
+                guard statusIsUsable, !data.isEmpty else {
+                    Log.error(#file, "Unusable image response from \(url) — status \(status.map(String.init) ?? "none"), \(data.count) bytes; not cached")
+                    TPPErrorLogger.logImageDecodeFail(url: url)
+                    return nil
+                }
                 await self.hostFailureTracker.recordSuccess(for: url.host)
                 self.sourceDataCache.setObject(data as NSData, forKey: key, cost: data.count)
                 return data
