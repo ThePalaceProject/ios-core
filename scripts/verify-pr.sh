@@ -1259,11 +1259,11 @@ fi
 CHAOS_PASS="${PALACE_QA_HARNESS:-$HOME/harness/palace-qa}/scripts/run-chaos-pass.sh"
 echo "--- Chaos Pass ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "chaos" "pass" "Skipped (--mutation-only)"
+  record "chaos" "skip" "not run (--mutation-only)"
 elif [ "$CHAOS" != "true" ]; then
-  record "chaos" "pass" "Skipped (pass --chaos to enable)"
+  record "chaos" "skip" "not run (opt-in; pass --chaos to enable)"
 elif [ ! -x "$CHAOS_PASS" ]; then
-  record "chaos" "pass" "Unavailable (maintainer-only; not in this repo)"
+  record "chaos" "skip" "driver unavailable (maintainer-only; not in this repo)"
 elif ! command -v claude >/dev/null 2>&1; then
   record "chaos" "fail" "chaos drives a headless agent; 'claude' CLI not on PATH"
 elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
