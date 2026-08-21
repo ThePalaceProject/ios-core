@@ -61,9 +61,13 @@ final class RatingPromptPresenterTests: XCTestCase {
       service: service,
       reviewRequester: requester,
       feedbackPresenter: feedback,
-      triggerDelayNanoseconds: 0
+      triggerDelayNanoseconds: 0,
+      isModalPresented: { self.modalIsUp }
     )
   }
+
+  /// Drives the "a sheet is on screen" seam for the deferral tests below.
+  private var modalIsUp = false
 
   /// Spins the main run loop until `condition` holds or a short budget elapses,
   /// so the `scheduleTrigger` Task (delay 0) has a chance to run.
@@ -89,6 +93,55 @@ final class RatingPromptPresenterTests: XCTestCase {
     presenter.handleTrigger(.bookCompleted)
     XCTAssertNil(presenter.step)
     XCTAssertEqual(settings.appRatingPromptDisplayCount, 0)
+  }
+
+  // MARK: - F-RATING-01: the gate must not appear underneath a modal
+
+  /// Observed on the 3.3.0 candidate: a borrow succeeds, the borrow-success
+  /// half-sheet slides up, and ~2s later the gate is set visible. The gate is a
+  /// ZStack overlay INSIDE AppTabHostView, while the sheet presents in a window
+  /// ABOVE that hierarchy — so the patron sees the question with its buttons
+  /// occluded. Deferring is the fix; dropping would silently lose the prompt.
+  func testHandleTrigger_whileModalPresented_doesNotShowGate() {
+    let presenter = makePresenter(eligible: true)
+    modalIsUp = true
+
+    presenter.handleTrigger(.borrowSucceeded)
+
+    XCTAssertNil(presenter.step,
+                 "gate was shown underneath a presented sheet — it renders occluded")
+  }
+
+  /// The cooldown/lifetime cap is stamped by `recordPromptShown`. Deferring must
+  /// NOT stamp it, or a prompt the patron never saw burns the one chance to ask.
+  func testHandleTrigger_whileModalPresented_doesNotStampTheDisplay() {
+    let presenter = makePresenter(eligible: true)
+    XCTAssertNil(settings.appRatingLastPromptDate, "precondition: nothing stamped yet")
+    modalIsUp = true
+
+    presenter.handleTrigger(.borrowSucceeded)
+
+    // Asserted against the PERSISTED stamp, not against `step`. An earlier
+    // version of this test checked `step` after a retry and passed with the
+    // guard removed — the retry no-ops on `step != nil`, so it was green for
+    // the wrong reason. The cooldown/lifetime cap is the thing that must not be
+    // spent on a prompt the patron never saw.
+    XCTAssertNil(settings.appRatingLastPromptDate,
+                 "a deferred prompt stamped the cooldown — the one chance to ask "
+                 + "was burned on a gate that was never visible")
+  }
+
+  /// Clean path: with nothing presented the gate shows exactly as before. A
+  /// guard only ever tested against the violation is untested against false
+  /// positives.
+  func testHandleTrigger_withNoModal_stillShowsGate() {
+    let presenter = makePresenter(eligible: true)
+    modalIsUp = false
+
+    presenter.handleTrigger(.borrowSucceeded)
+
+    XCTAssertEqual(presenter.step, .sentiment,
+                   "guard suppressed the gate when no modal was up")
   }
 
   func testHandleTrigger_whenAlreadyShowing_doesNotReshowOrRestamp() {

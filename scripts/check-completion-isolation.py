@@ -110,7 +110,12 @@ FUNC = re.compile(
     r"(?:public\s+|internal\s+|private\s+|fileprivate\s+|open\s+)?"
     r"(?:static\s+|class\s+|final\s+|override\s+|nonisolated\s+)*func\s+([A-Za-z_]\w*)"
 )
-TASK = re.compile(r"^\s*(?:\w+\s*=\s*)?Task(\.detached)?\s*(?:\([^)]*\))?\s*\{")
+# `let handle = Task { … }` is the same construct as a bare `Task { … }`;
+# a binding on the left does not change what the closure inherits. This
+# used to miss the `let`/`var` form entirely (found by its own pytest).
+TASK = re.compile(
+    r"^\s*(?:(?:let|var)\s+\w+\s*(?::[^=]+)?=\s*|\w+\s*=\s*)?"
+    r"Task(\.detached)?\s*(?:\([^)]*\))?\s*\{")
 COMPLETION_CALL = re.compile(
     r"\b(?:completion|callback|completionHandler)\s*\??\s*\(|\bcompletionBox\.call\s*\??\s*\("
 )

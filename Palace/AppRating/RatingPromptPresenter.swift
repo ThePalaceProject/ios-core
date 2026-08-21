@@ -12,6 +12,7 @@
 
 import Foundation
 import Combine
+import UIKit
 
 /// Which step of the rating flow is currently on screen. `nil` = nothing shown.
 enum RatingPromptStep: Equatable {
@@ -31,20 +32,47 @@ final class RatingPromptPresenter: ObservableObject {
   private let reviewRequester: ReviewRequesting
   private let feedbackPresenter: FeedbackPresenting
   private let triggerDelayNanoseconds: UInt64
+  private let isModalPresented: () -> Bool
+
+  /// How many times a trigger will re-arm itself while a modal is on screen
+  /// before giving up. Bounded so a sheet the patron leaves open forever cannot
+  /// leave a task re-arming for the life of the process.
+  private static let maxDeferrals = 3
+  private var deferralsRemaining = maxDeferrals
 
   /// - Parameter triggerDelayNanoseconds: the "brief delay" before the gate
   ///   appears after a positive moment (PP-4088, ~2s), so it doesn't feel
   ///   jarring. Injected as 0 in tests that drive `handleTrigger` directly.
+  /// - Parameter isModalPresented: whether a sheet/alert is currently on screen.
+  ///   The gate is a ZStack overlay inside `AppTabHostView`, so anything
+  ///   presented modally renders ABOVE it; showing the gate then puts a question
+  ///   on screen whose buttons the patron cannot reach. Injected so the
+  ///   deferral is unit-testable without a window.
   init(
     service: AppRatingService,
     reviewRequester: ReviewRequesting,
     feedbackPresenter: FeedbackPresenting,
-    triggerDelayNanoseconds: UInt64 = 2_000_000_000
+    triggerDelayNanoseconds: UInt64 = 2_000_000_000,
+    isModalPresented: @escaping () -> Bool = RatingPromptPresenter.defaultIsModalPresented
   ) {
     self.service = service
     self.reviewRequester = reviewRequester
     self.feedbackPresenter = feedbackPresenter
     self.triggerDelayNanoseconds = triggerDelayNanoseconds
+    self.isModalPresented = isModalPresented
+  }
+
+  /// True when the key window's root has anything presented above it.
+  static let defaultIsModalPresented: () -> Bool = {
+    MainActor.assumeIsolated {
+      UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .first(where: { $0.activationState == .foregroundActive })?
+        .windows
+        .first(where: { $0.isKeyWindow })?
+        .rootViewController?
+        .presentedViewController != nil
+    }
   }
 
   // MARK: - Positive-moment entry points
@@ -79,6 +107,25 @@ final class RatingPromptPresenter: ObservableObject {
   func handleTrigger(_ trigger: AppRatingTrigger) {
     guard step == nil else { return }
     guard service.isEligible(for: trigger) else { return }
+
+    // F-RATING-01. The gate is a ZStack overlay inside AppTabHostView; a sheet
+    // or alert presents in a window ABOVE that hierarchy. Showing the gate now
+    // puts the question on screen with its buttons occluded — observed on the
+    // 3.3.0 candidate, where a borrow's success half-sheet covered it.
+    //
+    // DEFER, do not drop: the patron reached a genuine positive moment and the
+    // prompt should still be offered once the sheet goes away. Critically, do
+    // NOT call recordPromptShown() here — that stamps the cooldown and the
+    // lifetime cap, and burning the one chance to ask on a prompt nobody saw is
+    // worse than the occlusion.
+    if isModalPresented() {
+      guard deferralsRemaining > 0 else { return }
+      deferralsRemaining -= 1
+      scheduleTrigger(trigger)
+      return
+    }
+
+    deferralsRemaining = Self.maxDeferrals
     service.recordPromptShown()
     step = .sentiment
   }

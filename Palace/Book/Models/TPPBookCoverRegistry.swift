@@ -147,12 +147,29 @@ actor TPPBookCoverRegistry {
         return URLSession(configuration: config)
     }()
 
+    /// The session image fetches actually run on.
+    ///
+    /// Injected so `sourceData(for:)` can be exercised. The static
+    /// `imageSession` below is a hard-coded default with no seam, and a
+    /// globally-registered `URLProtocol` cannot reach a session built from its
+    /// own `URLSessionConfiguration` — only `configuration.protocolClasses` is
+    /// consulted. That made the fetch path untestable, which is very likely why
+    /// it has no tests while the pure `downsampleImage` helper next to it has
+    /// four: the untested surface was the unreachable one, not the neglected
+    /// one.
+    ///
+    /// `nonisolated let`: written once in `init`, `URLSession` is `Sendable`,
+    /// and the fetch reads it from a detached `Task`.
+    nonisolated let urlSession: URLSession
+
     init(
         imageCache: ImageCacheType,
-        hostFailureTracker: HostFailureTracker = HostFailureTracker()
+        hostFailureTracker: HostFailureTracker = HostFailureTracker(),
+        urlSession: URLSession = TPPBookCoverRegistry.imageSession
     ) {
         self.imageCache = imageCache
         self.hostFailureTracker = hostFailureTracker
+        self.urlSession = urlSession
 
         let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
         if deviceMemoryMB < 2048 {
@@ -411,7 +428,7 @@ actor TPPBookCoverRegistry {
             let key = url.absoluteString as NSString
 
             do {
-                let (data, _) = try await Self.imageSession.data(
+                let (data, _) = try await self.urlSession.data(
                     for: URLRequest.withoutHTTP3Assumption(url: url)
                 )
                 await self.hostFailureTracker.recordSuccess(for: url.host)

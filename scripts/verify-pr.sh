@@ -39,14 +39,11 @@
 #                                              # YOUR diff, not the file's whole
 #                                              # history). Pass this for release
 #                                              # runs that want full-file coverage.
-#   scripts/verify-pr.sh --simdrive            # Also replay .simdrive/journeys/*.yaml
-#                                              # via simdrive. MAINTAINER-INTERNAL:
-#                                              # simdrive is not yet publicly
-#                                              # distributed; `pip3 install --pre
-#                                              # simdrive` requires private access.
-#                                              # CI (chaos-replay-on-pr.yml) replays
-#                                              # the corpus server-side for every PR
-#                                              # regardless of this flag.
+#   scripts/verify-pr.sh --simdrive            # MAINTAINER-INTERNAL. Replays the
+#                                              # UI journey corpus, which lives in
+#                                              # the maintainer's local QA harness,
+#                                              # not this repo. Reports
+#                                              # "unavailable" on a clean clone.
 #
 # Mutation policy (per CLAUDE.md "Mutation testing"):
 #   Critical paths (Palace/Audiobooks/, Palace/SignInLogic/,
@@ -1133,20 +1130,24 @@ else
   fi
 fi
 
-# 7. simdrive replay (opt-in via --simdrive). Delegates to scripts/simdrive-regress.sh
-#    which enforces the two-tier gate (stateless = blocking on drift, stateful = smoke).
+# 7. simdrive replay (opt-in via --simdrive). MAINTAINER-INTERNAL: the driver and
+#    its journey corpus live outside this repo, in the maintainer's local QA
+#    harness. A clean clone does not have them, which is why this leg is opt-in
+#    and reports "unavailable" rather than "fail" when they are absent — a
+#    missing private tool is not a defect in the PR under test.
+SIMDRIVE_REGRESS="${PALACE_QA_HARNESS:-$HOME/harness/palace-qa}/scripts/simdrive-regress.sh"
 echo "--- simdrive Replay ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
   record "simdrive" "pass" "Skipped (--mutation-only)"
 elif [ "$SIMDRIVE" != "true" ]; then
   record "simdrive" "pass" "Skipped (pass --simdrive to enable)"
-elif [ ! -x scripts/simdrive-regress.sh ]; then
-  record "simdrive" "fail" "scripts/simdrive-regress.sh missing or not executable"
+elif [ ! -x "$SIMDRIVE_REGRESS" ]; then
+  record "simdrive" "pass" "Unavailable (maintainer-only; not in this repo)"
 elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
   record "simdrive" "fail" "simdrive package not installed (pip3 install --pre simdrive)"
 else
   SIMDRIVE_REPORT=$(mktemp)
-  if SIMDRIVE_SIM_ID="$SIM_ID" scripts/simdrive-regress.sh --tier stateless --report "$SIMDRIVE_REPORT" >/dev/null 2>&1; then
+  if SIMDRIVE_SIM_ID="$SIM_ID" "$SIMDRIVE_REGRESS" --tier stateless --report "$SIMDRIVE_REPORT" >/dev/null 2>&1; then
     SD_PASS=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('pass_count', 0))" 2>/dev/null || echo 0)
     record "simdrive" "pass" "${SD_PASS} stateless journey(s) clean"
   else

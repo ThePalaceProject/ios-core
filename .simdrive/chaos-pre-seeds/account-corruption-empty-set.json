@@ -1,7 +1,0 @@
-{
-  "_": "Pre-seed: corrupt-account-state for chaos-qa AccountsManager probes.",
-  "_purpose": "Targets AccountsManager L309/L346/L722 surviving mutants — the accountSets.isEmpty checks. Pre-seeds an account state where the in-memory accountSets dictionary would deserialize to an empty hash bucket for the current account, exercising the isEmpty branch on the very first launch read.",
-  "currentAccountIdentifier": "urn:uuid:6b849570-070f-43b4-9dcc-7ebb4bca292e",
-  "TPP_LIBRARIES_LIST_KEY": [],
-  "TPP_ACCOUNT_SETS_KEY": {}
-}
