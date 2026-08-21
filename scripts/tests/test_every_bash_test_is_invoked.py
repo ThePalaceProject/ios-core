@@ -23,6 +23,7 @@ import re
 import subprocess
 
 import pytest
+import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -37,60 +38,115 @@ def bash_tests() -> list[str]:
     return [f for f in out if f]
 
 
-def workflow_text() -> str:
-    parts = []
-    for name in sorted(os.listdir(WORKFLOW_DIR)):
-        if name.endswith((".yml", ".yaml")):
-            with open(os.path.join(WORKFLOW_DIR, name), encoding="utf-8") as fh:
-                parts.append(fh.read())
-    return "\n".join(parts)
+def run_steps():
+    """(workflow, job, step) for every step that has a `run:` script.
 
-
-def invocations(text: str, basename: str) -> list[str]:
-    """Lines that RUN the script, not lines that merely name it.
-
-    A comment mentioning the file satisfies a naive substring search — which is
-    how this class of defect hides. Require the name to appear in a line that
-    actually executes something, and never in a comment.
+    Parsed as YAML rather than scanned as text. The first version of this file
+    located the filename and then read a +-700 character window, which reached
+    into the NEIGHBOURING step and borrowed its `::error::`/`exit 1` — so a
+    genuinely fail-open gate passed. Three reviewers found the same thing; it is
+    `assertions-match-things-adjacent-to-their-claim`, committed inside the gate
+    written to prevent that class. A step is the unit; nothing outside it counts.
     """
-    hits = []
-    for line in text.split("\n"):
-        stripped = line.strip()
-        if basename not in stripped:
+    steps = []
+    for name in sorted(os.listdir(WORKFLOW_DIR)):
+        if not name.endswith((".yml", ".yaml")):
             continue
-        if stripped.startswith("#"):
-            continue
-        if re.search(r"(?:bash|sh|source|\./)\s*\S*" + re.escape(basename), stripped):
-            hits.append(stripped)
-    return hits
+        with open(os.path.join(WORKFLOW_DIR, name), encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        for job_name, job in (doc.get("jobs") or {}).items():
+            for step in (job.get("steps") or []):
+                if isinstance(step, dict) and "run" in step:
+                    steps.append((name, job_name, step))
+    return steps
+
+
+# Every spelling of "skip if the file is absent". Recognising only `if [ -f`
+# left `[[ -f ]]` and `test -f` as working bypasses.
+_GUARD_RE = re.compile(r"(?:if\s+!?\s*\[\[?|test)\s+!?\s*-[fed]\s")
+
+
+def invoking_steps(basename: str) -> list:
+    """Steps whose script RUNS the file. A comment naming it does not count —
+    that is how the ratchet-aggregation harness hid while invoked by nothing."""
+    out = []
+    for wf, job, step in run_steps():
+        for line in step["run"].split("\n"):
+            stripped = line.strip()
+            if basename not in stripped or stripped.startswith("#"):
+                continue
+            if re.search(r"(?:bash|sh|source|\./)\s*\S*" + re.escape(basename), stripped):
+                out.append((wf, job, step))
+                break
+    return out
+
+
+def fail_open_reasons(step) -> list:
+    """Ways this step can silently not run the test it names."""
+    reasons = []
+    cond = step.get("if")
+    if cond is not None and str(cond).strip().lower() in ("false", "${{ false }}"):
+        reasons.append(f"step `if:` is {cond!r}, so it never runs")
+    script = step["run"]
+    if _GUARD_RE.search(script) and "exit 1" not in script and "::error::" not in script:
+        reasons.append("guarded by a file-existence test that does not fail")
+    return reasons
 
 
 @pytest.mark.parametrize("path", bash_tests())
 def test_bash_test_is_invoked_by_a_workflow(path):
     basename = os.path.basename(path)
-    hits = invocations(workflow_text(), basename)
-    assert hits, (
+    assert invoking_steps(basename), (
         f"{path} is not invoked by any workflow — it runs zero times.\n"
-        f"A test nothing calls is indistinguishable from a test that always passes.\n"
-        f"Add a step to .github/workflows/tooling-checks.yml that runs it."
+        f"A test nothing calls is indistinguishable from a test that always passes."
     )
 
 
 @pytest.mark.parametrize("path", bash_tests())
 def test_bash_test_invocation_fails_closed(path):
-    """Guarding a TRACKED file with `if [ -f … ] else echo skipping` means
-    deleting the test turns the gate green. Absence must be an error."""
+    """A TRACKED file's absence means the gate was deleted, not that it is
+    optional. Skipping turns a removed test into a green check."""
     basename = os.path.basename(path)
-    text = workflow_text()
-    idx = text.find(basename)
-    assert idx != -1
-    window = text[max(0, idx - 700): idx + 400]
-    if "if [ -f" in window or "if [ ! -f" in window:
-        assert ("exit 1" in window or "::error::" in window), (
-            f"{path} is guarded by a file-existence check that does not fail.\n"
-            f"It is a tracked file: absence means the gate was deleted, not that "
-            f"it is optional."
-        )
+    problems = []
+    for wf, job, step in invoking_steps(basename):
+        for reason in fail_open_reasons(step):
+            problems.append(f"{wf}:{job}:{step.get('name', '<unnamed>')} — {reason}")
+    assert not problems, f"{path} can silently not run:\n  " + "\n  ".join(problems)
+
+
+# --- Negative controls -----------------------------------------------------
+#
+# The enumeration above had a control; the fail-closed predicate did NOT, which
+# is exactly why it shipped passing a fail-open gate. These drive the predicate
+# against synthetic steps so a future weakening of it fails here rather than in
+# production.
+
+@pytest.mark.parametrize("script", [
+    'if [ -f x.sh ]; then\n  bash x.sh\nelse\n  echo "skipping"\nfi\n',
+    'if [[ -f x.sh ]]; then\n  bash x.sh\nelse\n  echo "skipping"\nfi\n',
+    'test -f x.sh && bash x.sh || echo "skipping"\n',
+])
+def test_predicate_catches_every_fail_open_guard_spelling(script):
+    assert fail_open_reasons({"run": script}), (
+        "a fail-open guard was not recognised — this spelling is a working bypass"
+    )
+
+
+def test_predicate_catches_a_step_disabled_at_the_yaml_level():
+    assert fail_open_reasons({"if": False, "run": "bash x.sh\n"}), (
+        "`if: false` on the step was not recognised — the step never runs"
+    )
+
+
+@pytest.mark.parametrize("step", [
+    {"run": 'if [ ! -f x.sh ]; then\n  echo "::error::gone"\n  exit 1\nfi\nbash x.sh\n'},
+    {"run": "bash x.sh\n"},
+    {"if": "github.event_name == 'pull_request'", "run": "bash x.sh\n"},
+])
+def test_predicate_accepts_genuinely_fail_closed_steps(step):
+    assert not fail_open_reasons(step), (
+        "a correct step was flagged — a predicate that false-positives gets disabled"
+    )
 
 
 def test_there_is_at_least_one_bash_test():

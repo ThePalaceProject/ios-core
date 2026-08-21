@@ -15,9 +15,10 @@
 #                                              #   PR #1018 lessons.
 #   scripts/verify-pr.sh --mutation-only       # Run ONLY the mutation step (skips
 #                                              # build/test/lint/coverage/a11y).
-#                                              # Used by the mutation-on-pr.yml
-#                                              # CI workflow which already runs
-#                                              # the rest via unit-testing.yml.
+#                                              # LOCAL ONLY. There is no
+#                                              # mutation CI workflow — this
+#                                              # header named one that has never
+#                                              # existed in this repo.
 #   scripts/verify-pr.sh --enforce-mutations   # Strictness ON for every changed
 #                                              # file (default: critical paths
 #                                              # strict, non-critical advisory).
@@ -1338,18 +1339,28 @@ fi
 # --- Every leg must ACCOUNT for itself -------------------------------------
 #
 # A leg that never executes records nothing, and a summary built only from what
-# ran cannot tell "clean" from "never reached". Three separate attacks in review
-# exploited exactly that: wrapping a section in `if false; then … fi`, inverting
-# an outer guard, and moving a block into a function nobody calls. All three
-# leave the code present, `bash -n` clean, and every string a source-grep looks
-# for intact — while the leg silently stops running.
+# ran cannot tell "clean" from "never reached". Review demonstrated three
+# attacks that exploit that: wrapping a section in `if false; then … fi`,
+# inverting an outer guard, and moving a block into a function nobody calls. All
+# three leave the code present, `bash -n` clean, and every string a source-grep
+# looks for intact.
 #
-# So the run declares up front what it OWES, and reconciles at the end. A
-# missing key is a FAILURE, not an absence: it means a check this script claims
-# to perform did not happen and nobody was told.
-EXPECTED_KEYS="build unit_tests test_quality coverage_floors mutation \
-decomposition_ratchets completion_isolation committed_signing doc_hygiene \
-blast_radius contract_reconciliation accessibility audiobook_smoke"
+# So the run declares what it OWES and reconciles at the end.
+#
+# LIMIT: this runs on the full path only. The docs-only fast path exits before
+# it, having recorded its own smaller set — legitimate, since it genuinely runs
+# fewer legs, but it means accounting does not cover that lane. DOCS_ONLY is
+# computed from the diff rather than chosen, so it is not a lever a refactor can
+# pull; stated here so nobody reads a green docs-only run as accounted for.
+#
+# THE OWED SET IS DERIVED, NOT LISTED. An earlier version hardcoded 13 of 36
+# keys, which left 23 legs unguarded and was itself the hand-maintained-list
+# anti-pattern this branch spent its length removing. Deriving from the script's
+# own call sites is robust against exactly the attacks above, because each one
+# preserves the call-site text while removing execution.
+EXPECTED_KEYS=$(grep -oE '(record|run_phase35_detector) "[a-z_0-9]+"' "$0" \
+                | sed -E 's/.*"([a-z_0-9]+)"/\1/' \
+                | grep -v '^leg_accounting$' | sort -u)
 
 MISSING_KEYS=""
 for key in $EXPECTED_KEYS; do
@@ -1362,6 +1373,31 @@ if [ -n "$MISSING_KEYS" ]; then
   FAIL_COUNT=$((FAIL_COUNT + 1))
   echo "  [FAIL] leg_accounting — these checks recorded NOTHING, so they did not run:$MISSING_KEYS"
   RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"unreported legs:$MISSING_KEYS\"}")
+fi
+
+# A `skip` satisfies the accounting above, deliberately — "ran nothing and said
+# so" is a different fact from "never reached". That leaves one hole, which
+# review found and drove: inverting an outer `[ "$MUTATION_ONLY" = "true" ]`
+# sends an ORDINARY run down the skip arm, so the key is recorded and the
+# reconciliation passes. The skip is then visible among legitimate ones rather
+# than caught.
+#
+# Close it by checking the skip REASON against the mode actually in force. A leg
+# claiming it was skipped for --mutation-only, on a run that is not
+# --mutation-only, is reporting something that cannot be true.
+if [ "$MUTATION_ONLY" != "true" ]; then
+  INCONSISTENT=""
+  for entry in "${RESULTS[@]}"; do
+    case "$entry" in
+      *'"status":"skip"'*'--mutation-only'*)
+        INCONSISTENT="$INCONSISTENT $(echo "$entry" | sed -E 's/.*"check":"([a-z_0-9]+)".*/\1/')" ;;
+    esac
+  done
+  if [ -n "$INCONSISTENT" ]; then
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    echo "  [FAIL] leg_accounting — skipped for --mutation-only on a run that is not --mutation-only:$INCONSISTENT"
+    RESULTS+=("{\"check\":\"leg_accounting_reason\",\"status\":\"fail\",\"detail\":\"impossible skip reason:$INCONSISTENT\"}")
+  fi
 fi
 
 # Summary

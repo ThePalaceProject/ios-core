@@ -355,13 +355,18 @@ final class DownloadTaskPersistence: @unchecked Sendable {
 /// Lives here rather than in MyBooksDownloadCenter because it is reconciliation
 /// infrastructure, not download-center state — and the hub is frozen under the
 /// decomposition ratchet, which asks for extraction rather than growth.
-/// THREADING CONTRACT: `@unchecked Sendable` is sound only because every write
-/// happens inside the single `getAllTasks` completion, and every read happens
-/// after that completion has resumed the awaiting continuation. There is no
-/// lock. While this type was `private` that argument was auditable in one file;
-/// it is now module-visible, so both dictionaries are `private(set)` and
-/// `capture` is the only way in.
+/// `@unchecked Sendable` with an actual lock, not a convention.
+///
+/// The original argument was that every write happens inside the single
+/// `getAllTasks` completion and every read after it resumes — sound, and
+/// auditable while the type was file-`private`. Extraction made it
+/// module-visible, at which point "every write" became a claim about the whole
+/// app target that nothing enforced. `private(set)` closes the dictionaries to
+/// outside writers but `capture` is still an unlocked internal mutator, so two
+/// reviewers independently flagged the same gap. Three lines of `NSLock` retire
+/// the argument instead of restating it.
 final class LiveDownloadTaskBox: @unchecked Sendable {
+    private let lock = NSLock()
     private(set) var map: [Int: URLSessionDownloadTask] = [:]
     /// URL each live task is fetching, captured INSIDE the `getAllTasks`
     /// completion so no non-Sendable task is touched afterwards.
@@ -386,11 +391,12 @@ final class LiveDownloadTaskBox: @unchecked Sendable {
     @discardableResult
     func capture(_ task: URLSessionDownloadTask) -> Bool {
         let id = task.taskIdentifier
+        let url = Self.downloadURL(original: task.originalRequest?.url,
+                                   current: task.currentRequest?.url)
+        lock.lock()
+        defer { lock.unlock() }
         map[id] = task
-        guard let url = Self.downloadURL(original: task.originalRequest?.url,
-                                         current: task.currentRequest?.url) else {
-            return false
-        }
+        guard let url else { return false }
         urls[id] = url
         return true
     }

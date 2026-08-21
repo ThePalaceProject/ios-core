@@ -159,10 +159,9 @@ final class RatingPromptPresenter: ObservableObject {
       guard deferralsRemaining > 0 else { return }
       deferralsRemaining -= 1
       // Re-arm WITHOUT going through scheduleTrigger, or the reset there would
-      // restore the budget every hop and the bound would be decorative.
-      //
-      // Do NOT write the count back to `self` after the sleep. The budget is
-      // budget the newer trigger just restored (see armHop).
+      // restore the budget every hop and the bound would be decorative. armHop
+      // deliberately does not touch the budget after waking; see the reasoning
+      // there.
       armHop(trigger)
       return
     }

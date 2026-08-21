@@ -59,7 +59,12 @@ jobs:
       #    detectors + the M1 checks that have pytest coverage.
       - name: pytest detector suite
         run: |
-          if [ -d scripts/tests ]; then
+          # TRACKED directory: its absence is a deleted test suite, not an opt-out.
+          if [ ! -d scripts/tests ]; then
+            echo "::error::scripts/tests/ is missing — the detector suite cannot run."
+            exit 1
+          fi
+          if true; then
             python3 -m pytest scripts/tests/ -q
           else
             echo "No scripts/tests/ — skipping."
@@ -156,11 +161,13 @@ jobs:
       #    pass path, and the allowlist. Guards the Unit-Tests workflow gate.
       - name: objc-witness-drift detector test
         run: |
-          if [ -f scripts/tests/test_check_objc_witness_nearly_matches.sh ]; then
-            bash scripts/tests/test_check_objc_witness_nearly_matches.sh
-          else
-            echo "No objc-witness detector test — skipping."
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Skipping turns a removed test into a green check.
+          if [ ! -f scripts/tests/test_check_objc_witness_nearly_matches.sh ]; then
+            echo "::error::scripts/tests/test_check_objc_witness_nearly_matches.sh is missing — the gate cannot be verified."
+            exit 1
           fi
+          bash scripts/tests/test_check_objc_witness_nearly_matches.sh
 
       # 5. Committed-signing gate (repo rule: no team/profile in git, Manual only).
       #    Diff-based (blocks NEW signing info); the one pre-existing Automatic
@@ -190,11 +197,12 @@ jobs:
           bash scripts/tests/test_check_doc_hygiene.sh
       - name: contributor-surface gate
         run: |
-          if [ -f scripts/check-contributor-surface.py ]; then
-            python3 scripts/check-contributor-surface.py
-          else
-            echo "No contributor-surface gate — skipping."
+          # TRACKED file: see above. Absence is a deleted gate.
+          if [ ! -f scripts/check-contributor-surface.py ]; then
+            echo "::error::scripts/check-contributor-surface.py is missing — the gate cannot run."
+            exit 1
           fi
+          python3 scripts/check-contributor-surface.py
 
 
   # Diff-scoped test-flakiness gate. Separate job because it needs the PR's base
