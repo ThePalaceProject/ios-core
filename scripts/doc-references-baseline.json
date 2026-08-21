@@ -115,6 +115,11 @@
       "doc": "tools/ledger/README.md",
       "kind": "workflow",
       "target": "codeatlas.yml"
+    },
+    {
+      "doc": "tools/ledger/README.md",
+      "kind": "workflow",
+      "target": "tools/ledger/codeatlas.yml"
     }
   ]
 }

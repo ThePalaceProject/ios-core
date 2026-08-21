@@ -48,12 +48,20 @@ SCRIPT_RE = re.compile(r"(?P<harness>~/harness/[A-Za-z0-9_./-]*?)?(?P<path>scrip
 # A .yml reference, with the same harness escape the script arm has. Without it
 # the tool's own remedy ("write it as ~/harness/...") does not work on this arm.
 WORKFLOW_RE = re.compile(
-    r"(?P<harness>~/harness/[A-Za-z0-9_./-]*?)?(?<![A-Za-z0-9_.-])(?P<wf>[A-Za-z0-9_-]+\.yml)")
+    r"(?P<harness>~/harness/[A-Za-z0-9_./-]*?)?"
+    r"(?P<dir>(?:[A-Za-z0-9_.-]+/)+)?"
+    r"(?<![A-Za-z0-9_.-])(?P<wf>[A-Za-z0-9_-]+\.yml)")
 
 # Directories whose contents are archival records of what was true at the time,
 # not live instructions. Rewriting history to keep a linter quiet is worse than
 # the dangling link.
-SKIP_PREFIXES = (".forgeos/", ".claude/", "tools/ledger/vendor/")
+# `.forgeos/` holds intent files and swarm transcripts — records of what was
+# true at the time. Rewriting history to keep a linter quiet is worse than the
+# dangling link. `.claude/` is NOT archival — skills and agents are live
+# instructions — so it is scanned. (Verified against the real tree: unskipping
+# adds zero findings.) `.claude/worktrees/` is excluded separately: those are
+# sibling checkouts, not this repo's content.
+SKIP_PREFIXES = (".forgeos/", ".claude/worktrees/", "tools/ledger/vendor/")
 
 # A .yml named in prose is not necessarily a WORKFLOW: this repo also tracks
 # dependabot.yml, orchestrator configs, and atlas manifests, none of which live
@@ -78,19 +86,23 @@ def tracked_docs(root: str) -> list[str]:
     ]
 
 
-def yaml_basenames(root: str) -> set:
-    """Every tracked .yml/.yaml basename, so a reference to a non-workflow yaml
-    that genuinely exists is not reported as a broken workflow link."""
+def tracked_paths(root: str) -> set:
+    """Every tracked path. Both arms resolve against this rather than the
+    filesystem: an untracked local file satisfies a reference on the author's
+    machine and not in CI, which is the same class of defect as a gate that
+    passes only where it was written."""
     out = subprocess.run(
-        ["git", "-C", root, "ls-files", "*.yml", "*.yaml"],
+        ["git", "-C", root, "ls-files"],
         capture_output=True, text=True, check=True,
     ).stdout.split("\n")
-    return {os.path.basename(f) for f in out if f}
+    return {f for f in out if f}
 
 
 def find_dangling(root: str) -> list[dict]:
     findings: list[dict] = []
-    known_yaml = yaml_basenames(root)
+    tracked = tracked_paths(root)
+    yaml_basenames = {os.path.basename(f) for f in tracked
+                      if f.endswith((".yml", ".yaml"))}
     for rel in tracked_docs(root):
         full = os.path.join(root, rel)
         try:
@@ -103,14 +115,32 @@ def find_dangling(root: str) -> list[dict]:
             if m.group("harness"):
                 continue  # maintainer-local by construction
             path = m.group("path")
-            if not os.path.exists(os.path.join(root, path)):
+            if path not in tracked:
                 findings.append({"doc": rel, "kind": "script", "target": path})
 
         for m in WORKFLOW_RE.finditer(text):
             if m.group("harness"):
                 continue  # maintainer-local by construction
+            # A reference carrying a directory component names a SPECIFIC file
+            # and must resolve as written: basename-only matching let
+            # `.github/workflows/test-matrix.yml` pass because an unrelated
+            # `test-matrix.yml` existed under tools/. Bare names still resolve by
+            # basename, since prose usually names a workflow without its path.
             wf = m.group("wf")
-            if wf not in known_yaml:
+            full = (m.group("dir") or "") + wf
+            # NOT `.lstrip("./")` — lstrip takes a character SET, so it eats the
+            # leading dot of `.github/` too and every workflow reference in the
+            # repo reads as missing. Strip the prefix, not the characters.
+            while full.startswith("./"):
+                full = full[2:]
+            # A URL names a file on a server, not a path in this checkout, so it
+            # resolves by name. (`github.com/org/repo/actions/workflows/x.yml`.)
+            looks_like_url = any(tok in (m.group("dir") or "")
+                                 for tok in ("://", "github.com", "www."))
+            if "/" in full and not looks_like_url:
+                if full not in tracked:
+                    findings.append({"doc": rel, "kind": "workflow", "target": full})
+            elif wf not in yaml_basenames:
                 findings.append({"doc": rel, "kind": "workflow", "target": wf})
 
     # Stable, de-duplicated.

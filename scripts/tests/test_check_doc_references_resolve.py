@@ -225,6 +225,95 @@ def test_update_baseline_grows_only_with_accept_new(tmp_path):
     assert len(kept["known_dangling"]) == 1
 
 
+def test_directory_qualified_yaml_must_resolve_at_that_path(tmp_path):
+    """Basename-only matching traded a false-positive class for a false-negative one.
+
+    A doc naming `.github/workflows/test-matrix.yml` passed because an unrelated
+    `test-matrix.yml` existed under tools/. When a reference carries a directory
+    it names a specific file and must resolve as written.
+    """
+    root = make_repo(
+        tmp_path,
+        docs={
+            "docs/a.md": "Gated by `.github/workflows/test-matrix.yml`.\n",
+            "tools/x/test-matrix.yml": "matrix: []\n",
+        },
+        baseline=[],
+    )
+    r = run(root)
+    assert r.returncode == 1
+    assert ".github/workflows/test-matrix.yml" in r.stdout
+
+
+def test_dot_slash_prefix_is_stripped_not_lstripped(tmp_path):
+    """`./.github/x.yml` must resolve to `.github/x.yml`.
+
+    `str.lstrip("./")` removes a character SET, so it ate the leading dot of
+    `.github/` and reported every workflow reference in the repo as missing.
+    """
+    root = make_repo(
+        tmp_path,
+        docs={
+            "docs/a.md": "See `./.github/workflows/ci.yml`.\n",
+            ".github/workflows/ci.yml": "on: push\n",
+        },
+        baseline=[],
+    )
+    r = run(root)
+    assert r.returncode == 0, r.stdout
+
+
+def test_url_reference_resolves_by_name(tmp_path):
+    """A URL names a file on a server, not a path in this checkout."""
+    root = make_repo(
+        tmp_path,
+        docs={
+            "docs/a.md": "See github.com/org/repo/actions/workflows/upload.yml\n",
+            ".github/workflows/upload.yml": "on: push\n",
+        },
+        baseline=[],
+    )
+    r = run(root)
+    assert r.returncode == 0, r.stdout
+
+
+def test_untracked_script_does_not_satisfy_a_reference(tmp_path):
+    """An untracked local file satisfies a reference on the author's machine and
+    not in CI — a gate that passes only where it was written."""
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": "Run `scripts/local-only.sh`.\n"},
+        baseline=[],
+    )
+    # Present on disk but never added to the index.
+    (tmp_path / "scripts" / "local-only.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    r = run(root)
+    assert r.returncode == 1
+    assert "scripts/local-only.sh" in r.stdout
+
+
+def test_claude_directory_is_scanned(tmp_path):
+    """`.claude/skills` and `.claude/agents` are live instructions, not archive."""
+    root = make_repo(
+        tmp_path,
+        docs={".claude/skills/x.md": "Run `scripts/gone.py`.\n"},
+        baseline=[],
+    )
+    r = run(root)
+    assert r.returncode == 1
+    assert "scripts/gone.py" in r.stdout
+
+
+def test_claude_worktrees_are_skipped(tmp_path):
+    """Sibling checkouts under `.claude/worktrees/` are not this repo's content."""
+    root = make_repo(
+        tmp_path,
+        docs={".claude/worktrees/other/docs/a.md": "Run `scripts/gone.py`.\n"},
+        baseline=[],
+    )
+    assert run(root).returncode == 0
+
+
 def test_real_repo_is_clean(tmp_path):
     """The live tree must pass against its committed baseline."""
     repo = os.path.abspath(os.path.join(HERE, "..", ".."))

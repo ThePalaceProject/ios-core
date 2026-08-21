@@ -25,6 +25,10 @@ BASELINE="$REPO/scripts/doc-references-baseline.json"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "  ok  $*"; }
 
+# Snapshot before anything runs, so assertion 5 measures THIS test's effect
+# rather than whatever the author happened to have in flight.
+BEFORE="$(git -C "$REPO" status --porcelain)"
+
 echo "== doc-reference gate wiring =="
 
 [ -f "$DETECTOR" ] || fail "detector missing: $DETECTOR"
@@ -55,25 +59,49 @@ if ! python3 "$DETECTOR" --root "$REPO" >/dev/null 2>&1; then
 fi
 pass "clean tree passes (exit 0)"
 
-# 4. A NEW dangling reference blocks. Uses a temp doc so the repo is untouched;
-#    the detector enumerates via `git ls-files`, so it must be staged to be seen.
-TMPDOC="docs/__wiring_probe__.md"
-cleanup() { git -C "$REPO" rm -q --cached "$TMPDOC" >/dev/null 2>&1 || true; rm -f "$REPO/$TMPDOC"; }
+# 4. A NEW dangling reference blocks — in a SCRATCH repo, never this one.
+#
+#    The previous version staged a probe file into the author's real working
+#    tree and index and removed it with a trap. That is the
+#    reviewer-mutation-corrupts-the-authors-worktree shape, and it is worse
+#    coming from a test whose whole subject is gates that damage things
+#    silently: a hard kill between the stage and the trap leaks a staged file
+#    into someone's commit. The detector already takes --root, so the fixture is
+#    a throwaway `git init` with two files and nothing of this repo is touched.
+SCRATCH="$(mktemp -d)"
+cleanup() { rm -rf "$SCRATCH"; }
 trap cleanup EXIT
-printf 'Probe: `scripts/__no_such_script_wiring_probe__.py`\n' > "$REPO/$TMPDOC"
-git -C "$REPO" add -N "$TMPDOC" >/dev/null 2>&1 || fail "could not stage probe doc"
 
-if python3 "$DETECTOR" --root "$REPO" >/dev/null 2>&1; then
+mkdir -p "$SCRATCH/scripts" "$SCRATCH/docs"
+printf '{"known_dangling": []}\n' > "$SCRATCH/scripts/doc-references-baseline.json"
+printf 'Run `scripts/real.sh`.\n' > "$SCRATCH/docs/clean.md"
+printf '#!/bin/sh\n' > "$SCRATCH/scripts/real.sh"
+git -C "$SCRATCH" init -q
+git -C "$SCRATCH" add -A >/dev/null 2>&1
+
+python3 "$DETECTOR" --root "$SCRATCH" >/dev/null 2>&1 \
+  || fail "a clean scratch repo did not pass — the fixture is wrong, not the tree"
+pass "scratch fixture: clean repo passes"
+
+printf 'Probe: `scripts/__no_such_script__.py`\n' > "$SCRATCH/docs/probe.md"
+git -C "$SCRATCH" add -A >/dev/null 2>&1
+if python3 "$DETECTOR" --root "$SCRATCH" >/dev/null 2>&1; then
   fail "a new dangling reference did NOT block — the gate is decorative"
 fi
-pass "new dangling reference blocks (exit 1)"
+pass "scratch fixture: new dangling reference blocks (exit 1)"
+
+# 5. And this repository was never touched by any of the above.
+#
+#    Compare against a snapshot taken at start-up, NOT against "clean". The
+#    author's tree is legitimately dirty while they are working, and a test that
+#    demands a pristine checkout fails for the wrong reason and gets disabled —
+#    which is how a gate stops gating. What matters is the DELTA.
+AFTER="$(git -C "$REPO" status --porcelain)"
+[ "$AFTER" = "$BEFORE" ] \
+  || fail "the wiring test changed the real worktree — that is the defect it exists to avoid"
+pass "real worktree unchanged by this test"
 
 cleanup
 trap - EXIT
-
-# 5. And the tree is clean again afterwards.
-python3 "$DETECTOR" --root "$REPO" >/dev/null 2>&1 \
-  || fail "detector still failing after probe cleanup — the probe leaked"
-pass "clean again after cleanup"
 
 echo "== all doc-reference gate wiring assertions passed =="

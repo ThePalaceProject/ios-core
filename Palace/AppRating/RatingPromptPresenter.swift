@@ -33,6 +33,7 @@ final class RatingPromptPresenter: ObservableObject {
   private let feedbackPresenter: FeedbackPresenting
   private let triggerDelayNanoseconds: UInt64
   private let isModalPresented: () -> Bool
+  private let sleep: @Sendable (UInt64) async -> Void
 
   /// How many times ONE trigger will re-arm itself while a modal is on screen
   /// before giving up. Bounded so a sheet the patron leaves open forever cannot
@@ -50,6 +51,13 @@ final class RatingPromptPresenter: ObservableObject {
   /// - Parameter triggerDelayNanoseconds: the "brief delay" before the gate
   ///   appears after a positive moment (PP-4088, ~2s), so it doesn't feel
   ///   jarring. Injected as 0 in tests that drive `handleTrigger` directly.
+  /// - Parameter sleep: the delay primitive. Injected because the deferral
+  ///   behaviour is defined by the ORDER two sleeping continuations resume in,
+  ///   and wall-clock sleeps cannot pin an order: two hops armed microseconds
+  ///   apart for the same duration wake in whichever order the scheduler picks.
+  ///   A test that races them passes some fraction of the time against a live
+  ///   defect, which under `-retry-tests-on-failure` reports the run green.
+  ///   Tests inject a controllable clock and resume the hops deliberately.
   /// - Parameter isModalPresented: whether a sheet/alert is currently on screen.
   ///   The gate is a ZStack overlay inside `AppTabHostView`, so anything
   ///   presented modally renders ABOVE it; showing the gate then puts a question
@@ -60,13 +68,20 @@ final class RatingPromptPresenter: ObservableObject {
     reviewRequester: ReviewRequesting,
     feedbackPresenter: FeedbackPresenting,
     triggerDelayNanoseconds: UInt64 = 2_000_000_000,
-    isModalPresented: @escaping () -> Bool = RatingPromptPresenter.defaultIsModalPresented
+    isModalPresented: @escaping () -> Bool = RatingPromptPresenter.defaultIsModalPresented,
+    sleep: @escaping @Sendable (UInt64) async -> Void = RatingPromptPresenter.defaultSleep
   ) {
     self.service = service
     self.reviewRequester = reviewRequester
     self.feedbackPresenter = feedbackPresenter
     self.triggerDelayNanoseconds = triggerDelayNanoseconds
     self.isModalPresented = isModalPresented
+    self.sleep = sleep
+  }
+
+  static let defaultSleep: @Sendable (UInt64) async -> Void = { nanoseconds in
+    guard nanoseconds > 0 else { return }
+    try? await Task.sleep(nanoseconds: nanoseconds)
   }
 
   /// True when the key window's root has anything presented above it.
@@ -98,11 +113,10 @@ final class RatingPromptPresenter: ObservableObject {
 
   private func scheduleTrigger(_ trigger: AppRatingTrigger) {
     deferralsRemaining = Self.maxDeferrals
+    let delay = triggerDelayNanoseconds
     Task { @MainActor in
-      if triggerDelayNanoseconds > 0 {
-        try? await Task.sleep(nanoseconds: triggerDelayNanoseconds)
-      }
-      handleTrigger(trigger)
+      await self.sleep(delay)
+      self.handleTrigger(trigger)
     }
   }
 
@@ -138,10 +152,9 @@ final class RatingPromptPresenter: ObservableObject {
       // chain's decremented value afterwards would clobber it and hand the NEW
       // trigger an old chain's exhausted budget — the same bug this fix exists
       // to remove, reintroduced for the width of the delay.
+      let delay = triggerDelayNanoseconds
       Task { @MainActor in
-        if triggerDelayNanoseconds > 0 {
-          try? await Task.sleep(nanoseconds: triggerDelayNanoseconds)
-        }
+        await self.sleep(delay)
         self.handleTrigger(trigger)
       }
       return

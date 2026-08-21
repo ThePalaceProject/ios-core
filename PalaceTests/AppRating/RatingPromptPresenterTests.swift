@@ -38,12 +38,13 @@ final class RatingPromptPresenterTests: XCTestCase {
     settings = TPPSettings(defaults: defaults)
     requester = SpyReviewRequester()
     feedback = SpyFeedbackPresenter()
+    clock = TestClock()
   }
 
   override func tearDown() {
     defaults.removePersistentDomain(forName: suiteName)
     settings = nil; defaults = nil; suiteName = nil
-    requester = nil; feedback = nil
+    requester = nil; feedback = nil; clock = nil
     super.tearDown()
   }
 
@@ -51,12 +52,20 @@ final class RatingPromptPresenterTests: XCTestCase {
   /// ineligible, so trigger behavior is deterministic without seeding state.
   /// The trigger delay defaults to 0 so the scheduled gate resolves promptly
   /// in the async combiner tests.
-  private func makePresenter(eligible: Bool, delay: UInt64 = 0) -> RatingPromptPresenter {
+  private func makePresenter(eligible: Bool, delay: UInt64 = 0,
+                             drivenClock: Bool = false) -> RatingPromptPresenter {
     let service = AppRatingService(
       tracker: RatingEngagementTracker(settings: settings),
       promptEnabledProvider: { true },
       forceEligibleProvider: { eligible }
     )
+    let sleeper: @Sendable (UInt64) async -> Void
+    if drivenClock {
+      let c = clock!
+      sleeper = { ns in await c.sleep(ns) }
+    } else {
+      sleeper = RatingPromptPresenter.defaultSleep
+    }
     return RatingPromptPresenter(
       service: service,
       reviewRequester: requester,
@@ -66,9 +75,47 @@ final class RatingPromptPresenterTests: XCTestCase {
         self.modalChecks += 1
         if let n = self.modalClearsAfterCheck, self.modalChecks > n { return false }
         return self.modalIsUp
-      }
+      },
+      sleep: sleeper
     )
   }
+
+  /// A clock the TEST drives.
+  ///
+  /// The deferral behaviour is defined by the order two sleeping hops resume
+  /// in, and wall-clock sleeps cannot pin that: hops armed microseconds apart
+  /// for the same duration wake in whichever order the scheduler picks. A
+  /// reviewer measured the previous wall-clock version passing 2 of 12 runs
+  /// against the live defect — which, under `-retry-tests-on-failure`, reports
+  /// a run green roughly 40% of the time with the bug present. Every sleeper
+  /// now parks here until the test resumes it by name.
+  @MainActor
+  private final class TestClock {
+    private var parked: [CheckedContinuation<Void, Never>] = []
+    /// Sleepers currently waiting, in the order they arrived.
+    var waiting: Int { parked.count }
+
+    func sleep(_ nanoseconds: UInt64) async {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        parked.append(c)
+      }
+    }
+
+    /// Resume the sleeper that has been waiting LONGEST (FIFO).
+    func resumeOldest() {
+      guard !parked.isEmpty else { return }
+      parked.removeFirst().resume()
+    }
+
+    /// Resume the sleeper that arrived MOST RECENTLY (LIFO) — this is the wake
+    /// order that hides the clobber, and it must be drivable on purpose.
+    func resumeNewest() {
+      guard !parked.isEmpty else { return }
+      parked.removeLast().resume()
+    }
+  }
+
+  private var clock: TestClock!
 
   /// Drives the "a sheet is on screen" seam for the deferral tests below.
   private var modalIsUp = false
@@ -199,36 +246,74 @@ final class RatingPromptPresenterTests: XCTestCase {
   /// budget and be dropped. Every other test in this file runs with delay 0,
   /// which closes the window and makes this cell unreachable — so this one
   /// opens it deliberately.
+  /// A positive moment arriving while a re-arm hop is still asleep must not
+  /// inherit that hop's exhausted budget.
+  ///
+  /// THE MODAL STAYS UP THROUGH BOTH WAKEUPS. That is the whole point: on the
+  /// show path the budget is never consulted, so clearing the sheet first makes
+  /// the clobber invisible and the test vacuous. It must be the BUDGET that
+  /// decides whether the new trigger survives, which means the sheet is still
+  /// there when it wakes.
+  ///
+  /// Both wake orders are driven deliberately. When the stale hop wakes first
+  /// it writes its exhausted count over the new trigger's reset; when it wakes
+  /// second the clobber lands on a chain that is already gone. The wall-clock
+  /// version of this test only ever hit one of those by luck — a reviewer
+  /// measured it passing 2 of 12 runs against the live defect.
   func testDeferralBudget_newTriggerDuringTheReArmWindow_isNotClobbered() async {
-    let presenter = makePresenter(eligible: true, delay: 30_000_000)  // 30ms
-    modalIsUp = true
+    for staleHopWakesFirst in [true, false] {
+      clock = TestClock()
+      modalChecks = 0
+      modalClearsAfterCheck = nil
+      modalIsUp = true
+      let presenter = makePresenter(eligible: true, delay: 1, drivenClock: true)
 
-    // Burn the budget down to its last deferral, then leave a hop sleeping.
-    presenter.handleTrigger(.borrowSucceeded)
-    await waitUntil { self.modalChecks >= 3 }
+      // Burn this trigger's budget down to its last deferral, leaving one hop
+      // parked with a stale count of 0.
+      presenter.handleTrigger(.borrowSucceeded)
+      await waitUntil { self.clock.waiting > 0 }
+      for _ in 0..<2 {
+        clock.resumeOldest()
+        await waitUntil { self.clock.waiting > 0 }
+      }
+      XCTAssertEqual(modalChecks, 3, "precondition: 3 modal checks, got \(modalChecks)")
+      XCTAssertEqual(clock.waiting, 1, "precondition: one stale hop parked")
 
-    // THE PRECONDITION MUST BE ASSERTED, NOT ASSUMED. This test only exercises
-    // its cell if a re-arm hop is still SLEEPING when the next trigger arrives,
-    // and that window is ~30ms wide. If the poll arrives late the chain has
-    // already come to rest, there is no clobber to observe, and the assertion
-    // below passes while proving nothing — the test would go green against the
-    // live defect. Pinning the exact count makes a lost race RED instead of a
-    // silent success.
-    XCTAssertEqual(modalChecks, 3,
-                   "the re-arm window had already closed (\(modalChecks) hops) — "
-                   + "this run did not reach the cell under test")
+      // A new positive moment lands while that hop is still parked: it resets
+      // the budget synchronously and parks a hop of its own.
+      presenter.noteBorrowSucceeded()
+      await waitUntil { self.clock.waiting == 2 }
 
-    // A new positive moment arrives while that hop is still asleep. The sheet
-    // must STAY UP across the new trigger's own first check — otherwise it
-    // takes the show path, where the budget is never consulted and the clobber
-    // is invisible. Clearing two checks later leaves it needing its deferrals.
-    modalClearsAfterCheck = modalChecks + 2
-    presenter.noteBorrowSucceeded()
+      // Wake both, sheet STILL UP. The new trigger must defer — which it can
+      // only do out of a budget the stale hop did not overwrite.
+      if staleHopWakesFirst {
+        clock.resumeOldest(); await waitUntil { self.clock.waiting <= 1 }
+        clock.resumeOldest()
+      } else {
+        clock.resumeNewest(); await waitUntil { self.clock.waiting <= 1 }
+        clock.resumeOldest()
+      }
+      await waitUntil { self.clock.waiting > 0 }
 
-    await waitUntil { presenter.step != nil }
-    XCTAssertEqual(presenter.step, .sentiment,
-                   "a trigger arriving during the re-arm window inherited the "
-                   + "old chain's exhausted budget and was dropped")
+      XCTAssertNil(presenter.step, "nothing may be shown while the sheet is up")
+      // BOTH chains re-arm: the stale hop also wakes into the budget the new
+      // trigger restored, so it defers rather than dying. Under the clobber
+      // both read 0 instead and neither re-arms, so this count is 0 — the two
+      // are coupled, and the distinction is 2 vs 0, not 2 vs 1.
+      XCTAssertEqual(clock.waiting, 2,
+                     "staleHopWakesFirst=\(staleHopWakesFirst): expected both "
+                     + "chains to defer out of the restored budget; the stale "
+                     + "hop's exhausted count was written over that reset and "
+                     + "both triggers were dropped")
+
+      // And once the sheet goes, that surviving chain shows the gate.
+      modalIsUp = false
+      clock.resumeOldest()
+      await waitUntil { presenter.step != nil }
+      XCTAssertEqual(presenter.step, .sentiment,
+                     "staleHopWakesFirst=\(staleHopWakesFirst): the surviving "
+                     + "chain never presented the gate")
+    }
   }
 
   func testDeferralBudget_isBounded_whileTheModalStaysUp() async {

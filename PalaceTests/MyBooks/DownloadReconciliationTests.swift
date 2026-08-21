@@ -245,6 +245,34 @@ final class DownloadReconciliationTests: XCTestCase {
         XCTAssertEqual(decision, .restart(bookID: "book-A"))
     }
 
+    /// Same reachability question as the contested arm, and it was pinned only
+    /// at `.downloading` — the state where `.restart` is inert because
+    /// `startDownload` returns early. From `.downloadNeeded` / `.SAMLStarted` a
+    /// declined adoption DOES start a second task while a live one is fetching
+    /// that URL. Deliberate and the lesser harm, but it should be written down
+    /// rather than left to the one state that hides it.
+    func testAmbiguousURL_declinesInEveryWantsContentState() {
+        let rec = record("book-A", task: 1)
+        let live = [7: rec.downloadURL, 8: rec.downloadURL]
+
+        for state in [TPPBookState.downloading, .downloadNeeded, .SAMLStarted] {
+            XCTAssertEqual(decide(rec, liveTasks: live, state: state),
+                           .restart(bookID: "book-A"),
+                           "ambiguous url under \(state) did not decline adoption")
+        }
+    }
+
+    /// And an ambiguous url whose book is already finished must clean up, not
+    /// restart — the decline must not outrank the registry's last word.
+    func testAmbiguousURL_completedBook_isCleanedUpNotRestarted() {
+        let rec = record("book-A", task: 1)
+        let live = [7: rec.downloadURL, 8: rec.downloadURL]
+
+        XCTAssertEqual(decide(rec, liveTasks: live, state: .downloadSuccessful),
+                       .cleanup(bookID: "book-A"),
+                       "a finished book was routed back into a download")
+    }
+
     /// ...unless one of them is the record's own identifier, which disambiguates.
     func testAmbiguousURL_butExactIdentifierMatch_prefersTheExactTask() {
         let rec = record("book-A", task: 7)

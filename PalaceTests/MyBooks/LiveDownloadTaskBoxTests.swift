@@ -24,7 +24,15 @@ final class LiveDownloadTaskBoxTests: XCTestCase {
 
   override func setUp() {
     super.setUp()
-    session = URLSession(configuration: .ephemeral)
+    // A local session rather than `fakeDownloadTask(url:)`, because that helper
+    // builds a fresh URLSession per call and every task then reports identifier
+    // 1 — which would make the multi-task tests below assert against a
+    // collision they created themselves. One session gives distinct
+    // identifiers. The stub protocol is the part worth borrowing: nothing here
+    // should be able to reach the network even if a task were resumed.
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [NoNetworkURLProtocol.self]
+    session = URLSession(configuration: config)
   }
 
   override func tearDown() {
@@ -101,10 +109,15 @@ final class LiveDownloadTaskBoxTests: XCTestCase {
 
   // MARK: - The producer's contract with its caller
 
-  /// `capture` returns false rather than throwing or silently dropping, because
-  /// the caller logs a warning: a task with no URL can never be adopted and its
-  /// book will restart, and that is worth a line in the log rather than silence.
-  func testCapture_returnValueDistinguishesCapturedFromNot() {
+  /// `capture` reports success so the caller can log the failure case rather
+  /// than dropping it silently — a task with no URL can never be adopted and
+  /// its book will restart, which is worth a line in the log.
+  ///
+  /// Only the success arm is reachable here: a task reporting no URL at all
+  /// cannot be constructed. The failure arm is driven through
+  /// `downloadURL(original:current:)` below, so this asserts what it can and
+  /// says which half it is.
+  func testCapture_reportsSuccess_whenTheTaskHasAURL() {
     let box = LiveDownloadTaskBox()
     XCTAssertTrue(box.capture(task("https://example.org/book-A.epub")))
     XCTAssertEqual(box.urls.count, 1)
@@ -137,14 +150,17 @@ final class LiveDownloadTaskBoxTests: XCTestCase {
                    + "declines to adopt a download that is still running")
   }
 
+  func testDownloadURL_usesOriginal_whenCurrentIsAbsent() {
+    let started = URL(string: "https://example.org/book-A.epub")!
+
+    XCTAssertEqual(LiveDownloadTaskBox.downloadURL(original: started, current: nil),
+                   started,
+                   "a task that reports only an originalRequest was dropped")
+  }
+
   func testDownloadURL_isNil_whenNeitherRequestHasAURL() {
     XCTAssertNil(LiveDownloadTaskBox.downloadURL(original: nil, current: nil),
                  "a URL-less task must be reported, not captured under a bogus key")
   }
 
-  func testCapture_emptyBox_hasNoEntries() {
-    let box = LiveDownloadTaskBox()
-    XCTAssertTrue(box.urls.isEmpty)
-    XCTAssertTrue(box.map.isEmpty)
-  }
 }

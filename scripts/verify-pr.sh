@@ -1366,5 +1366,9 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
 fi
 
 echo ""
-echo "CLEAR: All checks passed."
+if [ "$SKIP_COUNT" -gt 0 ]; then
+  echo "CLEAR: no checks failed — but $SKIP_COUNT ran nothing. Not the same as verified."
+else
+  echo "CLEAR: All checks passed."
+fi
 exit 0

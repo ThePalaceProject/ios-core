@@ -57,16 +57,6 @@ enum ReconcileDecision: Equatable {
 
 enum DownloadReconciliation {
 
-    /// PURE — no URLSession, no I/O. Unit-testable exhaustively over the
-    /// {live task / dead task} × {registry state} matrix.
-    ///
-    /// - Note: `registryStates` is keyed by book id and carries the *per-book*
-    ///   lifecycle state (`TPPBookState`), which is the source of truth for the
-    ///   book's download lifecycle. (Seam S1's draft typed this as
-    ///   `TPPBookRegistry.RegistryState`, but that enum is the whole-registry
-    ///   load state — `.unloaded/.loading/.loaded/...` — not per-book. INV-4's
-    ///   healing contract is explicitly about the per-book `.downloading`
-    ///   record, so the per-book `TPPBookState` is the correct input.)
     /// The live task this record should be adopted onto, or nil.
     ///
     /// Matches on URL, and returns the LIVE identifier — not the persisted one.
@@ -131,6 +121,15 @@ enum DownloadReconciliation {
     ///   task's identifier. So this is correct whether or not identifiers happen
     ///   to survive a relaunch — a question this code no longer has to answer.
     ///
+    ///   DO NOT "OPTIMIZE" THIS BY CANCELLING THE UNADOPTABLE TASK. It reads as
+    ///   an obvious improvement — the task is orphaned, so why leave it running?
+    ///   Because `followAcquisitionLink` and the bearer-token hop in
+    ///   `RightsManagementDispatcher` create legitimately live tasks that were
+    ///   never persisted here, and cancelling would kill real in-flight
+    ///   downloads. An orphan costs bandwidth; cancelling costs the patron a
+    ///   book. Leave it: `MyBooksDownloadCenter` early-returns on an unmapped
+    ///   identifier, so the orphan's bytes are discarded rather than misrouted.
+    ///
     ///   LOAD-BEARING INVARIANT: within one reconcile pass, a download URL
     ///   identifies at most one book. The URL is only a safe discriminator
     ///   because of that. Two books CAN legitimately share one — the same
@@ -139,6 +138,16 @@ enum DownloadReconciliation {
     ///   more than one book are refused adoption. Adopting them would route the
     ///   finished file to whichever book wrote `taskIdentifierToBook` last,
     ///   which is PP-4997's own failure mode re-entered through its fix.
+    /// PURE — no URLSession, no I/O. Unit-testable exhaustively over the
+    /// {live task / dead task} × {registry state} matrix.
+    ///
+    /// - Note: `registryStates` is keyed by book id and carries the *per-book*
+    ///   lifecycle state (`TPPBookState`), which is the source of truth for the
+    ///   book's download lifecycle. (Seam S1's draft typed this as
+    ///   `TPPBookRegistry.RegistryState`, but that enum is the whole-registry
+    ///   load state — `.unloaded/.loading/.loaded/...` — not per-book. INV-4's
+    ///   healing contract is explicitly about the per-book `.downloading`
+    ///   record, so the per-book `TPPBookState` is the correct input.)
     static func reconcile(
         persisted: [PersistedDownloadRecord],
         liveTasks: [Int: URL],
@@ -331,11 +340,17 @@ final class DownloadTaskPersistence: @unchecked Sendable {
 /// Lives here rather than in MyBooksDownloadCenter because it is reconciliation
 /// infrastructure, not download-center state — and the hub is frozen under the
 /// decomposition ratchet, which asks for extraction rather than growth.
+/// THREADING CONTRACT: `@unchecked Sendable` is sound only because every write
+/// happens inside the single `getAllTasks` completion, and every read happens
+/// after that completion has resumed the awaiting continuation. There is no
+/// lock. While this type was `private` that argument was auditable in one file;
+/// it is now module-visible, so both dictionaries are `private(set)` and
+/// `capture` is the only way in.
 final class LiveDownloadTaskBox: @unchecked Sendable {
-    var map: [Int: URLSessionDownloadTask] = [:]
+    private(set) var map: [Int: URLSessionDownloadTask] = [:]
     /// URL each live task is fetching, captured INSIDE the `getAllTasks`
     /// completion so no non-Sendable task is touched afterwards.
-    var urls: [Int: URL] = [:]
+    private(set) var urls: [Int: URL] = [:]
 
     /// Record a live task and the URL it is fetching.
     ///
@@ -344,6 +359,15 @@ final class LiveDownloadTaskBox: @unchecked Sendable {
     /// download that is still running. Returns false when the task has no URL
     /// at all — it can never be adopted, and the caller logs rather than
     /// dropping it in silence.
+    /// THE BINDING BELOW IS THE ONE THING NO TEST HERE DRIVES, and that is a
+    /// property of `URLSessionDownloadTask`, not of the tests. A task built from
+    /// a URL reports the SAME value for `originalRequest` and `currentRequest`,
+    /// so swapping the two arguments changes nothing any test can observe; a
+    /// task reporting neither cannot be constructed at all. The decision itself
+    /// is driven exhaustively in `downloadURL(original:current:)`, and what
+    /// remains here is a two-line adapter with no branch of its own. Naming the
+    /// gap is the honest form — a reviewer proved it by swapping the labels and
+    /// watching all nine tests stay green.
     @discardableResult
     func capture(_ task: URLSessionDownloadTask) -> Bool {
         let id = task.taskIdentifier
