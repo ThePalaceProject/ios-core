@@ -97,6 +97,18 @@ def real_skip_details() -> list[tuple[str, str]]:
     return literal + dynamic
 
 
+def real_pass_details() -> list[tuple[str, str]]:
+    """(key, detail) for every `pass` the script actually emits.
+
+    The census inspects pass entries as well as skips, and the pass half was
+    still hand-authored — the invented-fixture shape that hid the round-7 defect
+    behind 378 green tests. Two reviewers said "derive it or drop the claim".
+    """
+    with open(VPR, encoding="utf-8") as fh:
+        text = fh.read()
+    return re.findall(r'record "([a-z_0-9]+)" "pass" "([^"]*)"', text)
+
+
 def every_declared_key() -> list[str]:
     with open(VPR, encoding="utf-8") as fh:
         text = fh.read()
@@ -124,6 +136,17 @@ def test_the_derivation_has_not_silently_narrowed():
     # sites entirely leaves the total comfortably above any round number. Pin
     # the arm, not the sum.
     dynamic = [d for k, d in details if k == "<phase35>"]
+    literal = [d for k, d in details if k != "<phase35>"]
+    # COUNT, not presence: there are two `record "$key" "skip"` sites, and
+    # dropping one of them survived a bare `assert dynamic`.
+    assert len(dynamic) >= 2, (
+        f"derived only {len(dynamic)} dynamic-key skip details; expected both "
+        f"`record \"$key\" \"skip\"` sites"
+    )
+    assert len(literal) >= 60, (
+        f"derived only {len(literal)} literal-key skip details — the literal arm "
+        f"has narrowed, which a total floor cannot see"
+    )
     assert dynamic, (
         "no dynamic-key (`record \"$key\"`) skip sites were derived. Those are "
         "the phase-3.5 detectors — round 5's attack-C hole — and a literal-key "
@@ -294,16 +317,51 @@ def test_optin_polarity_reasons_are_exempt(detail):
     assert fails == 0, f"opt-in reason wrongly censused:\n{out}"
 
 
+def test_the_optin_exemption_is_scoped_to_the_flag_under_test():
+    """A bare `*"opt-in"*` clause would exempt an entry for ALL five flags.
+
+    The exemption runs inside a per-flag loop, so an unscoped spelling lets one
+    "opt-in" anywhere in a detail blanket-exempt every other flag in the same
+    entry. Both reviewers reverted the scoping and got 21/21 green — a fifth
+    half-pinned guard, added in the commit that existed to pin the others.
+
+    This detail is exempt for --chaos (opt-in) and NOT for --mutation-only, so
+    only a flag-scoped exemption censuses it correctly.
+    """
+    keys = every_declared_key()
+    detail = "not run (opt-in; --chaos enables it) - Skipped (--mutation-only)"
+    results = [rec(k, "skip", detail) if k == "chaos" else rec(k) for k in keys]
+    fails, out = drive(results, argv=[])
+    assert fails >= 1, (
+        "an unscoped opt-in exemption let an impossible --mutation-only claim "
+        f"through on the strength of an unrelated --chaos opt-in:\n{out}"
+    )
+    assert "--mutation-only" in out
+
+
 def test_a_pass_detail_claiming_a_flag_is_censused_too():
     """`--diff-baseline` records `pass`, never `skip`. A skip-only loop left it
     enumerated but unguarded — the appearance of coverage without the fact."""
     keys = every_declared_key()
-    results = [rec(k, "pass", "flake-triaged per --diff-baseline") if k == "unit_tests"
-               else rec(k) for k in keys]
-    fails, out = drive(results, argv=[])
-    assert fails >= 1, f"a pass detail claiming an unpassed flag was not censused\n{out}"
-    ok, _ = drive(results, argv=["--diff-baseline"])
-    assert ok == 0
+    # DERIVED, not invented: the script's own pass details that name a flag.
+    flagged = [(k, d) for k, d in real_pass_details()
+               if any(f in d for f in ("--mutation-only", "--quick", "--simdrive",
+                                       "--chaos", "--diff-baseline"))
+               and "pass --" not in d and "opt-in" not in d]
+    assert flagged, (
+        "no derived pass detail names a flag — this test would assert nothing. "
+        "If the script stopped emitting one, delete this test rather than let "
+        "it pass vacuously."
+    )
+    for key, detail in flagged:
+        target = key if key in keys else "unit_tests"
+        results = [rec(k, "pass", detail) if k == target else rec(k) for k in keys]
+        flag = next(f for f in ("--mutation-only", "--quick", "--simdrive",
+                                "--chaos", "--diff-baseline") if f in detail)
+        fails, out = drive(results, argv=[])
+        assert fails >= 1, f"pass detail {detail!r} claiming {flag} was not censused\n{out}"
+        ok, _ = drive(results, argv=[flag])
+        assert ok == 0, f"pass detail {detail!r} wrongly censused with {flag} given"
 
 
 def test_success_is_recorded_so_a_disabled_block_is_visible():

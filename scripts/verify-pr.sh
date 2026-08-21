@@ -1429,8 +1429,10 @@ else
       # not impossible. Both spellings are scoped to the flag under test: a bare
       # `*"opt-in"*` would exempt an entry for all five flags at once because
       # this runs inside the per-flag loop.
+      # `*"opt-in; pass $flag"*` used to sit here too and was strictly subsumed
+      # by `*"pass $flag"*` — dead by construction, unkillable by any test.
       case "$entry" in
-        *"pass $flag"*|*"opt-in; $flag"*|*"opt-in; pass $flag"*) continue ;;
+        *"pass $flag"*|*"opt-in; $flag"*) continue ;;
       esac
       case "$ARGV_TEXT" in
         *" $flag "*) ;;
