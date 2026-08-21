@@ -355,7 +355,7 @@ final class DownloadTaskPersistence: @unchecked Sendable {
 /// Lives here rather than in MyBooksDownloadCenter because it is reconciliation
 /// infrastructure, not download-center state — and the hub is frozen under the
 /// decomposition ratchet, which asks for extraction rather than growth.
-/// `@unchecked Sendable` with an actual lock, not a convention.
+/// `@unchecked Sendable` with a lock over BOTH writes and reads.
 ///
 /// The original argument was that every write happens inside the single
 /// `getAllTasks` completion and every read after it resumes — sound, and
@@ -363,14 +363,31 @@ final class DownloadTaskPersistence: @unchecked Sendable {
 /// module-visible, at which point "every write" became a claim about the whole
 /// app target that nothing enforced. `private(set)` closes the dictionaries to
 /// outside writers but `capture` is still an unlocked internal mutator, so two
-/// reviewers independently flagged the same gap. Three lines of `NSLock` retire
-/// the argument instead of restating it.
+/// reviewers independently flagged the same gap.
+///
+/// The first attempt at that added an `NSLock` around `capture` and left the
+/// dictionaries `private(set)`, so every READ was still unlocked — and the
+/// comment claimed "an actual lock, not a convention" while shipping half of
+/// one. Review caught it. The storage is `private` now and the only way in or
+/// out is through the accessors below, all of which take the lock.
 final class LiveDownloadTaskBox: @unchecked Sendable {
     private let lock = NSLock()
-    private(set) var map: [Int: URLSessionDownloadTask] = [:]
+    private var map: [Int: URLSessionDownloadTask] = [:]
     /// URL each live task is fetching, captured INSIDE the `getAllTasks`
     /// completion so no non-Sendable task is touched afterwards.
-    private(set) var urls: [Int: URL] = [:]
+    private var urls: [Int: URL] = [:]
+
+    /// URLs of every captured task. A copy, taken under the lock.
+    var capturedURLs: [Int: URL] {
+        lock.lock(); defer { lock.unlock() }
+        return urls
+    }
+
+    /// Captured tasks. A copy, taken under the lock.
+    var capturedTasks: [Int: URLSessionDownloadTask] {
+        lock.lock(); defer { lock.unlock() }
+        return map
+    }
 
     /// Record a live task and the URL it is fetching.
     ///

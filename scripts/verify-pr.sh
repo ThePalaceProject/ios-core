@@ -72,7 +72,18 @@
 
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# An absolute name for this file, captured before the `cd` below. `$0` is NOT a
+# reliable handle for "my own source": invoked by a relative path it stops
+# resolving the moment we change directory, and a grep over it then yields
+# nothing — silently. Reviewers measured `cd scripts && ./verify-pr.sh`
+# deriving ZERO owed legs with no output at all.
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+# The arguments as the caller actually gave them. The accounting below must
+# reconcile against THESE and not against the mode variables, because those are
+# what an inverted guard tampers with — a check that derives its authority from
+# the thing it checks cannot witness that thing's tampering.
+ORIGINAL_ARGV=("$@")
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
@@ -1339,64 +1350,83 @@ fi
 # --- Every leg must ACCOUNT for itself -------------------------------------
 #
 # A leg that never executes records nothing, and a summary built only from what
-# ran cannot tell "clean" from "never reached". Review demonstrated three
-# attacks that exploit that: wrapping a section in `if false; then … fi`,
-# inverting an outer guard, and moving a block into a function nobody calls. All
-# three leave the code present, `bash -n` clean, and every string a source-grep
-# looks for intact.
+# ran cannot tell "clean" from "never reached". Review demonstrated attacks that
+# reach that state while leaving the code present and `bash -n` clean: wrapping
+# a section in `if false`, inverting an outer guard, moving a block into an
+# uncalled function.
 #
-# So the run declares what it OWES and reconciles at the end.
-#
-# LIMIT: this runs on the full path only. The docs-only fast path exits before
-# it, having recorded its own smaller set — legitimate, since it genuinely runs
-# fewer legs, but it means accounting does not cover that lane. DOCS_ONLY is
-# computed from the diff rather than chosen, so it is not a lever a refactor can
-# pull; stated here so nobody reads a green docs-only run as accounted for.
-#
-# THE OWED SET IS DERIVED, NOT LISTED. An earlier version hardcoded 13 of 36
-# keys, which left 23 legs unguarded and was itself the hand-maintained-list
-# anti-pattern this branch spent its length removing. Deriving from the script's
-# own call sites is robust against exactly the attacks above, because each one
-# preserves the call-site text while removing execution.
-EXPECTED_KEYS=$(grep -oE '(record|run_phase35_detector) "[a-z_0-9]+"' "$0" \
+# THE OWED SET IS DERIVED from this script's own call sites, which is robust
+# against those by construction: each preserves the call-site text and removes
+# only the execution. It is read from SCRIPT_PATH, not `$0` — see above.
+EXPECTED_KEYS=$(grep -oE '(record|run_phase35_detector) "[a-z_0-9]+"' "$SCRIPT_PATH" \
                 | sed -E 's/.*"([a-z_0-9]+)"/\1/' \
-                | grep -v '^leg_accounting$' | sort -u)
+                | grep -vE '^leg_accounting' | sort -u)
+EXPECTED_COUNT=$(printf '%s\n' "$EXPECTED_KEYS" | grep -c .)
 
-MISSING_KEYS=""
-for key in $EXPECTED_KEYS; do
-  case " ${RESULTS[*]} " in
-    *"\"check\":\"$key\""*) ;;
-    *) MISSING_KEYS="$MISSING_KEYS $key" ;;
-  esac
-done
-if [ -n "$MISSING_KEYS" ]; then
+# An empty derivation is the vacuous pass this whole branch is about: zero owed
+# legs means zero missing legs means green. Floor it.
+if [ "$EXPECTED_COUNT" -lt 30 ]; then
   FAIL_COUNT=$((FAIL_COUNT + 1))
-  echo "  [FAIL] leg_accounting — these checks recorded NOTHING, so they did not run:$MISSING_KEYS"
-  RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"unreported legs:$MISSING_KEYS\"}")
-fi
-
-# A `skip` satisfies the accounting above, deliberately — "ran nothing and said
-# so" is a different fact from "never reached". That leaves one hole, which
-# review found and drove: inverting an outer `[ "$MUTATION_ONLY" = "true" ]`
-# sends an ORDINARY run down the skip arm, so the key is recorded and the
-# reconciliation passes. The skip is then visible among legitimate ones rather
-# than caught.
-#
-# Close it by checking the skip REASON against the mode actually in force. A leg
-# claiming it was skipped for --mutation-only, on a run that is not
-# --mutation-only, is reporting something that cannot be true.
-if [ "$MUTATION_ONLY" != "true" ]; then
-  INCONSISTENT=""
-  for entry in "${RESULTS[@]}"; do
-    case "$entry" in
-      *'"status":"skip"'*'--mutation-only'*)
-        INCONSISTENT="$INCONSISTENT $(echo "$entry" | sed -E 's/.*"check":"([a-z_0-9]+)".*/\1/')" ;;
+  echo "  [FAIL] leg_accounting — derived only $EXPECTED_COUNT owed legs from $SCRIPT_PATH."
+  echo "         That is too few to be real: the derivation is broken, so the"
+  echo "         accounting below would pass without checking anything."
+  RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"derivation broken: $EXPECTED_COUNT legs\"}")
+else
+  MISSING_KEYS=""
+  for key in $EXPECTED_KEYS; do
+    case " ${RESULTS[*]} " in
+      *"\"check\":\"$key\""*) ;;
+      *) MISSING_KEYS="$MISSING_KEYS $key" ;;
     esac
   done
-  if [ -n "$INCONSISTENT" ]; then
+
+  # A `skip` satisfies the accounting deliberately — "ran nothing and said so"
+  # is a different fact from "never reached". That leaves one hole: inverting a
+  # mode guard sends an ORDINARY run down a skip arm, so the leg accounts for
+  # itself while doing nothing.
+  #
+  # Close it by checking each skip REASON against the flags the CALLER passed.
+  # Reconciling against $MUTATION_ONLY et al. would be reconciling against the
+  # variable the tampering sets. Every mode flag is censused, not just one:
+  # reviewers showed --quick and --simdrive were unchecked while --mutation-only
+  # was.
+  ARGV_TEXT=" ${ORIGINAL_ARGV[*]-} "
+  IMPOSSIBLE=""
+  for entry in "${RESULTS[@]}"; do
+    case "$entry" in
+      *'"status":"skip"'*) ;;
+      *) continue ;;
+    esac
+    entry_key=$(printf '%s' "$entry" | sed -E 's/.*"check":"([a-z_0-9]+)".*/\1/')
+    for flag in --mutation-only --quick --simdrive --chaos --diff-baseline; do
+      case "$entry" in
+        *"$flag"*) ;;
+        *) continue ;;
+      esac
+      # The leg says it was skipped BECAUSE of $flag. If the caller never
+      # passed $flag, that reason cannot be true.
+      case "$ARGV_TEXT" in
+        *" $flag "*) ;;
+        *) IMPOSSIBLE="$IMPOSSIBLE $entry_key($flag)" ;;
+      esac
+    done
+  done
+
+  if [ -n "$MISSING_KEYS" ]; then
     FAIL_COUNT=$((FAIL_COUNT + 1))
-    echo "  [FAIL] leg_accounting — skipped for --mutation-only on a run that is not --mutation-only:$INCONSISTENT"
-    RESULTS+=("{\"check\":\"leg_accounting_reason\",\"status\":\"fail\",\"detail\":\"impossible skip reason:$INCONSISTENT\"}")
+    echo "  [FAIL] leg_accounting — these checks recorded NOTHING, so they did not run:$MISSING_KEYS"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"unreported legs:$MISSING_KEYS\"}")
+  elif [ -n "$IMPOSSIBLE" ]; then
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    echo "  [FAIL] leg_accounting — skipped for a flag the caller never passed:$IMPOSSIBLE"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"impossible skip reason:$IMPOSSIBLE\"}")
+  else
+    # RECORD THE SUCCESS. Without this the accounting is silent when it passes,
+    # so a run where the block was disabled outright looks exactly like a run
+    # where it passed — the defect it exists to detect, in itself.
+    PASS_COUNT=$((PASS_COUNT + 1))
+    echo "  [PASS] leg_accounting — $EXPECTED_COUNT/$EXPECTED_COUNT legs accounted for"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"pass\",\"detail\":\"$EXPECTED_COUNT/$EXPECTED_COUNT legs accounted for\"}")
   fi
 fi
 

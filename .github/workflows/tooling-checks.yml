@@ -64,11 +64,7 @@ jobs:
             echo "::error::scripts/tests/ is missing — the detector suite cannot run."
             exit 1
           fi
-          if true; then
-            python3 -m pytest scripts/tests/ -q
-          else
-            echo "No scripts/tests/ — skipping."
-          fi
+          python3 -m pytest scripts/tests/ -q
 
       # 3. Hook-wiring fixture test. Proves the pre-commit detector hook
       #    correctly blocks on a violation, identifies the detector, and honors

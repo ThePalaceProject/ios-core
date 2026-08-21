@@ -2253,10 +2253,10 @@ extension MyBooksDownloadCenter {
                 // survives a redirect; they can differ only for a task whose
                 // originalRequest is nil, and there the divergence fails safe —
                 // a record simply does not match and its book restarts.
-                return box.urls
+                return box.capturedURLs
             },
             registryState: { [weak self] bookID in self?.bookRegistry.state(for: bookID) ?? .unregistered },
-            apply: { [weak self] decision in await self?.applyReconcileDecision(decision, liveTasks: box.map) }
+            apply: { [weak self] decision in await self?.applyReconcileDecision(decision, liveTasks: box.capturedTasks) }
         )
     }
 

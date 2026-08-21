@@ -44,20 +44,28 @@ def accounting_block() -> str:
     return block
 
 
-def drive(results: list[str], mutation_only: str = "false") -> tuple[int, str]:
-    """Run the block against a synthetic RESULTS array. Returns (FAIL_COUNT, output)."""
+def drive(results: list[str], argv: list[str] | None = None,
+          script_path: str | None = None) -> tuple[int, str]:
+    """Run the block against a synthetic RESULTS array.
+
+    Supplies SCRIPT_PATH and ORIGINAL_ARGV rather than rewriting the expressions
+    under review. The previous version substituted `"$0"` -> `"$1"` with an
+    absolute path, which is precisely the expression that was broken — so the
+    test could only ever drive the working configuration and was structurally
+    blind to the defect a reviewer then found by hand.
+    """
     array = " ".join(f"'{r}'" for r in results)
+    argv_text = " ".join(f"'{a}'" for a in (argv or []))
     script = (
         "#!/usr/bin/env bash\n"
-        f"MUTATION_ONLY={mutation_only}\n"
-        "FAIL_COUNT=0\n"
+        f'SCRIPT_PATH="{script_path if script_path is not None else VPR}"\n'
+        f"ORIGINAL_ARGV=({argv_text})\n"
+        "FAIL_COUNT=0\nPASS_COUNT=0\n"
         f"RESULTS=({array})\n"
         + accounting_block()
-        + "\necho \"FAIL_COUNT=$FAIL_COUNT\"\n"
+        + '\necho "FAIL_COUNT=$FAIL_COUNT"\n'
     )
-    # `$0` must be verify-pr.sh: the owed set is derived from its own call sites.
-    proc = subprocess.run(["bash", "-s", VPR], input=script.replace('"$0"', '"$1"'),
-                          capture_output=True, text=True)
+    proc = subprocess.run(["bash", "-s"], input=script, capture_output=True, text=True)
     out = proc.stdout + proc.stderr
     m = re.search(r"FAIL_COUNT=(\d+)", out)
     return (int(m.group(1)) if m else -1), out
@@ -114,6 +122,15 @@ def test_a_legitimate_skip_still_accounts_for_itself():
     assert fails == 0, out
 
 
+def test_an_empty_derivation_fails_instead_of_passing_vacuously():
+    """`$0` stopped resolving after the script's own `cd`, so the owed set came
+    back empty — zero owed legs means zero missing means green, silently. A
+    reviewer measured exactly that with `cd scripts && ./verify-pr.sh`."""
+    fails, out = drive([rec("build")], script_path="/nonexistent/verify-pr.sh")
+    assert fails >= 1, out
+    assert "derivation broken" in out or "derived only" in out
+
+
 def test_attack_b_impossible_skip_reason_is_caught():
     """Inverting `[ "$MUTATION_ONLY" = "true" ]` sends an ORDINARY run down the
     skip arm: the key is recorded, so the reconciliation passes. The reason is
@@ -122,7 +139,7 @@ def test_attack_b_impossible_skip_reason_is_caught():
     keys = every_declared_key()
     results = [rec(k, "skip", "not run (--mutation-only)") if k == "build" else rec(k)
                for k in keys]
-    fails, out = drive(results, mutation_only="false")
+    fails, out = drive(results, argv=[])
     assert fails >= 1, out
     assert "build" in out
 
@@ -132,5 +149,30 @@ def test_that_same_skip_is_legitimate_on_a_real_mutation_only_run():
     keys = every_declared_key()
     results = [rec(k, "skip", "not run (--mutation-only)") if k == "build" else rec(k)
                for k in keys]
-    fails, out = drive(results, mutation_only="true")
+    fails, out = drive(results, argv=["--mutation-only"])
     assert fails == 0, out
+
+
+@pytest.mark.parametrize("flag", ["--quick", "--simdrive", "--chaos", "--diff-baseline"])
+def test_every_mode_flag_is_censused_not_just_mutation_only(flag):
+    """The first version checked only `--mutation-only`, so inverting the guard
+    on `--quick` or `--simdrive` was attack B on an unchecked leg. A reviewer
+    drove both and got FAIL_COUNT=0."""
+    keys = every_declared_key()
+    results = [rec(k, "skip", f"not run ({flag})") if k == "mutation" else rec(k)
+               for k in keys]
+    fails, out = drive(results, argv=[])
+    assert fails >= 1, f"{flag} skip-reason not censused\n{out}"
+
+    fails_ok, out_ok = drive(results, argv=[flag])
+    assert fails_ok == 0, f"{flag} legitimately passed should not fail\n{out_ok}"
+
+
+def test_success_is_recorded_so_a_disabled_block_is_visible():
+    """Silent on success means a run where the block was disabled outright is
+    byte-identical to one where it passed."""
+    fails, out = drive([rec(k) for k in every_declared_key()])
+    assert fails == 0, out
+    assert "leg_accounting" in out and "accounted for" in out, (
+        "the accounting passed without saying so — a disabled block looks the same"
+    )

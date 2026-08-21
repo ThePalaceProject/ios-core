@@ -233,6 +233,12 @@ final class RatingPromptPresenterTests: XCTestCase {
     presenter.noteBorrowSucceeded()
     await settle()
     XCTAssertNil(presenter.step, "precondition: the modal never cleared")
+    // And assert the budget was actually SPENT. Without this the test can pass
+    // having never exhausted anything, which makes the "restored" claim below
+    // vacuous — it would be asserting a fresh budget behaves like a fresh one.
+    XCTAssertEqual(modalChecks, 4,
+                   "precondition: expected 1 + maxDeferrals(3) checks before the "
+                   + "budget ran out, got \(modalChecks)")
 
     // A LATER positive moment, with the sheet still up. This is the cell that
     // separates a per-trigger budget from a latched one: the new trigger must

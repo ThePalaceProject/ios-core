@@ -61,9 +61,32 @@ def run_steps():
     return steps
 
 
-# Every spelling of "skip if the file is absent". Recognising only `if [ -f`
-# left `[[ -f ]]` and `test -f` as working bypasses.
-_GUARD_RE = re.compile(r"(?:if\s+!?\s*\[\[?|test)\s+!?\s*-[fed]\s")
+# Every spelling of "skip if the file is absent".
+#
+# This has been widened twice by review. Recognising only `if [ -f` left
+# `[[ -f ]]` and `test -f` open; then a bare `[ -f x ] && bash x || echo skip`
+# (no `if`, no `test`) and the `-x` / `-s` / `-r` predicates were all still
+# working bypasses. Match the TEST itself wherever it appears, not the statement
+# that happens to introduce it.
+_GUARD_RE = re.compile(r"(?:\[\[?|\btest\b)\s+!?\s*-[fedxsr]\s")
+
+# A line that RUNS the script, as opposed to one that merely contains its name.
+# `echo "…bash scripts/tests/X.sh…"` counted as an invocation until review; a
+# comment was already excluded, but prose in an echo was not.
+_INVOKE_RE_TMPL = r"(?:^|[;&|]|\bthen\b|\bdo\b|&&|\|\|)\s*(?:bash|sh|source|\./)\s*\S*{}"
+
+
+def _invokes(step, basename: str) -> bool:
+    """Does this step's script actually RUN `basename`?"""
+    for line in step["run"].split("\n"):
+        stripped = line.strip()
+        if basename not in stripped or stripped.startswith("#"):
+            continue
+        if stripped.lstrip().startswith(("echo ", "printf ")):
+            continue
+        if re.search(_INVOKE_RE_TMPL.format(re.escape(basename)), stripped):
+            return True
+    return False
 
 
 def invoking_steps(basename: str) -> list:
@@ -75,7 +98,9 @@ def invoking_steps(basename: str) -> list:
             stripped = line.strip()
             if basename not in stripped or stripped.startswith("#"):
                 continue
-            if re.search(r"(?:bash|sh|source|\./)\s*\S*" + re.escape(basename), stripped):
+            if stripped.lstrip().startswith(("echo ", "printf ")):
+                continue        # prose that names the file is not a call
+            if re.search(_INVOKE_RE_TMPL.format(re.escape(basename)), stripped):
                 out.append((wf, job, step))
                 break
     return out
@@ -125,6 +150,13 @@ def test_bash_test_invocation_fails_closed(path):
     'if [ -f x.sh ]; then\n  bash x.sh\nelse\n  echo "skipping"\nfi\n',
     'if [[ -f x.sh ]]; then\n  bash x.sh\nelse\n  echo "skipping"\nfi\n',
     'test -f x.sh && bash x.sh || echo "skipping"\n',
+    # Bare `[` with no `if` and no `test` — reviewer-measured bypass.
+    '[ -f x.sh ] && bash x.sh || echo "skipping"\n',
+    '[[ -f x.sh ]] && bash x.sh || echo "skipping"\n',
+    # Predicates other than -f. All mean the same thing here.
+    'if [ -x x.sh ]; then\n  bash x.sh\nelse\n  echo "skip"\nfi\n',
+    'if [ -s x.sh ]; then\n  bash x.sh\nelse\n  echo "skip"\nfi\n',
+    'if [ -r x.sh ]; then\n  bash x.sh\nelse\n  echo "skip"\nfi\n',
 ])
 def test_predicate_catches_every_fail_open_guard_spelling(script):
     assert fail_open_reasons({"run": script}), (
@@ -147,6 +179,26 @@ def test_predicate_accepts_genuinely_fail_closed_steps(step):
     assert not fail_open_reasons(step), (
         "a correct step was flagged — a predicate that false-positives gets disabled"
     )
+
+
+def test_a_name_mentioned_in_prose_is_not_an_invocation():
+    """`echo "…bash scripts/tests/X.sh…"` counted as a call until review.
+
+    The docstring claimed a mention is not a call; that held for `#` comments
+    and not for an echo, which is the same class as a detector satisfied by an
+    incidental mention of the thing it looks for.
+    """
+    step = {"run": 'echo "run bash scripts/tests/x.sh yourself"\n'}
+    assert not _invokes(step, "x.sh"), "prose naming the file counted as a call"
+
+
+def test_a_real_call_is_still_recognised():
+    """Control for the above — over-tightening makes every test look orphaned."""
+    for script in ("bash scripts/tests/x.sh\n",
+                   "  bash scripts/tests/x.sh\n",
+                   "if true; then\n  bash scripts/tests/x.sh\nfi\n",
+                   "./scripts/tests/x.sh\n"):
+        assert _invokes({"run": script}, "x.sh"), f"real call not recognised: {script!r}"
 
 
 def test_there_is_at_least_one_bash_test():

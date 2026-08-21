@@ -53,24 +53,24 @@ final class LiveDownloadTaskBoxTests: XCTestCase {
 
     XCTAssertTrue(box.capture(t), "a task with a URL must report success")
 
-    XCTAssertEqual(box.urls[t.taskIdentifier], URL(string: "https://example.org/book-A.epub"),
+    XCTAssertEqual(box.capturedURLs[t.taskIdentifier], URL(string: "https://example.org/book-A.epub"),
                    "the captured URL is not the one the task is fetching — "
                    + "reconciliation would adopt against the wrong discriminator")
-    XCTAssertTrue(box.map[t.taskIdentifier] === t,
+    XCTAssertTrue(box.capturedTasks[t.taskIdentifier] === t,
                   "the task object itself must be retained for `apply` to adopt")
   }
 
   /// The identifier is the KEY both sides agree on. If capture keyed the map on
   /// anything else, adoption would hand `applyReconcileDecision` an id that is
-  /// not in `box.map` and the adopt would silently no-op.
+  /// not in `box.capturedTasks` and the adopt would silently no-op.
   func testCapture_keysOnTheTaskIdentifier() {
     let box = LiveDownloadTaskBox()
     let t = task("https://example.org/book-A.epub")
 
     box.capture(t)
 
-    XCTAssertEqual(Array(box.urls.keys), [t.taskIdentifier])
-    XCTAssertEqual(Array(box.map.keys), [t.taskIdentifier])
+    XCTAssertEqual(Array(box.capturedURLs.keys), [t.taskIdentifier])
+    XCTAssertEqual(Array(box.capturedTasks.keys), [t.taskIdentifier])
   }
 
   // MARK: - Several tasks
@@ -84,9 +84,9 @@ final class LiveDownloadTaskBoxTests: XCTestCase {
     box.capture(b)
 
     XCTAssertNotEqual(a.taskIdentifier, b.taskIdentifier, "precondition")
-    XCTAssertEqual(box.urls[a.taskIdentifier], URL(string: "https://example.org/book-A.epub"))
-    XCTAssertEqual(box.urls[b.taskIdentifier], URL(string: "https://example.org/book-B.epub"))
-    XCTAssertEqual(box.urls.count, 2)
+    XCTAssertEqual(box.capturedURLs[a.taskIdentifier], URL(string: "https://example.org/book-A.epub"))
+    XCTAssertEqual(box.capturedURLs[b.taskIdentifier], URL(string: "https://example.org/book-B.epub"))
+    XCTAssertEqual(box.capturedURLs.count, 2)
   }
 
   /// Two tasks fetching ONE url is the shape the contested-URL guard exists for.
@@ -101,10 +101,10 @@ final class LiveDownloadTaskBoxTests: XCTestCase {
     box.capture(a)
     box.capture(b)
 
-    XCTAssertEqual(box.urls.count, 2,
+    XCTAssertEqual(box.capturedURLs.count, 2,
                    "one of the two tasks was dropped — reconcile would see a "
                    + "unique URL and adopt an ambiguous download")
-    XCTAssertEqual(box.urls[a.taskIdentifier], box.urls[b.taskIdentifier])
+    XCTAssertEqual(box.capturedURLs[a.taskIdentifier], box.capturedURLs[b.taskIdentifier])
   }
 
   // MARK: - The producer's contract with its caller
@@ -120,7 +120,7 @@ final class LiveDownloadTaskBoxTests: XCTestCase {
   func testCapture_reportsSuccess_whenTheTaskHasAURL() {
     let box = LiveDownloadTaskBox()
     XCTAssertTrue(box.capture(task("https://example.org/book-A.epub")))
-    XCTAssertEqual(box.urls.count, 1)
+    XCTAssertEqual(box.capturedURLs.count, 1)
   }
 
   // MARK: - The URL decision, driven exhaustively
