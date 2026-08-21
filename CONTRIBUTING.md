@@ -70,7 +70,6 @@ pull request:
 - Coverage floors (`scripts/enforce_coverage_floors.py`)
 - Snapshot tests
 - Lint / accessibility lint
-- Chaos replay on PR (simdrive-driven E2E regression for critical flows)
 - Mutation gate on changed Swift files
 
 A red CI run blocks merge regardless of who opened the PR.
@@ -96,7 +95,7 @@ up in the codebase as:
 - `harness test`, `harness simdrive` references — that is the **harness**,
   a local-only orchestration layer at `~/harness/` not in this repo.
 - `simdrive` MCP tools — used internally to drive the iOS simulator for E2E
-  regressions. The recorded artifacts under `.simdrive/` ARE in the repo and
+  regressions. Those recordings are NOT in this repo and are not run by CI; they
   are exercised by CI; the recording tooling is internal.
 
 **None of this gates outside PRs.** If you do not have ForgeOS, the harness,

@@ -7,7 +7,6 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - '.simdrive/**'
   workflow_dispatch:
 concurrency:
   group: unit-tests-${{ github.event.pull_request.number || github.ref }}
@@ -508,7 +507,8 @@ jobs:
             fi
           fi
 
-          # E2E journey coverage moved to chaos-replay-on-pr.yml (simdrive). See docs/architecture/.
+          # These paths are excluded from the ratio. They are NOT covered by any CI
+          # job: E2E/chaos runs locally via scripts/verify-pr.sh --simdrive/--chaos.
 
           # Coverage context note
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -516,7 +516,7 @@ jobs:
           echo "> can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, AppDelegate/SceneDelegate " >> $GITHUB_STEP_SUMMARY
           echo "> lifecycle (see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ " >> $GITHUB_STEP_SUMMARY
           echo "> logic is tested, not that we shipped less UI. Total coverage is kept for continuity. " >> $GITHUB_STEP_SUMMARY
-          echo "> The excluded paths are covered by simdrive E2E journeys (see \`chaos-replay-on-pr.yml\`)." >> $GITHUB_STEP_SUMMARY
+          echo "> The excluded paths are NOT covered by CI. They are exercised only by local pre-PR validation (\`scripts/verify-pr.sh --simdrive --chaos\`), which is maintainer-only." >> $GITHUB_STEP_SUMMARY
           
           # History/Trends
           if [ -n "$NEW_FAILURES" ] || [ -n "$FIXED_TESTS" ] || [ -n "$FLAKY_TESTS" ] || [ -n "$TEST_COUNT_CHANGE" ]; then
@@ -855,13 +855,14 @@ jobs:
               }
             }
 
-            // E2E journey coverage moved to chaos-replay-on-pr.yml (simdrive). See docs/architecture/.
+            // These paths are excluded from the ratio and are NOT covered by any CI
+            // job: E2E/chaos runs locally via scripts/verify-pr.sh --simdrive/--chaos.
 
             body += `> **Why two coverage numbers?** Testable coverage subtracts files that `;
             body += `can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, lifecycle `;
             body += `(see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ logic is tested, `;
             body += `not that we shipped less UI. Total coverage is kept for continuity. `;
-            body += `The excluded paths are covered by simdrive E2E journeys (see \`chaos-replay-on-pr.yml\`).\n\n`;
+            body += `The excluded paths are **not covered by CI**. They are exercised only by local pre-PR validation (\`scripts/verify-pr.sh --simdrive --chaos\`), which is maintainer-only.\n\n`;
             
             // What changed vs. base — the orchestrator's first question
             // (contract §1). Delta-or-silent: this whole section renders only

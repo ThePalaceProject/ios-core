@@ -28,7 +28,7 @@ Last updated: 2026-07-08
 | Integration | 6 test files | Fully automated | Yes (in unit suite) |
 | Contract/API | 1 suite + 35 fixtures | Fully automated | Yes (in unit suite) |
 | Snapshot | 11 test files | Automated capture | Artifact only |
-| E2E (simdrive) | Active: `.simdrive/fixtures/flows/` + `.simdrive/journeys/` + `.simdrive/replays/chaos/`; legacy SpecterQA corpus (26/43) archived under `.simdrive/_archive/` | MCP-driven replay (SSIM- + structural-gated) + chaos-replay CI workflow | Manual trigger; chaos-replay runs in CI |
+| E2E (simdrive) | Active: `.simdrive/fixtures/flows/` + `.simdrive/journeys/` + `.simdrive/replays/chaos/`; legacy SpecterQA corpus (26/43) archived under `.simdrive/_archive/` | MCP-driven replay (SSIM- + structural-gated) | Manual trigger; NOT run by CI — local pre-PR validation only (`verify-pr.sh --simdrive --chaos`) |
 | Security | 3 test files | Fully automated | Yes (in unit suite) |
 | Chaos | 2 test files | Fully automated | Yes (in unit suite) |
 | Fuzz | 3 test files + 9 corpus | Fully automated | Yes (in unit suite) |
@@ -157,7 +157,7 @@ Maintainers additionally run through ForgeOS governance gates that hook into `gi
 6. **Push notification delivery** — APNs requires real device + server
 
 ### Can Automate But Not Yet Done
-1. **More CI gates beyond `chaos-replay-on-pr.yml`** — `verify-pr.sh --simdrive` is opt-in locally; could extend chaos-replay to also run journey-tier replays from `.simdrive/journeys/`. Legacy SpecterQA's 26 journeys are archived at `.simdrive/_archive/journeys/`, not the path forward.
+1. **Journey-tier replay coverage** — `verify-pr.sh --simdrive` runs the stateless tier locally and is opt-in; the journey tier is not wired in yet. Note this is deliberately NOT a CI gate: simulator-driven replay needs a booted sim, and the chaos pass on top of it is non-deterministic and costs an API budget per run, so both stay in local pre-PR validation.
 2. **Snapshot regression gating** — Captures exist but no automated comparison gate
 3. **Performance regression gating** — Scripts exist but not CI-integrated
 4. **CM contract drift blocking** — Monitor exists but non-blocking
