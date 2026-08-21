@@ -200,6 +200,19 @@ def scan_log(log: str) -> dict[str, list[str]]:
     return {k: v for k, v in per_test.items() if "failed" in v}
 
 
+def log_is_readable(log: str) -> bool:
+    """Did we actually get a test log? Distinguishes no-data from no-match.
+
+    `gh` returning empty (auth expired, wrong repo, a run whose logs have been
+    purged) makes results_for find nothing, which reads as "test not in this
+    run" — the exact same output as a renamed or never-registered test. This
+    tool's own docstring warns that such a test "silently runs nowhere, which
+    looks identical to passing", so without this check that failure mode was
+    reachable through the tool's own error path.
+    """
+    return len(_iter_results(log)) >= MIN_TEST_LINES
+
+
 def scan_run(log: str) -> dict[str, list[str]]:
     """scan_log() that refuses input it cannot have measured."""
     if len(_iter_results(log)) < MIN_TEST_LINES:
@@ -315,6 +328,10 @@ def main(argv: list[str]) -> int:
         log = log_for(repo, r["databaseId"], not args.no_cache)
         res = results_for(log, cls, method)
         stamp = f"{r['createdAt'][5:16]}  {r['headSha'][:8]}  {(r['headBranch'] or '?')[:34]:34s}"
+        if not log_is_readable(log):
+            print(f"  {stamp}  run={r['conclusion'] or '-':8s}  REFUSED: no test results in this "
+                  f"log (not the same as 'test did not run')")
+            continue
         if not res:
             print(f"  {stamp}  run={r['conclusion'] or '-':8s}  (test not in this run)")
             continue

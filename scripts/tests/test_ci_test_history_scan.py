@@ -164,3 +164,26 @@ def test_scan_run_reportsThinlySampledTestsEvenWhenTheMeanLooksHealthy():
     execs, distinct = cth.log_shape(log)
     assert execs / distinct > 2.8
     assert cth.depth_histogram(log)[1] == 4
+
+
+# ------------------------------------------- the same hole, in LOOKUP mode
+
+def test_lookup_distinguishesAnUnreadableLogFromAMissingTest():
+    """Raised by a peer against the lookup half after the scan half was fixed.
+
+    `gh` failing returns an empty string, `results_for` finds nothing, and the
+    run line prints "(test not in this run)" — which is also what a renamed or
+    never-registered test looks like, and this tool's own docstring warns that
+    such a test "silently runs nowhere, which looks identical to passing". So
+    the failure mode the tool exists to name was reachable through its own
+    error path. The refusal floor belongs on both halves.
+    """
+    assert cth.log_is_readable(clean_log(200, iterations=3)) is True
+    for junk in ("", "   \n", "##[group]Run actions/checkout@v4\n"):
+        assert cth.log_is_readable(junk) is False
+
+
+def test_lookup_readableCheckDoesNotDependOnFindingTheTest():
+    """A readable log with none of THIS test in it is a real 'not in this run'."""
+    assert cth.log_is_readable(clean_log(200)) is True
+    assert cth.results_for(clean_log(200), "SomeOtherTests", None) == []
