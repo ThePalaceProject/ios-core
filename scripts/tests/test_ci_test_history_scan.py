@@ -187,3 +187,53 @@ def test_lookup_readableCheckDoesNotDependOnFindingTheTest():
     """A readable log with none of THIS test in it is a real 'not in this run'."""
     assert cth.log_is_readable(clean_log(200)) is True
     assert cth.results_for(clean_log(200), "SomeOtherTests", None) == []
+
+
+# -------------------------------- the window a green verdict is green ACROSS
+
+def test_windowSpan_reportsTheOldestAndNewestRunAndTheDuration():
+    runs = [{"createdAt": "2026-08-21T19:10:00Z"}, {"createdAt": "2026-08-21T16:02:00Z"},
+            {"createdAt": "2026-08-21T14:47:00Z"}]
+    span = cth.window_span(runs)
+    assert span["oldest"] == "2026-08-21T14:47"
+    assert span["newest"] == "2026-08-21T19:10"
+    assert span["hours"] == 263 / 60  # 4h23m
+
+
+def test_windowSpan_ofASingleRunIsZeroHoursNotAnError():
+    assert cth.window_span([{"createdAt": "2026-08-21T19:10:00Z"}])["hours"] == 0.0
+
+
+def test_windowSpan_isEmptyWhenThereAreNoRuns():
+    assert cth.window_span([]) == {}
+
+
+def test_greenVerdictLine_carriesTheSpanSoItCannotBeReadAsUnconditional():
+    """A peer quoted PP-4991's warning about short windows, then hit it an hour
+    later: `--limit 8` reached back only to 16:02 and printed "green everywhere
+    in the scanned window" for a demonstrably flaky test whose failures were
+    older; `--limit 22` said FLAKY immediately. Everyone reads that line as
+    "green", including the person who wrote the warning — so the line has to
+    carry how far back it actually looked."""
+    line = cth.green_verdict_line({"oldest": "2026-08-16T09:12", "newest": "2026-08-21T19:10",
+                                   "hours": 129.9})
+    assert "2026-08-16T09:12" in line and "2026-08-21T19:10" in line
+    assert "5.4 days" in line
+
+
+def test_greenVerdictLine_flagsAShortWindowAsWeakEvidence():
+    line = cth.green_verdict_line({"oldest": "2026-08-21T16:02", "newest": "2026-08-21T19:10",
+                                   "hours": 3.1})
+    assert "3.1 hours" in line
+    assert "widen" in line.lower(), "a 3-hour window must tell you to widen, not just report"
+
+
+def test_greenVerdictLine_withNoRunsDoesNotClaimGreen():
+    assert "green" not in cth.green_verdict_line({}).lower()
+
+
+def test_scanModeCleanVerdict_alsoCarriesTheWindow():
+    """Scan mode has the same all-clear sentence and the same hazard."""
+    line = cth.scan_clean_verdict_line({"oldest": "2026-08-21T16:02",
+                                        "newest": "2026-08-21T19:10", "hours": 3.1})
+    assert "3.1 hours" in line and "widen" in line.lower()

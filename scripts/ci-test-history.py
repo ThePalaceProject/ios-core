@@ -200,6 +200,63 @@ def scan_log(log: str) -> dict[str, list[str]]:
     return {k: v for k, v in per_test.items() if "failed" in v}
 
 
+# A window this short cannot support a green verdict on its own. Chosen because
+# the incident below turned on a 3-hour window reading as "green" for a test
+# whose failures were days old.
+SHORT_WINDOW_HOURS = 24.0
+
+
+def window_span(runs: list[dict]) -> dict:
+    """-> {oldest, newest, hours} for the runs actually scanned."""
+    stamps = sorted(r.get("createdAt", "")[:16] for r in runs if r.get("createdAt"))
+    if not stamps:
+        return {}
+    from datetime import datetime
+    fmt = "%Y-%m-%dT%H:%M"
+    delta = datetime.strptime(stamps[-1], fmt) - datetime.strptime(stamps[0], fmt)
+    return {"oldest": stamps[0], "newest": stamps[-1], "hours": delta.total_seconds() / 3600}
+
+
+def green_verdict_line(span: dict) -> str:
+    """The green verdict, stated with the window it is green ACROSS.
+
+    "green everywhere in the scanned window" gets read as "green" — by everyone,
+    including the person who wrote the warning against it. A peer quoted
+    PP-4991's short-window caveat and then hit it an hour later: `--limit 8`
+    reached back only to 16:02 and reported green for a demonstrably flaky test
+    whose failures were older, while `--limit 22` said FLAKY immediately. Same
+    class as the refusal floor above — an answer that cannot be told apart from
+    the all-clear — so the span goes in the line itself, not in prose someone
+    has to remember.
+    """
+    if not span:
+        return ("VERDICT: no runs scanned — nothing was measured, which is not the "
+                "same as nothing being wrong.")
+    hours = span["hours"]
+    scale = f"{hours / 24:.1f} days" if hours >= 24 else f"{hours:.1f} hours"
+    line = (f"VERDICT: green across the scanned window only — {span['oldest']} to "
+            f"{span['newest']} ({scale}).")
+    if hours < SHORT_WINDOW_HOURS:
+        line += ("\n  That window is short. A flaky test whose failures are older reads "
+                 "green here;\n  widen with --limit before concluding anything from it.")
+    return line
+
+
+def scan_clean_verdict_line(span: dict) -> str:
+    """Scan mode's all-clear, stated with its window for the same reason."""
+    if not span:
+        return ("VERDICT: no runs scanned — nothing was measured, which is not the "
+                "same as nothing being wrong.")
+    hours = span["hours"]
+    scale = f"{hours / 24:.1f} days" if hours >= 24 else f"{hours:.1f} hours"
+    line = (f"VERDICT: no masked failures between {span['oldest']} and "
+            f"{span['newest']} ({scale}).")
+    if hours < SHORT_WINDOW_HOURS:
+        line += ("\n  Short window. Widen with --limit before reading this as a healthy "
+                 "board.")
+    return line
+
+
 def log_is_readable(log: str) -> bool:
     """Did we actually get a test log? Distinguishes no-data from no-match.
 
@@ -286,7 +343,7 @@ def run_scan_mode(repo: str, args) -> int:
         print("  over a masked failure is not a pass; it is an unread failure. Take each name")
         print("  to `ci-test-history.py <name>` for whose it is, then find-test-polluter.sh.")
     else:
-        print("VERDICT: no masked failures in the scanned window.")
+        print(scan_clean_verdict_line(window_span(found)))
     return 0
 
 
@@ -372,7 +429,7 @@ def main(argv: list[str]) -> int:
         print("  Not introduced by your branch. Say so with this evidence rather than")
         print("  absorbing it — but it still needs an owner.")
     else:
-        print("VERDICT: green everywhere in the scanned window.")
+        print(green_verdict_line(window_span(found)))
 
     print("\nNext, for the pollution axis (order-dependent state, which CI history")
     print("cannot see):  scripts/find-test-polluter.sh --victim " + cls)
