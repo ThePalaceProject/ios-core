@@ -1381,20 +1381,35 @@ else
   done
 
   # A `skip` satisfies the accounting deliberately — "ran nothing and said so"
-  # is a different fact from "never reached". That leaves one hole: inverting a
+  # is a different fact from "never reached". That leaves a hole: inverting a
   # mode guard sends an ORDINARY run down a skip arm, so the leg accounts for
   # itself while doing nothing.
   #
-  # Close it by checking each skip REASON against the flags the CALLER passed.
-  # Reconciling against $MUTATION_ONLY et al. would be reconciling against the
-  # variable the tampering sets. Every mode flag is censused, not just one:
-  # reviewers showed --quick and --simdrive were unchecked while --mutation-only
-  # was.
+  # Close it by checking each reason against the flags the CALLER passed, held
+  # in ORIGINAL_ARGV from before parsing — reconciling against $MUTATION_ONLY et
+  # al. would be reconciling against the variable the tampering sets.
+  #
+  # POLARITY IS THE WHOLE DIFFICULTY, and the first version of this got it
+  # backwards in both directions. Two arms mean the OPPOSITE thing:
+  #
+  #   "Skipped (--mutation-only)"            skipped BECAUSE the flag was given
+  #   "Not run (pass --simdrive to enable)"  skipped BECAUSE it was NOT given
+  #
+  # Only the first kind can be impossible. Treating both alike made every
+  # ordinary run FAIL — including `--quick`, which is the documented pre-PR
+  # command and what the pre-push hook gates on — while still passing when
+  # tampered. Opt-in phrasing ("pass X to enable" / "opt-in") marks the second
+  # kind and is exempt.
+  #
+  # PASS details are censused too, not just skips: a leg can also claim a flag
+  # as the reason it PASSED (`--diff-baseline` does exactly that, and records
+  # `pass`, never `skip`), so a skip-only loop left it listed but unguarded —
+  # the appearance of coverage without the fact of it.
   ARGV_TEXT=" ${ORIGINAL_ARGV[*]-} "
   IMPOSSIBLE=""
   for entry in "${RESULTS[@]}"; do
     case "$entry" in
-      *'"status":"skip"'*) ;;
+      *'"status":"skip"'*|*'"status":"pass"'*) ;;
       *) continue ;;
     esac
     entry_key=$(printf '%s' "$entry" | sed -E 's/.*"check":"([a-z_0-9]+)".*/\1/')
@@ -1403,8 +1418,10 @@ else
         *"$flag"*) ;;
         *) continue ;;
       esac
-      # The leg says it was skipped BECAUSE of $flag. If the caller never
-      # passed $flag, that reason cannot be true.
+      # Opt-in phrasing means the flag's ABSENCE is the reason. Not impossible.
+      case "$entry" in
+        *"pass $flag"*|*"opt-in"*) continue ;;
+      esac
       case "$ARGV_TEXT" in
         *" $flag "*) ;;
         *) IMPOSSIBLE="$IMPOSSIBLE $entry_key($flag)" ;;

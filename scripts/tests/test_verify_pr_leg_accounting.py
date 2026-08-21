@@ -75,6 +75,21 @@ def rec(key: str, status: str = "pass", detail: str = "x") -> str:
     return f'{{"check":"{key}","status":"{status}","detail":"{detail}"}}'
 
 
+def real_skip_details() -> list[tuple[str, str]]:
+    """(key, detail) for every skip the script ACTUALLY emits.
+
+    The census test used to invent details (`f"not run ({flag})"`), which the
+    script emits for `--mutation-only`/`--quick` only. The two opt-in arms —
+    "Not run (pass --simdrive to enable)" — say the OPPOSITE, and inventing
+    strings meant no test ever saw them. That is how a census which failed every
+    ordinary run, including the documented `--quick`, survived 378 green pytests.
+    Derive the fixtures; do not author them.
+    """
+    with open(VPR, encoding="utf-8") as fh:
+        text = fh.read()
+    return re.findall(r'record "([a-z_0-9]+)" "skip" "([^"]*)"', text)
+
+
 def every_declared_key() -> list[str]:
     with open(VPR, encoding="utf-8") as fh:
         text = fh.read()
@@ -153,19 +168,85 @@ def test_that_same_skip_is_legitimate_on_a_real_mutation_only_run():
     assert fails == 0, out
 
 
-@pytest.mark.parametrize("flag", ["--quick", "--simdrive", "--chaos", "--diff-baseline"])
-def test_every_mode_flag_is_censused_not_just_mutation_only(flag):
-    """The first version checked only `--mutation-only`, so inverting the guard
-    on `--quick` or `--simdrive` was attack B on an unchecked leg. A reviewer
-    drove both and got FAIL_COUNT=0."""
-    keys = every_declared_key()
-    results = [rec(k, "skip", f"not run ({flag})") if k == "mutation" else rec(k)
-               for k in keys]
-    fails, out = drive(results, argv=[])
-    assert fails >= 1, f"{flag} skip-reason not censused\n{out}"
+def test_an_ordinary_run_emitting_the_scripts_own_skip_reasons_passes():
+    """THE REGRESSION THIS FILE EXISTS FOR NOW.
 
-    fails_ok, out_ok = drive(results, argv=[flag])
-    assert fails_ok == 0, f"{flag} legitimately passed should not fail\n{out_ok}"
+    Every skip detail the script really emits, on a plain run with no flags.
+    The first census treated "Not run (pass --simdrive to enable)" as a claim
+    that --simdrive HAD been passed, so an ordinary run — and `--quick`, the
+    documented pre-PR command that the pre-push hook gates on — came back
+    BLOCKED. Two reviewers measured it; no test did, because the fixtures were
+    invented rather than derived.
+    """
+    # Only the details an ORDINARY run can emit. A key's mode-specific arms
+    # ("Skipped (--mutation-only)") are unreachable without the flag, so feeding
+    # them here would assert that an impossible state is fine — the opposite of
+    # the point. What remains is exactly the set that broke: the opt-in arms.
+    MODE_FLAGS = ("--mutation-only", "--quick", "--simdrive", "--chaos", "--diff-baseline")
+    def reachable_without_flags(detail: str) -> bool:
+        for flag in MODE_FLAGS:
+            if flag in detail and f"pass {flag}" not in detail and "opt-in" not in detail:
+                return False
+        return True
+
+    # Prefer the opt-in arm where a key has one: a dict comprehension keeps the
+    # LAST detail per key, which silently dropped exactly the arms this test is
+    # about. The control below caught that.
+    details: dict[str, str] = {}
+    for k, d in real_skip_details():
+        if not reachable_without_flags(d):
+            continue
+        prefer = ("pass --" in d) or ("opt-in" in d)
+        if k not in details or prefer:
+            details[k] = d
+    assert any("pass --simdrive" in d or "opt-in" in d for d in details.values()), (
+        "the opt-in arms are missing from the fixture — this test would then be "
+        "blind to exactly the defect it exists for"
+    )
+    results = [rec(k, "skip", details[k]) if k in details else rec(k)
+               for k in every_declared_key()]
+    for argv in ([], ["--quick"]):
+        fails, out = drive(results, argv=argv)
+        assert fails == 0, f"an honest run with argv={argv} was blocked:\n{out}"
+
+
+@pytest.mark.parametrize("flag,detail", [
+    ("--mutation-only", "Skipped (--mutation-only)"),
+    ("--quick", "Skipped (--quick mode)"),
+])
+def test_present_polarity_reasons_are_censused(flag, detail):
+    """These arms mean "skipped BECAUSE the flag was given", so the reason is
+    impossible without it — and legitimate with it."""
+    keys = every_declared_key()
+    results = [rec(k, "skip", detail) if k == "mutation" else rec(k) for k in keys]
+    fails, out = drive(results, argv=[])
+    assert fails >= 1, f"{flag} reason not censused\n{out}"
+    ok, out_ok = drive(results, argv=[flag])
+    assert ok == 0, f"{flag} legitimately given should not fail\n{out_ok}"
+
+
+@pytest.mark.parametrize("detail", [
+    "Not run (pass --simdrive to enable)",
+    "not run (opt-in; pass --chaos to enable)",
+])
+def test_optin_polarity_reasons_are_exempt(detail):
+    """The flag's ABSENCE is the reason. Flagging these blocked every real run."""
+    keys = every_declared_key()
+    results = [rec(k, "skip", detail) if k == "simdrive" else rec(k) for k in keys]
+    fails, out = drive(results, argv=[])
+    assert fails == 0, f"opt-in reason wrongly censused:\n{out}"
+
+
+def test_a_pass_detail_claiming_a_flag_is_censused_too():
+    """`--diff-baseline` records `pass`, never `skip`. A skip-only loop left it
+    enumerated but unguarded — the appearance of coverage without the fact."""
+    keys = every_declared_key()
+    results = [rec(k, "pass", "flake-triaged per --diff-baseline") if k == "unit_tests"
+               else rec(k) for k in keys]
+    fails, out = drive(results, argv=[])
+    assert fails >= 1, f"a pass detail claiming an unpassed flag was not censused\n{out}"
+    ok, _ = drive(results, argv=["--diff-baseline"])
+    assert ok == 0
 
 
 def test_success_is_recorded_so_a_disabled_block_is_visible():

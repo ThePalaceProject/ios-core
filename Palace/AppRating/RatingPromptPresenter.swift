@@ -40,6 +40,16 @@ final class RatingPromptPresenter: ObservableObject {
   /// leave a task re-arming for the life of the process.
   ///
   /// Reset per trigger, in `scheduleTrigger` — NOT only on a successful show.
+  ///
+  /// "Per trigger" is approximate, and worth saying so rather than leaving the
+  /// stronger reading. This is ONE counter on the instance, so a new positive
+  /// moment restores the budget for every re-arm chain currently in flight, not
+  /// just its own. The bound therefore holds per-instance and not per-chain:
+  /// overlapping triggers can keep chains alive longer than `maxDeferrals`
+  /// hops. `testDeferralBudget_newTriggerDuringTheReArmWindow_isNotClobbered`
+  /// asserts exactly that multiplication (two chains parked, not one). It never
+  /// latches at zero — which was the shipped defect — and it cannot spin
+  /// unboundedly while a sheet stays up, because each hop still decrements.
   /// Resetting only on success latches the counter at zero: the first positive
   /// moment that burns all three deferrals leaves every LATER positive moment
   /// dropped immediately, for the life of the presenter, until one happens to

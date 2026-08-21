@@ -107,8 +107,19 @@ def invoking_steps(basename: str) -> list:
 
 
 def fail_open_reasons(step) -> list:
-    """Ways this step can silently not run the test it names."""
+    """Ways this step can silently not run the test it names.
+
+    LIMIT, stated rather than implied: this models the guards that have actually
+    been used to disable a gate here — a file-existence test with no failing
+    arm, `if: false`, and `continue-on-error`. It does NOT model every way a
+    step can swallow a failure (`|| true`, `set +e`, piping into another
+    command). Those are real and are not covered; a reviewer enumerated them.
+    Widening further starts approximating a shell interpreter, and the honest
+    boundary is worth more than the appearance of completeness.
+    """
     reasons = []
+    if str(step.get("continue-on-error", "")).strip().lower() in ("true", "${{ true }}"):
+        reasons.append("`continue-on-error: true` — the step cannot fail the job")
     cond = step.get("if")
     if cond is not None and str(cond).strip().lower() in ("false", "${{ false }}"):
         reasons.append(f"step `if:` is {cond!r}, so it never runs")
@@ -161,6 +172,13 @@ def test_bash_test_invocation_fails_closed(path):
 def test_predicate_catches_every_fail_open_guard_spelling(script):
     assert fail_open_reasons({"run": script}), (
         "a fail-open guard was not recognised — this spelling is a working bypass"
+    )
+
+
+def test_predicate_catches_continue_on_error():
+    """Already used in five of this repo's workflows, so it is not hypothetical."""
+    assert fail_open_reasons({"continue-on-error": True, "run": "bash x.sh\n"}), (
+        "`continue-on-error: true` was not recognised — the step cannot fail the job"
     )
 
 
