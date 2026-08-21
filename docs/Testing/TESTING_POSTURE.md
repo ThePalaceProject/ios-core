@@ -28,7 +28,7 @@ Last updated: 2026-07-08
 | Integration | 6 test files | Fully automated | Yes (in unit suite) |
 | Contract/API | 1 suite + 35 fixtures | Fully automated | Yes (in unit suite) |
 | Snapshot | 11 test files | Automated capture | Artifact only |
-| E2E (simdrive) | Active: `.simdrive/fixtures/flows/` + `.simdrive/journeys/` + `.simdrive/replays/chaos/`; legacy SpecterQA corpus (26/43) archived under `.simdrive/_archive/` | MCP-driven replay (SSIM- + structural-gated) + chaos-replay CI workflow | Manual trigger; chaos-replay runs in CI |
+| E2E (simdrive) | Journey corpus is NOT in this repo — it lives in the maintainer's local QA harness (`$PALACE_QA_HARNESS`, default `~/harness/palace-qa`) | MCP-driven replay (SSIM- + structural-gated) | Opt-in and maintainer-local (`verify-pr.sh --simdrive --chaos`); NO CI job replays them, and a clone without the harness exercises them not at all |
 | Security | 3 test files | Fully automated | Yes (in unit suite) |
 | Chaos | 2 test files | Fully automated | Yes (in unit suite) |
 | Fuzz | 3 test files + 9 corpus | Fully automated | Yes (in unit suite) |
@@ -61,7 +61,7 @@ A test counts as a regression test only when it can answer four questions with c
 3. **Post-state asserted.** End with a structural check (`required_text`, `required_chrome` stable_ids, `min_marks`) — not a step count. "Ran 23/23 steps without crashing" is a runner-uptime metric, not a sign-in success. For sign-in: assert "Sign out" button visible. For borrow: assert the book is in My Books. For tab nav: assert the tab indicator moved.
 4. **Evidence cited.** Pass-claims must point to the artifact (screenshot path, observed marks list, log line) that supports them. "It worked" without a pointer is a confidence score, not evidence.
 
-For unit/integration tests this criterion is enforced by mutation testing + the test-quality linter. For simdrive E2E tests this criterion is enforced by `structural_checks` blocks in `.simdrive/journeys/*.yaml`; replay-only runs (the MCP `replay` tool against a `recording.yaml`) do not execute those blocks and therefore count as smoke tests until paired with a structural assertion pass.
+For unit/integration tests this criterion is enforced by mutation testing + the test-quality linter. For simdrive E2E tests this criterion is enforced by `structural_checks` blocks in the harness's `.simdrive/journeys/*.yaml` (outside this repo); replay-only runs (the MCP `replay` tool against a `recording.yaml`) do not execute those blocks and therefore count as smoke tests until paired with a structural assertion pass.
 
 ### E2E sim-driving — simdrive (canonical)
 - **Package**: `simdrive` (PyPI, alpha track) — see `~/harness/bin/harness simdrive status`
@@ -69,12 +69,12 @@ For unit/integration tests this criterion is enforced by mutation testing + the 
 - **Capabilities**: `observe` (annotated PNG + marks JSON), `tap` / `swipe` / `type_text` / `press_key`, `record_start` / `record_stop` / `replay` (SSIM-gated), `logs` (NSPredicate filter), `session_start` / `session_end`
 - **Why this replaces SpecterQA**: Reader2 (Readium 3.x WKWebView), out-of-process auth Safari sheets, OS alerts, and iOS-26 UITextField focus all worked partially or not at all under SpecterQA. simdrive sees pixels, not the AX tree.
 - **Tool rules**: see project CLAUDE.md "E2E / UI sim driving — simdrive". Cardinal rules: `observe(annotate=true)` before `tap text=` / `tap mark=`; re-observe after every navigation; pre-grant permissions before `session_start`.
-- **Journeys**: new work goes in `.simdrive/journeys/`. Replays in `.simdrive/replays/`.
+- **Journeys**: NOT in this repo. New work goes in the maintainer's local QA harness under `$PALACE_QA_HARNESS/.simdrive/journeys/` (default `~/harness/palace-qa`); replays alongside in `.simdrive/replays/`.
 
 ### SpecterQA E2E Testing — ARCHIVE
 - **Status**: Deprecated 2026-04-29. Do not extend. Kept on disk to support reproduction of historical regressions only.
 - **Version**: specterqa-ios 7.0.0
-- **Corpus**: 26 journey YAMLs + 43 replays in `.simdrive/`
+- **Corpus**: 26 journey YAMLs + 43 replays, in the maintainer's local QA harness, not in this repo
 - **Known limitations** (one of the reasons it was retired): `ios_screenshot` exceeds MCP size; `ios_press_key("return")` crashes session; EPUB reader nav controls invisible to XCTest; iOS-26 cliclick path broke text-field focus.
 
 ### Contract Testing
@@ -157,7 +157,7 @@ Maintainers additionally run through ForgeOS governance gates that hook into `gi
 6. **Push notification delivery** — APNs requires real device + server
 
 ### Can Automate But Not Yet Done
-1. **More CI gates beyond `chaos-replay-on-pr.yml`** — `verify-pr.sh --simdrive` is opt-in locally; could extend chaos-replay to also run journey-tier replays from `.simdrive/journeys/`. Legacy SpecterQA's 26 journeys are archived at `.simdrive/_archive/journeys/`, not the path forward.
+1. **Journey-tier replay coverage** — `verify-pr.sh --simdrive` runs the stateless tier locally and is opt-in; the journey tier is not wired in yet. Note this is deliberately NOT a CI gate: simulator-driven replay needs a booted sim, and the chaos pass on top of it is non-deterministic and costs an API budget per run, so both stay in local pre-PR validation.
 2. **Snapshot regression gating** — Captures exist but no automated comparison gate
 3. **Performance regression gating** — Scripts exist but not CI-integrated
 4. **CM contract drift blocking** — Monitor exists but non-blocking

@@ -76,6 +76,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
 QUICK=false
+CHAOS=false
 REPORT_FILE=""
 SIMDRIVE=false
 # Default for --diff-baseline; without this the `elif [ "$DIFF_BASELINE" ...`
@@ -118,6 +119,7 @@ while [[ $# -gt 0 ]]; do
     --report) REPORT_FILE="$2"; shift 2 ;;
     --diff-baseline) DIFF_BASELINE=true; shift ;;
     --simdrive) SIMDRIVE=true; shift ;;
+    --chaos) CHAOS=true; shift ;;
     --enforce-mutations) MUTATION_POLICY="enforce_all"; shift ;;
     --no-enforce-mutations) MUTATION_POLICY="advisory_all"; shift ;;
     --mutation-only) MUTATION_ONLY=true; QUICK=false; shift ;;
@@ -1154,6 +1156,49 @@ else
     SD_FAIL=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('fail_count', 0))" 2>/dev/null || echo "?")
     SD_PASS=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('pass_count', 0))" 2>/dev/null || echo 0)
     record "simdrive" "fail" "${SD_FAIL} stateless journey(s) drifted (${SD_PASS} clean) — see ${SIMDRIVE_REPORT}"
+  fi
+fi
+
+# 7b. chaos pass (opt-in via --chaos). MAINTAINER-INTERNAL, same trade as the
+#     replay leg above: the runner lives in the local QA harness, not here.
+#
+#     DELIBERATELY NOT A CI CHECK, and not because of tooling. A chaos pass
+#     drives a booted simulator through a headless agent to explore adversarially;
+#     it is non-deterministic BY DESIGN — it explores, it does not assert — and a
+#     job whose output varies per run cannot gate a PR. It also costs an API
+#     budget per invocation. So it belongs here, in local pre-PR validation,
+#     where the maintainer chooses when to spend it. CI must not claim it runs.
+CHAOS_PASS="${PALACE_QA_HARNESS:-$HOME/harness/palace-qa}/scripts/run-chaos-pass.sh"
+echo "--- Chaos Pass ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "chaos" "pass" "Skipped (--mutation-only)"
+elif [ "$CHAOS" != "true" ]; then
+  record "chaos" "pass" "Skipped (pass --chaos to enable)"
+elif [ ! -x "$CHAOS_PASS" ]; then
+  record "chaos" "pass" "Unavailable (maintainer-only; not in this repo)"
+elif ! command -v claude >/dev/null 2>&1; then
+  record "chaos" "fail" "chaos drives a headless agent; 'claude' CLI not on PATH"
+elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
+  record "chaos" "fail" "simdrive package not installed (pip3 install --pre simdrive)"
+else
+  CHAOS_RUN_DIR=$(mktemp -d)
+  # Scoped to the PR's changed files, and hard-capped, because this leg spends
+  # real wall-clock and real API budget on every invocation. ALL_CHANGED is the
+  # same list the rest of this script reports on, written to a file because the
+  # runner takes a path, not a list.
+  CHAOS_FILES=$(mktemp)
+  printf '%s\n' "$ALL_CHANGED" > "$CHAOS_FILES"
+  if "$CHAOS_PASS" --udid "$SIM_ID" --diff-files-from "$CHAOS_FILES" \
+       --run-dir "$CHAOS_RUN_DIR" --max-paths 10 --max-minutes 5 >/dev/null 2>&1; then
+    CHAOS_FINDINGS=$(find "$CHAOS_RUN_DIR" -name 'findings.csv' -exec tail -n +2 {} + 2>/dev/null | grep -c . || echo 0)
+    if [ "$CHAOS_FINDINGS" = "0" ]; then
+      record "chaos" "pass" "0 findings (run dir ${CHAOS_RUN_DIR})"
+    else
+      record "chaos" "fail" "${CHAOS_FINDINGS} finding(s) — see ${CHAOS_RUN_DIR}"
+    fi
+  else
+    # A chaos pass that could not drive the sim is NOT a clean pass.
+    record "chaos" "fail" "chaos pass did not complete — see ${CHAOS_RUN_DIR}"
   fi
 fi
 
