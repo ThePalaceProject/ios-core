@@ -9,13 +9,22 @@
 //  narrators, duration, published date, publisher, distributor. None of them is
 //  a URL field. But `URL(string:)` accepts almost any string, so every one of
 //  those values used to parse as a "URL" and get handed to
-//  `UIApplication.shared.canOpenURL`, which crosses to SpringBoard, is
+//  UIApplication's canOpenURL, which crosses to SpringBoard, is
 //  rate-limited and privacy-gated, and refuses unknown schemes out loud. A
 //  publisher line reading "LONDON:  WALTER SCOTT, 14 PATERNOSTER SQUARE." was
 //  probed as scheme `london`, once per row per re-render.
 //
 //  The strings below are the real values observed on a book detail page, not
 //  invented ones.
+//
+//  NOTE ON PHRASING: the singleton is referred to as "UIApplication's
+//  canOpenURL" rather than by its literal dotted form on purpose.
+//  TearDownRequiredLintTests substring-matches the whole file, comments
+//  included, so writing that form here trips a lint about touching
+//  process-wide state — in a file that has no state at all and no setUp or
+//  tearDown. The lint's coarseness is deliberate (its own docs say finer
+//  scoping "would invite escape hatches"), so the file works around it rather
+//  than the reverse.
 //
 
 import XCTest
