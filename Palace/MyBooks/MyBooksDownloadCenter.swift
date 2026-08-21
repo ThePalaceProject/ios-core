@@ -2066,13 +2066,6 @@ extension MyBooksDownloadCenter: LCPFulfillmentHandlerDelegate {}
 
 // MARK: - Reliability WS-A: durable downloads (background handler, retry, reconciliation)
 
-/// Reference box so the launch-reconciliation orchestrator can snapshot live
-/// URLSession tasks inside the `getAllTasks` completion (non-`Sendable` task
-/// objects never cross the continuation boundary) and hand them to `apply`.
-private final class LiveDownloadTaskBox: @unchecked Sendable {
-    var map: [Int: URLSessionDownloadTask] = [:]
-}
-
 extension MyBooksDownloadCenter {
 
     // MARK: Background session completion handler (INV-7)
@@ -2226,9 +2219,25 @@ extension MyBooksDownloadCenter {
         await DownloadReconciliation.runLaunchReconciliation(
             isRegistryLoaded: { [weak self] in self?.isRegistryLoadedForReconcile ?? false },
             loadPersisted: { [weak self] in self?.stateManager.persistedRecords() ?? [] },
-            liveTaskIdentifiers: { [weak self] in
+            liveTasks: { [weak self] in
                 await self?.snapshotLiveDownloadTasks(into: box)
-                return Set(box.map.keys)
+                // PP-4997: carry each live task's URL, not just its identifier.
+                // An identifier alone cannot distinguish two downloads across a
+                // relaunch, and adopting the wrong one delivers a book's file to
+                // another title.
+                //
+                // Captured in snapshotLiveDownloadTasks, inside the getAllTasks
+                // completion — reading originalRequest off these non-Sendable
+                // tasks out here would contradict the box's own contract.
+                //
+                // NOTE: this is NOT byte-identical to persistStartedTaskRecord's
+                // fallback, which ends `?? request.url` (the request it was
+                // handed) where this ends `?? currentRequest?.url`. They agree on
+                // originalRequest, which is what both normally use and what
+                // survives a redirect; they can differ only for a task whose
+                // originalRequest is nil, and there the divergence fails safe —
+                // a record simply does not match and its book restarts.
+                return box.urls
             },
             registryState: { [weak self] bookID in self?.bookRegistry.state(for: bookID) ?? .unregistered },
             apply: { [weak self] decision in await self?.applyReconcileDecision(decision, liveTasks: box.map) }
@@ -2242,7 +2251,9 @@ extension MyBooksDownloadCenter {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             session.getAllTasks { tasks in
                 for case let downloadTask as URLSessionDownloadTask in tasks {
-                    box.map[downloadTask.taskIdentifier] = downloadTask
+                    if !box.capture(downloadTask) {
+                        Log.warn(#file, "Reconcile: live task \(downloadTask.taskIdentifier) has no URL; it cannot be adopted and its book will restart")
+                    }
                 }
                 continuation.resume()
             }

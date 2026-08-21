@@ -67,16 +67,94 @@ enum DownloadReconciliation {
     ///   load state — `.unloaded/.loading/.loaded/...` — not per-book. INV-4's
     ///   healing contract is explicitly about the per-book `.downloading`
     ///   record, so the per-book `TPPBookState` is the correct input.)
+    /// The live task this record should be adopted onto, or nil.
+    ///
+    /// Matches on URL, and returns the LIVE identifier — not the persisted one.
+    /// That distinction is the whole fix, and it is deliberately agnostic about a
+    /// question nobody has settled on device: whether a background session
+    /// preserves `taskIdentifier` across an app relaunch.
+    ///
+    ///   - if identifiers ARE preserved, the record's own task is found by the
+    ///     exact branch and the live identifier equals the persisted one;
+    ///   - if identifiers are RENUMBERED, the exact branch misses and the unique
+    ///     URL branch still finds the record's own task under its new identifier.
+    ///
+    /// Requiring identifier AND url (the first attempt at PP-4997) is only correct
+    /// in the first world. In the second it refuses to adopt a download that is
+    /// still running, falls through to `.restart`, and `startDownload` has no
+    /// live-task guard — so it would cause the double-start INV-4 exists to
+    /// prevent, in the COMMON case, while fixing a rare one.
+    ///
+    /// Ambiguity is declined rather than guessed: two live tasks on the same URL
+    /// cannot be told apart, so unless one of them carries this record's exact
+    /// identifier, neither is adopted and the registry restarts the book.
+    ///
+    /// The exact discriminator would be `URLSessionTask.taskDescription` carrying
+    /// the book id — it survives relaunch and needs no inference. Nothing sets it
+    /// today; that is the follow-up, and it makes this helper collapse to one
+    /// lookup.
+    private static func adoptableTask(
+        for record: PersistedDownloadRecord,
+        in liveTasks: [Int: URL]
+    ) -> Int? {
+        if liveTasks[record.taskIdentifier] == record.downloadURL {
+            return record.taskIdentifier
+        }
+        let sameURL = liveTasks.filter { $0.value == record.downloadURL }.map(\.key)
+        return sameURL.count == 1 ? sameURL[0] : nil
+    }
+
+    /// - Parameter liveTasks: still-running download tasks, keyed by task
+    ///   identifier, valued by the URL that task is actually fetching.
+    ///
+    ///   PP-4997: this used to be a bare `Set<Int>` of identifiers, and that is
+    ///   not enough to identify a download. `URLSessionTask.taskIdentifier` is
+    ///   documented as unique only *within its session* — a relaunch creates a
+    ///   new session and numbering restarts from 1. A leftover record for task 1
+    ///   would then match a DIFFERENT book's live task 1, and the adoption routed
+    ///   that download's progress and its finished file to the wrong title. It
+    ///   failed silently: no error, no alert, no log line, and the patron simply
+    ///   received a book they did not ask for.
+    ///
+    ///   The URL is the discriminator and the record already carried it; it was
+    ///   just never read. The identifier is only a hint: a record is adopted
+    ///   when some live task is fetching its URL, and the adoption carries THAT
+    ///   task's identifier. So this is correct whether or not identifiers happen
+    ///   to survive a relaunch — a question this code no longer has to answer.
+    ///
+    ///   LOAD-BEARING INVARIANT: within one reconcile pass, a download URL
+    ///   identifies at most one book. The URL is only a safe discriminator
+    ///   because of that. Two books CAN legitimately share one — the same
+    ///   open-access title surfaced by two catalogs — so the invariant is
+    ///   enforced here rather than assumed: records whose URL is claimed by
+    ///   more than one book are refused adoption. Adopting them would route the
+    ///   finished file to whichever book wrote `taskIdentifierToBook` last,
+    ///   which is PP-4997's own failure mode re-entered through its fix.
     static func reconcile(
         persisted: [PersistedDownloadRecord],
-        liveTaskIdentifiers: Set<Int>,
+        liveTasks: [Int: URL],
         registryStates: [String: TPPBookState]
     ) -> [ReconcileDecision] {
-        persisted.map { record in
+        // Book ids sharing a download URL. Their records cannot be told apart by
+        // the discriminator, so none of them may be adopted (see the invariant
+        // above). Computed once for the whole pass rather than per record.
+        var bookIDsByURL: [URL: Set<String>] = [:]
+        for record in persisted {
+            bookIDsByURL[record.downloadURL, default: []].insert(record.bookID)
+        }
+        let contestedURLs = Set(bookIDsByURL.filter { $0.value.count > 1 }.map(\.key))
+
+        return persisted.map { record in
             // INV-4: a still-running background task is adopted, never restarted
             // (no double-start) and never spuriously failed.
-            if liveTaskIdentifiers.contains(record.taskIdentifier) {
-                return .adopt(bookID: record.bookID, taskIdentifier: record.taskIdentifier)
+            //
+            // PP-4997: match on url, adopt the LIVE identifier. A colliding
+            // identifier fetching a different url is NOT this record's task;
+            // fall through and let the registry decide, exactly as it would for
+            // a task that had died.
+            if !contestedURLs.contains(record.downloadURL),
+               let liveID = adoptableTask(for: record, in: liveTasks) {
+                return .adopt(bookID: record.bookID, taskIdentifier: liveID)
             }
 
             // Task is dead. The registry (source of truth) decides.
@@ -111,7 +189,7 @@ enum DownloadReconciliation {
     static func runLaunchReconciliation(
         isRegistryLoaded: () -> Bool,
         loadPersisted: () -> [PersistedDownloadRecord],
-        liveTaskIdentifiers: () async -> Set<Int>,
+        liveTasks: () async -> [Int: URL],
         registryState: (String) -> TPPBookState,
         apply: (ReconcileDecision) async -> Void
     ) async {
@@ -122,7 +200,7 @@ enum DownloadReconciliation {
         let persisted = loadPersisted()
         guard !persisted.isEmpty else { return }
 
-        let live = await liveTaskIdentifiers()
+        let live = await liveTasks()
 
         var states: [String: TPPBookState] = [:]
         for record in persisted {
@@ -131,7 +209,7 @@ enum DownloadReconciliation {
 
         let decisions = reconcile(
             persisted: persisted,
-            liveTaskIdentifiers: live,
+            liveTasks: live,
             registryStates: states
         )
         for decision in decisions {
@@ -234,5 +312,37 @@ final class DownloadTaskPersistence: @unchecked Sendable {
         } catch {
             Log.error(#file, "Failed to persist download records: \(error.localizedDescription)")
         }
+    }
+}
+
+/// Reference box so the launch-reconciliation orchestrator can snapshot live
+/// URLSession tasks inside the `getAllTasks` completion (non-`Sendable` task
+/// objects never cross the continuation boundary) and hand them to `apply`.
+///
+/// Lives here rather than in MyBooksDownloadCenter because it is reconciliation
+/// infrastructure, not download-center state — and the hub is frozen under the
+/// decomposition ratchet, which asks for extraction rather than growth.
+final class LiveDownloadTaskBox: @unchecked Sendable {
+    var map: [Int: URLSessionDownloadTask] = [:]
+    /// URL each live task is fetching, captured INSIDE the `getAllTasks`
+    /// completion so no non-Sendable task is touched afterwards.
+    var urls: [Int: URL] = [:]
+
+    /// Record a live task and the URL it is fetching.
+    ///
+    /// Falls back to `currentRequest`: a redirected task can report a nil
+    /// `originalRequest`, and dropping it would silently decline to adopt a
+    /// download that is still running. Returns false when the task has no URL
+    /// at all — it can never be adopted, and the caller logs rather than
+    /// dropping it in silence.
+    @discardableResult
+    func capture(_ task: URLSessionDownloadTask) -> Bool {
+        let id = task.taskIdentifier
+        map[id] = task
+        guard let url = task.originalRequest?.url ?? task.currentRequest?.url else {
+            return false
+        }
+        urls[id] = url
+        return true
     }
 }
