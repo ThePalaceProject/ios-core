@@ -691,8 +691,38 @@ struct BookDetailView: View {
         }
     }
 
+    /// The web URL an INFORMATION value should link to, or `nil` when the value
+    /// is ordinary metadata and must render as text.
+    ///
+    /// The previous test was `URL(string: value)` plus
+    /// `UIApplication.shared.canOpenURL`, which is not a test at all for this
+    /// input. `URL(string:)` accepts almost any string, so "Adventure",
+    /// "English", "August 19, 2025" and a publisher imprint reading
+    /// "LONDON:  WALTER SCOTT, 14 PATERNOSTER SQUARE." all parsed as URLs and
+    /// were then handed to `canOpenURL` — which crosses to SpringBoard, is
+    /// rate-limited and privacy-gated, and refuses unknown schemes out loud
+    /// ("not allowed to query for scheme london"). That fired once per row per
+    /// re-render, on a screen with nine metadata rows.
+    ///
+    /// Every value reaching here comes from `infoRow`: format, audience,
+    /// category, language, narrators, duration, published date, publisher and
+    /// distributor. None is a URL field, so requiring a real web URL loses no
+    /// working link — and `http`/`https` are always openable, so no round-trip
+    /// to SpringBoard is needed to decide.
+    static func webURL(from value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host, !host.isEmpty
+        else {
+            return nil
+        }
+        return url
+    }
+
     @ViewBuilder private func infoValue(value: String) -> some View {
-        if let url = URL(string: value), UIApplication.shared.canOpenURL(url) {
+        if let url = Self.webURL(from: value) {
             Link(value, destination: url)
                 .font(.subheadline)
                 .underline()
