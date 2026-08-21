@@ -34,9 +34,16 @@ final class RatingPromptPresenter: ObservableObject {
   private let triggerDelayNanoseconds: UInt64
   private let isModalPresented: () -> Bool
 
-  /// How many times a trigger will re-arm itself while a modal is on screen
+  /// How many times ONE trigger will re-arm itself while a modal is on screen
   /// before giving up. Bounded so a sheet the patron leaves open forever cannot
   /// leave a task re-arming for the life of the process.
+  ///
+  /// Reset per trigger, in `scheduleTrigger` — NOT only on a successful show.
+  /// Resetting only on success latches the counter at zero: the first positive
+  /// moment that burns all three deferrals leaves every LATER positive moment
+  /// dropped immediately, for the life of the presenter, until one happens to
+  /// fire with nothing presented. That is a per-instance budget wearing
+  /// per-trigger documentation, and it silently stops asking.
   private static let maxDeferrals = 3
   private var deferralsRemaining = maxDeferrals
 
@@ -90,6 +97,7 @@ final class RatingPromptPresenter: ObservableObject {
   }
 
   private func scheduleTrigger(_ trigger: AppRatingTrigger) {
+    deferralsRemaining = Self.maxDeferrals
     Task { @MainActor in
       if triggerDelayNanoseconds > 0 {
         try? await Task.sleep(nanoseconds: triggerDelayNanoseconds)
@@ -121,7 +129,21 @@ final class RatingPromptPresenter: ObservableObject {
     if isModalPresented() {
       guard deferralsRemaining > 0 else { return }
       deferralsRemaining -= 1
-      scheduleTrigger(trigger)
+      // Re-arm WITHOUT going through scheduleTrigger, or the reset there would
+      // restore the budget every hop and the bound would be decorative.
+      //
+      // Do NOT write the count back to `self` after the sleep. The budget is
+      // instance state, and a positive moment arriving during the delay window
+      // performs its own synchronous reset in scheduleTrigger; restoring this
+      // chain's decremented value afterwards would clobber it and hand the NEW
+      // trigger an old chain's exhausted budget — the same bug this fix exists
+      // to remove, reintroduced for the width of the delay.
+      Task { @MainActor in
+        if triggerDelayNanoseconds > 0 {
+          try? await Task.sleep(nanoseconds: triggerDelayNanoseconds)
+        }
+        self.handleTrigger(trigger)
+      }
       return
     }
 

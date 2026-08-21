@@ -51,7 +51,7 @@ final class RatingPromptPresenterTests: XCTestCase {
   /// ineligible, so trigger behavior is deterministic without seeding state.
   /// The trigger delay defaults to 0 so the scheduled gate resolves promptly
   /// in the async combiner tests.
-  private func makePresenter(eligible: Bool) -> RatingPromptPresenter {
+  private func makePresenter(eligible: Bool, delay: UInt64 = 0) -> RatingPromptPresenter {
     let service = AppRatingService(
       tracker: RatingEngagementTracker(settings: settings),
       promptEnabledProvider: { true },
@@ -61,20 +61,52 @@ final class RatingPromptPresenterTests: XCTestCase {
       service: service,
       reviewRequester: requester,
       feedbackPresenter: feedback,
-      triggerDelayNanoseconds: 0,
-      isModalPresented: { self.modalIsUp }
+      triggerDelayNanoseconds: delay,
+      isModalPresented: {
+        self.modalChecks += 1
+        if let n = self.modalClearsAfterCheck, self.modalChecks > n { return false }
+        return self.modalIsUp
+      }
     )
   }
 
   /// Drives the "a sheet is on screen" seam for the deferral tests below.
   private var modalIsUp = false
 
+  /// Number of times the presenter has consulted the modal seam. Each entry to
+  /// `handleTrigger` past the eligibility gate checks exactly once, so this is
+  /// an observable count of deferral hops — the only window the test has into a
+  /// budget the presenter keeps private.
+  private var modalChecks = 0
+
+  /// When set, the sheet "goes away" once `modalChecks` passes this value. This
+  /// sequences the modal clearing against a specific hop deterministically,
+  /// rather than racing `Task.yield()` against the re-arm chain.
+  private var modalClearsAfterCheck: Int?
+
+  /// Spins until the presenter stops consulting the modal seam, i.e. the
+  /// re-arm chain has come to rest.
+  private func settle() async {
+    var last = -1
+    // Bounded: an unbounded re-arm chain must fail the caller's assertion, not
+    // hang the suite waiting for a chain that never comes to rest.
+    for _ in 0..<40 where last != modalChecks {
+      last = modalChecks
+      for _ in 0..<20 { await Task.yield() }
+    }
+  }
+
   /// Spins the main run loop until `condition` holds or a short budget elapses,
   /// so the `scheduleTrigger` Task (delay 0) has a chance to run.
   private func waitUntil(_ condition: @escaping () -> Bool) async {
-    for _ in 0..<50 {
+    // Yields alone advance no WALL time, so a presenter built with a non-zero
+    // trigger delay would never make progress here. Sleep in small increments
+    // as well, bounded so a genuinely stuck condition fails the assertion
+    // rather than hanging the suite.
+    for _ in 0..<200 {
       if condition() { return }
       await Task.yield()
+      try? await Task.sleep(nanoseconds: 2_000_000)  // 2ms
     }
   }
 
@@ -129,6 +161,80 @@ final class RatingPromptPresenterTests: XCTestCase {
     XCTAssertNil(settings.appRatingLastPromptDate,
                  "a deferred prompt stamped the cooldown — the one chance to ask "
                  + "was burned on a gate that was never visible")
+  }
+
+  /// The deferral budget is PER TRIGGER. Resetting it only on a successful show
+  /// latches it at zero: the first positive moment that exhausts the budget
+  /// leaves every later one dropped for the life of the presenter. Caught in
+  /// blast-radius review; the three original tests covered none of the
+  /// exhaustion cells.
+  func testDeferralBudget_isRestoredForEachNewTrigger() async {
+    let presenter = makePresenter(eligible: true)
+    modalIsUp = true
+
+    // Burn this trigger's entire budget: it re-arms until it gives up, and the
+    // sheet never clears, so nothing is ever shown.
+    presenter.noteBorrowSucceeded()
+    await settle()
+    XCTAssertNil(presenter.step, "precondition: the modal never cleared")
+
+    // A LATER positive moment, with the sheet still up. This is the cell that
+    // separates a per-trigger budget from a latched one: the new trigger must
+    // get its OWN deferrals, so that when the sheet goes away one hop later the
+    // gate still appears.
+    modalClearsAfterCheck = modalChecks + 1
+    presenter.noteBorrowSucceeded()
+
+    await waitUntil { presenter.step != nil }
+    XCTAssertEqual(presenter.step, .sentiment,
+                   "the later trigger inherited the exhausted budget and was "
+                   + "dropped — after one occluded moment the app stops asking, "
+                   + "permanently")
+  }
+
+  /// The re-arm hop sleeps for the trigger delay before re-entering
+  /// `handleTrigger`. A positive moment landing INSIDE that window resets the
+  /// budget synchronously; if the sleeping hop then wrote its own decremented
+  /// count back over that reset, the new trigger would inherit an exhausted
+  /// budget and be dropped. Every other test in this file runs with delay 0,
+  /// which closes the window and makes this cell unreachable — so this one
+  /// opens it deliberately.
+  func testDeferralBudget_newTriggerDuringTheReArmWindow_isNotClobbered() async {
+    let presenter = makePresenter(eligible: true, delay: 30_000_000)  // 30ms
+    modalIsUp = true
+
+    // Burn the budget down to its last deferral, then leave a hop sleeping.
+    presenter.handleTrigger(.borrowSucceeded)
+    await waitUntil { self.modalChecks >= 3 }
+
+    // A new positive moment arrives while that hop is still asleep. The sheet
+    // must STAY UP across the new trigger's own first check — otherwise it
+    // takes the show path, where the budget is never consulted and the clobber
+    // is invisible. Clearing two checks later leaves it needing its deferrals.
+    modalClearsAfterCheck = modalChecks + 2
+    presenter.noteBorrowSucceeded()
+
+    await waitUntil { presenter.step != nil }
+    XCTAssertEqual(presenter.step, .sentiment,
+                   "a trigger arriving during the re-arm window inherited the "
+                   + "old chain's exhausted budget and was dropped")
+  }
+
+  func testDeferralBudget_isBounded_whileTheModalStaysUp() async {
+    let presenter = makePresenter(eligible: true)
+    modalIsUp = true
+
+    presenter.noteBorrowSucceeded()
+    await settle()
+
+    XCTAssertNil(presenter.step, "gate shown while a modal is still presented")
+    // One initial check plus a bounded number of re-arms. Without the decrement
+    // (or the budget guard) this chain re-arms forever, spinning the main actor
+    // for as long as the sheet is up.
+    // 1 initial check + maxDeferrals re-arms. This pins the budget VALUE, not
+    // just that it is bounded — a "reset to 1" mutant survives a bound-only check.
+    XCTAssertEqual(modalChecks, 4,
+                   "expected 1 + maxDeferrals(3) modal checks, got \(modalChecks)")
   }
 
   /// Clean path: with nothing presented the gate shows exactly as before. A
