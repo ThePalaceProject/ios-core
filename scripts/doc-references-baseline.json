@@ -2,6 +2,16 @@
   "_comment": "Pre-existing dangling doc references, tolerated so the gate could land. Nothing new may be added. Fix an entry and delete its line \u2014 the gate fails on baseline entries that now resolve, so this cannot go stale.",
   "known_dangling": [
     {
+      "doc": ".claude/skills/intent/SKILL.md",
+      "kind": "source",
+      "target": "Palace/SignInLogic/OAuthCallbackHandler.swift"
+    },
+    {
+      "doc": ".claude/skills/intent/SKILL.md",
+      "kind": "source",
+      "target": "PalaceTests/SignInLogic/OAuthCallbackHandlerTests.swift"
+    },
+    {
       "doc": ".claude/skills/swarm/SKILL.md",
       "kind": "workflow",
       "target": "SWARM_ID/manifest.yaml"
@@ -30,6 +40,21 @@
       "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
       "kind": "script",
       "target": "scripts/test-sync.sh"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "source",
+      "target": "PalaceTests/SignInLogic/TPPSignInBusinessLogic+OAuthTests.swift"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "source",
+      "target": "PalaceTests/SignInLogic/TPPSignInBusinessLogic+OIDCTests.swift"
+    },
+    {
+      "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
+      "kind": "source",
+      "target": "PalaceTests/SignInLogic/TPPSignInBusinessLogic+TokenTests.swift"
     },
     {
       "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
@@ -112,14 +137,134 @@
       "target": "ui-testing.yml"
     },
     {
+      "doc": "docs/Testing/Test_Patterns.md",
+      "kind": "source",
+      "target": "PalaceTests/Fixtures/FixtureLoader.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Patterns.md",
+      "kind": "source",
+      "target": "PalaceTests/Snapshots/SnapshotTestConfiguration.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Patterns.md",
+      "kind": "source",
+      "target": "PalaceTests/TestSupport/TPPBookMocker.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "Palace/Accounts/User/TPPUserAccountProviding.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "Palace/Audiobooks/AudiobookSessionProviding.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "Palace/Book/Models/TPPBookRegistryProviding.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "Palace/Keychain/KeychainProviding.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "Palace/Network/TPPNetworkExecuting.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "Palace/OPDS2/OPDSFeedCaching.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "Palace/Utilities/Clock.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "Palace/Utilities/FileManaging.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "PalaceTests/Mocks/AccountsManagerMock.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "PalaceTests/TestSupport/MockClock.swift"
+    },
+    {
+      "doc": "docs/Testing/Test_Seams_Refactor_Plan.md",
+      "kind": "source",
+      "target": "PalaceTests/TestSupport/TestDependencyContainer.swift"
+    },
+    {
+      "doc": "docs/Testing/Traceability_Matrix.md",
+      "kind": "source",
+      "target": "Palace/Network/URLRequest+TPP.swift"
+    },
+    {
+      "doc": "docs/Testing/Traceability_Matrix.md",
+      "kind": "source",
+      "target": "Palace/PDF/Model/TPPEncryptedPDFDocument.swift"
+    },
+    {
+      "doc": "docs/Testing/Traceability_Matrix.md",
+      "kind": "source",
+      "target": "Palace/PDF/View/TPPEncryptedPDFViewer.swift"
+    },
+    {
+      "doc": "docs/Testing/Traceability_Matrix.md",
+      "kind": "source",
+      "target": "Palace/Reader2/BusinessLogic/PositionSync.swift"
+    },
+    {
+      "doc": "docs/Testing/Traceability_Matrix.md",
+      "kind": "source",
+      "target": "Palace/SignInLogic/TPPCookiesWebViewController.swift"
+    },
+    {
+      "doc": "docs/Testing/Traceability_Matrix.md",
+      "kind": "source",
+      "target": "Palace/Utilities/FileCleanup.swift"
+    },
+    {
       "doc": "docs/Testing/accessibility-audit-coverage.md",
       "kind": "workflow",
       "target": ".simdrive/journeys/PP-4529-print-page-navigation-voiceover.yaml"
     },
     {
+      "doc": "docs/architecture/areas/accounts/verification-checklist.md",
+      "kind": "source",
+      "target": "Palace/Settings/TPPSettingsAccountsList.swift"
+    },
+    {
       "doc": "docs/architecture/areas/auth/verification-checklist.md",
       "kind": "script",
       "target": "scripts/find-auth-call-sites.py"
+    },
+    {
+      "doc": "docs/architecture/areas/auth/verification-checklist.md",
+      "kind": "source",
+      "target": "PalaceTests/Network/AuthErrorCategoryTests.swift"
+    },
+    {
+      "doc": "docs/architecture/areas/auth/verification-checklist.md",
+      "kind": "source",
+      "target": "PalaceTests/Network/CrossDomain401Tests.swift"
+    },
+    {
+      "doc": "docs/architecture/areas/auth/verification-checklist.md",
+      "kind": "source",
+      "target": "PalaceTests/SignInLogic/SAMLHelperTests.swift"
     },
     {
       "doc": "docs/architecture/areas/holds/verification-checklist.md",
@@ -147,6 +292,16 @@
       "target": "hold-to-loan-lcp.yaml"
     },
     {
+      "doc": "docs/architecture/areas/network/verification-checklist.md",
+      "kind": "source",
+      "target": "PalaceTests/Network/AuthErrorCategoryTests.swift"
+    },
+    {
+      "doc": "docs/architecture/areas/network/verification-checklist.md",
+      "kind": "source",
+      "target": "PalaceTests/Network/CrossDomain401Tests.swift"
+    },
+    {
       "doc": "docs/architecture/areas/reader/verification-checklist.md",
       "kind": "workflow",
       "target": "reader2-back-button.yaml"
@@ -172,6 +327,51 @@
       "target": "reader2-toc-navigate.yaml"
     },
     {
+      "doc": "docs/architecture/critical-path-mutation-coverage.md",
+      "kind": "source",
+      "target": "Palace/Book/Models/TPPBookAuthor.swift"
+    },
+    {
+      "doc": "docs/architecture/critical-path-mutation-coverage.md",
+      "kind": "source",
+      "target": "Palace/Catalog/CatalogViewModel.swift"
+    },
+    {
+      "doc": "docs/architecture/critical-path-mutation-coverage.md",
+      "kind": "source",
+      "target": "Palace/CatalogUI/CatalogView.swift"
+    },
+    {
+      "doc": "docs/architecture/critical-path-mutation-coverage.md",
+      "kind": "source",
+      "target": "Palace/Migrations/MigrationCoordinator.swift"
+    },
+    {
+      "doc": "docs/architecture/critical-path-mutation-coverage.md",
+      "kind": "source",
+      "target": "Palace/MyBooks/BorrowFlow.swift"
+    },
+    {
+      "doc": "docs/architecture/critical-path-mutation-coverage.md",
+      "kind": "source",
+      "target": "Palace/MyBooks/Flow/BorrowFlow.swift"
+    },
+    {
+      "doc": "docs/architecture/critical-path-mutation-coverage.md",
+      "kind": "source",
+      "target": "Palace/Reader2/ReaderViewController.swift"
+    },
+    {
+      "doc": "docs/architecture/critical-path-mutation-coverage.md",
+      "kind": "source",
+      "target": "Palace/Reader3/PDFViewerController.swift"
+    },
+    {
+      "doc": "docs/architecture/critical-path-mutation-coverage.md",
+      "kind": "source",
+      "target": "Palace/Utilities/StringExtensions.swift"
+    },
+    {
       "doc": "docs/architecture/mutation-testing.md",
       "kind": "script",
       "target": "scripts/palace_mutate_parallel.py"
@@ -185,6 +385,11 @@
       "doc": "docs/architecture/mutation-testing.md",
       "kind": "workflow",
       "target": "mutation-on-pr.yml"
+    },
+    {
+      "doc": "docs/architecture/parallel-agent-rebase-walkthrough.md",
+      "kind": "source",
+      "target": "Palace/SignInLogic/AuthReducer.swift"
     },
     {
       "doc": "docs/architecture/phase-3.5-class-scan.md",
@@ -220,6 +425,16 @@
       "doc": "docs/architecture/triage-bot-shared-architecture-proposal.md",
       "kind": "workflow",
       "target": "openapi.yaml"
+    },
+    {
+      "doc": "docs/architecture/wave2b-mutation-baseline.md",
+      "kind": "source",
+      "target": "Palace/Book/Models/BookRegistrySync.swift"
+    },
+    {
+      "doc": "docs/architecture/wave2b-mutation-baseline.md",
+      "kind": "source",
+      "target": "Palace/Book/Models/TPPBookRegistry.swift"
     },
     {
       "doc": "docs/architecture/ws4-mac-validation-runbook.md",

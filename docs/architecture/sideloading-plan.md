@@ -90,16 +90,16 @@ Settings "Side Loading" → UIDocumentPicker → file URL
 
 ## Key files
 - New: `Palace/MyBooks/Sideload/SideloadedBookRegistry.swift`, `SideloadedBookManager.swift`
-- `Palace/Book/Models/BookRegistrySync.swift` — sync exemption (critical)
-- `Palace/Settings/TPPSettings.swift` + `Settings/NewSettings/TPPSettingsView.swift`
+- `Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/BookRegistrySync.swift` — sync exemption (critical)
+- `Palace/Packages/PalacePreferences/Sources/PalacePreferences/TPPSettings.swift` + `Settings/NewSettings/TPPSettingsView.swift`
 - `Palace/CatalogUI/ViewModels/CatalogViewModel.swift` / `CatalogState.swift`
 - `Palace/FeatureFlags/RemoteFeatureFlags.swift` — new flag + local override
 - `Palace/AppInfrastructure/AppContainer.swift` — wire services + inject exemption set
 
 ## Reference seams (from architecture map)
-- `TPPBook` designated init: `Palace/Book/Models/TPPBook.swift:122`; content type via
+- `TPPBook` designated init: `Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBook.swift:122`; content type via
   `defaultBookContentType` (`:669`), MIME→type `TPPBookContentType.from(mimeType:)`
-  (`Palace/Book/Models/TPPContentType.swift:20`).
+  (`Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPContentType.swift:20`).
 - `TPPBookRegistry.addBook(...)` `:387`; `setState` `:464`.
 - File path resolver `BookFileManager.fileUrl(for:account:)`
   (`Palace/MyBooks/BookFileManager.swift:69`); content dir `:82`; extension `:123`.

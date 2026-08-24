@@ -187,6 +187,49 @@ specific, named, already-tracked flake that passes in isolation — and that fla
 must have a de-flake item per #2. Never `--admin` over a red board whose failure
 you have not individually identified; that is how real breakage lands.
 
+## Documentation — where to look, and where a new doc goes
+
+**[`docs/README.md`](./docs/README.md) is the map.** Read it before grepping the
+tree for background: it routes by question (why is the code like this / what do I
+re-verify here / how does this get tested) and it tells you where a new document
+belongs. The two indexes it points at —
+[`docs/architecture/README.md`](./docs/architecture/README.md) and
+[`.forgeos/wall-failures/INDEX.md`](./.forgeos/wall-failures/INDEX.md) — are
+complete by CI gate, so browsing them beats searching.
+
+**Search order:** this file → `docs/README.md` → the area's
+`verification-checklist.md` → the ADR → the code. A raw grep across all docs
+ranks a spent plan level with a maintained decision; the indexes do that ranking
+for you.
+
+**The admission test for writing one:** *would someone make a materially worse
+decision without this?* The code, its tests, and git history already record what
+happened, and unlike prose they cannot drift. A doc earns its place only by
+holding what left no trace in the tree — a road not taken, an invisible
+constraint, a failure whose cause is not recoverable from the diff. Plans, run
+logs, review dumps, and point-in-time reports on shipped versions are exhaust:
+the ticket, the PR, and the ADR already hold what survives them.
+
+Three gates keep this honest, all in `tooling-checks.yml`, the last two also in
+`verify-pr.sh`:
+
+- `check-doc-hygiene.sh` — blocks process/generated artifacts from being
+  committed (agent transcripts, campaign scaffolding, generated IR, `docs/**/*.html`).
+- `check-doc-references-resolve.py` — every script, workflow, and **source path**
+  a doc names must exist. Whole-tree, not diff-scoped, because a doc goes stale
+  when the *code* moves and that commit touches no docs at all.
+- `check-doc-index-complete.py` — every doc in an indexed directory is named in
+  that index, and every index entry still exists.
+
+All three baseline pre-existing breakage and fail only on new breakage; a
+baseline entry that starts resolving also fails, so the amnesty can neither grow
+nor go stale.
+
+**A doc you will not maintain is worse than none** — a reader trusts it. Delete
+it instead; git history keeps it and the gates stop counting it. Archived swarm
+campaigns live at tag `archive/forgeos-swarms-2026-08-24` (see
+[`.forgeos/README.md`](./.forgeos/README.md)).
+
 ## Project Structure
 
 ```

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-check-doc-references-resolve.py — fail when a tracked doc names a script or
-workflow that does not exist.
+check-doc-references-resolve.py — fail when a tracked doc names a script,
+workflow, or SOURCE FILE that does not exist.
 
 WHY THIS EXISTS. A maintainer-tooling extraction removed a pile of scripts and
 workflows from this repository and left the documentation pointing at them. That
@@ -15,6 +15,24 @@ green twice while the defect was live — once because it scanned one file and t
 claim was repo-wide, once because it was re-run against the branch it had already
 left. A check that has to be remembered, aimed by hand, is the failure mode. This
 one is mechanical, runs over every tracked doc, and fails closed.
+
+THE SOURCE ARM. The same rot reaches source paths, and from a second direction:
+the decomposition waves moved whole files into `Palace/Packages/*`, and the docs
+kept pointing at `Palace/Book/Models/TPPBookRegistry.swift` long after it became
+`Palace/Packages/PalaceBookRegistry/Sources/...`. A reader who follows one of
+those lands nowhere, which is strictly worse than no pointer — a doc that names
+a path is making a claim about the tree, and 37 of those claims were false when
+this arm was added. Same baseline discipline: pre-existing entries tolerated,
+nothing new.
+
+Three things are NOT dangling and are exempt by construction rather than by
+baseline, so the baseline keeps meaning "drift to fix":
+  * an ellipsis path (`Palace/Reader2/.../LicensesService.swift`) — a deliberate
+    abbreviation, not a claim about a real path;
+  * a DELIBERATELY-UNTRACKED file (`APIKeys.swift`, `TPPSecrets.swift`) — the repo
+    rule is that these are never committed, so absence is compliance;
+  * a documented placeholder in a usage example (`Palace/Path/ChangedFile.swift`)
+    — it is teaching the shape of a command, not naming a file.
 
 BASELINE. A pre-existing backlog of dangling references is recorded in
 `doc-references-baseline.json` next to this script. Those are tolerated so the
@@ -55,6 +73,55 @@ WORKFLOW_RE = re.compile(
     r"(?P<dir>(?:[A-Za-z0-9_.-]+/)+)?"
     r"(?<![A-Za-z0-9_.-])(?P<wf>[A-Za-z0-9_-]+\.ya?ml)")
 
+# A source path under one of the app's real top-level source roots. Bounded to
+# those roots so prose like "the models/Book.swift pattern" is not scanned as a
+# claim about this tree.
+SOURCE_RE = re.compile(
+    r"(?<![A-Za-z0-9_./-])"
+    r"(?P<path>(?:Palace|PalaceTests|PalaceUIKit|PalaceConfig)/"
+    r"[A-Za-z0-9_./+-]+\.(?:swift|m|h|mm))")
+
+# Never committed by repo rule (see CLAUDE.md "Secrets"). Absence is the rule
+# working, not a broken reference.
+DELIBERATELY_UNTRACKED = (
+    "APIKeys.swift",
+    "TPPSecrets.swift",
+)
+
+
+# Written at RUN TIME into `.forgeos/swarms/`, which .gitignore denies, so no
+# tracked file can ever satisfy a reference to one. Same category as the secrets
+# above: absence is the rule working, not a broken pointer.
+#
+# DELIBERATELY A PREFIX, NOT A `git check-ignore` QUERY. "Is it gitignored" is the
+# wrong question and answering it switches this detector off: the scripts that
+# were extracted to the maintainer-local harness — regression-report.sh,
+# generate-regression-report.py, tools/ledger/codeatlas.yml — are ALSO gitignored,
+# and a doc still pointing at those is precisely the rot this gate was built to
+# catch. Ignored means "not tracked here", which covers both the artifact written
+# tomorrow and the script deleted yesterday. Only the first is compliance.
+RUNTIME_ARTIFACT_PREFIXES = (".forgeos/swarms/",)
+
+# The same artifacts named without their directory, as an ASCII layout diagram
+# names them. Kept literal and small: "exempt any bare name" would re-open the
+# hole this detector closes, since `unit-testing.yml` is a bare name too.
+IGNORED_RUNTIME_ARTIFACTS = frozenset({
+    "manifest.yaml",   # .forgeos/swarms/<id>/ — written by the swarm skill
+})
+
+# Placeholders in usage examples. Literal, small, and reviewable on purpose — a
+# heuristic ("skip anything under a segment called Path") would silently swallow
+# a real directory someone adds later.
+PLACEHOLDER_PATHS = frozenset({
+    "Palace/Path.swift",
+    "Palace/Path/Changed.swift",
+    "Palace/Path/ChangedFile.swift",
+    "Palace/SomeFile.swift",
+    "Palace/Foo/Bar.swift",
+    "PalaceTests/Foo/BarTests.swift",
+})
+
+
 # Directories whose contents are archival records of what was true at the time,
 # not live instructions. Rewriting history to keep a linter quiet is worse than
 # the dangling link.
@@ -64,7 +131,9 @@ WORKFLOW_RE = re.compile(
 # instructions — so it is scanned. (Verified against the real tree: unskipping
 # adds zero findings.) `.claude/worktrees/` is excluded separately: those are
 # sibling checkouts, not this repo's content.
-SKIP_PREFIXES = (".forgeos/", ".claude/worktrees/", "tools/ledger/vendor/")
+SKIP_PREFIXES = (".forgeos/", ".claude/worktrees/", "tools/ledger/vendor/",
+                 # Detector INPUT fixtures: deliberately-fake paths are the point.
+                 "scripts/_fixtures/")
 
 # A .yml named in prose is not necessarily a WORKFLOW: this repo also tracks
 # dependabot.yml, orchestrator configs, and atlas manifests, none of which live
@@ -121,6 +190,21 @@ def find_dangling(root: str) -> list[dict]:
             if path not in tracked:
                 findings.append({"doc": rel, "kind": "script", "target": path})
 
+        for m in SOURCE_RE.finditer(text):
+            path = m.group("path")
+            if path in tracked:
+                continue
+            # "Palace/Reader2/.../Foo.swift" abbreviates a path rather than
+            # naming one. Checked on the matched text, not the basename, so an
+            # ellipsis anywhere in the path exempts it.
+            if "..." in path:
+                continue
+            if path in PLACEHOLDER_PATHS:
+                continue
+            if path.endswith(DELIBERATELY_UNTRACKED):
+                continue
+            findings.append({"doc": rel, "kind": "source", "target": path})
+
         for m in WORKFLOW_RE.finditer(text):
             if m.group("harness"):
                 continue  # maintainer-local by construction
@@ -141,9 +225,9 @@ def find_dangling(root: str) -> list[dict]:
             looks_like_url = any(tok in (m.group("dir") or "")
                                  for tok in ("://", "github.com", "www."))
             if "/" in full and not looks_like_url:
-                if full not in tracked:
+                if full not in tracked and not full.startswith(RUNTIME_ARTIFACT_PREFIXES):
                     findings.append({"doc": rel, "kind": "workflow", "target": full})
-            elif wf not in yaml_basenames:
+            elif wf not in yaml_basenames and wf not in IGNORED_RUNTIME_ARTIFACTS:
                 findings.append({"doc": rel, "kind": "workflow", "target": wf})
 
     # Stable, de-duplicated.
@@ -221,13 +305,15 @@ def main() -> int:
     stale = [f for f in baseline if key(f) not in found_keys]
 
     if new:
-        print("A tracked doc names a script or workflow that does not exist:\n")
+        print("A tracked doc names a script, workflow, or source file that does not exist:\n")
         for f in new:
             print(f"  {f['doc']}  ->  {f['kind']} '{f['target']}' (missing)")
         print(
             "\nEither restore the target, correct the reference, or — if it moved to the\n"
             "maintainer-local harness — write it as ~/harness/... so it reads as\n"
-            "deliberately-not-here rather than as a broken link."
+            "deliberately-not-here rather than as a broken link. For a source path that\n"
+            "MOVED (the decomposition waves relocated files into Palace/Packages/*),\n"
+            "repoint it; `git log --diff-filter=D --name-only -- <old path>` finds it."
         )
     if stale:
         print("\nBaseline entries that now resolve — delete them from "

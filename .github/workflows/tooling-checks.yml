@@ -126,6 +126,31 @@ jobs:
           fi
           python3 scripts/check-doc-references-resolve.py
 
+      # 3f. Documentation indexes must be complete. The architecture index named
+      #     6 of 53 documents, so 47 decision records were reachable only by a
+      #     whole-tree grep that ranks a spent plan level with a maintained one.
+      #     Nothing was broken, which is why it lasted: an unfindable doc looks
+      #     exactly like a deleted one while still costing every search. Checks
+      #     both directions — unlisted docs, and index entries whose file is gone.
+      - name: doc indexes complete
+        run: |
+          # TRACKED file: absence is a deleted gate, not an opt-out.
+          if [ ! -f scripts/check-doc-index-complete.py ]; then
+            echo "::error::scripts/check-doc-index-complete.py is missing — the gate cannot run."
+            exit 1
+          fi
+          python3 scripts/check-doc-index-complete.py
+
+      # 3g. ...and prove that gate is wired, with an interface it accepts, and
+      #     that it passes on a clean tree. A bash test, so pytest skips it.
+      - name: doc-index gate wiring test
+        run: |
+          if [ ! -f scripts/tests/test_doc_index_gate_wiring.sh ]; then
+            echo "::error::scripts/tests/test_doc_index_gate_wiring.sh is missing — the gate cannot be verified."
+            exit 1
+          fi
+          bash scripts/tests/test_doc_index_gate_wiring.sh
+
       # 3e. The ratchet aggregation's BEHAVIOUR. This is the check that two
       #     reviewers between them walked through SEVEN ways when it asserted by
       #     grepping source text — every attack left the searched-for strings in
