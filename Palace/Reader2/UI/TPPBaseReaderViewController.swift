@@ -459,6 +459,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         scrubber.onChapterCrossed = { [weak self] in
             self?.triggerReaderHaptic(.selection)
         }
+        scrubber.onScrubbingChanged = { [weak self] isScrubbing in
+            self?.setPositionLabelHiddenForScrub(isScrubbing)
+        }
         navigatorContainer.addSubview(scrubber)
 
         NSLayoutConstraint.activate([
@@ -490,6 +493,52 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
             // case; the control itself also refuses to begin a scrub.
             self.updateOverlayLabelsVisibility(animated: false)
         }
+    }
+
+    /// True from the moment a drag begins until the reader reports the
+    /// position it landed on. The position label stays hidden for that whole
+    /// span, not just for the drag: releasing the thumb does not move the page
+    /// instantly, and un-hiding on release would flash the OLD position for a
+    /// beat before the new one arrives.
+    private var isSuppressingPositionLabelForScrub = false
+
+    /// Fallback un-hide, in case a scrub commits to a place the reader never
+    /// reports a new location for (already-current position, or a `go(to:)`
+    /// that finds nothing). Without it the label could stay hidden forever.
+    private var positionLabelRestoreWorkItem: DispatchWorkItem?
+
+    /// Hides the reader's own position label for the duration of a scrub. The
+    /// card states where the drag would LAND while the label states where the
+    /// patron still IS; showing both at once reads as a contradiction.
+    private func setPositionLabelHiddenForScrub(_ hidden: Bool) {
+        positionLabelRestoreWorkItem?.cancel()
+        positionLabelRestoreWorkItem = nil
+
+        if hidden {
+            isSuppressingPositionLabelForScrub = true
+            UIView.animate(withDuration: 0.15) { self.positionLabel.alpha = 0 }
+            return
+        }
+
+        let restore = DispatchWorkItem { [weak self] in
+            self?.restorePositionLabelAfterScrub()
+        }
+        positionLabelRestoreWorkItem = restore
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: restore)
+    }
+
+    /// Brings the position label back once the reader has settled on the new
+    /// location — from `locationDidChange`, or from the fallback above.
+    private func restorePositionLabelAfterScrub() {
+        guard isSuppressingPositionLabelForScrub else { return }
+        isSuppressingPositionLabelForScrub = false
+        positionLabelRestoreWorkItem?.cancel()
+        positionLabelRestoreWorkItem = nil
+
+        let hidden = Self.overlayLabelsHidden(
+            navigationBarHidden: navigationBarHidden,
+            voiceOverRunning: UIAccessibility.isVoiceOverRunning)
+        UIView.animate(withDuration: 0.15) { self.positionLabel.alpha = hidden ? 0 : 1 }
     }
 
     /// The one place a scrub navigates. Runs after the patron lifts their
@@ -546,6 +595,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                 voiceOverRunning: UIAccessibility.isVoiceOverRunning)
         let scrubberAlpha: CGFloat = scrubberHidden ? 0 : 1
 
+        // A scrub in flight owns the position label's alpha (the card is
+        // saying where the drag would land). Let the chrome fade drive
+        // `isHidden` for layout/accessibility, but leave the alpha alone until
+        // the scrub settles, or the label would blink back mid-drag.
+        let scrubOwnsPositionLabelAlpha = isSuppressingPositionLabelForScrub
+
         // Reveal: unhide first so the fade-in is visible.
         if !hidden {
             bookTitleLabel.isHidden = false
@@ -558,7 +613,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         if animated && !UIAccessibility.isReduceMotionEnabled {
             UIView.animate(withDuration: 0.25, animations: {
                 self.bookTitleLabel.alpha = targetAlpha
-                self.positionLabel.alpha = targetAlpha
+                if !scrubOwnsPositionLabelAlpha {
+                    self.positionLabel.alpha = targetAlpha
+                }
                 scrubber?.alpha = scrubberAlpha
             }, completion: { _ in
                 // Conceal: hide only after the fade-out completes.
@@ -572,7 +629,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
             })
         } else {
             bookTitleLabel.alpha = targetAlpha
-            positionLabel.alpha = targetAlpha
+            if !scrubOwnsPositionLabelAlpha {
+                positionLabel.alpha = targetAlpha
+            }
             bookTitleLabel.isHidden = hidden
             positionLabel.isHidden = hidden
             scrubber?.alpha = scrubberAlpha
@@ -889,6 +948,9 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
             if let progression = locator.locations.totalProgression {
                 chapterScrubber?.setProgression(progression, animated: true)
             }
+            // The scrub has landed and the label now reads the new position, so
+            // it is safe to show again.
+            restorePositionLabelAfterScrub()
 
             if let resourceIndex = publication.resourceIndex(forLocator: locator),
                bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator)) != nil {

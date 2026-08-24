@@ -26,41 +26,57 @@ final class ChapterScrubberReadoutTests: XCTestCase {
         )
     }
 
-    // MARK: - Visual readout
+    // MARK: - Card rows
 
-    func testDisplayText_PutsTheChapterOnItsOwnLineAboveTheDetail() {
-        let lines = ChapterScrubberReadout.displayText(for: target()).components(separatedBy: "\n")
-        XCTAssertEqual(lines.count, 2)
-        XCTAssertEqual(lines[0], "Chapter 7")
-        XCTAssertTrue(lines[1].contains("214"), lines[1])
-        XCTAssertTrue(lines[1].contains("512"), lines[1])
-        XCTAssertTrue(lines[1].contains("41"), lines[1])
+    func testChapterLine_IsTheChapterTitle() {
+        XCTAssertEqual(ChapterScrubberReadout.chapterLine(for: target()), "Chapter 7")
     }
 
-    func testDisplayText_WithNoChapter_ShowsOnlyTheDetailLine() {
-        let text = ChapterScrubberReadout.displayText(for: target(chapterTitle: nil))
-        XCTAssertFalse(text.contains("\n"), text)
-        XCTAssertTrue(text.contains("214"), text)
+    func testChapterLine_WithNoChapter_IsNil() {
+        XCTAssertNil(ChapterScrubberReadout.chapterLine(for: target(chapterTitle: nil)))
     }
 
-    func testDisplayText_WithABlankChapterTitle_ShowsOnlyTheDetailLine() {
-        let text = ChapterScrubberReadout.displayText(for: target(chapterTitle: "   "))
-        XCTAssertFalse(text.contains("\n"), text)
+    func testChapterLine_WithABlankChapterTitle_IsNil() {
+        // A whitespace-only title would otherwise reserve a card row that
+        // renders as an empty gap.
+        XCTAssertNil(ChapterScrubberReadout.chapterLine(for: target(chapterTitle: "   ")))
     }
 
-    func testDisplayText_WithNoPages_StillReportsPercent() {
-        let text = ChapterScrubberReadout.displayText(
+    func testChapterLine_TrimsSurroundingWhitespace() {
+        XCTAssertEqual(
+            ChapterScrubberReadout.chapterLine(for: target(chapterTitle: "  Chapter 7\n")),
+            "Chapter 7"
+        )
+    }
+
+    func testDetailLine_ReportsPagePositionAndPercent() {
+        let detail = ChapterScrubberReadout.detailLine(for: target())
+        XCTAssertTrue(detail.contains("214"), detail)
+        XCTAssertTrue(detail.contains("512"), detail)
+        XCTAssertTrue(detail.contains("41"), detail)
+    }
+
+    func testDetailLine_IsOneLine_SoTheCardRowsStayIndependent() {
+        // Each card row is its own label; a newline here would put two figures
+        // in one row and reintroduce the collision the stacked layout avoids.
+        XCTAssertFalse(ChapterScrubberReadout.detailLine(for: target()).contains("\n"))
+    }
+
+    func testDetailLine_WithNoPages_StillReportsPercent() {
+        let detail = ChapterScrubberReadout.detailLine(
             for: target(chapterTitle: nil, page: nil, pageCount: 0, percent: 41)
         )
-        XCTAssertTrue(text.contains("41"), text)
-        XCTAssertFalse(text.contains("0"), text)
+        XCTAssertTrue(detail.contains("41"), detail)
+        XCTAssertFalse(detail.contains("0"), detail)
     }
 
-    func testDisplayText_WithNoChapterAndNoPages_IsNeverEmpty() {
-        let text = ChapterScrubberReadout.displayText(
+    func testDetailLine_IsNeverEmpty() {
+        // The card always has something to say, even for a book that reports
+        // neither chapters nor pages.
+        let detail = ChapterScrubberReadout.detailLine(
             for: target(chapterTitle: nil, page: nil, pageCount: 0, percent: 0)
         )
-        XCTAssertFalse(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        XCTAssertFalse(detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     // MARK: - Spoken readout

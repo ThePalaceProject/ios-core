@@ -28,7 +28,7 @@ final class ChapterScrubberViewTests: XCTestCase {
     /// 320pt wide. The track is inset by half the scrubbing thumb (19/2 = 9.5)
     /// at each end, so the usable track runs x = 9.5 ... 310.5, width 301.
     private func makeView(model: ChapterScrubberModel? = nil) -> ChapterScrubberView {
-        let view = ChapterScrubberView(frame: CGRect(x: 0, y: 0, width: 320, height: 34))
+        let view = ChapterScrubberView(frame: CGRect(x: 0, y: 0, width: 320, height: 24))
         view.model = model ?? makeModel()
         view.layoutIfNeeded()
         return view
@@ -310,11 +310,82 @@ final class ChapterScrubberViewTests: XCTestCase {
     // MARK: - Hit target
 
     func testHitArea_IsGrownToAComfortableTouchTarget() {
-        // The control is 34pt tall; a touch 4pt above it must still land.
+        // The rail is deliberately only 24pt tall so it takes little of the
+        // reading surface, but it must still be a 44pt touch target: 10pt of
+        // slop above and below.
         let view = makeView()
-        XCTAssertTrue(view.point(inside: CGPoint(x: 160, y: -4), with: nil))
-        XCTAssertTrue(view.point(inside: CGPoint(x: 160, y: 38), with: nil))
-        XCTAssertFalse(view.point(inside: CGPoint(x: 160, y: -40), with: nil))
+        XCTAssertTrue(view.point(inside: CGPoint(x: 160, y: 12), with: nil))
+        XCTAssertTrue(view.point(inside: CGPoint(x: 160, y: -9), with: nil))
+        XCTAssertTrue(view.point(inside: CGPoint(x: 160, y: 33), with: nil))
+        XCTAssertFalse(view.point(inside: CGPoint(x: 160, y: -11), with: nil))
+        XCTAssertFalse(view.point(inside: CGPoint(x: 160, y: 35), with: nil))
+    }
+
+    // MARK: - Scrub state is reported to the reader
+
+    func testScrubbing_TellsTheReaderToHideItsOwnPositionLabel() {
+        // The card says where the drag would LAND; the reader's label says
+        // where the patron still IS. Both at once reads as a contradiction.
+        let view = makeView()
+        var states: [Bool] = []
+        view.onScrubbingChanged = { states.append($0) }
+
+        view.beginScrub(atX: x(forFraction: 0.5))
+        XCTAssertEqual(states, [true])
+
+        view.endScrub(atX: x(forFraction: 0.5))
+        XCTAssertEqual(states, [true, false])
+    }
+
+    func testCancellingAScrub_AlsoTellsTheReaderToRestoreItsLabel() {
+        let view = makeView()
+        var states: [Bool] = []
+        view.onScrubbingChanged = { states.append($0) }
+
+        view.beginScrub(atX: x(forFraction: 0.5))
+        view.cancelScrub()
+
+        XCTAssertEqual(states, [true, false])
+    }
+
+    func testRefusedScrub_NeverClaimsTheReadersLabel() {
+        // A book with nowhere to scrub to declines the touch, so the reader
+        // must not be told to hide anything.
+        let view = makeView(model: ChapterScrubberModel(chapters: [], positionProgressions: []))
+        var states: [Bool] = []
+        view.onScrubbingChanged = { states.append($0) }
+
+        XCTAssertFalse(view.beginScrub(atX: 100))
+
+        XCTAssertTrue(states.isEmpty)
+    }
+
+    // MARK: - Theming
+
+    func testBlend_MovesTheBaseColourTowardTheTargetAndStaysOpaque() {
+        // The card sits over body text, so its background must be opaque: the
+        // theme's background nudged toward its text colour, never translucent.
+        let blended = ChapterScrubberView.blend(.white, toward: .black, amount: 0.08)
+        var white: CGFloat = 0, alpha: CGFloat = 0
+        XCTAssertTrue(blended.getWhite(&white, alpha: &alpha))
+        XCTAssertEqual(alpha, 1.0, "the card background must be opaque")
+        XCTAssertEqual(white, 0.92, accuracy: 0.01)
+    }
+
+    func testBlend_AtZeroAndOne_ReturnsTheEndpoints() {
+        var white: CGFloat = 0, alpha: CGFloat = 0
+        XCTAssertTrue(ChapterScrubberView.blend(.white, toward: .black, amount: 0).getWhite(&white, alpha: &alpha))
+        XCTAssertEqual(white, 1.0, accuracy: 0.001)
+        XCTAssertTrue(ChapterScrubberView.blend(.white, toward: .black, amount: 1).getWhite(&white, alpha: &alpha))
+        XCTAssertEqual(white, 0.0, accuracy: 0.001)
+    }
+
+    func testBlend_ClampsOutOfRangeAmounts() {
+        var white: CGFloat = 0, alpha: CGFloat = 0
+        XCTAssertTrue(ChapterScrubberView.blend(.white, toward: .black, amount: -3).getWhite(&white, alpha: &alpha))
+        XCTAssertEqual(white, 1.0, accuracy: 0.001)
+        XCTAssertTrue(ChapterScrubberView.blend(.white, toward: .black, amount: 4).getWhite(&white, alpha: &alpha))
+        XCTAssertEqual(white, 0.0, accuracy: 0.001)
     }
 }
 
