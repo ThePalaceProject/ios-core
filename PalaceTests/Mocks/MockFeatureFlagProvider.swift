@@ -25,6 +25,7 @@ final class MockFeatureFlagProvider: FeatureFlagProviding, @unchecked Sendable {
     var isSideLoadingEnabled = false
     var isAppRatingPromptEnabled = false
     var isAppRatingForceEligible = false
+    var isChapterScrubberEnabled = false
 
     /// Per-flag overrides for the raw read; absent flags fall back to the
     /// flag's declared default (mirrors the no-Firebase production fallback).

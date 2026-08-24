@@ -29,6 +29,12 @@ final class ChapterScrubberView: UIControl {
     /// adjustment. The owner navigates here, and only here.
     var onCommit: ((Target) -> Void)?
 
+    /// Fires when a drag crosses into a different chapter — the one moment in a
+    /// scrub worth marking. The owner decides what that means (the reader plays
+    /// a preference-gated haptic); the control does not reach for a singleton
+    /// to do it itself.
+    var onChapterCrossed: (() -> Void)?
+
     // MARK: - State
 
     /// The book's shape: where the chapters start and where the pages fall.
@@ -344,12 +350,8 @@ final class ChapterScrubberView: UIControl {
         readoutLabel.text = ChapterScrubberReadout.displayText(for: target)
         accessibilityValue = ChapterScrubberReadout.accessibilityValue(for: target)
 
-        // Crossing into a different chapter is the one moment worth marking.
-        // Routed through `AccessibilityService` — preference- and reduce-motion-
-        // gated — rather than a raw feedback generator, matching the reader's
-        // existing bookmark-confirmation haptic.
         if hasPreviewedChapter, previewedChapter != target.chapterTitle {
-            Task { await AccessibilityService.shared.triggerHaptic(.selection) }
+            onChapterCrossed?()
         }
         previewedChapter = target.chapterTitle
         hasPreviewedChapter = true

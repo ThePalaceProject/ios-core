@@ -78,9 +78,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     /// hierarchy and layout are byte-for-byte what they were before.
     private(set) var chapterScrubber: ChapterScrubberView?
 
-    /// Reads the chapter-scrubber flag. A closure rather than a protocol
-    /// because the flag is a prototype-only local override, and this mirrors
-    /// `AudiobookSessionManager`'s `inAppPlaybackNavEnabledProvider` seam.
+    /// Reads the chapter-scrubber flag. A closure rather than a stored
+    /// `FeatureFlagProviding` so the container is touched lazily: a VALUE-typed
+    /// default argument calling `AppContainer.production()` evaluates inside
+    /// `init`, which re-enters the container's non-recursive lock when the
+    /// container itself is the caller. A closure default only builds the
+    /// closure; the body runs later, on the use path.
     private let chapterScrubberEnabled: () -> Bool
     private var isShowingSample: Bool = false
     private var initialLocation: Locator?
@@ -134,7 +137,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
          initialLocation: Locator? = nil,
          bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
          accountsManager: AccountsManager = AppContainer.production().accountsManager,
-         chapterScrubberEnabled: @escaping () -> Bool = { RemoteFeatureFlags.shared.isChapterScrubberEnabled }) {
+         chapterScrubberEnabled: @escaping () -> Bool = { AppContainer.production().featureFlags.isChapterScrubberEnabled }) {
 
         self.navigator = navigator
         self.publication = publication
@@ -454,6 +457,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         scrubber.onCommit = { [weak self] target in
             self?.navigateToScrubTarget(target)
         }
+        scrubber.onChapterCrossed = { [weak self] in
+            self?.triggerReaderHaptic(.selection)
+        }
         navigatorContainer.addSubview(scrubber)
 
         NSLayoutConstraint.activate([
@@ -682,8 +688,15 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     /// confirmation bounces the button view's transform instead — the same
     /// "pop" read. The haptic goes through `AccessibilityService` (preference +
     /// reduce-motion gated), never a raw `UIImpactFeedbackGenerator`.
+    /// Single funnel for the reader's haptics. Both the bookmark confirmation
+    /// and the scrubber's chapter-crossing tick go through here, so the
+    /// preference- and reduce-motion gating lives in exactly one place.
+    func triggerReaderHaptic(_ type: HapticType) {
+        Task { await AccessibilityService.shared.triggerHaptic(type) }
+    }
+
     private func playBookmarkAddedFeedback() {
-        Task { await AccessibilityService.shared.triggerHaptic(.lightImpact) }
+        triggerReaderHaptic(.lightImpact)
 
         guard Self.shouldAnimateBookmarkBounce(reduceMotion: UIAccessibility.isReduceMotionEnabled),
               let button = bookmarkButton else {
