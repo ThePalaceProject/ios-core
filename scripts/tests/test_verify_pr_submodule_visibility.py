@@ -2,10 +2,22 @@
 """
 A submodule bump must not read as a documentation change.
 
-WHY THIS EXISTS (PP-4976). Every submodule in this repo has `ignore = all` set
-in git config. `git diff --name-only` therefore reports a submodule POINTER BUMP
-AS NOTHING AT ALL — measured on a real toolkit bump, the default reports zero
-lines and `--ignore-submodules=none` reports one.
+WHY THIS EXISTS (PP-4976). On a checkout where `submodule.<name>.ignore=all` is
+set, `git diff --name-only` reports a submodule POINTER BUMP AS NOTHING AT ALL —
+measured on a real toolkit bump, the default reports zero lines and
+`--ignore-submodules=none` reports one.
+
+THAT SETTING IS LOCAL, NOT COMMITTED, and an earlier version of this file
+asserted it as a property of the repo. CI has no such config and the assertion
+failed there, which is the correction: eight entries live in this machine's
+`.git/config` and none in `.gitmodules`. The defect is therefore CONDITIONAL —
+it affects a developer whose clone carries that setting, which is precisely the
+population `verify-pr.sh` serves, since it is a local pre-PR check. The fix is
+unconditional and harmless either way.
+
+The premise tests below SKIP where the premise does not hold rather than fail,
+because a test that encodes its author's machine as fact is the thing that sent
+this file to CI red.
 
 That is not merely a missed audiobook gate. `verify-pr.sh` derives its
 changed-file list from that diff, and the docs-only predicate reads an empty
@@ -44,46 +56,77 @@ def submodule_paths() -> list[str]:
     return [l.split()[1] for l in out.split("\n") if l.strip()]
 
 
-def test_the_repo_really_does_hide_submodules_by_default():
-    """The premise, asserted rather than assumed.
-
-    If someone removes `ignore = all` this test fails and the fix below becomes
-    belt-only — which is worth knowing, because the comment in verify-pr.sh
-    explains itself in terms of this setting.
-    """
+def ignore_all_configured() -> bool:
     out = subprocess.run(
         ["git", "config", "--get-regexp", r"submodule\..*\.ignore"],
         capture_output=True, text=True, cwd=REPO,
     ).stdout
-    assert "all" in out, (
-        "no submodule is set to ignore=all any more — re-read the rationale in "
-        "verify-pr.sh, it may now be stale"
+    return "all" in out
+
+
+def test_where_ignore_all_is_configured_the_default_diff_hides_the_bump():
+    """The premise, asserted where it holds and skipped where it does not.
+
+    `ignore = all` is a LOCAL setting — eight entries in this machine's config,
+    none in `.gitmodules`. A fresh CI clone has none, so asserting it
+    unconditionally fails there for the right reason and the wrong subject.
+    """
+    if not ignore_all_configured():
+        pytest.skip(
+            "no submodule.*.ignore=all in this checkout's config — the hiding "
+            "behaviour cannot be observed here. The fix is unconditional; this "
+            "test only documents the condition that makes it necessary."
+        )
+    bump = _recent_toolkit_bump()
+    if not bump:
+        pytest.skip("no toolkit bump with a parent in this checkout's history")
+    assert _count_toolkit_lines(bump, []) == 0, (
+        "ignore=all is configured but the default diff still shows the bump — "
+        "re-read the rationale in verify-pr.sh, it may now be stale"
     )
 
 
-def test_a_real_submodule_bump_is_invisible_without_the_flag():
-    """Measured against history, not reasoned about.
+def _recent_toolkit_bump() -> str:
+    """A commit that moved the toolkit pointer AND has a parent available.
 
-    This is the defect. If it ever stops reproducing, the flag may be removable
-    — but find out from this test rather than by removing it and hoping.
+    A shallow CI clone can hold the commit without its parent, in which case
+    `bump^` does not resolve and every count comes back zero — which would read
+    as "the fix does not work" when the truth is "this clone cannot answer".
     """
-    bump = subprocess.run(
+    out = subprocess.run(
         ["git", "log", "--format=%H", "-20", "--", "ios-audiobooktoolkit"],
         capture_output=True, text=True, cwd=REPO,
-    ).stdout.split("\n")[0].strip()
-    if not bump:
-        pytest.skip("no toolkit bump in recent history")
-
-    def count(extra):
-        r = subprocess.run(
-            ["git", "diff", "--name-only", *extra, f"{bump}^", bump],
+    ).stdout
+    for sha in [l.strip() for l in out.split("\n") if l.strip()]:
+        has_parent = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{sha}^"],
             capture_output=True, text=True, cwd=REPO,
-        ).stdout
-        return sum(1 for l in r.split("\n") if "ios-audiobooktoolkit" in l)
+        ).returncode == 0
+        if has_parent:
+            return sha
+    return ""
 
-    assert count([]) == 0, "premise changed: the default diff now shows the bump"
-    assert count(["--ignore-submodules=none"]) >= 1, (
-        "even --ignore-submodules=none does not show the bump — the fix does not work"
+
+def _count_toolkit_lines(bump: str, extra: list[str]) -> int:
+    r = subprocess.run(
+        ["git", "diff", "--name-only", *extra, f"{bump}^", bump],
+        capture_output=True, text=True, cwd=REPO,
+    ).stdout
+    return sum(1 for l in r.split("\n") if "ios-audiobooktoolkit" in l)
+
+
+def test_the_flag_shows_the_bump_wherever_history_allows_the_question():
+    """The half that must hold everywhere: with the flag, the pointer is visible.
+
+    Deliberately does NOT assert the default hides it — that depends on local
+    config, and conflating the two is what turned this file red on CI.
+    """
+    bump = _recent_toolkit_bump()
+    if not bump:
+        pytest.skip("no toolkit bump with a parent in this checkout's history")
+    assert _count_toolkit_lines(bump, ["--ignore-submodules=none"]) >= 1, (
+        "--ignore-submodules=none does not show a known pointer bump — the fix "
+        "does not do what it claims"
     )
 
 
