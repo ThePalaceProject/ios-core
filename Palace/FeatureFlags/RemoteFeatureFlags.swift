@@ -407,6 +407,15 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// is a prototype evaluated from the Testing menu (PP-5006), and shipping it
     /// is a separate decision that would introduce a real flag at that point.
     var isChapterScrubberEnabled: Bool {
+        Self.isChapterScrubberEnabled(in: defaults)
+    }
+
+    /// The flag as what it actually is: one `UserDefaults` read, with no
+    /// Firebase, no cache, and no instance state behind it. Exposed statically
+    /// so the reader can consult it without holding a singleton or resolving
+    /// the composition root — both of which the decomposition ratchets count,
+    /// and rightly, since neither would buy anything here.
+    static func isChapterScrubberEnabled(in defaults: UserDefaults = .standard) -> Bool {
         defaults.object(forKey: Self.chapterScrubberLocalOverrideKey) as? Bool ?? false
     }
 

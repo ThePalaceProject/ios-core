@@ -78,12 +78,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     /// hierarchy and layout are byte-for-byte what they were before.
     private(set) var chapterScrubber: ChapterScrubberView?
 
-    /// Reads the chapter-scrubber flag. A closure rather than a stored
-    /// `FeatureFlagProviding` so the container is touched lazily: a VALUE-typed
-    /// default argument calling `AppContainer.production()` evaluates inside
-    /// `init`, which re-enters the container's non-recursive lock when the
-    /// container itself is the caller. A closure default only builds the
-    /// closure; the body runs later, on the use path.
+    /// Reads the chapter-scrubber flag. The default consults the flag's static
+    /// `UserDefaults` reader rather than the shared instance or the composition
+    /// root: this flag has no remote component and no instance state, so
+    /// neither indirection would buy anything, and both are ratcheted. A
+    /// closure (not a value) so nothing is resolved during `init`.
     private let chapterScrubberEnabled: () -> Bool
     private var isShowingSample: Bool = false
     private var initialLocation: Locator?
@@ -137,7 +136,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
          initialLocation: Locator? = nil,
          bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
          accountsManager: AccountsManager = AppContainer.production().accountsManager,
-         chapterScrubberEnabled: @escaping () -> Bool = { AppContainer.production().featureFlags.isChapterScrubberEnabled }) {
+         chapterScrubberEnabled: @escaping () -> Bool = { RemoteFeatureFlags.isChapterScrubberEnabled() }) {
 
         self.navigator = navigator
         self.publication = publication
