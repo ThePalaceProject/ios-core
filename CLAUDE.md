@@ -8,7 +8,9 @@ Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM syste
 
 **Maintainers** run additional local review/governance tooling wired through git hooks and Claude Code settings. It is **opt-in and self-disabling** — the hooks no-op cleanly for anyone who doesn't have that tooling installed, so outside contributors can ignore it entirely: nothing extra is required to build, test, or open a PR.
 
-**Pre-PR self-check (anyone):** `scripts/verify-pr.sh --quick` runs the full battery — build, tests, lint, coverage, accessibility — against the iPhone 16 Pro simulator. JSON report optional: `--report /tmp/v.json`.
+**Pre-PR self-check (anyone):** `scripts/verify-pr.sh --quick` runs build, tests, lint, coverage and accessibility against the iPhone 16 Pro simulator, with the unit-test leg a full-scheme single pass. JSON report optional: `--report /tmp/v.json`.
+
+`--quick` skips exactly one leg: **mutation testing**. Drop the flag to include it, or run `--mutation-only` for mutation alone. Naming the omission matters because "the full battery" is what someone reads to decide they are verified — and mutation is the leg that answers whether the tests would notice if the code were wrong. Everything else the script can run, `--quick` runs; a leg reported as `skip` names its own reason, and a leg that recorded nothing at all fails the run.
 
 **Architecture decisions:** see [`docs/architecture/`](./docs/architecture/) for the rationale behind major refactors (the post-modernization triad work, the parallel-agent rebase pattern, post-PR retros).
 
