@@ -11,6 +11,7 @@ Outputs:
   - Human-readable summary to stderr
 """
 import json
+import re
 import subprocess
 import sys
 import os
@@ -97,79 +98,139 @@ def get_all_tests_new_api(xcresult_path: str) -> List[Dict]:
         return []
 
 
+# Container node types, compared CASE-INSENSITIVELY. xcresulttool emits
+# "Unit test bundle" — lowercase t, lowercase b — and a capitalised literal here
+# let bundle nodes fall through to the is-this-a-test check below. A bundle's
+# result is the rollup of everything under it, so on any run with a failure the
+# published report gained a class named after the target with a "test" named
+# after the bundle, marked Failure and counted in summary.failed. Observed on
+# CI run 32508244803: class "Palace", tests "PalaceTests" (Failure) and
+# "TenPrintCoverTests" (Success). Neither is a test.
+CONTAINER_NODE_TYPES = {'test plan', 'target', 'unit test bundle', 'test suite'}
+
+# Retry repetitions arrive as children of a Test Case, named by their attempt.
+# Emitting them as tests published failures against `Retry 2` and `First Run` —
+# names that identify nothing runnable and cannot be handed to
+# find-test-polluter.sh. They belong to the parent as iterations.
+REPETITION_NAME = re.compile(r'^(First Run|Retry \d+|Repetition \d+)$')
+
+RESULT_MAP = {
+    'Passed': 'Success', 'passed': 'Success', 'success': 'Success',
+    'Failed': 'Failure', 'failed': 'Failure', 'failure': 'Failure',
+    'Skipped': 'Skipped', 'skipped': 'Skipped',
+    # A real result value the old map did not know, which left such a test in
+    # the total and in no other bucket: 8215 + 5 + 140 = 8360 against a
+    # published total of 8361 on run 32508244803.
+    'Expected Failure': 'ExpectedFailure', 'expected failure': 'ExpectedFailure',
+}
+
+
+def _is_repetition(node: Dict) -> bool:
+    if not isinstance(node, dict):
+        return False
+    if str(node.get('nodeType', '')).strip().lower() == 'test case run':
+        return True
+    return bool(REPETITION_NAME.match(str(node.get('name', ''))))
+
+
+def _parse_duration_field(duration: Any) -> float:
+    if not duration:
+        return 0.0
+    text = str(duration).strip()
+    if text.endswith('s'):
+        text = text[:-1]
+    try:
+        return float(text)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def count_by_status(tests: List[Dict]) -> Dict[str, int]:
+    """Bucket counts that ADD UP — every test lands in exactly one bucket."""
+    counts = {'passed': 0, 'failed': 0, 'skipped': 0, 'expected_failures': 0,
+              'flaky': 0, 'unknown': 0}
+    bucket = {'Success': 'passed', 'Failure': 'failed', 'Skipped': 'skipped',
+              'ExpectedFailure': 'expected_failures'}
+    for t in tests:
+        counts[bucket.get(t.get('status'), 'unknown')] += 1
+        if t.get('flaky'):
+            counts['flaky'] += 1
+    return counts
+
+
 def parse_test_node_new_api(node: Dict, parent_name: str = "", class_name: str = "") -> List[Dict]:
     """Parse a test node from new API format (Xcode 16+).
-    
-    Node types hierarchy:
-    - Test Plan -> Target -> Unit Test Bundle -> Test Suite -> Test Case
+
+    Real hierarchy, read from an actual bundle:
+        Test Plan -> Unit test bundle -> Test Suite -> Test Case
+                                                        |- Test Case Run ("Retry 1")
+                                                        |- Failure Message
     """
-    tests = []
-    
+    tests: List[Dict] = []
+
     if not isinstance(node, dict):
         return tests
-    
-    node_type = node.get('nodeType', node.get('type', ''))
+
+    node_type = str(node.get('nodeType', node.get('type', ''))).strip()
     name = node.get('name', node.get('identifier', node.get('nodeIdentifier', '')))
     result = node.get('result', node.get('status', ''))
     duration = node.get('durationInSeconds', node.get('duration', 0))
-    
-    # Track class name from Test Suite level
+    children = node.get('children', node.get('subtests', node.get('testNodes', []))) or []
+
     current_class = class_name
-    if node_type == 'Test Suite':
+    if node_type.lower() == 'test suite':
         current_class = name
-    
-    # Check if this is an actual test case
-    is_test_case = (
+
+    is_container = node_type.lower() in CONTAINER_NODE_TYPES
+    is_test_case = (not is_container) and (
         node_type in ['Test Case', 'Test', 'test', 'testCase'] or
-        (result in ['Passed', 'Failed', 'Skipped', 'passed', 'failed', 'skipped'] and 
-         node_type not in ['Test Plan', 'Target', 'Unit Test Bundle', 'Test Suite'])
+        result in ['Passed', 'Failed', 'Skipped', 'passed', 'failed', 'skipped',
+                   'Expected Failure']
     )
-    
+
     if is_test_case:
-        # Normalize result
-        result_map = {
-            'Passed': 'Success', 'passed': 'Success', 'success': 'Success',
-            'Failed': 'Failure', 'failed': 'Failure', 'failure': 'Failure',
-            'Skipped': 'Skipped', 'skipped': 'Skipped',
-        }
-        normalized_result = result_map.get(result, result if result else 'Unknown')
-        
-        # Extract test method name - remove () if present
+        normalized_result = RESULT_MAP.get(result, result if result else 'Unknown')
         test_method = name.replace('()', '') if name else 'Unknown'
-        
-        # Use tracked class name or try to extract from identifier
         test_class = current_class or parent_name or 'Unknown'
-        identifier = node.get('nodeIdentifier', node.get('identifier', f"{test_class}/{test_method}"))
-        
-        # Parse duration - handle formats like "0.93s", "1.234", or numeric
-        parsed_duration = 0.0
-        if duration:
-            duration_str = str(duration).strip()
-            # Remove trailing 's' if present (e.g., "0.93s" -> "0.93")
-            if duration_str.endswith('s'):
-                duration_str = duration_str[:-1]
-            try:
-                parsed_duration = float(duration_str)
-            except (ValueError, TypeError):
-                parsed_duration = 0.0
-        
+        identifier = node.get('nodeIdentifier',
+                              node.get('identifier', f"{test_class}/{test_method}"))
+
+        # Own the children rather than recursing generically into them: a
+        # repetition is an iteration OF this test and a Failure Message is the
+        # reason it failed. Both used to be walked as if they were tests.
+        iterations = [RESULT_MAP.get(c.get('result'), c.get('result') or 'Unknown')
+                      for c in children if _is_repetition(c)]
+        # Shape matters: generate-test-report.py reads failure.get('message'),
+        # so a bare string here would crash the report on the first failing
+        # test. The legacy branch below already emitted bare strings — that
+        # mismatch has simply never been exercised.
+        failures = [{'message': c.get('name', '')} for c in children
+                    if isinstance(c, dict)
+                    and str(c.get('nodeType', '')).strip().lower() == 'failure message']
+
+        # Flaky = the run ended green for this test but an attempt did not.
+        # `status` deliberately keeps the run's verdict: ci-parity-local.sh
+        # gates on summary.failed and the retry contract says a
+        # retried-then-passed test is a pass. This is visibility, not a gate.
+        flaky = normalized_result != 'Failure' and 'Failure' in iterations
+
         tests.append({
             'name': test_method,
             'method': test_method,
             'class': test_class,
             'identifier': identifier,
             'status': normalized_result,
-            'duration': parsed_duration,
-            'duration_formatted': format_duration(parsed_duration),
-            'failures': []
+            'duration': _parse_duration_field(duration),
+            'duration_formatted': format_duration(_parse_duration_field(duration)),
+            'iterations': iterations,
+            'flaky': flaky,
+            'failures': failures,
         })
-    
-    # Recurse into children
-    children = node.get('children', node.get('subtests', node.get('testNodes', [])))
-    if isinstance(children, list):
-        for child in children:
-            tests.extend(parse_test_node_new_api(child, name, current_class))
-    
+        return tests
+
+    for child in children:
+        tests.extend(parse_test_node_new_api(child, name, current_class))
+
     return tests
 
 
@@ -471,7 +532,7 @@ def generate_report(xcresult_path: str) -> Dict:
                     'status': 'Failure',
                     'duration': 0.0,
                     'duration_formatted': '<1ms',
-                    'failures': [failure.get('message', 'Test failed')]
+                    'failures': [{'message': failure.get('message', 'Test failed')}]
                 })
             
             # Use summary stats directly
@@ -504,13 +565,16 @@ def generate_report(xcresult_path: str) -> Dict:
     print(f"Found {len(tests)} tests", file=sys.stderr)
     
     total = len(tests)
-    passed = sum(1 for t in tests if t['status'] == 'Success')
-    failed = sum(1 for t in tests if t['status'] == 'Failure')
-    skipped = sum(1 for t in tests if t['status'] == 'Skipped')
+    counts = count_by_status(tests)
+    passed, failed, skipped = counts['passed'], counts['failed'], counts['skipped']
     total_duration = sum(t['duration'] for t in tests)
-    
+
     classes = group_tests_by_class(tests)
     failed_tests = [t for t in tests if t['status'] == 'Failure']
+    # A test the run ended up passing after a retry. It is NOT a failure — the
+    # retry contract and ci-parity-local.sh's gate both say so — but silence
+    # about it is how nine of them rode a green board on run 32508244803.
+    flaky_tests = [t for t in tests if t.get('flaky')]
     
     return {
         'success': True,
@@ -522,13 +586,16 @@ def generate_report(xcresult_path: str) -> Dict:
             'passed': passed,
             'failed': failed,
             'skipped': skipped,
+            'expected_failures': counts['expected_failures'],
+            'flaky': counts['flaky'],
             'duration': total_duration,
             'duration_formatted': format_duration(total_duration),
             'pass_rate': f"{(passed/total*100):.1f}%" if total > 0 else "N/A"
         },
         'tests': sorted(tests, key=lambda t: (t.get('class', ''), t.get('name', ''))),
         'classes': classes,
-        'failed_tests': failed_tests
+        'failed_tests': failed_tests,
+        'flaky_tests': flaky_tests
     }
 
 
@@ -544,6 +611,7 @@ def output_github_actions(report: Dict, output_file: str):
         f.write(f"passed={summary['passed']}\n")
         f.write(f"failed={summary['failed']}\n")
         f.write(f"skipped={summary['skipped']}\n")
+        f.write(f"flaky={summary.get('flaky', 0)}\n")
         f.write(f"duration={summary.get('duration_formatted', 'unknown')}\n")
         f.write(f"pass_rate={summary.get('pass_rate', 'N/A')}\n")
         f.write(f"build_status={build_info.get('status', 'unknown')}\n")
@@ -588,6 +656,15 @@ def print_summary(report: Dict):
     print(f"Passed:       {summary['passed']} ✓", file=sys.stderr)
     print(f"Failed:       {summary['failed']} ✗", file=sys.stderr)
     print(f"Skipped:      {summary['skipped']} ⊘", file=sys.stderr)
+    if summary.get('expected_failures'):
+        print(f"Expected failures: {summary['expected_failures']}", file=sys.stderr)
+    flaky = report.get('flaky_tests') or []
+    if flaky:
+        print(f"FLAKY:        {len(flaky)} ⚠  (passed only after a retry — the run is green over these)",
+              file=sys.stderr)
+        for t in flaky:
+            print(f"  ⚠ {t['class']}.{t['method']}  {' · '.join(t.get('iterations') or [])}",
+                  file=sys.stderr)
     print(f"Duration:     {summary.get('duration_formatted', 'unknown')}", file=sys.stderr)
     print(f"Pass Rate:    {summary.get('pass_rate', 'N/A')}", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
