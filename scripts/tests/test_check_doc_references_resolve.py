@@ -314,6 +314,122 @@ def test_claude_worktrees_are_skipped(tmp_path):
     assert run(root).returncode == 0
 
 
+# ---------------------------------------------------------------------------
+# The SOURCE arm. Added when the decomposition waves moved files into
+# Palace/Packages/* and left 37 doc pointers aimed at addresses that no longer
+# existed. Same two things matter as above: a NEW dead path blocks, and the
+# legitimate reasons a path is absent do NOT block — because the three exempt
+# classes here (ellipsis, deliberately-untracked secret, documented placeholder)
+# are all common enough that a false positive on any of them would get the whole
+# gate switched off.
+# ---------------------------------------------------------------------------
+
+
+def make_src_repo(tmp_path, docs: dict, sources=(), baseline=None):
+    for rel, body in docs.items():
+        p = tmp_path / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(textwrap.dedent(body), encoding="utf-8")
+    for s in sources:
+        p = tmp_path / s
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("// swift\n", encoding="utf-8")
+    (tmp_path / "scripts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "scripts" / "doc-references-baseline.json").write_text(
+        json.dumps({"known_dangling": baseline or []}), encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    return tmp_path
+
+
+def test_existing_source_path_passes(tmp_path):
+    """The clean path, again: a doc naming a real file must not block."""
+    root = make_src_repo(
+        tmp_path,
+        docs={"docs/a.md": "See `Palace/Network/Executor.swift` for the retry.\n"},
+        sources=["Palace/Network/Executor.swift"])
+    r = run(root)
+    assert r.returncode == 0, r.stdout
+
+
+def test_missing_source_path_blocks(tmp_path):
+    """The defect this arm exists for: a pointer at a file that moved away."""
+    root = make_src_repo(
+        tmp_path,
+        docs={"docs/a.md": "See `Palace/Book/Models/TPPBookRegistry.swift`.\n"})
+    r = run(root)
+    assert r.returncode == 1
+    assert "TPPBookRegistry.swift" in r.stdout
+    assert "source" in r.stdout
+
+
+def test_ellipsis_path_is_not_dangling(tmp_path):
+    """`Palace/Reader2/.../LicensesService.swift` abbreviates a path rather than
+    claiming one. Docs use this constantly; flagging it would bury the real
+    findings under noise and the gate would be turned off."""
+    root = make_src_repo(
+        tmp_path,
+        docs={"docs/a.md": "See `Palace/Reader2/.../LicensesService.swift`.\n"})
+    r = run(root)
+    assert r.returncode == 0, r.stdout
+
+
+def test_deliberately_untracked_secret_is_not_dangling(tmp_path):
+    """APIKeys.swift is never committed by repo rule (CLAUDE.md "Secrets"), so
+    its absence is the rule working. Flagging it would pressure someone to
+    "fix" the gate by committing the secret."""
+    root = make_src_repo(
+        tmp_path,
+        docs={"docs/a.md": "Provide `Palace/AppInfrastructure/APIKeys.swift` locally.\n"})
+    r = run(root)
+    assert r.returncode == 0, r.stdout
+
+
+def test_documented_placeholder_is_not_dangling(tmp_path):
+    """`Palace/Path/ChangedFile.swift` in a usage example teaches the shape of a
+    command; it is not a claim that the file exists."""
+    root = make_src_repo(
+        tmp_path,
+        docs={"docs/a.md": "    palace_mutate.py --file Palace/Path/ChangedFile.swift\n"})
+    r = run(root)
+    assert r.returncode == 0, r.stdout
+
+
+def test_placeholder_exemption_does_not_leak_to_a_real_sibling(tmp_path):
+    """The exemption is a set of exact literals, not a prefix or a heuristic on
+    the segment name. If it matched "anything under Palace/Path/", a real file
+    added there later would become permanently unguarded."""
+    root = make_src_repo(
+        tmp_path,
+        docs={"docs/a.md": "See `Palace/Path/RealFile.swift`.\n"})
+    r = run(root)
+    assert r.returncode == 1, r.stdout
+    assert "RealFile.swift" in r.stdout
+
+
+def test_source_fixtures_directory_is_skipped(tmp_path):
+    """scripts/_fixtures/ is detector INPUT: its paths are deliberately fake."""
+    root = make_src_repo(
+        tmp_path,
+        docs={"scripts/_fixtures/m1/intent.md": "- Palace/SomeOther/Fake.swift\n"})
+    r = run(root)
+    assert r.returncode == 0, r.stdout
+
+
+def test_baselined_source_entry_is_tolerated_but_a_new_one_still_blocks(tmp_path):
+    """The amnesty is per-reference, not per-kind — baselining the backlog must
+    not switch the source arm off."""
+    root = make_src_repo(
+        tmp_path,
+        docs={"docs/a.md": "`Palace/Old/Gone.swift` and `Palace/New/AlsoGone.swift`\n"},
+        baseline=[{"doc": "docs/a.md", "kind": "source",
+                   "target": "Palace/Old/Gone.swift"}])
+    r = run(root)
+    assert r.returncode == 1, r.stdout
+    assert "AlsoGone.swift" in r.stdout
+    assert "Old/Gone.swift" not in r.stdout.split("Baseline entries")[0]
+
+
 def test_real_repo_is_clean(tmp_path):
     """The live tree must pass against its committed baseline."""
     repo = os.path.abspath(os.path.join(HERE, "..", ".."))

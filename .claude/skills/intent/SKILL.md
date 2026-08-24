@@ -192,11 +192,11 @@ author: forge-architect
 
 ## Files in scope
 
-- Palace/MyBooks/Borrow/BorrowOperation.swift
-- Palace/MyBooks/Borrow/BorrowReducer.swift
+- Palace/MyBooks/BorrowOperation.swift
+- Palace/Book/UI/BookDetail/BorrowReducer.swift
 - Palace/Book/UI/BookDetail/BookButtonMapper.swift
-- PalaceTests/MyBooks/Borrow/BorrowReducerTests.swift
-- PalaceTests/MyBooks/Borrow/BorrowOperationContractTests.swift
+- PalaceTests/ViewModels/BorrowReducerTests.swift
+- PalaceTests/Contract/BorrowOperationContractTests.swift
 ```
 
 ## Interaction with the M1 universal-rigor floor

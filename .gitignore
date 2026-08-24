@@ -148,3 +148,9 @@ scripts/tests/__pycache__/
 Signing.local.xcconfig
 *.mobileprovision
 *.p12
+
+# Swarm campaign records are RUNTIME artifacts written by the orchestrator.
+# They are never committed (scripts/check-doc-hygiene.sh blocks them); the
+# historical ones live at tag archive/forgeos-swarms-2026-08-24. See
+# .forgeos/README.md.
+.forgeos/swarms/

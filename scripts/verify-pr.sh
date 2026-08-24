@@ -645,6 +645,43 @@ else
   record "doc_hygiene" "skip" "check-doc-hygiene.sh not found"
 fi
 
+# 3b2a. Doc references resolve — every script, workflow, and source path a doc
+# names must exist. Whole-tree (NOT diff-based): a doc goes stale when the CODE
+# moves, and that commit touches no docs at all, so a diff-scoped check would
+# never see it. Pre-existing breakage is baselined; only new breakage fails.
+echo "--- Doc references resolve ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "doc_references" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-doc-references-resolve.py ]; then
+  DR_OUT=$(python3 scripts/check-doc-references-resolve.py 2>&1)
+  DR_RC=$?
+  if [ "$DR_RC" -eq 0 ]; then
+    record "doc_references" "pass" "$(echo "$DR_OUT" | tail -1)"
+  else
+    record "doc_references" "fail" "$(echo "$DR_OUT" | grep -m1 -- '->')"
+  fi
+else
+  record "doc_references" "skip" "check-doc-references-resolve.py not found"
+fi
+
+# 3b2b. Doc indexes complete — a doc nobody can find costs every future search
+# and helps no one. Whole-tree for the same reason as above: deleting a doc and
+# forgetting its index line is a diff that touches only the deleted file.
+echo "--- Doc indexes complete ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "doc_index" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-doc-index-complete.py ]; then
+  DI_OUT=$(python3 scripts/check-doc-index-complete.py 2>&1)
+  DI_RC=$?
+  if [ "$DI_RC" -eq 0 ]; then
+    record "doc_index" "pass" "$(echo "$DI_OUT" | tail -1)"
+  else
+    record "doc_index" "fail" "$(echo "$DI_OUT" | grep -m1 'does not')"
+  fi
+else
+  record "doc_index" "skip" "check-doc-index-complete.py not found"
+fi
+
 # 3b3. DORMANT Wave 2b gate — PalaceBookRegistry/Sources package purity.
 # Whole-tree scan (not diff-based), but a no-op until the package is
 # extracted. See `scripts/check-bookregistry-package-purity.sh`.

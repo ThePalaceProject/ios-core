@@ -595,9 +595,9 @@ done
 # test method that contains BOTH `handleAction(for: .get)` (or the
 # cell-side `callDelegate(for: .get)`) AND the new content-type literal
 # in the same method body.
-if git diff --cached -- 'Palace/Book/Models/TPPContentType.swift' 'Palace/Book/Models/TPP*.swift' 2>/dev/null | grep -qE "^\+\s*case\s+\w+"; then
+if git diff --cached -- 'Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPContentType.swift' 'Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPP*.swift' 2>/dev/null | grep -qE "^\+\s*case\s+\w+"; then
   # New TPPBookContentType case added — find it and verify integration test exists.
-  NEW_CT_CASES=$(git diff --cached -- 'Palace/Book/Models/TPPContentType.swift' 2>/dev/null | grep -oE "^\+\s*case\s+\w+" | sed -E 's/^\+\s*case\s+//' | sort -u)
+  NEW_CT_CASES=$(git diff --cached -- 'Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPContentType.swift' 2>/dev/null | grep -oE "^\+\s*case\s+\w+" | sed -E 's/^\+\s*case\s+//' | sort -u)
   for case_name in $NEW_CT_CASES; do
     # Look for staged test files referencing both .get handleAction AND the new case literal.
     if ! git diff --cached --name-only | grep "PalaceTests/.*Tests\.swift$" | xargs grep -l "handleAction(for: \.get)\|callDelegate(for: \.get)" 2>/dev/null | xargs grep -l "\.${case_name}\b" 2>/dev/null >/dev/null; then

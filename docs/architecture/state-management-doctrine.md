@@ -78,7 +78,7 @@ governs the app target's critical paths, not every package's internal choices.
 
 ## Single source of truth — scoped, not absolute
 
-`TPPBookRegistry` (`Palace/Book/Models/TPPBookRegistry.swift`) is the single
+`TPPBookRegistry` (`Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/TPPBookRegistry.swift`) is the single
 source of truth for book state — **scoped to loans**. It projects read-only
 Combine publishers (`registryPublisher` / `bookStatePublisher` /
 `syncStatePublisher`); consumers observe, they never reach in and mutate.
@@ -91,10 +91,10 @@ declared and a probe guards it against a third owner appearing.
 
 ## The one mutation point — enforced
 
-`TPPBookState.allowedTransitions` (`Palace/Book/Models/TPPBookState.swift:91`,
+`TPPBookState.allowedTransitions` (`Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBookState.swift:91`,
 `canTransition` at `:151`) is the declared legal-transition set. It MUST be
 enforced at the single mutation seam `TPPBookRegistry.setState`
-(`Palace/Book/Models/TPPBookRegistry.swift:605`) — log-only in RELEASE (never
+(`Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/TPPBookRegistry.swift:605`) — log-only in RELEASE (never
 drops state), assert in DEBUG (see Contract C). An unenforced invariant is a
 comment; this doctrine promotes it to an enforced rule so illegal transitions
 become detectable instead of merely discouraged.
