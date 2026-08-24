@@ -19,8 +19,8 @@
   "rationale": {
     "TPPAppDelegate.swift": "UIApplicationDelegate lifecycle — requires a real UIApplication.",
     "SceneDelegate.swift": "UIScene lifecycle — requires a real UIScene.",
-    "Views/**": "SwiftUI view bodies — declarative rendering code exercised via snapshot/E2E, not unit tests.",
-    "*ViewController.swift": "UIKit controllers — view lifecycle needs a host window; covered via XCUITests or SpecterQA replays.",
+    "Views/**": "SwiftUI view bodies — declarative rendering code that cannot be driven from xcodebuild. NOT covered elsewhere: excluded from the ratio, not tested by another gate.",
+    "*ViewController.swift": "UIKit controllers — view lifecycle needs a host window. NOT covered elsewhere: there is no XCUITest target and no replay suite in CI.",
     "*+Preview.swift / *Previews.swift": "#Preview providers — dev-time only, never shipped in Release; not a unit-test surface."
   }
 }

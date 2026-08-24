@@ -33,16 +33,41 @@ final class RatingPromptPresenter: ObservableObject {
   private let feedbackPresenter: FeedbackPresenting
   private let triggerDelayNanoseconds: UInt64
   private let isModalPresented: () -> Bool
+  private let sleep: @Sendable (UInt64) async -> Void
 
-  /// How many times a trigger will re-arm itself while a modal is on screen
+  /// How many times ONE trigger will re-arm itself while a modal is on screen
   /// before giving up. Bounded so a sheet the patron leaves open forever cannot
   /// leave a task re-arming for the life of the process.
+  ///
+  /// Reset per trigger, in `scheduleTrigger` — NOT only on a successful show.
+  ///
+  /// "Per trigger" is approximate, and worth saying so rather than leaving the
+  /// stronger reading. This is ONE counter on the instance, so a new positive
+  /// moment restores the budget for every re-arm chain currently in flight, not
+  /// just its own. The bound therefore holds per-instance and not per-chain:
+  /// overlapping triggers can keep chains alive longer than `maxDeferrals`
+  /// hops. `testDeferralBudget_newTriggerDuringTheReArmWindow_isNotClobbered`
+  /// asserts exactly that multiplication (two chains parked, not one). It never
+  /// latches at zero — which was the shipped defect — and it cannot spin
+  /// unboundedly while a sheet stays up, because each hop still decrements.
+  /// Resetting only on success latches the counter at zero: the first positive
+  /// moment that burns all three deferrals leaves every LATER positive moment
+  /// dropped immediately, for the life of the presenter, until one happens to
+  /// fire with nothing presented. That is a per-instance budget wearing
+  /// per-trigger documentation, and it silently stops asking.
   private static let maxDeferrals = 3
   private var deferralsRemaining = maxDeferrals
 
   /// - Parameter triggerDelayNanoseconds: the "brief delay" before the gate
   ///   appears after a positive moment (PP-4088, ~2s), so it doesn't feel
   ///   jarring. Injected as 0 in tests that drive `handleTrigger` directly.
+  /// - Parameter sleep: the delay primitive. Injected because the deferral
+  ///   behaviour is defined by the ORDER two sleeping continuations resume in,
+  ///   and wall-clock sleeps cannot pin an order: two hops armed microseconds
+  ///   apart for the same duration wake in whichever order the scheduler picks.
+  ///   A test that races them passes some fraction of the time against a live
+  ///   defect, which under `-retry-tests-on-failure` reports the run green.
+  ///   Tests inject a controllable clock and resume the hops deliberately.
   /// - Parameter isModalPresented: whether a sheet/alert is currently on screen.
   ///   The gate is a ZStack overlay inside `AppTabHostView`, so anything
   ///   presented modally renders ABOVE it; showing the gate then puts a question
@@ -53,13 +78,20 @@ final class RatingPromptPresenter: ObservableObject {
     reviewRequester: ReviewRequesting,
     feedbackPresenter: FeedbackPresenting,
     triggerDelayNanoseconds: UInt64 = 2_000_000_000,
-    isModalPresented: @escaping () -> Bool = RatingPromptPresenter.defaultIsModalPresented
+    isModalPresented: @escaping () -> Bool = RatingPromptPresenter.defaultIsModalPresented,
+    sleep: @escaping @Sendable (UInt64) async -> Void = RatingPromptPresenter.defaultSleep
   ) {
     self.service = service
     self.reviewRequester = reviewRequester
     self.feedbackPresenter = feedbackPresenter
     self.triggerDelayNanoseconds = triggerDelayNanoseconds
     self.isModalPresented = isModalPresented
+    self.sleep = sleep
+  }
+
+  static let defaultSleep: @Sendable (UInt64) async -> Void = { nanoseconds in
+    guard nanoseconds > 0 else { return }
+    try? await Task.sleep(nanoseconds: nanoseconds)
   }
 
   /// True when the key window's root has anything presented above it.
@@ -90,11 +122,26 @@ final class RatingPromptPresenter: ObservableObject {
   }
 
   private func scheduleTrigger(_ trigger: AppRatingTrigger) {
+    // The reset is the ONLY difference between this and a re-arm hop. Keeping
+    // the hop itself in one place means the two can never drift apart on the
+    // axis this fix is about.
+    deferralsRemaining = Self.maxDeferrals
+    armHop(trigger)
+  }
+
+  /// Wait the trigger delay, then re-enter `handleTrigger`.
+  ///
+  /// Deliberately does NOT touch `deferralsRemaining` after waking. The budget
+  /// is instance state, and a positive moment arriving during the delay window
+  /// performs its own synchronous reset in `scheduleTrigger`; writing this
+  /// chain's decremented value back afterwards would clobber that reset and
+  /// hand the NEW trigger an old chain's exhausted budget — the same bug this
+  /// fix exists to remove, reintroduced for the width of the delay.
+  private func armHop(_ trigger: AppRatingTrigger) {
+    let delay = triggerDelayNanoseconds
     Task { @MainActor in
-      if triggerDelayNanoseconds > 0 {
-        try? await Task.sleep(nanoseconds: triggerDelayNanoseconds)
-      }
-      handleTrigger(trigger)
+      await self.sleep(delay)
+      self.handleTrigger(trigger)
     }
   }
 
@@ -121,11 +168,20 @@ final class RatingPromptPresenter: ObservableObject {
     if isModalPresented() {
       guard deferralsRemaining > 0 else { return }
       deferralsRemaining -= 1
-      scheduleTrigger(trigger)
+      // Re-arm WITHOUT going through scheduleTrigger, or the reset there would
+      // restore the budget every hop and the bound would be decorative. armHop
+      // deliberately does not touch the budget after waking; see the reasoning
+      // there.
+      armHop(trigger)
       return
     }
 
-    deferralsRemaining = Self.maxDeferrals
+    // NOT reset here. `scheduleTrigger` restores the budget for every positive
+    // moment, so resetting again on the way out is a second encoding of the
+    // same rule that no test can tell from the first — and two encodings of one
+    // invariant is how the original defect survived: the reset lived ONLY here,
+    // on the path that showed the gate, so a fully-occluded moment never got it
+    // back.
     service.recordPromptShown()
     step = .sentiment
   }

@@ -15,9 +15,10 @@
 #                                              #   PR #1018 lessons.
 #   scripts/verify-pr.sh --mutation-only       # Run ONLY the mutation step (skips
 #                                              # build/test/lint/coverage/a11y).
-#                                              # Used by the mutation-on-pr.yml
-#                                              # CI workflow which already runs
-#                                              # the rest via unit-testing.yml.
+#                                              # LOCAL ONLY. There is no
+#                                              # mutation CI workflow — this
+#                                              # header named one that has never
+#                                              # existed in this repo.
 #   scripts/verify-pr.sh --enforce-mutations   # Strictness ON for every changed
 #                                              # file (default: critical paths
 #                                              # strict, non-critical advisory).
@@ -71,7 +72,18 @@
 
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# An absolute name for this file, captured before the `cd` below. `$0` is NOT a
+# reliable handle for "my own source": invoked by a relative path it stops
+# resolving the moment we change directory, and a grep over it then yields
+# nothing — silently. Reviewers measured `cd scripts && ./verify-pr.sh`
+# deriving ZERO owed legs with no output at all.
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+# The arguments as the caller actually gave them. The accounting below must
+# reconcile against THESE and not against the mode variables, because those are
+# what an inverted guard tampers with — a check that derives its authority from
+# the thing it checks cannot witness that thing's tampering.
+ORIGINAL_ARGV=("$@")
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
@@ -177,13 +189,23 @@ fi
 
 PASS_COUNT=0
 FAIL_COUNT=0
+SKIP_COUNT=0
 RESULTS=()
 
 record() {
   local check="$1" status="$2" detail="$3"
+  # THREE outcomes, not two. A leg that did not run is not a leg that passed —
+  # that conflation is the exact defect this branch exists to remove, and it was
+  # re-introduced here by reporting an absent maintainer tool as "pass". `skip`
+  # keeps the run green (a missing private tool is not a defect in the PR under
+  # test) while saying plainly, in the console and in the JSON, that nothing was
+  # verified. Anyone reading the report can tell "clean" from "did not look".
   if [ "$status" = "pass" ]; then
     PASS_COUNT=$((PASS_COUNT + 1))
     echo "  [PASS] $check"
+  elif [ "$status" = "skip" ]; then
+    SKIP_COUNT=$((SKIP_COUNT + 1))
+    echo "  [SKIP] $check — $detail"
   else
     FAIL_COUNT=$((FAIL_COUNT + 1))
     echo "  [FAIL] $check — $detail"
@@ -211,14 +233,14 @@ if [ "$DOCS_ONLY" = "true" ]; then
   echo "Changed files:"
   echo "$ALL_CHANGED" | sed 's/^/  /'
   echo ""
-  record "build" "pass" "Skipped — docs-only PR (no source files changed)"
-  record "unit_tests" "pass" "Skipped — docs-only PR (no source files changed)"
-  record "triage_bot_package" "pass" "Skipped — docs-only PR (no source files changed)"
-  record "test_quality" "pass" "Skipped — docs-only PR (no test files changed)"
-  record "coverage_floors" "pass" "Skipped — docs-only PR (no source files changed)"
-  record "mutation" "pass" "Skipped — docs-only PR (no production Swift changed)"
-  record "audiobook_smoke" "pass" "Skipped — docs-only PR (no audiobook files changed)"
-  record "accessibility" "pass" "Skipped — docs-only PR (no UI files changed)"
+  record "build" "skip" "Skipped — docs-only PR (no source files changed)"
+  record "unit_tests" "skip" "Skipped — docs-only PR (no source files changed)"
+  record "triage_bot_package" "skip" "Skipped — docs-only PR (no source files changed)"
+  record "test_quality" "skip" "Skipped — docs-only PR (no test files changed)"
+  record "coverage_floors" "skip" "Skipped — docs-only PR (no source files changed)"
+  record "mutation" "skip" "Skipped — docs-only PR (no production Swift changed)"
+  record "audiobook_smoke" "skip" "Skipped — docs-only PR (no audiobook files changed)"
+  record "accessibility" "skip" "Skipped — docs-only PR (no UI files changed)"
   TEST_PASS=0
   TEST_FAIL=0
 
@@ -226,6 +248,14 @@ if [ "$DOCS_ONLY" = "true" ]; then
   echo "=== Summary ==="
   echo "  Passed: $PASS_COUNT"
   echo "  Failed: $FAIL_COUNT"
+  echo "  Skipped: $SKIP_COUNT (ran nothing — not a pass)"
+  # NOTE: this lane exits before the leg accounting below, so the 28 legs it
+  # never reaches are not reconciled here. That is a real gap, not a design:
+  # a reviewer measured 12 docs-only commits in the last 400 on develop. It is
+  # stated rather than closed because closing it means recording 28 docs-only
+  # skips, which is a larger change than this branch should carry. The lane
+  # does announce itself in stdout and in `"fast_path":"docs-only"`, so a
+  # wrongly-taken fast path is legible even though a missing leg is not.
 
   if [ -n "$REPORT_FILE" ]; then
     RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
@@ -236,6 +266,7 @@ if [ "$DOCS_ONLY" = "true" ]; then
   "fast_path": "docs-only",
   "pass_count": $PASS_COUNT,
   "fail_count": $FAIL_COUNT,
+  "skip_count": $SKIP_COUNT,
   "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
   "checks": [$RESULTS_JSON]
 }
@@ -254,7 +285,7 @@ fi
 # runs the build separately via unit-testing.yml.
 echo "--- Build ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "build" "pass" "Skipped (--mutation-only)"
+  record "build" "skip" "Skipped (--mutation-only)"
 else
 BUILD_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination "id=$SIM_ID" build 2>&1)
@@ -275,7 +306,7 @@ fi
 # 2. Unit tests
 echo "--- Unit Tests ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "unit_tests" "pass" "Skipped (--mutation-only)"
+  record "unit_tests" "skip" "Skipped (--mutation-only)"
   TEST_PASS=0
   TEST_FAIL=0
 else
@@ -396,9 +427,9 @@ fi
 # app build/test separately, same as the app-level build/unit gates above).
 echo "--- PalaceTriageBot Package Tests ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "triage_bot_package" "pass" "Skipped (--mutation-only)"
+  record "triage_bot_package" "skip" "Skipped (--mutation-only)"
 elif [ ! -d "Palace/Packages/PalaceTriageBot" ]; then
-  record "triage_bot_package" "pass" "Package not present (skipped)"
+  record "triage_bot_package" "skip" "Package not present"
 else
   TRIAGE_OUTPUT=$(swift test --package-path Palace/Packages/PalaceTriageBot 2>&1 || true)
   # Sum the per-bundle "Executed N tests" rollups under the "All tests" wrapper.
@@ -423,11 +454,11 @@ fi
 # from 2b, so this is seconds.
 echo "--- TriageBot Redaction Leak Gate ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "triage_redaction_gate" "pass" "Skipped (--mutation-only)"
+  record "triage_redaction_gate" "skip" "Skipped (--mutation-only)"
 elif [ ! -f "scripts/triage-corpus-check.sh" ]; then
-  record "triage_redaction_gate" "pass" "Gate script not present (skipped)"
+  record "triage_redaction_gate" "skip" "Gate script not present"
 elif [ ! -d "Palace/Packages/PalaceTriageBot" ]; then
-  record "triage_redaction_gate" "pass" "Package not present (skipped)"
+  record "triage_redaction_gate" "skip" "Package not present"
 else
   # Capture rc from the command itself; `|| true` would mask it and $? would
   # always read 0.
@@ -453,7 +484,7 @@ fi
 # can scope precisely with anchored grep.
 echo "--- Test Quality Lint ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "test_quality" "pass" "Skipped (--mutation-only)"
+  record "test_quality" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/lint-test-quality.py ]; then
   LINT_PER_FILE=$(python3 scripts/lint-test-quality.py --per-file 2>&1 || true)
   NEW_VIOLATIONS=0
@@ -471,7 +502,7 @@ elif [ -f scripts/lint-test-quality.py ]; then
     record "test_quality" "fail" "$NEW_VIOLATIONS blocking violations in changed test files"
   fi
 else
-  record "test_quality" "pass" "Lint script not found (skipped)"
+  record "test_quality" "skip" "Lint script not found"
 fi
 
 # 3a. Contract reconciliation (M1 universal-rigor-floor gate)
@@ -481,7 +512,7 @@ fi
 # class surfaced in waves 1-4. See `scripts/check-contract-reconciliation.py`.
 echo "--- Contract reconciliation ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "contract_reconciliation" "pass" "Skipped (--mutation-only)"
+  record "contract_reconciliation" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-contract-reconciliation.py ]; then
   CR_DIFF=$(mktemp -t cr-diff.XXXX)
   CR_MSG=$(mktemp -t cr-msg.XXXX)
@@ -516,7 +547,7 @@ elif [ -f scripts/check-contract-reconciliation.py ]; then
     record "contract_reconciliation" "fail" "Unreconciled claims: $(echo "$CR_OUT" | head -3 | tr '\n' ' ')"
   fi
 else
-  record "contract_reconciliation" "pass" "check-contract-reconciliation.py not found (skipped)"
+  record "contract_reconciliation" "skip" "check-contract-reconciliation.py not found"
 fi
 
 # 3b. Blast-radius (M1 universal-rigor-floor gate)
@@ -526,7 +557,7 @@ fi
 # High-severity findings block. See `scripts/check-blast-radius.py`.
 echo "--- Blast-radius ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "blast_radius" "pass" "Skipped (--mutation-only)"
+  record "blast_radius" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-blast-radius.py ]; then
   BR_DIFF=$(mktemp -t br-diff.XXXX)
   git diff "$BASE"...HEAD > "$BR_DIFF" 2>/dev/null || true
@@ -543,14 +574,14 @@ elif [ -f scripts/check-blast-radius.py ]; then
     record "blast_radius" "fail" "$BR_COUNT high-severity finding(s): $(echo "$BR_OUT" | tr '\n' ' ')"
   fi
 else
-  record "blast_radius" "pass" "check-blast-radius.py not found (skipped)"
+  record "blast_radius" "skip" "check-blast-radius.py not found"
 fi
 
 # Repo rule: never commit code-signing info (team ID / provisioning profile) and
 # never add Automatic signing. Diff-based. See `scripts/check-no-committed-signing.sh`.
 echo "--- Committed-signing ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "committed_signing" "pass" "Skipped (--mutation-only)"
+  record "committed_signing" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-no-committed-signing.sh ]; then
   NS_DIFF=$(mktemp -t ns-diff.XXXX)
   git diff "$BASE"...HEAD > "$NS_DIFF" 2>/dev/null || true
@@ -563,7 +594,7 @@ elif [ -f scripts/check-no-committed-signing.sh ]; then
     record "committed_signing" "fail" "$(echo "$NS_OUT" | grep -m1 BLOCK)"
   fi
 else
-  record "committed_signing" "pass" "check-no-committed-signing.sh not found (skipped)"
+  record "committed_signing" "skip" "check-no-committed-signing.sh not found"
 fi
 
 # 3b2. Doc-hygiene — only commit docs that explain the code's what/why, never
@@ -571,7 +602,7 @@ fi
 # Diff-based. See `scripts/check-doc-hygiene.sh`.
 echo "--- Doc-hygiene ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "doc_hygiene" "pass" "Skipped (--mutation-only)"
+  record "doc_hygiene" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-doc-hygiene.sh ]; then
   DH_OUT=$(bash scripts/check-doc-hygiene.sh --base "$BASE" 2>&1)
   if [ "$?" -eq 0 ]; then
@@ -580,7 +611,7 @@ elif [ -f scripts/check-doc-hygiene.sh ]; then
     record "doc_hygiene" "fail" "$(echo "$DH_OUT" | grep -m1 BLOCK)"
   fi
 else
-  record "doc_hygiene" "pass" "check-doc-hygiene.sh not found (skipped)"
+  record "doc_hygiene" "skip" "check-doc-hygiene.sh not found"
 fi
 
 # 3b3. DORMANT Wave 2b gate — PalaceBookRegistry/Sources package purity.
@@ -588,7 +619,7 @@ fi
 # extracted. See `scripts/check-bookregistry-package-purity.sh`.
 echo "--- BookRegistry package purity (dormant — Wave 2b) ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "bookregistry_package_purity" "pass" "Skipped (--mutation-only)"
+  record "bookregistry_package_purity" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-bookregistry-package-purity.sh ]; then
   BR_OUT=$(bash scripts/check-bookregistry-package-purity.sh 2>&1)
   if [ "$?" -eq 0 ]; then
@@ -597,7 +628,7 @@ elif [ -f scripts/check-bookregistry-package-purity.sh ]; then
     record "bookregistry_package_purity" "fail" "$(echo "$BR_OUT" | grep -m1 FAIL)"
   fi
 else
-  record "bookregistry_package_purity" "pass" "check-bookregistry-package-purity.sh not found (skipped)"
+  record "bookregistry_package_purity" "skip" "check-bookregistry-package-purity.sh not found"
 fi
 
 # 3b4. DORMANT Wave 3a gate — PalaceAccounts/Sources package purity.
@@ -605,7 +636,7 @@ fi
 # extracted. See `scripts/check-palaceaccounts-package-purity.sh`.
 echo "--- PalaceAccounts package purity (dormant — Wave 3a) ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "palaceaccounts_package_purity" "pass" "Skipped (--mutation-only)"
+  record "palaceaccounts_package_purity" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-palaceaccounts-package-purity.sh ]; then
   PA_OUT=$(bash scripts/check-palaceaccounts-package-purity.sh 2>&1)
   if [ "$?" -eq 0 ]; then
@@ -614,7 +645,7 @@ elif [ -f scripts/check-palaceaccounts-package-purity.sh ]; then
     record "palaceaccounts_package_purity" "fail" "$(echo "$PA_OUT" | grep -m1 FAIL)"
   fi
 else
-  record "palaceaccounts_package_purity" "pass" "check-palaceaccounts-package-purity.sh not found (skipped)"
+  record "palaceaccounts_package_purity" "skip" "check-palaceaccounts-package-purity.sh not found"
 fi
 
 # 3b5. DORMANT Wave 3b gate — PalaceDownloads/Sources package purity.
@@ -622,7 +653,7 @@ fi
 # extracted. See `scripts/check-palacedownloads-package-purity.sh`.
 echo "--- PalaceDownloads package purity (dormant — Wave 3b) ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "palacedownloads_package_purity" "pass" "Skipped (--mutation-only)"
+  record "palacedownloads_package_purity" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-palacedownloads-package-purity.sh ]; then
   PD_OUT=$(bash scripts/check-palacedownloads-package-purity.sh 2>&1)
   if [ "$?" -eq 0 ]; then
@@ -631,7 +662,83 @@ elif [ -f scripts/check-palacedownloads-package-purity.sh ]; then
     record "palacedownloads_package_purity" "fail" "$(echo "$PD_OUT" | grep -m1 FAIL)"
   fi
 else
-  record "palacedownloads_package_purity" "pass" "check-palacedownloads-package-purity.sh not found (skipped)"
+  record "palacedownloads_package_purity" "skip" "check-palacedownloads-package-purity.sh not found"
+fi
+
+# 3b6. Decomposition ratchets — locator count, god-class LOC, `.shared` reads.
+# Three whole-tree scans that each hold a baseline file. They were written with
+# baselines and pytests but wired into NOTHING, so the lines they exist to hold
+# could drift upward silently (audited 2026-08-20: all three orphaned). A check
+# nothing invokes is inert — see memory `fixes-must-be-systemic-not-remembered`.
+# Each exits non-zero only when the tree regresses PAST its committed baseline,
+# so they are no-ops on a clean tree and cost ~7s total.
+echo "--- Decomposition ratchets (locator / god-class LOC / .shared reads) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "decomposition_ratchets" "skip" "not run (--mutation-only)"
+else
+  RATCHET_FAILED=""
+  RATCHET_DETAIL=""
+  RATCHET_RAN=""
+  RATCHET_MISSING=""
+  for ratchet in check-appcontainer-locator-count.sh check-godclass-loc-freeze.sh check-shared-read-count.sh; do
+    # A MISSING ratchet is not a passing one. Skipping it silently and then
+    # reporting "all three at or under baseline" is how a deleted gate reads as
+    # green — name the ones that actually ran.
+    if [ ! -f "scripts/$ratchet" ]; then
+      RATCHET_MISSING="$RATCHET_MISSING $ratchet"
+      continue
+    fi
+    RATCHET_OUT=$(bash "scripts/$ratchet" 2>&1)
+    RATCHET_RC=$?
+    RATCHET_RAN="$RATCHET_RAN $ratchet"
+    if [ "$RATCHET_RC" -ne 0 ]; then
+      RATCHET_FAILED="yes"
+      RATCHET_DETAIL="$RATCHET_DETAIL $ratchet: $(echo "$RATCHET_OUT" | grep -m1 -iE 'FAIL|exceed|over baseline' | head -c 160);"
+    fi
+  done
+  if [ -n "$RATCHET_FAILED" ]; then
+    record "decomposition_ratchets" "fail" "$RATCHET_DETAIL"
+  elif [ -n "$RATCHET_MISSING" ]; then
+    # Some ran clean, but the report must not imply the missing ones did.
+    record "decomposition_ratchets" "skip" "ran:${RATCHET_RAN:- none} — MISSING:$RATCHET_MISSING"
+  else
+    record "decomposition_ratchets" "pass" "at or under baseline:$RATCHET_RAN"
+  fi
+fi
+
+# 3b7. Completion-isolation (diff-scoped).
+# Flags a completion handler invoked from a Task inside a non-main-actor
+# function: a @MainActor caller's closure then fails an isolation assertion and
+# the process is killed outright, with no error and no saved reading position
+# (PP-4955). Swift emits no warning for this.
+#
+# DIFF-SCOPED ON PURPOSE. A whole-tree run currently exits 1 on 11 pre-existing
+# violations in LCPAudiobooks + AudiobookBookmarkBusinessLogic, which is exactly
+# why this detector was never wired: as a scan-all gate it would block every
+# commit on debt it did not introduce. Passing only the changed Swift files
+# blocks NEW violations while leaving the known backlog to its own tickets.
+echo "--- Completion isolation (changed files) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "completion_isolation" "skip" "not run (--mutation-only)"
+elif [ ! -f scripts/check-completion-isolation.py ]; then
+  record "completion_isolation" "skip" "check-completion-isolation.py not found"
+elif [ -z "$CHANGED_SWIFT" ]; then
+  record "completion_isolation" "skip" "no changed production Swift files to scan"
+else
+  CI_FILES=()
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$f" ] && CI_FILES+=("$f")
+  done <<< "$CHANGED_SWIFT"
+  if [ "${#CI_FILES[@]}" -eq 0 ]; then
+    record "completion_isolation" "skip" "no changed production Swift files on disk to scan"
+  else
+    CI_OUT=$(python3 scripts/check-completion-isolation.py "${CI_FILES[@]}" 2>&1)
+    if [ "$?" -eq 0 ]; then
+      record "completion_isolation" "pass" "${#CI_FILES[@]} changed file(s); no completion delivered off the main actor"
+    else
+      record "completion_isolation" "fail" "$(echo "$CI_OUT" | head -1)"
+    fi
+  fi
 fi
 
 # 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
@@ -640,7 +747,7 @@ fi
 # See `scripts/check-adjacency-staleness.py`.
 echo "--- Adjacency staleness ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "adjacency_staleness" "pass" "Skipped (--mutation-only)"
+  record "adjacency_staleness" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-adjacency-staleness.py ]; then
   ADJ_DIFF=$(mktemp -t adj-diff.XXXX)
   git diff "$BASE"...HEAD > "$ADJ_DIFF" 2>/dev/null || true
@@ -655,7 +762,7 @@ elif [ -f scripts/check-adjacency-staleness.py ]; then
     record "adjacency_staleness" "pass" "${ADJ_WARN_COUNT:-0} stale-comment warning(s) — non-blocking"
   fi
 else
-  record "adjacency_staleness" "pass" "check-adjacency-staleness.py not found (skipped)"
+  record "adjacency_staleness" "skip" "check-adjacency-staleness.py not found"
 fi
 
 # 3d. Intent recorded (M1 universal-rigor-floor gate)
@@ -664,7 +771,7 @@ fi
 # (## Claims / ## Anti-claims / ## Files in scope). See `scripts/check-intent-recorded.py`.
 echo "--- Intent recorded ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "intent_recorded" "pass" "Skipped (--mutation-only)"
+  record "intent_recorded" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-intent-recorded.py ]; then
   IR_DIFF=$(mktemp -t ir-diff.XXXX)
   IR_MSG=$(mktemp -t ir-msg.XXXX)
@@ -685,7 +792,7 @@ elif [ -f scripts/check-intent-recorded.py ]; then
     record "intent_recorded" "fail" "Intent missing/invalid: $(echo "$IR_OUT" | head -3 | tr '\n' ' ')"
   fi
 else
-  record "intent_recorded" "pass" "check-intent-recorded.py not found (skipped)"
+  record "intent_recorded" "skip" "check-intent-recorded.py not found"
 fi
 
 # 3e. Superpartner spectrum (M1 universal-rigor-floor gate, warn-only)
@@ -695,7 +802,7 @@ fi
 # See `scripts/check-superpartner-spectrum.py`.
 echo "--- Superpartner spectrum ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "superpartner_spectrum" "pass" "Skipped (--mutation-only)"
+  record "superpartner_spectrum" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-superpartner-spectrum.py ]; then
   SP_DIFF=$(mktemp -t sp-diff.XXXX)
   git diff "$BASE"...HEAD > "$SP_DIFF" 2>/dev/null || true
@@ -710,7 +817,7 @@ elif [ -f scripts/check-superpartner-spectrum.py ]; then
     record "superpartner_spectrum" "pass" "${SP_WARN_COUNT:-0} superpartner warning(s) — non-blocking"
   fi
 else
-  record "superpartner_spectrum" "pass" "check-superpartner-spectrum.py not found (skipped)"
+  record "superpartner_spectrum" "skip" "check-superpartner-spectrum.py not found"
 fi
 
 # 3f. Test name-vs-body (M1 universal-rigor-floor gate, warn-only, file-based)
@@ -719,12 +826,12 @@ fi
 # files, not a diff. See `scripts/check-test-name-vs-body.py`.
 echo "--- Test name-vs-body ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "test_name_vs_body" "pass" "Skipped (--mutation-only)"
+  record "test_name_vs_body" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-test-name-vs-body.py ] && [ -n "$CHANGED_TEST_SWIFT" ]; then
   TNB_FILES=()
   while IFS= read -r f; do [ -n "$f" ] && [ -f "$f" ] && TNB_FILES+=("$f"); done <<< "$CHANGED_TEST_SWIFT"
   if [ "${#TNB_FILES[@]}" -eq 0 ]; then
-    record "test_name_vs_body" "pass" "No changed test files on disk"
+    record "test_name_vs_body" "skip" "No changed test files on disk"
   else
     TNB_OUT=$(python3 scripts/check-test-name-vs-body.py "${TNB_FILES[@]}" --quiet 2>&1)
     TNB_EXIT=$?
@@ -737,7 +844,7 @@ elif [ -f scripts/check-test-name-vs-body.py ] && [ -n "$CHANGED_TEST_SWIFT" ]; 
     fi
   fi
 else
-  record "test_name_vs_body" "pass" "No changed test files (skipped)"
+  record "test_name_vs_body" "skip" "No changed test files"
 fi
 
 # 3g-3l. Phase 3.5 class-detectable detectors (swarm_162a3219)
@@ -750,7 +857,7 @@ run_phase35_detector() {
   # $1=record key  $2=script  $3=block|warn  $4=pass message  $5=diff|scan (invocation mode)
   local key="$1" script="$2" mode="$3" pass_msg="$4" scan_mode="${5:-diff}"
   if [ "$MUTATION_ONLY" = "true" ]; then
-    record "$key" "pass" "Skipped (--mutation-only)"
+    record "$key" "skip" "not run (--mutation-only)"
   elif [ -f "scripts/$script" ]; then
     local d out exit_code
     if [ "$scan_mode" = "scan" ]; then
@@ -773,7 +880,7 @@ run_phase35_detector() {
       record "$key" "fail" "$(echo "$out" | head -3 | tr '\n' ' ')"
     fi
   else
-    record "$key" "pass" "scripts/$script not found (skipped)"
+    record "$key" "skip" "scripts/$script not found"
   fi
 }
 
@@ -802,7 +909,7 @@ run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "coverage_floors" "pass" "Skipped (--mutation-only)"
+  record "coverage_floors" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.json ]; then
   # Extract coverage from test results
   XCRESULT=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -newer /tmp/.verify-pr-start 2>/dev/null | head -1)
@@ -814,10 +921,10 @@ elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.j
       record "coverage_floors" "pass" "All module floors met"
     fi
   else
-    record "coverage_floors" "pass" "No xcresult found (skipped)"
+    record "coverage_floors" "skip" "No xcresult found"
   fi
 else
-  record "coverage_floors" "pass" "Coverage enforcement not configured (skipped)"
+  record "coverage_floors" "skip" "Coverage enforcement not configured"
 fi
 
 # 5. Mutation testing
@@ -838,7 +945,7 @@ fi
 echo "--- Mutation Testing ---"
 MUTATION_REPORTS_DIR=".forgeos/mutation-reports"
 if [ "$QUICK" = "true" ] && [ "$MUTATION_ONLY" != "true" ]; then
-  record "mutation" "pass" "Skipped (--quick mode)"
+  record "mutation" "skip" "Skipped (--quick mode)"
 elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
   TOTAL_KILLED=0
   TOTAL_MUTATIONS=0
@@ -1033,7 +1140,7 @@ PYEOF
     record "mutation" "pass" "$DETAIL"
   fi
 else
-  record "mutation" "pass" "No production Swift files changed (skipped)"
+  record "mutation" "skip" "No production Swift files changed"
 fi
 
 # 5b. Audiobook cross-vendor smoke (if audiobook files changed)
@@ -1050,11 +1157,11 @@ fi
 # is robust if the file lands on develop before Module B's PR merges.
 echo "--- Audiobook Cross-Vendor Smoke ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "audiobook_smoke" "pass" "Skipped (--mutation-only)"
+  record "audiobook_smoke" "skip" "Skipped (--mutation-only)"
 else
   AUDIOBOOK_CHANGED=$(echo "$ALL_CHANGED" | grep -E '^Palace/Audiobooks/|^ios-audiobooktoolkit/' || true)
   if [ -z "$AUDIOBOOK_CHANGED" ]; then
-    record "audiobook_smoke" "pass" "Skipped (no audiobook files changed)"
+    record "audiobook_smoke" "skip" "Skipped (no audiobook files changed)"
   else
     SMOKE_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
       -destination "id=$SIM_ID" \
@@ -1080,7 +1187,7 @@ fi
 # 6. Accessibility audit (if UI files changed)
 echo "--- Accessibility ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "accessibility" "pass" "Skipped (--mutation-only)"
+  record "accessibility" "skip" "Skipped (--mutation-only)"
 elif [ -n "$CHANGED_UI" ]; then
   # Check for missing accessibility identifiers in changed UI files
   A11Y_ISSUES=0
@@ -1103,7 +1210,7 @@ elif [ -n "$CHANGED_UI" ]; then
     record "accessibility" "fail" "$A11Y_ISSUES UI files missing accessibility annotations"
   fi
 else
-  record "accessibility" "pass" "No UI files changed (skipped)"
+  record "accessibility" "skip" "No UI files changed"
 fi
 
 # 6b. Ledger PR-drift check — flags contracts whose source files changed
@@ -1114,9 +1221,9 @@ fi
 #     [skip-ledger-check] in commit messages for typo/refactor PRs.
 echo "--- Ledger PR Drift ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "ledger_pr_drift" "pass" "Skipped (--mutation-only)"
+  record "ledger_pr_drift" "skip" "Skipped (--mutation-only)"
 elif [ ! -x scripts/ledger-pr-check.py ] || [ ! -d docs/ledger ]; then
-  record "ledger_pr_drift" "pass" "Ledger PR-drift check not available (skipped)"
+  record "ledger_pr_drift" "skip" "Ledger PR-drift check not available"
 else
   LEDGER_PR_OUT=$(scripts/ledger-pr-check.py "$BASE" 2>&1 || true)
   if echo "$LEDGER_PR_OUT" | grep -q "^✓ ledger pr-drift clean"; then
@@ -1140,11 +1247,11 @@ fi
 SIMDRIVE_REGRESS="${PALACE_QA_HARNESS:-$HOME/harness/palace-qa}/scripts/simdrive-regress.sh"
 echo "--- simdrive Replay ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "simdrive" "pass" "Skipped (--mutation-only)"
+  record "simdrive" "skip" "Not run (--mutation-only)"
 elif [ "$SIMDRIVE" != "true" ]; then
-  record "simdrive" "pass" "Skipped (pass --simdrive to enable)"
+  record "simdrive" "skip" "Not run (pass --simdrive to enable)"
 elif [ ! -x "$SIMDRIVE_REGRESS" ]; then
-  record "simdrive" "pass" "Unavailable (maintainer-only; not in this repo)"
+  record "simdrive" "skip" "Not run (maintainer-only tooling absent from this repo)"
 elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
   record "simdrive" "fail" "simdrive package not installed (pip3 install --pre simdrive)"
 else
@@ -1171,11 +1278,11 @@ fi
 CHAOS_PASS="${PALACE_QA_HARNESS:-$HOME/harness/palace-qa}/scripts/run-chaos-pass.sh"
 echo "--- Chaos Pass ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "chaos" "pass" "Skipped (--mutation-only)"
+  record "chaos" "skip" "not run (--mutation-only)"
 elif [ "$CHAOS" != "true" ]; then
-  record "chaos" "pass" "Skipped (pass --chaos to enable)"
+  record "chaos" "skip" "not run (opt-in; pass --chaos to enable)"
 elif [ ! -x "$CHAOS_PASS" ]; then
-  record "chaos" "pass" "Unavailable (maintainer-only; not in this repo)"
+  record "chaos" "skip" "driver unavailable (maintainer-only; not in this repo)"
 elif ! command -v claude >/dev/null 2>&1; then
   record "chaos" "fail" "chaos drives a headless agent; 'claude' CLI not on PATH"
 elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
@@ -1213,11 +1320,11 @@ fi
 echo "--- Coverage by FR ---"
 HARNESS_BIN="$HOME/harness/bin/harness"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "coverage_by_fr" "pass" "Skipped (--mutation-only)"
+  record "coverage_by_fr" "skip" "Skipped (--mutation-only)"
 elif [ ! -x "$HARNESS_BIN" ]; then
-  record "coverage_by_fr" "pass" "harness not installed (skipped)"
+  record "coverage_by_fr" "skip" "harness not installed"
 elif ! "$HARNESS_BIN" srd --help 2>&1 | grep -q '\bcoverage\b'; then
-  record "coverage_by_fr" "pass" "harness srd coverage subcommand not available (skipped)"
+  record "coverage_by_fr" "skip" "harness srd coverage subcommand not available"
 else
   COV_JSON=$("$HARNESS_BIN" srd coverage --json 2>/dev/null)
   # A missing sidecar is absent infrastructure, not code drift — failing here
@@ -1228,7 +1335,7 @@ else
   # branch below, because empty fr_gaps/missing/stale parse as all-zeros).
   COV_ERR=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('error',''))" 2>/dev/null || echo "unparseable")
   if [ "$COV_ERR" = "sidecar_missing" ]; then
-    record "coverage_by_fr" "pass" "coverage-matrix sidecar absent — skipped (hand-curated file; see harness srd coverage)"
+    record "coverage_by_fr" "skip" "coverage-matrix sidecar absent — skipped (hand-curated file; see harness srd coverage)"
     COV_SKIP=1
   fi
   if [ "${COV_SKIP:-0}" != "1" ]; then
@@ -1247,11 +1354,117 @@ else
   fi
 fi
 
+# --- Every leg must ACCOUNT for itself -------------------------------------
+#
+# A leg that never executes records nothing, and a summary built only from what
+# ran cannot tell "clean" from "never reached". Review demonstrated attacks that
+# reach that state while leaving the code present and `bash -n` clean: wrapping
+# a section in `if false`, inverting an outer guard, moving a block into an
+# uncalled function.
+#
+# THE OWED SET IS DERIVED from this script's own call sites, which is robust
+# against those by construction: each preserves the call-site text and removes
+# only the execution. It is read from SCRIPT_PATH, not `$0` — see above.
+EXPECTED_KEYS=$(grep -oE '(record|run_phase35_detector) "[a-z_0-9]+"' "$SCRIPT_PATH" \
+                | sed -E 's/.*"([a-z_0-9]+)"/\1/' \
+                | grep -vE '^leg_accounting' | sort -u)
+EXPECTED_COUNT=$(printf '%s\n' "$EXPECTED_KEYS" | grep -c .)
+
+# An empty derivation is the vacuous pass this whole branch is about: zero owed
+# legs means zero missing legs means green. Floor it.
+if [ "$EXPECTED_COUNT" -lt 30 ]; then
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  echo "  [FAIL] leg_accounting — derived only $EXPECTED_COUNT owed legs from $SCRIPT_PATH."
+  echo "         That is too few to be real: the derivation is broken, so the"
+  echo "         accounting below would pass without checking anything."
+  RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"derivation broken: $EXPECTED_COUNT legs\"}")
+else
+  MISSING_KEYS=""
+  for key in $EXPECTED_KEYS; do
+    case " ${RESULTS[*]} " in
+      *"\"check\":\"$key\""*) ;;
+      *) MISSING_KEYS="$MISSING_KEYS $key" ;;
+    esac
+  done
+
+  # A `skip` satisfies the accounting deliberately — "ran nothing and said so"
+  # is a different fact from "never reached". That leaves a hole: inverting a
+  # mode guard sends an ORDINARY run down a skip arm, so the leg accounts for
+  # itself while doing nothing.
+  #
+  # Close it by checking each reason against the flags the CALLER passed, held
+  # in ORIGINAL_ARGV from before parsing — reconciling against $MUTATION_ONLY et
+  # al. would be reconciling against the variable the tampering sets.
+  #
+  # POLARITY IS THE WHOLE DIFFICULTY, and the first version of this got it
+  # backwards in both directions. Two arms mean the OPPOSITE thing:
+  #
+  #   "Skipped (--mutation-only)"            skipped BECAUSE the flag was given
+  #   "Not run (pass --simdrive to enable)"  skipped BECAUSE it was NOT given
+  #
+  # Only the first kind can be impossible. Treating both alike made every
+  # ordinary run FAIL — including `--quick`, which is the documented pre-PR
+  # command and what the pre-push hook gates on — while still passing when
+  # tampered. Opt-in phrasing ("pass X to enable" / "opt-in") marks the second
+  # kind and is exempt.
+  #
+  # PASS details are censused too, not just skips: a leg can also claim a flag
+  # as the reason it PASSED (`--diff-baseline` does exactly that, and records
+  # `pass`, never `skip`), so a skip-only loop left it listed but unguarded —
+  # the appearance of coverage without the fact of it.
+  ARGV_TEXT=" ${ORIGINAL_ARGV[*]-} "
+  IMPOSSIBLE=""
+  for entry in "${RESULTS[@]}"; do
+    case "$entry" in
+      *'"status":"skip"'*|*'"status":"pass"'*) ;;
+      *) continue ;;
+    esac
+    entry_key=$(printf '%s' "$entry" | sed -E 's/.*"check":"([a-z_0-9]+)".*/\1/')
+    for flag in --mutation-only --quick --simdrive --chaos --diff-baseline; do
+      case "$entry" in
+        *"$flag"*) ;;
+        *) continue ;;
+      esac
+      # Opt-in phrasing means THIS flag's ABSENCE is the reason, so the entry is
+      # not impossible. Both spellings are scoped to the flag under test: a bare
+      # `*"opt-in"*` would exempt an entry for all five flags at once because
+      # this runs inside the per-flag loop.
+      # `*"opt-in; pass $flag"*` used to sit here too and was strictly subsumed
+      # by `*"pass $flag"*` — dead by construction, unkillable by any test.
+      case "$entry" in
+        *"pass $flag"*|*"opt-in; $flag"*) continue ;;
+      esac
+      case "$ARGV_TEXT" in
+        *" $flag "*) ;;
+        *) IMPOSSIBLE="$IMPOSSIBLE $entry_key($flag)" ;;
+      esac
+    done
+  done
+
+  if [ -n "$MISSING_KEYS" ]; then
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    echo "  [FAIL] leg_accounting — these checks recorded NOTHING, so they did not run:$MISSING_KEYS"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"unreported legs:$MISSING_KEYS\"}")
+  elif [ -n "$IMPOSSIBLE" ]; then
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    echo "  [FAIL] leg_accounting — reason names a flag the caller never passed:$IMPOSSIBLE"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"impossible reason:$IMPOSSIBLE\"}")
+  else
+    # RECORD THE SUCCESS. Without this the accounting is silent when it passes,
+    # so a run where the block was disabled outright looks exactly like a run
+    # where it passed — the defect it exists to detect, in itself.
+    PASS_COUNT=$((PASS_COUNT + 1))
+    echo "  [PASS] leg_accounting — $EXPECTED_COUNT/$EXPECTED_COUNT legs accounted for"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"pass\",\"detail\":\"$EXPECTED_COUNT/$EXPECTED_COUNT legs accounted for\"}")
+  fi
+fi
+
 # Summary
 echo ""
 echo "=== Summary ==="
 echo "  Passed: $PASS_COUNT"
 echo "  Failed: $FAIL_COUNT"
+echo "  Skipped: $SKIP_COUNT (ran nothing — not a pass)"
 
 # Write JSON report if requested
 if [ -n "$REPORT_FILE" ]; then
@@ -1262,6 +1475,7 @@ if [ -n "$REPORT_FILE" ]; then
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "pass_count": $PASS_COUNT,
   "fail_count": $FAIL_COUNT,
+  "skip_count": $SKIP_COUNT,
   "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
   "checks": [$RESULTS_JSON]
 }
@@ -1276,5 +1490,9 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
 fi
 
 echo ""
-echo "CLEAR: All checks passed."
+if [ "$SKIP_COUNT" -gt 0 ]; then
+  echo "CLEAR: no checks failed — but $SKIP_COUNT ran nothing. Not the same as verified."
+else
+  echo "CLEAR: All checks passed."
+fi
 exit 0

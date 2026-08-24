@@ -46,14 +46,14 @@ final class BackgroundReconciliationContractTests: XCTestCase {
     /// INV-4 core: a still-live background task is ALWAYS adopted, never
     /// restarted and never spuriously failed — EVEN when the registry state
     /// would otherwise route to a heal. A mutant that consults registry state
-    /// before checking task liveness (reordering the `if liveTaskIdentifiers…`
+    /// before checking task liveness (reordering the `if let liveID = adoptableTask(…)`
     /// guard below the switch) would `.markFailed` a download that is actually
     /// still running in the background — the exact double-start / spurious-fail
     /// bug INV-4 exists to prevent.
     func test_reconcile_liveTask_isAdopted_evenWhenRegistrySaysFailed() {
         let decisions = DownloadReconciliation.reconcile(
             persisted: [Self.record("A", task: 42)],
-            liveTaskIdentifiers: [42],
+            liveTasks: [42: URL(string: "https://example.invalid/A")!],
             registryStates: ["A": .downloadFailed]   // registry would say "fail"
         )
         XCTAssertEqual(decisions, [.adopt(bookID: "A", taskIdentifier: 42)])
@@ -67,7 +67,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
         for state: TPPBookState in [.downloading, .downloadNeeded, .SAMLStarted] {
             let decisions = DownloadReconciliation.reconcile(
                 persisted: [Self.record("A", task: 7)],
-                liveTaskIdentifiers: [],              // task 7 is NOT live
+                liveTasks: [:],              // task 7 is NOT live
                 registryStates: ["A": state]
             )
             XCTAssertEqual(decisions, [.restart(bookID: "A")],
@@ -82,7 +82,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
     func test_reconcile_deadTask_alreadyFailed_marksFailed() {
         let decisions = DownloadReconciliation.reconcile(
             persisted: [Self.record("A", task: 7)],
-            liveTaskIdentifiers: [],
+            liveTasks: [:],
             registryStates: ["A": .downloadFailed]
         )
         XCTAssertEqual(decisions, [.markFailed(bookID: "A")])
@@ -102,7 +102,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
         for state in cleanupStates {
             let decisions = DownloadReconciliation.reconcile(
                 persisted: [Self.record("A", task: 7)],
-                liveTaskIdentifiers: [],
+                liveTasks: [:],
                 registryStates: ["A": state]
             )
             XCTAssertEqual(decisions, [.cleanup(bookID: "A")],
@@ -112,7 +112,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
         // No registry entry at all (`.none`) → also cleanup, not a crash / restart.
         let missing = DownloadReconciliation.reconcile(
             persisted: [Self.record("A", task: 7)],
-            liveTaskIdentifiers: [],
+            liveTasks: [:],
             registryStates: [:]
         )
         XCTAssertEqual(missing, [.cleanup(bookID: "A")])
@@ -128,7 +128,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
                 Self.record("deadWanted", task: 2),
                 Self.record("deadFailed", task: 3)
             ],
-            liveTaskIdentifiers: [1],
+            liveTasks: [1: URL(string: "https://example.invalid/live")!],
             registryStates: [
                 "live": .downloading,
                 "deadWanted": .downloadNeeded,
@@ -152,7 +152,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
     // steps drifts loudly.
 
     /// Happy path: gate(true) → loadPersisted(1 dead-wanted record) →
-    /// liveTaskIdentifiers → registryState(book) → apply(.restart). The
+    /// liveTasks → registryState(book) → apply(.restart). The
     /// snapshot locks this five-step order.
     func test_launchReconciliation_happyPath_ordersGateLoadLiveStateApply() async {
         let log = CallLog()   // captured (not self) — Swift-6 Sendable-safe closures
@@ -166,9 +166,9 @@ final class BackgroundReconciliationContractTests: XCTestCase {
                 log.record("loadPersisted")
                 return [Self.record("A", task: 7)]
             },
-            liveTaskIdentifiers: {
-                log.record("liveTaskIdentifiers")
-                return []                      // task 7 is dead → restart
+            liveTasks: {
+                log.record("liveTasks")
+                return [:]                     // task 7 is dead → restart
             },
             registryState: { bookID in
                 log.record("registryState", args: ["bookId": bookID])
@@ -181,7 +181,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
 
         XCTAssertEqual(
             log.snapshot().map(\.method),
-            ["isRegistryLoaded", "loadPersisted", "liveTaskIdentifiers", "registryState", "apply"],
+            ["isRegistryLoaded", "loadPersisted", "liveTasks", "registryState", "apply"],
             "Launch reconciliation order: registry-loaded gate → load persisted → query live tasks → registry state → apply."
         )
     }
@@ -203,7 +203,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
                 return false
             },
             loadPersisted: { log.record("loadPersisted"); return [Self.record("A", task: 7)] },
-            liveTaskIdentifiers: { liveQueried = true; return [] },
+            liveTasks: { liveQueried = true; return [:] },
             registryState: { _ in .downloadNeeded },
             apply: { _ in applied = true }
         )
@@ -225,7 +225,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
         await DownloadReconciliation.runLaunchReconciliation(
             isRegistryLoaded: { log.record("isRegistryLoaded"); return true },
             loadPersisted: { log.record("loadPersisted"); return [] },
-            liveTaskIdentifiers: { liveQueried = true; log.record("liveTaskIdentifiers"); return [] },
+            liveTasks: { liveQueried = true; log.record("liveTasks"); return [:] },
             registryState: { _ in .downloadNeeded },
             apply: { _ in log.record("apply") }
         )

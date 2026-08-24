@@ -154,9 +154,15 @@
 #   describing it. Its reader died in 2020 (b34820563) with the UIAlertViewDelegate
 #   confirm-delete flow, whose writer already had no callers. Pure removal, no
 #   behavior change.
+# PP-4997 (-1 on MyBooksDownloadCenter, 1250 -> 1249): the PP-4997 reconcile fix
+#   needed each live task's URL as well as its identifier, which grew the hub by 7.
+#   Rather than re-baseline upward, LiveDownloadTaskBox moved to
+#   DownloadTaskPersistence.swift — where reconciliation already lives — and took a
+#   `capture(_:)` method with it, collapsing the extraction loop at the call site.
+#   Net -1 on the hub. The ratchet asked for extraction instead of growth and got it.
 1579 Palace/Audiobooks/AudiobookSessionManager.swift
 374 Palace/Accounts/Library/AccountsManager.swift
-1250 Palace/MyBooks/MyBooksDownloadCenter.swift
+1249 Palace/MyBooks/MyBooksDownloadCenter.swift
 981 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 638 Palace/SignInLogic/TPPSignInBusinessLogic.swift
 575 Palace/MyBooks/BorrowOperation.swift

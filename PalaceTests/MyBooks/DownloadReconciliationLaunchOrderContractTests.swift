@@ -39,9 +39,9 @@ final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
                 log.record("loadPersisted")
                 return [Self.record("b", task: 5)]
             },
-            liveTaskIdentifiers: { @Sendable in
+            liveTasks: { @Sendable in
                 log.record("getAllTasks")
-                return []   // dead task -> restart (registry says .downloading)
+                return [:]   // dead task -> restart (registry says .downloading)
             },
             registryState: { @Sendable bookID in
                 log.record("registryState", args: ["bookID": bookID])
@@ -69,9 +69,9 @@ final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
                 log.record("loadPersisted")
                 return []
             },
-            liveTaskIdentifiers: { @Sendable in
+            liveTasks: { @Sendable in
                 log.record("getAllTasks")
-                return []
+                return [:]
             },
             registryState: { @Sendable _ in .unregistered },
             apply: { @Sendable _ in log.record("apply") }

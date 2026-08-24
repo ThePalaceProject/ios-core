@@ -24,9 +24,10 @@
 
 ## Repro
 <!-- Durable reconstruction (contract §3). How the scenario was reproduced, so a future
-     reader can re-run it. Link the simdrive replay / fixture in-repo, not a dead run URL. -->
+     reader can re-run it. Point at an in-repo test where one exists; simulator replays are
+     maintainer-local and are not in this repository. -->
 - Scenario: <one sentence, patron-visible>   Jira: PP-XXXX
-- Replay / fixture: <.simdrive path or in-repo test> | none — <why>
+- Repro / test: <in-repo test, or the steps to re-run it> | none — <why>
 
 ## Class
 <!-- Fleet-legibility (contract §4). Is this a recurrence of a known failure class?

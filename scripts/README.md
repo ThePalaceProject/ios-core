@@ -76,20 +76,13 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `wire_orphan_tests.py` | Adds orphaned test files into the `PalaceTests` Sources phase. | dev/local (after extracting tests) |
 | `wire_untracked_tests.py` | Wires fully-untracked test files into the Xcode project. | dev/local |
 
-### simdrive (E2E sim driving) — maintainer-internal
-
-
-| Script | What it does | Called by |
-|--------|--------------|-----------|
-| `marks-diff.py` | Diffs two simdrive fixture corpora and emits findings rows. | maintainer dev/local |
 
 ### Mutation and test-quality
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `palace_mutate.py` | Mutation testing harness: mutates a Swift file, runs tests, reports surviving mutants. | dev/local, `mutation-gate.yml` |
+| `palace_mutate.py` | Mutation testing harness: mutates a Swift file, runs tests, reports surviving mutants. | dev/local |
 | `test_palace_mutate.py` | Unit tests for `palace_mutate.py` itself. | dev/local |
-| `summarize-mutation-reports.py` | Aggregates per-file mutation reports into a single summary. | `mutation-gate.yml` |
 | `generate-jira-tickets.py` | Creates Jira tickets from a regression-findings CSV. | dev/local (post-regression) |
 | `lint-test-quality.py` | Static linter that flags fluff tests (tautologies, no-op asserts, etc.). | dev/local, pre-PR check |
 
@@ -97,7 +90,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `a11y-coverage.py` | Measures VoiceOver label coverage against a simdrive fixture. | dev/local |
 | `snapshot-library-registry.py` | Snapshots the library registry JSON and diffs against live; surfaces account/auth-doc drift. | dev/local, drift-investigation |
 | `check_registry_snapshot_freshness.sh` | CI guard that fails if the committed registry snapshot is older than the live registry. | `ledger.yml` |
 | `export-module-contracts.py` | Emits module public-API contracts to `.forgeos/contracts/<module>.json`; consumed by the architect agent and `verify-pr.sh --check`. | dev/local, swarm |
@@ -109,8 +101,8 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 |--------|--------------|-----------|
 | `create-release-notes.sh` | CI-side wrapper that activates a venv and calls `release-notes.sh` for both `RELEASE_NOTES.md` and `CHANGELOG.md`. | `release.yml`, `release-rc.yml`, `release-on-merge.yml`, `upload*.yml` |
 | `release-notes.sh` | Walks git history (`fetch-depth: 0` required) to build release notes from commit messages. | `create-release-notes.sh`, RELEASING.md |
-| `ios-check-version.sh` | Validates the build number against tags before upload. | `upload*.yml`, `check-build-number.yml` |
-| `ios-binaries-check.sh` | Checks whether a binary with the current build number already exists. | `check-build-number.yml` |
+| `ios-check-version.sh` | Validates the build number against tags before upload. | `upload.yml`, `upload-on-merge.yml` |
+| `ios-binaries-check.sh` | Checks whether a binary with the current build number already exists. | dev/local (no workflow calls it) |
 | `ios-binaries-upload.sh` | Uploads exported `.ipa` to the Palace binaries bucket. | `upload*.yml` |
 | `testflight-upload.sh` | Uploads an `.ipa` to TestFlight. | dev/local (manual maintainer run) |
 | `install-profile.sh` | Installs a distribution provisioning profile on the CI runner. | `upload*.yml` |
