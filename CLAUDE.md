@@ -192,10 +192,9 @@ you have not individually identified; that is how real breakage lands.
 **[`docs/README.md`](./docs/README.md) is the map.** Read it before grepping the
 tree for background: it routes by question (why is the code like this / what do I
 re-verify here / how does this get tested) and it tells you where a new document
-belongs. The two indexes it points at —
-[`docs/architecture/README.md`](./docs/architecture/README.md) and
-[`.forgeos/wall-failures/INDEX.md`](./.forgeos/wall-failures/INDEX.md) — are
-complete by CI gate, so browsing them beats searching.
+belongs. The indexes it points at — starting with
+[`docs/architecture/README.md`](./docs/architecture/README.md) — are complete by
+CI gate, so browsing them beats searching.
 
 **Search order:** this file → `docs/README.md` → the area's
 `verification-checklist.md` → the ADR → the code. A raw grep across all docs
@@ -226,9 +225,7 @@ baseline entry that starts resolving also fails, so the amnesty can neither grow
 nor go stale.
 
 **A doc you will not maintain is worse than none** — a reader trusts it. Delete
-it instead; git history keeps it and the gates stop counting it. Archived swarm
-campaigns live at tag `archive/forgeos-swarms-2026-08-24` (see
-[`.forgeos/README.md`](./.forgeos/README.md)).
+it instead; git history keeps it and the gates stop counting it.
 
 ## Project Structure
 
