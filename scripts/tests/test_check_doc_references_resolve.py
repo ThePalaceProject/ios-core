@@ -23,9 +23,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DETECTOR = os.path.join(HERE, "..", "check-doc-references-resolve.py")
 
 
-def make_repo(tmp_path, docs: dict, scripts=(), workflows=(), baseline=None):
+def make_repo(tmp_path, docs: dict, scripts=(), workflows=(), baseline=None,
+              gitignore=()):
     """A throwaway git repo — the detector enumerates via `git ls-files`."""
     (tmp_path / "scripts").mkdir(parents=True, exist_ok=True)
+    if gitignore:
+        (tmp_path / ".gitignore").write_text(
+            "\n".join(gitignore) + "\n", encoding="utf-8")
     (tmp_path / ".github" / "workflows").mkdir(parents=True, exist_ok=True)
     for rel, body in docs.items():
         p = tmp_path / rel
@@ -438,3 +442,112 @@ def test_real_repo_is_clean(tmp_path):
     r = subprocess.run([sys.executable, DETECTOR, "--root", repo],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ---------------------------------------------------------------------------
+# Targets the repo's own ignore rules deny.
+#
+# The swarm archive was removed and `.forgeos/swarms/` added to .gitignore on
+# 2026-08-24. Nothing about the DOCS changed, but four references went dangling
+# the moment the archive stopped being tracked — because a bare `manifest.yaml`
+# in an ASCII layout diagram had been resolving, by basename, against archived
+# files that happened to carry that name.
+#
+# Those references are not drift. `.forgeos/swarms/` is written at RUN TIME by
+# the swarm skill into a directory git is told to ignore, so no tracked file can
+# ever satisfy them. That is the same category the detector already spells out
+# for APIKeys.swift: absence is the rule working. Baselining them instead would
+# file a permanent exemption under "pre-existing drift to fix one day", which is
+# the one thing the baseline is documented not to accept.
+# ---------------------------------------------------------------------------
+
+
+def test_runtime_artifact_target_with_directory_is_not_dangling(tmp_path):
+    """A path the repo's own ignore rules deny cannot be a broken pointer."""
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": """
+            Set `.forgeos/swarms/swarm_afec67f0/manifest.yaml` to `complete`.
+            """},
+        baseline=[], gitignore=[".forgeos/swarms/"],
+    )
+    r = run(root)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_runtime_artifact_bare_name_is_not_dangling(tmp_path):
+    """The layout-diagram form, which carries no directory to check-ignore."""
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": """
+            ```
+            .forgeos/swarms/<swarm_id>/
+            \u251c\u2500\u2500 manifest.yaml   # machine-readable state
+            ```
+            The `status` field in manifest.yaml progresses triaged -> complete.
+            """},
+        baseline=[], gitignore=[".forgeos/swarms/"],
+    )
+    r = run(root)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_dangling_workflow_still_blocks_when_nothing_ignores_it(tmp_path):
+    """CONTROL. The exemption must cover only what the ignore rules cover.
+
+    Without this, a fix for the four findings above is indistinguishable from
+    switching the workflow arm off — which is the failure the module docstring
+    exists to prevent."""
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": "Gated by `nightly-soak.yml`, see .github/workflows.\n"},
+        baseline=[], gitignore=[".forgeos/swarms/"],
+    )
+    r = run(root)
+    assert r.returncode == 1, "a genuinely missing workflow must still block"
+    assert "nightly-soak.yml" in r.stdout
+
+
+def test_ignore_exemption_does_not_swallow_other_forgeos_targets(tmp_path):
+    """CONTROL. `.forgeos/intent/` is live and tracked; only swarms/ is denied."""
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": "See `.forgeos/intent/pp-1234.yaml` for the contract.\n"},
+        baseline=[], gitignore=[".forgeos/swarms/"],
+    )
+    r = run(root)
+    assert r.returncode == 1, "a non-ignored .forgeos target must still block"
+    assert "pp-1234.yaml" in r.stdout
+
+
+def test_gitignored_but_EXTRACTED_script_still_blocks(tmp_path):
+    """THE REGRESSION THIS NEARLY SHIPPED.
+
+    A first cut exempted anything `git check-ignore` called ignored. That reads
+    as principled and quietly switches the detector off: the scripts extracted to
+    the maintainer-local harness are gitignored too, so every doc still pointing
+    at `scripts/regression-report.sh` — the exact rot this gate was built for —
+    would have gone silent. Ignored means "not tracked here", which covers the
+    artifact written tomorrow AND the script deleted yesterday. Only the first is
+    compliance, so the exemption is a path prefix and not an ignore query.
+    """
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": "Generate it with `scripts/regression-report.sh`.\n"},
+        baseline=[], gitignore=["scripts/regression-report.sh", ".forgeos/swarms/"],
+    )
+    r = run(root)
+    assert r.returncode == 1, "an extracted-but-gitignored script must still block"
+    assert "regression-report.sh" in r.stdout
+
+
+def test_gitignored_but_EXTRACTED_workflow_still_blocks(tmp_path):
+    """Same trap on the workflow arm, where the first cut also applied it."""
+    root = make_repo(
+        tmp_path,
+        docs={"docs/a.md": "The atlas runs from `tools/ledger/codeatlas.yml`.\n"},
+        baseline=[], gitignore=["tools/ledger/codeatlas.yml", ".forgeos/swarms/"],
+    )
+    r = run(root)
+    assert r.returncode == 1, "an extracted-but-gitignored workflow must still block"
+    assert "codeatlas.yml" in r.stdout

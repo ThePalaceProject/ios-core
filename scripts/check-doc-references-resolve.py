@@ -88,6 +88,27 @@ DELIBERATELY_UNTRACKED = (
     "TPPSecrets.swift",
 )
 
+
+# Written at RUN TIME into `.forgeos/swarms/`, which .gitignore denies, so no
+# tracked file can ever satisfy a reference to one. Same category as the secrets
+# above: absence is the rule working, not a broken pointer.
+#
+# DELIBERATELY A PREFIX, NOT A `git check-ignore` QUERY. "Is it gitignored" is the
+# wrong question and answering it switches this detector off: the scripts that
+# were extracted to the maintainer-local harness — regression-report.sh,
+# generate-regression-report.py, tools/ledger/codeatlas.yml — are ALSO gitignored,
+# and a doc still pointing at those is precisely the rot this gate was built to
+# catch. Ignored means "not tracked here", which covers both the artifact written
+# tomorrow and the script deleted yesterday. Only the first is compliance.
+RUNTIME_ARTIFACT_PREFIXES = (".forgeos/swarms/",)
+
+# The same artifacts named without their directory, as an ASCII layout diagram
+# names them. Kept literal and small: "exempt any bare name" would re-open the
+# hole this detector closes, since `unit-testing.yml` is a bare name too.
+IGNORED_RUNTIME_ARTIFACTS = frozenset({
+    "manifest.yaml",   # .forgeos/swarms/<id>/ — written by the swarm skill
+})
+
 # Placeholders in usage examples. Literal, small, and reviewable on purpose — a
 # heuristic ("skip anything under a segment called Path") would silently swallow
 # a real directory someone adds later.
@@ -204,9 +225,9 @@ def find_dangling(root: str) -> list[dict]:
             looks_like_url = any(tok in (m.group("dir") or "")
                                  for tok in ("://", "github.com", "www."))
             if "/" in full and not looks_like_url:
-                if full not in tracked:
+                if full not in tracked and not full.startswith(RUNTIME_ARTIFACT_PREFIXES):
                     findings.append({"doc": rel, "kind": "workflow", "target": full})
-            elif wf not in yaml_basenames:
+            elif wf not in yaml_basenames and wf not in IGNORED_RUNTIME_ARTIFACTS:
                 findings.append({"doc": rel, "kind": "workflow", "target": wf})
 
     # Stable, de-duplicated.

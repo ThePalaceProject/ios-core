@@ -17,11 +17,6 @@
       "target": "SWARM_ID/manifest.yaml"
     },
     {
-      "doc": ".claude/skills/swarm/SKILL.md",
-      "kind": "workflow",
-      "target": "manifest.yaml"
-    },
-    {
       "doc": "docs/SystemRequirements.md",
       "kind": "script",
       "target": "scripts/mutate.py"
@@ -415,21 +410,6 @@
       "doc": "docs/architecture/pp4156-retro-2026-05-04.md",
       "kind": "workflow",
       "target": "recording.yaml"
-    },
-    {
-      "doc": "docs/architecture/swarm-rigor-followups.md",
-      "kind": "workflow",
-      "target": "manifest.yaml"
-    },
-    {
-      "doc": "docs/architecture/swarm-workflow.md",
-      "kind": "workflow",
-      "target": "manifest.yaml"
-    },
-    {
-      "doc": "docs/architecture/swift6-modernization-handoff-2026-07-02.md",
-      "kind": "workflow",
-      "target": ".forgeos/swarms/swarm_afec67f0/manifest.yaml"
     },
     {
       "doc": "docs/architecture/triage-bot-shared-architecture-proposal.md",
