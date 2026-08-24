@@ -163,7 +163,22 @@ CHANGED_UI=$(echo "$CHANGED_SWIFT" \
   | grep -E '(UI/|View|Cell|Controller)' \
   | grep -Ev '(ViewModel|ViewState|Model|Reducer|Service|Provider|Mapper|Store|Coordinator|Builder|Dispatcher|Repository|Manager)\.swift$' \
   || true)
-ALL_CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null || true)
+# `--ignore-submodules=none` is load-bearing, not defensive (PP-4976).
+#
+# Every submodule in this repo has `ignore = all` set in git config, so a plain
+# `git diff --name-only` reports a submodule POINTER BUMP AS NOTHING AT ALL.
+# Measured on a real toolkit bump (862364d9b): default reports 0 lines for
+# `ios-audiobooktoolkit`, `--ignore-submodules=none` reports 1.
+#
+# The consequence is worse than a missed audiobook gate. A PR that ONLY bumps a
+# submodule — which is exactly how an audiobook toolkit change lands here —
+# produces an EMPTY changed-file list, which the docs-only predicate below reads
+# as "nothing but documentation changed" and skips the entire battery: build,
+# tests, coverage, mutation, accessibility. It then prints CLEAR.
+#
+# So the gate did not merely fail to see the submodule; it treated a
+# submodule-only change as a documentation change.
+ALL_CHANGED=$(git diff --name-only --ignore-submodules=none "$BASE"...HEAD 2>/dev/null || true)
 
 # Docs-only fast-path. If every changed file matches a documentation or
 # repo-meta pattern, skip the build/test/lint/coverage/mutation/a11y battery.
@@ -182,6 +197,22 @@ ALL_CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null || true)
 DOCS_ONLY=false
 if [ -n "$ALL_CHANGED" ]; then
   NON_DOCS=$(echo "$ALL_CHANGED" | grep -vE '^docs/|\.md$|\.txt$|(^|/)README|(^|/)LICENSE|(^|/)NOTICE|(^|/)CHANGELOG|(^|/)\.gitignore$|(^|/)\.gitattributes$' || true)
+  # NO BELT-AND-BRACES SUBMODULE CHECK HERE, DELIBERATELY.
+  #
+  # A first version of this fix added one: scan ALL_CHANGED for each submodule
+  # path and refuse the fast path if any matched. It was deleted because it
+  # cannot do the job it claims. Its whole purpose was "if the pointer ever
+  # becomes invisible to the diff again, catch it here" — but if the diff goes
+  # blind, ALL_CHANGED contains no submodule path either, so the check has
+  # nothing to match and stays silent. It derives its signal from the thing it
+  # is supposed to be independent of.
+  #
+  # It was also unkillable: with --ignore-submodules=none in place, removing the
+  # check entirely left every test green, because the submodule path is always
+  # in ALL_CHANGED and already fails the documentation filter above.
+  #
+  # The single load-bearing guard is --ignore-submodules=none on ALL_CHANGED,
+  # and it is pinned by test_verify_pr_submodule_visibility.py.
   if [ -z "$NON_DOCS" ]; then
     DOCS_ONLY=true
   fi
@@ -1159,7 +1190,37 @@ echo "--- Audiobook Cross-Vendor Smoke ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
   record "audiobook_smoke" "skip" "Skipped (--mutation-only)"
 else
-  AUDIOBOOK_CHANGED=$(echo "$ALL_CHANGED" | grep -E '^Palace/Audiobooks/|^ios-audiobooktoolkit/' || true)
+  # WHAT COUNTS AS AN AUDIOBOOK FILE. This matched only `Palace/Audiobooks/` and
+  # `ios-audiobooktoolkit/`, and a player view under `AppInfrastructure/` slipped
+  # through — the change was entirely about audiobook playback and the gate
+  # reported a pass having run nothing (PP-4976).
+  #
+  # A census of the tree found 25 files outside those two prefixes that reference
+  # audiobook types. Matching on a mere mention over-fires: `Strings.swift` and
+  # `AccessibilityIdentifiers.swift` name audiobooks and are not audiobook code.
+  # Two signals together are precise on the measured tree:
+  #   - the path names an audiobook concept, OR
+  #   - the file imports PalaceAudiobookToolkit
+  # That catches AudiobookMorphingPlayerView (import) and the bookmark/position
+  # adapters (path), and excludes the localisation and test-identifier files.
+  AUDIOBOOK_BY_PATH=$(echo "$ALL_CHANGED" \
+    | grep -iE '^Palace/Audiobooks/|^ios-audiobooktoolkit/|audiobook' || true)
+
+  # Import arm. Only inspects files that still exist — a deletion cannot be read,
+  # and its path is already covered by the arm above if it was audiobook-named.
+  AUDIOBOOK_BY_IMPORT=""
+  while IFS= read -r ab_file; do
+    [ -n "$ab_file" ] || continue
+    case "$ab_file" in *.swift) ;; *) continue ;; esac
+    [ -f "$ab_file" ] || continue
+    if grep -qE '^[[:space:]]*import PalaceAudiobookToolkit' "$ab_file" 2>/dev/null; then
+      AUDIOBOOK_BY_IMPORT="${AUDIOBOOK_BY_IMPORT}${ab_file}
+"
+    fi
+  done <<< "$ALL_CHANGED"
+
+  AUDIOBOOK_CHANGED=$(printf '%s\n%s\n' "$AUDIOBOOK_BY_PATH" "$AUDIOBOOK_BY_IMPORT" \
+    | grep -v '^[[:space:]]*$' | sort -u || true)
   if [ -z "$AUDIOBOOK_CHANGED" ]; then
     record "audiobook_smoke" "skip" "Skipped (no audiobook files changed)"
   else
