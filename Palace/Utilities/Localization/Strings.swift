@@ -616,6 +616,10 @@ struct Strings {
         // Block-by-block navigation (DAISY reading-810, PP-4533). The title of the
         // VoiceOver custom rotor that steps through logical content blocks.
         static let blockRotorTitle = NSLocalizedString("Blocks", value: "Blocks", comment: "VoiceOver rotor title for block-by-block reader navigation")
+        // Chapter scrubber (PP-5006). VoiceOver name for the drag-to-navigate
+        // track; its spoken VALUE is composed by TPPReaderPositionReport from
+        // strings the reader already ships.
+        static let readingPosition = NSLocalizedString("Reading position", value: "Reading position", comment: "VoiceOver label for the reader's drag-to-navigate position control")
     }
 
     struct TPPBarCode {

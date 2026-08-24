@@ -847,6 +847,7 @@ extension TPPEPUBViewController: @preconcurrency TPPReaderSettingsDelegate {
         // Update label colors to match theme
         positionLabel.textColor = textColor.withAlphaComponent(0.7)
         bookTitleLabel.textColor = textColor.withAlphaComponent(0.7)
+        chapterScrubber?.apply(textColor: textColor)
     }
 }
 

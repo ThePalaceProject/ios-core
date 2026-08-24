@@ -115,6 +115,7 @@ struct DeveloperSettingsView: View {
             DevToggleRow(title: "In-App Playback Navigation", isOn: $viewModel.inAppPlaybackNavEnabled)
             DevToggleRow(title: "Continuation Cards", isOn: $viewModel.continuationCardsEnabled)
             DevToggleRow(title: "LCP Audiobook Streaming", isOn: $viewModel.lcpAudiobookStreamingEnabled)
+            DevToggleRow(title: "EPUB Chapter Scrubber", isOn: $viewModel.chapterScrubberEnabled)
             DevToggleRow(title: "Force Rating Prompt Eligible", isOn: $viewModel.appRatingForceEligible)
             DevActionRow(title: "Trigger Rating Prompt Now", color: .blue) {
                 viewModel.triggerRatingPromptNow()

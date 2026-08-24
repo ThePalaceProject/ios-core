@@ -72,6 +72,16 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     private(set) var navigatorContainer: UIView!
     private(set) lazy var positionLabel = UILabel()
     private(set) lazy var bookTitleLabel = UILabel()
+
+    /// PP-5006 prototype: the drag-to-navigate chapter scrubber. Nil unless the
+    /// Testing-menu flag is on, so with the flag off the reader's view
+    /// hierarchy and layout are byte-for-byte what they were before.
+    private(set) var chapterScrubber: ChapterScrubberView?
+
+    /// Reads the chapter-scrubber flag. A closure rather than a protocol
+    /// because the flag is a prototype-only local override, and this mirrors
+    /// `AudiobookSessionManager`'s `inAppPlaybackNavEnabledProvider` seam.
+    private let chapterScrubberEnabled: () -> Bool
     private var isShowingSample: Bool = false
     private var initialLocation: Locator?
     private var subscriptions: Set<AnyCancellable> = []
@@ -123,10 +133,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
          forSample: Bool = false,
          initialLocation: Locator? = nil,
          bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
-         accountsManager: AccountsManager = AppContainer.production().accountsManager) {
+         accountsManager: AccountsManager = AppContainer.production().accountsManager,
+         chapterScrubberEnabled: @escaping () -> Bool = { RemoteFeatureFlags.shared.isChapterScrubberEnabled }) {
 
         self.navigator = navigator
         self.publication = publication
+        self.chapterScrubberEnabled = chapterScrubberEnabled
         self.isShowingSample = forSample
         self.initialLocation = initialLocation
         self.initialLocationGate = ReaderInitialLocationNavigator(initialLocation: initialLocation)
@@ -237,6 +249,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
             positionLabel.rightAnchor.constraint(equalTo: navigatorContainer.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
             positionLabel.topAnchor.constraint(greaterThanOrEqualTo: navigator.view.bottomAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin / 2)
         ])
+
+        setUpChapterScrubberIfEnabled()
 
         // Book title label - positioned below status bar using safe area
         // Previously at 20px from container top, which overlapped the status bar
@@ -423,6 +437,68 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         bookmarkBarButton?.accessibilityLabel = label
     }
 
+    // ----------------------------------------------------------------------------
+    // MARK: - Chapter scrubber (PP-5006 prototype)
+
+    /// Builds the scrubber and hangs it in the bottom letterbox, just above the
+    /// position label. Does nothing at all when the Testing-menu flag is off.
+    private func setUpChapterScrubberIfEnabled() {
+        guard chapterScrubberEnabled() else { return }
+
+        let scrubber = ChapterScrubberView()
+        scrubber.translatesAutoresizingMaskIntoConstraints = false
+        // Joins the chrome that `updateOverlayLabelsVisibility` fades, so it
+        // arrives with the same tap that reveals the navigation bar.
+        scrubber.isHidden = true
+        scrubber.alpha = 0
+        scrubber.onCommit = { [weak self] target in
+            self?.navigateToScrubTarget(target)
+        }
+        navigatorContainer.addSubview(scrubber)
+
+        NSLayoutConstraint.activate([
+            scrubber.leftAnchor.constraint(equalTo: navigatorContainer.leftAnchor,
+                                           constant: TPPBaseReaderViewController.overlayLabelMargin),
+            scrubber.rightAnchor.constraint(equalTo: navigatorContainer.rightAnchor,
+                                            constant: -TPPBaseReaderViewController.overlayLabelMargin),
+            scrubber.bottomAnchor.constraint(equalTo: positionLabel.topAnchor, constant: -6)
+        ])
+
+        chapterScrubber = scrubber
+        loadChapterScrubberModel()
+    }
+
+    /// Reads the table of contents and the position list once, off the drag
+    /// path. `positionsByReadingOrder()` walks every spine resource the first
+    /// time it is asked, which on a long book is the expensive part of the
+    /// whole feature — doing it here means a drag never waits for it.
+    private func loadChapterScrubberModel() {
+        Task { @MainActor [weak self] in
+            guard let publication = self?.publication else { return }
+            let model = await ChapterScrubberModel.make(from: publication)
+            // Weak-captured: a reader closed mid-load simply drops the result.
+            guard let self else { return }
+
+            self.chapterScrubber?.model = model
+            // A book with no chapters AND no positions has nowhere to scrub to;
+            // show nothing rather than a track that cannot move.
+            self.chapterScrubber?.isUserInteractionEnabled = model.isUsable
+            self.updateOverlayLabelsVisibility(animated: false)
+        }
+    }
+
+    /// The one place a scrub navigates. Runs after the patron lifts their
+    /// finger (or after a VoiceOver adjustment), never during a drag.
+    private func navigateToScrubTarget(_ target: ChapterScrubberModel.Target) {
+        manualNavigationPending = true
+        Task { @MainActor in
+            guard let locator = await publication.locate(progression: target.progression) else {
+                return
+            }
+            await navigator.go(to: locator, options: NavigatorGoOptions(animated: false))
+        }
+    }
+
     func toggleNavigationBar() {
         navigationBarHidden = !navigationBarHidden
         // Fade the overlay chrome (book title + position) in lockstep with the
@@ -449,21 +525,41 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
             voiceOverRunning: UIAccessibility.isVoiceOverRunning)
         let targetAlpha: CGFloat = hidden ? 0 : 1
 
+        // PP-5006: the scrubber is part of the same chrome, so it arrives and
+        // leaves with the labels — the tap that reveals the navigation bar
+        // reveals the scrubber too. Unlike the labels it stays visible under
+        // VoiceOver, because it is the only one of the three a non-visual
+        // patron can operate. A book with nothing to scrub through keeps it
+        // hidden regardless.
+        let scrubber = chapterScrubber
+        let scrubberHidden = !(scrubber?.model.isUsable ?? false)
+            || Self.chapterScrubberHidden(
+                navigationBarHidden: navigationBarHidden,
+                voiceOverRunning: UIAccessibility.isVoiceOverRunning)
+        let scrubberAlpha: CGFloat = scrubberHidden ? 0 : 1
+
         // Reveal: unhide first so the fade-in is visible.
         if !hidden {
             bookTitleLabel.isHidden = false
             positionLabel.isHidden = false
+        }
+        if !scrubberHidden {
+            scrubber?.isHidden = false
         }
 
         if animated && !UIAccessibility.isReduceMotionEnabled {
             UIView.animate(withDuration: 0.25, animations: {
                 self.bookTitleLabel.alpha = targetAlpha
                 self.positionLabel.alpha = targetAlpha
+                scrubber?.alpha = scrubberAlpha
             }, completion: { _ in
                 // Conceal: hide only after the fade-out completes.
                 if hidden {
                     self.bookTitleLabel.isHidden = true
                     self.positionLabel.isHidden = true
+                }
+                if scrubberHidden {
+                    scrubber?.isHidden = true
                 }
             })
         } else {
@@ -471,7 +567,20 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
             positionLabel.alpha = targetAlpha
             bookTitleLabel.isHidden = hidden
             positionLabel.isHidden = hidden
+            scrubber?.alpha = scrubberAlpha
+            scrubber?.isHidden = scrubberHidden
         }
+    }
+
+    /// Pure decision for the chapter scrubber's visibility. It follows the
+    /// reader's chrome — visible when the navigation bar is showing — but,
+    /// unlike the passive overlay labels, it stays available under VoiceOver:
+    /// hiding it would remove the only drag-free way to move through the book.
+    static func chapterScrubberHidden(navigationBarHidden: Bool, voiceOverRunning: Bool) -> Bool {
+        if voiceOverRunning {
+            return false
+        }
+        return navigationBarHidden
     }
 
     func updateNavigationBar(animated: Bool = true) {
@@ -751,6 +860,13 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
             }()
 
             bookTitleLabel.text = publication.metadata.title
+
+            // Keep the scrubber's thumb on the patron's real position. The
+            // control ignores this while a drag is in flight, so a location
+            // update cannot yank the thumb out from under a finger.
+            if let progression = locator.locations.totalProgression {
+                chapterScrubber?.setProgression(progression, animated: true)
+            }
 
             if let resourceIndex = publication.resourceIndex(forLocator: locator),
                bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator)) != nil {
