@@ -480,9 +480,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
             guard let self else { return }
 
             self.chapterScrubber?.model = model
-            // A book with no chapters AND no positions has nowhere to scrub to;
-            // show nothing rather than a track that cannot move.
-            self.chapterScrubber?.isUserInteractionEnabled = model.isUsable
+            // A book with no chapters AND no positions has nowhere to scrub to.
+            // `updateOverlayLabelsVisibility` keeps the control hidden in that
+            // case; the control itself also refuses to begin a scrub.
             self.updateOverlayLabelsVisibility(animated: false)
         }
     }
@@ -490,11 +490,14 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     /// The one place a scrub navigates. Runs after the patron lifts their
     /// finger (or after a VoiceOver adjustment), never during a drag.
     private func navigateToScrubTarget(_ target: ChapterScrubberModel.Target) {
-        manualNavigationPending = true
         Task { @MainActor in
             guard let locator = await publication.locate(progression: target.progression) else {
+                // Nothing to navigate to; leave `manualNavigationPending`
+                // untouched so the next natural page turn is not misread as a
+                // deliberate jump.
                 return
             }
+            manualNavigationPending = true
             await navigator.go(to: locator, options: NavigatorGoOptions(animated: false))
         }
     }
@@ -572,15 +575,22 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         }
     }
 
-    /// Pure decision for the chapter scrubber's visibility. It follows the
-    /// reader's chrome — visible when the navigation bar is showing — but,
-    /// unlike the passive overlay labels, it stays available under VoiceOver:
-    /// hiding it would remove the only drag-free way to move through the book.
+    /// Pure decision for the chapter scrubber's visibility.
+    ///
+    /// The scrubber belongs to the same immersive-reading chrome as the book
+    /// title and position labels — the chrome that is visible while the
+    /// navigation bar is HIDDEN, and that gets out of the way when a tap brings
+    /// the navigation bar in. So it tracks `overlayLabelsHidden` exactly, with
+    /// one deliberate exception: it stays available under VoiceOver, where the
+    /// passive labels hide. The labels hide there because their content is
+    /// surfaced through the rotor instead; the scrubber is not content, it is
+    /// the only drag-free way to move through the book, and hiding it would
+    /// take the feature away from the patrons who most need it.
     static func chapterScrubberHidden(navigationBarHidden: Bool, voiceOverRunning: Bool) -> Bool {
         if voiceOverRunning {
             return false
         }
-        return navigationBarHidden
+        return !navigationBarHidden
     }
 
     func updateNavigationBar(animated: Bool = true) {

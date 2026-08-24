@@ -323,31 +323,50 @@ final class ChapterScrubberViewTests: XCTestCase {
 @MainActor
 final class ChapterScrubberChromeVisibilityTests: XCTestCase {
 
-    func testScrubber_IsHiddenWhileTheReaderIsInImmersiveMode() {
-        XCTAssertTrue(
+    func testScrubber_IsVisibleInImmersiveReadingAlongsideTheProgressLabels() {
+        // Palace's progress chrome lives in immersive mode: the position label
+        // is on screen precisely while the navigation bar is hidden. The
+        // scrubber joins THAT chrome, not the navigation bar.
+        XCTAssertFalse(
             TPPBaseReaderViewController.chapterScrubberHidden(
                 navigationBarHidden: true, voiceOverRunning: false)
         )
     }
 
-    func testScrubber_AppearsWithTheSameTapThatRevealsTheNavigationBar() {
-        XCTAssertFalse(
+    func testScrubber_GetsOutOfTheWayWhenTheNavigationBarComesIn() {
+        XCTAssertTrue(
             TPPBaseReaderViewController.chapterScrubberHidden(
                 navigationBarHidden: false, voiceOverRunning: false)
         )
     }
 
+    func testScrubber_TracksTheOverlayLabelsExceptUnderVoiceOver() {
+        // Same chrome, same rule — the scrubber must not appear or vanish on a
+        // different tap than the labels it sits above.
+        for navigationBarHidden in [true, false] {
+            XCTAssertEqual(
+                TPPBaseReaderViewController.chapterScrubberHidden(
+                    navigationBarHidden: navigationBarHidden, voiceOverRunning: false),
+                TPPBaseReaderViewController.overlayLabelsHidden(
+                    navigationBarHidden: navigationBarHidden, voiceOverRunning: false),
+                "scrubber and overlay labels disagree at navigationBarHidden=\(navigationBarHidden)"
+            )
+        }
+    }
+
     func testScrubber_StaysAvailableUnderVoiceOverUnlikeThePassiveOverlayLabels() {
-        // The overlay labels hide under VoiceOver because their content is
-        // surfaced elsewhere. The scrubber is operable, so hiding it would
-        // remove the feature from the patrons who most need a drag-free jump.
-        XCTAssertTrue(
-            TPPBaseReaderViewController.overlayLabelsHidden(
-                navigationBarHidden: true, voiceOverRunning: true)
-        )
-        XCTAssertFalse(
-            TPPBaseReaderViewController.chapterScrubberHidden(
-                navigationBarHidden: true, voiceOverRunning: true)
-        )
+        // The labels hide under VoiceOver because their content is surfaced
+        // through the rotor. The scrubber is not content — it is the only
+        // drag-free way to move through the book.
+        for navigationBarHidden in [true, false] {
+            XCTAssertTrue(
+                TPPBaseReaderViewController.overlayLabelsHidden(
+                    navigationBarHidden: navigationBarHidden, voiceOverRunning: true)
+            )
+            XCTAssertFalse(
+                TPPBaseReaderViewController.chapterScrubberHidden(
+                    navigationBarHidden: navigationBarHidden, voiceOverRunning: true)
+            )
+        }
     }
 }

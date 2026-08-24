@@ -31,7 +31,8 @@ final class ChapterScrubberView: UIControl {
 
     // MARK: - State
 
-    /// The book's shape. Setting it redraws the ticks and re-enables the control.
+    /// The book's shape: where the chapters start and where the pages fall.
+    /// Setting it redraws the tick marks.
     var model: ChapterScrubberModel = .empty {
         didSet {
             guard model != oldValue else { return }

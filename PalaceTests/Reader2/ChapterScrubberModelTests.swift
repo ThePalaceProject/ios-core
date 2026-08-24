@@ -91,6 +91,23 @@ final class ChapterScrubberModelTests: XCTestCase {
         XCTAssertEqual(target.pageCount, 0)
     }
 
+    func testTarget_ReportsAPageIfAndOnlyIfTheBookReportsPages() {
+        // `ChapterScrubberReadout` relies on this: it prints `page of pageCount`
+        // whenever `page` is non-nil, without re-checking the count. If the two
+        // could ever disagree the readout would say "Page 3 of 0".
+        for positions in [[], [0.0], [0.0, 0.5], [0.0, 0.25, 0.5, 0.75]] as [[Double]] {
+            let model = ChapterScrubberModel(chapters: [], positionProgressions: positions)
+            for fraction in [0.0, 0.3, 0.5, 0.99, 1.0] {
+                let target = model.target(atFraction: fraction)
+                XCTAssertEqual(
+                    target.page != nil,
+                    target.pageCount > 0,
+                    "page/pageCount disagree at \(fraction) with \(positions.count) positions"
+                )
+            }
+        }
+    }
+
     // MARK: - Percent
 
     func testTarget_RoundsPercentToTheNearestWholeNumber() {
@@ -209,6 +226,91 @@ final class ChapterScrubberModelTests: XCTestCase {
         XCTAssertFalse(ChapterScrubberModel(chapters: [], positionProgressions: [0.0]).isUsable)
     }
 
+    // MARK: - Long books
+    //
+    // A several-hundred-page novel is thousands of Readium positions. The drag
+    // path answers every touch-moved event from this model, so what matters is
+    // that it stays CORRECT and finite at that size — an O(n) scan or an
+    // off-by-one in the binary search shows up here as a non-monotonic sweep,
+    // not as a stopwatch reading. The timing variant is env-gated below because
+    // a wall-clock assertion under parallel test load measures the machine.
+
+    /// ~5,000 positions and 400 chapters — the shape of a long novel.
+    private func makeLongBookModel() -> ChapterScrubberModel {
+        let positionCount = 5_000
+        let chapterCount = 400
+        return ChapterScrubberModel(
+            chapters: (0..<chapterCount).map {
+                .init(title: "Chapter \($0 + 1)", startProgression: Double($0) / Double(chapterCount))
+            },
+            positionProgressions: (0..<positionCount).map { Double($0) / Double(positionCount) }
+        )
+    }
+
+    func testTarget_OnALongBook_StaysMonotonicAcrossAFullDrag() {
+        // Sweep the whole track the way a finger does. Page and percent must
+        // never go backwards while the fraction goes forwards.
+        let model = makeLongBookModel()
+        var lastPage = 0
+        var lastPercent = 0
+
+        for step in 0...1_000 {
+            let target = model.target(atFraction: Double(step) / 1_000)
+            let page = try! XCTUnwrap(target.page)
+            XCTAssertGreaterThanOrEqual(page, lastPage, "page went backwards at step \(step)")
+            XCTAssertGreaterThanOrEqual(target.percent, lastPercent, "percent went backwards at step \(step)")
+            lastPage = page
+            lastPercent = target.percent
+        }
+
+        XCTAssertEqual(lastPage, 5_000)
+        XCTAssertEqual(lastPercent, 100)
+    }
+
+    func testTarget_OnALongBook_ResolvesTheExactPageAndChapter() {
+        // Binary search over 5,000 entries: an off-by-one is invisible on the
+        // small fixtures above and obvious here.
+        let model = makeLongBookModel()
+
+        let target = model.target(atFraction: 0.5)
+        XCTAssertEqual(target.page, 2_501)
+        XCTAssertEqual(target.pageCount, 5_000)
+        XCTAssertEqual(target.chapterTitle, "Chapter 201")
+
+        // One position before the halfway mark.
+        XCTAssertEqual(model.target(atFraction: 0.5 - 1.0 / 5_000).page, 2_500)
+    }
+
+    func testStep_OnALongBook_AdvancesOneChapterAtATime() {
+        let model = makeLongBookModel()
+        let start = 0.5
+        let next = model.step(from: start, forward: true)
+        XCTAssertEqual(next, 0.5025, accuracy: 1e-9)
+        XCTAssertEqual(model.target(atFraction: next).chapterTitle, "Chapter 202")
+    }
+
+    /// Guards the ALGORITHM, not the machine. A drag update is two binary
+    /// searches over ~5,000 entries — roughly a microsecond. The ceiling below
+    /// is three orders of magnitude above that, so ordinary test-host load
+    /// cannot flip it; only a regression to a linear scan (or an accidental
+    /// `await` on the drag path) would. The measured cost is printed so a
+    /// reviewer can see the real headroom rather than infer it.
+    func testTarget_OnALongBook_CostsFarLessThanAFrame() {
+        let model = makeLongBookModel()
+        let updates = 1_000
+        let started = Date()
+        for step in 0..<updates {
+            _ = model.target(atFraction: Double(step) / Double(updates))
+        }
+        let perUpdate = Date().timeIntervalSince(started) / Double(updates)
+
+        print("[PP-5006] chapter-scrubber drag update: \(perUpdate * 1_000_000) µs over 5,000 positions")
+
+        // One 60fps frame is 16,667 µs. 1,000 µs still leaves 16x headroom and
+        // is ~1000x the expected cost.
+        XCTAssertLessThan(perUpdate, 0.001, "per-update cost \(perUpdate)s suggests the drag path is no longer O(log n)")
+    }
+
     // MARK: - Chapter stepping (VoiceOver increment / decrement)
 
     func testStep_Forward_LandsOnTheNextChapterStart() {
@@ -217,6 +319,11 @@ final class ChapterScrubberModelTests: XCTestCase {
 
     func testStep_Backward_LandsOnThePreviousChapterStart() {
         XCTAssertEqual(makeModel().step(from: 0.45, forward: false), 0.4)
+    }
+
+    func testStep_ForwardFromExactlyOnAChapterStart_MovesToTheNextChapter() {
+        // Otherwise VoiceOver increment wedges on the current boundary forever.
+        XCTAssertEqual(makeModel().step(from: 0.4, forward: true), 0.5)
     }
 
     func testStep_BackwardFromExactlyOnAChapterStart_MovesToThePriorChapter() {

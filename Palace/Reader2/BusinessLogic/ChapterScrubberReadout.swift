@@ -31,7 +31,10 @@ enum ChapterScrubberReadout {
         }
 
         var detail: [String] = []
-        if let page = target.page, target.pageCount > 0 {
+        // `page` is non-nil exactly when the book reported positions, so the
+        // count is known to be positive here — guarding it again would be an
+        // unreachable branch.
+        if let page = target.page {
             detail.append(String(format: Strings.TPPBaseReaderViewController.pageOf, page) + "\(target.pageCount)")
         }
         detail.append(String(format: Strings.TPPBaseReaderViewController.percentRead, target.percent))
