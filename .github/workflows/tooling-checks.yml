@@ -29,7 +29,13 @@ jobs:
           python-version: '3.12'
 
       - name: Install test deps
-        run: pip install --quiet pytest
+        # PyYAML: test_every_bash_test_is_invoked.py parses the workflows as
+        # YAML rather than scanning them as text, because a character-window
+        # scan borrowed a neighbouring step's `exit 1` and passed a fail-open
+        # gate. That parser needs the module, and the runner does not have it by
+        # default — nine review rounds missed this because every one of them ran
+        # on a machine that did.
+        run: pip install --quiet pytest PyYAML
 
       # 1. Syntax-check every committed shell script. `scripts/hooks` is a
       #    machine-local symlink into the harness (absent on CI), so it is
