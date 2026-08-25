@@ -396,6 +396,29 @@ final class RemoteFeatureFlags: @unchecked Sendable {
       defaults.object(forKey: Self.appRatingForceEligibleLocalOverrideKey) as? Bool ?? false
     }
 
+    // MARK: - EPUB Chapter Scrubber (PP-5006)
+
+    /// UserDefaults key for the chapter-scrubber prototype toggle in the
+    /// Testing menu.
+    static let chapterScrubberLocalOverrideKey = "RemoteFeatureFlags.chapterScrubberOverride"
+
+    /// Whether the EPUB reader shows the drag-to-navigate chapter scrubber.
+    /// Defaults to false; there is deliberately NO remote flag behind it — this
+    /// is a prototype evaluated from the Testing menu (PP-5006), and shipping it
+    /// is a separate decision that would introduce a real flag at that point.
+    var isChapterScrubberEnabled: Bool {
+        Self.isChapterScrubberEnabled(in: defaults)
+    }
+
+    /// The flag as what it actually is: one `UserDefaults` read, with no
+    /// Firebase, no cache, and no instance state behind it. Exposed statically
+    /// so the reader can consult it without holding a singleton or resolving
+    /// the composition root — both of which the decomposition ratchets count,
+    /// and rightly, since neither would buy anything here.
+    static func isChapterScrubberEnabled(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: Self.chapterScrubberLocalOverrideKey) as? Bool ?? false
+    }
+
     /// The remote-tunable eligibility thresholds. Any threshold missing or
     /// non-positive in Remote Config falls back to `RatingConfig.fallback`.
     var appRatingConfig: RatingConfig {

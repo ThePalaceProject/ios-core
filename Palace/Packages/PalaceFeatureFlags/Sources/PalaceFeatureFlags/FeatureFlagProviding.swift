@@ -37,4 +37,7 @@ public protocol FeatureFlagProviding: AnyObject, Sendable {
     var isSideLoadingEnabled: Bool { get }
     var isAppRatingPromptEnabled: Bool { get }
     var isAppRatingForceEligible: Bool { get }
+    /// PP-5006 prototype: the EPUB reader's drag-to-navigate chapter scrubber.
+    /// Local Testing-menu override only — no remote flag behind it.
+    var isChapterScrubberEnabled: Bool { get }
 }

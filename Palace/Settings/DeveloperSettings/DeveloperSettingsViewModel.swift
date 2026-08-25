@@ -117,6 +117,12 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { overrideDefaults.set(appRatingForceEligible, forKey: RemoteFeatureFlags.appRatingForceEligibleLocalOverrideKey) }
     }
 
+    /// PP-5006: shows the EPUB reader's drag-to-navigate chapter scrubber.
+    /// Prototype only — local override, no remote flag behind it.
+    @Published var chapterScrubberEnabled: Bool {
+        didSet { overrideDefaults.set(chapterScrubberEnabled, forKey: RemoteFeatureFlags.chapterScrubberLocalOverrideKey) }
+    }
+
     // MARK: - Library Registry Debugging
 
     /// Bare host, or a full https:// URL. Mirrors
@@ -188,6 +194,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         self.continuationCardsEnabled = featureFlags.isContinuationCardsEnabled
         self.lcpAudiobookStreamingEnabled = featureFlags.isLCPAudiobookStreamingEnabled
         self.appRatingForceEligible = featureFlags.isAppRatingForceEligible
+        self.chapterScrubberEnabled = featureFlags.isChapterScrubberEnabled
 
         self.customRegistryInput = settings.customLibraryRegistryServer ?? ""
 
