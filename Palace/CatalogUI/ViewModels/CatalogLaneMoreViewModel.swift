@@ -402,37 +402,53 @@ class CatalogLaneMoreViewModel: ObservableObject {
       // FRESH START: Reset to original feed (don't clear since we're applying new filters)
       await fetchAndApplyFeed(at: url, clearFilters: false)
       var currentFacetGroups = facetGroups
-      
+
+      // Filters that actually reached the server. OPDS facets are links, so each
+      // one has to be found among the *current* feed's links before it can be
+      // followed; a filter whose group the feed doesn't advertise simply has no
+      // link and drops out of the walk. `appliedSelections` drives the
+      // "Filter (N)" badge and the ticks in the sheet, so it has to describe the
+      // request the user actually got, not the one they asked for — otherwise
+      // results that were never narrowed are labelled as filtered.
+      var appliedFilters: [CatalogFilterService.ParsedKey] = []
+
       // Sort filters by priority
       let sortedFilters = specificFilters.sorted { filter1, filter2 in
         let priority1 = CatalogFilterService.getGroupPriority(filter1.group)
         let priority2 = CatalogFilterService.getGroupPriority(filter2.group)
         return priority1 < priority2
       }
-      
+
       // Apply each filter sequentially
       for filter in sortedFilters {
-        if let filterURL = CatalogFilterService.findFilterInCurrentFacets(filter, in: currentFacetGroups) {
-          if let feed = try await api.fetchFeed(at: filterURL) {
-            if let opds2 = feed.opds2Feed {
-              let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
-              ungroupedBooks = pubs.compactMap { $0.toBook() }
-              currentFacetGroups = CatalogViewModel.extractOPDS2Facets(from: opds2, currentURL: filterURL).0
-            } else {
-              if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-                ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
-              }
-              if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
-                currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
-              }
-            }
+        guard let filterURL = CatalogFilterService.findFilterInCurrentFacets(filter, in: currentFacetGroups) else {
+          Log.warn(#file, "Filter '\(filter.group)/\(filter.title)' is not offered by the current feed; it was not applied.")
+          continue
+        }
+        guard let feed = try await api.fetchFeed(at: filterURL) else {
+          Log.warn(#file, "Feed for filter '\(filter.group)/\(filter.title)' returned nothing; it was not applied.")
+          continue
+        }
+
+        if let opds2 = feed.opds2Feed {
+          let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+          ungroupedBooks = pubs.compactMap { $0.toBook() }
+          currentFacetGroups = CatalogViewModel.extractOPDS2Facets(from: opds2, currentURL: filterURL).0
+        } else {
+          if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
+            ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
+          }
+          if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
+            currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
           }
         }
+
+        appliedFilters.append(filter)
       }
-      
+
       facetGroups = currentFacetGroups
       appliedSelections = Set(
-        specificFilters.map { CatalogFilterService.makeGroupTitleKey(group: $0.group, title: $0.title) }
+        appliedFilters.map { CatalogFilterService.makeGroupTitleKey(group: $0.group, title: $0.title) }
       )
       
       saveFilterState(coordinator: coordinator)
