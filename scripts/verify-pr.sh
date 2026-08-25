@@ -184,7 +184,14 @@ compare_against_baseline() {
   local classes="$1"
   local wt dd out iso_suites new_names cls only_testing
 
-  wt=$(mktemp -d -t verify-pr-baseline)
+  # An explicit XXXXXX template: BSD mktemp treats `-t foo` as a prefix while
+  # GNU requires the X's, and a silently-empty $wt would turn the worktree path
+  # below into "/src".
+  wt=$(mktemp -d "${TMPDIR:-/tmp}/verify-pr-baseline.XXXXXX" 2>/dev/null)
+  if [ -z "$wt" ] || [ ! -d "$wt" ]; then
+    echo "undetermined"
+    return
+  fi
   dd="$wt/dd"
 
   # A detached worktree at the base commit: no branch is created, and it is
@@ -205,6 +212,17 @@ compare_against_baseline() {
 
   git worktree remove --force "$wt/src" >/dev/null 2>&1 || true
   rm -rf "$wt"
+
+  baseline_verdict_from_output "$out" "$classes"
+}
+
+# The verdict itself, separated from the machinery that produces the output.
+# Pure: takes the base run's text and the class names, echoes one verdict.
+# Kept apart so it can be tested without git, a simulator, or a 15-minute build
+# — the orchestration above is what needs a real tree, the decision is not.
+baseline_verdict_from_output() {
+  local out="$1" classes="$2"
+  local iso_suites new_names cls
 
   # Same fail-closed reasoning as the isolation re-run: no suite lines means the
   # build or the simulator failed, and scoring classes off that would report an
