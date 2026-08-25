@@ -39,7 +39,7 @@
 //    - `override func tearDown() async throws`
 //
 //  Exception: the BASELINE file
-//  (`.forgeos/swarms/swarm_47883816/E-teardown-baseline.txt`) lists
+//  (`PalaceTests/MetaTests/Baselines/E-teardown-baseline.txt`) lists
 //  37 current XCTestCase-derived files that touch polluters without
 //  tearDown. The lint exempts these explicitly so the suite stays
 //  green at landing time. The list can only SHRINK:
@@ -76,10 +76,20 @@ final class TearDownRequiredLintTests: XCTestCase {
       .deletingLastPathComponent()  // PalaceTests/
   }()
 
-  /// Repo root — one level above `PalaceTests/`. Used to resolve the
-  /// baseline file at `.forgeos/swarms/swarm_47883816/E-teardown-baseline.txt`.
+  /// Where this lint's own baseline lives. It sits beside the lint, inside
+  /// `PalaceTests/`, because it is a gate INPUT: without it the baseline is
+  /// empty and every pre-existing violation reports as new. It used to live
+  /// under `.forgeos/swarms/<id>/`, which is written at run time and
+  /// gitignored, so archiving that directory silently emptied this baseline
+  /// and reddened every branch cut afterwards.
+  /// Repo root — one level above `PalaceTests/`. Still used to express findings
+  /// as repo-relative paths; it is no longer where the baseline lives.
   private static let repoRoot: URL = {
     palaceTestsRoot.deletingLastPathComponent()
+  }()
+
+  private static let baselinesRoot: URL = {
+    palaceTestsRoot.appendingPathComponent("MetaTests/Baselines")
   }()
 
   /// Loaded baseline — paths relative to repo root that are exempt
@@ -87,8 +97,8 @@ final class TearDownRequiredLintTests: XCTestCase {
   /// is missing, the baseline is empty (so a misconfigured CI path
   /// fails LOUDER, not silently).
   private static let baselinedFiles: Set<String> = {
-    let path = repoRoot
-      .appendingPathComponent(".forgeos/swarms/swarm_47883816/E-teardown-baseline.txt")
+    let path = baselinesRoot
+      .appendingPathComponent("E-teardown-baseline.txt")
     guard let contents = try? String(contentsOf: path, encoding: .utf8) else {
       return []
     }
@@ -238,7 +248,7 @@ final class TearDownRequiredLintTests: XCTestCase {
                    "Expected at least one .swift file under PalaceTests/")
 
     XCTAssertFalse(Self.baselinedFiles.isEmpty,
-                   "Expected E-teardown-baseline.txt to load with at least one entry — if this fails, the resolver path is wrong or the file is missing")
+                   "Expected E-teardown-baseline.txt to load with at least one entry. Most likely the file is not in this checkout rather than the resolver being wrong — it is a gate INPUT and must be tracked; it previously lived under gitignored `.forgeos/swarms/` and vanished for every fresh checkout.")
 
     var violations: [String] = []
 
@@ -398,7 +408,7 @@ final class TearDownRequiredLintTests: XCTestCase {
   func testBaselineFileIsLoaded() {
     XCTAssertFalse(
       Self.baselinedFiles.isEmpty,
-      "Expected E-teardown-baseline.txt to load with at least one entry"
+      "Expected E-teardown-baseline.txt to load with at least one entry — the file must be TRACKED, not merely present locally"
     )
     XCTAssertLessThan(
       Self.baselinedFiles.count, 200,
