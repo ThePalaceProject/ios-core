@@ -109,6 +109,22 @@ jobs:
           fi
           bash scripts/tests/test_verify_pr_ratchet_wiring.sh
 
+      # 3b-ii. verify-pr's flake-vs-regression verdict. The gate used to call a
+      #        failure a "real regression" on the strength of "it fails in
+      #        isolation" — which a deterministic PRE-EXISTING failure does too.
+      #        Three branches were told they had broken files they never touched.
+      #        This test drives the merge-base comparison through a stubbed
+      #        builder, so all three verdicts are covered without a real build.
+      - name: verify-pr baseline-comparison verdicts
+        run: |
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Same fail-rather-than-skip reasoning as above.
+          if [ ! -f scripts/tests/test_verify_pr_baseline_compare.sh ]; then
+            echo "::error::scripts/tests/test_verify_pr_baseline_compare.sh is missing — the gate cannot be verified."
+            exit 1
+          fi
+          bash scripts/tests/test_verify_pr_baseline_compare.sh
+
       # 3c. Documentation references must resolve. A tooling extraction left the
       #     docs pointing at scripts and workflows that no longer exist, and one
       #     of those pointers was the coverage summary telling reviewers that
