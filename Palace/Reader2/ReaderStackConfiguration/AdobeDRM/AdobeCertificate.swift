@@ -485,10 +485,16 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         // cannot stretch or collapse the budget.
         let clock = ContinuousClock()
         let started = clock.now
+        // `.components.seconds` alone truncates to whole seconds, which would
+        // make every sub-second arrival log "0.0s" — losing the one field
+        // diagnostic that measures this race — and leave `guard step > 0` dead.
+        func elapsedSeconds() -> TimeInterval {
+            let c = started.duration(to: clock.now).components
+            return Double(c.seconds) + Double(c.attoseconds) * 1e-18
+        }
         while started.duration(to: clock.now) < .seconds(budget) {
             do {
-                let elapsed = Double(started.duration(to: clock.now).components.seconds)
-                let remaining = budget - elapsed
+                let remaining = budget - elapsedSeconds()
                 let step = min(licensorPollInterval, max(remaining, 0))
                 guard step > 0 else { break }
                 try await Task.sleep(nanoseconds: UInt64(step * 1_000_000_000))
@@ -501,7 +507,7 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                 return nil
             }
             if let licensor = account.licensor {
-                Log.info(#file, "Adobe licensor credentials arrived after \(String(format: "%.1f", Double(started.duration(to: clock.now).components.seconds)))s — proceeding with activation")
+                Log.info(#file, "Adobe licensor credentials arrived after \(String(format: "%.1f", elapsedSeconds()))s — proceeding with activation")
                 return licensor
             }
         }
