@@ -125,6 +125,21 @@ jobs:
           fi
           bash scripts/tests/test_verify_pr_baseline_compare.sh
 
+      # 3b-iii. Which tickets a commit claims to WORK ON. The post-commit hook
+      #         used to comment on every key the message named, so a body saying
+      #         "that belongs to PP-5005" posted a machine comment on someone
+      #         else's design ticket — six of them, from a branch whose point was
+      #         to stay out of its way.
+      - name: Jira worked-ticket extraction
+        run: |
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Same fail-rather-than-skip reasoning as above.
+          if [ ! -f scripts/tests/test_jira_worked_tickets.sh ]; then
+            echo "::error::scripts/tests/test_jira_worked_tickets.sh is missing — the gate cannot be verified."
+            exit 1
+          fi
+          bash scripts/tests/test_jira_worked_tickets.sh
+
       # 3c. Documentation references must resolve. A tooling extraction left the
       #     docs pointing at scripts and workflows that no longer exist, and one
       #     of those pointers was the coverage summary telling reviewers that
