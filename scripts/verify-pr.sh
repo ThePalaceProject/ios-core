@@ -13,6 +13,14 @@
 #                                              #   from branch-introduced regressions.
 #                                              #   Per .forgeos/wall-failures/ —
 #                                              #   PR #1018 lessons.
+#   scripts/verify-pr.sh --baseline-compare    # Adds the ONLY check that can call a
+#                                              #   failure "this branch's": re-run the
+#                                              #   classes that failed in isolation
+#                                              #   against the merge-base in a throwaway
+#                                              #   worktree. Failing there too means
+#                                              #   pre-existing. Costs a cold build, so
+#                                              #   it is opt-in; without it the gate says
+#                                              #   UNDETERMINED rather than guessing.
 #   scripts/verify-pr.sh --mutation-only       # Run ONLY the mutation step (skips
 #                                              # build/test/lint/coverage/a11y).
 #                                              # LOCAL ONLY. There is no
@@ -123,6 +131,7 @@ CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks/|SignInLogic/|MyBooks/(Downlo
 # agents on the same machine don't collide on one device. Falls back to the
 # pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
 # sim UDID" — this default is the documented fallback, not a hardcode.
+BASELINE_COMPARE="${BASELINE_COMPARE:-false}"
 SIM_ID="${HARNESS_SESSION_SIM_UDID:-DF4A2A27-9888-429D-A749-2E157A049A37}"
 
 while [[ $# -gt 0 ]]; do
@@ -130,6 +139,7 @@ while [[ $# -gt 0 ]]; do
     --quick) QUICK=true; shift ;;
     --report) REPORT_FILE="$2"; shift 2 ;;
     --diff-baseline) DIFF_BASELINE=true; shift ;;
+    --baseline-compare) BASELINE_COMPARE=true; shift ;;
     --simdrive) SIMDRIVE=true; shift ;;
     --chaos) CHAOS=true; shift ;;
     --enforce-mutations) MUTATION_POLICY="enforce_all"; shift ;;
@@ -153,6 +163,90 @@ detect_base_branch() {
 }
 
 BASE=$(detect_base_branch)
+XCODEBUILD_BIN="${XCODEBUILD_BIN:-$(command -v xcodebuild)}"
+
+# Re-run the named test classes at the merge-base, in a throwaway worktree, and
+# say whether they fail there too.
+#
+# This is the ONLY check in this script that can attribute a failure to the
+# branch. Everything else — "it failed", "it failed in isolation", "it failed
+# all three iterations" — is equally true of a deterministic failure that was
+# already on develop. Distinguishing them needs a run WITHOUT the branch's code.
+#
+# Echoes exactly one of:
+#   all-preexisting     every class fails at the base too
+#   some-new:<names>    those classes pass at the base, so this branch broke them
+#   undetermined        the base run could not be made to produce suite results
+#
+# Costs a cold build of the base tree, which is why the caller gates it behind
+# --baseline-compare rather than paying it on every red run.
+compare_against_baseline() {
+  local classes="$1"
+  local wt dd out iso_suites new_names cls only_testing
+
+  # An explicit XXXXXX template: BSD mktemp treats `-t foo` as a prefix while
+  # GNU requires the X's, and a silently-empty $wt would turn the worktree path
+  # below into "/src".
+  wt=$(mktemp -d "${TMPDIR:-/tmp}/verify-pr-baseline.XXXXXX" 2>/dev/null)
+  if [ -z "$wt" ] || [ ! -d "$wt" ]; then
+    echo "undetermined"
+    return
+  fi
+  dd="$wt/dd"
+
+  # A detached worktree at the base commit: no branch is created, and it is
+  # removed below whatever happens.
+  if ! git worktree add --detach -q "$wt/src" "$BASE" 2>/dev/null; then
+    rm -rf "$wt"
+    echo "undetermined"
+    return
+  fi
+
+  only_testing=""
+  for cls in $classes; do
+    only_testing="$only_testing -only-testing:PalaceTests/$cls"
+  done
+
+  out=$(cd "$wt/src" && "$XCODEBUILD_BIN" -project Palace.xcodeproj -scheme Palace \
+    -destination "id=$SIM_ID" -derivedDataPath "$dd" $only_testing test 2>&1 || true)
+
+  git worktree remove --force "$wt/src" >/dev/null 2>&1 || true
+  rm -rf "$wt"
+
+  baseline_verdict_from_output "$out" "$classes"
+}
+
+# The verdict itself, separated from the machinery that produces the output.
+# Pure: takes the base run's text and the class names, echoes one verdict.
+# Kept apart so it can be tested without git, a simulator, or a 15-minute build
+# — the orchestration above is what needs a real tree, the decision is not.
+baseline_verdict_from_output() {
+  local out="$1" classes="$2"
+  local iso_suites new_names cls
+
+  # Same fail-closed reasoning as the isolation re-run: no suite lines means the
+  # build or the simulator failed, and scoring classes off that would report an
+  # infrastructure problem as a code verdict.
+  iso_suites=$(echo "$out" | grep -cE "Test Suite '[A-Za-z_][A-Za-z0-9_]*' (passed|failed)")
+  if [ "$iso_suites" -eq 0 ]; then
+    echo "undetermined"
+    return
+  fi
+
+  # A class that PASSES at the base and fails here is this branch's doing.
+  new_names=""
+  for cls in $classes; do
+    if echo "$out" | grep -qE "Test Suite '$cls' passed"; then
+      new_names="$new_names $cls"
+    fi
+  done
+
+  if [ -n "$new_names" ]; then
+    echo "some-new:$new_names"
+  else
+    echo "all-preexisting"
+  fi
+}
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
 CHANGED_TEST_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep 'Tests/' || true)
 # Scope a11y file picker to actual SwiftUI/UIKit view files. Exclude
@@ -434,9 +528,33 @@ elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
       if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
         record "unit_tests" "pass" "$TEST_PASS tests, $TEST_FAIL fails — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
       else
-        # NAME them. Reporting only a count leaves the reader to guess which
-        # classes to open — the same defect this gate is being fixed for.
-        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL class(es) fail IN ISOLATION (real regression):$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
+        # "Fails in isolation" does NOT mean "this branch broke it". A
+        # deterministic pre-existing failure fails in isolation too, and this
+        # gate called exactly that a "real regression" on three separate
+        # branches when two lint baselines went missing from develop. The only
+        # evidence that separates the two is the merge-base: re-run the same
+        # classes there and see whether they fail without this branch's code.
+        BASELINE_VERDICT=""
+        if [ "$BASELINE_COMPARE" = true ]; then
+          BASELINE_VERDICT=$(compare_against_baseline "$REAL_FAIL_NAMES")
+        fi
+
+        case "$BASELINE_VERDICT" in
+          all-preexisting)
+            record "unit_tests" "pass" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL class(es) fail in isolation but fail identically at $BASE, so they are PRE-EXISTING, not this branch:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
+            ;;
+          some-new:*)
+            record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — REGRESSION introduced by this branch (passes at $BASE, fails here):${BASELINE_VERDICT#some-new:}; $FLAKE_COUNT isolation flake(s)"
+            ;;
+          undetermined)
+            record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL class(es) fail in isolation; the $BASE comparison could not run, so whether this branch caused them is UNDETERMINED:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
+            ;;
+          *)
+            # NAME them. Reporting only a count leaves the reader to guess which
+            # classes to open — the same defect this gate is being fixed for.
+            record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL class(es) fail IN ISOLATION:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s). NOT established as this branch's — a pre-existing deterministic failure looks identical here. Re-run with --baseline-compare, or check $BASE."
+            ;;
+        esac
       fi
       fi
     else
