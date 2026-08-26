@@ -333,6 +333,21 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
                        "and must be the re-issued record, not the seeded one")
     }
 
+    /// A download task that reports a Content-Type, which the completion parser
+    /// requires before it will hand off to the rights dispatcher.
+    private static func taskWithContentType(
+        _ contentType: String, identifier: Int
+    ) -> URLSessionDownloadTask {
+        MockURLSessionDownloadTask(
+            taskIdentifier: identifier,
+            request: URLRequest(url: URL(string: "https://library-a.palace-test.invalid/fulfill")!),
+            response: HTTPURLResponse(
+                url: URL(string: "https://library-a.palace-test.invalid/fulfill")!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": contentType]))
+    }
+
     /// Writes a bearer-token JSON payload to a temp file, as the fulfilment
     /// response would.
     private static func writeBearerPayload(location bearerLocation: URL) throws -> URL {
@@ -411,6 +426,110 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
             bookRegistry: TPPBookRegistryMock(),
             userAccountProvider: { TPPUserAccountMock() },
             adobeDRMService: AdobeDRMService.shared)
+    }
+
+    // MARK: - The caller must HONOUR the follow-up signal
+
+    /// Drives `MyBooksDownloadCenter.handleDownloadCompletion` — the caller —
+    /// rather than `dispatch`, and asserts the bearer record SURVIVES.
+    ///
+    /// This is the test round 1 was missing, and its absence was the defect:
+    /// the hop wrote a record inside `dispatch`, and ~100ms later the caller's
+    /// terminal cleanup ran `removePersistedRecord` on the same key. Every test
+    /// that drove `dispatch` alone stayed green while the fix did nothing.
+    ///
+    /// Two reviewers independently observed that the guard added to fix it
+    /// (`if !followUpTaskInFlight`) was itself unpinned — no test reached the
+    /// caller, and `palace_mutate` finds no mutation point on that line — so
+    /// deleting it would have restored the defect silently. That is the same
+    /// mistake one level up, which is exactly why this test drives the caller.
+    func testHandleDownloadCompletion_bearerHop_keepsTheRecordForTheLiveTask() async throws {
+        let registry = TPPBookRegistryMock()
+        let center = MyBooksDownloadCenter(
+            bookRegistry: registry,
+            stateManager: isolatedStateManager,
+            reachability: MockReachability(initiallyConnected: true))
+
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        // A response-bearing task: `DownloadCompletionParser` rejects the download
+        // outright via `canCompleteDownload(withContentType:)` when the MIME type
+        // is empty, and never reaches the dispatcher. A bare `fakeDownloadTask()`
+        // therefore exercises the failure path and cannot see this guard at all —
+        // which is how the first version of this test passed for the wrong reason.
+        let fulfilmentTask = Self.taskWithContentType(
+            DistributorType.EpubZip.rawValue, identifier: 5_023_500)
+        let bearerLocation = URL(string: "https://content.palace-test.invalid/pp5023-caller.epub")!
+
+        // Rights are read from the state manager, so the bearer arm is reachable
+        // without synthesising an HTTP response.
+        await isolatedStateManager.bookIdentifierToDownloadInfo.set(
+            book.identifier,
+            value: MyBooksDownloadInfo(
+                downloadProgress: 0.0,
+                downloadTask: fulfilmentTask,
+                rightsManagement: .simplifiedBearerTokenJSON))
+        await isolatedStateManager.taskIdentifierToBook.set(
+            fulfilmentTask.taskIdentifier, value: book)
+
+        isolatedStateManager.persistStartedTask(
+            bookID: book.identifier,
+            taskIdentifier: fulfilmentTask.taskIdentifier,
+            downloadURL: URL(string: "https://library-a.palace-test.invalid/fulfill")!,
+            account: "pp5023-caller-account",
+            expectedBytes: nil)
+
+        let location = try Self.writeBearerPayload(location: bearerLocation)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        await center.handleDownloadCompletion(
+            session: inertReissueTestSession, task: fulfilmentTask, location: location)
+
+        let persisted = try XCTUnwrap(
+            record(forBookID: book.identifier),
+            "the terminal cleanup must NOT retire a record whose download has just started")
+        XCTAssertEqual(persisted.downloadURL, bearerLocation,
+                       "and the surviving record must be the re-issued one")
+    }
+
+    /// The control. A completion with NO follow-up task must still retire its
+    /// record, or every finished download leaks one forever and launch
+    /// reconciliation accumulates records for books that are long since done.
+    func testHandleDownloadCompletion_withoutAFollowUp_stillRetiresTheRecord() async throws {
+        let registry = TPPBookRegistryMock()
+        let center = MyBooksDownloadCenter(
+            bookRegistry: registry,
+            stateManager: isolatedStateManager,
+            reachability: MockReachability(initiallyConnected: true))
+
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let task = Self.taskWithContentType(
+            DistributorType.EpubZip.rawValue, identifier: 5_023_501)
+
+        // `.none` — a plain content download that completes. No hop, no live task.
+        await isolatedStateManager.bookIdentifierToDownloadInfo.set(
+            book.identifier,
+            value: MyBooksDownloadInfo(
+                downloadProgress: 1.0, downloadTask: task, rightsManagement: .none))
+        await isolatedStateManager.taskIdentifierToBook.set(task.taskIdentifier, value: book)
+
+        isolatedStateManager.persistStartedTask(
+            bookID: book.identifier,
+            taskIdentifier: task.taskIdentifier,
+            downloadURL: URL(string: "https://library-a.palace-test.invalid/plain")!,
+            account: "",
+            expectedBytes: nil)
+
+        let location = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp5023-plain-\(UUID().uuidString).epub")
+        try Data("not really an epub".utf8).write(to: location)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        await center.handleDownloadCompletion(
+            session: inertReissueTestSession, task: task, location: location)
+
+        XCTAssertNil(
+            record(forBookID: book.identifier),
+            "a download with no follow-up reached a terminal outcome; its record must be dropped")
     }
 
     // MARK: - What the recording actually buys: no wrong adoption
