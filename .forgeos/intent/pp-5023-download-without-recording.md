@@ -100,11 +100,24 @@ have opened PP-4978.
 
 ## Verification
 
-TDD, red first. Five of the seven tests in
-`PalaceTests/MyBooks/DownloadReissuePersistenceTests.swift` failed against the
-unmodified tree, each for the stated reason — no record written — and the sixth
-was the control, which passed then and passes now because it asserts the DEFECT.
-All seven pass after the change.
+TDD, red first. **Measured against an unmodified `origin/develop` tree** (a
+throwaway worktree carrying only the final test file), not estimated:
+
+    Executed 8 tests, with 10 failures
+
+Seven of the eight fail; the eighth is the control, which passes there and here
+because it asserts the DEFECT. Two further tests
+(`testBearerTokenHop_reportsALiveFollowUpTask_soTheCallerKeepsTheRecord` and
+`testNonFollowUpDispatch_reportsNoLiveTask`) cannot be measured that way at all:
+they assert `RightsManagementDispatchResult.followUpTaskInFlight`, which does not
+exist on develop, so they fail to COMPILE — red by construction rather than by
+assertion. All ten pass after the change.
+
+An earlier version of this section said "five of seven". That was wrong and the
+error is worth naming: it was recorded from a run against a tree that had already
+been partly modified, and one test in it passed vacuously and was strengthened
+afterwards. A red-first figure taken from anything but the committed baseline is
+not a measurement.
 
 One of the seven initially passed vacuously and was strengthened rather than
 kept: `testFollowAcquisitionLink_preservesTheAccountTheDownloadStartedUnder` was
@@ -113,7 +126,8 @@ nothing had rewritten it — the pre-fix state. It now also pins the record to t
 NEW task's identifier and URL, so it can only pass once the path actually writes
 one.
 
-Mutation, `--diff-only` against `origin/develop`:
+Mutation, `--diff-only` against `origin/develop`, measured on the first commit
+and to be re-measured on the review-round tip:
 
 - `Palace/MyBooks/DownloadStateManager.swift` — 1 point, 1 killed (100%)
 - `Palace/MyBooks/BackgroundDownloadHandler.swift` — 1 point, 1 killed (100%)
