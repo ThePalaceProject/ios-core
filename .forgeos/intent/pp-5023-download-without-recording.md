@@ -169,6 +169,14 @@ with `--no-cache` (see the caveat below — this matters):
 - `MyBooksDownloadCenter.swift`, `MyBooksDownloadCenter+ChallengeAccount.swift` —
   no points on changed lines (comment-only changes)
 
+Re-measured again at the round-3 tip after the `upsert` delete predicate changed:
+`DownloadTaskPersistence` 3 points, 3 killed. That run needed an ISOLATED
+`PALACE_MUTATE_DERIVED_DATA_PATH` — a parallel toolkit test run had written into
+the shared DerivedData, invalidating the precompiled header, and the mutation
+BASELINE then failed. A failing baseline measures nothing; it is not a result in
+either direction, and CLAUDE.md's "a build failure is not a kill" applies to the
+baseline as much as to a mutant.
+
 **The cached run lied, in the direction that matters.** A cached pass reported
 `DownloadTaskPersistence` at 2 killed / 1 survived on a tip where the survivor was
 already dead. `palace_mutate`'s cache key is derived from the PRODUCTION file, so
