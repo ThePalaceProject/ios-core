@@ -328,6 +328,10 @@ final class DownloadTaskPersistence: @unchecked Sendable {
     /// `transform` receives the current record for `bookID`, or nil, and returns
     /// the record to store. Returning nil leaves the store untouched.
     ///
+    /// `transform` runs WHILE THE LOCK IS HELD and `lock` is not recursive, so it
+    /// must not call back into this store — no `all()`, `record`, `remove`, or a
+    /// nested `upsert`. Keep it a pure function of the record it is handed.
+    ///
     /// - Parameter inheritingFrom: read the record under THIS id and write under
     ///   `bookID`. They differ when a re-issue re-registers the download under a
     ///   book parsed from the server whose identifier is not the original's.
@@ -345,7 +349,12 @@ final class DownloadTaskPersistence: @unchecked Sendable {
         let existing = records.first { $0.bookID == sourceID }
             ?? records.first { $0.bookID == bookID }
         guard let updated = transform(existing) else { return }
-        records.removeAll { $0.bookID == updated.bookID }
+        // Remove by BOTH the requested key and the returned record's own key.
+        // They are the same for every caller today; keying the delete solely off
+        // `updated.bookID` would silently leave a duplicate under `bookID` if a
+        // transform ever returned a record for a different book, and the store's
+        // one-record-per-book invariant is what `adoptableTask` relies on.
+        records.removeAll { $0.bookID == updated.bookID || $0.bookID == bookID }
         records.append(updated)
         saveLocked(records)
     }

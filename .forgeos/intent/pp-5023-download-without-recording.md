@@ -31,6 +31,13 @@ collision and named this residue in-source rather than papering over it.
 - When `followAcquisitionLink` re-registers under a book whose identifier differs
   from the original's, the account crosses to the new record and the superseded
   record is removed rather than left naming a dead task.
+- **A record written by a mid-flight re-issue SURVIVES the caller's terminal
+  cleanup.** `handleDownloadCompletion` retires a book's record when a download
+  reaches a terminal outcome; a bearer hop has not reached one, because it has
+  just started a new content task. Without this the bearer half of the fix was
+  inert — the record was written and removed roughly 100ms later.
+- A completion with NO follow-up task still retires its record, so finished
+  downloads do not accumulate records forever.
 
 ## Anti-claims
 
@@ -39,6 +46,11 @@ collision and named this residue in-source rather than papering over it.
   starts a download must persist, and nothing in `DownloadTaskPersistence` can
   enforce that. The invariant is stated in-source and pinned by
   `DownloadReissuePersistenceTests`; it is not mechanically guarded.
+- This does NOT change the REST of the terminal cleanup for a bearer hop. The
+  same block still removes `bookIdentifierToDownloadInfo` and calls
+  `registerCompletion` for a download that has only just started. That is
+  PRE-EXISTING behaviour, a larger change than this ticket, and is documented
+  in-source rather than silently widened.
 - This does NOT fix the transfer-retry account overwrite. `reissueTransferDownloadTask`
   still routes through `persistStartedTaskRecord`, which stamps the current
   account, so a retry after a library switch still overwrites the captured one.
@@ -71,7 +83,9 @@ collision and named this residue in-source rather than papering over it.
 - `Palace/MyBooks/DownloadStateManager.swift` — `persistReissuedTask`
 - `Palace/MyBooks/BackgroundDownloadHandler.swift` — `followAcquisitionLink`
 - `Palace/MyBooks/RightsManagementDispatcher.swift` — the bearer-token hop
-- `Palace/MyBooks/MyBooksDownloadCenter.swift` — comment only, no behaviour
+- `Palace/MyBooks/MyBooksDownloadCenter.swift` — BEHAVIOUR: the terminal cleanup
+  skips `removePersistedRecord` when the dispatch left a live follow-up task
+  (plus comment corrections)
 - `Palace/MyBooks/DownloadTaskPersistence.swift` — comments only, no behaviour
 - `PalaceTests/MyBooks/DownloadReissuePersistenceTests.swift`
 - `Palace.xcodeproj/project.pbxproj` — registers the new test file

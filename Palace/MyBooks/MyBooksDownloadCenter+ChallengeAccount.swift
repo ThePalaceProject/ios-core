@@ -50,7 +50,10 @@ extension MyBooksDownloadCenter {
     /// WHAT THIS RESTS ON — bookID keying, not call ordering. An earlier draft of
     /// this comment claimed every seeding site writes the record first; that is a
     /// false census and review caught it. Of the five sites that seed
-    /// `taskIdentifierToBook`, only two do:
+    /// `taskIdentifierToBook`, four now write a record — the two start paths via
+    /// `persistStartedTaskRecord`, and the two re-issue paths via
+    /// `persistReissuedTask`/`upsert` as of PP-5023. The fifth is adopt, which is
+    /// seeded FROM a record:
     ///
     ///   * the two download-START paths write the record via
     ///     `persistStartedTaskRecord` (`MyBooksDownloadCenter` :1748, :2179) and
