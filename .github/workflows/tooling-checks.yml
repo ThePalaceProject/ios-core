@@ -157,6 +157,37 @@ jobs:
           fi
           python3 scripts/check-doc-index-complete.py
 
+      # 3f-bis. A verdict must not be read from the wrong command. In a pipeline
+      #     `$?` is the LAST stage's status, so `xcodebuild | tee log || rc=$?`
+      #     tests whether tee could write a file — which it always can. The
+      #     status of the actual work is discarded, and the discard is
+      #     indistinguishable from a pass.
+      #
+      #     Landed after the same trap fired five times in one day (2026-08-26)
+      #     on agents who had already read the written warning about it. It then
+      #     found a sixth in the test orchestrator's runners — LATENT, not live:
+      #     those libs are only sourced from bin/palace-test, which sets
+      #     `set -euo pipefail`, so the inherited option made the capture correct
+      #     at runtime. The defect was that the libs depended on inheriting it.
+      #     Stated precisely because the first write-up of this claimed a live
+      #     false-pass, and that claim came from testing the idiom standalone
+      #     rather than under its real entry point — a fixture that did not match
+      #     production, which is its own entry in this repository's rules.
+      #
+      #     Precision matters more than reach here — `echo "$JSON" | bash hook`
+      #     then `$?` is CORRECT (the work is the last stage) and flagging it
+      #     would make the gate cry wolf on this repo's own hook fixture. The
+      #     pytest pairs every violating fixture with a near-identical clean one
+      #     for exactly that reason.
+      - name: verdict not read behind a pipe
+        run: |
+          # TRACKED file: absence is a deleted gate, not an opt-out.
+          if [ ! -f scripts/check-verdict-behind-pipe.py ]; then
+            echo "::error::scripts/check-verdict-behind-pipe.py is missing — the gate cannot run."
+            exit 1
+          fi
+          python3 scripts/check-verdict-behind-pipe.py
+
       # 3g. ...and prove that gate is wired, with an interface it accepts, and
       #     that it passes on a clean tree. A bash test, so pytest skips it.
       - name: doc-index gate wiring test
