@@ -372,18 +372,26 @@ final class BorrowOperation: @unchecked Sendable {
             throw simulated.error
         }
 
-        // ensure Adobe DRM device activation before proceeding.
-        #if FEATURE_DRM_CONNECTOR
-        if book.requiresAdobeDRM {
-            Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
-            try await self.adobeDRMService.ensureDeviceActivated()
-        }
-        #endif
-
+        // Side-effect-free precondition — hoisted ABOVE activation deliberately.
+        // The activation step below raises the processing spinner and only
+        // clears it if activation itself throws; this guard's throw happens
+        // before `clearProcessingState` exists, so leaving it here stranded the
+        // spinner for the process lifetime on an Adobe title with a malformed
+        // acquisition href. Checking first also avoids spending an Adobe
+        // activation on a book that cannot be borrowed anyway.
         guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {
             Task { [errorActivityTracker] in await errorActivityTracker.log("No acquisition URL found for '\(book.title)'", category: .borrow) }
             throw PalaceError.bookRegistry(.invalidState)
         }
+
+        // ensure Adobe DRM device activation before proceeding.
+        #if FEATURE_DRM_CONNECTOR
+        if book.requiresAdobeDRM {
+            Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
+
+            try await BorrowAdobeActivationStep.run(setProcessing: { [bookRegistry] in bookRegistry.setProcessing($0, for: bookIdentifier) }, activate: { [adobeDRMService] in try await adobeDRMService.ensureDeviceActivated(licensorGracePeriod: $0) })
+        }
+        #endif
 
         Task { [errorActivityTracker] in await errorActivityTracker.log("Requesting loan from \(acquisitionURL.host ?? acquisitionURL.absoluteString)", category: .network) }
 
