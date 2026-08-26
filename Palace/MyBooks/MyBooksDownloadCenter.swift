@@ -1532,9 +1532,10 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         let problemDoc: TPPProblemDocument?
         var failureRequiringAlert: Bool
         var failureError = task.error
-        // PP-5023: set by the bearer-token hop, which leaves a live content task
-        // behind. Read at the terminal cleanup below.
-        var followUpTaskInFlight = false
+        // PP-5023: hoisted so the terminal cleanup below can read
+        // `followUpTaskInFlight` — the bearer-token hop leaves a live content task
+        // behind, and a download that has not finished must keep its record.
+        var dispatchResult: RightsManagementDispatchResult?
 
         switch parseResult {
         case .followUpStarted:
@@ -1556,7 +1557,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         } else {
             TPPProblemDocumentCacheManager.sharedInstance().clearCachedDoc(book.identifier)
 
-            let dispatchResult = await rightsDispatcher.dispatch(
+            dispatchResult = await rightsDispatcher.dispatch(
                 book: book,
                 task: task,
                 location: location,
@@ -1564,9 +1565,8 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 rights: rights,
                 failureError: failureError
             )
-            failureRequiringAlert = dispatchResult.failureRequiringAlert
-            failureError = dispatchResult.failureError
-            followUpTaskInFlight = dispatchResult.followUpTaskInFlight
+            failureRequiringAlert = dispatchResult?.failureRequiringAlert ?? false
+            failureError = dispatchResult?.failureError
         }
 
         if failureRequiringAlert {
@@ -1605,26 +1605,18 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         await downloadCoordinator.registerCompletion(identifier: book.identifier)
         // Reliability WS-A: download reached a terminal outcome — drop the
         // durable record and reset the transient-transfer retry counter.
-        await stateManager.resetTransferRetryAttempts(for: book.identifier)
-        // PP-5023: NOT terminal when a hop left a live task behind. The
-        // bearer-token arm of `rightsDispatcher.dispatch` swaps the fulfilment
-        // task for a content task against the bearer location and resumes it —
-        // so this book is still downloading, and dropping its durable record
-        // here is what made the bearer half of PP-5023 inert: the record was
-        // written and removed roughly 100ms later, leaving a live task invisible
-        // to launch reconciliation exactly as before.
+        await stateManager.finishTerminalBookkeeping(for: book.identifier, keepRecord: dispatchResult?.followUpTaskInFlight == true)
+        // PP-5023: the retire-or-keep decision lives in `finishTerminalBookkeeping`
+        // so this frozen file does not grow — see that method for why a bearer hop
+        // must keep its record.
         //
-        // The OPDS follow-up never reaches this line — `.followUpStarted`
-        // early-returns above — which is why only the bearer path needed this.
+        // The OPDS follow-up never reaches this line (`.followUpStarted`
+        // early-returns above), which is why only the bearer path needs the flag.
         //
-        // Deliberately narrow: the rest of this cleanup still runs for the bearer
-        // arm, including the `bookIdentifierToDownloadInfo` removal that clears
-        // the info the hop just wrote for the in-flight task. That is
-        // PRE-EXISTING behaviour and not PP-5023's to change; it is called out
-        // rather than silently widened.
-        if !followUpTaskInFlight {
-            stateManager.removePersistedRecord(for: book.identifier)
-        }
+        // Deliberately narrow: the REST of this cleanup still runs for the bearer
+        // arm, including the `bookIdentifierToDownloadInfo` removal that clears the
+        // info the hop just wrote for its in-flight task. That is PRE-EXISTING
+        // behaviour and not PP-5023's to change; called out rather than widened.
         let remainingCount = await downloadCoordinator.activeCount
         Log.info(#file, "📊 Download flow completed for '\(book.identifier)', remaining active: \(remainingCount)")
 
