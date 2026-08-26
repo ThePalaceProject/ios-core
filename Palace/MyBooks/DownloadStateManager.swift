@@ -185,19 +185,25 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
         inheritingFrom sourceBookID: String? = nil
     ) {
         taskPersistence.upsert(bookID: bookID, inheritingFrom: sourceBookID) { existing in
-            if existing == nil {
-                // Not an error — a download whose start was never recorded, or
-                // whose record was already retired. Logged because a silent ""
-                // here is indistinguishable from a genuine empty account, and
-                // `startedForAccount` will degrade to the CURRENT library as a
-                // result. Worth seeing if it becomes common.
+            // Written as a coalesce rather than `if existing == nil { log }` on
+            // purpose: that form adds a comparison whose ONLY consequence is a log
+            // line, so no assertion can distinguish it and it survives mutation
+            // forever as an unkillable critical-path mutant. This carries the same
+            // diagnostic without the untestable branch.
+            //
+            // The log is not noise-for-its-own-sake: a silent "" here is
+            // indistinguishable from a genuine empty account, and
+            // `startedForAccount` degrades it to the CURRENT library — so this is
+            // the only signal that a re-issue lost its provenance.
+            let inheritedAccount = existing?.account ?? {
                 Log.info(#file, "Re-issue for \(bookID) found no record to inherit; account will be empty")
-            }
+                return ""
+            }()
             return PersistedDownloadRecord(
                 bookID: bookID,
                 taskIdentifier: taskIdentifier,
                 downloadURL: downloadURL,
-                account: existing?.account ?? "",
+                account: inheritedAccount,
                 expectedBytes: existing?.expectedBytes,
                 startedAt: existing?.startedAt ?? Date()
             )

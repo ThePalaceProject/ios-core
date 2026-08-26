@@ -212,6 +212,54 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
                        "with no prior record the account must be empty, not the current library")
     }
 
+    // MARK: - The inheritance cells
+
+    func testReissue_whenTheSourceHasNoRecordButTheTargetDoes_keepsTheTargetsAccount() throws {
+        // The cell a mutation run named: `inheritingFrom` points at a book with
+        // NO record, while the target book already has one. Reading only the
+        // source yields nil and blanks an account that was already correct —
+        // which `startedForAccount` would then degrade to the CURRENT library,
+        // sending the wrong credential. The target's own record is the fallback.
+        let targetLibraryID = "pp5023-target-\(UUID().uuidString)"
+        let targetBookID = "pp5023-target-book-\(UUID().uuidString)"
+
+        isolatedStateManager.persistStartedTask(
+            bookID: targetBookID,
+            taskIdentifier: 5_023_010,
+            downloadURL: URL(string: "https://library-a.palace-test.invalid/target")!,
+            account: targetLibraryID,
+            expectedBytes: nil)
+
+        isolatedStateManager.persistReissuedTask(
+            bookID: targetBookID,
+            taskIdentifier: 5_023_011,
+            downloadURL: URL(string: "https://content.palace-test.invalid/reissued")!,
+            inheritingFrom: "pp5023-source-with-no-record-\(UUID().uuidString)")
+
+        let persisted = try XCTUnwrap(record(forBookID: targetBookID))
+        XCTAssertEqual(persisted.account, targetLibraryID,
+                       "an absent source must fall back to the target's own record, not blank the account")
+        XCTAssertEqual(persisted.taskIdentifier, 5_023_011,
+                       "and it must still be the re-issued record")
+    }
+
+    func testReissue_whenNeitherSourceNorTargetHasARecord_writesAnEmptyAccount() throws {
+        // The floor for the arm above. Empty is correct here — there is nothing
+        // to inherit — and `startedForAccount` degrades an empty id to today's
+        // account, which is the pre-existing behaviour.
+        let bookID = "pp5023-orphan-\(UUID().uuidString)"
+
+        isolatedStateManager.persistReissuedTask(
+            bookID: bookID,
+            taskIdentifier: 5_023_012,
+            downloadURL: URL(string: "https://content.palace-test.invalid/orphan")!,
+            inheritingFrom: "pp5023-also-absent-\(UUID().uuidString)")
+
+        let persisted = try XCTUnwrap(record(forBookID: bookID))
+        XCTAssertEqual(persisted.account, "",
+                       "with nothing to inherit the account must be empty, not invented")
+    }
+
     // MARK: - The bearer-token hop
 
     func testBearerTokenHop_persistsTheTaskItStarts() async throws {
