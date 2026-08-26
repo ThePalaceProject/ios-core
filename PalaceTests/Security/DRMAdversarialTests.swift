@@ -11,6 +11,8 @@
 //
 
 import XCTest
+import PalaceBookModel
+import PalaceBookRegistry
 @testable import Palace
 
 @MainActor
@@ -126,20 +128,28 @@ final class DRMAdversarialTests: XCTestCase {
         #endif
     }
 
-    func testAdobe_didIgnoreFulfillment_noLongerShowsSignInModal() throws {
+    /// PP-3649 contract: after activation moved ahead of fulfillment, an
+    /// Adobe "no authorization present" callback must NOT reauthenticate or
+    /// present anything — it only logs, because reaching it means the device
+    /// was deauthorized mid-download (rare) and a modal there is confusing.
+    ///
+    /// This test previously called the method on `MyBooksDownloadCenter` and
+    /// asserted nothing ("if we got here without a crash, the test passes").
+    /// The method moved to `AdobeDRMHandler` in the Phase 7 decomposition
+    /// (#890) and the call site rotted — invisibly, because PalaceTests did
+    /// not define FEATURE_DRM_CONNECTOR, so this whole body compiled to the
+    /// `#else` skip. Now it drives the real owner and asserts the actual
+    /// contract: zero delegate interactions.
+    func testAdobe_didIgnoreFulfillment_doesNotReauthenticateOrAlert() {
         #if FEATURE_DRM_CONNECTOR
-        // After the PP-3649 fix, didIgnoreFulfillmentWithNoAuthorizationPresent
-        // should NOT trigger reauthenticator (which showed a sign-in modal).
-        // Instead it should just log a warning, because activation is now
-        // handled before fulfillment.
-        let downloadCenter = appContainer.downloadCenter
-        // This should not present any UI — just log
-        downloadCenter.didIgnoreFulfillmentWithNoAuthorizationPresent()
-        // If we got here without a crash or modal presentation, the test passes.
-        // The old behavior would have called reauthenticator.authenticateIfNeeded
-        // which would attempt to present a modal.
-        #else
-        throw XCTSkip("FEATURE_DRM_CONNECTOR disabled — Adobe DRM not linkable in this build.")
+        let spy = NoAuthorizationDelegateSpy()
+        let handler = AdobeDRMHandler(delegate: spy)
+
+        handler.didIgnoreFulfillmentWithNoAuthorizationPresent()
+
+        XCTAssertEqual(spy.calls, [],
+                       "a no-authorization callback must not reach the delegate at all — "
+                       + "any call here is a sign-in modal or download failure the patron should not see")
         #endif
     }
 
@@ -153,3 +163,17 @@ final class DRMAdversarialTests: XCTestCase {
         return url
     }
 }
+
+#if FEATURE_DRM_CONNECTOR
+/// Records every delegate interaction so "did nothing" is assertable.
+private final class NoAuthorizationDelegateSpy: AdobeDRMHandlerDelegate {
+    private(set) var calls: [String] = []
+    let bookRegistry: TPPBookRegistryProvider = TPPBookRegistryMock()
+
+    func fileUrl(for identifier: String) -> URL? { calls.append("fileUrl"); return nil }
+    func failDownloadWithAlert(for book: TPPBook, withMessage message: String?) { calls.append("failDownloadWithAlert") }
+    func markDownloadSuccessful(for book: TPPBook) { calls.append("markDownloadSuccessful") }
+    func broadcastUpdate() { calls.append("broadcastUpdate") }
+    func handleAdobeDownloadProgress(_ progress: Double, for tag: String) { calls.append("handleAdobeDownloadProgress") }
+}
+#endif

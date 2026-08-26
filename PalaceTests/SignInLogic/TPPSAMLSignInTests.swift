@@ -402,11 +402,18 @@ final class TPPSAMLSignInTests: XCTestCase {
   }
   
   /// Tests that DRM failure prevents credential storage.
-  func testSAMLSignIn_drmFailurePreventsCredentialStorage() {
-    // Setup
+  /// A failed DRM authorization must PRESERVE existing credentials, not wipe
+  /// them. Wiping was the cause of the "barcode disappears after sign-in"
+  /// defect, and `updateUserAccount(forDRMAuthorization:)` now returns early
+  /// with "DRM authorization failed — preserving existing credentials".
+  ///
+  /// This test previously asserted the opposite — that credentials are removed
+  /// — i.e. the behaviour that was deliberately fixed. It never failed because
+  /// its body sat inside `#if FEATURE_DRM_CONNECTOR`, which PalaceTests did not
+  /// define, so it compiled to nothing. Enabling the flag surfaced it.
+  func testSAMLSignIn_drmFailurePreservesExistingCredentials() {
     businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
-    
-    // First, set some credentials
+
     businessLogic.updateUserAccount(
       forDRMAuthorization: true,
       withBarcode: nil,
@@ -416,12 +423,9 @@ final class TPPSAMLSignInTests: XCTestCase {
       patron: nil,
       cookies: nil
     )
-    
     XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
-                  "Should have initial credentials")
-    
-    // Act: Attempt sign-in with DRM failure
-    // Note: In non-DRM builds, this parameter is ignored
+                  "precondition: the successful authorization stored credentials")
+
     #if FEATURE_DRM_CONNECTOR
     businessLogic.updateUserAccount(
       forDRMAuthorization: false,  // DRM failed
@@ -432,10 +436,12 @@ final class TPPSAMLSignInTests: XCTestCase {
       patron: nil,
       cookies: nil
     )
-    
-    // Assert: Credentials should be removed when DRM fails
-    XCTAssertFalse(businessLogic.userAccount.hasCredentials(),
-                   "Credentials should be removed when DRM fails")
+
+    XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
+                  "a failed DRM authorization must not wipe credentials — that was the "
+                  + "barcode-disappears-after-sign-in defect")
+    XCTAssertEqual(businessLogic.userAccount.authToken, "initial-token",
+                   "the failed attempt must not overwrite the working token either")
     #endif
   }
   
