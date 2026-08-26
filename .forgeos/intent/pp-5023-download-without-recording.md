@@ -148,8 +148,8 @@ throwaway worktree carrying only the final test file), not estimated:
     Executed 8 tests, with 10 failures
 
 Seven of the eight fail; the eighth is the control, which passes there and here
-because it asserts the DEFECT. **That baseline covers 8 of the 14 tests now in the
-file.** Six were added later in response to review — the two `followUpTaskInFlight`
+because it asserts the DEFECT. **That baseline covers 8 of the 15 tests now in the
+file.** Seven were added later in response to review — the two `followUpTaskInFlight`
 arms, the two caller-level `handleDownloadCompletion` tests, and the two
 inheritance-cell tests — and are pinned as follows — stated here rather
 than promised, since an earlier draft said "recorded below" and recorded nothing:
@@ -163,6 +163,13 @@ than promised, since an earlier draft said "recorded below" and recorded nothing
     `testReissue_whenNeitherSourceNorTargetHasARecord…` — written to kill a MUTATION
     SURVIVOR (`DownloadTaskPersistence`'s target-record fallback, which survived
     until they existed). Mutation is their evidence, not a hand check.
+  * `testHandleDownloadCompletion_opdsFollowUp_keepsTheRecordForTheLiveTask` — the
+    acquisition-link half, which is guarded by `case .followUpStarted: return`
+    short-circuiting before the terminal cleanup rather than by the bearer half's
+    flag. Rewriting that arm to fall through makes it fail BY NAME. Its OPDS entry
+    carries the SAME id as the original book on purpose: an id-changing follow-up
+    records under the new id while the cleanup deletes the old one, so it survives
+    a fall-through by accident and cannot detect the regression.
   * `testNonFollowUpDispatch_reportsNoLiveTask` and
     `testHandleDownloadCompletion_withoutAFollowUp_stillRetiresTheRecord` — controls.
     Their evidence is that they assert the OPPOSITE of the arms above and pass, so a
@@ -177,7 +184,7 @@ Two further tests
 `testNonFollowUpDispatch_reportsNoLiveTask`) cannot be measured that way at all:
 they assert `RightsManagementDispatchResult.followUpTaskInFlight`, which does not
 exist on develop, so they fail to COMPILE — red by construction rather than by
-assertion. All fourteen pass after the change.
+assertion. All fifteen pass after the change.
 
 An earlier version of this section said "five of seven". That was wrong and the
 error is worth naming: it was recorded from a run against a tree that had already
