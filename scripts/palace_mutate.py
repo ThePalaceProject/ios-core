@@ -1052,9 +1052,34 @@ def main() -> int:
     print(f"baseline: {'PASS' if baseline_ok else 'FAIL'} in {baseline_elapsed:.1f}s "
           f"(per-mutant timeout: {per_mutant_timeout}s)")
     if not baseline_ok:
-        print("error: baseline test run failed. Cannot mutation-test against a broken suite.", file=sys.stderr)
+        print("error: baseline test run failed — NOTHING WAS MEASURED.", file=sys.stderr)
+        print("error: this is 'could not measure', NOT 'measured clean'. No mutant ran, "
+              "so no conclusion about test strength is available from this run.", file=sys.stderr)
+        print("error: a failing baseline is usually the environment rather than the code — "
+              "a stale DerivedData precompiled header from a parallel build is the common "
+              "cause. Retry with an isolated PALACE_MUTATE_DERIVED_DATA_PATH before "
+              "believing the suite is broken.", file=sys.stderr)
         print("last lines:")
         print(baseline_out)
+        # Overwrite any report from a PREVIOUS run. Leaving a stale one on disk is
+        # the silent-success shape: the process exits 2, but anything that reads
+        # the artifact instead of the exit code sees the last successful run's
+        # numbers and believes them. `summary` is deliberately OMITTED rather than
+        # zeroed — a consumer reading `summary.killed` should fail loudly, not read
+        # 0 killed / 0 survived as a clean sheet.
+        try:
+            with open(args.report, "w") as f:
+                json.dump({
+                    "file": args.file,
+                    "tests": args.tests,
+                    "measured": False,
+                    "error": "baseline-failed",
+                    "detail": "The unmutated suite did not pass, so no mutant was run. "
+                              "This report records the ABSENCE of a measurement.",
+                }, f, indent=2)
+            print(f"  report: {args.report} (records NO measurement)")
+        except OSError as exc:
+            print(f"error: could not write the no-measurement report: {exc}", file=sys.stderr)
         if cov_tmpdir:
             shutil.rmtree(cov_tmpdir, ignore_errors=True)
         return 2

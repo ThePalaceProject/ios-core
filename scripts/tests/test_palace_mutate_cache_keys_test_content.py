@@ -218,3 +218,41 @@ def test_discovers_a_sibling_repos_test_root(tmp_path):
 
 def test_discovery_on_a_missing_directory_returns_empty_not_raise(tmp_path):
     assert pm.discover_test_roots(str(tmp_path / "nope")) == []
+
+
+# --------------------------------------------------------------------------
+# A failed baseline must record the ABSENCE of a measurement
+# --------------------------------------------------------------------------
+
+def test_baseline_failure_report_has_no_summary_to_misread():
+    """`baseline: FAIL` is a silent-success shape unless the artifact says so.
+
+    When the unmutated suite does not pass, no mutant runs and nothing is
+    learned. The process exits 2 — but anything reading the REPORT rather than
+    the exit code would otherwise find the previous run's numbers still on disk
+    and believe them.
+
+    The report written in that case deliberately omits `summary`. Zeroing it
+    would be worse than omitting it: `killed: 0, survived: 0` reads as a clean
+    sheet to a naive consumer, which is exactly the confusion being prevented.
+    """
+    import json as _json
+    src = (SCRIPTS / "palace_mutate.py").read_text()
+    start = src.index('"error": "baseline-failed"')
+    block = src[max(0, start - 800):start + 400]
+    assert '"measured": False' in block, "the report must state that nothing was measured"
+    assert '"summary"' not in block, (
+        "summary must be OMITTED on a failed baseline — a zeroed one reads as 'measured clean'")
+
+
+def test_baseline_failure_names_the_common_environmental_cause():
+    """A failing baseline is usually the environment, not the suite.
+
+    Observed in practice: a parallel toolkit build invalidated the shared
+    DerivedData precompiled header, the baseline failed, and the obvious reading
+    was 'the tests are broken'. The message points at the real cause first so the
+    next person does not go hunting in the code.
+    """
+    src = (SCRIPTS / "palace_mutate.py").read_text()
+    assert "PALACE_MUTATE_DERIVED_DATA_PATH" in src
+    assert "could not measure" in src.lower()
