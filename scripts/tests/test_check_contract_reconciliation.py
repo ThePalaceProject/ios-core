@@ -177,5 +177,132 @@ def test_no_parseable_claims_passes(tmp_path):
     assert "UNSUPPORTED" not in result.stdout
 
 
+def test_anti_claims_section_is_not_parsed_as_claims(tmp_path):
+    """An `## Anti-claims` section states what the change deliberately does
+    NOT do. Parsing it as a claim inverts its meaning and blocks the commit
+    for doing exactly what it promised.
+
+    Real incident (PP-5025, PR #1418): `Does **NOT** remove the licensor
+    guard` under `## Anti-claims` was parsed as `claim=REM args=('the',)`,
+    and the gate false-blocked five consecutive review rounds. A gate that
+    cries wolf five times on one PR stops being read — the green-board
+    contract in CLAUDE.md names that mechanism directly.
+    """
+    msg = _write(tmp_path, "msg.txt",
+                 "Fix the thing\n\n"
+                 "## Claims\n\n"
+                 "- Adds `Widget.reset()`.\n\n"
+                 "## Anti-claims\n\n"
+                 "- Does **NOT** remove the licensor guard.\n"
+                 "- Does NOT delete SignInModalHostingController.\n"
+                 "- Removes nothing from the borrow path.\n")
+    diff = _write(tmp_path, "diff.txt",
+                  "diff --git a/Palace/Foo/Widget.swift b/Palace/Foo/Widget.swift\n"
+                  "index 111..222 100644\n"
+                  "--- a/Palace/Foo/Widget.swift\n"
+                  "+++ b/Palace/Foo/Widget.swift\n"
+                  "@@ -1,2 +1,3 @@\n"
+                  " import Foundation\n"
+                  "+func reset() {}\n")
+    result = _run(msg, diff)
+    assert result.returncode == 0, (
+        "anti-claims must not be parsed as claims\n"
+        f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "UNSUPPORTED" not in result.stdout
+
+
+def test_claims_after_an_anti_claims_section_are_still_parsed(tmp_path):
+    """The strip must end at the next heading, not swallow the rest of the
+    document. A control for the fix above: if stripping ran to end-of-file,
+    a genuinely unsupported claim in a LATER section would stop being
+    caught and the gate would silently weaken."""
+    msg = _write(tmp_path, "msg.txt",
+                 "Fix the thing\n\n"
+                 "## Anti-claims\n\n"
+                 "- Does NOT touch the reader.\n\n"
+                 "## Claims\n\n"
+                 "- Removes LegacyDownloadCoordinator.\n")
+    diff = _write(tmp_path, "diff.txt",
+                  "diff --git a/Palace/Foo/Widget.swift b/Palace/Foo/Widget.swift\n"
+                  "index 111..222 100644\n"
+                  "--- a/Palace/Foo/Widget.swift\n"
+                  "+++ b/Palace/Foo/Widget.swift\n"
+                  "@@ -1,2 +1,3 @@\n"
+                  " import Foundation\n"
+                  "+let unrelated = 1\n")
+    result = _run(msg, diff)
+    assert result.returncode == 1, (
+        "a real claim after the anti-claims section must still be gated — "
+        "otherwise the strip weakened the detector\n"
+        f"stdout: {result.stdout!r}"
+    )
+
+
+def test_subheading_inside_anti_claims_does_not_end_the_region(tmp_path):
+    """A `###` sub-heading inside `## Anti-claims` is still anti-claims.
+
+    Blast-radius review reproduced the original false positive returning via
+    this route: terminating the region on ANY heading meant `### DRM` ended it
+    and the very next line — `Does **NOT** remove the licensor guard` — parsed
+    as `claim=REM args=('the',)` again. Only a heading at the same or shallower
+    level ends the region.
+    """
+    msg = _write(tmp_path, "msg.txt",
+                 "Fix the thing\n\n"
+                 "## Anti-claims\n\n"
+                 "### DRM\n\n"
+                 "- Does **NOT** remove the licensor guard.\n")
+    diff = _write(tmp_path, "diff.txt",
+                  "diff --git a/Palace/Foo/Widget.swift b/Palace/Foo/Widget.swift\n"
+                  "index 111..222 100644\n"
+                  "--- a/Palace/Foo/Widget.swift\n"
+                  "+++ b/Palace/Foo/Widget.swift\n"
+                  "@@ -1,2 +1,3 @@\n import Foundation\n+let x = 1\n")
+    result = _run(msg, diff)
+    assert result.returncode == 0, (
+        "a sub-heading must not end the anti-claims region\n"
+        f"stdout: {result.stdout!r}"
+    )
+
+
+def test_fenced_hash_line_inside_anti_claims_does_not_swallow_later_claims(tmp_path):
+    """THE dangerous one: a false NEGATIVE, not a false positive.
+
+    Architect and blast-radius independently reproduced this. When the
+    anti-claims check ran before fence tracking, a `#`-initial line inside a
+    fenced block (a shell comment — ordinary, and present in this repo's own
+    intent files) terminated the region mid-fence. Only one of the two fence
+    markers got swallowed, `in_fence` inverted, and the REST of the document
+    was skipped — so a genuinely unsupported claim in a later `## Claims`
+    section went ungated while the gate reported "no claims parsed".
+
+    A gate that misses real drift while reporting green is worse than one that
+    cries wolf, so this test guards the direction that matters most.
+    """
+    msg = _write(tmp_path, "msg.txt",
+                 "Fix the thing\n\n"
+                 "## Anti-claims\n\n"
+                 "- Does NOT touch the reader.\n\n"
+                 "```\n"
+                 "# regenerate with:\n"
+                 "scripts/foo.sh\n"
+                 "```\n\n"
+                 "## Claims\n\n"
+                 "- Removes LegacyDownloadCoordinator.\n")
+    diff = _write(tmp_path, "diff.txt",
+                  "diff --git a/Palace/Foo/Widget.swift b/Palace/Foo/Widget.swift\n"
+                  "index 111..222 100644\n"
+                  "--- a/Palace/Foo/Widget.swift\n"
+                  "+++ b/Palace/Foo/Widget.swift\n"
+                  "@@ -1,2 +1,3 @@\n import Foundation\n+let x = 1\n")
+    result = _run(msg, diff)
+    assert result.returncode == 1, (
+        "a fenced '#' line must not swallow the rest of the document — "
+        "this is the false-negative direction and is worse than a false positive\n"
+        f"stdout: {result.stdout!r}"
+    )
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-v"]))
