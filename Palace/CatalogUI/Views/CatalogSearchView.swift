@@ -267,6 +267,9 @@ private extension CatalogSearchView {
                 )
             )
             .accessibilityIdentifier(AccessibilityID.Search.searchField)
+            // PP-5021 EXPERIMENT (arm 2): does disabling autocorrection also
+            // suppress smart-quote substitution? Not a committed fix.
+            .autocorrectionDisabled()
             .focused($isSearchFieldFocused)
             .accessibilityFocused($accessibilityFocus, equals: .searchField)
             .submitLabel(.search)
