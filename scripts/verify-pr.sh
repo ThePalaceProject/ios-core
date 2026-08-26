@@ -75,7 +75,8 @@
 #
 # Designed to be called by:
 #   - Claude Code agents before PR creation
-#   - forgeos-session.sh evidence (comprehensive mode)
+#   - forgeos-session.sh evidence (comprehensive mode; maintainer-only, now at
+#     ~/harness/stacks/ios/forgeos/)
 #   - CI workflows for gating
 
 set -uo pipefail

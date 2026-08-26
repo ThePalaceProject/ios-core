@@ -117,17 +117,22 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `jira-integration.sh` | Helpers for transitioning Jira tickets and adding fix comments from CI. | `jira-pr-opened.yml`, `jira-update-on-merge.yml` |
 | `test-push-notifications.py` | Test harness for sending push notifications to a development build. | dev/local |
 
-### ForgeOS governance (maintainer-only)
+### ForgeOS governance — moved out of this repo (2026-08-26)
 
-These are maintainer scripts; outside contributors do not run them. ForgeOS is the governance system that enforces gates on commits, pushes, and PRs. See `CLAUDE.md` for context.
+The five `forgeos-*` scripts that used to live here now live in the maintainer's
+local harness at `~/harness/stacks/ios/forgeos/`.
 
-> **Maintainer note:** Existing local sessions need `export FORGEOS_API_URL=<your-forgeos-instance>` in `~/harness/.env` (or wherever you keep your env). Without it, the three forgeos scripts (`forgeos-session.sh`, `forgeos-orchestrate.sh`, `forgeos-gate-hook.sh`) will fail loud with a message pointing back at this README.
+They were never runnable from a clone: every one of them talks to a private
+ForgeOS API instance via `FORGEOS_API_URL` and a key no outside contributor has.
+Keeping 1,330 lines of them in a public repository advertised a workflow nobody
+reading this could follow, and cost every doc-reference sweep and shell-syntax
+gate a walk through code that could not execute. ForgeOS is also currently
+switched off for this project, so they were not running for maintainers either.
 
-| Script | What it does | When |
-|--------|--------------|------|
-| `forgeos-session.sh` | Per-session governance: start, evidence, promote, close changesets. | every maintainer session that produces code |
-| `forgeos-orchestrate.sh` | Multi-agent orchestration extension on top of `forgeos-session.sh`. | multi-agent / multi-task sessions |
-| `forgeos-gate-hook.sh` | Pre-PR gate check, called by the Claude Code hook before `gh pr create`. | automatic via hook |
+The rule they failed is the one this repository already states: only tooling any
+contributor can run unaided belongs here. `verify-pr.sh`, the standalone
+detectors, and `palace_mutate.py` pass that test and stay.
+
 
 The previous one-shot bootstrap scripts (`forgeos-bootstrap-palace-evolution.sh`,
 `forgeos-apply-palace-gate-template.sh`, `forgeos-full-suite.sh`,
