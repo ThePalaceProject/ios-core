@@ -498,6 +498,29 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
 # Cache
 # ---------------------------------------------------------------------------
 
+def discover_test_roots(repo_root: str) -> list[str]:
+    """Top-level directories holding test sources, found rather than listed.
+
+    Hardcoding `["PalaceTests", "TenPrintCoverTests"]` looks harmless and is not:
+    `--repo-root` deliberately supports mutating a SIBLING checkout, and the
+    audiobook toolkit's tests live in `PalaceAudiobookToolkitTests`. Against that
+    repo the hardcoded list resolves nothing, `test_fingerprint` returns None, and
+    caching silently switches off for every toolkit mutation run.
+
+    That fails closed, so it is safe — but it is a silent, permanent slowdown on
+    the audiobook critical path, and it was invisible until a cache audit turned
+    up five entries whose test classes could not be resolved. All five were
+    toolkit runs.
+    """
+    try:
+        return sorted(
+            name for name in os.listdir(repo_root)
+            if name.endswith("Tests") and os.path.isdir(os.path.join(repo_root, name))
+        )
+    except OSError:
+        return []
+
+
 def resolve_test_sources(tests: list[str], repo_root: str,
                          test_roots: list[str] | None = None) -> list[str] | None:
     """Source files declaring the XCTest classes named by `--tests`.
@@ -509,7 +532,7 @@ def resolve_test_sources(tests: list[str], repo_root: str,
     `--tests` values are `<Bundle>/<Class>` (what `-only-testing` takes), so the
     class name is the last path component.
     """
-    roots = test_roots or ["PalaceTests", "TenPrintCoverTests"]
+    roots = test_roots or discover_test_roots(repo_root)
     wanted = {t.rsplit("/", 1)[-1] for t in tests if t.strip()}
     if not wanted:
         return None
@@ -576,7 +599,7 @@ def test_fingerprint(tests: list[str], repo_root: str,
     # mock change really can flip a verdict; the cost is broader invalidation,
     # which is the safe direction.
     shared: list[str] = []
-    for root in (test_roots or ["PalaceTests"]):
+    for root in (test_roots or discover_test_roots(repo_root)):
         mocks = os.path.join(repo_root, root, "Mocks")
         if os.path.isdir(mocks):
             for dirpath, _d, filenames in os.walk(mocks):

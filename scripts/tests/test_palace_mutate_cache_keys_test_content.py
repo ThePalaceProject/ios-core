@@ -185,3 +185,36 @@ def test_cache_version_was_bumped_to_discard_poisoned_entries():
     already-stored verdict in play.
     """
     assert pm.CACHE_VERSION >= 2
+
+
+# --------------------------------------------------------------------------
+# Test-root discovery — found, not hardcoded
+# --------------------------------------------------------------------------
+
+def test_discovers_test_roots_by_suffix(tmp_path):
+    root = tmp_path / "repo"
+    (root / "PalaceTests").mkdir(parents=True)
+    (root / "TenPrintCoverTests").mkdir()
+    (root / "Palace").mkdir()                      # source, not tests
+    (root / "notes.txt").write_text("x")           # a file ending in nothing
+    assert pm.discover_test_roots(str(root)) == ["PalaceTests", "TenPrintCoverTests"]
+
+
+def test_discovers_a_sibling_repos_test_root(tmp_path):
+    """The gap this closes: the toolkit's tests are not called PalaceTests.
+
+    `--repo-root` supports mutating a sibling checkout. With the roots hardcoded,
+    resolution against the audiobook toolkit found nothing, the fingerprint came
+    back None, and caching switched off silently for every toolkit run.
+    """
+    root = tmp_path / "toolkit"
+    (root / "PalaceAudiobookToolkitTests" / "Sub").mkdir(parents=True)
+    (root / "PalaceAudiobookToolkitTests" / "Sub" / "FooTests.swift").write_text(
+        "final class FooTests: XCTestCase {}")
+    assert pm.discover_test_roots(str(root)) == ["PalaceAudiobookToolkitTests"]
+    assert pm.resolve_test_sources(["PalaceAudiobookToolkitTests/FooTests"], str(root)) is not None
+    assert pm.test_fingerprint(["PalaceAudiobookToolkitTests/FooTests"], str(root)) is not None
+
+
+def test_discovery_on_a_missing_directory_returns_empty_not_raise(tmp_path):
+    assert pm.discover_test_roots(str(tmp_path / "nope")) == []
