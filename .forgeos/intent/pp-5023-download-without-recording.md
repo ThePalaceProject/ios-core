@@ -95,6 +95,12 @@ wrong — each time a file was added to the diff and not to the list, and each t
 only the file the reviewer named was added back. Listing the annotations by hand
 is fine; deriving WHICH files appear is what stops the drift.
 
+That command returns NINE paths; the list below has eight. The ninth is this
+document, excluded because a scope list naming itself is noise. Said explicitly
+because otherwise a reviewer re-running the stated command finds 9 against 8 and
+has to work out which is missing — which is exactly the friction the derivation
+exists to remove. Both reviewers hit it.
+
 - `Palace.xcodeproj/project.pbxproj` — registers the new test file (PalaceTests target only)
 - `Palace/MyBooks/BackgroundDownloadHandler.swift` — BEHAVIOUR: `followAcquisitionLink` persists, inherits the account, drops the superseded record
 - `Palace/MyBooks/DownloadStateManager.swift` — BEHAVIOUR: `persistReissuedTask`, the account-preserving re-issue write
@@ -145,15 +151,30 @@ Seven of the eight fail; the eighth is the control, which passes there and here
 because it asserts the DEFECT. **That baseline covers 8 of the 14 tests now in the
 file.** Six were added later in response to review — the two `followUpTaskInFlight`
 arms, the two caller-level `handleDownloadCompletion` tests, and the two
-inheritance-cell tests — and are pinned by direct verification instead: deleting
-the guard or the call makes a NAMED test fail (recorded below). Saying "all ten
+inheritance-cell tests — and are pinned as follows — stated here rather
+than promised, since an earlier draft said "recorded below" and recorded nothing:
+
+  * `testBearerTokenHop_reportsALiveFollowUpTask…` and
+    `testHandleDownloadCompletion_bearerHop_keepsTheRecordForTheLiveTask` — deleting
+    `if !followUpTaskInFlight` makes the second fail BY NAME. Run twice: when the
+    guard landed, and again after the fixture's Content-Type changed, because
+    altering a fixture invalidates the proof that used it.
+  * `testReissue_whenTheSourceHasNoRecordButTheTargetDoes…` and
+    `testReissue_whenNeitherSourceNorTargetHasARecord…` — written to kill a MUTATION
+    SURVIVOR (`DownloadTaskPersistence`'s target-record fallback, which survived
+    until they existed). Mutation is their evidence, not a hand check.
+  * `testNonFollowUpDispatch_reportsNoLiveTask` and
+    `testHandleDownloadCompletion_withoutAFollowUp_stillRetiresTheRecord` — controls.
+    Their evidence is that they assert the OPPOSITE of the arms above and pass, so a
+    flag wedged true (which would leak a record on every finished download) fails
+    them. They are not independent behaviour pins and are not claimed as such. Saying "all ten
 pass" here, as an earlier draft did, was itself the stale-figure error this
 section warns about. Two further tests
 (`testBearerTokenHop_reportsALiveFollowUpTask_soTheCallerKeepsTheRecord` and
 `testNonFollowUpDispatch_reportsNoLiveTask`) cannot be measured that way at all:
 they assert `RightsManagementDispatchResult.followUpTaskInFlight`, which does not
 exist on develop, so they fail to COMPILE — red by construction rather than by
-assertion. All ten pass after the change.
+assertion. All fourteen pass after the change.
 
 An earlier version of this section said "five of seven". That was wrong and the
 error is worth naming: it was recorded from a run against a tree that had already

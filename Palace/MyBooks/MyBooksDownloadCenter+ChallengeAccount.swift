@@ -50,10 +50,14 @@ extension MyBooksDownloadCenter {
     /// WHAT THIS RESTS ON — bookID keying, not call ordering. An earlier draft of
     /// this comment claimed every seeding site writes the record first; that is a
     /// false census and review caught it. Of the five sites that seed
-    /// `taskIdentifierToBook`, four now write a record — the two start paths via
+    /// `taskIdentifierToBook`, four now ATTEMPT a record — the two start paths via
     /// `persistStartedTaskRecord`, and the two re-issue paths via
-    /// `persistReissuedTask`/`upsert` as of PP-5023. The fifth is adopt, which is
-    /// seeded FROM a record:
+    /// `persistReissuedTask`/`upsert` as of PP-5023. "Attempt", not "write":
+    /// `persistStartedTaskRecord` returns without writing when it can resolve no
+    /// URL, so one of the four can still leave a live task unrecorded. That bound
+    /// is stated where the guard lives; repeated here because a census in THIS
+    /// comment being a shade too strong is what review blocked on twice. The fifth
+    /// site is adopt, which is seeded FROM a record:
     ///
     ///   * the two download-START paths write the record via
     ///     `persistStartedTaskRecord` (`MyBooksDownloadCenter` :1748, :2179) and
