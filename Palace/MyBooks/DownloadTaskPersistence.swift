@@ -123,12 +123,14 @@ enum DownloadReconciliation {
     ///
     ///   DO NOT "OPTIMIZE" THIS BY CANCELLING THE UNADOPTABLE TASK. It reads as
     ///   an obvious improvement — the task is orphaned, so why leave it running?
-    ///   Because `followAcquisitionLink` and the bearer-token hop in
-    ///   `RightsManagementDispatcher` create legitimately live tasks that were
-    ///   never persisted here, and cancelling would kill real in-flight
-    ///   downloads. An orphan costs bandwidth; cancelling costs the patron a
-    ///   book. Leave it: `MyBooksDownloadCenter` early-returns on an unmapped
-    ///   identifier, so the orphan's bytes are discarded rather than misrouted.
+    ///   Leave it anyway: `MyBooksDownloadCenter` early-returns on an unmapped
+    ///   identifier, so the orphan's bytes are discarded rather than misrouted,
+    ///   and an orphan costs bandwidth where a wrong cancellation costs the
+    ///   patron a book. The original reason — that `followAcquisitionLink` and
+    ///   the bearer-token hop created legitimately live tasks no record knew
+    ///   about — no longer holds, since PP-5023 made both persist; but a live
+    ///   task can still be unadoptable for other reasons (a contested URL), and
+    ///   cancelling those would be just as wrong.
     ///
     ///   LOAD-BEARING INVARIANT: within one reconcile pass, a download URL
     ///   identifies at most one book. The URL is only a safe discriminator
@@ -141,18 +143,20 @@ enum DownloadReconciliation {
     ///   whichever book wrote `taskIdentifierToBook` last, which is PP-4997's
     ///   own failure mode re-entered through its fix.
     ///
-    ///   WHAT IT DOES NOT COVER: `contestedURLs` is computed from `persisted`
-    ///   alone, because that is all this function is given. A live task created
-    ///   WITHOUT a persisted record — `followAcquisitionLink` and the
-    ///   bearer-token hop in `RightsManagementDispatcher` both do this — is
-    ///   invisible to it. If book B has such a task on book A's URL, A's record
-    ///   sees exactly one live task on its URL and adopts B's download. That is
-    ///   a wrong adoption, not a decline, and this guard does not prevent it.
-    ///   The root fix is for those two paths to persist their tasks (PP-5023);
-    ///   until then the exposure is real and bounded by how rarely two books
-    ///   share an acquisition URL — measured at zero in a 100-entry DPLA feed
-    ///   with 400 acquisition links and 200 distinct hrefs, but unconstrained
-    ///   by the data model.
+    ///   WHAT IT RESTS ON: `contestedURLs` is computed from `persisted` alone,
+    ///   because that is all this function is given, so the guard can only see a
+    ///   live task that has a record. Two paths used to create tasks without one
+    ///   — `followAcquisitionLink` and the bearer-token hop in
+    ///   `RightsManagementDispatcher` — and a book whose record named such a
+    ///   task's URL adopted that download outright: a wrong adoption, not a
+    ///   decline. Both persist as of PP-5023, which is what makes this guard
+    ///   complete rather than best-effort.
+    ///
+    ///   That completeness is a property of the CALLERS, not of this function,
+    ///   and nothing here can enforce it. Any future path that starts a download
+    ///   in this session must persist a record, or it reopens the same hole.
+    ///   `DownloadReissuePersistenceTests` pins the two known re-issue paths and
+    ///   carries the control that demonstrates the failure they used to cause.
     /// PURE — no URLSession, no I/O. Unit-testable exhaustively over the
     /// {live task / dead task} × {registry state} matrix.
     ///

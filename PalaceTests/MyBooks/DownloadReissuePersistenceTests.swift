@@ -1,0 +1,337 @@
+//
+//  DownloadReissuePersistenceTests.swift
+//  PalaceTests
+//
+//  PP-5023. Every path that starts a download must durably record it.
+//
+//  PP-4997 made launch reconciliation match a persisted record against the live
+//  tasks by URL, and refuse to adopt when two books claim the same URL. That
+//  refusal is computed from persisted records ALONE, so a live task that was
+//  never persisted is invisible to it: if book B is downloading on book A's URL
+//  without a record, A's record sees exactly one live task on its URL and adopts
+//  B's download. The patron gets a title they did not ask for, silently.
+//
+//  Two paths created a task without recording it — the acquisition-link follow-up
+//  in `BackgroundDownloadHandler` and the bearer-token hop in
+//  `RightsManagementDispatcher`. These tests pin that they now record, and that
+//  recording is what closes the wrong-adoption route.
+//
+//  The last two tests are a matched pair: one asserts the fix, the other is the
+//  CONTROL that proves the assertion can fail. Without the control, a test that
+//  declines adoption for some unrelated reason reads exactly like a passing fix.
+//
+//  Copyright © 2026 The Palace Project. All rights reserved.
+//
+
+import XCTest
+import PalaceBookModel
+import PalaceBookRegistry
+@testable import Palace
+
+/// Inert session so a task created by the code under test can never reach the
+/// network. Sibling suites each carry their own because theirs are fileprivate.
+private let inertReissueTestSession: URLSession = {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [InertNoOpURLProtocol.self]
+    return URLSession(configuration: config)
+}()
+
+/// `PalaceWiringTestCase` rather than `XCTestCase`: the sanctioned seam for
+/// minting an `AccountsManager`, whose tearDown drains the background work a
+/// hand-rolled `AccountsManager()` would leak. Already `@MainActor`.
+final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
+
+    /// Per-test persistence file. Without this the suite writes started-task
+    /// records into the process-wide default store and leaks fixture records
+    /// into sibling suites.
+    private lazy var persistenceURL: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("pp5023-\(UUID().uuidString).json")
+
+    private lazy var isolatedStateManager = DownloadStateManager(
+        taskPersistence: DownloadTaskPersistence(fileURL: persistenceURL))
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Skip the synchronous disk-cache preload (root of the FLAKE-003 30s CI
+        // timeout). Safe here: nothing in this file reads `accountSets`.
+        AccountsManager.deferDiskCachePreloadForTesting = true
+    }
+
+    override func tearDown() async throws {
+        try? FileManager.default.removeItem(at: persistenceURL)
+        AccountsManager.deferDiskCachePreloadForTesting = false
+        try await super.tearDown()
+    }
+
+    // MARK: - Helpers
+
+    private func record(forBookID bookID: String) -> PersistedDownloadRecord? {
+        isolatedStateManager.persistedRecords().first { $0.bookID == bookID }
+    }
+
+    /// The URL the handler will actually fetch — read off the fixture rather
+    /// than hardcoded, so the assertion cannot drift from the mocker.
+    private func acquisitionURL(of book: TPPBook) throws -> URL {
+        try XCTUnwrap(book.defaultAcquisition?.hrefURL,
+                      "fixture must expose a direct acquisition link")
+    }
+
+    // MARK: - The acquisition-link follow-up
+
+    func testFollowAcquisitionLink_persistsTheTaskItStarts() async throws {
+        let delegate = MockBackgroundDownloadDelegate(stateManager: isolatedStateManager)
+        let handler = BackgroundDownloadHandler()
+        handler.delegate = delegate
+
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let expectedURL = try acquisitionURL(of: book)
+
+        let started = await handler.followAcquisitionLink(
+            from: book,
+            originalBook: book,
+            originalTask: fakeDownloadTask(),
+            session: inertReissueTestSession)
+        XCTAssertTrue(started, "precondition: the follow-up download must have started")
+
+        let persisted = try XCTUnwrap(
+            record(forBookID: book.identifier),
+            "the acquisition-link follow-up must durably record the task it started")
+        XCTAssertEqual(persisted.downloadURL, expectedURL,
+                       "the record must name the URL actually being fetched")
+
+        // The identifier must be the NEW task's, not the dead original's — a
+        // record naming a task that no longer exists cannot be adopted.
+        let liveInfo = await delegate.stateManager.bookIdentifierToDownloadInfo
+            .get(book.identifier)
+        let liveTaskID = try XCTUnwrap(liveInfo?.downloadTask.taskIdentifier)
+        XCTAssertEqual(persisted.taskIdentifier, liveTaskID,
+                       "the record must name the live task, not the one it replaced")
+    }
+
+    func testFollowAcquisitionLink_preservesTheAccountTheDownloadStartedUnder() async throws {
+        // PP-4978 boundary. `persistStartedTaskRecord` stamps the CURRENT account
+        // and upserts by book id, so re-issuing through it would overwrite the
+        // started-under account — and `startedForAccount` reads exactly that field
+        // to decide which library's credential the next re-issue carries. Writing
+        // the current account here would send library B's token to library A.
+        let startedLibraryID = "pp5023-started-\(UUID().uuidString)"
+        let delegate = MockBackgroundDownloadDelegate(stateManager: isolatedStateManager)
+        let handler = BackgroundDownloadHandler()
+        handler.delegate = delegate
+
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        isolatedStateManager.persistStartedTask(
+            bookID: book.identifier,
+            taskIdentifier: 5_023_001,
+            downloadURL: URL(string: "https://library-a.palace-test.invalid/book")!,
+            account: startedLibraryID,
+            expectedBytes: nil)
+
+        _ = await handler.followAcquisitionLink(
+            from: book,
+            originalBook: book,
+            originalTask: fakeDownloadTask(),
+            session: inertReissueTestSession)
+
+        let persisted = try XCTUnwrap(record(forBookID: book.identifier))
+        XCTAssertEqual(persisted.account, startedLibraryID,
+                       "re-issuing must preserve the account the download STARTED under")
+
+        // Without these the test passes vacuously: the seeded record still has
+        // the right account simply because nothing rewrote it, which is exactly
+        // the pre-fix state. Pinning the record to the NEW task means it can only
+        // pass once this path actually writes one.
+        let liveInfo = await delegate.stateManager.bookIdentifierToDownloadInfo
+            .get(book.identifier)
+        let liveTaskID = try XCTUnwrap(liveInfo?.downloadTask.taskIdentifier)
+        XCTAssertEqual(persisted.taskIdentifier, liveTaskID,
+                       "the preserved-account record must be the re-issued one, not the seeded one")
+        XCTAssertEqual(persisted.downloadURL, try acquisitionURL(of: book),
+                       "the preserved-account record must name the URL now being fetched")
+    }
+
+    func testFollowAcquisitionLink_whenTheBookIdentifierChanges_carriesTheAccountAndDropsTheStaleRecord() async throws {
+        // The record is written under the ORIGINAL book at download start, while
+        // the follow-up carries an UPDATED book parsed from the server's OPDS
+        // entry, whose identifier can differ. Two things must hold: the started-
+        // under account has to reach the new record, and the old record must not
+        // be left behind naming a task that no longer exists — a stale record is
+        // itself an adoption vector on this ticket's own mechanism.
+        let startedLibraryID = "pp5023-started-\(UUID().uuidString)"
+        let delegate = MockBackgroundDownloadDelegate(stateManager: isolatedStateManager)
+        let handler = BackgroundDownloadHandler()
+        handler.delegate = delegate
+
+        let originalBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let updatedBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        XCTAssertNotEqual(originalBook.identifier, updatedBook.identifier,
+                          "precondition: the fixture books must have distinct identifiers")
+
+        isolatedStateManager.persistStartedTask(
+            bookID: originalBook.identifier,
+            taskIdentifier: 5_023_002,
+            downloadURL: URL(string: "https://library-a.palace-test.invalid/book")!,
+            account: startedLibraryID,
+            expectedBytes: nil)
+
+        _ = await handler.followAcquisitionLink(
+            from: updatedBook,
+            originalBook: originalBook,
+            originalTask: fakeDownloadTask(),
+            session: inertReissueTestSession)
+
+        let carried = try XCTUnwrap(
+            record(forBookID: updatedBook.identifier),
+            "the updated book must carry a record for the task now running")
+        XCTAssertEqual(carried.account, startedLibraryID,
+                       "the started-under account must survive an identifier change")
+        XCTAssertNil(record(forBookID: originalBook.identifier),
+                     "the superseded record must not be left naming a dead task")
+    }
+
+    func testFollowAcquisitionLink_withNoPriorRecord_recordsAnEmptyAccount() async throws {
+        // The floor. With nothing to preserve, the account must be empty rather
+        // than the current one: `startedForAccount` degrades an empty id to
+        // today's account, so empty reproduces today's behaviour exactly, while a
+        // current-account stamp would be a new and wrong assertion about history.
+        let delegate = MockBackgroundDownloadDelegate(stateManager: isolatedStateManager)
+        let handler = BackgroundDownloadHandler()
+        handler.delegate = delegate
+
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        // Deliberately no persistStartedTask call.
+
+        _ = await handler.followAcquisitionLink(
+            from: book,
+            originalBook: book,
+            originalTask: fakeDownloadTask(),
+            session: inertReissueTestSession)
+
+        let persisted = try XCTUnwrap(record(forBookID: book.identifier))
+        XCTAssertEqual(persisted.account, "",
+                       "with no prior record the account must be empty, not the current library")
+    }
+
+    // MARK: - The bearer-token hop
+
+    func testBearerTokenHop_persistsTheTaskItStarts() async throws {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let bearerLocation = URL(string: "https://content.palace-test.invalid/pp5023-bearer.epub")!
+
+        let payload: [String: Any] = [
+            "access_token": "pp5023-token",
+            "expires_in": 3600,
+            "location": bearerLocation.absoluteString
+        ]
+        let location = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp5023-bearer-\(UUID().uuidString).json")
+        try JSONSerialization.data(withJSONObject: payload).write(to: location)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        let dispatcher = makeDispatcher()
+
+        _ = await dispatcher.dispatch(
+            book: book,
+            task: fakeDownloadTask(),
+            location: location,
+            session: inertReissueTestSession,
+            rights: .simplifiedBearerTokenJSON,
+            failureError: nil)
+
+        let persisted = try XCTUnwrap(
+            record(forBookID: book.identifier),
+            "the bearer-token hop must durably record the task it started")
+        XCTAssertEqual(persisted.downloadURL, bearerLocation,
+                       "the record must name the bearer location actually being fetched")
+    }
+
+    /// `AdobeDRMService` has no protocol and the dispatcher takes it concretely,
+    /// so the singleton goes in here. It is inert for this test: the
+    /// `.simplifiedBearerTokenJSON` arm never touches it. Documented rather than
+    /// worked around — the inability to inject it is production-code feedback.
+    ///
+    /// No `#if FEATURE_DRM_CONNECTOR` around this: that flag is set on the app
+    /// target and NOT on `PalaceTests`, so from here the DRM initializer is the
+    /// only one that exists. Guarding it would compile the wrong arm and fail.
+    private func makeDispatcher() -> RightsManagementDispatcher {
+        RightsManagementDispatcher(
+            stateManager: isolatedStateManager,
+            fileOps: BackgroundDownloadHandler(),
+            bookRegistry: TPPBookRegistryMock(),
+            userAccountProvider: { TPPUserAccountMock() },
+            adobeDRMService: AdobeDRMService.shared)
+    }
+
+    // MARK: - What the recording actually buys: no wrong adoption
+
+    func testAcquisitionLinkTask_isNotAdoptedByAnotherBookSharingItsURL() async throws {
+        // The ticket's stated acceptance. Book A was killed mid-download and its
+        // record names URL X. Book B is now live on URL X via the acquisition-link
+        // follow-up. A must NOT adopt B's download.
+        let delegate = MockBackgroundDownloadDelegate(stateManager: isolatedStateManager)
+        let handler = BackgroundDownloadHandler()
+        handler.delegate = delegate
+
+        let bookB = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let sharedURL = try acquisitionURL(of: bookB)
+
+        let bookAID = "pp5023-book-a-\(UUID().uuidString)"
+        isolatedStateManager.persistStartedTask(
+            bookID: bookAID,
+            taskIdentifier: 5_023_100,
+            downloadURL: sharedURL,
+            account: "",
+            expectedBytes: nil)
+
+        _ = await handler.followAcquisitionLink(
+            from: bookB,
+            originalBook: bookB,
+            originalTask: fakeDownloadTask(),
+            session: inertReissueTestSession)
+
+        let liveInfo = await delegate.stateManager.bookIdentifierToDownloadInfo
+            .get(bookB.identifier)
+        let liveTaskID = try XCTUnwrap(liveInfo?.downloadTask.taskIdentifier)
+
+        let decisions = DownloadReconciliation.reconcile(
+            persisted: isolatedStateManager.persistedRecords(),
+            liveTasks: [liveTaskID: sharedURL],
+            registryStates: [bookAID: .downloading, bookB.identifier: .downloading])
+
+        XCTAssertFalse(
+            decisions.contains(.adopt(bookID: bookAID, taskIdentifier: liveTaskID)),
+            "book A must not adopt book B's acquisition-link download")
+        XCTAssertFalse(
+            decisions.contains { if case .adopt(let id, _) = $0 { return id == bookAID }; return false },
+            "book A must not adopt ANY task on a URL another book is also downloading")
+    }
+
+    func testControl_anUnrecordedTaskOnAnotherBooksURL_isAdopted() throws {
+        // CONTROL for the test above, and the defect itself stated as a test.
+        // Same inputs, except book B's task was never persisted — which is
+        // precisely what the two unrecorded paths used to produce. The guard is
+        // computed from persisted records alone, so it cannot see B, and A adopts
+        // B's download.
+        //
+        // If this ever starts failing, the test above stops being evidence: it
+        // would be declining adoption for some reason other than the record.
+        let sharedURL = URL(string: "https://content.palace-test.invalid/pp5023-shared.epub")!
+        let bookAID = "pp5023-book-a-\(UUID().uuidString)"
+        let liveTaskID = 5_023_200
+
+        let decisions = DownloadReconciliation.reconcile(
+            persisted: [PersistedDownloadRecord(
+                bookID: bookAID,
+                taskIdentifier: 5_023_201,
+                downloadURL: sharedURL,
+                account: "",
+                expectedBytes: nil,
+                startedAt: Date())],
+            liveTasks: [liveTaskID: sharedURL],
+            registryStates: [bookAID: .downloading])
+
+        XCTAssertEqual(
+            decisions, [.adopt(bookID: bookAID, taskIdentifier: liveTaskID)],
+            "control: with no record for the live task's owner, the guard is blind and A adopts it")
+    }
+}

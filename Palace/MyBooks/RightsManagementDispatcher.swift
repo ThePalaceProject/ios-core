@@ -191,6 +191,19 @@ final class RightsManagementDispatcher: @unchecked Sendable {
                     book.bearerToken = simplifiedBearerToken.accessToken
                     book.bearerTokenFulfillURL = cmFulfillURL
                     await stateManager.taskIdentifierToBook.set(newTask.taskIdentifier, value: book)
+
+                    // PP-5023: durably record the task this hop starts. The
+                    // bearer location is a DIFFERENT URL from the one the record
+                    // was written with at download start, so without this the
+                    // record names a URL nothing is fetching while a live task
+                    // runs unrecorded — invisible to reconciliation's
+                    // contested-URL guard, and adoptable by any book whose record
+                    // happens to name the bearer location.
+                    stateManager.persistReissuedTask(
+                        bookID: book.identifier,
+                        taskIdentifier: newTask.taskIdentifier,
+                        downloadURL: simplifiedBearerToken.location)
+
                     newTask.resume()
                 } else {
                     delegate?.logBookDownloadFailure(book, reason: "No Simplified Bearer Token in deserialized data", downloadTask: task, metadata: nil)

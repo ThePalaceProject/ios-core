@@ -139,6 +139,54 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
         )
     }
 
+    /// Persist a task that REPLACES an in-flight one for a book already being
+    /// downloaded — the acquisition-link follow-up and the bearer-token hop.
+    ///
+    /// Separate from `persistStartedTask` because of the account field, which is
+    /// load-bearing and easy to corrupt here. `persistStartedTask` stamps the
+    /// CURRENT account and `DownloadTaskPersistence.record` upserts by book id,
+    /// so re-issuing through it would overwrite the account the download STARTED
+    /// under — and `BackgroundDownloadHandler.startedForAccount` reads exactly
+    /// that field to decide which library's credential the next re-issue carries.
+    /// A patron who switched libraries mid-download would then have the newly
+    /// selected library's token sent to the original library's server, which is
+    /// the credential-isolation boundary PP-4978 exists to hold.
+    ///
+    /// So the account is CARRIED FORWARD and never invented. With no record to
+    /// carry it from, it is left empty rather than filled with the current
+    /// account: `startedForAccount` already degrades an empty id to today's
+    /// account, so that arm reproduces current behaviour exactly, where a
+    /// current-account stamp would be a new and false claim about history.
+    ///
+    /// `startedAt` and `expectedBytes` carry forward for the same reason — they
+    /// describe the download, not this hop.
+    ///
+    /// - Parameter inheritingFrom: the book id whose existing record supplies the
+    ///   carried fields, when the re-issue registers under a DIFFERENT id than the
+    ///   one the download started under. `followAcquisitionLink` re-registers
+    ///   under a book parsed from the server's OPDS entry, whose identifier can
+    ///   differ from the original's; without this the started-under account would
+    ///   be silently dropped on exactly that path.
+    func persistReissuedTask(
+        bookID: String,
+        taskIdentifier: Int,
+        downloadURL: URL,
+        inheritingFrom sourceBookID: String? = nil
+    ) {
+        let inheritedID = sourceBookID ?? bookID
+        let existing = taskPersistence.all().first { $0.bookID == inheritedID }
+        taskPersistence.record(
+            PersistedDownloadRecord(
+                bookID: bookID,
+                taskIdentifier: taskIdentifier,
+                downloadURL: downloadURL,
+                account: existing?.account ?? "",
+                expectedBytes: existing?.expectedBytes,
+                startedAt: existing?.startedAt ?? Date()
+            )
+        )
+    }
+
     /// Drop the durable record for a book on terminal completion.
     func removePersistedRecord(for bookID: String) {
         taskPersistence.remove(bookID: bookID)

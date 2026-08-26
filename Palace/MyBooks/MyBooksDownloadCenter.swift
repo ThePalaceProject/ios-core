@@ -2094,21 +2094,26 @@ extension MyBooksDownloadCenter {
     /// Called on the initial start (`addDownloadTask`) and on each transfer retry
     /// re-issue.
     ///
-    /// It does NOT track every live task, and an earlier version of this comment
-    /// claimed it did. Two paths create a download task without coming through
-    /// here — `followAcquisitionLink` and the bearer-token hop in
-    /// `RightsManagementDispatcher` — so a record can name a task that is no
-    /// longer the live one, under a URL that is no longer being fetched. That
-    /// bounds reconciliation's reach: such a record fails to match and its book
-    /// restarts.
+    /// The two paths that create a download task WITHOUT coming through here —
+    /// `followAcquisitionLink` and the bearer-token hop in
+    /// `RightsManagementDispatcher` — now persist their own tasks via
+    /// `DownloadStateManager.persistReissuedTask` (PP-5023). Every live task in
+    /// this session therefore has a record, which is the premise reconciliation's
+    /// contested-URL guard rests on: the guard is computed from persisted records
+    /// alone, so an unrecorded live task was invisible to it and could be adopted
+    /// by another book whose record named the same URL.
     ///
-    /// An earlier version of this comment said that can only cause a
-    /// decline-to-adopt and never a wrong adoption. That is FALSE and was shown
-    /// so in review: reconciliation's contested-URL guard is computed from
-    /// persisted records only, so a live unpersisted task on another book's
-    /// download URL is invisible to it, and that book's record adopts this
-    /// task. Tracked as PP-5023 — the fix is for these paths to persist, which
-    /// makes them visible to the guard.
+    /// They use a DIFFERENT entry point deliberately. This one stamps the CURRENT
+    /// account, and `record` upserts by book id, so re-issuing through it would
+    /// overwrite the account the download started under — the field PP-4978's
+    /// `startedForAccount` reads. `persistReissuedTask` carries that field forward
+    /// instead of restamping it.
+    ///
+    /// KNOWN BOUND, unchanged by PP-5023 and stated so it is not mistaken for
+    /// closed: the transfer-retry re-issue below DOES come through here, so a
+    /// retry after a library switch still overwrites the captured account with the
+    /// then-current one. That is the narrowing documented at
+    /// `BackgroundDownloadHandler.startedForAccount` and it is out of scope here.
     func persistStartedTaskRecord(task: URLSessionDownloadTask, book: TPPBook, request: URLRequest) {
         guard let url = task.originalRequest?.url ?? request.url else { return }
         stateManager.persistStartedTask(
