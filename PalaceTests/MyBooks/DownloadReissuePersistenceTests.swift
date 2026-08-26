@@ -333,6 +333,19 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
                        "and must be the re-issued record, not the seeded one")
     }
 
+    /// A FRESH inert session per `MyBooksDownloadCenter`.
+    ///
+    /// Not the file-level `inertReissueTestSession`: the centre takes ownership of
+    /// the session it is handed and invalidates it, so sharing one makes every
+    /// later test in the file fail with "Task created in a session that has been
+    /// invalidated". Handing the centre its own session still avoids the real
+    /// background session it would otherwise build on the shared identifier.
+    private static func makeInertSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [InertNoOpURLProtocol.self]
+        return URLSession(configuration: config)
+    }
+
     /// A download task that reports a Content-Type, which the completion parser
     /// requires before it will hand off to the rights dispatcher.
     private static func taskWithContentType(
@@ -448,7 +461,8 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
         let center = MyBooksDownloadCenter(
             bookRegistry: registry,
             stateManager: isolatedStateManager,
-            reachability: MockReachability(initiallyConnected: true))
+            reachability: MockReachability(initiallyConnected: true),
+            urlSession: Self.makeInertSession())
 
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         // A response-bearing task: `DownloadCompletionParser` rejects the download
@@ -494,6 +508,69 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
                        "and the surviving record must be the re-issued one")
     }
 
+    /// The acquisition-link half of the same guarantee, and the gap review named:
+    /// only the bearer half had a caller-level pin.
+    ///
+    /// This half is protected by a DIFFERENT mechanism — `case .followUpStarted:
+    /// return` short-circuits `handleDownloadCompletion` before the terminal
+    /// cleanup ever runs. That early return is pre-existing and nothing reached
+    /// it, so reworking the arm to fall through would compile, make this half
+    /// inert, and leave every other test green. That is precisely the shape that
+    /// made the bearer half inert in the first review round.
+    ///
+    /// The OPDS entry deliberately carries the SAME id as the original book. An
+    /// id-changing follow-up records under the new id while the cleanup deletes
+    /// the old one, so it survives a fall-through by accident and cannot detect
+    /// the regression. Only the same-id case actually bites.
+    func testHandleDownloadCompletion_opdsFollowUp_keepsTheRecordForTheLiveTask() async throws {
+        let bookID = "pp5023-opds-\(UUID().uuidString)"
+        let acquisitionURL = URL(string: "https://content.palace-test.invalid/pp5023-opds.epub")!
+        let book = TPPBookMocker.mockBook(identifier: bookID, title: "PP-5023 OPDS Follow-Up")
+
+        let center = MyBooksDownloadCenter(
+            bookRegistry: TPPBookRegistryMock(),
+            stateManager: isolatedStateManager,
+            reachability: MockReachability(initiallyConnected: true),
+            urlSession: Self.makeInertSession())
+
+        // An OPDS-entry Content-Type routes the parser down the follow-up branch
+        // before it ever consults rights.
+        let task = Self.taskWithContentType("application/atom+xml", identifier: 5_023_600)
+        await isolatedStateManager.taskIdentifierToBook.set(task.taskIdentifier, value: book)
+
+        let entryXML = """
+        <entry xmlns="http://www.w3.org/2005/Atom">
+          <id>\(bookID)</id>
+          <title>PP-5023 OPDS Follow-Up</title>
+          <updated>2026-08-26T00:00:00Z</updated>
+          <link rel="http://opds-spec.org/acquisition" type="application/epub+zip" \
+        href="\(acquisitionURL.absoluteString)"/>
+        </entry>
+        """
+        let location = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp5023-opds-\(UUID().uuidString).xml")
+        try Data(entryXML.utf8).write(to: location)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        isolatedStateManager.persistStartedTask(
+            bookID: bookID,
+            taskIdentifier: task.taskIdentifier,
+            downloadURL: URL(string: "https://library-a.palace-test.invalid/fulfill")!,
+            account: "pp5023-opds-account",
+            expectedBytes: nil)
+
+        await center.handleDownloadCompletion(
+            session: inertReissueTestSession, task: task, location: location)
+
+        let persisted = try XCTUnwrap(
+            record(forBookID: bookID),
+            "the acquisition-link follow-up's record must survive the completion handler")
+        XCTAssertEqual(persisted.downloadURL, acquisitionURL,
+                       "and it must be the re-issued record, naming the acquisition link")
+        XCTAssertEqual(persisted.account, "pp5023-opds-account",
+                       "carrying the account the download started under")
+    }
+
     /// The control. A completion with NO follow-up task must still retire its
     /// record, or every finished download leaks one forever and launch
     /// reconciliation accumulates records for books that are long since done.
@@ -502,7 +579,8 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
         let center = MyBooksDownloadCenter(
             bookRegistry: registry,
             stateManager: isolatedStateManager,
-            reachability: MockReachability(initiallyConnected: true))
+            reachability: MockReachability(initiallyConnected: true),
+            urlSession: Self.makeInertSession())
 
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let task = Self.taskWithContentType(

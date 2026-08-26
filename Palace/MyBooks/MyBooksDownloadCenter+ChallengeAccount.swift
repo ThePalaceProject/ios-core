@@ -60,9 +60,17 @@ extension MyBooksDownloadCenter {
     /// site is adopt, which is seeded FROM a record:
     ///
     ///   * the two download-START paths write the record via
-    ///     `persistStartedTaskRecord` (`MyBooksDownloadCenter` :1748, :2179) and
-    ///     then register (:1751, :2181, reaching
-    ///     `DownloadTaskLifecycleService` :85).
+    ///     `persistStartedTaskRecord` — called from `addDownloadTask` and from
+    ///     `reissueTransferDownloadTask` — and then register via
+    ///     `DownloadTaskLifecycleService.registerStartedTask`.
+    ///
+    ///     Named by SYMBOL, not line number, on purpose. The numbers that used to
+    ///     be here (:1748, :2179, :1751, :2181, :85) were stale, and two of them
+    ///     had come to point at unrelated code — `:2179` at a `return false` inside
+    ///     `maybeRetryTransientTransfer`. They drifted partly before this branch and
+    ///     the rest of the way because of it, and NO gate can catch that: the cited
+    ///     lines are unchanged, only their meaning moved, so diff-scoped review is
+    ///     blind to it by construction. Symbols do not drift.
     ///   * the bearer-token re-issue (`RightsManagementDispatcher`) and the
     ///     follow-up/rights re-issue (`BackgroundDownloadHandler.followAcquisitionLink`)
     ///     seed a NEW task and, as of PP-5023, write a record for it via
@@ -70,8 +78,8 @@ extension MyBooksDownloadCenter {
     ///     account forward from the existing record rather than restamping the
     ///     current one, precisely so this resolver keeps returning the library the
     ///     download started under.
-    ///   * launch reconciliation's adopt (`MyBooksDownloadCenter` :2274) seeds
-    ///     from the persisted record itself.
+    ///   * launch reconciliation's adopt (`applyReconcileDecision`'s `.adopt` arm)
+    ///     seeds from the persisted record itself.
     ///
     /// All five are correct for the same reason: hop 2 keys by bookID, and
     /// `DownloadTaskPersistence.record` upserts by bookID, so at most one record

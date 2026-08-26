@@ -167,9 +167,12 @@ than promised, since an earlier draft said "recorded below" and recorded nothing
     `testHandleDownloadCompletion_withoutAFollowUp_stillRetiresTheRecord` — controls.
     Their evidence is that they assert the OPPOSITE of the arms above and pass, so a
     flag wedged true (which would leak a record on every finished download) fails
-    them. They are not independent behaviour pins and are not claimed as such. Saying "all ten
-pass" here, as an earlier draft did, was itself the stale-figure error this
-section warns about. Two further tests
+    them. They are not independent behaviour pins and are not claimed as such.
+
+Saying "all ten pass" here, as an earlier draft did, was itself the stale-figure
+error this section warns about.
+
+Two further tests
 (`testBearerTokenHop_reportsALiveFollowUpTask_soTheCallerKeepsTheRecord` and
 `testNonFollowUpDispatch_reportsNoLiveTask`) cannot be measured that way at all:
 they assert `RightsManagementDispatchResult.followUpTaskInFlight`, which does not
