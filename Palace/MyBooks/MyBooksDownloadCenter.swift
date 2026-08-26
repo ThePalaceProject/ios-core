@@ -1532,6 +1532,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         let problemDoc: TPPProblemDocument?
         var failureRequiringAlert: Bool
         var failureError = task.error
+        // PP-5023: set by the bearer-token hop, which leaves a live content task
+        // behind. Read at the terminal cleanup below.
+        var followUpTaskInFlight = false
 
         switch parseResult {
         case .followUpStarted:
@@ -1563,6 +1566,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             )
             failureRequiringAlert = dispatchResult.failureRequiringAlert
             failureError = dispatchResult.failureError
+            followUpTaskInFlight = dispatchResult.followUpTaskInFlight
         }
 
         if failureRequiringAlert {
@@ -1602,7 +1606,25 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         // Reliability WS-A: download reached a terminal outcome — drop the
         // durable record and reset the transient-transfer retry counter.
         await stateManager.resetTransferRetryAttempts(for: book.identifier)
-        stateManager.removePersistedRecord(for: book.identifier)
+        // PP-5023: NOT terminal when a hop left a live task behind. The
+        // bearer-token arm of `rightsDispatcher.dispatch` swaps the fulfilment
+        // task for a content task against the bearer location and resumes it —
+        // so this book is still downloading, and dropping its durable record
+        // here is what made the bearer half of PP-5023 inert: the record was
+        // written and removed roughly 100ms later, leaving a live task invisible
+        // to launch reconciliation exactly as before.
+        //
+        // The OPDS follow-up never reaches this line — `.followUpStarted`
+        // early-returns above — which is why only the bearer path needed this.
+        //
+        // Deliberately narrow: the rest of this cleanup still runs for the bearer
+        // arm, including the `bookIdentifierToDownloadInfo` removal that clears
+        // the info the hop just wrote for the in-flight task. That is
+        // PRE-EXISTING behaviour and not PP-5023's to change; it is called out
+        // rather than silently widened.
+        if !followUpTaskInFlight {
+            stateManager.removePersistedRecord(for: book.identifier)
+        }
         let remainingCount = await downloadCoordinator.activeCount
         Log.info(#file, "📊 Download flow completed for '\(book.identifier)', remaining active: \(remainingCount)")
 
@@ -2097,11 +2119,16 @@ extension MyBooksDownloadCenter {
     /// The two paths that create a download task WITHOUT coming through here —
     /// `followAcquisitionLink` and the bearer-token hop in
     /// `RightsManagementDispatcher` — now persist their own tasks via
-    /// `DownloadStateManager.persistReissuedTask` (PP-5023). Every live task in
-    /// this session therefore has a record, which is the premise reconciliation's
-    /// contested-URL guard rests on: the guard is computed from persisted records
-    /// alone, so an unrecorded live task was invisible to it and could be adopted
-    /// by another book whose record named the same URL.
+    /// `DownloadStateManager.persistReissuedTask` (PP-5023). That closes the two
+    /// known holes in the premise reconciliation's contested-URL guard rests on:
+    /// the guard is computed from persisted records alone, so an unrecorded live
+    /// task was invisible to it and could be adopted by another book whose record
+    /// named the same URL.
+    ///
+    /// NOT a claim that every live task has a record. This method's own
+    /// `guard let url` arm below writes nothing when no URL resolves, so that
+    /// path still produces one; and completeness is a property of the CALLERS,
+    /// which nothing here can enforce.
     ///
     /// They use a DIFFERENT entry point deliberately. This one stamps the CURRENT
     /// account, and `record` upserts by book id, so re-issuing through it would

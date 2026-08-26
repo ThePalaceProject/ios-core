@@ -10,6 +10,7 @@
 import Foundation
 import Combine
 import PalaceBookModel
+import PalaceLogging
 
 // MARK: - DownloadStateManaging Protocol
 
@@ -158,8 +159,18 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
     /// account, so that arm reproduces current behaviour exactly, where a
     /// current-account stamp would be a new and false claim about history.
     ///
-    /// `startedAt` and `expectedBytes` carry forward for the same reason — they
-    /// describe the download, not this hop.
+    /// `startedAt` carries forward for the same reason — it names when the
+    /// DOWNLOAD started, not when this hop did. With nothing to carry it falls
+    /// back to now, which is a weaker claim than the carried value but the only
+    /// one available; nothing reads the field today, so the fallback is inert
+    /// rather than load-bearing. `expectedBytes` carries forward for symmetry and
+    /// is `nil` in every production write, so it is currently decorative — stated
+    /// plainly rather than left to look meaningful.
+    ///
+    /// Goes through `DownloadTaskPersistence.upsert` rather than `all()` +
+    /// `record()`: deriving a record from the existing one across two lock
+    /// acquisitions lets a concurrent `remove` land in between and resurrect what
+    /// it deleted.
     ///
     /// - Parameter inheritingFrom: the book id whose existing record supplies the
     ///   carried fields, when the re-issue registers under a DIFFERENT id than the
@@ -173,10 +184,16 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
         downloadURL: URL,
         inheritingFrom sourceBookID: String? = nil
     ) {
-        let inheritedID = sourceBookID ?? bookID
-        let existing = taskPersistence.all().first { $0.bookID == inheritedID }
-        taskPersistence.record(
-            PersistedDownloadRecord(
+        taskPersistence.upsert(bookID: bookID, inheritingFrom: sourceBookID) { existing in
+            if existing == nil {
+                // Not an error — a download whose start was never recorded, or
+                // whose record was already retired. Logged because a silent ""
+                // here is indistinguishable from a genuine empty account, and
+                // `startedForAccount` will degrade to the CURRENT library as a
+                // result. Worth seeing if it becomes common.
+                Log.info(#file, "Re-issue for \(bookID) found no record to inherit; account will be empty")
+            }
+            return PersistedDownloadRecord(
                 bookID: bookID,
                 taskIdentifier: taskIdentifier,
                 downloadURL: downloadURL,
@@ -184,7 +201,7 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
                 expectedBytes: existing?.expectedBytes,
                 startedAt: existing?.startedAt ?? Date()
             )
-        )
+        }
     }
 
     /// Drop the durable record for a book on terminal completion.

@@ -123,14 +123,14 @@ enum DownloadReconciliation {
     ///
     ///   DO NOT "OPTIMIZE" THIS BY CANCELLING THE UNADOPTABLE TASK. It reads as
     ///   an obvious improvement — the task is orphaned, so why leave it running?
-    ///   Leave it anyway: `MyBooksDownloadCenter` early-returns on an unmapped
-    ///   identifier, so the orphan's bytes are discarded rather than misrouted,
-    ///   and an orphan costs bandwidth where a wrong cancellation costs the
-    ///   patron a book. The original reason — that `followAcquisitionLink` and
-    ///   the bearer-token hop created legitimately live tasks no record knew
-    ///   about — no longer holds, since PP-5023 made both persist; but a live
-    ///   task can still be unadoptable for other reasons (a contested URL), and
-    ///   cancelling those would be just as wrong.
+    ///   Because a live task here can be a REAL in-flight download. PP-5023 made
+    ///   `followAcquisitionLink` and the bearer-token hop persist, which removes
+    ///   the commonest case, but it does NOT make cancelling safe: a task is also
+    ///   unadoptable when its URL is contested, when `persistStartedTaskRecord`
+    ///   found no URL to record, and on any path added after this comment was
+    ///   written. An orphan costs bandwidth; cancelling costs the patron a book.
+    ///   Leave it: `MyBooksDownloadCenter` early-returns on an unmapped
+    ///   identifier, so the orphan's bytes are discarded rather than misrouted.
     ///
     ///   LOAD-BEARING INVARIANT: within one reconcile pass, a download URL
     ///   identifies at most one book. The URL is only a safe discriminator
@@ -149,8 +149,10 @@ enum DownloadReconciliation {
     ///   — `followAcquisitionLink` and the bearer-token hop in
     ///   `RightsManagementDispatcher` — and a book whose record named such a
     ///   task's URL adopted that download outright: a wrong adoption, not a
-    ///   decline. Both persist as of PP-5023, which is what makes this guard
-    ///   complete rather than best-effort.
+    ///   decline. Both persist as of PP-5023, which closes the two known holes.
+    ///   It does NOT make the guard complete: `persistStartedTaskRecord` writes
+    ///   nothing when it can resolve no URL, so that arm still produces a live
+    ///   unrecorded task, and any future start path reopens the same gap.
     ///
     ///   That completeness is a property of the CALLERS, not of this function,
     ///   and nothing here can enforce it. Any future path that starts a download
@@ -312,6 +314,39 @@ final class DownloadTaskPersistence: @unchecked Sendable {
         var records = loadLocked()
         records.removeAll { $0.bookID == record.bookID }
         records.append(record)
+        saveLocked(records)
+    }
+
+    /// Read-modify-write one book's record under a SINGLE lock acquisition.
+    ///
+    /// `all()` followed by `record(_:)` takes the lock twice, so a concurrent
+    /// `remove`/`removeAll` landing between them resurrects a record that was
+    /// meant to be gone, and two re-issues for one book can interleave. Callers
+    /// that derive a new record FROM the existing one (the mid-flight re-issue
+    /// paths) must use this instead.
+    ///
+    /// `transform` receives the current record for `bookID`, or nil, and returns
+    /// the record to store. Returning nil leaves the store untouched.
+    ///
+    /// - Parameter inheritingFrom: read the record under THIS id and write under
+    ///   `bookID`. They differ when a re-issue re-registers the download under a
+    ///   book parsed from the server whose identifier is not the original's.
+    func upsert(
+        bookID: String,
+        inheritingFrom sourceBookID: String? = nil,
+        transform: (PersistedDownloadRecord?) -> PersistedDownloadRecord?
+    ) {
+        lock.lock(); defer { lock.unlock() }
+        var records = loadLocked()
+        let sourceID = sourceBookID ?? bookID
+        // Fall back to the TARGET's own record when the source has none, so an
+        // id-changing re-issue cannot blank an account that is already correct
+        // under the target id.
+        let existing = records.first { $0.bookID == sourceID }
+            ?? records.first { $0.bookID == bookID }
+        guard let updated = transform(existing) else { return }
+        records.removeAll { $0.bookID == updated.bookID }
+        records.append(updated)
         saveLocked(records)
     }
 

@@ -56,9 +56,13 @@ extension MyBooksDownloadCenter {
     ///     `persistStartedTaskRecord` (`MyBooksDownloadCenter` :1748, :2179) and
     ///     then register (:1751, :2181, reaching
     ///     `DownloadTaskLifecycleService` :85).
-    ///   * the bearer-token re-issue (`RightsManagementDispatcher` :193) and the
-    ///     follow-up/rights re-issue (`BackgroundDownloadHandler` :279) seed a NEW
-    ///     task for the SAME book without writing any record.
+    ///   * the bearer-token re-issue (`RightsManagementDispatcher`) and the
+    ///     follow-up/rights re-issue (`BackgroundDownloadHandler.followAcquisitionLink`)
+    ///     seed a NEW task and, as of PP-5023, write a record for it via
+    ///     `DownloadStateManager.persistReissuedTask`. That call CARRIES the
+    ///     account forward from the existing record rather than restamping the
+    ///     current one, precisely so this resolver keeps returning the library the
+    ///     download started under.
     ///   * launch reconciliation's adopt (`MyBooksDownloadCenter` :2274) seeds
     ///     from the persisted record itself.
     ///
@@ -70,9 +74,10 @@ extension MyBooksDownloadCenter {
     /// reuse across background sessions irrelevant. Adopt is correct by
     /// construction, being seeded from that same record.
     ///
-    /// The one way to lose is a re-issue whose book identifier differs from the
-    /// original's; that misses the record and lands on the floor below, which is
-    /// today's behaviour.
+    /// A re-issue whose book identifier differs from the original's USED to lose
+    /// — it missed the record and landed on the floor below. PP-5023 closed that:
+    /// `followAcquisitionLink` passes `inheritingFrom: originalBook.identifier`,
+    /// so the account crosses to the new id and this resolver finds it.
     ///
     /// Degrades to `userAccount` — today's behaviour, unchanged — when either hop
     /// misses. A task with no live mapping or no durable record is a task this

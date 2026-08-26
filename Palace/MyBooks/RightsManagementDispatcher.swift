@@ -56,6 +56,26 @@ protocol RightsManagementDispatcherDelegate: AnyObject {
 struct RightsManagementDispatchResult {
     let failureRequiringAlert: Bool
     let failureError: Error?
+
+    /// True when this dispatch started a NEW download task that is still running
+    /// — today only the bearer-token hop, which swaps the fulfilment task for a
+    /// content task against the bearer location.
+    ///
+    /// The caller's terminal cleanup runs `removePersistedRecord`, which would
+    /// delete the durable record for a download that has only just begun (PP-5023:
+    /// the record was written and removed roughly 100ms later, leaving the bearer
+    /// content transfer invisible to launch reconciliation exactly as before the
+    /// fix). The OPDS follow-up avoids this by returning `.followUpStarted` from
+    /// the parser and early-returning before the cleanup; the bearer hop happens
+    /// inside dispatch, after that decision point, so it reports the same fact
+    /// here instead.
+    let followUpTaskInFlight: Bool
+
+    init(failureRequiringAlert: Bool, failureError: Error?, followUpTaskInFlight: Bool = false) {
+        self.failureRequiringAlert = failureRequiringAlert
+        self.failureError = failureError
+        self.followUpTaskInFlight = followUpTaskInFlight
+    }
 }
 
 // MARK: - RightsManagementDispatcher
@@ -119,6 +139,10 @@ final class RightsManagementDispatcher: @unchecked Sendable {
     ) async -> RightsManagementDispatchResult {
         var failureRequiringAlert = false
         var updatedFailureError = failureError
+        // Set only by the bearer-token hop, which leaves a live content task
+        // behind. Tells the caller not to run its terminal cleanup's durable-record
+        // removal on a download that has just started. See the property's note.
+        var followUpTaskInFlight = false
 
         switch rights {
         case .unknown:
@@ -205,6 +229,7 @@ final class RightsManagementDispatcher: @unchecked Sendable {
                         downloadURL: simplifiedBearerToken.location)
 
                     newTask.resume()
+                    followUpTaskInFlight = true
                 } else {
                     delegate?.logBookDownloadFailure(book, reason: "No Simplified Bearer Token in deserialized data", downloadTask: task, metadata: nil)
                     delegate?.failDownloadWithAlert(for: book, withMessage: nil)
@@ -223,7 +248,8 @@ final class RightsManagementDispatcher: @unchecked Sendable {
 
         return RightsManagementDispatchResult(
             failureRequiringAlert: failureRequiringAlert,
-            failureError: updatedFailureError
+            failureError: updatedFailureError,
+            followUpTaskInFlight: followUpTaskInFlight
         )
     }
 }

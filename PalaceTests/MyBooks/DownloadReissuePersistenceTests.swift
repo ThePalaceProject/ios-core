@@ -218,14 +218,7 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let bearerLocation = URL(string: "https://content.palace-test.invalid/pp5023-bearer.epub")!
 
-        let payload: [String: Any] = [
-            "access_token": "pp5023-token",
-            "expires_in": 3600,
-            "location": bearerLocation.absoluteString
-        ]
-        let location = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pp5023-bearer-\(UUID().uuidString).json")
-        try JSONSerialization.data(withJSONObject: payload).write(to: location)
+        let location = try Self.writeBearerPayload(location: bearerLocation)
         defer { try? FileManager.default.removeItem(at: location) }
 
         let dispatcher = makeDispatcher()
@@ -243,6 +236,116 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
             "the bearer-token hop must durably record the task it started")
         XCTAssertEqual(persisted.downloadURL, bearerLocation,
                        "the record must name the bearer location actually being fetched")
+
+        // Both the completed fulfilment task and the new content task are in
+        // scope at the production call site, so a record naming the WRONG one
+        // survives an existence-and-URL assertion. It must name the live task —
+        // a record pointing at a task that no longer exists cannot be adopted.
+        // `palace_mutate` finds no mutation points in that file, so this
+        // assertion is the only guard on the field.
+        let liveInfo = await isolatedStateManager.bookIdentifierToDownloadInfo.get(book.identifier)
+        let liveTaskID = try XCTUnwrap(liveInfo?.downloadTask.taskIdentifier)
+        XCTAssertEqual(persisted.taskIdentifier, liveTaskID,
+                       "the record must name the new bearer task, not the fulfilment task it replaced")
+    }
+
+    func testBearerTokenHop_preservesTheAccountTheDownloadStartedUnder() async throws {
+        // The production-realistic shape, which the test above deliberately is
+        // not: in production this hop always runs for a book whose download was
+        // already recorded at start. The call site omits `inheritingFrom`, so the
+        // carry rides on the `sourceBookID ?? bookID` default — and
+        // `challengeAccount` reads this account on a 401 during the content
+        // transfer, so it decides which library's credential is re-sent.
+        let startedLibraryID = "pp5023-bearer-started-\(UUID().uuidString)"
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let bearerLocation = URL(string: "https://content.palace-test.invalid/pp5023-bearer-acct.epub")!
+
+        isolatedStateManager.persistStartedTask(
+            bookID: book.identifier,
+            taskIdentifier: 5_023_003,
+            downloadURL: URL(string: "https://library-a.palace-test.invalid/fulfill")!,
+            account: startedLibraryID,
+            expectedBytes: nil)
+
+        let location = try Self.writeBearerPayload(location: bearerLocation)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        _ = await makeDispatcher().dispatch(
+            book: book,
+            task: fakeDownloadTask(),
+            location: location,
+            session: inertReissueTestSession,
+            rights: .simplifiedBearerTokenJSON,
+            failureError: nil)
+
+        let persisted = try XCTUnwrap(record(forBookID: book.identifier))
+        XCTAssertEqual(persisted.account, startedLibraryID,
+                       "the bearer hop must preserve the account the download STARTED under")
+        XCTAssertEqual(persisted.downloadURL, bearerLocation,
+                       "and must be the re-issued record, not the seeded one")
+    }
+
+    /// Writes a bearer-token JSON payload to a temp file, as the fulfilment
+    /// response would.
+    private static func writeBearerPayload(location bearerLocation: URL) throws -> URL {
+        let payload: [String: Any] = [
+            "access_token": "pp5023-token",
+            "expires_in": 3600,
+            "location": bearerLocation.absoluteString
+        ]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp5023-bearer-\(UUID().uuidString).json")
+        try JSONSerialization.data(withJSONObject: payload).write(to: url)
+        return url
+    }
+
+    /// The bearer hop must report that it left a live task behind, so the
+    /// caller's terminal cleanup does not drop the record it just wrote.
+    ///
+    /// This is the shape that made the bearer half of PP-5023 inert. The hop
+    /// writes the record inside `dispatch`; `handleDownloadCompletion` then runs
+    /// `removePersistedRecord(for: book.identifier)` about 100ms later on the
+    /// same key, so the bearer content transfer ran for minutes with no record —
+    /// exactly the pre-fix state. A test that drives `dispatch` alone cannot see
+    /// that, because the caller is what undoes the write.
+    func testBearerTokenHop_reportsALiveFollowUpTask_soTheCallerKeepsTheRecord() async throws {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let bearerLocation = URL(string: "https://content.palace-test.invalid/pp5023-followup.epub")!
+        let location = try Self.writeBearerPayload(location: bearerLocation)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        let result = await makeDispatcher().dispatch(
+            book: book,
+            task: fakeDownloadTask(),
+            location: location,
+            session: inertReissueTestSession,
+            rights: .simplifiedBearerTokenJSON,
+            failureError: nil)
+
+        XCTAssertTrue(result.followUpTaskInFlight,
+                      "a resumed bearer task is still downloading; the caller must not treat it as terminal")
+    }
+
+    /// The control for the arm above: a dispatch that leaves NO task running must
+    /// report so, or the caller would stop retiring records at all and every
+    /// completed download would leak one forever.
+    func testNonFollowUpDispatch_reportsNoLiveTask() async throws {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let location = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp5023-notbearer-\(UUID().uuidString).json")
+        try Data("not a bearer token".utf8).write(to: location)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        let result = await makeDispatcher().dispatch(
+            book: book,
+            task: fakeDownloadTask(),
+            location: location,
+            session: inertReissueTestSession,
+            rights: .simplifiedBearerTokenJSON,
+            failureError: nil)
+
+        XCTAssertFalse(result.followUpTaskInFlight,
+                       "no task was started, so the caller must run its normal terminal cleanup")
     }
 
     /// `AdobeDRMService` has no protocol and the dispatcher takes it concretely,
@@ -304,6 +407,17 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
         XCTAssertFalse(
             decisions.contains { if case .adopt(let id, _) = $0 { return id == bookAID }; return false },
             "book A must not adopt ANY task on a URL another book is also downloading")
+
+        // Pin the patron-visible consequence, not just the absence of theft. The
+        // fix converts "A silently receives B's file" into `.restart` for BOTH —
+        // and for the live book B that means orphaned callbacks and an eventual
+        // heal to `.downloadFailed`. That is the accepted cost of declining an
+        // ambiguous adoption, and it should fail loudly if it ever changes.
+        XCTAssertEqual(
+            Set(decisions.map(String.init(describing:))),
+            Set([ReconcileDecision.restart(bookID: bookAID),
+                 ReconcileDecision.restart(bookID: bookB.identifier)].map(String.init(describing:))),
+            "both claimants of a contested URL restart; neither adopts")
     }
 
     func testControl_anUnrecordedTaskOnAnotherBooksURL_isAdopted() throws {
