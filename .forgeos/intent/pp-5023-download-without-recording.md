@@ -52,11 +52,19 @@ collision and named this residue in-source rather than papering over it.
   OverDrive / bearer-token server. Simulator and unit tests only.
 - This does NOT change WHEN a download is started, retried, or cancelled. It only
   changes what is written down when one starts.
-- The `RightsManagementDispatcher` change has NO mutation points — it is a
-  straight-line call with no comparison, boolean, or return operator, so
-  `palace_mutate` reports nothing to kill there. Its guard was proven instead by
-  deleting the call and observing the named test fail, which is recorded rather
-  than folded into a kill count.
+- Neither `RightsManagementDispatcher` nor `DownloadStateManager` has any
+  mutation point on its changed lines — both are straight-line construction with
+  no comparison, boolean, or return operator, so `palace_mutate` can say nothing
+  about them. The dispatcher's guard was proven instead by deleting the
+  `persistReissuedTask` call and observing `testBearerTokenHop_persistsTheTaskItStarts`
+  fail BY NAME, then restoring. Recorded as hand-verification, never folded into a
+  kill count.
+- One mutant was deliberately ELIMINATED rather than killed. `if existing == nil {
+  Log… }` is a comparison whose only consequence is a log line, so no assertion can
+  distinguish it and it would sit forever as an unkillable critical-path survivor.
+  It is now a coalesce that logs in its else-branch: same diagnostic, no untestable
+  branch. That is preferred over both a coverage-only test and deleting a log that
+  is the only signal a re-issue lost its provenance.
 
 ## Files in scope
 
@@ -126,12 +134,24 @@ nothing had rewritten it — the pre-fix state. It now also pins the record to t
 NEW task's identifier and URL, so it can only pass once the path actually writes
 one.
 
-Mutation, `--diff-only` against `origin/develop`, measured on the first commit
-and to be re-measured on the review-round tip:
+Mutation, `--diff-only` against `origin/develop`, re-measured on the final tip
+with `--no-cache` (see the caveat below — this matters):
 
-- `Palace/MyBooks/DownloadStateManager.swift` — 1 point, 1 killed (100%)
-- `Palace/MyBooks/BackgroundDownloadHandler.swift` — 1 point, 1 killed (100%)
+- `Palace/MyBooks/DownloadTaskPersistence.swift` — 3 points, **3 killed (100%)**
+- `Palace/MyBooks/BackgroundDownloadHandler.swift` — 1 point, **1 killed (100%)**
+- `Palace/MyBooks/DownloadStateManager.swift` — **0 points discovered**
 - `Palace/MyBooks/RightsManagementDispatcher.swift` — **0 points discovered**
+- `MyBooksDownloadCenter.swift`, `MyBooksDownloadCenter+ChallengeAccount.swift` —
+  no points on changed lines (comment-only changes)
+
+**The cached run lied, in the direction that matters.** A cached pass reported
+`DownloadTaskPersistence` at 2 killed / 1 survived on a tip where the survivor was
+already dead. `palace_mutate`'s cache key is derived from the PRODUCTION file, so
+adding, changing or deleting tests does not invalidate it. Here that produced a
+false RED, which is harmless. The same mechanism produces a false GREEN whenever a
+test is weakened or removed without the production file changing — a cached
+"killed" replayed against a suite that no longer kills it. Re-measure with
+`--no-cache` before trusting any mutation figure quoted alongside a test change.
 
 The third is the honest gap and is recorded as one rather than counted as a pass.
 A straight-line call has no operator to flip, so `palace_mutate` can say nothing
