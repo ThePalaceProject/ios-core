@@ -71,7 +71,11 @@ struct RightsManagementDispatchResult {
     /// here instead.
     let followUpTaskInFlight: Bool
 
-    init(failureRequiringAlert: Bool, failureError: Error?, followUpTaskInFlight: Bool = false) {
+    /// No default on `followUpTaskInFlight`: its safe-looking value (`false`) is
+    /// the DEFECT direction. A future dispatch arm that starts a task and omits
+    /// the argument would reopen PP-5023 with the suite still green. Forcing every
+    /// construction to state it makes that a compile error instead.
+    init(failureRequiringAlert: Bool, failureError: Error?, followUpTaskInFlight: Bool) {
         self.failureRequiringAlert = failureRequiringAlert
         self.failureError = failureError
         self.followUpTaskInFlight = followUpTaskInFlight

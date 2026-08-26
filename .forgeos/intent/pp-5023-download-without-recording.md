@@ -38,6 +38,10 @@ collision and named this residue in-source rather than papering over it.
   inert — the record was written and removed roughly 100ms later.
 - A completion with NO follow-up task still retires its record, so finished
   downloads do not accumulate records forever.
+- **A re-issue's read-modify-write is atomic under ONE lock acquisition.**
+  Deriving a new record from the existing one via `all()` then `record()` takes
+  the lock twice, and a concurrent `remove` landing between them resurrects the
+  record it deleted. `DownloadTaskPersistence.upsert` closes that window.
 
 ## Anti-claims
 
@@ -46,6 +50,11 @@ collision and named this residue in-source rather than papering over it.
   starts a download must persist, and nothing in `DownloadTaskPersistence` can
   enforce that. The invariant is stated in-source and pinned by
   `DownloadReissuePersistenceTests`; it is not mechanically guarded.
+- `upsert` does NOT enforce that `transform` returns a record for `bookID`; that
+  is a documented caller contract. An earlier version enforced it by deleting both
+  keys, but the two are identical for every reachable input, so the clause was an
+  unkillable mutant on a critical path — worse to carry than a stated
+  precondition. No caller can produce the violating case.
 - This does NOT change the REST of the terminal cleanup for a bearer hop. The
   same block still removes `bookIdentifierToDownloadInfo` and calls
   `registerCompletion` for a download that has only just started. That is
@@ -86,7 +95,9 @@ collision and named this residue in-source rather than papering over it.
 - `Palace/MyBooks/MyBooksDownloadCenter.swift` — BEHAVIOUR: the terminal cleanup
   skips `removePersistedRecord` when the dispatch left a live follow-up task
   (plus comment corrections)
-- `Palace/MyBooks/DownloadTaskPersistence.swift` — comments only, no behaviour
+- `Palace/MyBooks/DownloadTaskPersistence.swift` — BEHAVIOUR: gains
+  `upsert(bookID:inheritingFrom:transform:)`, a single-lock read-modify-write
+  (plus comment corrections)
 - `PalaceTests/MyBooks/DownloadReissuePersistenceTests.swift`
 - `Palace.xcodeproj/project.pbxproj` — registers the new test file
 

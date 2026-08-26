@@ -456,8 +456,11 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
         // is empty, and never reaches the dispatcher. A bare `fakeDownloadTask()`
         // therefore exercises the failure path and cannot see this guard at all —
         // which is how the first version of this test passed for the wrong reason.
+        // The bearer content type, matching the JSON body written below — an
+        // `application/epub+zip` header on a bearer-token payload passes the same
+        // gate but describes a response production never sends.
         let fulfilmentTask = Self.taskWithContentType(
-            DistributorType.EpubZip.rawValue, identifier: 5_023_500)
+            DistributorType.BearerToken.rawValue, identifier: 5_023_500)
         let bearerLocation = URL(string: "https://content.palace-test.invalid/pp5023-caller.epub")!
 
         // Rights are read from the state manager, so the bearer arm is reachable
@@ -505,7 +508,12 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
         let task = Self.taskWithContentType(
             DistributorType.EpubZip.rawValue, identifier: 5_023_501)
 
-        // `.none` — a plain content download that completes. No hop, no live task.
+        // No hop, so no live task — the flag must be false and the record must go.
+        // Deliberately NOT claiming which arm runs: `.none` reaching `moveFile`
+        // and a parse `.failure` both retire the record, and this test cannot
+        // tell them apart. It is a stuck-flag control, not a behaviour pin — a
+        // `followUpTaskInFlight` wedged true would leak a record on every
+        // finished download, and that is what this catches.
         await isolatedStateManager.bookIdentifierToDownloadInfo.set(
             book.identifier,
             value: MyBooksDownloadInfo(
