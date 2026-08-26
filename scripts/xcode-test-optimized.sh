@@ -271,13 +271,56 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     fi
 else
     echo "Running in local environment - using dynamic detection"
-    # Get the first available iPhone simulator ID from the Palace scheme destinations
-    SIMULATOR_ID=$(xcodebuild -project Palace.xcodeproj -scheme Palace -showdestinations 2>/dev/null | \
-      grep "platform:iOS Simulator" | \
-      grep "iPhone" | \
-      grep -v "error:" | \
-      head -1 | \
-      sed 's/.*id:\([^,]*\).*/\1/')
+
+    # Simulator selection, in precedence order. This was `head -1` of
+    # `-showdestinations` and nothing else, which is a real defect rather than a
+    # cosmetic one:
+    #
+    #  * `head -1` is whatever the toolchain happens to list first, which on this
+    #    project is an iPhone 12. The 5000-book `TPPBookRegistryLargeCorpusTests`
+    #    suite kills an iPhone 12 clone outright — `Invalid device state` /
+    #    `Mach error -308 (ipc/mig) server died` — about ten test cases into the
+    #    run, at ANY load. Measured: the same commit and the same suite FAILS on
+    #    iPhone 12 at load 2.8 and PASSES on iPhone 17 Pro at load 25, so it is
+    #    the device and not contention. The red was therefore a property of the
+    #    device this script chose rather than of the branch under test, and it
+    #    presents as a whole-suite failure with no failing assertion — the most
+    #    misleading shape a red board can take, and precisely what the green-board
+    #    contract in CLAUDE.md exists to prevent.
+    #  * It ignored an already-allocated simulator. When several sessions run this
+    #    concurrently they are handed the SAME device and collide, which is the
+    #    sim-collision class the repo's own tooling exists to prevent.
+    #
+    # An explicit id wins; then a session-allocated one; then a device the project
+    # actually targets (CLAUDE.md names iPhone 16 Pro); then the old
+    # first-available behaviour, so a contributor who sets nothing still runs.
+    SIMULATOR_ID="${PALACE_TEST_SIMULATOR_ID:-${HARNESS_SESSION_SIM_UDID:-}}"
+
+    if [ -n "$SIMULATOR_ID" ]; then
+        echo "Using pre-selected simulator: $SIMULATOR_ID"
+    else
+        DESTINATIONS=$(xcodebuild -project Palace.xcodeproj -scheme Palace -showdestinations 2>/dev/null | \
+          grep "platform:iOS Simulator" | \
+          grep "iPhone" | \
+          grep -v "error:")
+
+        # Prefer a device the project targets over whatever is listed first.
+        for PREFERRED in "iPhone 16 Pro" "iPhone 17 Pro" "iPhone 16" "iPhone 17"; do
+            SIMULATOR_ID=$(printf '%s\n' "$DESTINATIONS" | \
+              grep -F "name:$PREFERRED " | \
+              head -1 | \
+              sed 's/.*id:\([^,]*\).*/\1/')
+            if [ -n "$SIMULATOR_ID" ]; then
+                echo "Using preferred simulator: $PREFERRED ($SIMULATOR_ID)"
+                break
+            fi
+        done
+
+        if [ -z "$SIMULATOR_ID" ]; then
+            SIMULATOR_ID=$(printf '%s\n' "$DESTINATIONS" | head -1 | sed 's/.*id:\([^,]*\).*/\1/')
+            [ -n "$SIMULATOR_ID" ] && echo "No preferred simulator available; falling back to first available ($SIMULATOR_ID)"
+        fi
+    fi
 
     if [ -z "$SIMULATOR_ID" ]; then
         echo "❌ No available iPhone simulator found, trying fallback..."
