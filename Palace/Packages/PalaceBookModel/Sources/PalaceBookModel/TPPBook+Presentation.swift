@@ -32,6 +32,25 @@ extension TPPBook {
         fetchCoverImage(forDisplayHeight: nil)
     }
 
+    /// First cached image among `keys`, consulting the cache **exactly once per
+    /// key**.
+    ///
+    /// This deliberately is not `keys.lazy.compactMap { cache.get(for: $0) }.first`.
+    /// `LazySequenceProtocol.compactMap` expands to
+    /// `map(transform).filter { $0 != nil }.map { $0! }`, so the transform runs
+    /// twice per element — once for the filter's nil test and once for the
+    /// trailing force-unwrap. A cache is mutable shared state: an entry present
+    /// for the filter can be gone by the force-unwrap, and the unwrap then traps
+    /// (`closure #2 in compactMap` in the crash report, reached from the lane
+    /// prefetch in `CatalogContentView`). Reading each key once removes the
+    /// disagreement the trap depends on.
+    static func firstCachedImage(in cache: ImageCacheType, keys: [String]) -> UIImage? {
+        for key in keys {
+            if let image = cache.get(for: key) { return image }
+        }
+        return nil
+    }
+
     /// Fetches the cover at a resolution appropriate for the given display height (in points).
     /// When `displayHeight` is provided, the decoded image is sized to match the view rather
     /// than the conservative device memory-tier cap, so the image is always sharp at its
@@ -46,8 +65,7 @@ extension TPPBook {
         let lookupKeys: [String] = if let sizeKey { [sizeKey, identifier] } else { [identifier] }
 
         // Synchronous memory-cache check (instant, no disk I/O on main thread)
-        if let img = lookupKeys.lazy.compactMap({ [weak self] in
-          self?.imageCache.get(for: $0) }).first {
+        if let img = Self.firstCachedImage(in: imageCache, keys: lookupKeys) {
             DispatchQueue.main.async {
                 self.coverImage = img
                 self.updateDominantColor(using: img)

@@ -435,16 +435,83 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// activation if needed. This is called at borrow time for Adobe DRM content
     /// instead of at login, to avoid burning activations unnecessarily.
     ///
+    /// - Parameter licensorGracePeriod: how long to wait for sign-in to write
+    ///   the Adobe licensor before failing. Defaults to `0` — no wait — so a
+    ///   caller cannot acquire a stall by accident. Only the borrow path opts
+    ///   in (see `BorrowOperation`); the read path and the fulfillment
+    ///   dispatcher hold user-visible state and must fail fast.
     /// - Throws: `PalaceError.drm` if activation fails or credentials are unavailable.
-    func ensureDeviceActivated() async throws {
+    func ensureDeviceActivated(licensorGracePeriod: TimeInterval = 0) async throws {
         // `authorizer` is a closure, not a value: evaluating `adeptInstance`
         // eagerly would initialise RMSDK *before* the availability and licensor
         // guards, where develop returned first. Behaviour-preserving laziness.
         try await ensureDeviceActivated(
             authorizer: { self.adeptInstance },
             userAccount: AppContainer.production().accountsManager.currentUserAccount,
-            isDRMAvailable: AdobeCertificate.isDRMAvailable
+            isDRMAvailable: AdobeCertificate.isDRMAvailable,
+            licensorGracePeriod: licensorGracePeriod
         )
+    }
+
+    /// How long a borrow will wait for sign-in's profile-document leg to write
+    /// the Adobe licensor before giving up. Sized to cover the observed lag
+    /// (~13s between the borrow and the credential save on a real device) while
+    /// still failing in bounded time when the library genuinely has no Adobe
+    /// credentials.
+    static let defaultLicensorGracePeriod: TimeInterval = 15
+
+    /// Polling interval for `awaitLicensor`. Short enough that a borrow resumes
+    /// promptly once credentials land.
+    static let licensorPollInterval: TimeInterval = 0.1
+
+    /// Reads `account.licensor`, and if it is absent, re-reads it until it
+    /// appears or `budget` is exhausted.
+    ///
+    /// Polling rather than observing deliberately: `TPPUserAccount.setLicensor`
+    /// writes without posting `notifyAccountDidChange()` (unlike its immediate
+    /// neighbour `setPatron`), so there is no change signal to await. Polling a
+    /// value that is only ever written once, under a bounded budget, is the
+    /// smaller change; adding a notification to that setter would alter what
+    /// every existing account observer sees.
+    static func awaitLicensor(_ account: AdobeActivationAccount,
+                              within budget: TimeInterval) async -> [String: Any]? {
+        if let licensor = account.licensor { return licensor }
+        guard budget > 0 else { return nil }
+
+        // Monotonic deadline, not accumulated nominal sleep. Summing the
+        // requested step sizes measures what we ASKED for; under load the
+        // actual elapsed time is longer, so a nominal budget silently overruns.
+        // `ContinuousClock` rather than `Date` so a clock adjustment mid-wait
+        // cannot stretch or collapse the budget.
+        let clock = ContinuousClock()
+        let started = clock.now
+        // `.components.seconds` alone truncates to whole seconds, which would
+        // make every sub-second arrival log "0.0s" — losing the one field
+        // diagnostic that measures this race — and leave `guard step > 0` dead.
+        func elapsedSeconds() -> TimeInterval {
+            let c = started.duration(to: clock.now).components
+            return Double(c.seconds) + Double(c.attoseconds) * 1e-18
+        }
+        while started.duration(to: clock.now) < .seconds(budget) {
+            do {
+                let remaining = budget - elapsedSeconds()
+                let step = min(licensorPollInterval, max(remaining, 0))
+                guard step > 0 else { break }
+                try await Task.sleep(nanoseconds: UInt64(step * 1_000_000_000))
+            } catch {
+                // Cancellation lands here. Returning immediately is the point:
+                // `try?` would swallow it and spin through every remaining step
+                // with a zero-duration sleep. No production caller cancels this
+                // today (all three sites are unstructured `Task {}` with no
+                // retained handle), so this is defence, not a live path.
+                return nil
+            }
+            if let licensor = account.licensor {
+                Log.info(#file, "Adobe licensor credentials arrived after \(String(format: "%.1f", elapsedSeconds()))s — proceeding with activation")
+                return licensor
+            }
+        }
+        return nil
     }
 
     /// Dependency-injected form of `ensureDeviceActivated()`. The no-argument
@@ -457,7 +524,8 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     func ensureDeviceActivated(authorizer: @escaping @Sendable () -> TPPDRMAuthorizing?,
                                userAccount: AdobeActivationAccount,
                                isDRMAvailable: Bool,
-                               timeout: TimeInterval = AdobeActivationCoordinator.defaultTimeout) async throws {
+                               timeout: TimeInterval = AdobeActivationCoordinator.defaultTimeout,
+                               licensorGracePeriod: TimeInterval = 0) async throws {
         if let userID = userAccount.userID,
            let deviceID = userAccount.deviceID,
            authorizer()?.isUserAuthorized(userID, withDevice: deviceID) == true {
@@ -470,7 +538,15 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
             throw PalaceError.drm(.noActivation)
         }
 
-        guard let licensor = userAccount.licensor,
+        // PP-5025. The licensor is written on the user-profile-document leg of
+        // sign-in, which can complete AFTER the auth gate releases a queued
+        // borrow — measured at 13 seconds late on a real device. Reading once
+        // and failing made that surface as a flat "Device not activated", which
+        // is indistinguishable from a genuine DRM fault and sent connector
+        // testing down the wrong path. Wait a bounded moment for credentials
+        // that are already on their way; a licensor that never arrives still
+        // fails below, so this defers the guard rather than removing it.
+        guard let licensor = await Self.awaitLicensor(userAccount, within: licensorGracePeriod),
               let vendor = licensor["vendor"] as? String, !vendor.isEmpty,
               let clientToken = licensor["clientToken"] as? String, !clientToken.isEmpty else {
             Log.error(#file, "No Adobe DRM licensor credentials stored — cannot activate")
