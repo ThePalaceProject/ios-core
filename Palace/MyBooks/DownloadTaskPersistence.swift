@@ -326,14 +326,20 @@ final class DownloadTaskPersistence: @unchecked Sendable {
     /// paths) must use this instead.
     ///
     /// `transform` receives the current record for `bookID`, or nil, and returns
-    /// the record to store. Returning nil leaves the store untouched.
+    /// the record to store. It is NON-optional deliberately: an earlier draft let
+    /// it return nil to mean "leave the store alone", but no caller used that and
+    /// no test or mutant could reach the branch — the third instance in this
+    /// changeset of a guard nothing can falsify. A caller that wants to leave the
+    /// store alone should not call `upsert`.
     ///
     /// `transform` runs WHILE THE LOCK IS HELD and `lock` is not recursive, so it
     /// must not call back into this store — no `all()`, `record`, `remove`, or a
     /// nested `upsert`. Keep it a pure function of the record it is handed.
     ///
     /// CONTRACT, stated rather than enforced: `transform` must return a record for
-    /// `bookID`. Both current callers do, unconditionally. An earlier version
+    /// `bookID`. Its one caller (`DownloadStateManager.persistReissuedTask`) does,
+    /// unconditionally — two call PATHS reach it, the acquisition-link follow-up
+    /// and the bearer hop, but there is one call site. An earlier version
     /// enforced it by also deleting the requested key — but since the two keys are
     /// identical for every reachable input, that clause could not be killed by any
     /// test or mutant, which is a worse thing to carry on a critical path than a
@@ -346,7 +352,7 @@ final class DownloadTaskPersistence: @unchecked Sendable {
     func upsert(
         bookID: String,
         inheritingFrom sourceBookID: String? = nil,
-        transform: (PersistedDownloadRecord?) -> PersistedDownloadRecord?
+        transform: (PersistedDownloadRecord?) -> PersistedDownloadRecord
     ) {
         lock.lock(); defer { lock.unlock() }
         var records = loadLocked()
@@ -356,7 +362,7 @@ final class DownloadTaskPersistence: @unchecked Sendable {
         // under the target id.
         let existing = records.first { $0.bookID == sourceID }
             ?? records.first { $0.bookID == bookID }
-        guard let updated = transform(existing) else { return }
+        let updated = transform(existing)
         records.removeAll { $0.bookID == updated.bookID }
         records.append(updated)
         saveLocked(records)

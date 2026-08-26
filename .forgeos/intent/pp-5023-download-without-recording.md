@@ -89,17 +89,20 @@ collision and named this residue in-source rather than papering over it.
 
 ## Files in scope
 
-- `Palace/MyBooks/DownloadStateManager.swift` — `persistReissuedTask`
-- `Palace/MyBooks/BackgroundDownloadHandler.swift` — `followAcquisitionLink`
-- `Palace/MyBooks/RightsManagementDispatcher.swift` — the bearer-token hop
-- `Palace/MyBooks/MyBooksDownloadCenter.swift` — BEHAVIOUR: the terminal cleanup
-  skips `removePersistedRecord` when the dispatch left a live follow-up task
-  (plus comment corrections)
-- `Palace/MyBooks/DownloadTaskPersistence.swift` — BEHAVIOUR: gains
-  `upsert(bookID:inheritingFrom:transform:)`, a single-lock read-modify-write
-  (plus comment corrections)
-- `PalaceTests/MyBooks/DownloadReissuePersistenceTests.swift`
-- `Palace.xcodeproj/project.pbxproj` — registers the new test file
+DERIVED from `git diff $(git merge-base HEAD origin/develop) HEAD --name-only`, not
+hand-maintained. Three consecutive review rounds blocked on this section being
+wrong — each time a file was added to the diff and not to the list, and each time
+only the file the reviewer named was added back. Listing the annotations by hand
+is fine; deriving WHICH files appear is what stops the drift.
+
+- `Palace.xcodeproj/project.pbxproj` — registers the new test file (PalaceTests target only)
+- `Palace/MyBooks/BackgroundDownloadHandler.swift` — BEHAVIOUR: `followAcquisitionLink` persists, inherits the account, drops the superseded record
+- `Palace/MyBooks/DownloadStateManager.swift` — BEHAVIOUR: `persistReissuedTask`, the account-preserving re-issue write
+- `Palace/MyBooks/DownloadTaskPersistence.swift` — BEHAVIOUR: gains `upsert(bookID:inheritingFrom:transform:)`, a single-lock read-modify-write (plus comment corrections)
+- `Palace/MyBooks/MyBooksDownloadCenter+ChallengeAccount.swift` — comments only: the credential-resolver census said both re-issue paths write no record, which this changeset reverses
+- `Palace/MyBooks/MyBooksDownloadCenter.swift` — BEHAVIOUR: the terminal cleanup skips `removePersistedRecord` for a live follow-up (plus comment corrections)
+- `Palace/MyBooks/RightsManagementDispatcher.swift` — BEHAVIOUR: the bearer-token hop persists and reports `followUpTaskInFlight`
+- `PalaceTests/MyBooks/DownloadReissuePersistenceTests.swift` — the suite
 
 ## Reproduction
 
@@ -139,7 +142,13 @@ throwaway worktree carrying only the final test file), not estimated:
     Executed 8 tests, with 10 failures
 
 Seven of the eight fail; the eighth is the control, which passes there and here
-because it asserts the DEFECT. Two further tests
+because it asserts the DEFECT. **That baseline covers 8 of the 14 tests now in the
+file.** Six were added later in response to review — the two `followUpTaskInFlight`
+arms, the two caller-level `handleDownloadCompletion` tests, and the two
+inheritance-cell tests — and are pinned by direct verification instead: deleting
+the guard or the call makes a NAMED test fail (recorded below). Saying "all ten
+pass" here, as an earlier draft did, was itself the stale-figure error this
+section warns about. Two further tests
 (`testBearerTokenHop_reportsALiveFollowUpTask_soTheCallerKeepsTheRecord` and
 `testNonFollowUpDispatch_reportsNoLiveTask`) cannot be measured that way at all:
 they assert `RightsManagementDispatchResult.followUpTaskInFlight`, which does not
@@ -166,8 +175,16 @@ with `--no-cache` (see the caveat below — this matters):
 - `Palace/MyBooks/BackgroundDownloadHandler.swift` — 1 point, **1 killed (100%)**
 - `Palace/MyBooks/DownloadStateManager.swift` — **0 points discovered**
 - `Palace/MyBooks/RightsManagementDispatcher.swift` — **0 points discovered**
-- `MyBooksDownloadCenter.swift`, `MyBooksDownloadCenter+ChallengeAccount.swift` —
-  no points on changed lines (comment-only changes)
+- `MyBooksDownloadCenter+ChallengeAccount.swift` — no points on changed lines
+  (comment-only changes)
+- `MyBooksDownloadCenter.swift` — no points on changed lines, and NOT because the
+  change is comment-only. It carries `if !followUpTaskInFlight`, the guard that
+  keeps a live download's record, and a bare `if` on a Bool offers no operator for
+  `palace_mutate` to flip. Pinned by direct verification instead: deleting the
+  guard makes `testHandleDownloadCompletion_bearerHop_keepsTheRecordForTheLiveTask`
+  fail by name. Done twice — once when the guard landed, and again after the test
+  fixture's Content-Type changed, since altering a fixture invalidates the proof
+  that used it.
 
 Re-measured again at the round-3 tip after the `upsert` delete predicate changed:
 `DownloadTaskPersistence` 3 points, 3 killed. That run needed an ISOLATED

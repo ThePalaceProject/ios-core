@@ -72,9 +72,14 @@ struct RightsManagementDispatchResult {
     let followUpTaskInFlight: Bool
 
     /// No default on `followUpTaskInFlight`: its safe-looking value (`false`) is
-    /// the DEFECT direction. A future dispatch arm that starts a task and omits
-    /// the argument would reopen PP-5023 with the suite still green. Forcing every
-    /// construction to state it makes that a compile error instead.
+    /// the DEFECT direction, so a construction site that omits it would reopen
+    /// PP-5023 with the suite still green. Requiring it makes that a compile error.
+    ///
+    /// PRECISELY what that does and does not ratchet, because this comment is the
+    /// audit trail: it covers new CONSTRUCTION SITES of this struct. It does NOT
+    /// cover a new `case` arm in `dispatch`, which assigns the local `var` further
+    /// down and can still forget to — that arm compiles green. Closing THAT would
+    /// need each arm to yield the flag rather than mutate a shared local.
     init(failureRequiringAlert: Bool, failureError: Error?, followUpTaskInFlight: Bool) {
         self.failureRequiringAlert = failureRequiringAlert
         self.failureError = failureError
