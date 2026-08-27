@@ -477,30 +477,31 @@ final class BookReturnServiceTests: XCTestCase {
         await blocker.unblock(throwing: NSError(domain: "test", code: -1))
     }
 
-    /// Service deinit eventually fires once every in-flight Task has
-    /// drained — at which point the `[weak self]` capture in each
-    /// tracked Task body short-circuits any remaining work, so no
-    /// `bookRegistry` / `localContentService` writes happen after the
-    /// service is gone. This test proves the deinit hook fires (via
-    /// the static counter) after the Tasks finish, and that the
-    /// `[weak self]` short-circuit is honored.
+    /// Dropping the last strong reference deallocs the service, and the
+    /// generic-error cleanup path performs no registry mutation.
     ///
-    /// Regression covered: a future refactor that drops `[weak self]`
-    /// from a tracked Task body — or removes the `inFlightTasks`
-    /// retention entirely — would let post-deinit work fire against a
-    /// dangling pointer. The post-deinit invariant we assert here
-    /// (`registry.book(...) == nil` even after cancellation) only holds
-    /// if the cleanup path was either driven to completion OR fully
-    /// short-circuited via the weak-self guard.
-    func testReturnService_inFlightTasks_shortCircuitAfterServiceDeinits() async throws {
+    /// What this test does NOT prove, and cannot through this seam: the
+    /// `[weak self]` short-circuit in the tracked Task bodies. Every body
+    /// does `guard let self` BEFORE its first `await` — see
+    /// `BookReturnService.swift:356` (guard) against `:366` (await
+    /// `fetchFeed`) — so once a body has started it holds `self` strongly
+    /// across every suspension and the service cannot dealloc mid-flight.
+    /// That is precisely what the note in `deinit`
+    /// (`BookReturnService.swift:204-221`) records. Parking a Task and then
+    /// releasing the service does not reach the guard; the guard only fires
+    /// for a body that has not started yet, which no seam here can arrange
+    /// deterministically. **Deleting `[weak self]` from a tracked body would
+    /// not fail this test.** The reachable half of that contract is the
+    /// cancellation seam, covered by
+    /// `testReturnService_cancelAllInFlightTasks_cancelsRetainedTask`.
+    func testReturnService_lastReferenceDropped_deallocsAndLeavesRegistryUntouched() async throws {
         let localRegistry = TPPBookRegistryMock()
         let localFeedFetcher = StubOPDSFeedFetcher()
-        // Use a fast-cancellation stub instead of the blocking one so
-        // the Tasks actually finish and free the service for deinit.
-        // The stub throws a sentinel error → service routes to
-        // handleRevokeError → generic-error branch → announceReturnFailed.
-        // No registry mutation in the generic branch, so we can assert
-        // the registry is untouched by post-deinit work.
+        // Fast-failing stub rather than the blocking one: a tracked body that
+        // has started pins `self` (see the docstring), so running the Tasks to
+        // completion is the only state in which the service can dealloc.
+        // The sentinel error routes to handleRevokeError -> generic-error
+        // branch, which performs no registry mutation.
         localFeedFetcher.stubbedError = NSError(domain: "test", code: 500,
                                                  userInfo: [NSLocalizedDescriptionKey: "stop"])
         let localAnnouncementService = SpyAnnouncementService()
@@ -513,86 +514,96 @@ final class BookReturnServiceTests: XCTestCase {
         localRegistry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
                               fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let countBefore = BookReturnServiceTestHook.deinitCountSync
-
-        // Held as an explicit optional rather than a scoped `let`. The release
-        // then happens at a statement THIS TEST executes (`svc = nil`), not at a
-        // closure boundary ARC unwinds on its own schedule — see the comment at
-        // the assertion below for why that distinction is the whole fix.
+        // Held as an explicit optional so the release happens at a statement
+        // this test executes (`svc = nil`) rather than at a scope exit.
         var svc: BookReturnService?
+        #if FEATURE_DRM_CONNECTOR
+        svc = BookReturnService(
+            bookRegistry: localRegistry,
+            localContentService: localContentService,
+            opdsFeedService: localFeedFetcher,
+            downloadAnnouncementService: localAnnouncementService,
+            bookmarkDeletionLog: .shared,
+            reauthenticator: localReauth,
+            userRetryTracker: .shared,
+            userAccountProvider: { localAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
+        )
+        #else
+        svc = BookReturnService(
+            bookRegistry: localRegistry,
+            localContentService: localContentService,
+            opdsFeedService: localFeedFetcher,
+            downloadAnnouncementService: localAnnouncementService,
+            bookmarkDeletionLog: .shared,
+            reauthenticator: localReauth,
+            userRetryTracker: .shared,
+            userAccountProvider: { localAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
+        )
+        #endif
 
-        await {
-            #if FEATURE_DRM_CONNECTOR
-            svc = BookReturnService(
-                bookRegistry: localRegistry,
-                localContentService: localContentService,
-                opdsFeedService: localFeedFetcher,
-                downloadAnnouncementService: localAnnouncementService,
-                bookmarkDeletionLog: .shared,
-                reauthenticator: localReauth,
-                userRetryTracker: .shared,
-                userAccountProvider: { localAccount }
-            )
-            #else
-            svc = BookReturnService(
-                bookRegistry: localRegistry,
-                localContentService: localContentService,
-                opdsFeedService: localFeedFetcher,
-                downloadAnnouncementService: localAnnouncementService,
-                bookmarkDeletionLog: .shared,
-                reauthenticator: localReauth,
-                userRetryTracker: .shared,
-                userAccountProvider: { localAccount }
-            )
-            #endif
-            svc?.delegate = localDelegate
-            svc?.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
+        // Exact identity, not a process-global counter: `deinitCountSync` is
+        // shared across the whole suite and a `>` check is satisfied by ANY
+        // other BookReturnService dealloc racing in the same window.
+        weak var weakSvc = svc
+
+        // The strong binding lives only inside this closure. Keeping it in
+        // scope at function level would itself retain the service and defeat
+        // the release below.
+        try await { () async throws -> Void in
+            let service = try XCTUnwrap(svc, "service must be constructed")
+            service.delegate = localDelegate
+            service.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
+
             // Retention insert is synchronous inside returnBook, so the count
-            // is already ≥ 1 (proves retention). Capture the tracked Tasks and
-            // JOIN them — awaiting each Task's value runs the auto-removal step
-            // that is the tail of the tracked-Task body, proving drain without
-            // a wall-clock sleep loop that starves under CI oversubscription.
-            XCTAssertGreaterThanOrEqual(svc?.inFlightTaskCount ?? 0, 1,
-                           "returnBook must synchronously retain its cleanup Task")
-            for task in svc?.inFlightTasksSnapshotForTesting() ?? [] { _ = await task.value }
-            XCTAssertEqual(svc?.inFlightTaskCount, 0,
+            // is already >= 1 (this is what proves retention).
+            XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
+                                        "returnBook must synchronously retain its cleanup Task")
+
+            // Join by re-snapshotting: a tracked body can itself launch a
+            // further tracked Task (the MainActor alert hop at
+            // BookReturnService.swift:602), which a single snapshot taken up
+            // front would never join. Bounded, and every wait is a real Task
+            // join rather than a wall-clock poll.
+            var rounds = 0
+            while true {
+                let pending = service.inFlightTasksSnapshotForTesting()
+                if pending.isEmpty { break }
+                for task in pending { _ = await task.value }
+                rounds += 1
+                if rounds > 8 {
+                    XCTFail("tracked Tasks did not quiesce after \(rounds) join rounds")
+                    break
+                }
+            }
+            XCTAssertEqual(service.inFlightTaskCount, 0,
                            "Tracked Tasks must auto-remove once their bodies finish")
         }()
 
-        // DROP THE LAST STRONG REFERENCE HERE, and assert SYNCHRONOUSLY.
+        // DROP THE LAST STRONG REFERENCE, and assert SYNCHRONOUSLY.
         //
-        // This used to poll `awaitConditionAsync(timeout: 5.0)` for the deinit
-        // count to move, with a comment asserting it "converges on the first
-        // poll". That was an assumption about ARC's schedule, not a property —
-        // and it made this test one of the fleet's recurring flakes. Under the
-        // shared scheme's `testExecutionOrdering = "random"`, which
-        // `-test-iterations` re-randomises per iteration, the surrounding
-        // allocation pressure differs every run, so "converges quickly" is a
-        // claim about a distribution rather than something the test controls.
+        // This used to poll `awaitConditionAsync(timeout: 5.0)`. The flake was
+        // never ARC being unscheduled — the old release point was deterministic
+        // too. What starved was the poll itself: `awaitConditionAsync` sleeps
+        // via `Task.sleep` between predicate evaluations, and under the shared
+        // scheme's `testExecutionOrdering = "random"` plus cooperative-pool
+        // oversubscription those sleeps are not bounded by the timeout the
+        // caller asked for. Removing the poll removes the starvation surface.
         //
-        // The fix is structural rather than a longer timeout: `svc = nil` is the
-        // last strong reference, so ARC must release on THIS thread, in THIS
-        // statement, before the next line executes. deinit is synchronous with
-        // that release. There is now no window for the mechanism to occur in, so
-        // no amount of load or ordering can reintroduce the flake — which is the
-        // only kind of fix worth making here, since a single green run after a
-        // timeout bump proves nothing.
-        //
-        // If this assertion ever fails, it is NOT flakiness: it means something
-        // still holds the service — a retain cycle or an escaped capture — which
-        // is a real defect this test should report loudly rather than poll past.
+        // If this assertion ever fails it is NOT flakiness: something still
+        // holds the service — a retain cycle or an escaped capture.
         svc = nil
-        XCTAssertGreaterThan(BookReturnServiceTestHook.deinitCountSync, countBefore,
-                             "deinit must run synchronously when the last strong reference is dropped; "
-                             + "if it did not, something still retains BookReturnService")
+        XCTAssertNil(weakSvc,
+                     "dropping the last strong reference must dealloc this service instance; "
+                     + "if it did not, something still retains BookReturnService")
 
-        // The property the test's NAME promises, which it never actually
-        // asserted. `shortCircuitAfterServiceDeinits` says post-deinit work must
-        // not touch the registry; the old body only proved that deinit fired.
-        // The stubbed error routes to the generic-error branch, which performs no
-        // registry mutation, so the book must still be exactly as arranged.
+        // The generic-error branch performs no registry mutation, so the book
+        // must remain exactly as arranged. `TPPBookRegistryMock.state(for:)`
+        // returns `.unregistered` for a missing book, so this also catches
+        // removal, not just state rewrites.
         XCTAssertEqual(localRegistry.state(for: bookWithRevoke.identifier), .downloadSuccessful,
-                       "work draining after the service deinits must not mutate the registry")
+                       "the generic-error cleanup branch must not mutate the registry")
     }
 
     /// Companion to the deinit test: while Tasks are mid-flight, the
