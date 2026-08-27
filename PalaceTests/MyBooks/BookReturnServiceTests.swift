@@ -515,9 +515,15 @@ final class BookReturnServiceTests: XCTestCase {
 
         let countBefore = BookReturnServiceTestHook.deinitCountSync
 
+        // Held as an explicit optional rather than a scoped `let`. The release
+        // then happens at a statement THIS TEST executes (`svc = nil`), not at a
+        // closure boundary ARC unwinds on its own schedule — see the comment at
+        // the assertion below for why that distinction is the whole fix.
+        var svc: BookReturnService?
+
         await {
             #if FEATURE_DRM_CONNECTOR
-            let svc = BookReturnService(
+            svc = BookReturnService(
                 bookRegistry: localRegistry,
                 localContentService: localContentService,
                 opdsFeedService: localFeedFetcher,
@@ -528,7 +534,7 @@ final class BookReturnServiceTests: XCTestCase {
                 userAccountProvider: { localAccount }
             )
             #else
-            let svc = BookReturnService(
+            svc = BookReturnService(
                 bookRegistry: localRegistry,
                 localContentService: localContentService,
                 opdsFeedService: localFeedFetcher,
@@ -539,32 +545,54 @@ final class BookReturnServiceTests: XCTestCase {
                 userAccountProvider: { localAccount }
             )
             #endif
-            svc.delegate = localDelegate
-            svc.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
+            svc?.delegate = localDelegate
+            svc?.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
             // Retention insert is synchronous inside returnBook, so the count
             // is already ≥ 1 (proves retention). Capture the tracked Tasks and
             // JOIN them — awaiting each Task's value runs the auto-removal step
             // that is the tail of the tracked-Task body, proving drain without
             // a wall-clock sleep loop that starves under CI oversubscription.
-            XCTAssertGreaterThanOrEqual(svc.inFlightTaskCount, 1,
+            XCTAssertGreaterThanOrEqual(svc?.inFlightTaskCount ?? 0, 1,
                            "returnBook must synchronously retain its cleanup Task")
-            for task in svc.inFlightTasksSnapshotForTesting() { _ = await task.value }
-            XCTAssertEqual(svc.inFlightTaskCount, 0,
+            for task in svc?.inFlightTasksSnapshotForTesting() ?? [] { _ = await task.value }
+            XCTAssertEqual(svc?.inFlightTaskCount, 0,
                            "Tracked Tasks must auto-remove once their bodies finish")
         }()
 
-        // Service has no in-flight Tasks left → its strong ref is
-        // released at the closing brace → deinit runs.
-        // UNJOINABLE: deinit fires on ARC's last-release, which is not a
-        // Task/queue we can await. We've already JOINED every tracked Task
-        // above and exited the closure scope, so the release has happened;
-        // this converges on the first poll. The predicate reads a synchronous
-        // static counter, so the loop is cheap even under load.
-        await awaitConditionAsync(timeout: 5.0) {
-            BookReturnServiceTestHook.deinitCountSync > countBefore
-        }
+        // DROP THE LAST STRONG REFERENCE HERE, and assert SYNCHRONOUSLY.
+        //
+        // This used to poll `awaitConditionAsync(timeout: 5.0)` for the deinit
+        // count to move, with a comment asserting it "converges on the first
+        // poll". That was an assumption about ARC's schedule, not a property —
+        // and it made this test one of the fleet's recurring flakes. Under the
+        // shared scheme's `testExecutionOrdering = "random"`, which
+        // `-test-iterations` re-randomises per iteration, the surrounding
+        // allocation pressure differs every run, so "converges quickly" is a
+        // claim about a distribution rather than something the test controls.
+        //
+        // The fix is structural rather than a longer timeout: `svc = nil` is the
+        // last strong reference, so ARC must release on THIS thread, in THIS
+        // statement, before the next line executes. deinit is synchronous with
+        // that release. There is now no window for the mechanism to occur in, so
+        // no amount of load or ordering can reintroduce the flake — which is the
+        // only kind of fix worth making here, since a single green run after a
+        // timeout bump proves nothing.
+        //
+        // If this assertion ever fails, it is NOT flakiness: it means something
+        // still holds the service — a retain cycle or an escaped capture — which
+        // is a real defect this test should report loudly rather than poll past.
+        svc = nil
         XCTAssertGreaterThan(BookReturnServiceTestHook.deinitCountSync, countBefore,
-                             "BookReturnService deinit must fire once all in-flight Tasks have drained")
+                             "deinit must run synchronously when the last strong reference is dropped; "
+                             + "if it did not, something still retains BookReturnService")
+
+        // The property the test's NAME promises, which it never actually
+        // asserted. `shortCircuitAfterServiceDeinits` says post-deinit work must
+        // not touch the registry; the old body only proved that deinit fired.
+        // The stubbed error routes to the generic-error branch, which performs no
+        // registry mutation, so the book must still be exactly as arranged.
+        XCTAssertEqual(localRegistry.state(for: bookWithRevoke.identifier), .downloadSuccessful,
+                       "work draining after the service deinits must not mutate the registry")
     }
 
     /// Companion to the deinit test: while Tasks are mid-flight, the
