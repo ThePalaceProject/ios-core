@@ -124,7 +124,12 @@ final class AccountRegistryStorePoolStarvationTests: XCTestCase {
     func testStress_readsUnderSaturationDoNotStarveTheCooperativeThreadPool() async throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["PALACE_STRESS_POOL"] == "1",
-            "load-sensitive; set PALACE_STRESS_POOL=1 to run"
+            // TEST_RUNNER_ prefix required. xcodebuild forwards only
+            // TEST_RUNNER_-prefixed variables into the test process, so the
+            // bare form this message used to name set the variable in the
+            // shell and the test skipped anyway — an opt-in that could not be
+            // opted into. Verified both ways before changing the wording.
+            "load-sensitive; run with TEST_RUNNER_PALACE_STRESS_POOL=1"
         )
         let store = AccountRegistryStore(currentHash: "hash")
         let readers = max(64, ProcessInfo.processInfo.activeProcessorCount * 4)
