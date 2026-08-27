@@ -2738,26 +2738,39 @@ public final class AudiobookSessionManager: ObservableObject {
         return accountsManager.currentUserAccount.hasCredentials()
     }
 
-    /// Internal (was private) so the WS-3 integration test can drive the
-    /// `.playbackFailed` OverDrive re-fulfill recovery directly. Visibility
-    /// widening only — no new public API, no behavior change.
+    /// Internal rather than `private`. The stated reason was that a WS-3
+    /// integration test drives the `.playbackFailed` OverDrive re-fulfill
+    /// recovery through here — but no such test exists today: every mention of
+    /// `handleManagerState` in PalaceTests is a comment, three of which say the
+    /// wiring is deliberately NOT driven (`AudiobookColdLoadRecoveryTests`,
+    /// `AudiobookBearerTokenRecoveryTests`, `OverdriveFulfillmentTests`). The
+    /// widening is kept because narrowing it is a decomposition decision, not a
+    /// drive-by one, and because it is the seam any future test would need.
+    /// Corrected rather than deleted so the next reader does not re-derive the
+    /// same dead end (PP-4951 review).
+    ///
+    /// Visibility widening only — no new public API, no behaviour change.
     func handleManagerState(_ managerState: AudiobookManagerState) {
         guard let bookId = currentBook?.identifier else { return }
+
+        // Single site, so the state→play-state mapping is reachable by a test.
+        // See `AudiobookPlaybackLifecycleSignal.playState(for:bookId:)`; a chapter
+        // ending returns nil and leaves both alone (PP-4951). Publishing stays in
+        // the arms below, each at the point it always published.
+        if let applied = AudiobookPlaybackLifecycleSignal.playState(for: managerState, bookId: bookId) {
+            (isPlaying, state) = applied
+        }
 
         switch managerState {
         case .playbackBegan(let position):
             Log.debug(#file, "Playback began at: \(position.timestamp)")
-            isPlaying = true
             hasEverStartedPlayback = true
-            state = .playing(bookId: bookId)
             currentPosition = position
             updateNowPlayingInfo(position: position)
             playbackStatePublisher.send(state)
 
         case .playbackStopped(let position):
             Log.debug(#file, "Playback stopped at: \(position.timestamp)")
-            isPlaying = false
-            state = .paused(bookId: bookId)
             currentPosition = position
             nowPlayingCoordinator?.setPlaybackState(playing: false)
             playbackStatePublisher.send(state)
@@ -2999,11 +3012,28 @@ public final class AudiobookSessionManager: ObservableObject {
             }
 
         case .playbackCompleted(let position):
-            Log.info(#file, "Playback completed at: \(position.timestamp)")
-            isPlaying = false
-            state = .paused(bookId: bookId)
+            // A CHAPTER ended, not the book. PP-4951: this used to set
+            // `isPlaying = false` / `.paused`, which is false — audio runs
+            // straight into the next chapter. Position still advances; play
+            // state is decided above by
+            // `AudiobookPlaybackLifecycleSignal.playState(for:bookId:)`, which
+            // returns nil here and so leaves both untouched.
+            //
+            // UNPINNED, deliberately, and recorded because the inability to
+            // write the test IS the feedback: nothing in PalaceTests drives
+            // `handleManagerState`. `currentBook` is `private(set)` and written
+            // only on the open path, so reaching this arm needs the whole
+            // auth-gated open flow. Re-adding `isPlaying = false` here, or
+            // restoring the `playbackStatePublisher.send(state)` deleted below,
+            // would reintroduce PP-4951 with the suite green. The mapping above
+            // IS pinned (`AudiobookChapterCompletionPauseTests`); this arm's
+            // wiring to it is not. Do not close the gap with a test-only
+            // `currentBook` setter — that trades a production seam for a test.
+            Log.info(#file, "Chapter completed at: \(position.timestamp)")
             currentPosition = position
-            playbackStatePublisher.send(state)
+            // No `playbackStatePublisher.send`: play state did not move, and a
+            // duplicate emission per chapter would be a new signal to every
+            // subscriber (CarPlay, the presenter) that nothing asked for.
 
         case .positionUpdated(let position):
             if let position = position {
