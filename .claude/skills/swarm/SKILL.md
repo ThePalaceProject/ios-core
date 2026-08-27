@@ -702,7 +702,7 @@ mcp__forgeos__forge_submit_evidence:
       - { option: "<rejected option>", rejected_because: "<reason>" }
 ```
 
-Each contract becomes one ADR. Submit them serially. If the contract bundles multiple decisions (e.g., A: protocol shape + B: lifecycle ownership), split into two submissions. The architect's contract titles + acceptance criteria are usually directly usable as `decision` + `consequences` after trimming. Skip wall-failures here — they go through `scripts/forgeos-submit-wall-failure.py` separately per `.forgeos/wall-failures/README.md` workflow step 4.
+Each contract becomes one ADR. Submit them serially. If the contract bundles multiple decisions (e.g., A: protocol shape + B: lifecycle ownership), split into two submissions. The architect's contract titles + acceptance criteria are usually directly usable as `decision` + `consequences` after trimming. Skip wall-failures here — they go through `~/harness/stacks/ios/forgeos/forgeos-submit-wall-failure.py` separately per `.forgeos/wall-failures/README.md` workflow step 4.
 
 Write `.forgeos/swarms/<swarm_id>/outcome.md` with: status, modules touched, files changed, tests added, reviewer verdicts (both rounds if any), total agent count, lessons learned, **list of wall-failure entries created and their `applied_in` status**, and **list of ADR ids submitted with the modules they cover** (`adr_<8hex>` for each contract). The outcome.md ADR list is the human-readable counterpart to the ForgeOS ledger entries.
 
