@@ -564,26 +564,35 @@ final class BookReturnServiceTests: XCTestCase {
                                         "returnBook must synchronously retain its cleanup Task")
 
             // Join by re-snapshotting: a tracked body can itself launch a
-            // further tracked Task — the `launchTrackedMainActorTask` alert
-            // hop inside `presentReturnFailureAlert`
-            // (BookReturnService.swift:602) — which a single snapshot taken
-            // up front would never join. Bounded, and every wait is a real
+            // further tracked Task — the `launchTrackedMainActorTask` hop in
+            // `handleRevokeError`'s `.genericFailureAlert` branch
+            // (BookReturnService.swift:602), which in turn calls
+            // `presentReturnFailureAlert` — which a single snapshot taken up
+            // front would never join. Bounded, and every wait is a real
             // Task join rather than a wall-clock poll.
             var rounds = 0
             while true {
                 let pending = service.inFlightTasksSnapshotForTesting()
                 if pending.isEmpty { break }
-                for task in pending { _ = await task.value }
-                rounds += 1
+                // Checked BEFORE joining, so it fires only when work REMAINS
+                // after `rounds` completed rounds — a true statement. Checking
+                // after the join instead would throw on a round that had just
+                // drained everything, dropping the success ceiling below the
+                // bound the message names.
+                //
                 // THROW rather than break: a `break` falls through to the
                 // `XCTAssertNil(weakSvc)` below, which then fails too and
                 // reports "something still retains BookReturnService" — the
                 // wrong diagnosis, since a still-running body legitimately
-                // pins `self`. Throwing keeps the failure single and truthful.
+                // pins `self`. Throwing keeps the failure truthful; XCTest
+                // still records two entries (the XCTFail and the thrown
+                // error), both naming this same cause.
                 if rounds >= 8 {
-                    XCTFail("tracked Tasks did not quiesce after \(rounds) join rounds")
+                    XCTFail("tracked Tasks still pending after \(rounds) join rounds")
                     throw TrackedTaskQuiescenceError.didNotQuiesce(rounds: rounds)
                 }
+                for task in pending { _ = await task.value }
+                rounds += 1
             }
             XCTAssertEqual(service.inFlightTaskCount, 0,
                            "Tracked Tasks must auto-remove once their bodies finish")
