@@ -455,17 +455,29 @@ TEST_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
 # under-reports failures is worse than no gate, because it is believed.
 TEST_PASS=""
 TEST_FAIL=""
+TEST_TALLY=""
 if [ -d "$RESULT_BUNDLE" ] && [ -f scripts/xcresult_summary.py ]; then
   XCR_TALLY=$(python3 scripts/xcresult_summary.py --path "$RESULT_BUNDLE" --mode tally 2>/dev/null || true)
   if [ -n "$XCR_TALLY" ]; then
     TEST_PASS=$(echo "$XCR_TALLY" | awk '{print $1}')
     TEST_FAIL=$(echo "$XCR_TALLY" | awk '{print $2}')
   fi
+  # Report the SUITE SIZE with every count named, not the passed count under the
+  # word "tests". `tally` returns (passed, failed); printing its first number as
+  # "N tests" understates the suite by the skips and expected failures, and a
+  # local figure below CI's reads as an excluded target.
+  TEST_TALLY=$(python3 scripts/xcresult_summary.py --path "$RESULT_BUNDLE" --mode label 2>/dev/null || true)
 fi
 if [ -z "$TEST_PASS" ]; then
   ROLLUP_LINES=$(echo "$TEST_OUTPUT" | grep -A1 "Test Suite '\(All tests\|Selected tests\)' \(passed\|failed\)")
   TEST_PASS=$(echo "$ROLLUP_LINES" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
   TEST_FAIL=$(echo "$ROLLUP_LINES" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+fi
+
+# stdout scraping yields only passed/failed, so the label says which two numbers
+# these are rather than implying a suite size the scrape cannot know.
+if [ -z "$TEST_TALLY" ]; then
+  TEST_TALLY="$TEST_PASS passed, $TEST_FAIL failed (suite size unknown - no xcresult)"
 fi
 
 # A timeout or a restarted runner is a FAILURE even when the tally reads clean
@@ -474,7 +486,7 @@ if echo "$TEST_OUTPUT" | grep -qE 'exceeded execution time allowance|Restarting 
   TEST_FAIL=$((TEST_FAIL + 1))
 fi
 if [ "$TEST_FAIL" -eq 0 ] && [ "$TEST_PASS" -gt 0 ]; then
-  record "unit_tests" "pass" "$TEST_PASS tests, 0 failures"
+  record "unit_tests" "pass" "$TEST_TALLY"
 elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
   # --diff-baseline: distinguish pre-existing test-isolation flakes from
   # branch-introduced regressions. Extract failing class names from THIS
@@ -515,7 +527,7 @@ elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
       # called regressions and all four passed when re-run by hand.
       ISO_SUITES=$(echo "$ISOLATED_OUTPUT" | grep -cE "Test Suite '[A-Za-z_][A-Za-z0-9_]*' (passed|failed)")
       if [ "$ISO_SUITES" -eq 0 ]; then
-        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — isolation re-run produced no suites (build or simulator problem), so flake-vs-regression is UNDETERMINED for:$(echo "$FAILING_CLASSES" | tr '\n' ' ')"
+        record "unit_tests" "fail" "$TEST_TALLY — isolation re-run produced no suites (build or simulator problem), so flake-vs-regression is UNDETERMINED for:$(echo "$FAILING_CLASSES" | tr '\n' ' ')"
       else
       REAL_FAIL_NAMES=""
       for cls in $FAILING_CLASSES; do
@@ -527,7 +539,7 @@ elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
         fi
       done
       if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
-        record "unit_tests" "pass" "$TEST_PASS tests, $TEST_FAIL fails — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
+        record "unit_tests" "pass" "$TEST_TALLY — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
       else
         # "Fails in isolation" does NOT mean "this branch broke it". A
         # deterministic pre-existing failure fails in isolation too, and this
@@ -542,30 +554,30 @@ elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
 
         case "$BASELINE_VERDICT" in
           all-preexisting)
-            record "unit_tests" "pass" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL class(es) fail in isolation but fail identically at $BASE, so they are PRE-EXISTING, not this branch:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
+            record "unit_tests" "pass" "$TEST_TALLY — $REAL_FAIL class(es) fail in isolation but fail identically at $BASE, so they are PRE-EXISTING, not this branch:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
             ;;
           some-new:*)
-            record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — REGRESSION introduced by this branch (passes at $BASE, fails here):${BASELINE_VERDICT#some-new:}; $FLAKE_COUNT isolation flake(s)"
+            record "unit_tests" "fail" "$TEST_TALLY — REGRESSION introduced by this branch (passes at $BASE, fails here):${BASELINE_VERDICT#some-new:}; $FLAKE_COUNT isolation flake(s)"
             ;;
           undetermined)
-            record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL class(es) fail in isolation; the $BASE comparison could not run, so whether this branch caused them is UNDETERMINED:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
+            record "unit_tests" "fail" "$TEST_TALLY — $REAL_FAIL class(es) fail in isolation; the $BASE comparison could not run, so whether this branch caused them is UNDETERMINED:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
             ;;
           *)
             # NAME them. Reporting only a count leaves the reader to guess which
             # classes to open — the same defect this gate is being fixed for.
-            record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL class(es) fail IN ISOLATION:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s). NOT established as this branch's — a pre-existing deterministic failure looks identical here. Re-run with --baseline-compare, or check $BASE."
+            record "unit_tests" "fail" "$TEST_TALLY — $REAL_FAIL class(es) fail IN ISOLATION:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s). NOT established as this branch's — a pre-existing deterministic failure looks identical here. Re-run with --baseline-compare, or check $BASE."
             ;;
         esac
       fi
       fi
     else
-      record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline could not extract class names from xcresult)"
+      record "unit_tests" "fail" "$TEST_TALLY (--diff-baseline could not extract class names from xcresult)"
     fi
   else
-    record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline requires xcrun + recent xcresult)"
+    record "unit_tests" "fail" "$TEST_TALLY (--diff-baseline requires xcrun + recent xcresult)"
   fi
 else
-  record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures"
+  record "unit_tests" "fail" "$TEST_TALLY"
 fi
 fi
 
