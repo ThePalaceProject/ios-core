@@ -495,6 +495,12 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
             account: "pp5023-caller-account",
             expectedBytes: nil)
 
+        // Spend a retry so the reset assertion below cannot pass on a counter
+        // that was never set.
+        await isolatedStateManager.incrementTransferRetryAttempts(for: book.identifier)
+        let spentRetries = await isolatedStateManager.transferRetryCounts.get(book.identifier)
+        XCTAssertEqual(spentRetries, 1, "precondition: the retry counter must be non-zero")
+
         let location = try Self.writeBearerPayload(location: bearerLocation)
         defer { try? FileManager.default.removeItem(at: location) }
 
@@ -506,6 +512,15 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
             "the terminal cleanup must NOT retire a record whose download has just started")
         XCTAssertEqual(persisted.downloadURL, bearerLocation,
                        "and the surviving record must be the re-issued one")
+
+        // `finishTerminalBookkeeping` resets the retry counter BEFORE the
+        // keep-record guard, so the reset must happen even when the record is
+        // kept. Without this, moving the reset below the guard leaves the whole
+        // suite green — the ordering is otherwise unobservable, the two stores
+        // being disjoint.
+        let retries = await isolatedStateManager.transferRetryCounts.get(book.identifier)
+        XCTAssertNil(retries,
+                     "the retry budget resets even on the keep-record path — reset precedes the guard")
     }
 
     /// The acquisition-link half of the same guarantee, and the gap review named:
@@ -587,11 +602,13 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
             DistributorType.EpubZip.rawValue, identifier: 5_023_501)
 
         // No hop, so no live task — the flag must be false and the record must go.
-        // Deliberately NOT claiming which arm runs: `.none` reaching `moveFile`
-        // and a parse `.failure` both retire the record, and this test cannot
-        // tell them apart. It is a stuck-flag control, not a behaviour pin — a
-        // `followUpTaskInFlight` wedged true would leak a record on every
-        // finished download, and that is what this catches.
+        //
+        // This arm IS determinable, contrary to an earlier version of this
+        // comment: `application/epub+zip` is in `TPPOPDSAcquisitionPath.supportedTypes()`,
+        // so `canCompleteDownload` passes and the parser returns `.proceed`, which
+        // means `dispatch` runs and OVERWRITES the default result. The sibling
+        // test below covers the `.failure` arm, where the default survives — that
+        // is the arm `noDispatch` actually decides.
         await isolatedStateManager.bookIdentifierToDownloadInfo.set(
             book.identifier,
             value: MyBooksDownloadInfo(
@@ -616,6 +633,59 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
         XCTAssertNil(
             record(forBookID: book.identifier),
             "a download with no follow-up reached a terminal outcome; its record must be dropped")
+    }
+
+    /// The `.failure` parse arm — the ONLY arm where `noDispatch` is the live
+    /// value rather than a placeholder.
+    ///
+    /// Both other non-follow-up tests send `application/epub+zip`, which is in
+    /// `TPPOPDSAcquisitionPath.supportedTypes()`, so `canCompleteDownload` passes,
+    /// the parser returns `.proceed`, and `dispatch` OVERWRITES the default. A
+    /// MIME outside that set fails the check, the parser returns `.failure`, and
+    /// `dispatch` never runs — so `noDispatch.followUpTaskInFlight` decides
+    /// whether the record is retired.
+    ///
+    /// Flipping that literal to `true` would leak a durable record on every failed
+    /// download, and launch reconciliation would then restart a download that had
+    /// already failed. Before this ticket that line was unconditional, so nothing
+    /// could go wrong there; now it is a decision, and decisions need pinning.
+    func testHandleDownloadCompletion_parseFailure_stillRetiresTheRecord() async throws {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        // Deliberately NOT a supported content type.
+        let task = Self.taskWithContentType("text/plain", identifier: 5_023_800)
+
+        let center = MyBooksDownloadCenter(
+            bookRegistry: TPPBookRegistryMock(),
+            stateManager: isolatedStateManager,
+            reachability: MockReachability(initiallyConnected: true),
+            urlSession: Self.makeInertSession())
+
+        await isolatedStateManager.bookIdentifierToDownloadInfo.set(
+            book.identifier,
+            value: MyBooksDownloadInfo(
+                downloadProgress: 0.5, downloadTask: task, rightsManagement: .none))
+        await isolatedStateManager.taskIdentifierToBook.set(task.taskIdentifier, value: book)
+
+        isolatedStateManager.persistStartedTask(
+            bookID: book.identifier,
+            taskIdentifier: task.taskIdentifier,
+            downloadURL: URL(string: "https://library-a.palace-test.invalid/failed")!,
+            account: "",
+            expectedBytes: nil)
+        XCTAssertNotNil(record(forBookID: book.identifier),
+                        "precondition: there must be a record for the failure path to retire")
+
+        let location = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp5023-failure-\(UUID().uuidString).txt")
+        try Data("not a book".utf8).write(to: location)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        await center.handleDownloadCompletion(
+            session: inertReissueTestSession, task: task, location: location)
+
+        XCTAssertNil(
+            record(forBookID: book.identifier),
+            "a download that FAILED to parse left no live task; its record must be retired")
     }
 
     /// `finishTerminalBookkeeping` bundles TWO behaviours — reset the transfer

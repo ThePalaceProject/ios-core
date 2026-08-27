@@ -71,33 +71,33 @@ struct RightsManagementDispatchResult {
     /// here instead.
     let followUpTaskInFlight: Bool
 
-    /// No default on `followUpTaskInFlight`: its safe-looking value (`false`) is
-    /// the DEFECT direction, so a construction site that omits it would reopen
-    /// PP-5023 with the suite still green. Requiring it makes that a compile error.
-    ///
-    /// PRECISELY what that does and does not ratchet, because this comment is the
-    /// audit trail: it covers new CONSTRUCTION SITES of this struct. It does NOT
-    /// cover a new `case` arm in `dispatch`, which assigns the local `var` further
-    /// down and can still forget to — that arm compiles green. Closing THAT would
-    /// need each arm to yield the flag rather than mutate a shared local.
-    /// The state before any dispatch has run: no alert, no follow-up task, and
-    /// whatever error the completed task already carried.
+    /// The state before any dispatch has run.
     ///
     /// Exists so `MyBooksDownloadCenter` can hold a NON-optional result across the
-    /// parse switch. Holding it as an optional forced `?? false` / `== true` at the
-    /// read sites, and since `dispatch` returns non-optional those were unreachable
-    /// — unkillable mutants on a critical path, the shape this branch has now
-    /// removed four times. A default value costs the same and has no dead arm.
-    static func noDispatch(failureError: Error?) -> RightsManagementDispatchResult {
-        RightsManagementDispatchResult(
-            failureRequiringAlert: false, failureError: failureError, followUpTaskInFlight: false)
-    }
-
-    init(failureRequiringAlert: Bool, failureError: Error?, followUpTaskInFlight: Bool) {
-        self.failureRequiringAlert = failureRequiringAlert
-        self.failureError = failureError
-        self.followUpTaskInFlight = followUpTaskInFlight
-    }
+    /// parse switch. Held as an optional it forced `?? false` / `== true` at the
+    /// read sites, and since `dispatch` returns non-optional those arms were
+    /// unreachable — unkillable mutants on a critical path, the shape this branch
+    /// has now removed four times.
+    ///
+    /// Takes NO `failureError`. An earlier version did, and it was inert: the
+    /// caller seeds `failureError` from `task.error` separately and only ever
+    /// overwrites it from a REAL dispatch result, so the value carried here was
+    /// never read. `noDispatch(failureError: nil)` was therefore a surviving
+    /// mutant — the same dead-arm shape, one level down.
+    ///
+    /// `followUpTaskInFlight: false` here is NOT a safe default, it is a live
+    /// value: it is what the `.failure` parse arm uses, where flipping it would
+    /// leak a durable record on every problem-document failure and have launch
+    /// reconciliation restart a download that failed. Pinned by
+    /// `testHandleDownloadCompletion_parseFailure_stillRetiresTheRecord`.
+    ///
+    /// The memberwise initialiser is deliberately not overridden: an explicit one
+    /// byte-identical to it is noise. `followUpTaskInFlight` has no default there
+    /// either, so a new construction site that omits it is still a compile error —
+    /// which covers new CONSTRUCTION SITES, though NOT a new `case` arm in
+    /// `dispatch` that forgets to assign the local.
+    static let noDispatch = RightsManagementDispatchResult(
+        failureRequiringAlert: false, failureError: nil, followUpTaskInFlight: false)
 }
 
 // MARK: - RightsManagementDispatcher

@@ -1535,7 +1535,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         // PP-5023: hoisted so the terminal cleanup below can read
         // `followUpTaskInFlight` — the bearer-token hop leaves a live content task
         // behind, and a download that has not finished must keep its record.
-        var dispatchResult = RightsManagementDispatchResult.noDispatch(failureError: task.error)
+        var dispatchResult = RightsManagementDispatchResult.noDispatch
 
         switch parseResult {
         case .followUpStarted:

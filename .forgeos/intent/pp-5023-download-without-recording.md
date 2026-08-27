@@ -147,9 +147,17 @@ throwaway worktree carrying only the final test file), not estimated:
 
     Executed 8 tests, with 10 failures
 
+NO ABSOLUTE TEST COUNT APPEARS IN THIS SECTION, deliberately. It drifted three
+times — 7 -> 10 -> 12 -> 14 -> 15 -> 16 -> 17 as review kept adding pins — and each
+correction was itself a stale figure by the next round, in the section that warns
+against stale figures. The number lives in the tree (`grep -c "func test"`) and
+carries no decision value; what matters is which pins are PROVEN, enumerated
+below. The file list above is derived for the same reason and has not drifted
+since.
+
 Seven of the eight fail; the eighth is the control, which passes there and here
-because it asserts the DEFECT. **That baseline covers 8 of the 15 tests now in the
-file.** Seven were added later in response to review — the two `followUpTaskInFlight`
+because it asserts the DEFECT. **That baseline covers the 8 tests that existed when it was
+measured.** The rest were added later in response to review — the two `followUpTaskInFlight`
 arms, the two caller-level `handleDownloadCompletion` tests, and the two
 inheritance-cell tests — and are pinned as follows — stated here rather
 than promised, since an earlier draft said "recorded below" and recorded nothing:
@@ -170,6 +178,17 @@ than promised, since an earlier draft said "recorded below" and recorded nothing
     carries the SAME id as the original book on purpose: an id-changing follow-up
     records under the new id while the cleanup deletes the old one, so it survives
     a fall-through by accident and cannot detect the regression.
+  * `testHandleDownloadCompletion_parseFailure_stillRetiresTheRecord` — the
+    `.failure` parse arm, the ONLY arm where `RightsManagementDispatchResult.noDispatch`
+    is the live value rather than a placeholder (`dispatch` never runs, so nothing
+    overwrites it). Flipping its `followUpTaskInFlight` literal leaks a record on
+    every failed download. Reached with a MIME outside `supportedTypes()`.
+  * `testHandleDownloadCompletion_resetsTheTransferRetryCounter` — the reset half
+    of `finishTerminalBookkeeping`, which the retire-half tests do not cover: a
+    stuck-true `keepRecord` fails them, a dropped reset does not. The bearer-hop
+    test additionally asserts the counter is cleared on the KEEP path, which is
+    what pins reset-BEFORE-guard; without it, moving the reset below the guard
+    leaves the suite green.
   * `testNonFollowUpDispatch_reportsNoLiveTask` and
     `testHandleDownloadCompletion_withoutAFollowUp_stillRetiresTheRecord` — controls.
     Their evidence is that they assert the OPPOSITE of the arms above and pass, so a
@@ -184,7 +203,7 @@ Two further tests
 `testNonFollowUpDispatch_reportsNoLiveTask`) cannot be measured that way at all:
 they assert `RightsManagementDispatchResult.followUpTaskInFlight`, which does not
 exist on develop, so they fail to COMPILE — red by construction rather than by
-assertion. All fifteen pass after the change.
+assertion. All of them pass after the change.
 
 An earlier version of this section said "five of seven". That was wrong and the
 error is worth naming: it was recorded from a run against a tree that had already
