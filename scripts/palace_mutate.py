@@ -75,7 +75,7 @@ DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".forgeos", "mutation-cache")
 # Per-mutant incremental cache lives in a subdir so it never collides with the
 # whole-file cache files (which sit directly in DEFAULT_CACHE_DIR).
 DEFAULT_MUTANT_CACHE_DIR = os.path.join(DEFAULT_CACHE_DIR, "mutants")
-CACHE_VERSION = 1  # bump when cache schema changes
+CACHE_VERSION = 2  # bump when cache schema changes (v2: keys include test CONTENT)
 
 # Coverage-gating support is OPTIONAL — palace_mutate must still run if Component
 # A's mutate_coverage.py is somehow absent (fresh checkout before that file lands,
@@ -498,15 +498,142 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
 # Cache
 # ---------------------------------------------------------------------------
 
+def discover_test_roots(repo_root: str) -> list[str]:
+    """Top-level directories holding test sources, found rather than listed.
+
+    Hardcoding `["PalaceTests", "TenPrintCoverTests"]` looks harmless and is not:
+    `--repo-root` deliberately supports mutating a SIBLING checkout, and the
+    audiobook toolkit's tests live in `PalaceAudiobookToolkitTests`. Against that
+    repo the hardcoded list resolves nothing, `test_fingerprint` returns None, and
+    caching silently switches off for every toolkit mutation run.
+
+    That fails closed, so it is safe — but it is a silent, permanent slowdown on
+    the audiobook critical path, and it was invisible until a cache audit turned
+    up five entries whose test classes could not be resolved. All five were
+    toolkit runs.
+    """
+    try:
+        return sorted(
+            name for name in os.listdir(repo_root)
+            if name.endswith("Tests") and os.path.isdir(os.path.join(repo_root, name))
+        )
+    except OSError:
+        return []
+
+
+def resolve_test_sources(tests: list[str], repo_root: str,
+                         test_roots: list[str] | None = None) -> list[str] | None:
+    """Source files declaring the XCTest classes named by `--tests`.
+
+    Returns paths sorted, or **None** if ANY named class cannot be resolved.
+    None means "cannot fingerprint the tests" and the caller MUST disable the
+    cache rather than fall back — see `test_fingerprint`.
+
+    `--tests` values are `<Bundle>/<Class>` (what `-only-testing` takes), so the
+    class name is the last path component.
+    """
+    roots = test_roots or discover_test_roots(repo_root)
+    wanted = {t.rsplit("/", 1)[-1] for t in tests if t.strip()}
+    if not wanted:
+        return None
+
+    found: dict[str, str] = {}
+    for root in roots:
+        root_abs = os.path.join(repo_root, root)
+        if not os.path.isdir(root_abs):
+            continue
+        for dirpath, _dirnames, filenames in os.walk(root_abs):
+            for fn in filenames:
+                if not fn.endswith(".swift"):
+                    continue
+                path = os.path.join(dirpath, fn)
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as f:
+                        text = f.read()
+                except OSError:
+                    continue
+                for name in wanted:
+                    if name in found:
+                        continue
+                    # `class Foo`, `final class Foo`, `open class Foo`, and the
+                    # `Foo:` / `Foo {` forms. Word-bounded so `FooTests` does not
+                    # match `FooTestsExtra`.
+                    if re.search(rf"\bclass\s+{re.escape(name)}\s*[:{{]", text):
+                        found[name] = path
+
+    if len(found) != len(wanted):
+        return None
+    return sorted(found.values())
+
+
+def test_fingerprint(tests: list[str], repo_root: str,
+                     test_roots: list[str] | None = None) -> str | None:
+    """Content hash of the test sources `--tests` selects, or None.
+
+    THIS IS THE FIX FOR A FALSE-GREEN DEFECT, and the reason it fails closed.
+
+    Both cache keys used to hash the test *names* and never the test *content*,
+    so editing a test body did not invalidate anything. A cached verdict was
+    replayed against a suite that no longer produced it. The harmless direction
+    is a stale "survived" after tests are strengthened. The dangerous direction
+    is a stale **"killed"** after a test is weakened or deleted while the
+    production file is untouched — mutation then reports a kill it never
+    measured, which is exactly the "a build failure is not a kill" class of lie
+    this tool exists to avoid.
+
+    Returning None (unresolvable class, missing file) disables caching for the
+    run. Falling back to name-only hashing would silently restore the defect.
+
+    KNOWN BOUND, stated rather than papered over: this fingerprints the files
+    DECLARING the named classes. A verdict can still change from an edit to a
+    shared helper those tests use — `PalaceTests/Mocks/`, fixtures, a base
+    class — so those are folded in below when present. It cannot cover a change
+    to a *production* file other than the one under mutation; that gap is
+    inherent to per-file caching and predates this fix.
+    """
+    sources = resolve_test_sources(tests, repo_root, test_roots)
+    if sources is None:
+        return None
+
+    # Shared test infrastructure that many suites depend on. Included because a
+    # mock change really can flip a verdict; the cost is broader invalidation,
+    # which is the safe direction.
+    shared: list[str] = []
+    for root in (test_roots or discover_test_roots(repo_root)):
+        mocks = os.path.join(repo_root, root, "Mocks")
+        if os.path.isdir(mocks):
+            for dirpath, _d, filenames in os.walk(mocks):
+                shared += [os.path.join(dirpath, fn)
+                           for fn in filenames if fn.endswith(".swift")]
+
+    h = hashlib.sha256()
+    for path in sources + sorted(shared):
+        try:
+            with open(path, "rb") as f:
+                content = f.read()
+        except OSError:
+            return None  # fail closed
+        h.update(os.path.relpath(path, repo_root).encode())
+        h.update(b"\n")
+        h.update(hashlib.sha256(content).hexdigest().encode())
+        h.update(b"\n")
+    return h.hexdigest()[:16]
+
+
 def cache_key(file_content: str, tests: list[str], seed: int, max_mutations: int,
-              diff_only: bool = False, diff_base: str = "") -> str:
+              diff_only: bool = False, diff_base: str = "",
+              tests_fingerprint: str | None = None) -> str:
     """Stable hash of the inputs that determine mutation results.
 
-    Cache invalidates when the file changes, the test selection changes, or
-    the run parameters change. Cache survives unrelated edits to other files.
+    Cache invalidates when the file changes, the test selection changes, the
+    CONTENT of those tests changes, or the run parameters change. Cache survives
+    unrelated edits to other files.
 
     --diff-only + --diff-base are part of the key so a whole-file scan and a
     diff-scoped scan don't share cache (their mutation lists differ).
+
+    `tests_fingerprint` is required for a cacheable run; callers pass the result
+    of `test_fingerprint` and skip the cache entirely when it is None.
     """
     h = hashlib.sha256()
     h.update(f"v{CACHE_VERSION}\n".encode())
@@ -515,6 +642,9 @@ def cache_key(file_content: str, tests: list[str], seed: int, max_mutations: int
     for t in sorted(tests):
         h.update(t.encode())
         h.update(b"\n")
+    h.update(b"--tests-content--\n")
+    h.update((tests_fingerprint or "UNRESOLVED").encode())
+    h.update(b"\n")
     h.update(f"--seed={seed}\n--max={max_mutations}\n".encode())
     if diff_only:
         h.update(f"--diff-only={diff_base}\n".encode())
@@ -569,18 +699,24 @@ def cache_store(cache_dir: str, file_relpath: str, key: str, report: dict) -> st
 # first); this layer is the incremental fallback when the whole-file key misses.
 
 def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
-                       context_after: str, original: str, mutated: str) -> str:
+                       context_after: str, original: str, mutated: str,
+                       tests_fingerprint: str | None = None) -> str:
     """Stable 16-hex key for one mutant.
 
-    Hashed over (CACHE_VERSION, sorted(tests), context_before + '\\n' +
-    line_text + '\\n' + context_after, original, mutated). Properties:
+    Hashed over (CACHE_VERSION, sorted(tests), tests_fingerprint, context_before
+    + '\\n' + line_text + '\\n' + context_after, original, mutated). Properties:
       - STABILITY: identical inputs -> identical key (so a re-run on an
         unchanged file reuses the cached status).
       - LOCALITY: edits ELSEWHERE in the file don't change a mutant's key
         (context is only the immediate neighbours, not line numbers).
       - DISAMBIGUATION: two byte-identical lines in different surrounding
         context get DIFFERENT keys, so their results never collide.
-    Pure — unit-tested for stability and disambiguation.
+      - TEST-SENSITIVITY: a change to the TESTS changes every key, so a stored
+        `killed` cannot outlive the assertion that produced it. This cache is
+        the more dangerous of the two — it persists per-mutant verdicts across
+        runs, so without the fingerprint a deleted test left "killed" in place
+        indefinitely.
+    Pure — unit-tested for stability, disambiguation and test-sensitivity.
     """
     h = hashlib.sha256()
     h.update(f"v{CACHE_VERSION}\n".encode())
@@ -588,6 +724,9 @@ def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
     for t in sorted(tests):
         h.update(t.encode())
         h.update(b"\n")
+    h.update(b"--tests-content--\n")
+    h.update((tests_fingerprint or "UNRESOLVED").encode())
+    h.update(b"\n")
     h.update(b"--context--\n")
     h.update((context_before + "\n" + line_text + "\n" + context_after).encode())
     h.update(b"\n--ops--\n")
@@ -823,9 +962,24 @@ def main() -> int:
 
     # Cache check: if we've already mutation-tested this exact file content
     # against this exact test selection, we can skip the (slow) re-run.
+    # Fingerprint the CONTENT of the selected tests. None => unresolvable =>
+    # caching is disabled for this run rather than falling back to a name-only
+    # key, which is what let a stale verdict outlive the assertion that produced
+    # it. Fail closed: a slower honest run beats a fast wrong one.
+    # REPO_ROOT, not args.repo_root: the flag defaults to None and the module
+    # global is what the override above resolves it into, so reading the raw arg
+    # crashes every default invocation.
+    fingerprint = test_fingerprint(args.tests, REPO_ROOT)
+    cache_disabled = args.no_cache or fingerprint is None
+    if fingerprint is None and not args.no_cache:
+        print("  cache: DISABLED — could not resolve every --tests class to a source "
+              "file, so test content cannot be fingerprinted and a cached verdict "
+              "could not be trusted. Running in full.")
+
     key = cache_key(original, args.tests, args.seed, args.max_mutations,
-                    diff_only=args.diff_only, diff_base=args.diff_base)
-    if not args.no_cache and not args.dry_run:
+                    diff_only=args.diff_only, diff_base=args.diff_base,
+                    tests_fingerprint=fingerprint)
+    if not cache_disabled and not args.dry_run:
         cached = cache_load(args.cache_dir, args.file, key)
         if cached:
             report = cached["report"]
@@ -898,9 +1052,34 @@ def main() -> int:
     print(f"baseline: {'PASS' if baseline_ok else 'FAIL'} in {baseline_elapsed:.1f}s "
           f"(per-mutant timeout: {per_mutant_timeout}s)")
     if not baseline_ok:
-        print("error: baseline test run failed. Cannot mutation-test against a broken suite.", file=sys.stderr)
+        print("error: baseline test run failed — NOTHING WAS MEASURED.", file=sys.stderr)
+        print("error: this is 'could not measure', NOT 'measured clean'. No mutant ran, "
+              "so no conclusion about test strength is available from this run.", file=sys.stderr)
+        print("error: a failing baseline is usually the environment rather than the code — "
+              "a stale DerivedData precompiled header from a parallel build is the common "
+              "cause. Retry with an isolated PALACE_MUTATE_DERIVED_DATA_PATH before "
+              "believing the suite is broken.", file=sys.stderr)
         print("last lines:")
         print(baseline_out)
+        # Overwrite any report from a PREVIOUS run. Leaving a stale one on disk is
+        # the silent-success shape: the process exits 2, but anything that reads
+        # the artifact instead of the exit code sees the last successful run's
+        # numbers and believes them. `summary` is deliberately OMITTED rather than
+        # zeroed — a consumer reading `summary.killed` should fail loudly, not read
+        # 0 killed / 0 survived as a clean sheet.
+        try:
+            with open(args.report, "w") as f:
+                json.dump({
+                    "file": args.file,
+                    "tests": args.tests,
+                    "measured": False,
+                    "error": "baseline-failed",
+                    "detail": "The unmutated suite did not pass, so no mutant was run. "
+                              "This report records the ABSENCE of a measurement.",
+                }, f, indent=2)
+            print(f"  report: {args.report} (records NO measurement)")
+        except OSError as exc:
+            print(f"error: could not write the no-measurement report: {exc}", file=sys.stderr)
         if cov_tmpdir:
             shutil.rmtree(cov_tmpdir, ignore_errors=True)
         return 2
@@ -940,7 +1119,7 @@ def main() -> int:
     # Per-mutant incremental cache (in ADDITION to the whole-file cache, which
     # already missed if we got here). Reuse cached statuses for mutants whose
     # local context is unchanged; only execute misses; persist atomically.
-    mutant_cache = {} if args.no_cache else mutant_cache_load(args.mutant_cache_dir, args.file)
+    mutant_cache = {} if cache_disabled else mutant_cache_load(args.mutant_cache_dir, args.file)
     mutant_cache_dirty = False
 
     results: list[dict] = []
@@ -991,7 +1170,7 @@ def main() -> int:
         # PER-MUTANT CACHE: reuse a prior status for an unchanged-context mutant.
         mkey = compute_mutant_key(args.tests, m.context_before, m.line_text,
                                   m.context_after, m.original, m.mutated)
-        if not args.no_cache and mkey in mutant_cache:
+        if not cache_disabled and mkey in mutant_cache:
             cached_entry = mutant_cache[mkey]
             cached_status = cached_entry.get("status")
             if cached_status in ("killed", "survived"):
@@ -1054,7 +1233,7 @@ def main() -> int:
         # Update the per-mutant cache only for TERMINAL outcomes (killed/survived).
         # An errored mutant (timeout/build-failure) is deliberately NOT cached, so
         # it is retried on the next run instead of frozen as a false result.
-        if not args.no_cache and status_l in ("killed", "survived"):
+        if not cache_disabled and status_l in ("killed", "survived"):
             mutant_cache[mkey] = {
                 "status": status_l,
                 "elapsed_sec": round(elapsed, 1),
@@ -1093,7 +1272,7 @@ def main() -> int:
     print("=" * 60)
     print(f"report: {args.report}")
 
-    if not args.no_cache:
+    if not cache_disabled:
         try:
             stored = cache_store(args.cache_dir, args.file, key, report)
             print(f"cached: {os.path.relpath(stored, REPO_ROOT)}")
