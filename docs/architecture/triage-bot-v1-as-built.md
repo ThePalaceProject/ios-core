@@ -626,12 +626,16 @@ The release-cadence and curation-bottleneck consequences are what `triage-bot-sh
 | `userDescription` | the patron's text | redacted at assembly; re-redacted on every subsequent edit and follow-up answer, so a credential typed into an edit cannot slip past a one-time pass[^draft-assembly] |
 | `category` | selected category | falls back to `.other` |
 | `matchedEntryId` | the bot's best-guess entry | carried even on escalation so support sees it |
-| context | redacted `ContextSnapshot`, 20 fields: app/OS/device, network state, free storage, log tail, audio route, low-power mode, uptime, build channel, memory, hashed library ids[^snapshot-fields] | field-level omission honored at email serialization only (see below) |
+| context | redacted `ContextSnapshot`, 20 fields: **`platform`**, app/OS/device, network state, free storage, log tail, audio route, low-power mode, uptime, build channel, memory, hashed library ids[^snapshot-fields] | field-level omission honored at email serialization only (see below); `platform` is one of the fields the patron cannot switch off |
 | `helpspotTags` | `triage-bot-<suffix>` (`escalate-recognized`, `escalate-novel`, `escalate-novel-after-ai-pass`, ...), the matched entry's `helpspot_tag`, guided-flow outcome tags, follow-up answered/skipped markers | ride inside the JSON attachment; never reach any HelpSpot API |
 | `priority` | `.low` for file-anyway, `.normal` for escalations | `.high` exists in the enum, unused |
 | `resolutionTrace` | which guided steps were tried, with outcomes | optional |
 | `escalationFollowUp` | the structured question + answer | optional; Skip allowed |
 | `omittedFields` | fields the patron toggled off | barcode is omitted by default when present; the patron must opt in, and even then only the hash exists in state[^draft-assembly] |
+
+**Which client sent the ticket.** `context.platform` is a `String` typed `"iOS" | "Android"`, defaulted to `"iOS"` by the snapshot initializer and set explicitly by the iOS context provider. It is one of the fields `sanitizedForSubmission()` copies unconditionally, so unlike the library, distributor, auth type, network state, log tail, and barcode hash, a patron cannot omit it from the preview — every ticket carries it. It is therefore the reliable discriminator between iOS and Android reports, and the shared ticket endpoint's `client.platform` field ([proposal, section 5.1](./triage-bot-shared-architecture-proposal.md)) is its wire counterpart.
+
+The qualification that matters for anyone triaging: it reaches support **only inside `palace-diagnostics.json`**. Nothing a human reads carries it — the email subject, the environment block, the signature, and the log-file header all name iOS as a hardcoded literal rather than reading the field (Porting hazards, [section 12](#12-known-gaps-and-open-questions)), and no shipped `helpspot_tag` encodes a platform. So the discriminator exists and is dependable, but today it is machine-readable only.
 
 If the recognized entry declares an `escalation_follow_up`, the flow detours to one structured question with a Skip option before the preview.[^draft-assembly]
 
