@@ -618,6 +618,49 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
             "a download with no follow-up reached a terminal outcome; its record must be dropped")
     }
 
+    /// `finishTerminalBookkeeping` bundles TWO behaviours — reset the transfer
+    /// retry counter, and retire the record unless a task is still live. The other
+    /// tests pin only the retire half, so a silently dropped reset would go
+    /// unnoticed: a stuck-true `keepRecord` fails them, a missing
+    /// `resetTransferRetryAttempts` does not.
+    ///
+    /// The counter matters because it bounds how many times a transient transfer
+    /// failure is retried. Left un-reset, a book that exhausted its retries once
+    /// would refuse to retry on a later, unrelated failure.
+    func testHandleDownloadCompletion_resetsTheTransferRetryCounter() async throws {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let task = Self.taskWithContentType(DistributorType.EpubZip.rawValue, identifier: 5_023_700)
+
+        let center = MyBooksDownloadCenter(
+            bookRegistry: TPPBookRegistryMock(),
+            stateManager: isolatedStateManager,
+            reachability: MockReachability(initiallyConnected: true),
+            urlSession: Self.makeInertSession())
+
+        await isolatedStateManager.bookIdentifierToDownloadInfo.set(
+            book.identifier,
+            value: MyBooksDownloadInfo(
+                downloadProgress: 1.0, downloadTask: task, rightsManagement: .none))
+        await isolatedStateManager.taskIdentifierToBook.set(task.taskIdentifier, value: book)
+
+        // Spend two retries, as a book recovering from transient failures would.
+        await isolatedStateManager.incrementTransferRetryAttempts(for: book.identifier)
+        await isolatedStateManager.incrementTransferRetryAttempts(for: book.identifier)
+        let spent = await isolatedStateManager.transferRetryCounts.get(book.identifier)
+        XCTAssertEqual(spent, 2, "precondition: the counter must actually be non-zero")
+
+        let location = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp5023-retry-\(UUID().uuidString).epub")
+        try Data("content".utf8).write(to: location)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        await center.handleDownloadCompletion(
+            session: inertReissueTestSession, task: task, location: location)
+
+        let after = await isolatedStateManager.transferRetryCounts.get(book.identifier)
+        XCTAssertNil(after, "a completed download must reset its transfer-retry budget")
+    }
+
     // MARK: - What the recording actually buys: no wrong adoption
 
     func testAcquisitionLinkTask_isNotAdoptedByAnotherBookSharingItsURL() async throws {

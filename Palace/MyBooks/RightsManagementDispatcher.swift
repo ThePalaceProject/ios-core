@@ -80,6 +80,19 @@ struct RightsManagementDispatchResult {
     /// cover a new `case` arm in `dispatch`, which assigns the local `var` further
     /// down and can still forget to — that arm compiles green. Closing THAT would
     /// need each arm to yield the flag rather than mutate a shared local.
+    /// The state before any dispatch has run: no alert, no follow-up task, and
+    /// whatever error the completed task already carried.
+    ///
+    /// Exists so `MyBooksDownloadCenter` can hold a NON-optional result across the
+    /// parse switch. Holding it as an optional forced `?? false` / `== true` at the
+    /// read sites, and since `dispatch` returns non-optional those were unreachable
+    /// — unkillable mutants on a critical path, the shape this branch has now
+    /// removed four times. A default value costs the same and has no dead arm.
+    static func noDispatch(failureError: Error?) -> RightsManagementDispatchResult {
+        RightsManagementDispatchResult(
+            failureRequiringAlert: false, failureError: failureError, followUpTaskInFlight: false)
+    }
+
     init(failureRequiringAlert: Bool, failureError: Error?, followUpTaskInFlight: Bool) {
         self.failureRequiringAlert = failureRequiringAlert
         self.failureError = failureError

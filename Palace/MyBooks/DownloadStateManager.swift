@@ -210,6 +210,31 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
         }
     }
 
+    /// Finish a download's durable bookkeeping: reset the transient-transfer
+    /// retry counter, and retire the durable record UNLESS a live task remains.
+    ///
+    /// `keepRecord` is true when the completion left a task still running — today
+    /// only the bearer-token hop, which swaps the fulfilment task for a content
+    /// task and resumes it. Such a download has not reached a terminal outcome, so
+    /// retiring its record makes a live task invisible to launch reconciliation.
+    /// That was PP-5023's second defect: the record was written by the hop and
+    /// removed roughly 100ms later by the caller's cleanup.
+    ///
+    /// Lives here rather than inline in `MyBooksDownloadCenter` because that file
+    /// is frozen by the god-class LOC ratchet, whose instruction is to extract
+    /// into a collaborator rather than grow the hub. The decision belongs beside
+    /// the store it acts on regardless.
+    ///
+    /// NOT the same sequence as `cleanupDownload`, which also resets and removes.
+    /// That one runs on cancel/delete, where no follow-up can be in flight, so it
+    /// needs no `keepRecord` and is deliberately left alone — merging them would
+    /// give the cancel path a parameter it can never use.
+    func finishTerminalBookkeeping(for bookID: String, keepRecord: Bool) async {
+        await resetTransferRetryAttempts(for: bookID)
+        guard !keepRecord else { return }
+        removePersistedRecord(for: bookID)
+    }
+
     /// Drop the durable record for a book on terminal completion.
     func removePersistedRecord(for bookID: String) {
         taskPersistence.remove(bookID: bookID)

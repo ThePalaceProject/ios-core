@@ -1535,7 +1535,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         // PP-5023: hoisted so the terminal cleanup below can read
         // `followUpTaskInFlight` — the bearer-token hop leaves a live content task
         // behind, and a download that has not finished must keep its record.
-        var dispatchResult: RightsManagementDispatchResult?
+        var dispatchResult = RightsManagementDispatchResult.noDispatch(failureError: task.error)
 
         switch parseResult {
         case .followUpStarted:
@@ -1565,8 +1565,8 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 rights: rights,
                 failureError: failureError
             )
-            failureRequiringAlert = dispatchResult?.failureRequiringAlert ?? false
-            failureError = dispatchResult?.failureError
+            failureRequiringAlert = dispatchResult.failureRequiringAlert
+            failureError = dispatchResult.failureError
         }
 
         if failureRequiringAlert {
@@ -1605,7 +1605,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         await downloadCoordinator.registerCompletion(identifier: book.identifier)
         // Reliability WS-A: download reached a terminal outcome — drop the
         // durable record and reset the transient-transfer retry counter.
-        await stateManager.finishTerminalBookkeeping(for: book.identifier, keepRecord: dispatchResult?.followUpTaskInFlight == true)
+        await stateManager.finishTerminalBookkeeping(for: book.identifier, keepRecord: dispatchResult.followUpTaskInFlight)
         // PP-5023: the retire-or-keep decision lives in `finishTerminalBookkeeping`
         // so this frozen file does not grow — see that method for why a bearer hop
         // must keep its record.
