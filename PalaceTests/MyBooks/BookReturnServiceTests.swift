@@ -482,12 +482,14 @@ final class BookReturnServiceTests: XCTestCase {
     ///
     /// What this test does NOT prove, and cannot through this seam: the
     /// `[weak self]` short-circuit in the tracked Task bodies. Every body
-    /// does `guard let self` BEFORE its first `await` — see
-    /// `BookReturnService.swift:356` (guard) against `:366` (await
-    /// `fetchFeed`) — so once a body has started it holds `self` strongly
+    /// does `guard let self` BEFORE its first `await` — the `guard let self,
+    /// let revokeURL` opening the `returnBook` tracked body
+    /// (`BookReturnService.swift:356`) against its
+    /// `await opdsFeedService.fetchFeed` (`:366`) — so once a body has
+    /// started it holds `self` strongly
     /// across every suspension and the service cannot dealloc mid-flight.
-    /// That is precisely what the note in `deinit`
-    /// (`BookReturnService.swift:204-221`) records. Parking a Task and then
+    /// That is precisely what the retention note in `BookReturnService.deinit`
+    /// (`:204-221`) records. Parking a Task and then
     /// releasing the service does not reach the guard; the guard only fires
     /// for a body that has not started yet, which no seam here can arrange
     /// deterministically. **Deleting `[weak self]` from a tracked body would
@@ -562,19 +564,25 @@ final class BookReturnServiceTests: XCTestCase {
                                         "returnBook must synchronously retain its cleanup Task")
 
             // Join by re-snapshotting: a tracked body can itself launch a
-            // further tracked Task (the MainActor alert hop at
-            // BookReturnService.swift:602), which a single snapshot taken up
-            // front would never join. Bounded, and every wait is a real Task
-            // join rather than a wall-clock poll.
+            // further tracked Task — the `launchTrackedMainActorTask` alert
+            // hop inside `presentReturnFailureAlert`
+            // (BookReturnService.swift:602) — which a single snapshot taken
+            // up front would never join. Bounded, and every wait is a real
+            // Task join rather than a wall-clock poll.
             var rounds = 0
             while true {
                 let pending = service.inFlightTasksSnapshotForTesting()
                 if pending.isEmpty { break }
                 for task in pending { _ = await task.value }
                 rounds += 1
-                if rounds > 8 {
+                // THROW rather than break: a `break` falls through to the
+                // `XCTAssertNil(weakSvc)` below, which then fails too and
+                // reports "something still retains BookReturnService" — the
+                // wrong diagnosis, since a still-running body legitimately
+                // pins `self`. Throwing keeps the failure single and truthful.
+                if rounds >= 8 {
                     XCTFail("tracked Tasks did not quiesce after \(rounds) join rounds")
-                    break
+                    throw TrackedTaskQuiescenceError.didNotQuiesce(rounds: rounds)
                 }
             }
             XCTAssertEqual(service.inFlightTaskCount, 0,
@@ -1094,6 +1102,13 @@ private final class SpyLocalContentService: LocalBookContentService {
     override func deleteLocalContent(forBook book: TPPBook, account: String? = nil) {
         deleteForIdentifierCalls.append(book.identifier)
     }
+}
+
+/// Thrown when the tracked-Task join loop fails to reach quiescence, so the
+/// failure terminates at its real cause instead of falling through into a
+/// later assertion that would misreport it.
+private enum TrackedTaskQuiescenceError: Error {
+    case didNotQuiesce(rounds: Int)
 }
 
 private final class SpyAnnouncementService: DownloadAnnouncementService {
