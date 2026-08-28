@@ -140,6 +140,16 @@ python3 scripts/ci-test-history.py <TestClass>[.method] [--limit N]
 scripts/find-test-polluter.sh --victim <TestClass>
 ```
 
+**Axis 2 exits 3 when it has no usable verdict**, which is a third state rather
+than a quiet version of either other one. Three shapes reach it: the run could not
+produce a verdict at all (build failure, unresolvable simulator, a class name
+matching no test), printed as `CANNOT DIAGNOSE`; a suspect flipped the victim
+once but the flip did not reproduce, printed as `no CONFIRMED polluter`; or the
+run completed and some pairs could not be judged — the suspect never executed,
+the victim executed first, the failure belonged to another class — printed as
+`INCOMPLETE`. The last two *did* clear the suspects they actually tested; they
+just did not clear the ones they list. Exit 1 is a finding, exit 0 is a clean run. Never read exit 3 as either.
+
 **Axis 0 exists because axes 1 and 2 both need a name you do not have.** They
 answer "is THIS failure ours?"; nothing tells you a failure happened at all when
 the run reported success. Run 32508244803 (PR #1404, **conclusion: success**)
