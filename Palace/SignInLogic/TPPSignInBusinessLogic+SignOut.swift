@@ -129,7 +129,8 @@ extension TPPSignInBusinessLogic {
         request.timeoutInterval = 45
 
         let barcode = userAccount.barcode
-        networker.executeRequest(request, enableTokenRefresh: false) { [weak self] result in
+        // PP-4986: built for `libraryAccountID`, not necessarily the current library.
+        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
             switch result {
             case .success(let data, let response):
                 self?.processLogOut(data: data,

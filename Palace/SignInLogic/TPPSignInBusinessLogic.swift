@@ -532,7 +532,11 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
             return
         }
 
-        networker.executeRequest(req, enableTokenRefresh: false) { [weak self] result in
+        // PP-4986: this request was built for `libraryAccountID`, which may not
+        // be the currently selected library (Settings signs in/out for any
+        // library). Naming it here keeps a 401 retry authenticating as the right
+        // one.
+        networker.executeRequest(req, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
             guard let self = self else { return }
 
             let loggingContext: [String: Any] = [

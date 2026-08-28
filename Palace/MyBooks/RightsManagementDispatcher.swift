@@ -248,7 +248,8 @@ final class RightsManagementDispatcher: @unchecked Sendable {
                     stateManager.persistReissuedTask(
                         bookID: book.identifier,
                         taskIdentifier: newTask.taskIdentifier,
-                        downloadURL: simplifiedBearerToken.location)
+                        downloadURL: simplifiedBearerToken.location,
+                        stampingAccountOn: newTask)
 
                     newTask.resume()
                     followUpTaskInFlight = true

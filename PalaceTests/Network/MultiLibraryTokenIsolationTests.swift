@@ -309,6 +309,152 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
                        "B's bearer untouched by A's refresh even with B as current")
     }
 
+    // MARK: - PP-4986: a queued retry must carry the credentials of the
+    // library its request was DISPATCHED for, not whichever library is
+    // selected when the 401 arrives or when the queue drains.
+    //
+    // Review of the first attempt at this fix caught that recording the
+    // account at refresh-start only NARROWS the window: every production
+    // enqueue site resolves `currentAccountId` (TPPNetworkResponder:655 at
+    // 401-receipt; BackgroundDownloadHandler:207 passes nil), so a patron who
+    // switched libraries BEFORE the 401 still leaked. The account is now
+    // stamped onto the task in `performDataTask` at dispatch and read back at
+    // rebuild.
+    //
+    // This test is deliberately shaped like production: it passes library B as
+    // the refresh-start account — exactly what the responder computes after a
+    // switch — and asserts A wins anyway, because the TASK knows. A test that
+    // hand-injected A through the seam would pass on the narrowing fix too, and
+    // that is the version review rejected.
+
+    /// Thread-safe collector: the stub runs on URLProtocol's thread while the
+    /// assertions read. A bare Array here is a data race.
+    private final class LockedHeaders: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [String] = []
+        func append(_ v: String) { lock.lock(); values.append(v); lock.unlock() }
+        var all: [String] { lock.lock(); defer { lock.unlock() }; return values }
+        var count: Int { all.count }
+        var first: String? { all.first }
+        var isEmpty: Bool { all.isEmpty }
+    }
+
+    func test_QueuedRetry_UsesTheDispatchAccount_NotTheOneCurrentAt401() async throws {
+        await executor.resetRefreshAttemptCount()
+
+        let observed = LockedHeaders()
+        // Signalled by the RETRY arriving, so the test waits on the event rather
+        // than on a clock. A fixed-deadline poll here starves under parallel sim
+        // clones — recurrence class `parallel-clone-starvation`, which has
+        // reddened this board repeatedly (STARVE-001).
+        let sawRetry = expectation(description: "retried request reached the stub")
+        HTTPStubURLProtocol.register { [tokenURL_A, apiURL_A] request in
+            if request.url == tokenURL_A {
+                return .init(statusCode: 200,
+                             headers: nil,
+                             body: Self.tokenResponseJSON(accessToken: "freshA"))
+            }
+            if request.url == apiURL_A {
+                observed.append(
+                    request.value(forHTTPHeaderField: "Authorization") ?? "<none>")
+                if observed.count == 2 { sawRetry.fulfill() }   // the retry, not the original
+                return .init(statusCode: 200, headers: nil, body: Data())
+            }
+            return nil
+        }
+
+        // Dispatch a REAL request while A is current, so production's own
+        // stamping runs. Hand-building a task would bypass the thing under test.
+        libraryProvider.switchToA()
+        let sent = expectation(description: "original request completes")
+        let originalTask = executor.GET(request: URLRequest(url: apiURL_A),
+                                        useTokenIfAvailable: true) { _, _, _ in
+            sent.fulfill()
+        }
+        await fulfillment(of: [sent], timeout: 5.0)   // STARVE-001-OK: HTTPStubURLProtocol always answers; no real network is reachable
+        let dispatched = try XCTUnwrap(originalTask,
+                                       "the executor must return the dispatched task")
+
+        // The patron switches libraries. THEN the 401 arrives, so the account
+        // the responder resolves is B — the wrong one.
+        libraryProvider.switchToB()
+        await executor.appendTokenRetryForTesting(
+            dispatched, accountIdAtRefreshStart: libraryProvider.uuidB)
+
+        let done = expectation(description: "refresh completes")
+        executor.refreshTokenAndResume(task: nil, accountId: libraryProvider.uuidA) { _ in
+            done.fulfill()
+        }
+        await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: HTTPStubURLProtocol always answers; no real network is reachable
+
+        await fulfillment(of: [sawRetry], timeout: 5.0)   // STARVE-001-OK: fulfilled by the stub on the retry itself, not polled
+
+        XCTAssertEqual(observed.count, 2,
+                       "expected the original dispatch plus one retry — if this is 1 the assertion below is vacuous")
+        XCTAssertEqual(observed.all.last, "Bearer freshA",
+                       "PP-4986: the retry must carry the library the request was DISPATCHED for. 'Bearer bearerB' is the leak — the rebuild resolved the account current at 401 instead of the task's own provenance.")
+        XCTAssertEqual(libraryProvider.accountB.authToken, "bearerB",
+                       "B's stored bearer must be untouched by A's refresh-and-retry")
+    }
+
+    // MARK: - PP-4986 gap 2: a request BUILT for another library
+
+    /// Review found that `executeRequest` resolves `currentAccountId` and
+    /// discards whatever account the caller built the request for, so a 401
+    /// retry authenticated as the wrong library.
+    ///
+    /// Asserted on the STAMP, deliberately, and an earlier version of this test
+    /// got that wrong: it asserted the Authorization header on the wire, which
+    /// `request(for:accountId:)` had already set when the request was BUILT. It
+    /// passed with the overload's account ignored — a second vacuous test, in the
+    /// fix for a vacuous test. The stamp is what the overload actually decides,
+    /// and it is what the retry rebuild reads.
+    func test_executeRequest_forANonCurrentLibrary_stampsThatLibraryOnTheTask() async throws {
+        HTTPStubURLProtocol.register { [apiURL_A] request in
+            guard request.url == apiURL_A else { return nil }
+            return .init(statusCode: 200, headers: nil, body: Data())
+        }
+
+        // B is selected; the request is built and dispatched FOR A.
+        libraryProvider.switchToB()
+
+        let done = expectation(description: "request completes")
+        let task = executor.executeRequest(executor.request(for: apiURL_A,
+                                                            accountId: libraryProvider.uuidA),
+                                           enableTokenRefresh: false,
+                                           accountId: libraryProvider.uuidA) { _ in
+            done.fulfill()
+        }
+        await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: HTTPStubURLProtocol always answers; no real network is reachable
+
+        let dispatched = try XCTUnwrap(task, "the executor must return the dispatched task")
+        XCTAssertEqual(TaskProvenance.account(of: dispatched), libraryProvider.uuidA,
+                       "PP-4986 gap 2: a request dispatched FOR library A must be stamped A even while B is selected — the stamp is what a 401 retry rebuilds from, so stamping B sends B's bearer to A's server")
+    }
+
+    /// The nil path must keep resolving the current library, or every existing
+    /// caller changes behaviour silently. Without this, a fix that always used
+    /// some other account would pass the test above.
+    func test_executeRequest_withNoAccountNamed_stampsTheCurrentLibrary() async throws {
+        HTTPStubURLProtocol.register { [apiURL_B] request in
+            guard request.url == apiURL_B else { return nil }
+            return .init(statusCode: 200, headers: nil, body: Data())
+        }
+
+        libraryProvider.switchToB()
+
+        let done = expectation(description: "request completes")
+        let task = executor.executeRequest(executor.request(for: apiURL_B),
+                                           enableTokenRefresh: false) { _ in
+            done.fulfill()
+        }
+        await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: HTTPStubURLProtocol always answers; no real network is reachable
+
+        let dispatched = try XCTUnwrap(task)
+        XCTAssertEqual(TaskProvenance.account(of: dispatched), libraryProvider.uuidB,
+                       "the two-argument form must be unchanged — nil means 'current', which is what every existing caller meant")
+    }
+
     // MARK: - Test 5: Switching currency does not corrupt either token
     //
     // Kills: mutation that mutates account state on a switch-currency

@@ -115,7 +115,8 @@ extension TPPSignInBusinessLogic {
 
         Log.debug(#file, "OIDC logout: calling CM end-session endpoint: \(logoutURL)")
 
-        networker.executeRequest(request, enableTokenRefresh: false) { result in
+        // PP-4986: built for `libraryAccountID`, not necessarily the current library.
+        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { result in
             switch result {
             case .success:
                 Log.debug(#file, "OIDC logout: CM session invalidated successfully")

@@ -121,13 +121,26 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
     // MARK: - Durable persistence API
 
     /// Persist a started task so a mid-download kill can be reconciled at launch.
+    /// - Parameter task: the live task, so PP-4986 can stamp `account` onto it as
+    ///   well as into the record. Stamping HERE rather than at the call site is
+    ///   deliberate on two counts: it keeps the two writes reading one value (the
+    ///   stamp and the record can never disagree), and it mirrors
+    ///   `persistReissuedTask`, so both download choke points carry provenance the
+    ///   same way instead of one doing it inline in the download center.
+    ///
+    ///   Optional so existing callers and tests that only assert the record are
+    ///   unchanged.
     func persistStartedTask(
         bookID: String,
         taskIdentifier: Int,
         downloadURL: URL,
         account: String,
-        expectedBytes: Int64?
+        expectedBytes: Int64?,
+        stampingAccountOn task: URLSessionDownloadTask? = nil
     ) {
+        if let task {
+            TaskProvenance.setAccount(account, on: task)
+        }
         taskPersistence.record(
             PersistedDownloadRecord(
                 bookID: bookID,
@@ -178,11 +191,23 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
     ///   under a book parsed from the server's OPDS entry, whose identifier can
     ///   differ from the original's; without this the started-under account would
     ///   be silently dropped on exactly that path.
+    /// - Parameter task: the live re-issued task, so PP-4986 can stamp the
+    ///   INHERITED account onto it. This is the second of the two download-task
+    ///   choke points: `followAcquisitionLink` and the `RightsManagementDispatcher`
+    ///   bearer hop create tasks that never reach
+    ///   `MyBooksDownloadCenter.persistStartedTaskRecord`, and an unstamped task
+    ///   makes the retry rebuild fall back to whatever library is current at
+    ///   refresh time. Stamping here rather than at the two call sites is
+    ///   deliberate: the account being inherited is only known inside the upsert,
+    ///   and the callers would each have to re-derive it.
+    ///
+    ///   Optional so existing tests that only assert the record are unchanged.
     func persistReissuedTask(
         bookID: String,
         taskIdentifier: Int,
         downloadURL: URL,
-        inheritingFrom sourceBookID: String? = nil
+        inheritingFrom sourceBookID: String? = nil,
+        stampingAccountOn task: URLSessionDownloadTask? = nil
     ) {
         taskPersistence.upsert(bookID: bookID, inheritingFrom: sourceBookID) { existing in
             // Written as a coalesce rather than `if existing == nil { log }` on
@@ -199,6 +224,13 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
                 Log.info(#file, "Re-issue for \(bookID) found no record to inherit; account will be empty")
                 return ""
             }()
+            // PP-4986: the live task carries the same account the record gets, so
+            // the retry rebuild and `startedForAccount` cannot diverge. An empty
+            // inherited account leaves the task unstamped, which is honest — the
+            // rebuild then logs and falls back deliberately.
+            if let task {
+                TaskProvenance.setAccount(inheritedAccount, on: task)
+            }
             return PersistedDownloadRecord(
                 bookID: bookID,
                 taskIdentifier: taskIdentifier,
