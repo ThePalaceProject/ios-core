@@ -33,7 +33,10 @@ enum SearchAccessibilityFocusPolicy {
 // MARK: - SearchView
 struct CatalogSearchView: View {
     @StateObject private var viewModel: CatalogSearchViewModel
-    @FocusState private var isSearchFieldFocused: Bool
+    // PP-5021: the search field is a UIViewRepresentable (VerbatimTextField),
+    // which does not participate in SwiftUI's focus system. The field drives
+    // this flag both ways through its delegate.
+    @State private var isSearchFieldFocused: Bool = false
     @AccessibilityFocusState private var accessibilityFocus: SearchAccessibilityFocus?
     let books: [TPPBook]
     let onBookSelected: (TPPBook) -> Void
@@ -259,17 +262,20 @@ private extension CatalogSearchView {
 
     var searchBar: some View {
         ZStack {
-            TextField(
-                NSLocalizedString("Search Catalog", comment: ""),
+            // PP-5021: a plain SwiftUI TextField cannot reach `smartQuotesType`,
+            // so a typed ' arrived at the server as U+2019. Measured: adding
+            // .autocorrectionDisabled() does NOT suppress it.
+            VerbatimTextField(
+                placeholder: NSLocalizedString("Search Catalog", comment: ""),
                 text: Binding(
                     get: { viewModel.searchQuery },
                     set: { viewModel.updateSearchQuery($0) }
-                )
+                ),
+                isFocused: $isSearchFieldFocused,
+                accessibilityIdentifier: AccessibilityID.Search.searchField,
+                onSubmit: { isSearchFieldFocused = false }
             )
-            .accessibilityIdentifier(AccessibilityID.Search.searchField)
-            .focused($isSearchFieldFocused)
             .accessibilityFocused($accessibilityFocus, equals: .searchField)
-            .submitLabel(.search)
             .padding(8)
             .padding(.trailing, 40)
             .background(Color.gray.opacity(0.2))
