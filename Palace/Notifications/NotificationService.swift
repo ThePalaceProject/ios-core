@@ -42,16 +42,6 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
 /// - FCM token management with the library server
 ///
 /// This service is the sole `UNUserNotificationCenterDelegate` for the app.
-// Swift 6 `complete` — `@unchecked Sendable` invariant: `self` is captured into the
-// Firebase Messaging `@Sendable` completion handlers, the `@MainActor` notification
-// Tasks, and the `.main` NotificationCenter observers. The immutable deps
-// (`notificationCenter`, `accountsManager`, `networkExecutor`, `bookRegistry`,
-// `skipsProductionAuthSubscription`) are all `let`s over Sendable types; the only two
-// mutable `var`s (`authStateSubscription`, `lastObservedAuthState`) are guarded by
-// `authStateLock`. This also makes the `static let shared` singleton concurrency-safe.
-// The class-level `@MainActor` alternative is intentionally deferred (see the
-// `@preconcurrency import FirebaseMessaging` note) because callbacks run off-main.
-// Documented invariant, not a bare waiver.
 @objcMembers
 class NotificationService: NSObject, UNUserNotificationCenterDelegate, MessagingDelegate, @unchecked Sendable {
 
@@ -73,8 +63,86 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         }
     }
 
+    // MARK: - Registration claims
+
+    /// Tracks which accounts have a registration attempt in flight.
+    ///
+    /// Extracted as its own type so the claim/release contract is testable without
+    /// an `Account`, an `AccountsManager`, or a simulator. It was a single global
+    /// `Bool` first, which meant a library switch during the readiness wait had the
+    /// incoming account's trigger rejected by the outgoing account's attempt — the
+    /// incoming library then went unregistered until relaunch, nondeterministically.
+    /// Keying by uuid is what fixes that, so the keying itself is worth pinning.
+    final class RegistrationClaims: @unchecked Sendable {
+        private let lock = NSLock()
+        private var inFlight: Set<String> = []
+
+        /// Returns true if THIS caller now owns the slot for `uuid`.
+        func claim(_ uuid: String) -> Bool {
+            lock.withLock {
+                if inFlight.contains(uuid) { return false }
+                inFlight.insert(uuid)
+                return true
+            }
+        }
+
+        func release(_ uuid: String) {
+            lock.withLock { _ = inFlight.remove(uuid) }
+        }
+
+        /// Whether an attempt is currently in flight for `uuid`.
+        ///
+        /// Whether an attempt is currently in flight for `uuid`.
+        ///
+        /// `fileprivate`: the only caller is the enclosing type's
+        /// `isRegistrationClaimed(_:)` forwarder, in this file. NOT `private` —
+        /// a reviewer asserted an outer type can reach a nested type's private
+        /// members and the compiler disagrees ("'isClaimed' is inaccessible due
+        /// to 'private' protection level"), which is why this is measured
+        /// rather than argued. Three successive versions of this comment gave a
+        /// different wrong reason for it being internal; `fileprivate` is the
+        /// narrowest level that actually compiles.
+        fileprivate func isClaimed(_ uuid: String) -> Bool {
+            lock.withLock { inFlight.contains(uuid) }
+        }
+    }
+
+    // Swift 6 `complete` — `@unchecked Sendable` invariant: `self` is captured into the
+    // Firebase Messaging `@Sendable` completion handlers, the `@MainActor` notification
+    // Tasks, and the `.main` NotificationCenter observers. The immutable deps
+    // (`notificationCenter`, `networkExecutor`, `bookRegistry`,
+    // `skipsProductionAuthSubscription`, `registrationClaims`) are `let`s; the only two
+    // mutable `var`s (`authStateSubscription`, `lastObservedAuthState`) are guarded by
+    // `authStateLock`. Two of the `let`s are not Sendable VALUE types and so carry
+    // their own argument: `accountsManager` is the existential
+    // `any TPPLibraryAccountsProvider & Sendable` — the `& Sendable` is load-bearing
+    // and was added on review, because the bare `@objc` protocol carries no such
+    // constraint, which left this invariant resting on WHO injects rather than on the
+    // type. The constraint is now enforced by the compiler, which is the point:
+    // three successive versions of a hand-written conformer census in this
+    // comment were each wrong, so the census is deleted rather than corrected a
+    // fourth time. `& Sendable` makes the guarantee structural.
+    // The class-level `@MainActor` alternative is intentionally deferred (see the
+    // `@preconcurrency import FirebaseMessaging` note) because callbacks run off-main.
+    // Documented invariant, not a bare waiver.
+
     private let notificationCenter = UNUserNotificationCenter.current()
-    private let accountsManager: AccountsManager
+    /// Typed to the protocol rather than the concrete `AccountsManager`, per the
+    /// CLAUDE.md protocol-DI rule. Everything this class uses —
+    /// `currentAccount`, `currentUserAccount`, `userAccount(for:)` — is a
+    /// protocol member, and `AccountsManager` already conforms, so the retype is
+    /// behaviour-neutral.
+    ///
+    /// The test-only initializer accepts a substitute, and that seam is what
+    /// makes the readiness gate observable at runtime. The observable is CLAIM
+    /// LIFETIME (`RegistrationClaims.isClaimed`) — NOT a read counter on this
+    /// property. Counting was tried twice and defeated twice: `userAccount(for:)`
+    /// is ambiguous because the prologue resolves the same uuid, and counting
+    /// `currentAccount` — even by parity — breaks because the app re-enters
+    /// `updateToken()` through `installNotificationObservers` and
+    /// `decideHoldNavigation` reads this property on its own. Do not rebuild a
+    /// counting test here; see `NotificationServiceReadinessGateTests`.
+    private let accountsManager: any TPPLibraryAccountsProvider & Sendable
     private let networkExecutor: TPPNetworkExecutor
     private let bookRegistry: TPPBookRegistryProvider
 
@@ -147,9 +215,19 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     @nonobjc
     init(
         authStatePublisher: AnyPublisher<TPPAccountAuthState, Never>,
-        onAuthStateRetryRequested: @escaping () -> Void
+        onAuthStateRetryRequested: @escaping () -> Void,
+        accountsManager: (any TPPLibraryAccountsProvider & Sendable)? = nil
     ) {
-        self.accountsManager = AppContainer.production().accountsManager
+        // NOT `= AppContainer.production().accountsManager` as a default
+        // ARGUMENT. Default arguments are evaluated at the CALL site, so that
+        // shape re-enters AppContainer's unfair lock from whatever context
+        // calls the initializer — the documented launch-abort in
+        // `appcontainer-production-in-default-argument-aborts-launch`. It is
+        // unreachable here today (`NotificationService` is a `static let
+        // shared` outside the container graph, and both callers are tests),
+        // but two independent reviewers flagged the shape, and being safe by
+        // SHAPE beats being safe by audit that the next edit can invalidate.
+        self.accountsManager = accountsManager ?? AppContainer.production().accountsManager
         self.networkExecutor = AppContainer.production().networkExecutor
         self.bookRegistry = AppContainer.production().bookRegistry
         self.skipsProductionAuthSubscription = true
@@ -245,6 +323,61 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         return !hasUpdatedToken
     }
 
+    /// Whether a nil profile document is worth reporting as a failure.
+    ///
+    /// A signed-out patron has nothing to register, so deferring is the correct
+    /// outcome rather than a fault. The observed traffic includes that case — a
+    /// Settings library switch to a library the patron is not signed in to —
+    /// and reporting it buried the genuine failures. Kept as a pure predicate
+    /// so the decision is table-testable, mirroring
+    /// `shouldRetryTokenRegistration`.
+    static func shouldReportProfileFetchFailure(authState: TPPAccountAuthState) -> Bool {
+        authState != .loggedOut
+    }
+
+    /// What to do when the readiness wait throws.
+    ///
+    /// Extracted as a pure decision because this arm has been wrong TWICE: first
+    /// it reported nothing (burying genuine failures), then it reported
+    /// `.evicted` as a hard failure (filing false ones on every library switch,
+    /// against the very metric this fix is measured by). A five-case table is
+    /// enumerable; a branch buried in a Task is not.
+    enum ReadinessFailureDisposition: Equatable {
+        /// Expected and high-volume. Stay silent — a later auth-doc drive
+        /// resolves it and the next trigger registers.
+        case quiet
+        /// Expected before this fix, and the RESIDUAL defect population after
+        /// it. Report under its own summary.
+        ///
+        /// This case exists so the fix stays falsifiable. Making the timeout
+        /// silent would drive `d63871fd…` to near-zero whether registration
+        /// now succeeds or the account is simply never driven — the metric
+        /// would confirm the fix by construction. At t=0 "not ready yet" was
+        /// noise; after a 45s bounded wait it means a genuinely wedged
+        /// authentication document, which is a small, real, and different
+        /// population that we need to be able to see.
+        case residual
+        /// The authentication document will not arrive. Report it.
+        case report
+    }
+
+    static func disposition(forReadinessFailure error: AccountLoadError) -> ReadinessFailureDisposition {
+        switch error {
+        case .readinessTimedOut:
+            // Waited the full bound and the document still had not arrived.
+            // Low volume by construction, and the population this fix does NOT
+            // help — kept visible so success is measurable rather than assumed.
+            return .residual
+        case .evicted:
+            // Library switch. AuthDocumentLoader re-drives this, and the
+            // incoming account registers on its own trigger.
+            return .quiet
+        case .authDocumentFetchFailed, .malformedAuthDocument, .accountNotFound:
+            // The document genuinely will not arrive for this account.
+            return .report
+        }
+    }
+
     static func sharedService() -> NotificationService {
         return shared
     }
@@ -332,6 +465,43 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         }
     }
 
+    /// How long to wait for the current account's authentication document
+    /// before giving up on this registration attempt.
+    ///
+    /// BOUNDED on purpose: an unbounded `awaitReady()` behind a background path
+    /// is the documented HelpSpot #18414 load-forever wedge, and this runs from
+    /// a Firebase callback at launch where nothing is watching.
+    ///
+    /// 45s. `docs/architecture/account-state-machine.md` puts the auth-document
+    /// window at "500ms-10s typical, longer on cold network", so a 10s ceiling
+    /// would drop registration for exactly the slow-network patrons who most
+    /// need it. It deliberately EXCEEDS `authDocInflightTimeout` (30s) rather
+    /// than matching it: at exactly 30 the wait would expire in the same instant
+    /// the wedge reclaim becomes available, so it could never benefit from it.
+    /// (That reclaim is demand-driven — it runs when something next drives the
+    /// auth doc — not a timer that self-fires.) Nothing re-fires registration after a
+    /// timeout — the auth-doc drive resolves the ACCOUNT, not this attempt — so
+    /// this budget has to be the last word.
+    static let accountReadinessTimeout: TimeInterval = 45
+
+    /// Coalesces the READINESS WAIT per account. Released when the Task body
+    /// returns — i.e. when registration STARTS its network chain, not when the
+    /// `/patrons/me/` fetch and PUT finish. So it prevents N concurrent waits
+    /// collapsing into N registrations; it does not serialise two triggers that
+    /// both arrive on an already-ready account, which is unchanged from before
+    /// this fix.
+    private let registrationClaims = RegistrationClaims()
+
+    /// Read-only view of the claim table, for the readiness-gate test.
+    ///
+    /// The table itself is `private`: it was `internal`, which let any code in
+    /// the module call `claim(_:)` and wedge push registration for that account
+    /// permanently, since only the owning attempt's `defer` ever releases it.
+    /// Tests only ever need to ASK, so only asking is exposed.
+    func isRegistrationClaimed(_ uuid: String) -> Bool {
+        registrationClaims.isClaimed(uuid)
+    }
+
     /// Sends FCM to the backend
     ///
     /// Update token when user account changes.
@@ -360,22 +530,168 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         let authState = accountsManager.currentUserAccount.authState
         Log.info(#file, "[FCM_REG] updateToken start — authState=\(authState)")
 
-        accountsManager.currentAccount?.getProfileDocument { [weak self] profileDocument in
+        guard let account = accountsManager.currentAccount else {
+            Log.warn(#file, "[FCM_REG] SKIP: no current account")
+            return
+        }
+
+        // PP-4958. This used to call `getProfileDocument` immediately, which
+        // returns nil on its FIRST guard when `details` is nil — no network
+        // call, no log line — because the account's authentication document
+        // had not loaded yet. That is where ~53,000 events across ~6,600
+        // patrons a month came from: the FCM registration callback fires at
+        // launch 200-400ms BEFORE the auth document lands, and a library
+        // switch posts `TPPCurrentAccountDidChange` before the new account's
+        // document is fetched. Registration was skipped and never retried,
+        // because the PP-4275 retry needs a transition INTO `.loggedIn` and
+        // refreshing state does not produce one.
+        //
+        // `awaitReady` fast-paths when the account is already terminal, so a
+        // ready account pays nothing for this.
+        // Claim this ACCOUNT's slot before waiting. Released on every exit path.
+        let uuid = account.uuid
+        guard registrationClaims.claim(uuid) else {
+            Log.info(#file, "[FCM_REG] SKIP: a registration attempt is already in flight for this account")
+            return
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.registrationClaims.release(uuid) }
+            do {
+                _ = try await account.awaitReady(timeout: Self.accountReadinessTimeout)
+            } catch let error as AccountLoadError {
+                // `awaitReady` throws for several reasons and they are NOT
+                // equivalent — three dispositions, not two.
+                //
+                //   .readinessTimedOut — .residual. Waited the full 45s bound
+                //     and the document still had not arrived. Silencing this
+                //     would make the fix unfalsifiable: the metric would fall
+                //     to near-zero whether registration now succeeds or the
+                //     account is simply never driven. Reported under its own
+                //     summary, and low volume by construction.
+                //   .evicted — .quiet. The patron switched library. `AccountsManager`'s
+                //     setter writes `.detailsEvicted(.libraryDeselected)` against
+                //     the PRIOR uuid, `resolveTerminal` surfaces it as
+                //     `AccountLoadError.evicted`, and `AuthDocumentLoader` DOES
+                //     re-drive that case. Reporting it would file false failures
+                //     against the very metric used to verify this fix — and a
+                //     library switch is one of the three events in the evidence
+                //     that motivated the fix.
+                //
+                // Everything else (authDocumentFetchFailed, malformedAuthDocument,
+                // accountNotFound) means the document will not arrive, which is a
+                // genuine registration failure and must stay visible.
+                switch Self.disposition(forReadinessFailure: error) {
+                case .quiet:
+                    Log.info(#file, "[FCM_REG] deferred (expected): \(error) — a later auth-doc drive resolves this and the next trigger registers")
+                    return
+                case .residual:
+                    Log.warn(#file, "[FCM_REG] deferred: account still not ready after \(Self.accountReadinessTimeout)s — auth document wedged")
+                    TPPErrorLogger.logError(
+                        nil,
+                        summary: "[FCM_REG] token registration deferred: account not ready within timeout",
+                        metadata: [
+                            "accountUUID": account.uuid,
+                            "timeout": Self.accountReadinessTimeout,
+                            "loadState": "\(account.loadState)"
+                        ]
+                    )
+                    return
+                case .report:
+                    break
+                }
+                Log.warn(#file, "[FCM_REG] FAIL: account_load_failed — the authentication document will not arrive, so registration cannot proceed. error=\(error)")
+                TPPErrorLogger.logError(
+                    nil,
+                    summary: "[FCM_REG] token registration deferred: account load failed",
+                    metadata: [
+                        "accountUUID": account.uuid,
+                        "error": String(describing: error)
+                    ]
+                )
+                return
+            } catch {
+                Log.warn(#file, "[FCM_REG] deferred: readiness wait ended without a terminal state. error=\(error)")
+                return
+            }
+            // A1: re-resolve rather than trusting the captured instance.
+            // `awaitReady` resolves on UUID-keyed STATE, but `getProfileDocument`
+            // reads `details` off a specific Account OBJECT, and instance
+            // identity is not stable (`docs/architecture/account-state-machine.md`)
+            // — a `loadCatalogs` refresh mid-wait builds a fresh instance, writes
+            // the terminal state from ITS details, and leaves the captured one
+            // nil forever. Without this the original defect survives the fix and
+            // reports "after the account was ready", which would be a lie.
+            guard let live = self.accountsManager.currentAccount, live.uuid == account.uuid else {
+                Log.info(#file, "[FCM_REG] SKIP: current account changed during the readiness wait — the new account's own trigger will register it")
+                return
+            }
+            // QA blocking find: the `hasUpdatedToken` guard at the top of
+            // `updateToken()` was read BEFORE the wait. Re-read it here — a
+            // concurrent path may have confirmed registration while we waited,
+            // and re-running the full checkTokenExists -> saveToken pipeline
+            // would be duplicate traffic against the Circulation Manager.
+            guard !live.hasUpdatedToken else {
+                Log.info(#file, "[FCM_REG] SKIP: token was registered while waiting for readiness")
+                return
+            }
+            guard live.details != nil else {
+                Log.warn(#file, "[FCM_REG] FAIL: details_still_nil — the account reported ready but the live instance has no details")
+                TPPErrorLogger.logError(
+                    nil,
+                    summary: "[FCM_REG] token registration deferred: details nil after readiness",
+                    metadata: ["accountUUID": account.uuid]
+                )
+                return
+            }
+            self.performTokenRegistration(for: live)
+        }
+    }
+
+    /// Registration proper. Split out of `updateToken()` so the readiness gate
+    /// above reads as one decision; the body below is unchanged behaviour.
+    private func performTokenRegistration(for account: Account) {
+        account.getProfileDocument { [weak self] profileDocument in
             guard let self else { return }
             guard let profileDocument else {
-                let currentAuthState = self.accountsManager.currentUserAccount.authState
-                Log.warn(#file, "[FCM_REG] FAIL: profile_doc_missing — /patrons/me/ returned nil. Common causes: SAML-stale credentials, no credentials, network failure. authState=\(currentAuthState)")
-                // swarm_f3b9b087 item #6: emit a Crashlytics non-fatal so we
-                // can measure the gap server-side. The auth-state-change
-                // subscription installed in `init()` will retry once
-                // credentials recover; the non-fatal proves the deferral
-                // happened and lets support diff against the recovery edge.
+                // Resolve the auth state for the account this attempt is FOR.
+                // Reading `currentUserAccount` here would report the wrong
+                // library's state if a switch landed mid-fetch — the same
+                // cross-account drift that made `markTokenRegistered` take an
+                // explicit account.
+                let currentAuthState = self.accountsManager.userAccount(for: account.uuid).authState
+
+                // A signed-out patron has nothing to register. Deferring is the
+                // CORRECT outcome, not a failure — the observed traffic includes
+                // this case (a Settings library switch to a library the patron
+                // is not signed in to). Reporting it as an error is noise that
+                // hides the real failures.
+                guard Self.shouldReportProfileFetchFailure(authState: currentAuthState) else {
+                    Log.info(#file, "[FCM_REG] SKIP: patron signed out — nothing to register")
+                    return
+                }
+
+                // Wording corrected in PP-4958. This previously blamed
+                // "SAML-stale credentials, no credentials, network failure",
+                // which is what this volume was triaged against for months and
+                // is not what the device logs showed: the dominant cause was an
+                // authentication document that had not loaded yet, so this
+                // method returned on its first guard without issuing a request.
+                // That is now gated by a readiness wait in `updateToken()`, so
+                // reaching here means the profile fetch genuinely failed.
+                Log.warn(#file, "[FCM_REG] FAIL: profile_doc_missing — /patrons/me/ returned nil after the account was ready. Suspect credentials or the network. authState=\(currentAuthState)")
                 TPPErrorLogger.logError(
                     nil,
                     summary: "[FCM_REG] token registration deferred: profile fetch returned nil",
                     metadata: [
+                        // Same key spelling as every sibling non-fatal in this
+                        // file. Support triages these together, and a
+                        // Crashlytics query on `accountUUID` silently missed
+                        // the arms that spelled it `uuid` or omitted it.
+                        "accountUUID": account.uuid,
                         "authState": String(describing: currentAuthState),
-                        "hasUpdatedToken": self.accountsManager.currentAccount?.hasUpdatedToken ?? false
+                        "hasUpdatedToken": account.hasUpdatedToken
                     ]
                 )
                 return
@@ -402,7 +718,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                     }
                     if exists {
                         Log.info(#file, "[FCM_REG] SUCCESS: token_already_registered — CM has the FCM token, no save needed")
-                        self.markTokenRegistered()
+                        self.markTokenRegistered(for: account)
                     } else {
                         self.saveToken(token, endpointUrl: endpointUrl) { [weak self] succeeded in
                             guard let self else { return }
@@ -411,7 +727,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                                 return
                             }
                             Log.info(#file, "[FCM_REG] SUCCESS: token_saved — CM accepted the new FCM token (PUT 2xx)")
-                            self.markTokenRegistered()
+                            self.markTokenRegistered(for: account)
                         }
                     }
                 }
@@ -422,8 +738,20 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     /// Latches `hasUpdatedToken = true` on the account once the FCM token is
     /// confirmed live on the server. Centralized so the success contract has a
     /// single set-site (see `updateToken`'s doc comment for the why).
-    private func markTokenRegistered() {
-        accountsManager.currentAccount?.hasUpdatedToken = true
+    /// Latches the registration flag on the account the attempt was made FOR,
+    /// not on whatever account happens to be current when the attempt lands.
+    ///
+    /// PP-4958. Registration is now asynchronous — it waits up to
+    /// `accountReadinessTimeout` for the authentication document — so a library
+    /// switch can land between starting an attempt for account A and finishing
+    /// it. Writing `currentAccount?.hasUpdatedToken = true` at that point marks
+    /// account B registered when only A was, and `AccountsManager` clears the
+    /// flag on the OUTGOING account only, so B stays latched-but-unregistered
+    /// and never retries — the silent-suppression class this file already
+    /// carries a HelpSpot 17680 note about. Passing the account through closes
+    /// the window this change opened.
+    private func markTokenRegistered(for account: Account) {
+        account.hasUpdatedToken = true
     }
 
     /// Pure success-decision helper used by `updateToken` and locked by unit
