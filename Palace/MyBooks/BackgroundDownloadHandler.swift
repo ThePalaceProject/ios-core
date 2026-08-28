@@ -342,6 +342,30 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
         await stateManager.bookIdentifierToDownloadInfo.set(updatedBook.identifier, value: downloadInfo)
         await stateManager.taskIdentifierToBook.set(newTask.taskIdentifier, value: updatedBook)
 
+        // PP-5023: durably record the task this path starts. Until it did, the
+        // task was invisible to launch reconciliation's contested-URL guard,
+        // which is computed from persisted records alone — so another book whose
+        // record named this same URL saw exactly one live task on it and adopted
+        // THIS download, receiving a file for a title the patron never asked for.
+        //
+        // `inheritingFrom: originalBook` because the record was written under the
+        // original at download start, and this re-registers under a book parsed
+        // from the server's OPDS entry whose identifier can differ. Ordered before
+        // the removal below so the account is read while the source record exists.
+        stateManager.persistReissuedTask(
+            bookID: updatedBook.identifier,
+            taskIdentifier: newTask.taskIdentifier,
+            downloadURL: acquisitionURL,
+            inheritingFrom: originalBook.identifier)
+
+        if originalBook.identifier != updatedBook.identifier {
+            // The superseded record names a task that no longer exists, under a
+            // book no longer downloading under that id. Leaving it is not inert:
+            // it is a record that can adopt some other book's live task on its
+            // URL, which is this ticket's own defect pointed the other way.
+            stateManager.removePersistedRecord(for: originalBook.identifier)
+        }
+
         newTask.resume()
         Log.info(#file, "Started follow-up download task \(newTask.taskIdentifier) for \(updatedBook.identifier)")
         return true

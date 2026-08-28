@@ -56,6 +56,48 @@ protocol RightsManagementDispatcherDelegate: AnyObject {
 struct RightsManagementDispatchResult {
     let failureRequiringAlert: Bool
     let failureError: Error?
+
+    /// True when this dispatch started a NEW download task that is still running
+    /// — today only the bearer-token hop, which swaps the fulfilment task for a
+    /// content task against the bearer location.
+    ///
+    /// The caller's terminal cleanup runs `removePersistedRecord`, which would
+    /// delete the durable record for a download that has only just begun (PP-5023:
+    /// the record was written and removed roughly 100ms later, leaving the bearer
+    /// content transfer invisible to launch reconciliation exactly as before the
+    /// fix). The OPDS follow-up avoids this by returning `.followUpStarted` from
+    /// the parser and early-returning before the cleanup; the bearer hop happens
+    /// inside dispatch, after that decision point, so it reports the same fact
+    /// here instead.
+    let followUpTaskInFlight: Bool
+
+    /// The state before any dispatch has run.
+    ///
+    /// Exists so `MyBooksDownloadCenter` can hold a NON-optional result across the
+    /// parse switch. Held as an optional it forced `?? false` / `== true` at the
+    /// read sites, and since `dispatch` returns non-optional those arms were
+    /// unreachable — unkillable mutants on a critical path, the shape this branch
+    /// has now removed four times.
+    ///
+    /// Takes NO `failureError`. An earlier version did, and it was inert: the
+    /// caller seeds `failureError` from `task.error` separately and only ever
+    /// overwrites it from a REAL dispatch result, so the value carried here was
+    /// never read. `noDispatch(failureError: nil)` was therefore a surviving
+    /// mutant — the same dead-arm shape, one level down.
+    ///
+    /// `followUpTaskInFlight: false` here is NOT a safe default, it is a live
+    /// value: it is what the `.failure` parse arm uses, where flipping it would
+    /// leak a durable record on every problem-document failure and have launch
+    /// reconciliation restart a download that failed. Pinned by
+    /// `testHandleDownloadCompletion_parseFailure_stillRetiresTheRecord`.
+    ///
+    /// The memberwise initialiser is deliberately not overridden: an explicit one
+    /// byte-identical to it is noise. `followUpTaskInFlight` has no default there
+    /// either, so a new construction site that omits it is still a compile error —
+    /// which covers new CONSTRUCTION SITES, though NOT a new `case` arm in
+    /// `dispatch` that forgets to assign the local.
+    static let noDispatch = RightsManagementDispatchResult(
+        failureRequiringAlert: false, failureError: nil, followUpTaskInFlight: false)
 }
 
 // MARK: - RightsManagementDispatcher
@@ -119,6 +161,10 @@ final class RightsManagementDispatcher: @unchecked Sendable {
     ) async -> RightsManagementDispatchResult {
         var failureRequiringAlert = false
         var updatedFailureError = failureError
+        // Set only by the bearer-token hop, which leaves a live content task
+        // behind. Tells the caller not to run its terminal cleanup's durable-record
+        // removal on a download that has just started. See the property's note.
+        var followUpTaskInFlight = false
 
         switch rights {
         case .unknown:
@@ -191,7 +237,21 @@ final class RightsManagementDispatcher: @unchecked Sendable {
                     book.bearerToken = simplifiedBearerToken.accessToken
                     book.bearerTokenFulfillURL = cmFulfillURL
                     await stateManager.taskIdentifierToBook.set(newTask.taskIdentifier, value: book)
+
+                    // PP-5023: durably record the task this hop starts. The
+                    // bearer location is a DIFFERENT URL from the one the record
+                    // was written with at download start, so without this the
+                    // record names a URL nothing is fetching while a live task
+                    // runs unrecorded — invisible to reconciliation's
+                    // contested-URL guard, and adoptable by any book whose record
+                    // happens to name the bearer location.
+                    stateManager.persistReissuedTask(
+                        bookID: book.identifier,
+                        taskIdentifier: newTask.taskIdentifier,
+                        downloadURL: simplifiedBearerToken.location)
+
                     newTask.resume()
+                    followUpTaskInFlight = true
                 } else {
                     delegate?.logBookDownloadFailure(book, reason: "No Simplified Bearer Token in deserialized data", downloadTask: task, metadata: nil)
                     delegate?.failDownloadWithAlert(for: book, withMessage: nil)
@@ -210,7 +270,8 @@ final class RightsManagementDispatcher: @unchecked Sendable {
 
         return RightsManagementDispatchResult(
             failureRequiringAlert: failureRequiringAlert,
-            failureError: updatedFailureError
+            failureError: updatedFailureError,
+            followUpTaskInFlight: followUpTaskInFlight
         )
     }
 }

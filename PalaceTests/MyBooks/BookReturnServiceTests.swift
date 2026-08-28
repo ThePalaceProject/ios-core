@@ -477,30 +477,33 @@ final class BookReturnServiceTests: XCTestCase {
         await blocker.unblock(throwing: NSError(domain: "test", code: -1))
     }
 
-    /// Service deinit eventually fires once every in-flight Task has
-    /// drained — at which point the `[weak self]` capture in each
-    /// tracked Task body short-circuits any remaining work, so no
-    /// `bookRegistry` / `localContentService` writes happen after the
-    /// service is gone. This test proves the deinit hook fires (via
-    /// the static counter) after the Tasks finish, and that the
-    /// `[weak self]` short-circuit is honored.
+    /// Dropping the last strong reference deallocs the service, and the
+    /// generic-error cleanup path performs no registry mutation.
     ///
-    /// Regression covered: a future refactor that drops `[weak self]`
-    /// from a tracked Task body — or removes the `inFlightTasks`
-    /// retention entirely — would let post-deinit work fire against a
-    /// dangling pointer. The post-deinit invariant we assert here
-    /// (`registry.book(...) == nil` even after cancellation) only holds
-    /// if the cleanup path was either driven to completion OR fully
-    /// short-circuited via the weak-self guard.
-    func testReturnService_inFlightTasks_shortCircuitAfterServiceDeinits() async throws {
+    /// What this test does NOT prove, and cannot through this seam: the
+    /// `[weak self]` short-circuit in the tracked Task bodies. Every body
+    /// does `guard let self` BEFORE its first `await` — the `guard let self,
+    /// let revokeURL` opening the `returnBook` tracked body
+    /// (`BookReturnService.swift:356`) against its
+    /// `await opdsFeedService.fetchFeed` (`:366`) — so once a body has
+    /// started it holds `self` strongly
+    /// across every suspension and the service cannot dealloc mid-flight.
+    /// That is precisely what the retention note in `BookReturnService.deinit`
+    /// (`:204-221`) records. Parking a Task and then
+    /// releasing the service does not reach the guard; the guard only fires
+    /// for a body that has not started yet, which no seam here can arrange
+    /// deterministically. **Deleting `[weak self]` from a tracked body would
+    /// not fail this test.** The reachable half of that contract is the
+    /// cancellation seam, covered by
+    /// `testReturnService_cancelAllInFlightTasks_cancelsRetainedTask`.
+    func testReturnService_lastReferenceDropped_deallocsAndLeavesRegistryUntouched() async throws {
         let localRegistry = TPPBookRegistryMock()
         let localFeedFetcher = StubOPDSFeedFetcher()
-        // Use a fast-cancellation stub instead of the blocking one so
-        // the Tasks actually finish and free the service for deinit.
-        // The stub throws a sentinel error → service routes to
-        // handleRevokeError → generic-error branch → announceReturnFailed.
-        // No registry mutation in the generic branch, so we can assert
-        // the registry is untouched by post-deinit work.
+        // Fast-failing stub rather than the blocking one: a tracked body that
+        // has started pins `self` (see the docstring), so running the Tasks to
+        // completion is the only state in which the service can dealloc.
+        // The sentinel error routes to handleRevokeError -> generic-error
+        // branch, which performs no registry mutation.
         localFeedFetcher.stubbedError = NSError(domain: "test", code: 500,
                                                  userInfo: [NSLocalizedDescriptionKey: "stop"])
         let localAnnouncementService = SpyAnnouncementService()
@@ -513,58 +516,111 @@ final class BookReturnServiceTests: XCTestCase {
         localRegistry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
                               fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let countBefore = BookReturnServiceTestHook.deinitCountSync
+        // Held as an explicit optional so the release happens at a statement
+        // this test executes (`svc = nil`) rather than at a scope exit.
+        var svc: BookReturnService?
+        #if FEATURE_DRM_CONNECTOR
+        svc = BookReturnService(
+            bookRegistry: localRegistry,
+            localContentService: localContentService,
+            opdsFeedService: localFeedFetcher,
+            downloadAnnouncementService: localAnnouncementService,
+            bookmarkDeletionLog: .shared,
+            reauthenticator: localReauth,
+            userRetryTracker: .shared,
+            userAccountProvider: { localAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
+        )
+        #else
+        svc = BookReturnService(
+            bookRegistry: localRegistry,
+            localContentService: localContentService,
+            opdsFeedService: localFeedFetcher,
+            downloadAnnouncementService: localAnnouncementService,
+            bookmarkDeletionLog: .shared,
+            reauthenticator: localReauth,
+            userRetryTracker: .shared,
+            userAccountProvider: { localAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
+        )
+        #endif
 
-        await {
-            #if FEATURE_DRM_CONNECTOR
-            let svc = BookReturnService(
-                bookRegistry: localRegistry,
-                localContentService: localContentService,
-                opdsFeedService: localFeedFetcher,
-                downloadAnnouncementService: localAnnouncementService,
-                bookmarkDeletionLog: .shared,
-                reauthenticator: localReauth,
-                userRetryTracker: .shared,
-                userAccountProvider: { localAccount }
-            )
-            #else
-            let svc = BookReturnService(
-                bookRegistry: localRegistry,
-                localContentService: localContentService,
-                opdsFeedService: localFeedFetcher,
-                downloadAnnouncementService: localAnnouncementService,
-                bookmarkDeletionLog: .shared,
-                reauthenticator: localReauth,
-                userRetryTracker: .shared,
-                userAccountProvider: { localAccount }
-            )
-            #endif
-            svc.delegate = localDelegate
-            svc.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
+        // Exact identity, not a process-global counter: `deinitCountSync` is
+        // shared across the whole suite and a `>` check is satisfied by ANY
+        // other BookReturnService dealloc racing in the same window.
+        weak var weakSvc = svc
+
+        // The strong binding lives only inside this closure. Keeping it in
+        // scope at function level would itself retain the service and defeat
+        // the release below.
+        try await { () async throws -> Void in
+            let service = try XCTUnwrap(svc, "service must be constructed")
+            service.delegate = localDelegate
+            service.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
+
             // Retention insert is synchronous inside returnBook, so the count
-            // is already ≥ 1 (proves retention). Capture the tracked Tasks and
-            // JOIN them — awaiting each Task's value runs the auto-removal step
-            // that is the tail of the tracked-Task body, proving drain without
-            // a wall-clock sleep loop that starves under CI oversubscription.
-            XCTAssertGreaterThanOrEqual(svc.inFlightTaskCount, 1,
-                           "returnBook must synchronously retain its cleanup Task")
-            for task in svc.inFlightTasksSnapshotForTesting() { _ = await task.value }
-            XCTAssertEqual(svc.inFlightTaskCount, 0,
+            // is already >= 1 (this is what proves retention).
+            XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
+                                        "returnBook must synchronously retain its cleanup Task")
+
+            // Join by re-snapshotting: a tracked body can itself launch a
+            // further tracked Task — the `launchTrackedMainActorTask` hop in
+            // `handleRevokeError`'s `.genericFailureAlert` branch
+            // (BookReturnService.swift:602), which in turn calls
+            // `presentReturnFailureAlert` — which a single snapshot taken up
+            // front would never join. Bounded, and every wait is a real
+            // Task join rather than a wall-clock poll.
+            var rounds = 0
+            while true {
+                let pending = service.inFlightTasksSnapshotForTesting()
+                if pending.isEmpty { break }
+                // Checked BEFORE joining, so it fires only when work REMAINS
+                // after `rounds` completed rounds — a true statement. Checking
+                // after the join instead would throw on a round that had just
+                // drained everything, dropping the success ceiling below the
+                // bound the message names.
+                //
+                // THROW rather than break: a `break` falls through to the
+                // `XCTAssertNil(weakSvc)` below, which then fails too and
+                // reports "something still retains BookReturnService" — the
+                // wrong diagnosis, since a still-running body legitimately
+                // pins `self`. Throwing keeps the failure truthful; XCTest
+                // still records two entries (the XCTFail and the thrown
+                // error), both naming this same cause.
+                if rounds >= 8 {
+                    XCTFail("tracked Tasks still pending after \(rounds) join rounds")
+                    throw TrackedTaskQuiescenceError.didNotQuiesce(rounds: rounds)
+                }
+                for task in pending { _ = await task.value }
+                rounds += 1
+            }
+            XCTAssertEqual(service.inFlightTaskCount, 0,
                            "Tracked Tasks must auto-remove once their bodies finish")
         }()
 
-        // Service has no in-flight Tasks left → its strong ref is
-        // released at the closing brace → deinit runs.
-        // UNJOINABLE: deinit fires on ARC's last-release, which is not a
-        // Task/queue we can await. We've already JOINED every tracked Task
-        // above and exited the closure scope, so the release has happened;
-        // this converges on the first poll. The predicate reads a synchronous
-        // static counter, so the loop is cheap even under load.
-        await awaitConditionAsync(timeout: 5.0) {
-            BookReturnServiceTestHook.deinitCountSync > countBefore
-        }
-        XCTAssertGreaterThan(BookReturnServiceTestHook.deinitCountSync, countBefore,
-                             "BookReturnService deinit must fire once all in-flight Tasks have drained")
+        // DROP THE LAST STRONG REFERENCE, and assert SYNCHRONOUSLY.
+        //
+        // This used to poll `awaitConditionAsync(timeout: 5.0)`. The flake was
+        // never ARC being unscheduled — the old release point was deterministic
+        // too. What starved was the poll itself: `awaitConditionAsync` sleeps
+        // via `Task.sleep` between predicate evaluations, and under the shared
+        // scheme's `testExecutionOrdering = "random"` plus cooperative-pool
+        // oversubscription those sleeps are not bounded by the timeout the
+        // caller asked for. Removing the poll removes the starvation surface.
+        //
+        // If this assertion ever fails it is NOT flakiness: something still
+        // holds the service — a retain cycle or an escaped capture.
+        svc = nil
+        XCTAssertNil(weakSvc,
+                     "dropping the last strong reference must dealloc this service instance; "
+                     + "if it did not, something still retains BookReturnService")
+
+        // The generic-error branch performs no registry mutation, so the book
+        // must remain exactly as arranged. `TPPBookRegistryMock.state(for:)`
+        // returns `.unregistered` for a missing book, so this also catches
+        // removal, not just state rewrites.
+        XCTAssertEqual(localRegistry.state(for: bookWithRevoke.identifier), .downloadSuccessful,
+                       "the generic-error cleanup branch must not mutate the registry")
     }
 
     /// Companion to the deinit test: while Tasks are mid-flight, the
@@ -1055,6 +1111,13 @@ private final class SpyLocalContentService: LocalBookContentService {
     override func deleteLocalContent(forBook book: TPPBook, account: String? = nil) {
         deleteForIdentifierCalls.append(book.identifier)
     }
+}
+
+/// Thrown when the tracked-Task join loop fails to reach quiescence, so the
+/// failure terminates at its real cause instead of falling through into a
+/// later assertion that would misreport it.
+private enum TrackedTaskQuiescenceError: Error {
+    case didNotQuiesce(rounds: Int)
 }
 
 private final class SpyAnnouncementService: DownloadAnnouncementService {

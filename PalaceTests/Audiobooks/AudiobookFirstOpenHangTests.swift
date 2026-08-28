@@ -132,9 +132,14 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
         let gate = PlaybackReadinessGate()
         let position = makeFakeTrackPosition()
 
-        // Schedule the ready transition 50ms after the await begins.
+        // Schedule the ready transition 50ms after the await begins, and record
+        // WHEN it happened. The recorded instant is what the ordering assertion
+        // below compares against — an absolute wall-clock budget would be
+        // measuring the machine (see the note above the assertions).
+        let readyAt = LockIsolated<ContinuousClock.Instant?>(nil)
         Task {
             try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+            readyAt.value = ContinuousClock().now
             await gate.markReady()
         }
 
@@ -155,14 +160,81 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
         }
         let elapsed = ContinuousClock().now - started
 
+        // The properties, none of which a busy machine can falsify. A slow
+        // runner makes each of these MORE true, never less.
         XCTAssertEqual(playbackSpy.playAtCallCount, 1,
                        "play(at:) must be called exactly once after readiness — pre-fix issued before ready, post-fix issues exactly once after ready")
         XCTAssertGreaterThan(elapsed, .milliseconds(40),
-                             "play(at:) must be DELAYED until the ready signal — sub-40ms return means the gate did not actually block")
-        XCTAssertLessThan(elapsed, .milliseconds(500),
-                          "Once ready, play(at:) must fire promptly — >500ms suggests the gate is polling rather than woken by signal")
+                             "play(at:) must be DELAYED until the ready signal — sub-40ms return means the gate did not actually block. Load-safe: contention only makes this longer")
+        // THE assertion that distinguishes the fix from the bug, and the one an
+        // earlier revision of this test got wrong twice over. Comparing elapsed
+        // time cannot see it: with play issued BEFORE the await, the function
+        // still awaits afterwards, so total elapsed is unchanged and every
+        // duration bound still passes. Comparing `ContinuousClock().now` to the
+        // ready instant cannot see it either — that is true by construction
+        // whatever the code did. Only the instant of the PLAY CALL, compared to
+        // the instant of the READY SIGNAL, states the contract.
+        //
+        // Verified by reintroducing the defect: moving `command.play(at:)`
+        // above `gate.awaitReady` fails this assertion by name and no other.
+        let readyInstant = try XCTUnwrap(readyAt.value,
+                                         "the ready signal must actually have fired; nil means the await returned without it")
+        let playInstant = try XCTUnwrap(playbackSpy.firstPlayAt,
+                                        "play(at:) must have been invoked; nil means the gate never released")
+        XCTAssertGreaterThan(playInstant, readyInstant,
+                             "play(at:) must be issued AFTER the ready signal. This is the F-011 hang: issuing play against a not-yet-ready engine. Ordering, not duration — load cannot falsify it")
         XCTAssertEqual(playbackSpy.lastPlayedPosition?.timestamp, position.timestamp,
                        "play(at:) must be invoked with the initial position, not a default")
+
+    }
+
+    /// The wall-clock latency bound, opt-in — the load-sensitive half of the
+    /// test above, split out rather than appended to it.
+    ///
+    /// It previously lived at the end of that test as `elapsed < 500ms`, meaning
+    /// "woken by signal, not polling". A real property, measured with a
+    /// stopwatch. `awaitReady` races a continuation against a `Task.sleep` on
+    /// the COOPERATIVE POOL, so any sibling saturating that pool delays both the
+    /// arming sleep and the resume. Under `-test-iterations 3` with the scheme's
+    /// random ordering the polluting sibling varies per iteration, which is how
+    /// it produced `passed · failed · passed` inside one run.
+    ///
+    /// Kept as its own test because an `XCTSkipUnless` at the END of the other
+    /// one reported the WHOLE test as skipped — the property assertions had
+    /// already run and passed, but the result read as "nothing was checked",
+    /// which is worse than the flake it replaced.
+    ///
+    /// The polling-vs-signal claim is carried structurally in the test above:
+    /// `awaitReady` suspends on a keyed continuation resumed by `markReady`,
+    /// with no poll loop to be slow. A stopwatch cannot tell a polling gate from
+    /// a busy runner — that, not the threshold, was the flaw.
+    func testFirstOpen_readinessWake_latencyBound_loadSensitive() async throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["PALACE_STRESS_POOL"] == "1",
+            // TEST_RUNNER_ prefix is required: xcodebuild forwards only
+            // TEST_RUNNER_-prefixed variables into the test process, so a bare
+            // PALACE_STRESS_POOL=1 sets it in the SHELL and the test still skips.
+            "load-sensitive; run with TEST_RUNNER_PALACE_STRESS_POOL=1"
+        )
+
+        let gate = PlaybackReadinessGate()
+        let position = makeFakeTrackPosition()
+        Task {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            await gate.markReady()
+        }
+
+        let started = ContinuousClock().now
+        try await PlaybackReadinessGate.awaitReadinessAndPlay(
+            at: position,
+            gate: gate,
+            timeout: 2.0,
+            command: playbackSpy
+        )
+        let elapsed = ContinuousClock().now - started
+
+        XCTAssertLessThan(elapsed, .milliseconds(500),
+                          "on an IDLE machine, once ready, play(at:) must fire promptly — >500ms suggests the gate is polling rather than woken by signal")
     }
 
     // MARK: - Test 2: engine never ready within timeout
@@ -704,7 +776,14 @@ private final class PlaybackEngineSpy: PlaybackEngineCommanding {
     private(set) var playAtCallCount: Int = 0
     private(set) var lastPlayedPosition: TrackPositionShape?
 
+    /// When `play(at:)` was first invoked. Recorded so a test can assert the
+    /// ORDERING of play against the ready signal rather than a wall-clock
+    /// budget — the ordering is the actual contract and is load-insensitive,
+    /// where a duration is neither.
+    private(set) var firstPlayAt: ContinuousClock.Instant?
+
     func play(at position: TrackPositionShape) async throws {
+        if firstPlayAt == nil { firstPlayAt = ContinuousClock().now }
         playAtCallCount += 1
         lastPlayedPosition = position
     }

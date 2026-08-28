@@ -232,6 +232,7 @@ final class TPPBookStateInitializationTests: XCTestCase {
             ("holding", .holding),
             ("used", .used),
             ("unsupported", .unsupported),
+            ("returning", .returning),
             ("saml-started", .SAMLStarted)
         ]
 
@@ -239,6 +240,17 @@ final class TPPBookStateInitializationTests: XCTestCase {
             let state = TPPBookState(string)
             XCTAssertEqual(state, expectedState, "String '\(string)' should initialize to \(expectedState)")
         }
+    }
+
+    /// Guards the other half of the same asymmetry: every state must have a
+    /// DISTINCT wire string. Two states sharing one string would round-trip
+    /// green above for one of them while silently rewriting the other.
+    func testStateStringValue_IsUniquePerState() {
+        let strings = TPPBookState.allCases.map { $0.stringValue() }
+        XCTAssertEqual(
+            Set(strings).count, TPPBookState.allCases.count,
+            "two states share a wire string — one of them cannot survive a save/load round trip"
+        )
     }
 
     func testStateInit_FromInvalidString_ReturnsNil() {
@@ -266,15 +278,23 @@ final class TPPBookStateInitializationTests: XCTestCase {
         }
     }
 
+    /// Every state must survive `stringValue()` -> `init?(_:)` unchanged.
+    ///
+    /// This assertion used to be wrapped in `if state != .returning`, with the
+    /// comment "`.returning` doesn't have a reverse mapping in init". That is a
+    /// defect report, not a test condition: `stringValue()` emitted
+    /// `"returning"`, `init?(_:)` had no arm for it and returned nil, and
+    /// `TPPBookRegistryRecord.init?` therefore dropped the entire record — so a
+    /// book persisted in that state vanished from the patron's shelf on the next
+    /// load, silently. The exemption made the suite green over it for as long as
+    /// it stood. The missing arm is now implemented and the exemption is gone;
+    /// a state that cannot round-trip fails here, which is what it always meant.
     func testStateRoundTrip_AllStates() {
         for state in TPPBookState.allCases {
-            let stringValue = state.stringValue()
-            let reconstructed = TPPBookState(stringValue)
-
-            // Note: .returning doesn't have a reverse mapping in init
-            if state != .returning {
-                XCTAssertEqual(reconstructed, state, "State \(state) should round-trip through string value")
-            }
+            XCTAssertEqual(
+                TPPBookState(state.stringValue()), state,
+                "\(state) serializes as '\(state.stringValue())' but does not parse back — a record persisted in this state is dropped at load and the book disappears from the shelf"
+            )
         }
     }
 }
@@ -461,90 +481,223 @@ final class DeriveInitialStateTests: XCTestCase {
 
 // MARK: - TPPBookRegistry Load Re-entrancy Tests
 
-/// Tests for the re-entrancy guard added to prevent EXC_BAD_ACCESS crashes
-/// when load() is called multiple times rapidly during account changes.
+/// Tests for `TPPBookRegistry.load()`: the re-entrancy guard that prevents
+/// EXC_BAD_ACCESS during account changes, and the per-book state events the
+/// load emits so the UI re-syncs when the app is reopened.
+///
+/// Every test here drives an **isolated** registry — `FixedAccountScope` names a
+/// UUID account, the download seam is a stub that reports nothing on disk, and
+/// the registry file is written by the test. The previous version of this class
+/// reached for `AppContainer.production().bookRegistry`, which made the shared
+/// singleton's contents (and whatever earlier tests left in it) part of the
+/// outcome, and forced the assertions to be written defensively enough that they
+/// stopped asserting anything — see the note on
+/// `testLoad_EmitsBookStateEventsForAllBooks`.
 @MainActor
-final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
+final class TPPBookRegistryLoadReentrancyTests: PalaceWiringTestCase {
 
-    var registry: TPPBookRegistry!
-    var cancellables = Set<AnyCancellable>()
+    private var registry: TPPBookRegistry!
+    private var account: String!
+    private var registryURL: URL!
+
+    /// Reports nothing on disk for every book and never starts a transfer, so a
+    /// load reconciles against a known-constant world. Identity states
+    /// (`.holding` / `.returning` / `.unsupported`) therefore survive the load
+    /// unchanged, which is what lets the emission assertions below pin the exact
+    /// state each book is announced with rather than merely counting events.
+    private final class AbsentContentDownloadService: RegistryDownloadServicing, @unchecked Sendable {
+        func fileUrl(for book: TPPBook, account: String?) -> URL? { nil }
+        func startDownload(for book: TPPBook) {}
+        func deleteLocalContent(forBook book: TPPBook, account: String?) {}
+        func redownloadLCPContentFile(for book: TPPBook) {}
+        func contentFileSatisfied(for book: TPPBook, account: String) -> Bool { false }
+        func lcpContentFileMissing(for book: TPPBook, account: String) -> Bool { false }
+        func contentPresence(for book: TPPBook, account: String) -> RegistryContentPresence { .absent }
+        func isDownloadInFlight(for book: TPPBook) -> Bool { false }
+    }
 
     override func setUp() {
         super.setUp()
-        registry = AppContainer.production().bookRegistry as! TPPBookRegistry
-        cancellables.removeAll()
+        account = "registry-load-\(UUID().uuidString)"
+
+        let container = makeTestAppContainer()
+        registry = TPPBookRegistry(
+            accountScope: FixedAccountScope(accountID: account),
+            imageLoader: MockImageLoader(),
+            dependencies: RegistryExternalDependencies(
+                downloadService: { AbsentContentDownloadService() },
+                loansFeedFetcher: { container.opdsFeedService },
+                sideloadedIdentifiers: { [] },
+                registryDirectory: { TPPBookContentMetadataFilesHelper.directory(for: $0) },
+                onAvailabilityChange: { _, _ in }
+            )
+        )
+        registryURL = registry.registryUrl(for: account)
     }
 
     override func tearDown() {
-        cancellables.removeAll()
+        if let registryURL {
+            try? FileManager.default.removeItem(at: registryURL.deletingLastPathComponent())
+        }
+        registryURL = nil
+        registry = nil
+        account = nil
         super.tearDown()
     }
 
-    /// Verifies that calling load() multiple times rapidly for the same account
-    /// doesn't cause crashes or undefined behavior due to re-entrancy.
-    func testLoad_RapidCallsForSameAccount_DoesNotCrash() {
-        // Simulate rapid calls that could trigger a crash.
-        // This pattern was causing EXC_BAD_ACCESS before the re-entrancy fix.
-        // In test environments without a real account, load() may not emit
-        // registry changes, so we simply verify no crash occurs.
-        for _ in 0..<10 {
-            registry.load()
-        }
+    // MARK: - Helpers
 
-        // After rapid loads, the registry must still be accessible (no corruption)
-        XCTAssertNotNil(registry, "Registry must remain valid after rapid load() calls")
-        // allBooks must be readable without crash (exercises the syncQueue)
-        let count = registry.allBooks.count
-        XCTAssertGreaterThanOrEqual(count, 0, "allBooks.count must be non-negative after rapid loads")
+    private func makeBook(identifier: String, title: String = "Test Book") -> TPPBook {
+        TPPBook(
+            acquisitions: [TPPFake.genericAcquisition],
+            authors: nil,
+            categoryStrings: nil,
+            distributor: nil,
+            identifier: identifier,
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: nil,
+            publisher: nil,
+            subtitle: nil,
+            summary: nil,
+            title: title,
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: nil,
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
     }
 
-    /// Verifies that the registry emits book state events after loading
-    /// This was added to fix UI sync issues when reopening the app
-    func testLoad_EmitsBookStateEventsForAllBooks() async {
-        // Guard: load() requires a valid account to actually run.
-        // Without one, it returns immediately as a no-op, but allBooks may still
-        // contain stale books from other tests (e.g., thread safety tests that
-        // add books to the shared singleton). This would cause a false failure.
-        guard AppContainer.production().accountsManager.currentAccountId != nil else {
-            return
+    /// Seeds the account's registry file with `books` and returns what the load
+    /// is therefore expected to announce.
+    @discardableResult
+    private func seedRegistryFile(with books: [(id: String, state: TPPBookState)]) throws -> [String: TPPBookState] {
+        let records = books.map { entry in
+            TPPBookRegistryRecord(book: makeBook(identifier: entry.id), state: entry.state)
+                .dictionaryRepresentation
         }
+        let url = try XCTUnwrap(registryURL)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        let json: [String: Any] = [TPPBookRegistryKey.records.rawValue: records]
+        try JSONSerialization.data(withJSONObject: json).write(to: url)
+        return Dictionary(uniqueKeysWithValues: books.map { ($0.id, $0.state) })
+    }
 
-        // Drain pending main-thread events from previous tests to ensure
-        // the re-entrancy guard's loadingAccount has been cleared.
-        // Without this, testLoad_RapidCallsForSameAccount_DoesNotCrash
-        // may leave loadingAccount set, causing this test's load() to be skipped.
-        // Wave-2 (swarm_ad0b4c65): replaced the fixed 0.5s RunLoop spin with
-        // a bounded main-queue drain (FIFO — flushes everything queued by
-        // prior tests, no magic duration).
-        await drainMainQueueAsync()
-
-        var receivedStateUpdates = Set<String>()
-
+    /// Runs `load()` to completion and returns every `(identifier, state)` the
+    /// registry announced on `bookStatePublisher` while it ran.
+    private func loadAndCollectAnnouncements() async -> [String: TPPBookState] {
+        var announced: [String: TPPBookState] = [:]
         registry.bookStatePublisher
-            .sink { (identifier, _) in
-                receivedStateUpdates.insert(identifier)
-            }
+            .sink { announced[$0.0] = $0.1 }
             .store(in: &cancellables)
 
-        registry.load()
+        await withCheckedContinuation { continuation in
+            registry.load(account: account) { continuation.resume() }
+        }
+        // `load()` announces from a `DispatchQueue.main.async` scheduled inside
+        // the store's write barrier, and `bookStatePublisher` adds a
+        // `receive(on: RunLoop.main)` hop on top. Join the barrier, then drain
+        // main, so every announcement has landed before we read the dictionary.
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+        return announced
+    }
 
-        // allBooks uses syncQueue.sync — drains the async load barrier before returning.
-        let registryCount = registry.allBooks.count
+    // MARK: - Tests
 
-        // Wave-2 (swarm_ad0b4c65): replaced the `.first().sink{fulfill()}` +
-        // `wait(for:timeout:5.0)` with the S2 seam
-        // (`TPPBookRegistry._awaitPendingWritesForTesting()`) + a main-queue
-        // drain — `registry.load()` schedules
-        // `DispatchQueue.main.async { callbacks.setState(.loaded); ... bookStateSubject.send(...) }`
-        // from inside the barrier block driving the load; joining the
-        // barrier then flushing main deterministically waits for every
-        // book-state event to land before we inspect `receivedStateUpdates`.
+    /// Verifies that calling `load()` repeatedly for the same account is safe.
+    /// This pattern produced EXC_BAD_ACCESS before the re-entrancy guard.
+    ///
+    /// The guard's OBSERVABLE contract is that duplicate loads collapse: the
+    /// first call sets `loadingAccount`, and the rest return early. Asserting
+    /// that the shelf survives intact is what makes this test capable of
+    /// failing — the previous version asserted `allBooks.count >= 0` (true of
+    /// every `Array`) and `XCTAssertNotNil` on a non-optional, so it passed
+    /// whatever the registry did, including losing every book.
+    func testLoad_RapidCallsForSameAccount_KeepsTheShelfIntact() async throws {
+        let expected = try seedRegistryFile(with: [
+            (id: "reentrancy-a", state: .holding),
+            (id: "reentrancy-b", state: .returning)
+        ])
+
+        for _ in 0..<10 {
+            registry.load(account: account)
+        }
         await registry._awaitPendingWritesForTesting()
         await drainMainQueueAsync()
 
-        if registryCount > 0 {
-            XCTAssertFalse(receivedStateUpdates.isEmpty, "Should have received state updates for loaded books")
-        }
+        let loaded = Dictionary(
+            uniqueKeysWithValues: registry.allBooks.map { ($0.identifier, registry.state(for: $0.identifier)) }
+        )
+        XCTAssertEqual(
+            loaded, expected,
+            "10 rapid load() calls must leave exactly the seeded shelf — no dropped, duplicated, or half-reconciled records"
+        )
     }
 
+    /// The question this class exists to answer: does `load()` announce a book
+    /// state event for EVERY book it loaded?
+    ///
+    /// It matters because the app subscribes to `bookStatePublisher` to refresh
+    /// My Books when it returns to the foreground; a load that announced only
+    /// some books would leave the rest showing stale affordances until something
+    /// else touched them.
+    ///
+    /// This test replaces one that could not answer it. That version returned
+    /// early when no account was configured, then wrapped its only assertion in
+    /// `if registryCount > 0` — and because it read the shared singleton it saw
+    /// an empty registry, so the assertion was never reached on any run,
+    /// including the green ones. A `return` or a conditional assertion in a test
+    /// converts "cannot verify" into "verified"; if a precondition genuinely
+    /// cannot be met, the test must skip loudly or fail, never pass quietly.
+    func testLoad_EmitsBookStateEventsForAllBooks() async throws {
+        let expected = try seedRegistryFile(with: [
+            (id: "emits-a", state: .holding),
+            (id: "emits-b", state: .returning),
+            (id: "emits-c", state: .unsupported)
+        ])
+
+        let announced = await loadAndCollectAnnouncements()
+
+        // Assert the precondition rather than branching on it: an empty registry
+        // here is a broken fixture, and it must fail rather than silently skip.
+        XCTAssertEqual(
+            registry.allBooks.count, expected.count,
+            "fixture did not load — the assertions below would be vacuous"
+        )
+        XCTAssertEqual(
+            announced, expected,
+            "load() must announce every loaded book, with its reconciled state — a book that loads without an announcement leaves My Books stale until something else touches it"
+        )
+    }
+
+    /// The empty-registry boundary, stated as behaviour rather than left as the
+    /// escape hatch the old test used it as: loading an account with no registry
+    /// file announces nothing and still completes.
+    ///
+    /// `waitForLoadThenRunSync` documents that it must key on the lifecycle
+    /// publisher precisely because this case emits no per-book event, so the
+    /// zero here is a contract other code depends on, not an absence of one.
+    func testLoad_WithNoRegistryFile_CompletesAndAnnouncesNothing() async throws {
+        // Deliberately do not seed a registry file.
+        let announced = await loadAndCollectAnnouncements()
+
+        XCTAssertEqual(registry.allBooks.count, 0, "no registry file means no books")
+        XCTAssertTrue(
+            announced.isEmpty,
+            "an empty load must announce nothing — callers that wait on a per-book event would hang forever otherwise"
+        )
+        XCTAssertEqual(registry.state, .loaded, "load() must still reach .loaded with no file present")
+    }
 }

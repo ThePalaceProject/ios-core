@@ -76,6 +76,43 @@ extract_tickets() {
   echo "$text" | grep -oE "${project_key}-[0-9]+" | awk '!seen[$0]++'
 }
 
+# Extract the tickets a commit claims to WORK ON, as opposed to every ticket it
+# happens to name.
+#
+# `extract_tickets` greps the whole message, which is right for "what does this
+# text mention" and wrong for "what should we comment on". A commit body that
+# says "this belongs to PP-5005, not here" or "related: PP-5005" was, under the
+# old rule, treated as work on PP-5005 and posted a comment there. That is how
+# a design ticket owned by someone else collected six machine comments about a
+# branch that deliberately did NOT touch it.
+#
+# The rule: a ticket is WORKED if it appears in the subject line, or in an
+# explicit trailer that says so. Everywhere else in the body it is a reference —
+# useful prose for a human, not a claim on the ticket.
+#
+# Recognised trailers (case-insensitive, one ticket or several per line):
+#   Fixes: PP-1234
+#   Closes: PP-1234
+#   Ticket: PP-1234
+#   Tickets: PP-1234, PP-5678
+#
+# Deliberately NOT a trailer: `Refs:` / `Related:` — those exist precisely to
+# mention a ticket without claiming it.
+extract_worked_tickets() {
+  local text="$1"
+  local project_key="${JIRA_PROJECT_KEY:-PP}"
+
+  {
+    # Subject line: the commit's own statement of what it is.
+    printf '%s\n' "$text" | head -1
+
+    # Claiming trailers only.
+    printf '%s\n' "$text" \
+      | grep -iE '^[[:space:]]*(fixes|closes|ticket|tickets)[[:space:]]*:' \
+      || true
+  } | grep -oE "${project_key}-[0-9]+" | awk '!seen[$0]++'
+}
+
 # Check if ticket exists in Jira
 ticket_exists() {
   local ticket="$1"
@@ -471,20 +508,45 @@ link_commit() {
     return 1
   fi
 
-  # Idempotency: if this exact commit is already linked, skip (prevents the
-  # duplicate "Commit linked" spam seen when a hook re-fires or a commit is amended
-  # and re-linked). Amended commits get a new SHA, so those are still distinct — the
-  # honest fix for those is to link once, after the final amend.
-  local already_linked
-  already_linked=$(curl -s \
+  # Idempotency, on the identity of the CHANGE rather than of the commit.
+  #
+  # Keying on the SHA alone only catches a hook firing twice for one commit. It
+  # cannot catch the case that actually produces the spam: amending or rebasing
+  # gives the same logical change a new SHA every time, so a five-commit branch
+  # rebased twice posted fifteen comments for five pieces of work.
+  #
+  # `git patch-id --stable` hashes the DIFF, ignoring the SHA, the parent, the
+  # committer date and the message. It is identical across an amend, a rebase,
+  # and a cherry-pick of the same content — which is exactly the equivalence we
+  # want. It is recorded in the comment body so the next run can find it.
+  local patch_id
+  patch_id=$(git diff-tree -p --no-commit-id "$commit_sha" 2>/dev/null \
+    | git patch-id --stable 2>/dev/null | awk '{print $1}')
+
+  local existing_comments
+  existing_comments=$(curl -s \
     -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
     -H "Content-Type: application/json" \
-    "$JIRA_URL/rest/api/3/issue/$ticket/comment" \
+    "$JIRA_URL/rest/api/3/issue/$ticket/comment?maxResults=200")
+
+  local already_linked
+  already_linked=$(echo "$existing_comments" \
     | jq -r --arg sha "$commit_sha" \
         '[.comments[]? | select(([.. | .text? // empty] | join(" ")) | contains($sha))] | length' 2>/dev/null)
   if [[ "${already_linked:-0}" =~ ^[0-9]+$ && "${already_linked:-0}" -gt 0 ]]; then
     echo -e "${YELLOW}↩︎ Commit ${commit_sha:0:12} already linked to $ticket — skipping.${NC}"
     return 0
+  fi
+
+  if [[ -n "$patch_id" ]]; then
+    local same_change
+    same_change=$(echo "$existing_comments" \
+      | jq -r --arg pid "$patch_id" \
+          '[.comments[]? | select(([.. | .text? // empty] | join(" ")) | contains($pid))] | length' 2>/dev/null)
+    if [[ "${same_change:-0}" =~ ^[0-9]+$ && "${same_change:-0}" -gt 0 ]]; then
+      echo -e "${YELLOW}↩︎ This change is already linked to $ticket under a different SHA (amend or rebase) — skipping.${NC}"
+      return 0
+    fi
   fi
 
   local commit_msg
@@ -512,7 +574,16 @@ $files_changed"
     comment+="
 ... and $((file_count - 10)) more files"
   fi
-  
+
+  # The change fingerprint, so a later amend or rebase of this same diff can
+  # recognise itself and stay quiet. Kept last and terse: it is machinery, and
+  # a human reading the ticket should not have to step over it.
+  if [[ -n "$patch_id" ]]; then
+    comment+="
+
+change-id: $patch_id"
+  fi
+
   add_comment "$ticket" "$comment"
 }
 
@@ -1316,6 +1387,9 @@ main() {
       ;;
     extract-tickets)
       extract_tickets "$@"
+      ;;
+    extract-worked-tickets)
+      extract_worked_tickets "$@"
       ;;
     get-link)
       get_jira_link "$@"

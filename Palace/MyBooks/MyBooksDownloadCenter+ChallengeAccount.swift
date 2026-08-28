@@ -50,17 +50,36 @@ extension MyBooksDownloadCenter {
     /// WHAT THIS RESTS ON — bookID keying, not call ordering. An earlier draft of
     /// this comment claimed every seeding site writes the record first; that is a
     /// false census and review caught it. Of the five sites that seed
-    /// `taskIdentifierToBook`, only two do:
+    /// `taskIdentifierToBook`, four now ATTEMPT a record — the two start paths via
+    /// `persistStartedTaskRecord`, and the two re-issue paths via
+    /// `persistReissuedTask`/`upsert` as of PP-5023. "Attempt", not "write":
+    /// `persistStartedTaskRecord` returns without writing when it can resolve no
+    /// URL, so one of the four can still leave a live task unrecorded. That bound
+    /// is stated where the guard lives; repeated here because a census in THIS
+    /// comment being a shade too strong is what review blocked on twice. The fifth
+    /// site is adopt, which is seeded FROM a record:
     ///
     ///   * the two download-START paths write the record via
-    ///     `persistStartedTaskRecord` (`MyBooksDownloadCenter` :1748, :2179) and
-    ///     then register (:1751, :2181, reaching
-    ///     `DownloadTaskLifecycleService` :85).
-    ///   * the bearer-token re-issue (`RightsManagementDispatcher` :193) and the
-    ///     follow-up/rights re-issue (`BackgroundDownloadHandler` :279) seed a NEW
-    ///     task for the SAME book without writing any record.
-    ///   * launch reconciliation's adopt (`MyBooksDownloadCenter` :2274) seeds
-    ///     from the persisted record itself.
+    ///     `persistStartedTaskRecord` — called from `addDownloadTask` and from
+    ///     `reissueTransferDownloadTask` — and then register via
+    ///     `DownloadTaskLifecycleService.registerStartedTask`.
+    ///
+    ///     Named by SYMBOL, not line number, on purpose. The numbers that used to
+    ///     be here (:1748, :2179, :1751, :2181, :85) were stale, and two of them
+    ///     had come to point at unrelated code — `:2179` at a `return false` inside
+    ///     `maybeRetryTransientTransfer`. They drifted partly before this branch and
+    ///     the rest of the way because of it, and NO gate can catch that: the cited
+    ///     lines are unchanged, only their meaning moved, so diff-scoped review is
+    ///     blind to it by construction. Symbols do not drift.
+    ///   * the bearer-token re-issue (`RightsManagementDispatcher`) and the
+    ///     follow-up/rights re-issue (`BackgroundDownloadHandler.followAcquisitionLink`)
+    ///     seed a NEW task and, as of PP-5023, write a record for it via
+    ///     `DownloadStateManager.persistReissuedTask`. That call CARRIES the
+    ///     account forward from the existing record rather than restamping the
+    ///     current one, precisely so this resolver keeps returning the library the
+    ///     download started under.
+    ///   * launch reconciliation's adopt (`applyReconcileDecision`'s `.adopt` arm)
+    ///     seeds from the persisted record itself.
     ///
     /// All five are correct for the same reason: hop 2 keys by bookID, and
     /// `DownloadTaskPersistence.record` upserts by bookID, so at most one record
@@ -70,9 +89,10 @@ extension MyBooksDownloadCenter {
     /// reuse across background sessions irrelevant. Adopt is correct by
     /// construction, being seeded from that same record.
     ///
-    /// The one way to lose is a re-issue whose book identifier differs from the
-    /// original's; that misses the record and lands on the floor below, which is
-    /// today's behaviour.
+    /// A re-issue whose book identifier differs from the original's USED to lose
+    /// — it missed the record and landed on the floor below. PP-5023 closed that:
+    /// `followAcquisitionLink` passes `inheritingFrom: originalBook.identifier`,
+    /// so the account crosses to the new id and this resolver finds it.
     ///
     /// Degrades to `userAccount` — today's behaviour, unchanged — when either hop
     /// misses. A task with no live mapping or no durable record is a task this

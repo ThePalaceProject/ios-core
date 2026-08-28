@@ -10,6 +10,7 @@
 import Foundation
 import Combine
 import PalaceBookModel
+import PalaceLogging
 
 // MARK: - DownloadStateManaging Protocol
 
@@ -137,6 +138,101 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
                 startedAt: Date()
             )
         )
+    }
+
+    /// Persist a task that REPLACES an in-flight one for a book already being
+    /// downloaded — the acquisition-link follow-up and the bearer-token hop.
+    ///
+    /// Separate from `persistStartedTask` because of the account field, which is
+    /// load-bearing and easy to corrupt here. `persistStartedTask` stamps the
+    /// CURRENT account and `DownloadTaskPersistence.record` upserts by book id,
+    /// so re-issuing through it would overwrite the account the download STARTED
+    /// under — and `BackgroundDownloadHandler.startedForAccount` reads exactly
+    /// that field to decide which library's credential the next re-issue carries.
+    /// A patron who switched libraries mid-download would then have the newly
+    /// selected library's token sent to the original library's server, which is
+    /// the credential-isolation boundary PP-4978 exists to hold.
+    ///
+    /// So the account is CARRIED FORWARD and never invented. With no record to
+    /// carry it from, it is left empty rather than filled with the current
+    /// account: `startedForAccount` already degrades an empty id to today's
+    /// account, so that arm reproduces current behaviour exactly, where a
+    /// current-account stamp would be a new and false claim about history.
+    ///
+    /// `startedAt` carries forward for the same reason — it names when the
+    /// DOWNLOAD started, not when this hop did. With nothing to carry it falls
+    /// back to now, which is a weaker claim than the carried value but the only
+    /// one available; nothing reads the field today, so the fallback is inert
+    /// rather than load-bearing. `expectedBytes` carries forward for symmetry and
+    /// is `nil` in every production write, so it is currently decorative — stated
+    /// plainly rather than left to look meaningful.
+    ///
+    /// Goes through `DownloadTaskPersistence.upsert` rather than `all()` +
+    /// `record()`: deriving a record from the existing one across two lock
+    /// acquisitions lets a concurrent `remove` land in between and resurrect what
+    /// it deleted.
+    ///
+    /// - Parameter inheritingFrom: the book id whose existing record supplies the
+    ///   carried fields, when the re-issue registers under a DIFFERENT id than the
+    ///   one the download started under. `followAcquisitionLink` re-registers
+    ///   under a book parsed from the server's OPDS entry, whose identifier can
+    ///   differ from the original's; without this the started-under account would
+    ///   be silently dropped on exactly that path.
+    func persistReissuedTask(
+        bookID: String,
+        taskIdentifier: Int,
+        downloadURL: URL,
+        inheritingFrom sourceBookID: String? = nil
+    ) {
+        taskPersistence.upsert(bookID: bookID, inheritingFrom: sourceBookID) { existing in
+            // Written as a coalesce rather than `if existing == nil { log }` on
+            // purpose: that form adds a comparison whose ONLY consequence is a log
+            // line, so no assertion can distinguish it and it survives mutation
+            // forever as an unkillable critical-path mutant. This carries the same
+            // diagnostic without the untestable branch.
+            //
+            // The log is not noise-for-its-own-sake: a silent "" here is
+            // indistinguishable from a genuine empty account, and
+            // `startedForAccount` degrades it to the CURRENT library — so this is
+            // the only signal that a re-issue lost its provenance.
+            let inheritedAccount = existing?.account ?? {
+                Log.info(#file, "Re-issue for \(bookID) found no record to inherit; account will be empty")
+                return ""
+            }()
+            return PersistedDownloadRecord(
+                bookID: bookID,
+                taskIdentifier: taskIdentifier,
+                downloadURL: downloadURL,
+                account: inheritedAccount,
+                expectedBytes: existing?.expectedBytes,
+                startedAt: existing?.startedAt ?? Date()
+            )
+        }
+    }
+
+    /// Finish a download's durable bookkeeping: reset the transient-transfer
+    /// retry counter, and retire the durable record UNLESS a live task remains.
+    ///
+    /// `keepRecord` is true when the completion left a task still running — today
+    /// only the bearer-token hop, which swaps the fulfilment task for a content
+    /// task and resumes it. Such a download has not reached a terminal outcome, so
+    /// retiring its record makes a live task invisible to launch reconciliation.
+    /// That was PP-5023's second defect: the record was written by the hop and
+    /// removed roughly 100ms later by the caller's cleanup.
+    ///
+    /// Lives here rather than inline in `MyBooksDownloadCenter` because that file
+    /// is frozen by the god-class LOC ratchet, whose instruction is to extract
+    /// into a collaborator rather than grow the hub. The decision belongs beside
+    /// the store it acts on regardless.
+    ///
+    /// NOT the same sequence as `cleanupDownload`, which also resets and removes.
+    /// That one runs on cancel/delete, where no follow-up can be in flight, so it
+    /// needs no `keepRecord` and is deliberately left alone — merging them would
+    /// give the cancel path a parameter it can never use.
+    func finishTerminalBookkeeping(for bookID: String, keepRecord: Bool) async {
+        await resetTransferRetryAttempts(for: bookID)
+        guard !keepRecord else { return }
+        removePersistedRecord(for: bookID)
     }
 
     /// Drop the durable record for a book on terminal completion.

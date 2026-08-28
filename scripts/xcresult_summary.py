@@ -37,6 +37,42 @@ def tally(summary: dict) -> tuple[int, int]:
     return int(summary.get("passedTests") or 0), int(summary.get("failedTests") or 0)
 
 
+def totals(summary: dict) -> tuple[int, int, int, int, int]:
+    """(total, passed, failed, skipped, expected_failures).
+
+    `tally` returns only passed and failed, and callers printing its first
+    number under the word "tests" report the PASSED count as though it were the
+    suite size. On one real bundle that read "8454 tests" where the suite held
+    8471: 8454 passed + 1 failed + 14 skipped + 2 expected failures. A local
+    figure BELOW CI's is the wrong direction and reads as an excluded target,
+    which cost a reviewer round chasing one that did not exist.
+
+    `totalTestCount` is authoritative and is not the sum of the other four in
+    every Xcode version, so it is read rather than derived.
+    """
+    return (
+        int(summary.get("totalTestCount") or 0),
+        int(summary.get("passedTests") or 0),
+        int(summary.get("failedTests") or 0),
+        int(summary.get("skippedTests") or 0),
+        int(summary.get("expectedFailures") or 0),
+    )
+
+
+def tally_label(summary: dict) -> str:
+    """One-line human tally naming what each number is.
+
+    Every count is labelled; none is left to be inferred from position.
+    """
+    total, passed, failed, skipped, xfail = totals(summary)
+    parts = [f"{passed} passed", f"{failed} failed"]
+    if skipped:
+        parts.append(f"{skipped} skipped")
+    if xfail:
+        parts.append(f"{xfail} expected-failure")
+    return f"{total} tests ({', '.join(parts)})"
+
+
 def failing_test_names(summary: dict) -> list[str]:
     """Test names from the summary's `testFailures`, in the order reported."""
     return [f.get("testName", "") for f in (summary.get("testFailures") or []) if f.get("testName")]
@@ -98,7 +134,7 @@ def _xcresulttool(kind: str, path: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--path", required=True, help="Path to the .xcresult bundle")
-    ap.add_argument("--mode", choices=["tally", "classes", "names"], default="tally")
+    ap.add_argument("--mode", choices=["tally", "totals", "label", "classes", "names"], default="tally")
     args = ap.parse_args()
 
     if args.mode == "classes":
@@ -108,6 +144,13 @@ def main() -> int:
     summary = _xcresulttool("summary", args.path)
     if args.mode == "names":
         print("\n".join(failing_test_names(summary)))
+        return 0
+
+    if args.mode == "totals":
+        print(" ".join(str(n) for n in totals(summary)))
+        return 0
+    if args.mode == "label":
+        print(tally_label(summary))
         return 0
 
     passed, failed = tally(summary)

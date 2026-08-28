@@ -22,7 +22,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from xcresult_summary import failing_classes, failing_test_names, tally  # noqa: E402
+from xcresult_summary import (  # noqa: E402
+    failing_classes,
+    failing_test_names,
+    tally,
+    tally_label,
+    totals,
+)
 
 
 def _case(name, result, failures=()):
@@ -116,3 +122,58 @@ def test_without_nodeType_it_degrades_to_a_path_guess_rather_than_silence():
         }],
     }]}
     assert failing_classes(tree) == ["BookRegistrySyncTests"]
+
+
+# --- totals / tally_label -----------------------------------------------------
+#
+# These exist because `verify-pr.sh` printed `tally`'s FIRST number under the
+# word "tests", i.e. reported the passed count as the suite size. The numbers
+# below are copied from a real bundle (verify-pr-38813.xcresult, PP-4951): the
+# gate said "8454 tests" while the suite held 8471.
+
+REAL_SUMMARY = {
+    "totalTestCount": 8471,
+    "passedTests": 8454,
+    "failedTests": 1,
+    "skippedTests": 14,
+    "expectedFailures": 2,
+}
+
+
+def test_totals_reports_the_suite_size_not_the_passed_count():
+    total, passed, failed, skipped, xfail = totals(REAL_SUMMARY)
+    assert total == 8471, "the suite size must come from totalTestCount"
+    assert passed == 8454
+    assert (failed, skipped, xfail) == (1, 14, 2)
+    assert total != passed, (
+        "the whole defect is that these two were conflated; a fixture where they "
+        "coincide would pass while the bug was reinstated"
+    )
+
+
+def test_tally_label_names_every_count_it_prints():
+    label = tally_label(REAL_SUMMARY)
+    assert label == "8471 tests (8454 passed, 1 failed, 14 skipped, 2 expected-failure)"
+    assert "8471 tests" in label, "the number next to 'tests' must be the total"
+    assert not label.startswith("8454"), (
+        "regression guard: the passed count must never lead the label, which is "
+        "what made a local run look smaller than CI's and read as a lost target"
+    )
+
+
+def test_tally_label_omits_zero_skips_and_expected_failures():
+    # A clean run should not carry noise, but must still name passed and failed.
+    assert tally_label(
+        {"totalTestCount": 10, "passedTests": 10, "failedTests": 0}
+    ) == "10 tests (10 passed, 0 failed)"
+
+
+def test_totals_survives_a_summary_missing_the_optional_keys():
+    # Older bundles omit skippedTests/expectedFailures entirely.
+    assert totals({"totalTestCount": 3, "passedTests": 3}) == (3, 3, 0, 0, 0)
+
+
+def test_tally_is_unchanged_for_existing_callers():
+    # `tally` is still the (passed, failed) pair; totals() was added beside it
+    # rather than changing its arity, because other call sites read $1 and $2.
+    assert tally(REAL_SUMMARY) == (8454, 1)

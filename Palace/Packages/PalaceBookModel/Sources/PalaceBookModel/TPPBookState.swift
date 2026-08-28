@@ -42,6 +42,8 @@ public enum TPPBookState: Int, CaseIterable, Sendable {
             self = .used
         case UnsupportedKey:
             self = .unsupported
+        case ReturningKey:
+            self = .returning
         case SAMLStartedKey:
             self = .SAMLStarted
         default:

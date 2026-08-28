@@ -123,11 +123,13 @@ enum DownloadReconciliation {
     ///
     ///   DO NOT "OPTIMIZE" THIS BY CANCELLING THE UNADOPTABLE TASK. It reads as
     ///   an obvious improvement — the task is orphaned, so why leave it running?
-    ///   Because `followAcquisitionLink` and the bearer-token hop in
-    ///   `RightsManagementDispatcher` create legitimately live tasks that were
-    ///   never persisted here, and cancelling would kill real in-flight
-    ///   downloads. An orphan costs bandwidth; cancelling costs the patron a
-    ///   book. Leave it: `MyBooksDownloadCenter` early-returns on an unmapped
+    ///   Because a live task here can be a REAL in-flight download. PP-5023 made
+    ///   `followAcquisitionLink` and the bearer-token hop persist, which removes
+    ///   the commonest case, but it does NOT make cancelling safe: a task is also
+    ///   unadoptable when its URL is contested, when `persistStartedTaskRecord`
+    ///   found no URL to record, and on any path added after this comment was
+    ///   written. An orphan costs bandwidth; cancelling costs the patron a book.
+    ///   Leave it: `MyBooksDownloadCenter` early-returns on an unmapped
     ///   identifier, so the orphan's bytes are discarded rather than misrouted.
     ///
     ///   LOAD-BEARING INVARIANT: within one reconcile pass, a download URL
@@ -141,18 +143,22 @@ enum DownloadReconciliation {
     ///   whichever book wrote `taskIdentifierToBook` last, which is PP-4997's
     ///   own failure mode re-entered through its fix.
     ///
-    ///   WHAT IT DOES NOT COVER: `contestedURLs` is computed from `persisted`
-    ///   alone, because that is all this function is given. A live task created
-    ///   WITHOUT a persisted record — `followAcquisitionLink` and the
-    ///   bearer-token hop in `RightsManagementDispatcher` both do this — is
-    ///   invisible to it. If book B has such a task on book A's URL, A's record
-    ///   sees exactly one live task on its URL and adopts B's download. That is
-    ///   a wrong adoption, not a decline, and this guard does not prevent it.
-    ///   The root fix is for those two paths to persist their tasks (PP-5023);
-    ///   until then the exposure is real and bounded by how rarely two books
-    ///   share an acquisition URL — measured at zero in a 100-entry DPLA feed
-    ///   with 400 acquisition links and 200 distinct hrefs, but unconstrained
-    ///   by the data model.
+    ///   WHAT IT RESTS ON: `contestedURLs` is computed from `persisted` alone,
+    ///   because that is all this function is given, so the guard can only see a
+    ///   live task that has a record. Two paths used to create tasks without one
+    ///   — `followAcquisitionLink` and the bearer-token hop in
+    ///   `RightsManagementDispatcher` — and a book whose record named such a
+    ///   task's URL adopted that download outright: a wrong adoption, not a
+    ///   decline. Both persist as of PP-5023, which closes the two known holes.
+    ///   It does NOT make the guard complete: `persistStartedTaskRecord` writes
+    ///   nothing when it can resolve no URL, so that arm still produces a live
+    ///   unrecorded task, and any future start path reopens the same gap.
+    ///
+    ///   That completeness is a property of the CALLERS, not of this function,
+    ///   and nothing here can enforce it. Any future path that starts a download
+    ///   in this session must persist a record, or it reopens the same hole.
+    ///   `DownloadReissuePersistenceTests` pins the two known re-issue paths and
+    ///   carries the control that demonstrates the failure they used to cause.
     /// PURE — no URLSession, no I/O. Unit-testable exhaustively over the
     /// {live task / dead task} × {registry state} matrix.
     ///
@@ -308,6 +314,57 @@ final class DownloadTaskPersistence: @unchecked Sendable {
         var records = loadLocked()
         records.removeAll { $0.bookID == record.bookID }
         records.append(record)
+        saveLocked(records)
+    }
+
+    /// Read-modify-write one book's record under a SINGLE lock acquisition.
+    ///
+    /// `all()` followed by `record(_:)` takes the lock twice, so a concurrent
+    /// `remove`/`removeAll` landing between them resurrects a record that was
+    /// meant to be gone, and two re-issues for one book can interleave. Callers
+    /// that derive a new record FROM the existing one (the mid-flight re-issue
+    /// paths) must use this instead.
+    ///
+    /// `transform` receives the current record for `bookID`, or nil, and returns
+    /// the record to store. It is NON-optional deliberately: an earlier draft let
+    /// it return nil to mean "leave the store alone", but no caller used that and
+    /// no test or mutant could reach the branch — the third instance in this
+    /// changeset of a guard nothing can falsify. A caller that wants to leave the
+    /// store alone should not call `upsert`.
+    ///
+    /// `transform` runs WHILE THE LOCK IS HELD and `lock` is not recursive, so it
+    /// must not call back into this store — no `all()`, `record`, `remove`, or a
+    /// nested `upsert`. Keep it a pure function of the record it is handed.
+    ///
+    /// CONTRACT, stated rather than enforced: `transform` must return a record for
+    /// `bookID`. Its one caller (`DownloadStateManager.persistReissuedTask`) does,
+    /// unconditionally — two call PATHS reach it, the acquisition-link follow-up
+    /// and the bearer hop, but there is one call site. An earlier version
+    /// enforced it by also deleting the requested key — but since the two keys are
+    /// identical for every reachable input, that clause could not be killed by any
+    /// test or mutant, which is a worse thing to carry on a critical path than a
+    /// documented precondition. A transform returning a foreign id would leave a
+    /// STALE record under `bookID` (not a duplicate); no caller can produce it.
+    ///
+    /// - Parameter inheritingFrom: read the record under THIS id and write under
+    ///   `bookID`. They differ when a re-issue re-registers the download under a
+    ///   book parsed from the server whose identifier is not the original's.
+    func upsert(
+        bookID: String,
+        inheritingFrom sourceBookID: String? = nil,
+        transform: (PersistedDownloadRecord?) -> PersistedDownloadRecord
+    ) {
+        lock.lock(); defer { lock.unlock() }
+        var records = loadLocked()
+        let sourceID = sourceBookID ?? bookID
+        // Fall back to the TARGET's own record when the source has none, so an
+        // id-changing re-issue cannot blank an account that is already correct
+        // under the target id.
+        let existing = records.first { $0.bookID == sourceID }
+            ?? records.first { $0.bookID == bookID }
+        let updated = transform(existing)
+        records.removeAll { $0.bookID == updated.bookID }
+        records.append(updated)
         saveLocked(records)
     }
 
