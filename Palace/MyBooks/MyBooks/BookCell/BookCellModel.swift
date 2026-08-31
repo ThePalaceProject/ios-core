@@ -703,6 +703,10 @@ extension BookCellModel {
             if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                 coordinator.store(book: book)
                 coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+            } else {
+                // PP-5022 — never drop the tap on the floor. A Read button that
+                // does nothing is indistinguishable from a broken app.
+                ReaderService.presentUnreachableReaderAlert(for: book, source: "BookCellModel.streamingHTML")
             }
             self.isLoading = false
         default:

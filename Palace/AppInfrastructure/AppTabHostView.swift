@@ -309,20 +309,20 @@ struct AppTabHostView: View {
         NavigationHostView(rootView: CatalogView(
             viewModel: catalogViewModel,
             appContainer: appContainer
-        ))
+        ), tab: .catalog)
         .environmentObject(router)
     }
 
     private var myBooksRoot: some View {
-        NavigationHostView(rootView: MyBooksView(model: myBooksViewModel, appContainer: appContainer))
+        NavigationHostView(rootView: MyBooksView(model: myBooksViewModel, appContainer: appContainer), tab: .myBooks)
     }
 
     private var holdsRoot: some View {
-        NavigationHostView(rootView: HoldsView(appContainer: appContainer))
+        NavigationHostView(rootView: HoldsView(appContainer: appContainer), tab: .holds)
     }
 
     private var settingsRoot: some View {
-        NavigationHostView(rootView: TPPSettingsView())
+        NavigationHostView(rootView: TPPSettingsView(), tab: .settings)
     }
 
     /// The one label idiom shared by both builders. Settings uses the SF Symbol
@@ -354,13 +354,19 @@ struct AppTabHostView: View {
 
     /// Runs on tab selection change: pop-to-root, dismiss top VC, sync, announce.
     /// Extracted so the iOS 18+ and legacy builders share one implementation.
-    func handleTabSelectionChange(to newTab: AppTab) {
-        // Reset the stack WITHOUT animation: an animated pop-to-root here plays
-        // concurrently with SwiftUI's own cross-tab transition, and the two
-        // animations over overlapping view trees tear/flicker on rapid tab
-        // switching. Instantaneous under the tab swap reads clean. (PP — scroll/
-        // nav rendering glitches.)
-        appContainer.navigationCoordinatorHub.coordinator?.popToRoot(animated: false)
+    func handleTabSelectionChange(from previousTab: AppTab, to newTab: AppTab) {
+        // Reset the stack of the tab being LEFT, WITHOUT animation: an animated
+        // pop-to-root here plays concurrently with SwiftUI's own cross-tab
+        // transition, and the two animations over overlapping view trees
+        // tear/flicker on rapid tab switching. Instantaneous under the tab swap
+        // reads clean. (PP — scroll/nav rendering glitches.)
+        //
+        // PP-5022 — named explicitly. This used to pop "whatever the hub pointed
+        // at", which was an ordering accident: sometimes the tab being left,
+        // sometimes the one being entered. Popping the outgoing tab is the
+        // behavior the comment above always described.
+        appContainer.navigationCoordinatorHub.coordinator(for: previousTab)?
+            .popToRoot(animated: false)
         if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
            let top = appDelegate.topViewController() {
             top.dismiss(animated: true)
@@ -422,8 +428,8 @@ private struct TabViewChrome: ViewModifier {
                 host.appContainer.tabRouterHub.applyPending()
                 host.tabBarHeightObserver.measure()
             }
-            .onChange(of: host.router.selected) { _, newTab in
-                host.handleTabSelectionChange(to: newTab)
+            .onChange(of: host.router.selected) { previousTab, newTab in
+                host.handleTabSelectionChange(from: previousTab, to: newTab)
                 // Re-measure: selecting a tab can change bar chrome/height
                 // (esp. under iOS 26 minimize), keeping the mini-player glued.
                 host.tabBarHeightObserver.measure()

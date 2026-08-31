@@ -729,6 +729,13 @@ struct AppContainer: @unchecked Sendable {
         // read introduces no new precondition. Hoisted behind `assumeIsolated`
         // to satisfy the `targeted` checker without a signature change.
         let userAccountPublisher = MainActor.assumeIsolated { UserAccountPublisher.shared }
+        // PP-5022 — the navigation hub resolves "which stack is on screen" by
+        // asking the tab router which tab is selected, so the two hubs are one
+        // unit. Built as a pair here, in the one place both exist, so a
+        // mis-paired hub is not something a caller can assemble by accident.
+        let tabRouterHub = AppTabRouterHub()
+        let navigationCoordinatorHub = NavigationCoordinatorHub(tabRouterHub: tabRouterHub)
+
         return AppContainer(
             bookRegistry: bookRegistry,
             networkExecutor: executor,
@@ -762,8 +769,8 @@ struct AppContainer: @unchecked Sendable {
             userAccountPublisher: userAccountPublisher,
             opdsFeedService: OPDSFeedService(),
             readerService: ReaderService(),
-            navigationCoordinatorHub: NavigationCoordinatorHub(),
-            tabRouterHub: AppTabRouterHub(),
+            navigationCoordinatorHub: navigationCoordinatorHub,
+            tabRouterHub: tabRouterHub,
             drmAuthorizerProvider: {
                 #if FEATURE_DRM_CONNECTOR
                 return AdobeCertificate.isDRMAvailable ? AdobeDRMService.shared.adeptInstance : nil

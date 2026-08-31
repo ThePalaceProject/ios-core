@@ -162,6 +162,14 @@ func makeTestAppContainer(
     return dir
   }
 
+  // PP-5022 — the two hubs are one unit: the navigation hub resolves "which
+  // stack is on screen" by asking this router which tab is selected. A test
+  // container that pairs a router-less hub with a live router is exactly the
+  // pre-fix state (`hub.coordinator` degrades to last-registered), so any
+  // future test of visible-tab resolution written through this factory could
+  // only ever be green.
+  let tabRouterHub = AppTabRouterHub()
+
   return AppContainer(
     bookRegistry: resolvedBookRegistry,
     networkExecutor: executor,
@@ -188,8 +196,8 @@ func makeTestAppContainer(
     userAccountPublisher: userAccountPublisher,
     opdsFeedService: OPDSFeedService(),
     readerService: ReaderService(),
-    navigationCoordinatorHub: NavigationCoordinatorHub(),
-    tabRouterHub: AppTabRouterHub(),
+    navigationCoordinatorHub: NavigationCoordinatorHub(tabRouterHub: tabRouterHub),
+    tabRouterHub: tabRouterHub,
     drmAuthorizerProvider: { nil },
     authCoordinator: authCoordinator
   )
