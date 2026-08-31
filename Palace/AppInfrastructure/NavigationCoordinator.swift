@@ -187,12 +187,14 @@ final class NavigationCoordinator: ObservableObject {
 
     /// Pops the entire stack back to the root.
     ///
-    /// `animated: false` mutates the path with NO animation — used by the
-    /// tab-switch handler. An animated path collapse there runs concurrently
-    /// with SwiftUI's own cross-tab transition; the two animations play over
-    /// overlapping view trees and tear/flicker on rapid tab switching. Under a
-    /// tab swap the reset should be instantaneous (hidden by the tab
-    /// transition), so callers on that path pass `animated: false`.
+    /// `animated: false` is for teardown the patron did not ask for — the
+    /// account-switch sweep, and being sent to a tab's root by the app while
+    /// arriving from another tab, where the tab transition hides the collapse.
+    /// A pop the patron can SEE happen animates: re-tapping the tab they are
+    /// already on, and being sent to the root of the tab they are already on.
+    /// (Until PP-5051 this flag existed for the tab-switch reset, which ran
+    /// concurrently with SwiftUI's cross-tab transition and tore; that reset is
+    /// gone.)
     func popToRoot(animated: Bool = true) {
         guard !path.isEmpty else { return }
         isTopRouteAudio = false
