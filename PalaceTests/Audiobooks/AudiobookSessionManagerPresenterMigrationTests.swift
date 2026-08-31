@@ -68,8 +68,8 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
         try await super.setUp()
         spyPresenter = SpyAudiobookSessionPresenter()
         realCoordinator = NavigationCoordinator()
-        realHub = NavigationCoordinatorHub()
-        realHub.coordinator = realCoordinator
+        realHub = NavigationCoordinatorHub(tabRouterHub: nil)
+        realHub.register(realCoordinator, for: nil)
         appContainer = makeTestAppContainer()
 
         // Manager is constructed with BOTH seams overridden:

@@ -34,6 +34,15 @@ final class AppTabRouterHub {
         }
     }
 
+    /// The tab currently on screen, as far as anything outside the view layer can
+    /// know it. Prefers the live router; falls back to a pending selection so a
+    /// deep link that arrived while the view hierarchy was released still resolves
+    /// to the tab the patron is about to land on rather than the stale default.
+    @MainActor
+    var currentTab: AppTab? {
+        router?.selected ?? pendingTab
+    }
+
     @MainActor
     func applyPending() {
         guard let tab = pendingTab, let router else { return }

@@ -560,13 +560,11 @@ final class BookDetailViewModelTests: XCTestCase {
         let book = createTestBook()
 
         // Book from catalog (unborrowed) should have no expiration date
-        // because the availability is for borrowing, not a loan
+        // because the availability is for borrowing, not a loan.
         let expirationDate = book.getExpirationDate()
 
-        // The mock book may or may not have availability - what matters is the logic
-        // For unborrowed books with "borrow" availability, there's no "until" date
-        // This test documents expected behavior
-        XCTAssertTrue(true, "Test documents that unborrowed books may not have expiration dates")
+        XCTAssertNil(expirationDate,
+                     "An unborrowed catalog book has borrow availability, not a loan — there is no 'until' date to report")
     }
 
     func testBook_GetExpirationDate_ReturnsDate_WhenLimitedAvailability() {
@@ -1560,8 +1558,16 @@ final class BookDetailViewModelTests: XCTestCase {
     /// book payload was stored so NavigationHostView can resolve it.
     func testBookDetailViewModel_handleAction_readStreaming_callsDidSelectReadStreaming() {
         let coordinator = NavigationCoordinator()
-        AppContainer.production().navigationCoordinatorHub.coordinator = coordinator
-        defer { AppContainer.production().navigationCoordinatorHub.coordinator = nil }
+        // PP-5022 — pin the hub's resolution deterministically rather than
+        // relying on production's tab router being unset: `pendingTab` is never
+        // cleared in a test process, so a fallback-dependent lookup is
+        // order-dependent. The router is held for the scope of the test; the
+        // hub holds it (and the coordinator) weakly.
+        let pinnedRouter = AppTabRouter()
+        pinnedRouter.selected = .catalog
+        AppContainer.production().tabRouterHub.router = pinnedRouter
+        AppContainer.production().navigationCoordinatorHub.register(coordinator, for: .catalog)
+        defer { withExtendedLifetime(pinnedRouter) {} }
 
         let book = makeStreamingHTMLBook(id: "handle-action-readStreaming")
         let mockRegistry = TPPBookRegistryMock()

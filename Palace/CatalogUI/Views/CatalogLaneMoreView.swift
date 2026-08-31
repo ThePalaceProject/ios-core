@@ -71,7 +71,6 @@ struct CatalogLaneMoreView: View {
         .task { await viewModel.load(coordinator: coordinator) }
         .onAppear {
             Log.debug(#file, "🟢 CatalogLaneMoreView.onAppear() - Appearing")
-            setupCoordinator()
             setupAccount()
         }
         .onReceive(accountChangePublisher) { _ in
@@ -137,12 +136,6 @@ struct CatalogLaneMoreView: View {
 
     // MARK: - Setup Helpers
 
-    private func setupCoordinator() {
-        if appContainer.navigationCoordinatorHub.coordinator == nil {
-            appContainer.navigationCoordinatorHub.coordinator = coordinator
-        }
-    }
-
     private func setupAccount() {
         let account = appContainer.accountsManager.currentAccount
         account?.logoDelegate = logoObserver
@@ -179,13 +172,15 @@ struct CatalogLaneMoreView: View {
     // MARK: - Navigation
 
     private func presentBookDetail(_ book: TPPBook) {
-        setupCoordinator()
+        // PP-5022 — pushes go through the `@EnvironmentObject` coordinator, i.e.
+        // the stack actually hosting this view. This view is reached from
+        // `BookDetailView` on EVERY tab, so it must never assert a tab identity
+        // to the hub; `NavigationHostView` is the only authority on that.
         coordinator.store(book: book)
         coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
     }
 
     private func presentLaneMore(title: String, url: URL) {
-        setupCoordinator()
         coordinator.push(.catalogLaneMore(title: title, url: url))
     }
 

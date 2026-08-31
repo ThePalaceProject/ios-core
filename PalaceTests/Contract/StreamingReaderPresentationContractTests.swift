@@ -38,15 +38,28 @@ import PalaceBookModel
 final class StreamingReaderPresentationContractTests: XCTestCase {
 
     private var coordinator: NavigationCoordinator!
+    private var pinnedRouter: AppTabRouter!
 
     override func setUp() {
         super.setUp()
         coordinator = NavigationCoordinator()
-        AppContainer.production().navigationCoordinatorHub.coordinator = coordinator
+        // PP-5022 — pin the hub's resolution deterministically rather than
+        // relying on production's tab router being unset. `currentTab` prefers
+        // the live router, so attaching one (held strongly for this test's
+        // lifetime; the hub holds it weakly) makes the SUT's coordinator
+        // lookup independent of whatever any earlier test left behind in
+        // `pendingTab` — which is otherwise never cleared in a test process
+        // and would silently turn every later lookup into nil.
+        pinnedRouter = AppTabRouter()
+        pinnedRouter.selected = .myBooks
+        AppContainer.production().tabRouterHub.router = pinnedRouter
+        AppContainer.production().navigationCoordinatorHub.register(coordinator, for: .myBooks)
     }
 
     override func tearDown() {
-        AppContainer.production().navigationCoordinatorHub.coordinator = nil
+        // The hub registers weakly, so dropping the last strong reference here
+        // is what clears it — there is nothing to un-set.
+        pinnedRouter = nil
         coordinator = nil
         super.tearDown()
     }

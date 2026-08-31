@@ -61,7 +61,7 @@ final class AppContainerTests: XCTestCase {
             userAccountPublisher: .shared,
             opdsFeedService: AppContainer.production().opdsFeedService,
             readerService: AppContainer.production().readerService,
-            navigationCoordinatorHub: NavigationCoordinatorHub(),
+            navigationCoordinatorHub: NavigationCoordinatorHub(tabRouterHub: nil),
             tabRouterHub: AppTabRouterHub(),
             drmAuthorizerProvider: { nil },
             authCoordinator: AppContainer.production().authCoordinator
@@ -98,7 +98,7 @@ final class AppContainerTests: XCTestCase {
             userAccountPublisher: .shared,
             opdsFeedService: AppContainer.production().opdsFeedService,
             readerService: AppContainer.production().readerService,
-            navigationCoordinatorHub: NavigationCoordinatorHub(),
+            navigationCoordinatorHub: NavigationCoordinatorHub(tabRouterHub: nil),
             tabRouterHub: AppTabRouterHub(),
             drmAuthorizerProvider: { nil },
             authCoordinator: AppContainer.production().authCoordinator
@@ -141,7 +141,7 @@ final class AppContainerTests: XCTestCase {
             userAccountPublisher: .shared,
             opdsFeedService: AppContainer.production().opdsFeedService,
             readerService: AppContainer.production().readerService,
-            navigationCoordinatorHub: NavigationCoordinatorHub(),
+            navigationCoordinatorHub: NavigationCoordinatorHub(tabRouterHub: nil),
             tabRouterHub: AppTabRouterHub(),
             drmAuthorizerProvider: { nil },
             authCoordinator: AppContainer.production().authCoordinator

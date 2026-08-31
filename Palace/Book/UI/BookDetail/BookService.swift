@@ -112,6 +112,9 @@ enum BookService {
                 if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                     coordinator.store(book: book)
                     coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+                } else {
+                    // PP-5022 — surface the failure instead of finishing silently.
+                    ReaderService.presentUnreachableReaderAlert(for: book, source: "BookService.streamingHTML")
                 }
             }
         default:

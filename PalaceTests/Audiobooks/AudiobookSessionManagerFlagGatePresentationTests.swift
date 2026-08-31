@@ -45,8 +45,8 @@ final class AudiobookSessionManagerFlagGatePresentationTests: XCTestCase {
         try await super.setUp()
         spyPresenter = SpyAudiobookSessionPresenter()
         realCoordinator = NavigationCoordinator()
-        realHub = NavigationCoordinatorHub()
-        realHub.coordinator = realCoordinator
+        realHub = NavigationCoordinatorHub(tabRouterHub: nil)
+        realHub.register(realCoordinator, for: nil)
         appContainer = makeTestAppContainer()
 
         sessionManager = AudiobookSessionManager(

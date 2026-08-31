@@ -1116,7 +1116,8 @@ final class BookDetailViewModel: ObservableObject {
     @MainActor
     private func presentStreamingReader(_ book: TPPBook) {
         guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
-            Log.warn(#file, "No NavigationCoordinator available — cannot present streaming reader for \(book.identifier)")
+            // PP-5022 — a warn line is not a patron-visible outcome.
+            ReaderService.presentUnreachableReaderAlert(for: book, source: "BookDetailViewModel.presentStreamingReader")
             return
         }
         coordinator.store(book: book)
