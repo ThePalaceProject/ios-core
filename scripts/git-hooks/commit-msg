@@ -79,9 +79,11 @@ if [[ -n "$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)"
   M1_FAIL=0
   # check-contract-reconciliation.py needs a claim source (commit msg +
   # optional intent) — without one it silently passes (architect rev_f1c4ea3c
-  # finding). check-intent-recorded.py needs `--commit-msg` to match the
-  # subject against the intent file's `name:` field. The `[@]+` guard keeps
-  # the empty-array expansion safe under `set -u` on macOS's bash 3.2.
+  # finding). check-intent-recorded.py is passed `--commit-msg` only for
+  # call-site compatibility; since PP-5024 it matches on the intent's
+  # `## Files in scope`, not on the subject, so the flag does not affect its
+  # verdict. The `[@]+` guard keeps the empty-array expansion safe under
+  # `set -u` on macOS's bash 3.2.
   if ! run_m1_check "contract_reconciliation" "scripts/check-contract-reconciliation.py" --commit-msg "$MSG_FILE" ${M1_INTENT_FLAG[@]+"${M1_INTENT_FLAG[@]}"}; then
     M1_FAIL=$((M1_FAIL + 1))
   fi

@@ -1,0 +1,5 @@
+fix review nit
+
+A narrow follow-up commit whose subject shares no tokens with the intent
+file that describes the branch. Under the old subject-matching rule this
+turned a correct intent file red.

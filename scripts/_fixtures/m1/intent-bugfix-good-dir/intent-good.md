@@ -15,7 +15,10 @@ type: bugfix
 
 ## Files in scope
 
-- Palace/SomeFile.swift
+- Palace/Reader2/Bookmarks/TPPAnnotations.swift
+- Palace/SignInLogic/SignInModalSheetPresenter.swift
+- Palace/SignInLogic/TPPReauthenticator.swift
+- Palace/SignInLogic/TPPSignInBusinessLogic.swift
 
 ## Reproduction
 

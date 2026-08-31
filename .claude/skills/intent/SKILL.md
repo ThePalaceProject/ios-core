@@ -70,13 +70,13 @@ Write to `.forgeos/intent/<slug>.md`. The directory exists; create it if not.
 
 ```yaml
 ---
-name: <slug>           # MUST match commit subject (the reconciler matches against this)
+name: <slug>           # what this change is called; the reconciler matches claims against it
 created: YYYY-MM-DD    # today's date
 author: <agent-id>     # e.g. claude-opus-4-7, or a human handle
 ---
 ```
 
-The `name:` field is matched against the commit-message subject line by `check-intent-recorded.py`. Pick a slug you can use verbatim in the commit subject.
+`check-intent-recorded.py` does NOT match on this name, or on the commit subject. It reads `## Files in scope` and asks whether the intent accounts for the production files the diff changes, so the verdict does not move when you reword a commit (PP-5024). Pick a slug that reads well in the commit subject anyway — `check-contract-reconciliation.py` still resolves the intent file by subject tokens.
 
 ### 3. Required body sections
 
@@ -108,7 +108,11 @@ The **Claims** section is the primary reconciler input. Each bullet should use o
 
 The **Anti-claims** section is your guard against scope creep. The blast-radius scanner and the architect reviewer will flag a diff that touches anti-claimed areas. Use it to make load-bearing promises about what you're NOT changing.
 
-The **Files in scope** section is the explicit allow-list. The intent-recorded gate parses this and warns if the staged diff touches files outside the list (unless you update the intent first).
+The **Files in scope** section is what the intent-recorded gate matches on. It fails the commit if the diff adds code to a production file this section does not name — as a file, or under a directory entry like `Palace/Reader2/`. List test files, `project.pbxproj` and docs too; only `Palace/` production files are enforced, but the section is the record of what the change touches.
+
+A branch may record more than one intent (two strands of work, two files). Between them they must still name every production file the branch changes — an older intent in the corpus does not fill the gap, because then "is this work described" would be answered by the corpus rather than by you.
+
+That guarantee is only as wide as the diff the gate is handed. `verify-pr.sh` passes the whole branch, so it holds there. The `commit-msg` hook passes `git diff --cached` — one commit — so on the second and later commits of a branch your own intent is not in the diff and the check falls back to the corpus. Land the intent file in the same commit as the code it describes, or treat the pre-PR run as the real gate.
 
 ### 4. Write the intent BEFORE coding
 
@@ -203,7 +207,7 @@ author: forge-architect
 
 | Surface | What it checks |
 |---|---|
-| `scripts/check-intent-recorded.py` | Intent file exists + frontmatter + sections + name matches commit |
+| `scripts/check-intent-recorded.py` | Intent file exists + frontmatter + sections + `## Files in scope` names every prod file the diff changes |
 | `scripts/check-contract-reconciliation.py` | Every claim is supported by the diff |
 | `scripts/check-blast-radius.py` | Diff doesn't violate anti-claims (new public surface, `#if DEBUG` prod-reach, etc.) |
 | `scripts/check-adjacency-staleness.py` | Comments don't drift from rename/remove claims |
