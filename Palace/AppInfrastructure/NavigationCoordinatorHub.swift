@@ -73,6 +73,26 @@ final class NavigationCoordinatorHub {
         byTab[tab]?.value
     }
 
+    /// Every stack still alive, in no particular order.
+    ///
+    /// PP-5051 — teardown that has to reach tabs the patron is NOT looking at.
+    /// While a tab switch reset the tab being left, the only stack that could
+    /// hold stale content was the visible one, so `coordinator` was enough. Tabs
+    /// now keep their stacks, so anything clearing content for the whole app —
+    /// an account switch, say — has to say so explicitly.
+    @MainActor
+    func allRegisteredCoordinators() -> [NavigationCoordinator] {
+        var all = byTab.values.compactMap(\.value)
+        // Include a tabless host too. All four production hosts pass a real tab,
+        // so this is unreachable today — but `NavigationHostView.tab` is
+        // deliberately optional, and a stack that a whole-app sweep cannot reach
+        // is exactly the offscreen-stale-content defect the sweep exists for.
+        if let fallback = lastRegistered, !all.contains(where: { $0 === fallback }) {
+            all.append(fallback)
+        }
+        return all
+    }
+
     /// The stack the patron is looking at.
     @MainActor
     var coordinator: NavigationCoordinator? {

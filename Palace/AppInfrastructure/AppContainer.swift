@@ -976,11 +976,68 @@ extension AppContainer {
     /// a single spy point while the production behavior is byte-for-byte identical.
     @MainActor
     fileprivate static func popToRootForAccountSwitch() async {
-        guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else { return }
-        Log.debug(#file, "  Navigation path has \(coordinator.path.count) items")
-        guard AccountsManager.shouldPopToRoot(navigationPathCount: coordinator.path.count) else { return }
-        Log.info(#file, "  🔄 Popping to root to clean up active content before account switch")
-        coordinator.popToRoot()
+        popAllToRootForAccountSwitch(hub: AppContainer.production().navigationCoordinatorHub)
         try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+    }
+
+    /// Sends the patron to a tab's ROOT, for navigation the APP initiates rather
+    /// than the patron.
+    ///
+    /// PP-5051 — every `tabRouterHub.navigate(to:)` site is "take them to that
+    /// tab to see a specific thing": a ready hold, their downloaded books, the
+    /// new library's catalog. Those relied on the destination already being at
+    /// its root, which was true only because leaving a tab reset it. Tabs now
+    /// keep their stacks, so a hold-ready notification could land the patron on
+    /// whatever book detail they happened to leave in the Holds tab. Preserving
+    /// your place is for the tabs YOU tap; being sent somewhere is not that.
+    ///
+    /// Popped BEFORE the switch so the destination is already at its root as it
+    /// appears — no flash of the previous screen.
+    ///
+    /// Animated only when the patron is already ON that tab, because then they
+    /// are watching the stack collapse and an instant cut has no tab transition
+    /// to hide behind. Arriving from another tab stays un-animated, for the
+    /// reason recorded on `NavigationCoordinator.popToRoot`.
+    @MainActor
+    func navigateToTabRoot(_ tab: AppTab) {
+        let animated = Self.shouldAnimateArrival(currentTab: tabRouterHub.currentTab,
+                                                 destination: tab)
+        navigationCoordinatorHub.coordinator(for: tab)?.popToRoot(animated: animated)
+        tabRouterHub.navigate(to: tab)
+    }
+
+    /// Whether the pop in `navigateToTabRoot` should animate.
+    ///
+    /// Animate only when the patron is ALREADY on the destination tab: they are
+    /// watching that stack, there is no cross-tab transition to hide an instant
+    /// cut behind, and `navigate(to:)` writes an unchanged value so no tab
+    /// animation races it. Arriving from another tab — or from an unknown tab,
+    /// which is a fresh arrival — stays instant.
+    ///
+    /// Extracted so the two cells are a table rather than a condition inside a
+    /// call, matching `shouldPopToRoot` / `shouldFinishSwitchingImmediately` /
+    /// `tabTapOutcome`.
+    static func shouldAnimateArrival(currentTab: AppTab?, destination: AppTab) -> Bool {
+        currentTab == destination
+    }
+
+    /// Clears active content out of EVERY tab before a library switch.
+    ///
+    /// PP-5051 — this used to pop only the tab in view, which was sufficient
+    /// only because leaving a tab reset it, so no other stack could be holding
+    /// anything. Tabs now keep their stacks: without this, switching libraries
+    /// would leave the previous library's book details, lanes, and search
+    /// results sitting in the three tabs the patron is not looking at, ready to
+    /// be found later with no indication they belong to a library they left.
+    ///
+    /// Takes the hub explicitly so the sweep is exercisable without the
+    /// production graph.
+    @MainActor
+    static func popAllToRootForAccountSwitch(hub: NavigationCoordinatorHub) {
+        for coordinator in hub.allRegisteredCoordinators() {
+            guard AccountsManager.shouldPopToRoot(navigationPathCount: coordinator.path.count) else { continue }
+            Log.info(#file, "  🔄 Popping a tab to root to clean up active content before account switch")
+            coordinator.popToRoot(animated: false)
+        }
     }
 }

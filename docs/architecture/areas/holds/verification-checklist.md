@@ -138,7 +138,7 @@ Most UNKNOWN cells reflect the PP-4020 and PP-4358 audit gaps; refresh with each
 Before any new swarm or /rigorous-fix in this area, the architect should:
 
 1. **Refresh this file's sections 1-4** — confirm the call-site map, module ownership, distributor matrix, and notification routing model are still accurate.
-2. **Verify hold-ready notification ↔ holds-list coherence (N4)** — run the N4 manual row against a multi-hold account; confirm tab-switch sync (F-035) AND throttle-shared foreground sync both fire.
+2. **Verify hold-ready notification ↔ holds-list coherence (N4)** — run the N4 manual row against a multi-hold account; confirm tab-switch sync (F-035) AND throttle-shared foreground sync both fire. Include the ALREADY-ON-HOLDS case: tapping a hold-ready notification while the Holds tab is already selected changes no tab, so the `onChange`-driven F-035 sync does not fire and the list refreshes only via the foreground path. That has always been true (PP-5051 kept it); it is called out here because PP-5051 made tapping the notification also return that tab to its root, which makes a stale list more visible.
 3. **Verify hold→loan conversion (B7) for distributors with hold support** — at minimum exercise Overdrive (F-081). Mark Adobe and LCP UNKNOWN explicitly if not exercised.
 4. **Confirm the anonymous-library carve-out** — load Palace Bookshelf or another anonymous library; assert holds tab does NOT show the sync-error banner AND does NOT offer hold actions (BUG-004 + SQ-005 regression class).
 5. **Re-run test inventory** — `find PalaceTests -name '*Hold*Tests.swift' -o -name '*HoldsReducer*Tests.swift' | wc -l` — confirm count and update Section 5.

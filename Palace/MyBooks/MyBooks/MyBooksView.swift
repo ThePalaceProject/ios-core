@@ -278,7 +278,7 @@ struct MyBooksView: View {
             .fixedSize(horizontal: false, vertical: true)
 
             Button {
-                appContainer.tabRouterHub.navigate(to: .catalog)
+                appContainer.navigateToTabRoot(.catalog)
             } label: {
                 Text(DisplayStrings.browseCatalog)
                     .padding(.horizontal, 24)

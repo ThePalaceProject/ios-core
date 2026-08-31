@@ -169,7 +169,7 @@ struct TPPSettingsView: View {
                         // parked on Settings.
                         librariesVM.showAddLibrarySheet = false
                         librariesVM.switchToAccount(account) {
-                            AppContainer.production().tabRouterHub.navigate(to: .catalog)
+                            AppContainer.production().navigateToTabRoot(.catalog)
                         }
                     }
                 },
@@ -218,7 +218,7 @@ struct TPPSettingsView: View {
             Button(Strings.Generic.yes) {
                 if let account = switchPromptAccount {
                     librariesVM.switchToAccount(account) {
-                        AppContainer.production().tabRouterHub.navigate(to: .catalog)
+                        AppContainer.production().navigateToTabRoot(.catalog)
                     }
                 }
                 switchPromptAccount = nil

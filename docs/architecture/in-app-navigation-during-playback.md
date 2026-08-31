@@ -122,6 +122,8 @@ SceneDelegate
 
 That getter used to resolve "whichever tab's stack appeared most recently", which is what made a push land on an offscreen tab (PP-5022 — the My Books Read button that did nothing). It now resolves the stack of the tab the tab router reports as SELECTED: `NavigationHostView` registers its stack under its own `AppTab`, and an unregistered selected tab yields `nil` rather than another tab's stack. For this document's purposes the consequence is that an `.audio` push lands on the visible tab. The residual, unfixed as of PP-5022, is that `dismissPlayerOnPhone`'s `removeAudioModel(forBookId:)` still resolves the same way at dismissal time, so a session presented on one tab and dismissed while another is selected leaves its cached `AudiobookPlaybackModel` behind in the original stack's store (`popToRoot` clears `path`, not the stored models).
 
+PP-5051 changed the surrounding assumption: a tab switch no longer resets the tab being left, so an offscreen tab can now hold a non-root stack. That does not reach the `.audio` route — every reader and player route sets `.toolbar(.hidden, for: .tabBar)`, so the patron cannot switch tabs while one is on screen — but it does mean anything clearing content app-wide has to say so. `AppContainer.popAllToRootForAccountSwitch` sweeps every registered stack, and app-initiated tab changes go through `AppContainer.navigateToTabRoot(_:)` so the patron lands on the destination's root rather than on whatever they left there.
+
 ### 6.2 Target state — A1 mini-player
 
 ```

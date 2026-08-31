@@ -6,6 +6,15 @@ import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
 
+/// What a tab-bar tap means. PP-5051 — a tap on the already-selected tab is a
+/// distinct gesture from a switch, and SwiftUI cannot tell them apart for you.
+enum TabTapOutcome: Equatable {
+    /// Move to a different tab.
+    case switchTo(AppTab)
+    /// Stay on this tab and return it to its root.
+    case returnToRoot(AppTab)
+}
+
 struct AppTabHostView: View {
     // `fileprivate` (not `private`) so the same-file `TabViewChrome` view
     // modifier — which both the iOS 18+ and legacy builders apply — can read
@@ -242,7 +251,7 @@ struct AppTabHostView: View {
 
     @available(iOS 18, *)
     private var modernTabView: some View {
-        TabView(selection: $router.selected) {
+        TabView(selection: tabSelection) {
             Tab(value: AppTab.catalog) {
                 catalogRoot
             } label: {
@@ -278,7 +287,7 @@ struct AppTabHostView: View {
     // MARK: - Pre-iOS-18 builder (deployment floor is iOS 17)
 
     private var legacyTabView: some View {
-        TabView(selection: $router.selected) {
+        TabView(selection: tabSelection) {
             catalogRoot
                 .tabItem { Self.tabLabel(for: .catalog) }
                 .tag(AppTab.catalog)
@@ -301,6 +310,27 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
         }
         .modifier(TabViewChrome(host: self))
+    }
+
+    /// Selection binding for both TabView builders. The setter is what makes the
+    /// re-tap gesture observable — a plain `$router.selected` swallows a write of
+    /// the current value, and with it the only way back to a tab's root.
+    ///
+    /// That the TabViews use THIS binding and not `$router.selected` is a
+    /// one-line structural fact no unit test can reach — writing it needs a
+    /// rendered `TabView`. The decision and its effects are pinned by
+    /// `applyTabTap`; the wiring itself is pinned structurally by
+    /// `AppTabSelectionBindingLintTests`.
+    private var tabSelection: Binding<AppTab> {
+        Binding(
+            get: { router.selected },
+            set: { tapped in
+                Self.applyTabTap(tapped,
+                                 current: router.selected,
+                                 hub: appContainer.navigationCoordinatorHub,
+                                 selectTab: { router.selected = $0 })
+            }
+        )
     }
 
     // MARK: - Shared tab roots (one source of truth for both builders)
@@ -352,21 +382,64 @@ struct AppTabHostView: View {
 
     // MARK: - Shared side effects
 
-    /// Runs on tab selection change: pop-to-root, dismiss top VC, sync, announce.
+    /// Routes a tab-bar tap. PP-5051 — a tap on the tab you are ALREADY on is
+    /// the standard iOS "back to the top" gesture, and it is the only way back
+    /// to a tab's root now that switching away preserves the stack.
+    ///
+    /// This cannot be an `onChange`: SwiftUI writes the same value to the
+    /// selection binding on a re-tap, so nothing changes and `onChange` never
+    /// fires. The tap has to be observed in the binding's setter instead.
+    /// Applies a tab-bar tap: return the tapped tab to its root if it is already
+    /// the current one, otherwise switch to it. A tap on the tab you are ALREADY
+    /// on is the standard iOS "back to the top" gesture, and it is the only
+    /// one-tap way back to a tab's root now that switching away preserves the
+    /// stack.
+    ///
+    /// Takes `current`, the hub and the selection sink EXPLICITLY rather than
+    /// reading `router`, because a version that read `router` could not be
+    /// pinned by any test. `router` is a `@StateObject`, and SwiftUI creates a
+    /// new instance on every access outside a rendered view ("Accessing
+    /// StateObject's object without being installed on a View") — so a write and
+    /// a read-back from a test land on different objects, and an assertion over
+    /// them passes or fails for reasons unrelated to this code. Explicit inputs
+    /// make the composition a pure function, leaving only the `tabSelection`
+    /// binding itself outside unit-test reach — and that wiring is pinned by
+    /// `AppTabSelectionBindingLintTests`.
+    ///
+    /// The pop is animated, unlike the reset this replaces: it is a deliberate
+    /// tap on the visible tab, so there is no cross-tab transition to tear
+    /// against.
+    static func applyTabTap(_ tapped: AppTab,
+                            current: AppTab,
+                            hub: NavigationCoordinatorHub,
+                            selectTab: (AppTab) -> Void) {
+        switch tabTapOutcome(tapped: tapped, current: current) {
+        case .returnToRoot(let tab):
+            hub.coordinator(for: tab)?.popToRoot()
+        case .switchTo(let tab):
+            selectTab(tab)
+        }
+    }
+
+    /// The decision behind `applyTabTap`, separated so the two-cell table can be
+    /// asserted on its own.
+    static func tabTapOutcome(tapped: AppTab, current: AppTab) -> TabTapOutcome {
+        tapped == current ? .returnToRoot(tapped) : .switchTo(tapped)
+    }
+
+    /// Runs on tab selection change: dismiss top VC, sync, announce.
     /// Extracted so the iOS 18+ and legacy builders share one implementation.
     func handleTabSelectionChange(from previousTab: AppTab, to newTab: AppTab) {
-        // Reset the stack of the tab being LEFT, WITHOUT animation: an animated
-        // pop-to-root here plays concurrently with SwiftUI's own cross-tab
-        // transition, and the two animations over overlapping view trees
-        // tear/flicker on rapid tab switching. Instantaneous under the tab swap
-        // reads clean. (PP — scroll/nav rendering glitches.)
+        // PP-5051 — a tab switch no longer resets the tab being left. Each tab
+        // keeps its own stack, as on every other iOS app, so browsing deep into
+        // a lane and stepping over to My Books no longer costs you your place.
+        // The way back to a tab's root is tapping the tab you are already on
+        // (see `tabTapOutcome`), which is the gesture patrons already know.
         //
-        // PP-5022 — named explicitly. This used to pop "whatever the hub pointed
-        // at", which was an ordering accident: sometimes the tab being left,
-        // sometimes the one being entered. Popping the outgoing tab is the
-        // behavior the comment above always described.
-        appContainer.navigationCoordinatorHub.coordinator(for: previousTab)?
-            .popToRoot(animated: false)
+        // The reset this replaces was never a decision: it arrived in an
+        // unrelated cleanup with no rationale, and until PP-5022 it popped
+        // whichever stack a global pointer happened to hold — sometimes the tab
+        // being left, sometimes the one being entered.
         if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
            let top = appDelegate.topViewController() {
             top.dismiss(animated: true)

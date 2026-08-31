@@ -1,5 +1,5 @@
 //
-//  AppTabHostTabSwitchResetTests.swift
+//  AppTabSwitchPreservesStacksTests.swift
 //  PalaceTests
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
@@ -9,16 +9,24 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
-/// PP-5022 — pins the second production behavior change: a tab switch resets
-/// the stack of the tab being LEFT, not the one being entered.
+/// What a tab switch does to the tabs' navigation stacks.
 ///
-/// This used to pop "whatever the global hub pointer held", which was an
-/// ordering accident — sometimes the outgoing tab, sometimes the incoming one.
-/// Nothing pinned it, so swapping the two arguments of
-/// `handleTabSelectionChange(from:to:)` would silently yank the screen the
-/// patron is navigating TO, and the suite would stay green.
+/// PP-5022 made this deterministic: the reset had been aimed at whichever stack
+/// a global pointer happened to hold, so it hit the tab being left or the tab
+/// being entered depending on view-appearance ordering. This class pinned it to
+/// the outgoing tab.
+///
+/// PP-5051 then removed the reset entirely — deliberately inverting the contract
+/// these tests were written to hold. A tab switch must now leave BOTH stacks
+/// alone, so browsing deep into a lane and stepping over to My Books no longer
+/// costs you your place. The assertions below are the inversion, kept in place
+/// rather than deleted so the change of contract is visible: the mutant that
+/// matters is a reset creeping back in, on either side of the switch.
+///
+/// The way back to a tab's root is now tapping the tab you are already on; that
+/// gesture is covered by `AppTabStackMemoryTests`.
 @MainActor
-final class AppTabHostTabSwitchResetTests: XCTestCase {
+final class AppTabSwitchPreservesStacksTests: XCTestCase {
 
     private var testContainer: AppContainer!
     private var host: AppTabHostView!
@@ -38,10 +46,9 @@ final class AppTabHostTabSwitchResetTests: XCTestCase {
         try await super.tearDown()
     }
 
-    /// Leaving Catalog for My Books resets Catalog and leaves My Books alone.
-    /// Both stacks are non-empty so "reset the right one" is distinguishable
-    /// from "reset everything" and from "reset nothing".
-    func testTabSelectionChange_ResetsTheOutgoingTabOnly() {
+    /// Both stacks non-empty, so "reset neither" is distinguishable from "reset
+    /// the outgoing one", "reset the incoming one", and "reset both".
+    func testTabSelectionChange_LeavesBothStacksAlone() {
         let hub = testContainer.navigationCoordinatorHub
         let catalog = NavigationCoordinator()
         let myBooks = NavigationCoordinator()
@@ -52,14 +59,15 @@ final class AppTabHostTabSwitchResetTests: XCTestCase {
 
         host.handleTabSelectionChange(from: .catalog, to: .myBooks)
 
-        XCTAssertEqual(catalog.path.count, 0,
-                       "The tab being left must be reset to root")
+        XCTAssertEqual(catalog.path.count, 1,
+                       "The tab being left must keep the screen the patron was on")
         XCTAssertEqual(myBooks.path.count, 1,
-                       "The tab being entered must keep the screen the patron is arriving at")
+                       "The tab being entered must keep the screen it was showing")
     }
 
-    /// The mirror case — swapping the arguments must not pass both directions.
-    func testTabSelectionChange_LeavingMyBooks_ResetsMyBooksNotCatalog() {
+    /// The mirror direction — a reset that only fires one way would pass the
+    /// test above.
+    func testTabSelectionChange_LeavingMyBooks_LeavesBothStacksAlone() {
         let hub = testContainer.navigationCoordinatorHub
         let catalog = NavigationCoordinator()
         let myBooks = NavigationCoordinator()
@@ -70,13 +78,13 @@ final class AppTabHostTabSwitchResetTests: XCTestCase {
 
         host.handleTabSelectionChange(from: .myBooks, to: .catalog)
 
-        XCTAssertEqual(myBooks.path.count, 0, "The tab being left must be reset to root")
-        XCTAssertEqual(catalog.path.count, 1, "The tab being entered must be untouched")
+        XCTAssertEqual(myBooks.path.count, 1)
+        XCTAssertEqual(catalog.path.count, 1)
     }
 
-    /// A tab with no registered stack must not take the reset out on some other
-    /// tab — the wrong-stack write this whole fix exists to prevent.
-    func testTabSelectionChange_UnregisteredOutgoingTab_TouchesNothing() {
+    /// A switch involving a tab with no registered stack must be a no-op rather
+    /// than reaching for some other tab's — the wrong-stack write PP-5022 fixed.
+    func testTabSelectionChange_UnregisteredTab_TouchesNothing() {
         let hub = testContainer.navigationCoordinatorHub
         let myBooks = NavigationCoordinator()
         hub.register(myBooks, for: .myBooks)
@@ -85,6 +93,6 @@ final class AppTabHostTabSwitchResetTests: XCTestCase {
         host.handleTabSelectionChange(from: .holds, to: .myBooks)
 
         XCTAssertEqual(myBooks.path.count, 1,
-                       "An unregistered outgoing tab must not fall through and reset another tab's stack")
+                       "An unregistered tab must not fall through to another tab's stack")
     }
 }

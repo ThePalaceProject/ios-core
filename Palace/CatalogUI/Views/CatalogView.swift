@@ -235,7 +235,7 @@ private extension CatalogView {
                 .padding(.horizontal)
 
             Button(action: {
-                appContainer.tabRouterHub.navigate(to: .myBooks)
+                appContainer.navigateToTabRoot(.myBooks)
             }, label: {
                 Text(Strings.Catalog.offlineGoToMyBooks)
                     .padding(.horizontal, 24)

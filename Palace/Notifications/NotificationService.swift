@@ -893,7 +893,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                 )
                 switch outcome {
                 case .navigate:
-                    AppContainer.production().tabRouterHub.navigate(to: .holds)
+                    AppContainer.production().navigateToTabRoot(.holds)
                     Log.info(#file, "[Notification] Navigated to Holds tab")
                 case .skipUnsupportedReservations:
                     Log.warn(#file, "[Notification] Cannot navigate to Holds - account doesn't support reservations")
