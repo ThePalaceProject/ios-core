@@ -85,7 +85,7 @@ def test_coverage_leg_passes_the_json_and_keys_off_exit_code():
     its documented exit code (0 met / 1 violated / 2 input error), never on
     grepping stdout."""
     src = open(VERIFY, encoding="utf-8").read()
-    assert 'enforce_coverage_floors.py "$COV_JSON" --baseline-only' in src
+    assert 'enforce_coverage_floors.py "$COV_JSON"' in src
     assert 'enforce_coverage_floors.py --baseline-only' not in src
     assert 'COV_RC=$?' in src
     assert 'echo "$COV_OUTPUT" | grep -q "VIOLATED"' not in src
@@ -108,3 +108,38 @@ def test_coverage_leg_never_reports_pass_without_measuring():
     passes = [ln for ln in block.splitlines() if 'record "coverage_floors" "pass"' in ln]
     assert len(passes) == 1, "exactly one path may report a pass"
     assert 'COV_RC" -eq 0' in block
+
+
+def test_coverage_leg_does_not_pass_baseline_only():
+    """`--baseline-only` sets every floor to the current actual
+    (`effective_floor = actual if baseline_only`, enforce_coverage_floors.py:170),
+    so the comparison is `actual >= actual` and the gate cannot fail.
+
+    This is not theoretical. Against a real bundle the same coverage data
+    exits 0 with the flag and reports `Coverage gate: FAIL` without it
+    (AudiobookSessionManager 31.5% against a recorded floor of 44.0%). Fixing
+    the call site to MEASURE while leaving this flag on would have produced a
+    gate that reads coverage and still always passes."""
+    src = open(VERIFY, encoding="utf-8").read()
+    i = src.index("# 4. Coverage floors")
+    block = src[i:i + 3000]
+    # Check the INVOCATION, not the block text — the fix's own comment names
+    # the flag to explain why it is not used, and a naive substring search
+    # would trip on the explanation. (Same trap as the ratchet detectors that
+    # counted comment mentions.)
+    invocations = [
+        ln for ln in block.splitlines()
+        if "enforce_coverage_floors.py" in ln and not ln.strip().startswith("#")
+    ]
+    assert invocations, "the coverage leg must invoke the enforcement script"
+    for ln in invocations:
+        assert "--baseline-only" not in ln, ln.strip()
+
+
+def test_baseline_only_cannot_fail_by_construction():
+    """Tripwire on the dependency. If `--baseline-only` ever gains real
+    semantics, the comment in verify-pr.sh explaining why it is not used needs
+    revisiting."""
+    src = open(ENFORCE, encoding="utf-8").read()
+    assert "effective_floor = actual if baseline_only else float(floor)" in src
+    assert "overall_floor = overall_actual" in src

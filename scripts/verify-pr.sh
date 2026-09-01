@@ -1144,7 +1144,13 @@ elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.j
     # report a pass for a run that produced no measurement.
     COV_JSON="${TMPDIR:-/tmp}/verify-pr-coverage-$$.json"
     if python3 scripts/coverage-report.py "$XCRESULT" --json "$COV_JSON" >/dev/null 2>&1 && [ -s "$COV_JSON" ]; then
-      COV_OUTPUT=$(python3 scripts/enforce_coverage_floors.py "$COV_JSON" --baseline-only 2>&1)
+      # NOT `--baseline-only`. That flag sets every floor to the CURRENT
+      # actual (`effective_floor = actual if baseline_only`), so the
+      # comparison is `actual >= actual` and the gate can never fail —
+      # measured and confirmed: exit 0 on a tree that violates its own
+      # recorded floors. Enforcing `scripts/coverage-floors.json` is the
+      # whole point of the leg.
+      COV_OUTPUT=$(python3 scripts/enforce_coverage_floors.py "$COV_JSON" 2>&1)
       COV_RC=$?
       if [ "$COV_RC" -eq 0 ]; then
         record "coverage_floors" "pass" "All module floors met"
