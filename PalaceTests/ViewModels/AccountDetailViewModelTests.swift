@@ -1149,6 +1149,17 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
         )
         seededAccountCleanup = seedCleanup
         seededLibraryID = seededAccount.uuid
+        // PP-5057. `makeViewModel` guarded the library *id* and never checked
+        // that it RESOLVED. An id left in the app container by an unrelated
+        // test — "pp4542-failed-auth" — satisfies a non-nil check while
+        // `account(_:)` returns nil, so these tests built a view model for a
+        // library that does not exist and passed. Pin resolvability, not
+        // presence: a seed that ever regresses to id-only fails here, loudly,
+        // instead of quietly reinstating the defect this class was fixed for.
+        XCTAssertNotNil(
+            AppContainer.production().accountsManager.account(seededLibraryID),
+            "Seeded account \(seededLibraryID) must RESOLVE via account(_:), not merely be a non-nil id"
+        )
     }
 
     override func tearDown() {
