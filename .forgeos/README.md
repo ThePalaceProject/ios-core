@@ -8,7 +8,7 @@ that, start at [`docs/README.md`](../docs/README.md).
 
 | Directory | What it holds | Still written? |
 |---|---|---|
-| `intent/` | Pre-change contracts — Claims, Anti-claims, Files-in-scope — that `check-intent-recorded.py` and `check-contract-reconciliation.py` verify a diff against. `verify-pr.sh` matches these by branch subject, so the directory is **live**: do not prune it. | yes |
+| `intent/` | Pre-change contracts — Claims, Anti-claims, Files-in-scope — that `check-intent-recorded.py` and `check-contract-reconciliation.py` verify a diff against. `check-intent-recorded.py` resolves an intent by its Files-in-scope against the diff (PP-5024); `check-contract-reconciliation.py` still resolves one by commit-subject tokens. Either way the directory is **live**: do not prune it. | yes |
 | `wall-failures/` | Post-mortems of verification that passed while the defect was live. The highest-value corpus here — indexed in [`wall-failures/INDEX.md`](./wall-failures/INDEX.md). | yes |
 | `changesets/` | Per-changeset review records from the ForgeOS era. | no |
 | `audits/`, `reviews/`, `handoffs/`, `swift6-a6/` | One-off campaign records. | no |

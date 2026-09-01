@@ -1,0 +1,29 @@
+diff --git a/Palace/SignInLogic/TPPReauthenticator.swift b/Palace/SignInLogic/TPPReauthenticator.swift
+index 1111111..2222222 100644
+--- a/Palace/SignInLogic/TPPReauthenticator.swift
++++ b/Palace/SignInLogic/TPPReauthenticator.swift
+@@ -20,6 +20,10 @@ final class TPPReauthenticator {
+   private let container: AppContainer
+ 
+   func authenticateIfNeeded() {
++    guard needsAuth else {
++      return
++    }
++    container.signInBusinessLogic.authenticate()
+     legacyAuthenticate()
+   }
+ }
+diff --git a/Palace/Holds/HoldsReducer.swift b/Palace/Holds/HoldsReducer.swift
+index 3333333..4444444 100644
+--- a/Palace/Holds/HoldsReducer.swift
++++ b/Palace/Holds/HoldsReducer.swift
+@@ -44,5 +44,9 @@ enum HoldsReducer {
+     case .reserved:
+       return .none
++    case .expired(let at):
++      state.holds.removeAll { $0.expiry == at }
++      return .refresh
++
+     }
+   }
+ }
