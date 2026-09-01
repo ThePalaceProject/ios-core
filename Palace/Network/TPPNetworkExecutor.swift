@@ -21,10 +21,92 @@ enum NYPLResult<SuccessInfo> {
     case failure(TPPUserFriendlyError, URLResponse?)
 }
 
+/// Provenance travelling with a `URLSessionTask`, for facts the task's own
+/// request cannot answer later.
+///
+/// PP-4986: when a 401 queues a request for retry, the rebuild needs the account
+/// the request was ORIGINALLY dispatched for. Resolving it at retry time — or
+/// even at 401 time — reads whichever library is selected then, which is the
+/// leak: a patron who switched libraries mid-download had the new library's
+/// bearer sent to the old library's server.
+///
+/// `taskDescription` is an app-owned `String?` that never reaches the wire and
+/// survives the task, which is exactly the right carrier. It is a SHARED field
+/// though — `DownloadTaskPersistence.adoptableTask` has already earmarked it for
+/// a book id — so this encodes `key=value;` pairs rather than claiming the whole
+/// string, and a future book-id key can be added without disturbing this one.
+enum TaskProvenance {
+    /// CONSTRAINT: values must not contain `;` or `=`. Nothing escapes them, so a
+    /// value carrying either is silently truncated or dropped on the next parse.
+    /// Account ids are UUID URNs and cannot; a future co-tenant key must check.
+    private static let accountKey = "acct"
+
+    static func setAccount(_ accountId: String?, on task: URLSessionTask) {
+        guard let accountId, !accountId.isEmpty else { return }
+        var fields = parse(task.taskDescription)
+        fields[accountKey] = accountId
+        task.taskDescription = encode(fields)
+    }
+
+    static func account(of task: URLSessionTask) -> String? {
+        parse(task.taskDescription)[accountKey]
+    }
+
+    /// The co-tenant entry point. `DownloadTaskPersistence` instructs a future
+    /// book-id author to add their key *through here* rather than assigning
+    /// `taskDescription` directly — but that instruction was unfollowable until
+    /// this existed, and the erasure it warns about was therefore untestable.
+    static func set(_ value: String?, forKey key: String, on task: URLSessionTask) {
+        guard let value, !value.isEmpty, !key.isEmpty else { return }
+        var fields = parse(task.taskDescription)
+        fields[key] = value
+        task.taskDescription = encode(fields)
+    }
+
+    static func value(forKey key: String, of task: URLSessionTask) -> String? {
+        parse(task.taskDescription)[key]
+    }
+
+    private static func encode(_ fields: [String: String]) -> String {
+        fields.sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ";")
+    }
+
+    private static func parse(_ description: String?) -> [String: String] {
+        guard let description, !description.isEmpty else { return [:] }
+        var out: [String: String] = [:]
+        for pair in description.split(separator: ";") {
+            let parts = pair.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            out[String(parts[0])] = String(parts[1])
+        }
+        return out
+    }
+}
+
 /// Actor that serializes access to the token refresh state and retry queue.
 private actor TokenRefreshCoordinator {
     var isRefreshing = false
-    var retryQueue: [URLSessionTask] = []
+    /// A queued retry, and the fallback account to rebuild it with when the task
+    /// itself carries no dispatch-time stamp.
+    ///
+    /// The account must travel with the task. Requests for different libraries
+    /// share this one queue — a task enqueued because a refresh for library A
+    /// was already in flight sits next to A's own task — and by the time the
+    /// queue drains, the patron may have switched libraries. Rebuilding from
+    /// whatever account is current at drain time sends one library's
+    /// credentials to another library's server (PP-4986).
+    struct QueuedRetry {
+        let task: URLSessionTask
+        /// FALLBACK ONLY. The account resolved when the refresh was triggered,
+        /// which for a caller passing no `accountId` is simply the current
+        /// library. The load-bearing value is the dispatch-time stamp read from
+        /// the task itself (`TaskProvenance`); this is what the rebuild uses when
+        /// a task carries no stamp, which today means download-center tasks.
+        let accountIdAtRefreshStart: String?
+    }
+    var retryQueue: [QueuedRetry] = []
     /// Count of underlying token-refresh attempts that actually took the
     /// single-flight slot (i.e. transitioned `isRefreshing` from false to true).
     /// Read-only; test-observable via `TPPNetworkExecutor.refreshAttemptCount`.
@@ -65,7 +147,7 @@ private actor TokenRefreshCoordinator {
     /// queue so the caller can fail those requests. Returns `nil` when the
     /// refresh already completed normally or a newer one is in progress, in
     /// which case the watchdog must not interfere.
-    func forceReleaseIfStuck(generation: Int) -> [URLSessionTask]? {
+    func forceReleaseIfStuck(generation: Int) -> [QueuedRetry]? {
         guard isRefreshing, refreshGeneration == generation else { return nil }
         isRefreshing = false
         let stranded = retryQueue
@@ -77,14 +159,15 @@ private actor TokenRefreshCoordinator {
         refreshAttemptCount = 0
     }
 
-    func appendToRetryQueue(_ task: URLSessionTask) {
-        retryQueue.append(task)
+    func appendToRetryQueue(_ task: URLSessionTask, accountIdAtRefreshStart: String?) {
+        retryQueue.append(QueuedRetry(task: task,
+                                      accountIdAtRefreshStart: accountIdAtRefreshStart))
     }
 
-    func drainRetryQueue() -> [URLSessionTask] {
-        let tasks = retryQueue
+    func drainRetryQueue() -> [QueuedRetry] {
+        let entries = retryQueue
         retryQueue.removeAll()
-        return tasks
+        return entries
     }
 }
 
@@ -266,7 +349,7 @@ private final class CompletionResultBox: @unchecked Sendable {
                 return // refresh completed normally, or a newer one took over
             }
             Log.error(#file, "Token refresh watchdog fired after \(timeout)s — force-releasing wedged refresh (generation \(generation)); failing \(stranded.count) stranded request(s)")
-            stranded.forEach { $0.cancel() }
+            stranded.forEach { $0.task.cancel() }
         }
     }
 
@@ -283,14 +366,19 @@ private final class CompletionResultBox: @unchecked Sendable {
     func currentTokenRefreshGenerationForTesting() async -> Int {
         await tokenCoordinator.currentGeneration()
     }
-    func appendTokenRetryForTesting(_ task: URLSessionTask) async {
-        await tokenCoordinator.appendToRetryQueue(task)
+    func appendTokenRetryForTesting(_ task: URLSessionTask,
+                                    accountIdAtRefreshStart: String? = nil) async {
+        await tokenCoordinator.appendToRetryQueue(
+            task, accountIdAtRefreshStart: accountIdAtRefreshStart)
     }
     func setTokenRefreshingForTesting(_ value: Bool) async {
         await tokenCoordinator.setRefreshing(value)
     }
     func forceReleaseStuckTokenRefreshForTesting(generation: Int) async -> [URLSessionTask]? {
-        await tokenCoordinator.forceReleaseIfStuck(generation: generation)
+        // Existing watchdog tests assert on the stranded TASKS; the account
+        // each carried is not part of that contract, so unwrap rather than
+        // widen the seam and ripple into them.
+        await tokenCoordinator.forceReleaseIfStuck(generation: generation)?.map(\.task)
     }
 
     func GET(_ reqURL: URL,
@@ -336,12 +424,22 @@ extension TPPNetworkExecutor: TokenRefreshing { }
 extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult
     func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
-        let accountId = accountsManager.currentAccountId
+        executeRequest(req, enableTokenRefresh: enableTokenRefresh, accountId: nil, completion: completion)
+    }
+
+    /// PP-4986: `accountId` names the library this request was BUILT for. nil
+    /// means "the current one", which is what every caller meant before this
+    /// existed — so the behaviour of the two-argument form is unchanged.
+    func executeRequest(_ req: URLRequest,
+                        enableTokenRefresh: Bool,
+                        accountId requestedAccountId: String?,
+                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
+        let accountId = requestedAccountId ?? accountsManager.currentAccountId
         let userAccount = accountId.flatMap { accountsManager.userAccount(for: $0) } ?? accountsManager.currentUserAccount
 
         // SAML auth uses cookies, not tokens - proceed directly
         if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
-            return performDataTask(with: req, completion: completion)
+            return performDataTask(with: req, accountId: accountId, completion: completion)
         }
 
         // Proactive token refresh: if token will expire soon, refresh before the request
@@ -352,17 +450,43 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
            authDef.tokenURL != nil {
             Log.info(#file, "Token near expiry - proactively refreshing before request")
             refreshTokenAndResume(task: nil, accountId: accountId) { [weak self] _ in
-                _ = self?.performDataTask(with: req, completion: completion)
+                _ = self?.performDataTask(with: req, accountId: accountId, completion: completion)
             }
             return nil
         }
 
-        return performDataTask(with: req, completion: completion)
+        return performDataTask(with: req, accountId: accountId, completion: completion)
     }
 
     private func performDataTask(with request: URLRequest,
+                                 accountId: String?,
                                  completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
         let task = transport.urlSession.dataTask(with: request)
+        // Stamp the account this task is being DISPATCHED for. Unlike
+        // `currentAccountId` read later, this cannot drift under a library
+        // switch — which is the whole defect (PP-4986).
+        //
+        // Scope, stated precisely because an earlier draft of this comment
+        // asserted an invariant that does not hold: `executeRequest` resolves
+        // `currentAccountId` and discards whatever account the CALLER built the
+        // request for. So requests built for a NON-current library are stamped
+        // with the current one. `TPPSignInBusinessLogic.makeRequest` does exactly
+        // that for Settings sign-in/sign-out on an arbitrary library
+        // (`TPPSignInBusinessLogic.swift:1049`, and `:1103` branches explicitly on
+        // `libraryAccountID != currentAccountId`), as does
+        // `NotificationService.deleteToken(for:)` — see the note below —.
+        //
+        // Those paths ARE now covered: `TPPRequestExecuting.executeRequest` gained
+        // an `accountId:` overload in this change, and the Settings sign-in /
+        // sign-out and profile-document callers pass their library.
+        //
+        // Still NOT covered: `NotificationService.deleteToken(for:)`. It dispatches
+        // through `addBearerAndExecute`, which has no account parameter and calls
+        // the two-argument form — so the overload cannot serve it. It is invoked
+        // for arbitrary accounts and is wrong at DISPATCH, not merely on retry,
+        // which makes it a wider pre-existing defect than this change addresses.
+        // Closing it needs `accountId` on `addBearerAndExecute`.
+        TaskProvenance.setAccount(accountId, on: task)
         responder.addCompletion(completion, taskID: task.taskIdentifier)
         transport.activeTasksStore.add(task)
         task.resume()
@@ -500,6 +624,11 @@ extension TPPNetworkExecutor {
         }
 
         let task = transport.urlSession.downloadTask(with: req)
+        // Fifth producer. It registers with the responder, so a 401 reaches the
+        // retry queue like any other task. Zero production callers today (tests
+        // only), which is why it was missed — but "no caller" is a fact about
+        // now, not a property of the code, and stamping it costs one line.
+        TaskProvenance.setAccount(accountsManager.currentAccountId, on: task)
         responder.addCompletion(completionWrapper, taskID: task.taskIdentifier)
         task.resume()
 
@@ -630,7 +759,7 @@ extension TPPNetworkExecutor {
             if !claimed {
                 Log.debug(#file, "Token refresh already in progress, queueing task for retry")
                 if let task {
-                    await self.tokenCoordinator.appendToRetryQueue(task)
+                    await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
                     if let completionBox {
                         self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
                     }
@@ -666,7 +795,7 @@ extension TPPNetworkExecutor {
             Log.info(#file, "Refreshing token for auth type: \(authType), account: \(capturedAccountId ?? "current")")
 
             if let task {
-                await self.tokenCoordinator.appendToRetryQueue(task)
+                await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
                 if let completionBox {
                     self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
                 }
@@ -692,14 +821,42 @@ extension TPPNetworkExecutor {
                         let retryCount = queuedTasks.count
                         var newTasks = [URLSessionTask]()
 
-                        for oldTask in queuedTasks {
+                        for queued in queuedTasks {
+                            let oldTask = queued.task
                             guard let originalRequest = oldTask.originalRequest,
                                   let originalURL = originalRequest.url else {
                                 continue
                             }
 
-                            let mutableRequest = self.request(for: originalURL)
+                            // Rebuild for the account the ORIGINAL request was made
+                            // for, not whichever library is current now. The queue is
+                            // shared across libraries and the patron may have switched
+                            // while these were waiting, so resolving credentials here
+                            // sends one library's bearer to another's server (PP-4986).
+                            // The task's own provenance first: that is the
+                            // account the request was DISPATCHED for, stamped in
+                            // `performDataTask` and immune to a library switch
+                            // between dispatch and retry. `accountIdAtRefreshStart`
+                            // is the fallback for tasks that predate the stamp or
+                            // were injected by a test seam; resolving from the
+                            // CURRENT account is what leaked (PP-4986).
+                            let stamped = TaskProvenance.account(of: oldTask)
+                            if stamped == nil {
+                                // The only production tasks reaching here unstamped
+                                // are ones created outside `performDataTask` — the
+                                // download center's background session. Those still
+                                // resolve the account current at 401, i.e. they still
+                                // leak. Say so rather than fall back in silence.
+                                let host = oldTask.originalRequest?.url?.host ?? "unknown-host"
+                                Log.warn(#file, "Retry has no dispatch provenance (host: \(host)); falling back to the account current at refresh-start — this request may authenticate as the wrong library (PP-4986). All five known producers stamp; an unstamped task here is a producer the census did not predict.")
+                            }
+                            let rebuildAccountId = stamped ?? queued.accountIdAtRefreshStart
+                            let mutableRequest = self.request(for: originalURL,
+                                                              accountId: rebuildAccountId)
                             let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
+                            // A retry can itself 401. Without this the second
+                            // round loses provenance and falls back to current.
+                            TaskProvenance.setAccount(rebuildAccountId, on: newTask)
                             self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
                             newTasks.append(newTask)
                             oldTask.cancel()
@@ -718,7 +875,7 @@ extension TPPNetworkExecutor {
                         Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
 
                         let failedTasks = await self.tokenCoordinator.drainRetryQueue()
-                        failedTasks.forEach { $0.cancel() }
+                        failedTasks.forEach { $0.task.cancel() }
 
                         await self.tokenCoordinator.setRefreshing(false)
 

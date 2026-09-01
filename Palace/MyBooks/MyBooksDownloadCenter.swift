@@ -2135,13 +2135,21 @@ extension MyBooksDownloadCenter {
     /// `BackgroundDownloadHandler.startedForAccount` and it is out of scope here.
     func persistStartedTaskRecord(task: URLSessionDownloadTask, book: TPPBook, request: URLRequest) {
         guard let url = task.originalRequest?.url ?? request.url else { return }
+        // PP-4986: `stampingAccountOn` puts the SAME account on the live task, so
+        // the retry rebuild and `startedForAccount` cannot diverge. Download tasks
+        // are created on this class's background session and never pass through
+        // `TPPNetworkExecutor.performDataTask`, so without it the rebuild falls
+        // back to whichever library is current at refresh time.
+        //
+        // This covers the two producers routing through here — `addDownloadTask`
+        // and the transfer-resume path. The other two, named in the doc comment
+        // above, stamp in `persistReissuedTask`.
         stateManager.persistStartedTask(
             bookID: book.identifier,
             taskIdentifier: task.taskIdentifier,
             downloadURL: url,
             account: accountScope.currentAccountID ?? "",
-            expectedBytes: nil
-        )
+            expectedBytes: nil, stampingAccountOn: task)
     }
 
     // MARK: Transient-transfer retry (INV-6 — content transfer only)

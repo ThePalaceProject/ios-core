@@ -814,4 +814,68 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
             decisions, [.adopt(bookID: bookAID, taskIdentifier: liveTaskID)],
             "control: with no record for the live task's owner, the guard is blind and A adopts it")
     }
+    // MARK: - PP-4986: the re-issued TASK carries the inherited account
+
+    /// The fix for the worst finding of PP-4986's review: `followAcquisitionLink`
+    /// and the `RightsManagementDispatcher` bearer hop create download tasks that
+    /// never reach `MyBooksDownloadCenter.persistStartedTaskRecord`, so they were
+    /// unstamped and a 401 retry rebuilt them with whatever library was current.
+    ///
+    /// It shipped with nothing pinning it — deleting the stamp left the whole
+    /// suite green. That is the same shape as the defect this change exists to
+    /// fix, so it gets a test rather than a comment.
+    func testPersistReissuedTask_stampsTheInheritedAccountOnTheLiveTask() throws {
+        let sourceBookID = "pp4986-source-\(UUID().uuidString)"
+        let targetBookID = "pp4986-target-\(UUID().uuidString)"
+        let startedLibraryID = "pp4986-lib-\(UUID().uuidString)"
+
+        isolatedStateManager.persistStartedTask(
+            bookID: sourceBookID,
+            taskIdentifier: 4_986_010,
+            downloadURL: URL(string: "https://library-a.palace-test.invalid/original")!,
+            account: startedLibraryID,
+            expectedBytes: nil)
+
+        let task = fakeDownloadTask(
+            url: try XCTUnwrap(URL(string: "https://content.palace-test.invalid/reissued")))
+
+        isolatedStateManager.persistReissuedTask(
+            bookID: targetBookID,
+            taskIdentifier: task.taskIdentifier,
+            downloadURL: try XCTUnwrap(URL(string: "https://content.palace-test.invalid/reissued")),
+            inheritingFrom: sourceBookID,
+            stampingAccountOn: task)
+
+        XCTAssertEqual(TaskProvenance.account(of: task), startedLibraryID,
+                       "PP-4986: the re-issued task must carry the account the download STARTED under. Without the stamp the retry rebuild resolves whichever library is current at refresh time and sends its bearer to this download's server.")
+        XCTAssertEqual(try XCTUnwrap(record(forBookID: targetBookID)).account, startedLibraryID,
+                       "…and it must match the record, so `startedForAccount` and the retry rebuild cannot diverge")
+    }
+
+    /// A re-issue with nothing to inherit must leave the task unstamped.
+    ///
+    /// Precise about WHAT holds this, because an earlier docstring credited the
+    /// `!accountId.isEmpty` guard in `setAccount` and that was wrong: `parse`
+    /// splits on `=` with `omittingEmptySubsequences` defaulted true, so a
+    /// written `acct=` yields one part and is dropped anyway. The assertion
+    /// passes with or without that guard. It still kills a real mutant —
+    /// stamping `currentAccountId` instead of the empty inherit fails it — but
+    /// the guard itself is pinned by nothing, which is worth knowing before
+    /// someone deletes it as dead.
+    func testPersistReissuedTask_withNothingToInherit_leavesTheTaskUnstamped() throws {
+        let targetBookID = "pp4986-orphan-\(UUID().uuidString)"
+        let task = fakeDownloadTask(
+            url: try XCTUnwrap(URL(string: "https://content.palace-test.invalid/orphan")))
+
+        isolatedStateManager.persistReissuedTask(
+            bookID: targetBookID,
+            taskIdentifier: task.taskIdentifier,
+            downloadURL: try XCTUnwrap(URL(string: "https://content.palace-test.invalid/orphan")),
+            inheritingFrom: "pp4986-absent-\(UUID().uuidString)",
+            stampingAccountOn: task)
+
+        XCTAssertNil(TaskProvenance.account(of: task),
+                     "an empty inherited account must leave the task unstamped — the rebuild then logs and falls back deliberately")
+    }
+
 }

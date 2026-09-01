@@ -22,12 +22,42 @@ protocol TPPRequestExecuting {
                         enableTokenRefresh: Bool,
                         completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask?
 
+    /// Dispatch a request that was built for a SPECIFIC library rather than the
+    /// currently selected one.
+    ///
+    /// PP-4986: the retry queue rebuilds a 401'd request using the account
+    /// stamped on its task, and the default `executeRequest` stamps
+    /// `currentAccountId` — because that is what it resolves. Callers that build
+    /// for another library (Settings sign-in/sign-out via
+    /// `TPPSignInBusinessLogic`, `NotificationService.deleteToken(for:)` — see the note below —) must
+    /// say so here, or a retry authenticates as the wrong library.
+    ///
+    /// Additive rather than a signature change: conformers and mocks that do not
+    /// implement it inherit the default below, which delegates and behaves
+    /// exactly as before.
+    @discardableResult
+    func executeRequest(_ req: URLRequest,
+                        enableTokenRefresh: Bool,
+                        accountId: String?,
+                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask?
+
     var requestTimeout: TimeInterval {get}
 
     static var defaultRequestTimeout: TimeInterval {get}
 }
 
 extension TPPRequestExecuting {
+    /// Default: ignore the account and behave exactly as the two-argument form.
+    /// A conformer that cannot honour per-request accounts is no worse than it
+    /// was; only `TPPNetworkExecutor` overrides this.
+    @discardableResult
+    func executeRequest(_ req: URLRequest,
+                        enableTokenRefresh: Bool,
+                        accountId: String?,
+                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
+        executeRequest(req, enableTokenRefresh: enableTokenRefresh, completion: completion)
+    }
+
     var requestTimeout: TimeInterval {
         return Self.defaultRequestTimeout
     }

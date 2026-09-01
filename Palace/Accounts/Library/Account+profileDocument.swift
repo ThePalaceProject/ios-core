@@ -36,7 +36,11 @@ extension Account {
         }
 
         var request = URLRequest(url: profileUrl)
-        AppContainer.production().networkExecutor.executeRequest(request.applyCustomUserAgent(), enableTokenRefresh: false) { result in
+        // PP-4986: this is `self.uuid`'s profile, fetched with that library's
+        // credentials — and `getProfileDocument` is called for non-current
+        // libraries (LibrariesSectionViewModel). Naming the account keeps a 401
+        // retry authenticating as this library rather than the selected one.
+        AppContainer.production().networkExecutor.executeRequest(request.applyCustomUserAgent(), enableTokenRefresh: false, accountId: self.uuid) { result in
             // The executeRequest completion is a plain (non-Sendable) escaping
             // closure, so `completion` and the parsed `UserProfileDocument`
             // are captured safely here. They are carried across the main-queue

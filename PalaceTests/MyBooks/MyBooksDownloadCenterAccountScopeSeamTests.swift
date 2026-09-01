@@ -202,6 +202,57 @@ final class MyBooksDownloadCenterAccountScopeSeamTests: XCTestCase {
             "the live task's originalRequest url must win over the passed request's — a retry re-issues against a refreshed url and the record must track it")
     }
 
+    /// PP-4986: the same account must also land ON THE TASK, not only in the
+    /// durable record.
+    ///
+    /// A download that 401s is queued for retry in `TPPNetworkExecutor`, and the
+    /// rebuild there reads the task's stamp to pick credentials. Download tasks
+    /// are created on the download center's own background session, so they never
+    /// pass through `performDataTask` and were unstamped — the rebuild fell back
+    /// to whatever library was current at refresh time and sent that library's
+    /// bearer to the one the download started under. That is the scenario
+    /// PP-4986 names, and it was the half the first three revisions did not fix.
+    ///
+    /// Asserting BOTH here is the point: record and stamp are written from one
+    /// value, so `startedForAccount` (which reads the record) and the retry
+    /// rebuild (which reads the stamp) can never disagree.
+    func testPersistStartedTaskRecord_alsoStampsTheTaskItself() throws {
+        let accountID = "stamp-lib-\(UUID().uuidString)"
+        let spy = SpyDownloadAccountScope(accountID: accountID)
+        let (center, stateManager) = try makeCenterWithIsolatedPersistence(scope: spy)
+
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let taskURL = try XCTUnwrap(URL(string: "https://example.test/live/\(book.identifier)"))
+        let (task, session) = downloadTask(for: taskURL)
+        defer { session.invalidateAndCancel() }
+
+        center.persistStartedTaskRecord(task: task, book: book, request: URLRequest(url: taskURL))
+
+        XCTAssertEqual(TaskProvenance.account(of: task), accountID,
+            "the download task must carry the started-under account — without it the retry rebuild resolves whichever library is current at refresh time and leaks its bearer to this download's server (PP-4986)")
+        XCTAssertEqual(stateManager.persistedRecords().first?.account, accountID,
+            "…and it must be the SAME value the durable record got, so the two readers cannot diverge")
+    }
+
+    /// With no current account there is nothing true to stamp, so the task must
+    /// carry no account rather than an empty one. An empty `acct=` would read as
+    /// a present account at every call site — the same class of defect the
+    /// empty-string sentinel below is guarding in the record.
+    func testPersistStartedTaskRecord_withNoCurrentAccount_leavesTheTaskUnstamped() throws {
+        let spy = SpyDownloadAccountScope(accountID: nil)
+        let (center, _) = try makeCenterWithIsolatedPersistence(scope: spy)
+
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let taskURL = try XCTUnwrap(URL(string: "https://example.test/live/\(book.identifier)"))
+        let (task, session) = downloadTask(for: taskURL)
+        defer { session.invalidateAndCancel() }
+
+        center.persistStartedTaskRecord(task: task, book: book, request: URLRequest(url: taskURL))
+
+        XCTAssertNil(TaskProvenance.account(of: task),
+            "an unstamped task is honest: the retry rebuild logs and falls back deliberately, rather than believing an empty account")
+    }
+
     /// The empty-string account is a LOAD-BEARING sentinel, not a defensive
     /// default: `BackgroundDownloadHandler.startedForAccount` and
     /// `MyBooksDownloadCenter+ChallengeAccount` both branch on

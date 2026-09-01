@@ -119,7 +119,8 @@ extension TPPSignInBusinessLogic {
 
         Log.debug(#file, "SAML logout: calling CM saml_logout_redirect: \(logoutURL)")
 
-        networker.executeRequest(request, enableTokenRefresh: false) { result in
+        // PP-4986: built for `libraryAccountID`, not necessarily the current library.
+        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { result in
             switch result {
             case .success:
                 Log.debug(#file, "SAML logout: CM session invalidated successfully")

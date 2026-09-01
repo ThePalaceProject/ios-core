@@ -89,9 +89,14 @@ enum DownloadReconciliation {
     /// heal to `.downloadFailed` above, not a fresh download.
     ///
     /// The exact discriminator would be `URLSessionTask.taskDescription` carrying
-    /// the book id — it survives relaunch and needs no inference. Nothing sets it
-    /// today; that is the follow-up, and it makes this helper collapse to one
-    /// lookup.
+    /// the book id — it survives relaunch and needs no inference, and it makes
+    /// this helper collapse to one lookup.
+    ///
+    /// CAUTION: that field is no longer free. PP-4986 stores the dispatching
+    /// account there via `TaskProvenance` (`TPPNetworkExecutor.swift`), encoded as
+    /// `key=value;` pairs precisely so a book id can join it. Add a `book=` key
+    /// through `TaskProvenance` — do NOT assign `task.taskDescription` directly,
+    /// which would silently erase the account and reopen a credential leak.
     private static func adoptableTask(
         for record: PersistedDownloadRecord,
         in liveTasks: [Int: URL]

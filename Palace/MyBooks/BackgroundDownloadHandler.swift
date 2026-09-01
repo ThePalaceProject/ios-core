@@ -180,15 +180,26 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
                     await stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: info)
                 }
             } else if AppContainer.production().accountsManager.currentUserAccount.isTokenRefreshRequired() {
-                // PP-4978 deliberately does NOT redirect this to the started-for
-                // account. Doing so looked correct and is not: the refresh rebuilds
-                // every queued request through `TPPNetworkExecutor.request(for:)`,
-                // whose one-argument overload resolves `accountId: nil` — the
-                // CURRENT account — so the rebuilt requests carry the current
-                // library's bearer regardless of which account was refreshed.
-                // Fixing the decision without that would move the leak, not close
-                // it. Tracked as PP-4986, which must carry the account through
-                // that rebuild before this decision can safely follow.
+                // The DECISION still reads the current library's staleness. The
+                // CREDENTIALS are correct — PP-4986 stamps this download's task in
+                // `MyBooksDownloadCenter.persistStartedTaskRecord`, so the retry
+                // rebuild authenticates as the library the download started under
+                // regardless of what is selected now. This is a wrong-TRIGGER bug:
+                // a refresh can fire for the wrong library's staleness, or fail to
+                // fire for the right one's.
+                //
+                // (An earlier revision of this comment made that same claim BEFORE
+                // the stamp existed, when it was false and this site still leaked.
+                // It is true now because the download half landed, not because the
+                // wording improved.)
+                //
+                // Fixing the trigger means redirecting to
+                // `startedForAccount(for:delegate:)` at :296 — two lines — but the
+                // arm is unreachable in a test while the refresh is read from
+                // `AppContainer.production()` here, so it needs an injected seam
+                // first. Deliberately deferred: the seam is a composition-root
+                // change on a critical path, and the residual no longer leaks
+                // credentials.
                 NSLog("Authentication might be needed after all")
                 AppContainer.production().networkExecutor.refreshTokenAndResume(task: task)
                 return
@@ -356,7 +367,8 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
             bookID: updatedBook.identifier,
             taskIdentifier: newTask.taskIdentifier,
             downloadURL: acquisitionURL,
-            inheritingFrom: originalBook.identifier)
+            inheritingFrom: originalBook.identifier,
+            stampingAccountOn: newTask)
 
         if originalBook.identifier != updatedBook.identifier {
             // The superseded record names a task that no longer exists, under a
