@@ -153,6 +153,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Detect changed files against base branch
+# Count lines in a shell variable that may be empty. `echo "$V" | wc -l`
+# returns 1 for an empty V because echo still writes a newline; `grep -c .`
+# counts only non-empty lines, so empty input gives 0.
+count_lines() {
+  printf '%s' "$1" | grep -c . || true
+}
+
 detect_base_branch() {
   for candidate in origin/develop origin/main origin/master; do
     if git rev-parse --verify "$candidate" &>/dev/null; then
@@ -341,7 +348,12 @@ record() {
 
 echo "=== Palace Pre-PR Verification ==="
 echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
-echo "Changed files: $(echo "$CHANGED_SWIFT" | wc -l | tr -d ' ') production, $(echo "$CHANGED_TEST_SWIFT" | wc -l | tr -d ' ') test"
+# `echo "$EMPTY" | wc -l` is 1, not 0 — echo emits a newline even for an empty
+# variable — so this line could never print "0 production" and every docs-only
+# or test-only PR read as touching production. `grep -c .` counts non-empty
+# lines and returns 0 for empty input. Covered by
+# scripts/tests/test_verify_pr_line_counts.py.
+echo "Changed files: $(count_lines "$CHANGED_SWIFT") production, $(count_lines "$CHANGED_TEST_SWIFT") test"
 echo ""
 
 # Mark the start of this run so the coverage-floor step (find -newer) matches
@@ -1115,17 +1127,37 @@ echo "--- Coverage Floors ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
   record "coverage_floors" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.json ]; then
-  # Extract coverage from test results
-  XCRESULT=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -newer /tmp/.verify-pr-start 2>/dev/null | head -1)
-  if [ -n "$XCRESULT" ]; then
-    COV_OUTPUT=$(python3 scripts/enforce_coverage_floors.py --baseline-only 2>&1 || true)
-    if echo "$COV_OUTPUT" | grep -q "VIOLATED"; then
-      record "coverage_floors" "fail" "Coverage below module thresholds"
+  # Use the bundle THIS run pinned. Two defects lived in the line this
+  # replaces. (1) `xcodebuild` is invoked with `-resultBundlePath
+  # "$RESULT_BUNDLE"`, which is under $TMPDIR — so a search of DerivedData
+  # could never find this run's bundle, and the leg recorded "No xcresult
+  # found" on every run. (2) On the rare hit it would have scored a PARALLEL
+  # WORKTREE's bundle; the --diff-baseline site above was fixed for exactly
+  # that hazard and this copy was missed.
+  XCRESULT="$RESULT_BUNDLE"
+  if [ -d "$XCRESULT" ]; then
+    # enforce_coverage_floors.py takes coverage-data.json as a REQUIRED
+    # positional. It was called without one, so argparse exited 2 with a usage
+    # error, `|| true` swallowed it, the usage text contains no "VIOLATED",
+    # and the leg recorded PASS having measured nothing. Key off the
+    # documented exit code (0 met / 1 violated / 2 input error) and never
+    # report a pass for a run that produced no measurement.
+    COV_JSON="${TMPDIR:-/tmp}/verify-pr-coverage-$$.json"
+    if python3 scripts/coverage-report.py "$XCRESULT" --json "$COV_JSON" >/dev/null 2>&1 && [ -s "$COV_JSON" ]; then
+      COV_OUTPUT=$(python3 scripts/enforce_coverage_floors.py "$COV_JSON" --baseline-only 2>&1)
+      COV_RC=$?
+      if [ "$COV_RC" -eq 0 ]; then
+        record "coverage_floors" "pass" "All module floors met"
+      elif [ "$COV_RC" -eq 1 ]; then
+        record "coverage_floors" "fail" "Coverage below module thresholds"
+      else
+        record "coverage_floors" "fail" "coverage enforcement exited $COV_RC (input error) — the floor was NOT checked"
+      fi
     else
-      record "coverage_floors" "pass" "All module floors met"
+      record "coverage_floors" "fail" "could not extract coverage from $XCRESULT — the floor was NOT checked"
     fi
   else
-    record "coverage_floors" "skip" "No xcresult found"
+    record "coverage_floors" "skip" "this run wrote no result bundle at $RESULT_BUNDLE"
   fi
 else
   record "coverage_floors" "skip" "Coverage enforcement not configured"
