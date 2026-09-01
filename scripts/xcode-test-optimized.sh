@@ -176,6 +176,28 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # Tee to a log and scan it for the unambiguous build-failure markers below.
     XCB_LOG="$(mktemp)"
     set +e
+    # AD-HOC SIGNED, deliberately (all four xcodebuild invocations in this file).
+    # These used to pass CODE_SIGNING_REQUIRED=NO + CODE_SIGNING_ALLOWED=NO, which
+    # SKIPS codesign entirely. An unsigned app launches, but it has no
+    # keychain-access-group, so every SecItem call returns -34018 and
+    # KeychainAvailability.skipIfUnavailable() throws in setUpWithError - taking
+    # 15 whole classes / 111 tests out of every CI run, silently, for as long as
+    # these flags have been here (PP-5058). The gate's own message blames a CI
+    # simulator without keychain entitlements, which sent everyone to look at the
+    # runner instead of at this line.
+    #
+    # Measured on one machine, same sim pool, same commit, signing the only
+    # variable: 135 skipped unsigned vs 11 skipped signed.
+    #
+    # The recipe is not new - build-sim-for-simdrive.sh documents
+    # CODE_SIGNING_ALLOWED=NO as failure mode 1, names -34018 as its symptom, and
+    # records a live verification. Empty entitlements are fine; the simulator does
+    # not require a keychain-access-group for a *signed* app.
+    #
+    # These flags must stay INSIDE the backslash-continued argument list. A '#'
+    # comment placed between continued lines is NOT a comment - it consumes the
+    # continuation and the remaining flags become separate commands. `bash -n`
+    # accepts that happily; it only shows up at runtime.
     xcodebuild test \
         -project Palace.xcodeproj \
         -scheme Palace \
@@ -190,8 +212,10 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -parallel-testing-enabled YES \
         -maximum-parallel-testing-workers "${CI_TEST_WORKERS:-4}" \
         "${ISOLATED_SKIP_ARGS[@]}" \
-        CODE_SIGNING_REQUIRED=NO \
-        CODE_SIGNING_ALLOWED=NO \
+        CODE_SIGNING_ALLOWED=YES \
+        CODE_SIGN_IDENTITY=- \
+        CODE_SIGN_STYLE=Manual \
+        DEVELOPMENT_TEAM="" \
         ONLY_ACTIVE_ARCH=YES \
         GCC_OPTIMIZATION_LEVEL=0 \
         SWIFT_OPTIMIZATION_LEVEL=-Onone \
@@ -236,8 +260,10 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -default-test-execution-time-allowance 120 \
         -maximum-test-execution-time-allowance 300 \
         -parallel-testing-enabled NO \
-        CODE_SIGNING_REQUIRED=NO \
-        CODE_SIGNING_ALLOWED=NO \
+        CODE_SIGNING_ALLOWED=YES \
+        CODE_SIGN_IDENTITY=- \
+        CODE_SIGN_STYLE=Manual \
+        DEVELOPMENT_TEAM="" \
         ONLY_ACTIVE_ARCH=YES \
         GCC_OPTIMIZATION_LEVEL=0 \
         SWIFT_OPTIMIZATION_LEVEL=-Onone \
@@ -342,8 +368,10 @@ else
                 ${RETRY_ITER_ARGS[@]+"${RETRY_ITER_ARGS[@]}"} \
                 -parallel-testing-enabled YES \
                 -maximum-parallel-testing-workers 4 \
-                CODE_SIGNING_REQUIRED=NO \
-                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGNING_ALLOWED=YES \
+                CODE_SIGN_IDENTITY=- \
+                CODE_SIGN_STYLE=Manual \
+                DEVELOPMENT_TEAM="" \
                 ONLY_ACTIVE_ARCH=YES \
                 GCC_OPTIMIZATION_LEVEL=0 \
                 SWIFT_OPTIMIZATION_LEVEL=-Onone \
@@ -373,8 +401,10 @@ else
             -enableCodeCoverage YES \
             -parallel-testing-enabled YES \
             -maximum-parallel-testing-workers 4 \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
             ONLY_ACTIVE_ARCH=YES \
             GCC_OPTIMIZATION_LEVEL=0 \
             SWIFT_OPTIMIZATION_LEVEL=-Onone \
