@@ -15,6 +15,15 @@ final class AccountDetailViewModelTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
 
+    /// PP-5057. These tests used to guard on
+    /// `accountsManager.currentAccountId` and bail when it was nil. The bail
+    /// was `XCTSkip("…")` with no `throw` — a discarded struct, so the test
+    /// reported PASS with its body never entered. Seeding a fixture account in
+    /// setUp removes the condition entirely rather than making the bail
+    /// visible: there is now no path on which the body does not run.
+    private var seededLibraryID = ""
+    private var seededAccountCleanup: (() -> Void)?
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         // Tests in this class write credentials via
@@ -23,6 +32,13 @@ final class AccountDetailViewModelTests: XCTestCase {
         // returns -34018 (missing entitlement) — same env-gate used by
         // TPPKeychainTests + TPPKeychainSwiftTests.
         try KeychainAvailability.skipIfUnavailable()
+
+        let (seededAccount, seedCleanup) = seedAccountIfNeeded(
+            on: AppContainer.production().accountsManager,
+            fixtureId: "pp5057-account-detail-vm"
+        )
+        seededAccountCleanup = seedCleanup
+        seededLibraryID = seededAccount.uuid
     }
 
     override func setUp() {
@@ -32,22 +48,15 @@ final class AccountDetailViewModelTests: XCTestCase {
 
     override func tearDown() {
         cancellables.removeAll()
+        seededAccountCleanup?()
+        seededAccountCleanup = nil
         super.tearDown()
-    }
-
-    // MARK: - Helper to get a valid library ID
-
-    private func getValidLibraryID() -> String? {
-        return AppContainer.production().accountsManager.currentAccountId
     }
 
     // MARK: - Published Property Tests
 
     func testInitialPublishedPropertiesState() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -60,10 +69,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testUsernameTextUpdate() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         XCTAssertEqual(viewModel.usernameText, "", "usernameText must start empty")
@@ -76,10 +82,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testPinTextUpdate() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         XCTAssertEqual(viewModel.pinText, "", "pinText must start empty")
@@ -92,10 +95,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testIsPINHiddenDefaultsToTrue() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -103,10 +103,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testTogglePINVisibility() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -118,10 +115,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testShowBarcode_WhenEnabled_TriggerObjectWillChange() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         XCTAssertFalse(viewModel.showBarcode, "Precondition: showBarcode defaults to false")
@@ -142,11 +136,8 @@ final class AccountDetailViewModelTests: XCTestCase {
 
     // MARK: - canSignIn Tests
 
-    func testCanSignInWithEmptyCredentials() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+    func testCanSignInWithEmptyCredentials() async throws {
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         // Browser-based auth (SAML / OAuth / OIDC) intentionally returns
@@ -154,10 +145,10 @@ final class AccountDetailViewModelTests: XCTestCase {
         // launches the WebView. Skip this case so the test is deterministic
         // across whichever library is currently selected on the test sim.
         let auth = viewModel.businessLogic.selectedAuthentication
-        if auth?.isOauth == true || auth?.isSaml == true || auth?.isOidc == true {
-            XCTSkip("Browser-based auth (\(auth?.authType.rawValue ?? "?")) fast-paths canSignIn — not applicable")
-            return
-        }
+        try XCTSkipIf(
+            auth?.isOauth == true || auth?.isSaml == true || auth?.isOidc == true,
+            "Browser-based auth (\(auth?.authType.rawValue ?? "?")) fast-paths canSignIn — not applicable"
+        )
         viewModel.usernameText = ""
         viewModel.pinText = ""
 
@@ -165,20 +156,17 @@ final class AccountDetailViewModelTests: XCTestCase {
         XCTAssertFalse(canSignIn)
     }
 
-    func testCanSignInWithOnlyUsername() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+    func testCanSignInWithOnlyUsername() async throws {
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         // Same browser-auth skip — canSignIn=true via fast-path makes the
         // assertion order-dependent on whichever library is on the sim.
         let auth = viewModel.businessLogic.selectedAuthentication
-        if auth?.isOauth == true || auth?.isSaml == true || auth?.isOidc == true {
-            XCTSkip("Browser-based auth (\(auth?.authType.rawValue ?? "?")) fast-paths canSignIn — not applicable")
-            return
-        }
+        try XCTSkipIf(
+            auth?.isOauth == true || auth?.isSaml == true || auth?.isOidc == true,
+            "Browser-based auth (\(auth?.authType.rawValue ?? "?")) fast-paths canSignIn — not applicable"
+        )
         viewModel.usernameText = "testuser"
         viewModel.pinText = ""
 
@@ -192,10 +180,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testCanSignInWithBothCredentials() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         viewModel.usernameText = "testuser"
@@ -210,9 +195,9 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - Library Properties Tests
 
     func testLibraryNameReturnsAccountName() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
-              let account = AppContainer.production().accountsManager.account(libraryID) else {
-            XCTSkip("No current account available for testing")
+        let libraryID = seededLibraryID
+        guard let account = AppContainer.production().accountsManager.account(libraryID) else {
+            XCTFail("Seeded account \(libraryID) did not resolve via accountsManager.account(_:)")
             return
         }
 
@@ -222,11 +207,9 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testSelectedAccountMatchesInitialized() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
-              AppContainer.production().accountsManager.account(libraryID) != nil else {
-            XCTSkip("No current account available or account not loaded for testing")
-            return
-        }
+        let libraryID = seededLibraryID
+        XCTAssertNotNil(AppContainer.production().accountsManager.account(libraryID),
+                        "Seeded account \(libraryID) must resolve via accountsManager.account(_:)")
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let account = viewModel.selectedAccount
@@ -239,10 +222,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - Alert Tests
 
     func testAlertPropertiesUpdate() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -258,10 +238,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - Sync Tests
 
     func testIsSyncEnabledToggle() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let initialValue = viewModel.isSyncEnabled
@@ -279,10 +256,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - Business Logic Integration Tests
 
     func testBusinessLogic_IsInitialized() async {
-        guard let libraryID = getValidLibraryID() else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let businessLogic = viewModel.businessLogic
@@ -304,10 +278,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testCredentialFields_AreIndependent() async {
-        guard let libraryID = getValidLibraryID() else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -320,10 +291,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testClearCredentials_WorksIndependently() async {
-        guard let libraryID = getValidLibraryID() else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -340,10 +308,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - UI State Management Tests
 
     func testMultipleAlerts_CanBeShown() async {
-        guard let libraryID = getValidLibraryID() else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         var changeCount = 0
@@ -380,10 +345,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - Validation Tests
 
     func testCanSignIn_WithWhitespaceOnlyUsername() async {
-        guard let libraryID = getValidLibraryID() else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         viewModel.usernameText = "   "
@@ -404,10 +366,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testCanSignIn_WithSpecialCharacters() async {
-        guard let libraryID = getValidLibraryID() else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         viewModel.usernameText = "user@example.com"
@@ -429,6 +388,15 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     private var userAccount: TPPUserAccountMock!
 
+    /// PP-5057. These tests used to guard on
+    /// `accountsManager.currentAccountId` and bail when it was nil. The bail
+    /// was `XCTSkip("…")` with no `throw` — a discarded struct, so the test
+    /// reported PASS with its body never entered. Seeding a fixture account in
+    /// setUp removes the condition entirely rather than making the bail
+    /// visible: there is now no path on which the body does not run.
+    private var seededLibraryID = ""
+    private var seededAccountCleanup: (() -> Void)?
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         // setUp() below constructs TPPUserAccountMock, but the individual
@@ -436,6 +404,13 @@ final class AccountDetailCredentialStateTests: XCTestCase {
         // drive it via setBarcode / setAuthState — both hit TPPKeychain.
         // Skip on CI hosts missing the keychain entitlement.
         try KeychainAvailability.skipIfUnavailable()
+
+        let (seededAccount, seedCleanup) = seedAccountIfNeeded(
+            on: AppContainer.production().accountsManager,
+            fixtureId: "pp5057-credential-state"
+        )
+        seededAccountCleanup = seedCleanup
+        seededLibraryID = seededAccount.uuid
     }
 
     override func setUp() {
@@ -446,6 +421,8 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     override func tearDown() {
         userAccount.removeAll()
         userAccount = nil
+        seededAccountCleanup?()
+        seededAccountCleanup = nil
         super.tearDown()
     }
 
@@ -455,10 +432,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     /// When OAuth credentials are stale, isSignedIn should be TRUE because the token
     /// refreshes automatically in the background - user should still appear signed in.
     func testIsSignedIn_trueWhenOAuthCredentialsStale() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -485,10 +459,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     /// When SAML/Basic credentials are stale (session expired), isSignedIn should be FALSE
     /// so the UI shows "Sign In" to prompt re-authentication via IDP.
     func testIsSignedIn_falseWhenSAMLCredentialsStale() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -516,10 +487,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// When user is fully logged in (not stale), isSignedIn should be TRUE regardless of auth type
     func testIsSignedIn_trueWhenLoggedIn() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -541,10 +509,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// For SAML/Basic: Transition from loggedIn to credentialsStale should update isSignedIn to false
     func testIsSignedIn_SAMLUpdatesWhenStateBecomesStale() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -570,10 +535,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// For OAuth: Transition from loggedIn to credentialsStale should keep isSignedIn true
     func testIsSignedIn_OAuthRemainsSignedInWhenStateBecomesStale() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -598,10 +560,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// Re-authentication from stale should update isSignedIn back to true (for SAML/Basic)
     func testIsSignedIn_updatesAfterSAMLReauthentication() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -628,10 +587,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// Account should indicate it needs re-authentication when credentials are stale
     func testNeedsReauthentication_trueWhenCredentialsStale() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         // Given: User has stale credentials
         let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
@@ -656,32 +612,46 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 @MainActor
 final class AccountDetailPINVisibilityTests: XCTestCase {
 
+    /// PP-5057. These tests used to guard on
+    /// `accountsManager.currentAccountId` and bail when it was nil. The bail
+    /// was `XCTSkip("…")` with no `throw` — a discarded struct, so the test
+    /// reported PASS with its body never entered. Seeding a fixture account in
+    /// setUp removes the condition entirely rather than making the bail
+    /// visible: there is now no path on which the body does not run.
+    private var seededLibraryID = ""
+    private var seededAccountCleanup: (() -> Void)?
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         // Tests that exercise sign-in / sign-out state transitions round-trip
         // credentials through TPPKeychain. Skip on CI hosts where SecItem
         // returns -34018 (same env-gate as TPPKeychainTests).
         try KeychainAvailability.skipIfUnavailable()
+
+        let (seededAccount, seedCleanup) = seedAccountIfNeeded(
+            on: AppContainer.production().accountsManager,
+            fixtureId: "pp5057-pin-visibility"
+        )
+        seededAccountCleanup = seedCleanup
+        seededLibraryID = seededAccount.uuid
         // Reset shared user account state to prevent test pollution from
         // previous tests (in this class or elsewhere) that set credentials.
-        if let libraryID = AppContainer.production().accountsManager.currentAccountId {
-            AppContainer.production().accountsManager.userAccount(for: libraryID).removeAll()
-        }
+        AppContainer.production().accountsManager.userAccount(for: seededLibraryID).removeAll()
     }
 
     override func tearDown() {
         // Same reset on the way out so we don't pollute downstream classes.
-        if let libraryID = AppContainer.production().accountsManager.currentAccountId {
-            AppContainer.production().accountsManager.userAccount(for: libraryID).removeAll()
+        // Must run BEFORE the seed cleanup, while the account still resolves.
+        if !seededLibraryID.isEmpty {
+            AppContainer.production().accountsManager.userAccount(for: seededLibraryID).removeAll()
         }
+        seededAccountCleanup?()
+        seededAccountCleanup = nil
         super.tearDown()
     }
 
     func testPINVisibility_DefaultsToHidden() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -693,10 +663,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testPINVisibility_ToggleMultipleTimes() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -730,10 +697,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - Delegate Callback Tests (TPPSignInOutBusinessLogicUIDelegate)
 
     func testBusinessLogicWillSignIn_NonOAuth_SetsLoadingTrueAndClearsSigningOut() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isSigningOut = true
         vm.isLoading = false
@@ -745,10 +709,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicDidCancelSignIn_ClearsLoadingAndSigningOut() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
@@ -760,10 +721,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicDidReceiveCredentials_SetsLoadingTrue() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = false
 
@@ -773,10 +731,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicDidCompleteSignIn_ClearsLoadingAndSigningOut() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
@@ -788,10 +743,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicWillSignOut_SetsLoadingAndSigningOut() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = false
         vm.isSigningOut = false
@@ -803,10 +755,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicDidFinishDeauthorizing_ClearsLoadingAndSigningOut() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
@@ -818,10 +767,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicValidationError_ShowsAlertAndClearsLoading() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
@@ -838,10 +784,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicValidationError_CancelledErrorClearsPin() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.pinText = "1234"
 
@@ -853,10 +796,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicSignOutError_401ShowsUnexpectedCredentialsAlert() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
@@ -870,10 +810,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicSignOutError_WithErrorUsesLocalizedDescription() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         let err = NSError(domain: "test", code: 500,
@@ -886,12 +823,12 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
 
     // MARK: - updateSync / selectAuthMethod / selectSAMLIDP
 
-    func testUpdateSync_WritesToAccountDetails() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
-              let account = AppContainer.production().accountsManager.account(libraryID),
+    func testUpdateSync_WritesToAccountDetails() async throws {
+        let libraryID = seededLibraryID
+        guard let account = AppContainer.production().accountsManager.account(libraryID),
               account.details != nil else {
-            XCTSkip("No account details available")
-            return
+            throw XCTSkip("Seeded fixture account has no AccountDetails — needs an "
+                          + "auth-document-backed fixture. Tracked as the PP-5057 follow-up.")
         }
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let original = account.details?.syncPermissionGranted ?? false
@@ -904,11 +841,11 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         XCTAssertEqual(account.details?.syncPermissionGranted, original)
     }
 
-    func testSelectAuthMethod_ClearsIDPAndSetsSelectedAuth() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
-              let auth = AppContainer.production().accountsManager.account(libraryID)?.details?.auths.first else {
-            XCTSkip("No auth methods available")
-            return
+    func testSelectAuthMethod_ClearsIDPAndSetsSelectedAuth() async throws {
+        let libraryID = seededLibraryID
+        guard let auth = AppContainer.production().accountsManager.account(libraryID)?.details?.auths.first else {
+            throw XCTSkip("Seeded fixture account exposes no authentication methods — needs an "
+                          + "auth-document-backed fixture. Tracked as the PP-5057 follow-up.")
         }
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -921,10 +858,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - refreshSignInState
 
     func testRefreshSignInState_ReloadsTableWhenStateChanges() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.removeAll()
@@ -941,10 +875,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testAccountDidChangeViaNotification_ClearsCredentialsOnLogout() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("foo", PIN: "9999")
         account.setAuthState(.loggedIn)
@@ -990,10 +921,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - Credentials Provider Extension
 
     func testUsernameComputed_EmptyReturnsNil() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.usernameText = ""
         XCTAssertNil(vm.username)
@@ -1002,10 +930,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testPinComputed_EmptyReturnsEmptyString() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.pinText = ""
         XCTAssertEqual(vm.pin, "")
@@ -1014,10 +939,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testContext_ReturnsSettingsTab() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         XCTAssertEqual(vm.context, "Settings Tab")
     }
@@ -1025,9 +947,9 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - libraryLogo / libraryName defaults
 
     func testLibraryLogo_MatchesSelectedAccountLogo() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
-              let account = AppContainer.production().accountsManager.account(libraryID) else {
-            XCTSkip("No current account available for testing")
+        let libraryID = seededLibraryID
+        guard let account = AppContainer.production().accountsManager.account(libraryID) else {
+            XCTFail("Seeded account \(libraryID) did not resolve via accountsManager.account(_:)")
             return
         }
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
@@ -1037,10 +959,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - signIn early-exit when already signed in
 
     func testSignIn_WhenAlreadySignedIn_SetsIsSigningOutTrue() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("x", PIN: "1")
         account.setAuthState(.loggedIn)
@@ -1058,10 +977,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testPINVisibility_IndependentOfCredentialChanges() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
@@ -1090,18 +1006,35 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
 @MainActor
 final class AccountDetailSignOutConfirmationTests: XCTestCase {
 
+    /// PP-5057. These tests used to guard on
+    /// `accountsManager.currentAccountId` and bail when it was nil. The bail
+    /// was `XCTSkip("…")` with no `throw` — a discarded struct, so the test
+    /// reported PASS with its body never entered. Seeding a fixture account in
+    /// setUp removes the condition entirely rather than making the bail
+    /// visible: there is now no path on which the body does not run.
+    private var seededLibraryID = ""
+    private var seededAccountCleanup: (() -> Void)?
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         try KeychainAvailability.skipIfUnavailable()
-        if let libraryID = AppContainer.production().accountsManager.currentAccountId {
-            AppContainer.production().accountsManager.userAccount(for: libraryID).removeAll()
-        }
+
+        let (seededAccount, seedCleanup) = seedAccountIfNeeded(
+            on: AppContainer.production().accountsManager,
+            fixtureId: "pp5057-signout-confirm"
+        )
+        seededAccountCleanup = seedCleanup
+        seededLibraryID = seededAccount.uuid
+        AppContainer.production().accountsManager.userAccount(for: seededLibraryID).removeAll()
     }
 
     override func tearDown() {
-        if let libraryID = AppContainer.production().accountsManager.currentAccountId {
-            AppContainer.production().accountsManager.userAccount(for: libraryID).removeAll()
+        // Must run BEFORE the seed cleanup, while the account still resolves.
+        if !seededLibraryID.isEmpty {
+            AppContainer.production().accountsManager.userAccount(for: seededLibraryID).removeAll()
         }
+        seededAccountCleanup?()
+        seededAccountCleanup = nil
         super.tearDown()
     }
 
@@ -1110,10 +1043,7 @@ final class AccountDetailSignOutConfirmationTests: XCTestCase {
     /// logOutOrWarn() → performLogOut() directly when no sync/DRM was in
     /// progress, which deauthorized the user with zero UX safeguard.
     func testConfirmSignOut_WhenSignedIn_DoesNotImmediatelyDeauthorize() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
 
         let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("user1234", PIN: "9999")
@@ -1141,10 +1071,7 @@ final class AccountDetailSignOutConfirmationTests: XCTestCase {
     /// must offer Sign Out (destructive) and Cancel actions. Catches mutations
     /// that downgrade the destructive style or drop the cancel action.
     func testMakeSignOutConfirmationAlert_HasDestructiveSignOutAndCancelActions() async {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
-            XCTSkip("No current account available for testing")
-            return
-        }
+        let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         let alert = vm.makeSignOutConfirmationAlert()
@@ -1197,6 +1124,15 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
 
+    /// PP-5057. These tests used to guard on
+    /// `accountsManager.currentAccountId` and bail when it was nil. The bail
+    /// was `XCTSkip("…")` with no `throw` — a discarded struct, so the test
+    /// reported PASS with its body never entered. Seeding a fixture account in
+    /// setUp removes the condition entirely rather than making the bail
+    /// visible: there is now no path on which the body does not run.
+    private var seededLibraryID = ""
+    private var seededAccountCleanup: (() -> Void)?
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         // Constructing the view model still spins up the real business-logic /
@@ -1206,10 +1142,19 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
         // are deterministic wherever they DO run (notably local mutation runs,
         // which are where kill-rate is measured — mutation is local-only).
         try KeychainAvailability.skipIfUnavailable()
+
+        let (seededAccount, seedCleanup) = seedAccountIfNeeded(
+            on: AppContainer.production().accountsManager,
+            fixtureId: "pp5057-signedin-derivation"
+        )
+        seededAccountCleanup = seedCleanup
+        seededLibraryID = seededAccount.uuid
     }
 
     override func tearDown() {
         cancellables.removeAll()
+        seededAccountCleanup?()
+        seededAccountCleanup = nil
         super.tearDown()
     }
 
@@ -1235,11 +1180,8 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
     private func makeViewModel(box: SnapshotBox) throws -> AccountDetailViewModel {
         let container = AppContainer.production()
-        guard let libraryID = container.accountsManager.currentAccountId else {
-            throw XCTSkip("No current account available for testing")
-        }
         return AccountDetailViewModel(
-            libraryAccountID: libraryID,
+            libraryAccountID: seededLibraryID,
             accountsManager: container.accountsManager,
             bookRegistry: container.bookRegistry,
             downloadCenter: container.downloadCenter,
