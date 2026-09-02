@@ -51,7 +51,6 @@ struct HoldsView: View {
                 }
                 .onAppear {
                     model.showSearchSheet = false
-                    model.showLibraryAccountView = false
                     let account = appContainer.accountsManager.currentAccount
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
@@ -66,16 +65,6 @@ struct HoldsView: View {
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
-                }
-                .sheet(isPresented: $model.showLibraryAccountView) {
-                    UIViewControllerWrapper(
-                        TPPAccountList { account in
-                            DispatchQueue.main.async {
-                                model.loadAccount(account)
-                            }
-                        },
-                        updater: { _ in }
-                    )
                 }
         }
     }
@@ -163,32 +152,15 @@ struct HoldsView: View {
         .padding(.horizontal, 24)
     }
 
-    /// Leading bar button: "Pick a new library"
+    /// Leading bar item: the Palace icon, branding only.
     private var leadingBarButton: some View {
-        Button {
-            model.selectNewLibrary = true
-        } label: {
-            ImageProviders.MyBooksView.myLibraryIcon
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-        }
-        .accessibilityIdentifier(AccessibilityID.Holds.libraryButton)
-        .accessibilityLabel(Strings.Generic.switchLibrary)
-        .actionSheet(isPresented: $model.selectNewLibrary) {
-            var buttons: [ActionSheet.Button] = appContainer.settings.settingsAccountsList.map { account in
-                .default(Text(account.name)) {
-                    model.loadAccount(account)
-                }
-            }
-            buttons.append(.default(Text(Strings.MyBooksView.addLibrary)) {
-                model.showLibraryAccountView = true
-            })
-            buttons.append(.cancel())
-            return ActionSheet(
-                title: Text(NSLocalizedString(DisplayStrings.findYourLibrary, comment: "")),
-                buttons: buttons
-            )
-        }
+        // PP-4821 / PP-5066: library switching lives solely in Settings. PP-4821
+        // made this a plain image on the Catalog but missed Holds and My Books,
+        // leaving the switcher reachable — and announced to VoiceOver as
+        // "Switch Library" — on exactly the two screens it was removed from.
+        ImageProviders.MyBooksView.myLibraryIcon
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityHidden(true)
     }
 
     private var trailingBarButton: some View {
