@@ -23,6 +23,24 @@ private struct TPPNetworkTaskInfo {
     /// body. See PP-4769 (crash 898c0776).
     var didExceedSizeLimit: Bool = false
 
+    /// The same pending completion, rebound to a retry attempt with a FRESH
+    /// response buffer.
+    ///
+    /// PP-5065: the completion must survive a token-refresh retry (that is the
+    /// whole point of remapping it), but the bytes must not. The 401's problem
+    /// document is already buffered by the time the refresh is decided, and
+    /// `didReceive data:` APPENDS, so carrying the buffer forward hands the
+    /// caller `<problem-doc JSON><retry body>` as a single successful response.
+    ///
+    /// `startDate` is deliberately preserved: elapsed-time logging should span
+    /// the whole user-visible operation, refresh included, not just the retry.
+    func rebornForRetry() -> TPPNetworkTaskInfo {
+        var fresh = self
+        fresh.progressData = Data()
+        fresh.didExceedSizeLimit = false
+        return fresh
+    }
+
     // ----------------------------------------------------------------------------
     init(completion: (@escaping (NYPLResult<Data>) -> Void)) {
         self.progressData = Data()
@@ -244,10 +262,26 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
             // (caught at PR #956's CI). Production callers see the completion
             // fire twice — second call is a cancelled-error overwriting the
             // genuine retry result. Move the mapping to fix.
+            //
+            // The completion MOVES; the accumulated body does NOT (PP-5065).
+            // See `rebornForRetry()`.
             if let info = self.taskInfo.removeValue(forKey: oldId) {
-                self.taskInfo[newId] = info
+                self.taskInfo[newId] = info.rebornForRetry()
             }
         }
+    }
+
+    /// Test seam: the bytes accumulated for `taskID` so far, or nil if no task
+    /// info is registered under that id.
+    ///
+    /// Read-only, and deliberately narrow. The delivery path in
+    /// `didCompleteWithError` requires a real `URLResponse`, which a
+    /// non-resumed `URLSessionDataTask` cannot carry, so the accumulated body
+    /// is not otherwise observable from a test — which is precisely how PP-5065
+    /// went unnoticed for four months. Sharing `taskInfoQueue` with the writers
+    /// also makes a `sync` read an ordering barrier behind the async appends.
+    func accumulatedBytesForTesting(taskID: TaskID) -> Data? {
+        taskInfoQueue.sync { self.taskInfo[taskID]?.progressData }
     }
 }
 
