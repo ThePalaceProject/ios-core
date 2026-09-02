@@ -138,6 +138,15 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         "PalaceTests/AccountsManagerTests"
         "PalaceTests/BookmarkDeletionLogTests"
         "PalaceTests/MultiLibraryTokenIsolationTests"
+        # Signing the test host (PP-5058) surfaced this one. `measure {}`
+        # re-establishes the test-runner connection for its iterations, and a
+        # signed app installs more slowly than an unsigned one; under 4 parallel
+        # clones the reconnect exceeded its timeout and the runner "hung before
+        # establishing connection". Measured: the class's other 6 tests ran and
+        # passed in that same run, and only `testRFC1123Performance` was absent
+        # from the bundle — 8621 distinct tests against 8622 on the unsigned
+        # baseline. Running it serially keeps it gating rather than skipping it.
+        "PalaceTests/Date_NYPLAdditionsTests"
     )
     ISOLATED_SKIP_ARGS=()
     ISOLATED_ONLY_ARGS=()
