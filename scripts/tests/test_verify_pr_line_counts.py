@@ -18,6 +18,7 @@ missing case was the EMPTY one — the input nobody writes a fixture for.
 """
 import os
 import subprocess
+import sys
 
 REPO = os.path.join(os.path.dirname(__file__), "..", "..")
 VERIFY = os.path.join(REPO, "scripts", "verify-pr.sh")
@@ -143,3 +144,61 @@ def test_baseline_only_cannot_fail_by_construction():
     src = open(ENFORCE, encoding="utf-8").read()
     assert "effective_floor = actual if baseline_only else float(floor)" in src
     assert "overall_floor = overall_actual" in src
+
+
+# ---------------------------------------------------------------------------
+# Coverage-floor semantics. A module that leaves the measured surface used to
+# `continue` without touching `all_pass`, so it silently stopped being gated —
+# which is what the decomposition campaign does every time it extracts one into
+# Palace/Packages (coverage reports a single target, Palace.app; none of the 11
+# packages' sources are measured).
+# ---------------------------------------------------------------------------
+
+def _evaluate(floors, coverage):
+    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    import importlib
+    mod = importlib.import_module("enforce_coverage_floors")
+    importlib.reload(mod)
+    return mod.evaluate(coverage, floors, baseline_only=False, metric="testable")
+
+
+def _coverage(files):
+    return {
+        "testable_coverage": 90.0,
+        "targets": [],
+        "files": [{"name": n, "coverage": c} for n, c in files],
+    }
+
+
+def test_missing_module_fails_the_gate():
+    """The behaviour that made an extracted module invisible."""
+    floors = {"overall": 0.0, "modules": {"GoneAway": 0.50}}
+    rows, all_pass = _evaluate(floors, _coverage([("StillHere.swift", 80.0)]))
+    assert all_pass is False
+    assert any(r["module"] == "GoneAway" and r["status"] == "MISSING" for r in rows)
+
+
+def test_present_module_above_floor_passes():
+    """Control: the same shape with the module present must pass, so the test
+    above is not simply asserting that everything fails."""
+    floors = {"overall": 0.0, "modules": {"StillHere": 0.50}}
+    rows, all_pass = _evaluate(floors, _coverage([("StillHere.swift", 80.0)]))
+    assert all_pass is True
+    assert any(r["module"] == "StillHere" and r["status"] == "PASS" for r in rows)
+
+
+def test_present_module_below_floor_fails():
+    floors = {"overall": 0.0, "modules": {"StillHere": 0.90}}
+    _, all_pass = _evaluate(floors, _coverage([("StillHere.swift", 80.0)]))
+    assert all_pass is False
+
+
+def test_floors_file_declares_its_unmeasured_exemption():
+    """TPPBookRegistry is not a violation and not a vanished module — it is an
+    unmeasured surface, and that has to be recorded with a reason rather than
+    dropped, or the blind spot becomes invisible again."""
+    import json
+    floors = json.load(open(os.path.join(REPO, "scripts", "coverage-floors.json")))
+    assert "TPPBookRegistry" not in floors["modules"]
+    assert "TPPBookRegistry" in floors["unmeasured"]
+    assert "PalaceBookRegistry" in floors["unmeasured"]["TPPBookRegistry"]
