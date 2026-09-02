@@ -47,6 +47,30 @@ struct VerbatimTextField: UIViewRepresentable {
         field.autocorrectionType = .no
     }
 
+    /// Pin the field to its own single-line height while still letting it span
+    /// the width.
+    ///
+    /// A `UIViewRepresentable` is sized from the wrapped view's intrinsic content
+    /// size and its hugging priorities. `UITextField` ships vertical hugging at
+    /// `.defaultLow` (250) — "willing to stretch" — so in a `ZStack` that proposes
+    /// the full available height the field ACCEPTED it: the search bar rendered
+    /// roughly a quarter of the screen tall with the placeholder floating in the
+    /// middle, and the caller's `.background(...)` + `.cornerRadius(10)` painted
+    /// that whole expanded area. The previous SwiftUI `TextField` had an intrinsic
+    /// single-line height and never showed this.
+    ///
+    /// Horizontal hugging stays `.defaultLow` deliberately: the field IS meant to
+    /// fill the search bar's width. Only the vertical axis was wrong.
+    ///
+    /// Extracted as a static seam for the same reason as `applyVerbatimInputTraits`:
+    /// `UIViewRepresentableContext` has no public initialiser, so `makeUIView`
+    /// cannot be called from a test.
+    static func applyFieldSizing(to field: UITextField) {
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        field.setContentCompressionResistancePriority(.defaultHigh, for: .vertical)
+    }
+
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
         Self.applyVerbatimInputTraits(to: field)
@@ -56,7 +80,7 @@ struct VerbatimTextField: UIViewRepresentable {
         field.delegate = context.coordinator
         field.font = .preferredFont(forTextStyle: .body)
         field.adjustsFontForContentSizeCategory = true
-        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        Self.applyFieldSizing(to: field)
         field.addTarget(
             context.coordinator,
             action: #selector(Coordinator.editingChanged(_:)),
