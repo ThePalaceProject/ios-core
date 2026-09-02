@@ -147,6 +147,26 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         # from the bundle — 8621 distinct tests against 8622 on the unsigned
         # baseline. Running it serially keeps it gating rather than skipping it.
         "PalaceTests/Date_NYPLAdditionsTests"
+        # Temporary — added 2026-09-02 from run 33669583217, where each of these
+        # failed exactly ONE of three iterations. Under `-test-iterations 3` a
+        # single stumble relaunches the WHOLE plan, so that run sampled the
+        # parallel leg at 2.94x (25,094 executions of 8,531 distinct tests):
+        # ~23 of its 35 test-minutes were re-runs, which is what pushed the step
+        # past its 60-minute budget. On a 10x-billed macOS runner that is roughly
+        # 230 wasted billable minutes per affected run.
+        #
+        # Load-sensitive, not broken: `ci-test-history.py BookRegistrySyncTests`
+        # shows it passing across a dozen runs at 0.01-0.5s, its one failure
+        # taking 2.501s — a 100x slowdown, i.e. measuring the machine rather than
+        # the code. That is exactly the class this list exists for.
+        #
+        # Evidence is a SINGLE run for three of these four classes, so this is a
+        # quarantine to stop the credit bleed, not a verdict on them. Remove each
+        # as its per-test fix lands.
+        "PalaceTests/BookRegistrySyncTests"
+        "PalaceTests/LCPFulfillmentHandlerTests"
+        "PalaceTests/BookSignInRedirectHandlerTests"
+        "PalaceTests/PalacePreferencesSettingsRoundTripTests"
     )
     ISOLATED_SKIP_ARGS=()
     ISOLATED_ONLY_ARGS=()
