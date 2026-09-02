@@ -38,6 +38,23 @@ final class VerbatimTextFieldTests: XCTestCase {
                        "autocorrection can rewrite an author's name before the search is sent")
     }
 
+    // The field must keep its own single-line height. A UIViewRepresentable is
+    // sized from the wrapped view's intrinsic size and its hugging priorities;
+    // UITextField ships vertical hugging at .defaultLow (250), i.e. "willing to
+    // stretch". In a ZStack that proposes the full available height the field
+    // accepted it and rendered ~a quarter of the screen tall, with the
+    // background and cornerRadius painting the whole expanded area.
+    // Horizontal hugging must STAY low — the field is meant to fill the width.
+    func testMakeUIView_pinsFieldToItsIntrinsicHeightButStillFillsWidth() {
+        let field = UITextField()
+        VerbatimTextField.applyFieldSizing(to: field)
+
+        XCTAssertEqual(field.contentHuggingPriority(for: .vertical), .defaultHigh,
+                       "vertical hugging must resist stretching or the search field grows to fill its container")
+        XCTAssertEqual(field.contentHuggingPriority(for: .horizontal), .defaultLow,
+                       "horizontal hugging must stay low so the field still spans the search bar's width")
+    }
+
     func testApplyVerbatimInputTraits_doesNotChangeAutocapitalisation() {
         let field = UITextField()
         let before = field.autocapitalizationType
