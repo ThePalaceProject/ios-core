@@ -65,22 +65,16 @@ class AudiobookTOCTests: XCTestCase {
 
     // MARK: - Chapter Navigation Tests
 
-    func testTOC_OpenSpecificChapter() {
-        guard tracks.tracks.count > 2 else {
-            XCTSkip("Need at least 3 chapters")
-            return
-        }
+    func testTOC_OpenSpecificChapter() throws {
+        try XCTSkipUnless(tracks.tracks.count > 2, "Need at least 3 chapters")
 
         let chapter3 = tracks.tracks[2]
 
         XCTAssertEqual(chapter3.index, 2, "Should open chapter 3 (index 2)")
     }
 
-    func testTOC_OpenRandomChapter() {
-        guard tracks.tracks.count > 1 else {
-            XCTSkip("Need at least 2 chapters")
-            return
-        }
+    func testTOC_OpenRandomChapter() throws {
+        try XCTSkipUnless(tracks.tracks.count > 1, "Need at least 2 chapters")
 
         let randomIndex = Int.random(in: 0..<tracks.tracks.count)
         let randomChapter = tracks.tracks[randomIndex]
@@ -109,11 +103,8 @@ class AudiobookTOCTests: XCTestCase {
                       "Fallback chapter name must embed the chapter number")
     }
 
-    func testChapterName_MatchesAfterNavigation() {
-        guard tracks.tracks.count > 2 else {
-            XCTSkip("Need at least 3 chapters")
-            return
-        }
+    func testChapterName_MatchesAfterNavigation() throws {
+        try XCTSkipUnless(tracks.tracks.count > 2, "Need at least 3 chapters")
 
         let targetChapter = tracks.tracks[2]
         let savedName = targetChapter.title ?? "Chapter 3"
@@ -127,11 +118,8 @@ class AudiobookTOCTests: XCTestCase {
 
     // MARK: - Auto-Advance Tests
 
-    func testChapter_AutoAdvanceToNext() {
-        guard tracks.tracks.count > 1 else {
-            XCTSkip("Need at least 2 chapters")
-            return
-        }
+    func testChapter_AutoAdvanceToNext() throws {
+        try XCTSkipUnless(tracks.tracks.count > 1, "Need at least 2 chapters")
 
         var currentChapterIndex = 0
         let chapterName = tracks.tracks[currentChapterIndex].title
@@ -233,11 +221,8 @@ class AudiobookTOCTests: XCTestCase {
 
     // MARK: - Chapter Selection Persistence Tests
 
-    func testChapter_SelectionPersistsAfterReturn() {
-        guard tracks.tracks.count > 2 else {
-            XCTSkip("Need at least 3 chapters")
-            return
-        }
+    func testChapter_SelectionPersistsAfterReturn() throws {
+        try XCTSkipUnless(tracks.tracks.count > 2, "Need at least 3 chapters")
 
         let selectedChapterIndex = 2
 
