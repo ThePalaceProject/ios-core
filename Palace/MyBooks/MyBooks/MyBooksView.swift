@@ -87,15 +87,6 @@ struct MyBooksView: View {
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""
         }
-        .sheet(isPresented: $model.showLibraryAccountView) {
-            UIViewControllerWrapper(
-                TPPAccountList { account in
-                    model.authenticateAndLoad(account: account)
-                    model.showLibraryAccountView = false
-                },
-                updater: { _ in }
-            )
-        }
         .actionSheet(isPresented: $showSortSheet) { sortActionSheet }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
             guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
@@ -206,14 +197,15 @@ struct MyBooksView: View {
     }
 
     private var leadingBarButton: some View {
-        Button(action: { model.selectNewLibrary.toggle() }, label: {
-            ImageProviders.MyBooksView.myLibraryIcon
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-        })
-        .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
-        .accessibilityLabel(Strings.Generic.switchLibrary)
-        .actionSheet(isPresented: $model.selectNewLibrary, content: { libraryPicker })
+        // PP-4821 / PP-5066: the Palace icon is static branding only. Library
+        // switching lives solely in Settings. PP-4821 changed this on the Catalog
+        // and missed My Books and Holds, so the switcher stayed reachable on two
+        // of the three screens carrying the icon — and announced itself to
+        // VoiceOver as "Switch Library" on exactly those two. Matches
+        // CatalogView: a plain image, not a Button, hidden from VoiceOver.
+        ImageProviders.MyBooksView.myLibraryIcon
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityHidden(true)
     }
 
     private var trailingBarButton: some View {
@@ -234,27 +226,6 @@ struct MyBooksView: View {
             model.facetViewModel.activeSort = .title
         }
         return ActionSheet(title: Text(DisplayStrings.sortBy), buttons: [author, title, .cancel()])
-    }
-
-    private var libraryPicker: ActionSheet {
-        ActionSheet(
-            title: Text(DisplayStrings.findYourLibrary),
-            buttons: existingLibraryButtons() + [addLibraryButton, .cancel()]
-        )
-    }
-
-    private func existingLibraryButtons() -> [ActionSheet.Button] {
-        settings.settingsAccountsList.map { account in
-            .default(Text(account.name)) {
-                model.loadAccount(account)
-                model.showLibraryAccountView = false
-                model.selectNewLibrary = false
-            }
-        }
-    }
-
-    private var addLibraryButton: ActionSheet.Button {
-        .default(Text(DisplayStrings.addLibrary)) { model.showLibraryAccountView = true }
     }
 
     private var emptyView: some View {
