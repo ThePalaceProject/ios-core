@@ -302,6 +302,7 @@
 		24C1F145C0A0FB6B336CE9E3 /* OfflineQueueServiceExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EF2F2922050A267096B9D57 /* OfflineQueueServiceExtendedTests.swift */; };
 		25011A2221163A21257C73C8 /* BookReturnServiceContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D24086CF8BC2C596888CDA /* BookReturnServiceContractTests.swift */; };
 		2509AED42CD6FC9523E9901D /* BookButtonTypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4FCC8401ACF8D4FD8CAFFE2 /* BookButtonTypeTests.swift */; };
+		25701F88CC680AEE6C23560E /* BookDetailButtonRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E5FCA19B414F3C09329A4D /* BookDetailButtonRoutingTests.swift */; };
 		25959D57AE73A5D30750924D /* TPPReaderFootnoteAccessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B4E8EC366716B84F91365E /* TPPReaderFootnoteAccessibility.swift */; };
 		25DF742278BA71BEE5EBAD27 /* TokenResponseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A325872EF1D517D66C0FA15F /* TokenResponseTests.swift */; };
 		262789F2A1A164B79D0138AB /* TriageBotIOS in Frameworks */ = {isa = PBXBuildFile; productRef = B848F3B79F55EEDD9B820E1F /* TriageBotIOS */; };
@@ -3170,8 +3171,8 @@
 		C814ACEF8225153039002C2F /* FirebaseTriageTelemetrySink.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FirebaseTriageTelemetrySink.swift; sourceTree = "<group>"; };
 		C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStatsService.swift; sourceTree = "<group>"; };
 		C927D5FB4DCC629EEF09DE4C /* BadgeServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeServiceTests.swift; sourceTree = "<group>"; };
-		C992916E66B65686BAB628B6 /* FCMRegistrationReadinessLintTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FCMRegistrationReadinessLintTests.swift; sourceTree = "<group>"; };
 		C96B8000E1A281B3F9F0C4EF /* TaskProvenanceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskProvenanceTests.swift; sourceTree = "<group>"; };
+		C992916E66B65686BAB628B6 /* FCMRegistrationReadinessLintTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FCMRegistrationReadinessLintTests.swift; sourceTree = "<group>"; };
 		C9E38281988A9921BB4B8297 /* OPDS2IntegrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDS2IntegrationTests.swift; sourceTree = "<group>"; };
 		CA7336DCAC8206364153A59C /* Reader2PositionAdapterContractTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Reader2PositionAdapterContractTests.swift; sourceTree = "<group>"; };
 		CAA550DFD5C0CC29F38E9FB8 /* PalacePressableButtonStyle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PalacePressableButtonStyle.swift; sourceTree = "<group>"; };
@@ -3231,6 +3232,7 @@
 		D1E2F3A4B5C6D7E8F9A0B1C2 /* DownloadCompletionParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadCompletionParser.swift; sourceTree = "<group>"; };
 		D28F809A16EF96F2EEBC8A83 /* AccessibilityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityService.swift; sourceTree = "<group>"; };
 		D2ADD2980F56FC974B6DEBAC /* TPPReaderSettingsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPReaderSettingsTests.swift; sourceTree = "<group>"; };
+		D2E5FCA19B414F3C09329A4D /* BookDetailButtonRoutingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookDetailButtonRoutingTests.swift; sourceTree = "<group>"; };
 		D2F5CC426CE615EF41ABC2E8 /* MockIsolationLintTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockIsolationLintTests.swift; sourceTree = "<group>"; };
 		D362330BB6B07FD6B2770E5D /* LoanRenewalService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LoanRenewalService.swift; sourceTree = "<group>"; };
 		D36A0EAF9098429CA6DCAD16 /* NavigationCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinatorTests.swift; sourceTree = "<group>"; };
@@ -4397,6 +4399,15 @@
 			);
 			name = ReaderStreaming;
 			path = ReaderStreaming;
+			sourceTree = "<group>";
+		};
+		54E96DD69F6E3E552C25AD00 /* BookDetail */ = {
+			isa = PBXGroup;
+			children = (
+				D2E5FCA19B414F3C09329A4D /* BookDetailButtonRoutingTests.swift */,
+			);
+			name = BookDetail;
+			path = BookDetail;
 			sourceTree = "<group>";
 		};
 		5A569A271B8351C6003B5B61 /* Products */ = {
@@ -5811,6 +5822,7 @@
 				51AE9BB746CCC235C5F50D72 /* UIPolish */,
 				C6D3A461253246DAAEC73DB4 /* Decomp */,
 				F583905DB12E603FC43A99CC /* Books */,
+				54E96DD69F6E3E552C25AD00 /* BookDetail */,
 			);
 			path = PalaceTests;
 			sourceTree = "<group>";
@@ -8253,6 +8265,7 @@
 				73BBB3926AC3E7A5B6FE5C47 /* AppTabSwitchPreservesStacksTests.swift in Sources */,
 				E8F4F608916F148D95AA5187 /* AppTabSelectionBindingLintTests.swift in Sources */,
 				1A770BFF15E884A436EEB0F0 /* TaskProvenanceTests.swift in Sources */,
+				25701F88CC680AEE6C23560E /* BookDetailButtonRoutingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

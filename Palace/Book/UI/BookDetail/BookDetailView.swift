@@ -796,6 +796,31 @@ struct BookDetailView: View {
         }
     }
 
+    /// Whether a button press opens content (reader / player) rather than
+    /// acting on the half-sheet.
+    ///
+    /// PP-5059: this used to be implicit in a `switch` arm, and it was wrong —
+    /// `.read` and `.listen` shared the arm with the half-sheet-local actions,
+    /// so on iPad (`isFullSize`, no half-sheet) tapping Read did nothing at all.
+    /// The switch already carried an exhaustiveness guard, but exhaustiveness
+    /// only catches a NEW case; it cannot catch an existing case sitting in the
+    /// wrong arm. Pulled out as a value so the routing is asserted rather than
+    /// described in a comment.
+    /// The `.read` / `.listen` arm of `handleButtonAction` must mirror this.
+    /// It is kept as a separate value because a `case _ where` in the switch
+    /// would silently defeat the exhaustiveness guard that file relies on.
+    static func opensContentDirectly(_ button: BookButtonType) -> Bool {
+        switch button {
+        case .read, .listen:
+            return true
+        case .retry, .cancel, .returning, .close,
+             .sample, .audiobookSample, .readStreaming,
+             .download, .get, .reserve, .remove, .return,
+             .cancelHold, .manageHold:
+            return false
+        }
+    }
+
     private func handleButtonAction(_ buttonType: BookButtonType) {
         let account = appContainer.accountsManager.currentUserAccount
         let needsAuth = account.needsAuth && !account.hasCredentials()
@@ -869,10 +894,27 @@ struct BookDetailView: View {
                 }
             }
 
-        case .read, .listen, .retry, .cancel, .returning, .close:
-            // read/listen open the reader, retry/cancel/returning/close are
-            // half-sheet-local actions — all share the same "toggle half-sheet"
-            // fallback. Listed explicitly to preserve exhaustive matching.
+        case .read, .listen:
+            // PP-5059: these OPEN the content — they are not half-sheet-local.
+            // They used to share the toggle below, and the comment claimed they
+            // "open the reader" while the code only flipped `showHalfSheet`. On
+            // iPhone that was survivable: the toggle presents the half-sheet,
+            // whose own Read/Listen calls `handleAction` (HalfSheetview), so the
+            // book opened one tap later. On iPad `isFullSize` is true and the
+            // half-sheet is not that path, so the toggle was a no-op and Read
+            // did nothing at all — no reader, no error, no state change.
+            //
+            // Dispatch async for the same reason HalfSheetview does: let any
+            // in-flight sheet dismissal finish before the reader presentation
+            // takes the screen.
+            viewModel.showHalfSheet = false
+            DispatchQueue.main.async {
+                viewModel.handleAction(for: buttonType)
+            }
+
+        case .retry, .cancel, .returning, .close:
+            // Genuinely half-sheet-local: these act on the sheet itself.
+            // Listed explicitly to preserve exhaustive matching.
             accessibleWithAnimation(.spring()) {
                 viewModel.showHalfSheet.toggle()
             }
