@@ -37,7 +37,10 @@ final class LocalBookContentServiceTests: XCTestCase {
         service = LocalBookContentService(
             bookRegistry: registry,
             accountsManager: appContainer.accountsManager,
-            bookFileManager: bookFileManager
+            bookFileManager: bookFileManager,
+            // PP-4957: pinned for the same reason as `makeService` — the shared
+            // instance must not read the live Firebase flag.
+            streamingEnabledProvider: { false }
         )
     }
 
@@ -229,7 +232,8 @@ final class LocalBookContentServiceTests: XCTestCase {
         fulfiller: SpyLCPContentFulfiller,
         reporter: SpyProgressReporter? = nil,
         idleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
-        clock: FakeClock? = nil
+        clock: FakeClock? = nil,
+        streamingEnabled: Bool = false
     ) -> LocalBookContentService {
         let service = LocalBookContentService(
             bookRegistry: registry,
@@ -237,7 +241,13 @@ final class LocalBookContentServiceTests: XCTestCase {
             bookFileManager: bookFileManager,
             lcpContentFulfiller: fulfiller.fulfill,
             inflightIdleTimeout: idleTimeout,
-            monotonicClock: clock.map { c in { c.now } }
+            monotonicClock: clock.map { c in { c.now } },
+            // PP-4957: PIN the flag. Without this the suite reads
+            // `RemoteFeatureFlags.shared`, whose Firebase value is TRUE at 100%
+            // — so the streaming early-return fires and these tests measure a
+            // remote config rather than the code. Three would fail and three
+            // would pass vacuously. Default false = pre-streaming behaviour.
+            streamingEnabledProvider: { streamingEnabled }
         )
         service.contentDownloadReporter = reporter
         return service

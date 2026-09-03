@@ -39,6 +39,10 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
             downloadCenterProvider: { container.downloadCenter },
             opdsFeedServiceProvider: { container.opdsFeedService },
             redownloadSchedulerProvider: { spy },
+            // PP-4957: pin the flag — the production default reads
+            // `RemoteFeatureFlags.shared`, whose Firebase value is TRUE at 100%,
+            // so an unpinned suite measures a remote config, not this code.
+            lcpStreamingEnabledProvider: { false },
             contentRedownloadDelay: Self.testDelay,
             orphanRedownloadDelay: Self.testDelay
         )
@@ -257,7 +261,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     /// with the wrong auth context. Tests that assert scheduling therefore need
     /// the loaded account to BE the current one, via an isolated UserDefaults
     /// suite rather than writing to `.standard`.
-    private func makeSchedulingSyncManager(currentAccount account: String)
+    private func makeSchedulingSyncManager(currentAccount account: String, lcpStreamingEnabled: Bool = false)
         -> (BookRegistrySync, SpyRedownloadScheduler, BookRegistryStore) {
         let suite = UserDefaults(suiteName: "brs-sched-\(UUID().uuidString)")!
         suite.set(account, forKey: currentAccountIdentifierKey)
@@ -277,6 +281,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
             downloadCenterProvider: { container.downloadCenter },
             opdsFeedServiceProvider: { container.opdsFeedService },
             redownloadSchedulerProvider: { spy },
+            lcpStreamingEnabledProvider: { lcpStreamingEnabled },
             contentRedownloadDelay: Self.testDelay,
             orphanRedownloadDelay: Self.testDelay
         )
@@ -313,6 +318,52 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         XCTAssertEqual(localStore.state(for: book.identifier), .downloadNeeded,
                        "a license alone is not a playable book")
+    }
+
+    /// PP-4957 strand regression. The mirror of the test above, with streaming ON.
+    ///
+    /// When streaming is enabled an LCP audiobook IS playable on its `.lcpl`
+    /// alone, so the license-only state must NOT be treated as "content
+    /// missing". Without the flag-aware branch in `contentPresence`, `load()`
+    /// downgrades the book to `.downloadNeeded` on every launch and schedules a
+    /// re-download that `LocalBookContentService`'s streaming guard then
+    /// suppresses — the book is stranded permanently and Listen never returns.
+    ///
+    /// Both SoD reviewers blocked the 3.2.4 back-port for exactly this, because
+    /// the port carried the streaming provider without this consumer. Firebase
+    /// has the flag TRUE at 100%, so it is the shipping path, not a dormant one.
+    func test_load_licenseWithoutContent_whenStreamingEnabled_staysPlayable() throws {
+        let account = "brs-stream-\(UUID().uuidString)"
+        let (sync, spy, localStore) = makeSchedulingSyncManager(currentAccount: account,
+                                                                lcpStreamingEnabled: true)
+        let url = try XCTUnwrap(sync.registryUrl(for: account))
+        defer { cleanupAccount(url) }
+
+        let book = makeLCPAudiobook(identifier: "lcp-stream-\(UUID().uuidString)")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadSuccessful)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let licenseURL = try XCTUnwrap(appContainer.downloadCenter.fileUrl(for: book, account: account))
+            .deletingPathExtension().appendingPathExtension("lcpl")
+        try FileManager.default.createDirectory(at: licenseURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: licenseURL) }
+
+        // A redownload here is the DEFECT, so its absence is the assertion.
+        var scheduledRedownload = false
+        spy.onLCPContentRedownload = { if $0.identifier == book.identifier { scheduledRedownload = true } }
+
+        let done = expectation(description: "loaded")
+        sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
+        wait(for: [done], timeout: 10.0)
+
+        XCTAssertEqual(localStore.state(for: book.identifier), .downloadSuccessful,
+                       "with streaming ON a license IS a playable book — downgrading it to "
+                       + ".downloadNeeded strands it permanently, because the re-download that "
+                       + "would heal it is suppressed by the streaming guard")
+        XCTAssertFalse(scheduledRedownload,
+                       "streaming must not re-fetch the .lcpa it deliberately did not download")
     }
 
     /// Kills the mutant "load() drops the orphan-redownload block". Content gone
