@@ -52,6 +52,12 @@ final class RemoteFeatureFlags {
         /// `AudiobookSessionPresenter`. Default OFF — the feature is
         /// opt-in via the developer settings toggle until broad rollout.
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
+        /// Gates LCP audiobook streaming-from-license (PP-4957). When ON, an LCP
+        /// audiobook is playable on its `.lcpl` license alone and the player
+        /// streams the encrypted audio on demand via the pinned swift-toolkit
+        /// fork (3.11.0 + fix-issue-579); when OFF, the app downloads the full
+        /// `.lcpa` before playback. Default OFF in-app — Firebase decides.
+        case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
 
         var defaultValue: Bool {
             switch self {
@@ -87,6 +93,8 @@ final class RemoteFeatureFlags {
                 return .triageBotAIFallbackEnabled
             case .inAppPlaybackNavEnabled:
                 return .inAppPlaybackNavEnabled
+            case .lcpAudiobookStreamingEnabled:
+                return .lcpAudiobookStreamingEnabled
             default:
                 return nil
             }
@@ -313,6 +321,10 @@ final class RemoteFeatureFlags {
     /// `resetAccountLocalOverrideKey` pattern.
     static let inAppPlaybackNavLocalOverrideKey = "RemoteFeatureFlags.inAppPlaybackNavLocalOverride"
 
+    /// Dev-menu override for LCP audiobook streaming (PP-4957), same
+    /// precedence as the flags above: local override > Firebase remote.
+    static let lcpAudiobookStreamingLocalOverrideKey = "RemoteFeatureFlags.lcpAudiobookStreamingLocalOverride"
+
     /// Whether the in-app playback navigation feature is enabled:
     /// Continue Reading/Listening hero rows on the Catalog top, the
     /// persistent mini-player above the tab bar, and the tap-to-resume
@@ -331,6 +343,18 @@ final class RemoteFeatureFlags {
             return override
         }
         return isFeatureEnabled(.inAppPlaybackNavEnabled)
+    }
+
+    /// Whether an LCP audiobook may play from its license alone (PP-4957).
+    ///
+    /// Precedence matches every other flag here: a dev-menu local override
+    /// wins, otherwise Firebase, otherwise the in-app default (false =
+    /// download-first, i.e. pre-PP-4957 behaviour preserved exactly).
+    var isLCPAudiobookStreamingEnabled: Bool {
+        if let override = defaults.object(forKey: Self.lcpAudiobookStreamingLocalOverrideKey) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.lcpAudiobookStreamingEnabled)
     }
 
     // MARK: - Device Info for Targeting

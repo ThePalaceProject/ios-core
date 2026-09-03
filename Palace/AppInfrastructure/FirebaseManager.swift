@@ -63,6 +63,7 @@ final class FirebaseManager {
         case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
         case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
+        case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
     }
 
     // MARK: - Initialization
@@ -109,7 +110,10 @@ final class FirebaseManager {
             RemoteConfigKey.triageBotEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotTicketSubmissionEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotAIFallbackEnabled.rawValue: NSNumber(value: false),
-            RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false)
+            RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false),
+            // PP-4957: default OFF = download-first, i.e. exactly the behaviour
+            // that shipped before streaming existed. Firebase turns it on.
+            RemoteConfigKey.lcpAudiobookStreamingEnabled.rawValue: NSNumber(value: false)
         ])
     }
 
