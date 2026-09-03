@@ -35,6 +35,12 @@ class BookRegistrySync {
   private let opdsFeedServiceProvider: () -> OPDSFeedService
   /// Defaults to the download center; injected in tests to observe scheduling.
   private let redownloadSchedulerProvider: () -> RegistryRedownloadScheduling
+  /// PP-4957: reads the LCP-audiobook-streaming flag. A closure, matching the
+  /// providers above, so tests drive BOTH states without touching
+  /// `RemoteFeatureFlags.shared`, and so the read happens at call time rather
+  /// than at construction — this object is built during `TPPBookRegistry.init`,
+  /// before Remote Config has necessarily fetched.
+  private let lcpStreamingEnabledProvider: () -> Bool
   private let registryFolderName = "registry"
   private let registryFileName = "registry.json"
 
@@ -100,6 +106,7 @@ class BookRegistrySync {
     downloadCenterProvider: @escaping () -> MyBooksDownloadCenter,
     opdsFeedServiceProvider: @escaping () -> OPDSFeedService,
     redownloadSchedulerProvider: (() -> RegistryRedownloadScheduling)? = nil,
+    lcpStreamingEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled },
     contentRedownloadDelay: TimeInterval = BookRegistrySync.defaultContentRedownloadDelay,
     orphanRedownloadDelay: TimeInterval = BookRegistrySync.defaultOrphanRedownloadDelay
   ) {
@@ -110,6 +117,7 @@ class BookRegistrySync {
     self.downloadCenterProvider = downloadCenterProvider
     self.opdsFeedServiceProvider = opdsFeedServiceProvider
     self.redownloadSchedulerProvider = redownloadSchedulerProvider ?? { downloadCenterProvider() }
+    self.lcpStreamingEnabledProvider = lcpStreamingEnabledProvider
     diskWriteQueue.setSpecific(key: diskWriteQueueKey, value: ())
   }
 
@@ -922,6 +930,25 @@ class BookRegistrySync {
     if LCPAudiobooks.canOpenBook(book) {
       let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
       if FileManager.default.fileExists(atPath: licenseURL.path) {
+        // PP-4957: when streaming is ON, an LCP audiobook is playable on its
+        // `.lcpl` license alone — report `.present` so load-time reconciliation
+        // keeps it `.downloadSuccessful` across launches instead of downgrading
+        // to `.downloadNeeded` (see `armDecision`, where every `.licenseOnly`
+        // arm does exactly that) and re-fetching the `.lcpa`.
+        //
+        // Without this the book is stranded permanently: the downgrade asks for
+        // a re-download, and `LocalBookContentService`'s streaming guard then
+        // suppresses it, so Listen disappears after the first relaunch and never
+        // comes back. Caught in SoD review — the streaming provider was ported
+        // to this line without this consumer, which is the whole reason the flag
+        // exists at this layer.
+        //
+        // Flag OFF: the original `.licenseOnly` download-first distinction stands
+        // unchanged. That case exists to disable "a license is enough to play"
+        // precisely while streaming was broken upstream (Readium #579).
+        if lcpStreamingEnabledProvider() {
+          return .present
+        }
         return .licenseOnly
       }
     }
