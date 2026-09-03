@@ -358,6 +358,15 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
         wait(for: [done], timeout: 10.0)
 
+        // Scheduling is `main.asyncAfter(+testDelay)`, so asserting straight off
+        // `load`'s completion measures nothing — the schedule has not had a turn
+        // to fire yet and its absence is guaranteed rather than earned. Same trap
+        // as the one measured at the in-flight test below; same barrier. The
+        // main queue orders by deadline, so a later deadline is a real one.
+        let settled = expectation(description: "a redownload would have fired by now")
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.testDelay * 4) { settled.fulfill() }
+        wait(for: [settled], timeout: 5.0)
+
         XCTAssertEqual(localStore.state(for: book.identifier), .downloadSuccessful,
                        "with streaming ON a license IS a playable book — downgrading it to "
                        + ".downloadNeeded strands it permanently, because the re-download that "

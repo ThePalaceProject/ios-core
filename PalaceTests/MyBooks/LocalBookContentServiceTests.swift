@@ -337,6 +337,44 @@ final class LocalBookContentServiceTests: XCTestCase {
         XCTAssertTrue(service.isContentDownloadInFlight(for: book.identifier))
     }
 
+    /// PP-4957 streaming guard, at BOTH flag values in one test.
+    ///
+    /// The two halves share every input except the flag, so a failure can only
+    /// mean the flag stopped being what decides. Written differentially because
+    /// the ON half alone is satisfiable by a service that never fulfills at all
+    /// — the OFF half is what proves the seed, the spy and the call site are
+    /// live, and therefore that the ON half's zero is the guard's doing.
+    ///
+    /// Deleting the `streamingEnabledProvider()` early-return in
+    /// `redownloadLCPContentFile` makes the ON half fail: a `.lcpl`-only book
+    /// would fetch the full `.lcpa` the streaming path exists to avoid, and the
+    /// patron pays for an archive the license alone can already play.
+    func testRedownload_licenseOnlyBook_fetchesWhenStreamingOff_andSkipsWhenOn() throws {
+        // --- streaming OFF: today's download-first behaviour ---
+        let offBook = try seedLicenseOnlyLCPAudiobook()
+        let offFulfiller = SpyLCPContentFulfiller()
+        let offService = makeService(fulfiller: offFulfiller, streamingEnabled: false)
+
+        offService.redownloadLCPContentFile(for: offBook)
+
+        XCTAssertEqual(offFulfiller.callCount, 1,
+                       "flag OFF must be unchanged: a license-only audiobook self-heals by fetching its .lcpa")
+        XCTAssertTrue(offService.isContentDownloadInFlight(for: offBook.identifier),
+                      "the OFF path must claim the in-flight slot — if it does not, the ON half's zero proves nothing")
+
+        // --- streaming ON: the license alone is playable, so no fetch ---
+        let onBook = try seedLicenseOnlyLCPAudiobook()
+        let onFulfiller = SpyLCPContentFulfiller()
+        let onService = makeService(fulfiller: onFulfiller, streamingEnabled: true)
+
+        onService.redownloadLCPContentFile(for: onBook)
+
+        XCTAssertEqual(onFulfiller.callCount, 0,
+                       "flag ON must NOT re-fetch the .lcpa — the self-heal would undo streaming and re-download the whole archive")
+        XCTAssertFalse(onService.isContentDownloadInFlight(for: onBook.identifier),
+                       "a skipped self-heal must not leave a claim behind, or a later real download is blocked forever")
+    }
+
     func testRedownload_afterTransferCompletes_allowsAFreshDownload() throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let fulfiller = SpyLCPContentFulfiller()
