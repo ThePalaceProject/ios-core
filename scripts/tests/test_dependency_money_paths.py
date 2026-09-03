@@ -243,12 +243,29 @@ def test_repository_ledger_records_the_current_pin():
 
     doc = json.loads(resolved.read_text())
     pins = doc.get("pins") or doc.get("object", {}).get("pins") or []
-    version = next(
-        (p["state"].get("version", "") for p in pins
+    state = next(
+        (p.get("state") or {} for p in pins
          if (p.get("identity") or "").lower() == "swift-toolkit"),
-        "",
+        None,
     )
-    assert version, "swift-toolkit pin not found in Package.resolved"
-    assert version in ledger.read_text(), (
-        f"ledger has no entry for the pinned Readium version {version}"
+    assert state is not None, "swift-toolkit pin not found in Package.resolved"
+
+    # A pin is identified by its VERSION when it tracks a release, and by its
+    # REVISION when it tracks a fork — as the 3.2.4 hotfix does, pinning
+    # ThePalaceProject/swift-toolkit at the fix-issue-579 series because the
+    # streaming fix is not in any upstream release. Reading only `version` made
+    # this gate unable to express a fork pin at all: it failed with "pin not
+    # found" when the pin was right there, which reads as a missing dependency
+    # rather than an unrecorded one. Accept either identifier and require the
+    # ledger to name whichever one is actually in use.
+    identifier = state.get("version") or state.get("revision") or ""
+    assert identifier, (
+        "swift-toolkit pin has neither a version nor a revision: "
+        f"{state!r}"
+    )
+    assert identifier in ledger.read_text(), (
+        f"ledger has no entry for the pinned Readium {identifier}. A Readium "
+        "move must be recorded in readium-money-path-validation.md with the "
+        "money paths re-validated against it — that is the point of the pin "
+        "gate, and a fork revision is no exception."
     )
