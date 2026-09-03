@@ -1,5 +1,5 @@
 {
-  "originHash" : "6b3d05989d7ed978a5123126bc368d7901ded954f588f07dd50a100a638360e5",
+  "originHash" : "99ba5ff4a178d478a2d6457371689633dd82134a410dbfd87fba7bd804d77931",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/krzyzanowskim/CryptoSwift.git",
       "state" : {
-        "revision" : "e45a26384239e028ec87fbcc788f513b67e10d8f",
-        "version" : "1.9.0"
+        "revision" : "f2a627b84c1ff96f21ac2fcb623ab36142dd5512",
+        "version" : "1.10.0"
       }
     },
     {
@@ -159,8 +159,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/stephencelis/SQLite.swift.git",
       "state" : {
-        "revision" : "0c08856385fe24f7b76d8c51842d78a196e8e817",
-        "version" : "0.15.5"
+        "revision" : "964c300fb0736699ce945c9edb56ecd62eba27a3",
+        "version" : "0.16.0"
       }
     },
     {
@@ -220,10 +220,9 @@
     {
       "identity" : "swift-toolkit",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/readium/swift-toolkit.git",
+      "location" : "https://github.com/ThePalaceProject/swift-toolkit.git",
       "state" : {
-        "revision" : "de07026e9f825a5791f27a7ac4cd6bb1a784ab8d",
-        "version" : "3.9.0"
+        "revision" : "58413f8680a310ed6d98278687ab711e6be639c8"
       }
     },
     {
@@ -231,8 +230,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/scinfu/SwiftSoup.git",
       "state" : {
-        "revision" : "6c7915e16f729857aec3e99068c361e58a00ed68",
-        "version" : "2.13.4"
+        "revision" : "18b80329749eca5ea29fc50211dca5c7eff5bfec",
+        "version" : "2.13.9"
       }
     },
     {

@@ -13,6 +13,7 @@
 		00C48489D102FD16CBF44882 /* TPPConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16D32877559BE95F5219281 /* TPPConfiguration.swift */; };
 		013A39AA5C934B85B0B66CFD /* HTMLTextViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29B6905F170E4D98A985ABF4 /* HTMLTextViewTests.swift */; };
 		026B6B475F784285ABF02CE4 /* TPPReadiumBookmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19A919E803124E149BB86732 /* TPPReadiumBookmarkTests.swift */; };
+		02D3665B2315339E37760673 /* ManifestFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB805B7FE9C81EA88F0D461 /* ManifestFixture.swift */; };
 		02DCFD8F06FB24A9DF54B6EF /* AudiobookFullPlayerCoverContainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F19EF78203942EF0C864E9 /* AudiobookFullPlayerCoverContainerTests.swift */; };
 		0345BFE81DBF027200398B6F /* APIKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0345BFD61DBF002E00398B6F /* APIKeys.swift */; };
 		0345CCEE4B1E464296D6FA14 /* CatalogState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85803B918D5A471B9C0B98D0 /* CatalogState.swift */; };
@@ -3197,6 +3198,7 @@
 		EB73BECBC7822AE7F95B941B /* AnonymousBorrowFixtureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnonymousBorrowFixtureTests.swift; sourceTree = "<group>"; };
 		EB9B49899F1C10F43D4FAAD8 /* NowPlayingCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NowPlayingCoordinator.swift; sourceTree = "<group>"; };
 		EC176AE72CA93111D5E2B6C3 /* MyBooksDownloadCenterAccountIdThreadingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadCenterAccountIdThreadingTests.swift; sourceTree = "<group>"; };
+		ECB805B7FE9C81EA88F0D461 /* ManifestFixture.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ManifestFixture.swift; sourceTree = "<group>"; };
 		ECEB9F995C87FE2C71DFA9BC /* BookRegistrySync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRegistrySync.swift; sourceTree = "<group>"; };
 		EE116B1078F648DCB8A52598 /* SEMigrationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SEMigrationsTests.swift; sourceTree = "<group>"; };
 		EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoNetworkURLProtocol.swift; sourceTree = "<group>"; };
@@ -3857,6 +3859,7 @@
 				867797B6E90539304E2A80B5 /* AudiobookColdLoadRecoveryTests.swift */,
 				A4D8DD6B7218BCADF6CFC849 /* AudiobookContentGateTests.swift */,
 				00F4A0C93F6B662CE594A953 /* AudiobookBearerTokenRecoveryTests.swift */,
+				ECB805B7FE9C81EA88F0D461 /* ManifestFixture.swift */,
 			);
 			path = Audiobook;
 			sourceTree = "<group>";
@@ -7447,6 +7450,7 @@
 				4D361905F027599F3A93D347 /* BookDetailLCPContentProgressTests.swift in Sources */,
 				59E2E27CBD048ACE94D0101C /* BookRegistryReconciliationTableTests.swift in Sources */,
 				CDCEBFF95761AE244D04DE75 /* BookCellModelLCPProgressTests.swift in Sources */,
+				02D3665B2315339E37760673 /* ManifestFixture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -8773,7 +8777,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 492;
+				CURRENT_PROJECT_VERSION = 500;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -8796,7 +8800,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.2.3;
+				MARKETING_VERSION = 3.2.4;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -8831,7 +8835,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 492;
+				CURRENT_PROJECT_VERSION = 500;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -8854,7 +8858,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.2.3;
+				MARKETING_VERSION = 3.2.4;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -9019,7 +9023,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 492;
+				CURRENT_PROJECT_VERSION = 500;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -9045,7 +9049,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.2.3;
+				MARKETING_VERSION = 3.2.4;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -9079,7 +9083,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 492;
+				CURRENT_PROJECT_VERSION = 500;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -9106,7 +9110,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.2.3;
+				MARKETING_VERSION = 3.2.4;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "App Store";
@@ -9374,10 +9378,10 @@
 		};
 		E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/readium/swift-toolkit.git";
+			repositoryURL = "https://github.com/ThePalaceProject/swift-toolkit.git";
 			requirement = {
-				kind = exactVersion;
-				version = 3.9.0;
+				kind = revision;
+				revision = 58413f8680a310ed6d98278687ab711e6be639c8;
 			};
 		};
 		E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
@@ -9401,7 +9405,7 @@
 			repositoryURL = "https://github.com/stephencelis/SQLite.swift.git";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.15.0;
+				minimumVersion = 0.16.0;
 			};
 		};
 		E7D51772BFB94BFBA1AE8862 /* XCRemoteSwiftPackageReference "std-uritemplate-swift" */ = {

@@ -39,11 +39,22 @@ final class AudiobookContentGateTests: XCTestCase {
         appContainer = makeTestAppContainer()
         // Spy trigger: records every book the gate asks to (re)download, so a
         // test can prove the gate TRIGGERS rather than only polls.
-        sut = AudiobookSessionManager(
+        sut = makeManager(streamingEnabled: false)
+    }
+
+    /// PP-4957: PIN the streaming flag. Left unpinned, `lcpStreamingEnabledProvider`
+    /// defaults to `RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled` —
+    /// a live Firebase value (currently TRUE at 100%) layered over a UserDefaults
+    /// override, so every test here would measure a remote config and whatever
+    /// the last person left on the sim. `false` reproduces the pre-streaming
+    /// download-first behaviour these tests were written against.
+    private func makeManager(streamingEnabled: Bool) -> AudiobookSessionManager {
+        AudiobookSessionManager(
             appContainer: appContainer,
             lcpContentDownloadTrigger: { [weak self] book in
                 self?.triggeredBookIds.append(book.identifier)
-            }
+            },
+            lcpStreamingEnabledProvider: { streamingEnabled }
         )
     }
 
@@ -57,32 +68,60 @@ final class AudiobookContentGateTests: XCTestCase {
 
     // MARK: - Pure predicate (mutation-focused)
 
+    // Flag OFF (`streamingEnabled: false`) — the download-first gate, unchanged.
     func testShouldTrigger_lcpBookContentMissingNotRecovery_returnsTrue() {
         XCTAssertTrue(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
-                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: false),
+                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: false, streamingEnabled: false),
             "A first cold open of an LCP audiobook whose .lcpa isn't on disk must trigger a content download — this is the exact 323-Cause-1 dead-end")
     }
 
     func testShouldTrigger_contentAlreadyLocal_returnsFalse() {
         XCTAssertFalse(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
-                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: true),
+                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: true, streamingEnabled: false),
             "When the .lcpa is already on disk there is nothing to download — open immediately")
     }
 
     func testShouldTrigger_coldLoadRecovery_returnsFalse() {
         XCTAssertFalse(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
-                isColdLoadRecovery: true, canOpenLCPBook: true, contentIsLocal: false),
+                isColdLoadRecovery: true, canOpenLCPBook: true, contentIsLocal: false, streamingEnabled: false),
             "Cold-load recovery re-opens skip the gate — content is already local by then, and re-gating would double the wait")
     }
 
     func testShouldTrigger_notLCPBook_returnsFalse() {
         XCTAssertFalse(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
-                isColdLoadRecovery: false, canOpenLCPBook: false, contentIsLocal: false),
+                isColdLoadRecovery: false, canOpenLCPBook: false, contentIsLocal: false, streamingEnabled: false),
             "The content gate is LCP-specific — a non-LCP audiobook must not be routed through the LCP re-download seam")
+    }
+
+    // PP-4957 — Flag ON (`streamingEnabled: true`) short-circuits the gate to
+    // false, so an LCP audiobook opens (and streams) without a content download.
+    func testShouldTrigger_streamingEnabled_overridesDownloadFirst_returnsFalse() {
+        // Same inputs as `testShouldTrigger_lcpBookContentMissingNotRecovery_returnsTrue`
+        // (which returns TRUE with the flag off) — the ONLY difference is the flag,
+        // so this pins the `if streamingEnabled { return false }` branch: deleting
+        // it makes this assertion fail.
+        XCTAssertFalse(
+            AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
+                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: false, streamingEnabled: true),
+            "With streaming enabled, an LCP audiobook is playable on its license alone — the gate must NOT force a content download before opening")
+    }
+
+    func testShouldTrigger_streamingEnabled_neverTriggers_acrossInputs() {
+        // Streaming ON dominates every other input — no combination triggers a download.
+        for cold in [true, false] {
+            for canOpen in [true, false] {
+                for local in [true, false] {
+                    XCTAssertFalse(
+                        AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
+                            isColdLoadRecovery: cold, canOpenLCPBook: canOpen, contentIsLocal: local, streamingEnabled: true),
+                        "streamingEnabled must force false regardless of (cold: \(cold), canOpen: \(canOpen), local: \(local))")
+                }
+            }
+        }
     }
 
     // MARK: - Gate behavior — TRIGGERS the download (the core fix)
@@ -108,6 +147,54 @@ final class AudiobookContentGateTests: XCTestCase {
             "The gate must await the SAME book's content after triggering")
         XCTAssertEqual(result, .landedAfterTrigger,
             "Content landing after the trigger must resolve to .landedAfterTrigger so the caller opens from the local package")
+    }
+
+    /// PP-4957 — the INSTANCE must pass the flag through to the predicate.
+    ///
+    /// The static predicate is already covered at both flag values, but that
+    /// proves nothing about whether `gateOnLCPContentDownload` actually hands it
+    /// `lcpStreamingEnabledProvider()`. Mutating that argument to a literal
+    /// `false` left this suite green (13 executed, 0 failures) — the provider was
+    /// wired and no test consumed it, the same seam-without-consumer shape found
+    /// twice already on this branch.
+    ///
+    /// Differential on purpose. The OFF half is what proves the book, the spy and
+    /// the call site are live, so the ON half's "no trigger" is the flag's doing
+    /// rather than a test that exercises nothing.
+    func testGate_contentMissing_streamingOn_proceedsWithoutTriggering() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+
+        // --- OFF: content missing means download-first, so the gate triggers ---
+        let offManager = makeManager(streamingEnabled: false)
+        let offResult = await offManager.gateOnLCPContentDownload(
+            for: book,
+            isColdLoadRecovery: false,
+            canOpenLCPBook: true,
+            contentIsLocal: false,
+            awaitContentLanding: { _ in true }
+        )
+        XCTAssertEqual(offResult, .landedAfterTrigger,
+            "flag OFF must be unchanged: missing content triggers a download and lands")
+        XCTAssertEqual(triggeredBookIds, [book.identifier],
+            "the OFF half must actually trigger — if it does not, the ON half's empty list proves nothing")
+
+        // --- ON: the license alone is playable, so the gate must not fetch ---
+        triggeredBookIds = []
+        let onManager = makeManager(streamingEnabled: true)
+        let onResult = await onManager.gateOnLCPContentDownload(
+            for: book,
+            isColdLoadRecovery: false,
+            canOpenLCPBook: true,
+            contentIsLocal: false,
+            awaitContentLanding: { _ in
+                XCTFail("streaming ON must not await content landing — it never triggered a download")
+                return false
+            }
+        )
+        XCTAssertEqual(onResult, .proceed,
+            "flag ON must open straight from the license — gating on a .lcpa that streaming deliberately did not download would block playback")
+        XCTAssertTrue(triggeredBookIds.isEmpty,
+            "streaming ON must not trigger a content download — that would re-fetch the whole archive streaming exists to avoid")
     }
 
     func testGate_contentMissing_awaitTimesOut_returnsUnavailable_butOnlyAfterTrigger() async {
@@ -207,7 +294,13 @@ final class AudiobookContentGateTests: XCTestCase {
         // Rebuild the SUT with a logging trigger so the CallLog captures order.
         let manager = AudiobookSessionManager(
             appContainer: appContainer,
-            lcpContentDownloadTrigger: { b in log.record("triggerDownload", args: ["bookId": b.identifier]) }
+            lcpContentDownloadTrigger: { b in log.record("triggerDownload", args: ["bookId": b.identifier]) },
+            // PP-4957: PIN, for the same reason as `makeManager`. These snapshots
+            // record the download-first call ORDER, which only exists with
+            // streaming OFF. Unpinned they read live Firebase (TRUE at 100%), the
+            // gate returns `.proceed` without ever triggering, and the contract
+            // drifts — which is exactly why this suite was 7/13 red before.
+            lcpStreamingEnabledProvider: { false }
         )
         defer { Task { await manager.stopPlayback(dismissPhoneUI: false) } }
 
@@ -231,7 +324,13 @@ final class AudiobookContentGateTests: XCTestCase {
         let book = TPPBookMocker.mockBook(identifier: "gate-contract-book", title: "Gate Contract Book")
         let manager = AudiobookSessionManager(
             appContainer: appContainer,
-            lcpContentDownloadTrigger: { b in log.record("triggerDownload", args: ["bookId": b.identifier]) }
+            lcpContentDownloadTrigger: { b in log.record("triggerDownload", args: ["bookId": b.identifier]) },
+            // PP-4957: PIN, for the same reason as `makeManager`. These snapshots
+            // record the download-first call ORDER, which only exists with
+            // streaming OFF. Unpinned they read live Firebase (TRUE at 100%), the
+            // gate returns `.proceed` without ever triggering, and the contract
+            // drifts — which is exactly why this suite was 7/13 red before.
+            lcpStreamingEnabledProvider: { false }
         )
         defer { Task { await manager.stopPlayback(dismissPhoneUI: false) } }
 
