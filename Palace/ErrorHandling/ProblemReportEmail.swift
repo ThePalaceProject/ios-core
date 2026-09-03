@@ -65,6 +65,40 @@ import UIKit
         presentingViewController.present(mailComposeViewController, animated: true)
     }
 
+    /// The value rendered after `Library:` in a problem report. Never empty.
+    ///
+    /// PP-5078. This previously read `currentAccount?.name ?? ""`, so a nil
+    /// account emitted the bare line `Library:`. `currentAccount` resolves
+    /// through the library registry and is nil until that registry has loaded
+    /// the selected account — so a patron who reports a problem before it
+    /// settles sends a report with no library on it, while the patron ID (a
+    /// separate, per-library lookup) resolves normally.
+    ///
+    /// Real ticket 18864, app 3.2.3: `Library:` blank, `Patron ID:` populated.
+    /// The agent's triage summary read "Sign in prompt - no library?" — the
+    /// blank implied a patron with no library configured, and the patron had
+    /// written that they were a member of Park Ridge Public Library.
+    ///
+    /// Three outcomes, deliberately distinguishable by whoever reads the email:
+    ///   - a real name          — the common case, passed through verbatim
+    ///   - the identifier       — the app knows WHICH library but cannot name
+    ///                            it; support can resolve a UUID, not a blank
+    ///   - "(none selected)"    — the app genuinely has no library
+    ///
+    /// A blank could equally mean the line was lost in mail transit. None of
+    /// these can.
+    static func libraryFieldValue(name: String?, uuid: String?) -> String {
+        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !name.isEmpty {
+            return name
+        }
+        if let uuid = uuid?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !uuid.isEmpty {
+            return "(name unavailable — \(uuid))"
+        }
+        return "(none selected)"
+    }
+
     func generateBody(book: TPPBook?, patronIdentifier: String? = nil, accountsManager: AccountsManager = AppContainer.production().accountsManager) -> String {
         let nativeHeight = UIScreen.main.nativeBounds.height
         let systemVersion = UIDevice.current.systemVersion
@@ -91,7 +125,7 @@ import UIKit
         }
 
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(accountsManager.currentAccount?.name ?? "")"
+        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(Self.libraryFieldValue(name: accountsManager.currentAccount?.name, uuid: accountsManager.currentAccountId))"
 
         if let patronIdentifier = patronIdentifier {
             body += "\nPatron ID: \(patronIdentifier)"

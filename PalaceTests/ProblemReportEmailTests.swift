@@ -157,4 +157,61 @@ final class ProblemReportEmailTests: XCTestCase {
         XCTAssertFalse(body.contains(sentinel),
                        "Sanity check that the body does not contain unrelated identifier-shaped text")
     }
+
+    // MARK: - PP-5078: the Library line must never arrive blank
+
+    /// The reported defect. `generateBody` rendered
+    /// `Library: \(accountsManager.currentAccount?.name ?? "")`, so whenever
+    /// `currentAccount` was nil the line went out as `Library:` with nothing
+    /// after it.
+    ///
+    /// Real ticket 18864 (1 Sep 2026, app 3.2.3) reached support as:
+    ///
+    ///     Palace Version: 3.2.3
+    ///     Library:
+    ///     Patron ID: 21467001510417
+    ///
+    /// The patron ID resolved and the library name did not, because they come
+    /// from different sources — the ID is looked up per-library, the name is
+    /// read from `currentAccount`, which is nil until the library registry has
+    /// loaded that account. The agent triaging it recorded the summary as
+    /// "Sign in prompt - no library?", so the blank actively implied the patron
+    /// had no library configured; the patron had written that they were a
+    /// member of Park Ridge Public Library.
+    func testPP5078_libraryFieldValue_withNoNameAndNoUUID_isNotBlank() {
+        let value = ProblemReportEmail.libraryFieldValue(name: nil, uuid: nil)
+        XCTAssertFalse(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       "Must render a placeholder, never an empty string. A blank cannot be "
+                       + "distinguished by support from a line lost in email transit.")
+    }
+
+    /// The case that actually produced ticket 18864: the app knows WHICH
+    /// library, it just cannot name it yet. Emitting the identifier turns a
+    /// dead end into something support can look up.
+    func testPP5078_libraryFieldValue_withUUIDButNoName_carriesTheIdentifier() {
+        let uuid = "urn:uuid:99d6a227-910c-484b-aaed-e323e247e959"
+        let value = ProblemReportEmail.libraryFieldValue(name: nil, uuid: uuid)
+        XCTAssertTrue(value.contains(uuid),
+                      "When the registry cannot name the library, the report must still say "
+                      + "which one it was — support can resolve a UUID, but not a blank.")
+    }
+
+    /// Whitespace is a blank line wearing a hat: identical in the email,
+    /// equally useless to the agent reading it.
+    func testPP5078_libraryFieldValue_withWhitespaceName_fallsBack() {
+        for candidate in ["", " ", "   ", "\n", " \t "] {
+            let value = ProblemReportEmail.libraryFieldValue(name: candidate, uuid: "urn:uuid:abc")
+            XCTAssertTrue(value.contains("urn:uuid:abc"),
+                          "Whitespace-only name \(candidate.debugDescription) must fall back, not pass through.")
+        }
+    }
+
+    /// The fix must not damage the common case — most reports do carry a name.
+    func testPP5078_libraryFieldValue_withRealName_isPassedThroughUnchanged() {
+        XCTAssertEqual(
+            ProblemReportEmail.libraryFieldValue(name: "Park Ridge Public Library",
+                                                 uuid: "urn:uuid:whatever"),
+            "Park Ridge Public Library",
+            "A real library name must reach support verbatim, with no decoration.")
+    }
 }
