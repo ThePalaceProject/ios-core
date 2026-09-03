@@ -214,4 +214,35 @@ final class ProblemReportEmailTests: XCTestCase {
             "Park Ridge Public Library",
             "A real library name must reach support verbatim, with no decoration.")
     }
+
+    /// PRODUCER test, not a helper test.
+    ///
+    /// The four cases above pin `libraryFieldValue` itself. They do not pin
+    /// that `generateBody` actually CALLS it — reverting the call site to
+    /// `currentAccount?.name ?? ""` leaves every one of them green while
+    /// shipping the exact defect of ticket 18864. Caught in SoD review; this is
+    /// the test that closes it.
+    ///
+    /// Asserts on the emitted body rather than on a return value, because the
+    /// blank line IS the artifact support receives.
+    func testPP5078_generateBody_neverEmitsABareLibraryLine() {
+        let body = emailService.generateBody(book: nil, patronIdentifier: "21467001510417")
+
+        XCTAssertTrue(body.contains("Library:"),
+                      "precondition: the body must carry a Library line at all")
+        XCTAssertFalse(body.contains("Library:\n"),
+                       "A bare `Library:` line is ticket 18864 — the value must never be empty, "
+                       + "whatever the accounts manager knows.")
+        XCTAssertFalse(body.contains("Library: \n"),
+                       "…including when the value is whitespace, which renders identically in email.")
+        XCTAssertFalse(body.hasSuffix("Library:"),
+                       "…including when the Library line is last in the body.")
+
+        // Whatever the environment resolves to, SOMETHING must follow the label.
+        if let range = body.range(of: "Library: ") {
+            let rest = body[range.upperBound...].prefix(while: { $0 != "\n" })
+            XCTAssertFalse(rest.trimmingCharacters(in: .whitespaces).isEmpty,
+                           "The Library label must be followed by a non-empty value; got \(rest.debugDescription)")
+        }
+    }
 }
