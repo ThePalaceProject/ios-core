@@ -102,39 +102,55 @@ final class AccountProfileDocumentTests: XCTestCase {
         wait(for: [expectation], timeout: 3.0)
     }
 
-    func testGetProfileDocument_WithDetailsButNilProfileUrl_CompletesWithNil() {
-        let publication = OPDS2Publication(
-            links: [],
-            metadata: OPDS2Publication.Metadata(
-                updated: Date(),
-                description: nil,
-                id: "urn:uuid:test-profile-2",
-                title: "Test Library"
-            ),
-            images: nil
-        )
-        let account = Account(publication: publication, imageCache: mockImageCache)
+    // MARK: - The gate decision (states x events, asserted directly)
+    //
+    // These assert the PREDICATE, not `getProfileDocument`, and that is
+    // deliberate. `getProfileDocument` reaches `AppContainer.production()`
+    // internally, so no test can observe whether the request was actually
+    // issued. The F-007 test above claims to "kill the gate-removal mutation";
+    // measured on 2026-09-03 it does not — with the entire credentials gate
+    // deleted, every test in this file still passed, because
+    // `https://example.invalid/` fails DNS fast enough to satisfy both a nil
+    // result and a sub-second bound whether or not the request was sent.
+    // The decision is therefore lifted into `canAuthenticateProfileRequest`
+    // where it can genuinely be falsified, and these four cases are its
+    // complete truth table.
 
-        // Create minimal auth doc without a user-profile link
-        let json: [String: Any] = [
-            "id": "urn:uuid:test-profile-2",
-            "title": "Test Library",
-            "authentication": []
-        ]
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let authDoc = try! OPDS2AuthenticationDocument.fromData(data)
-        account.authenticationDocument = authDoc
+    /// Live credentials: the only cell that may reach the network.
+    func testCanAuthenticate_WithValidUnexpiredCredentials_IsTrue() {
+        XCTAssertTrue(
+            Account.canAuthenticateProfileRequest(hasCredentials: true,
+                                                  tokenHasExpired: false),
+            "Usable credentials must reach /patrons/me/ — otherwise profile fetch, "
+            + "and with it FCM device registration, is dead for every signed-in patron.")
+    }
 
-        // Details exist but userProfileUrl should be nil (no user-profile link)
-        XCTAssertNotNil(account.details)
-        XCTAssertNil(account.details?.userProfileUrl)
+    /// The reported defect: present but expired.
+    func testCanAuthenticate_WithExpiredToken_IsFalse() {
+        XCTAssertFalse(
+            Account.canAuthenticateProfileRequest(hasCredentials: true,
+                                                  tokenHasExpired: true),
+            "An expired token must NOT be sent. It passes hasCredentials() (presence, "
+            + "not validity), takes a 401 that cannot self-heal under "
+            + "enableTokenRefresh: false, and surfaces to callers as 'signed out'.")
+    }
 
-        let expectation = XCTestExpectation(description: "Completion called")
-        account.getProfileDocument { profileDocument in
-            XCTAssertNil(profileDocument, "Should return nil when userProfileUrl is nil")
-            expectation.fulfill()
-        }
+    /// The original F-007 case, now actually asserted.
+    func testCanAuthenticate_WithNoCredentials_IsFalse() {
+        XCTAssertFalse(
+            Account.canAuthenticateProfileRequest(hasCredentials: false,
+                                                  tokenHasExpired: false),
+            "Anonymous libraries advertise a userProfileUrl but store no credentials; "
+            + "firing anyway is the /patrons/me/ 401 storm of PP-4164 / F-007.")
+    }
 
-        wait(for: [expectation], timeout: 2.0)
+    /// Degenerate but reachable: no credentials AND a stale expiry flag.
+    /// Pinned so the predicate cannot be rewritten as `!tokenHasExpired` alone,
+    /// which would pass all three cells above.
+    func testCanAuthenticate_WithNoCredentialsAndExpiredFlag_IsFalse() {
+        XCTAssertFalse(
+            Account.canAuthenticateProfileRequest(hasCredentials: false,
+                                                  tokenHasExpired: true),
+            "Absence of credentials is decisive on its own.")
     }
 }
