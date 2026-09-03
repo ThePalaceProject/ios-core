@@ -67,7 +67,7 @@ Jira site: `ebce-lyrasis.atlassian.net` · Project key: **PP** ("The Palace Proj
 | **Story Points field** | **`customfield_10033`** (float). NOT `customfield_10016` (that one is unused here). |
 | Point scale | **Fibonacci** "human values": 1, 2, 3, 5, 8, 13, 21. Size honestly; don't invent 4s and 7s. |
 | Sub-task type name | **`Sub-task`** (with the hyphen), not `Subtask`. Link via `additional_fields: {"parent": "PP-####"}`. |
-| Assignee | by email works — e.g. `maurice.carrier@outlook.com`. |
+| Assignee | by email works — e.g. `<your-jira-account-email>`. |
 
 Workflow **transition IDs** (from `jira_get_transitions`; stable on this board):
 
@@ -90,7 +90,7 @@ jira_create_issue
   project_key: PP
   summary: "PR2 · P0 shared motion foundations"
   issue_type: Sub-task
-  assignee: maurice.carrier@outlook.com
+  assignee: <your-jira-account-email>
   description: <house-style markdown>
   additional_fields: {"parent": "PP-4743", "customfield_10033": 8}
 ```
@@ -102,7 +102,7 @@ auto-moves to *In Progress* once any sub-task is *In Progress*; that's expected.
 
 ---
 
-## 3. Three gotchas that will bite you
+## 3. Four gotchas that will bite you
 
 1. **`jira_create_issue` `description` stores `\n` literally.** Passed as a plain
    parameter, the two-character sequence `\n` is saved verbatim (you get literal `\n` in
@@ -119,7 +119,8 @@ auto-moves to *In Progress* once any sub-task is *In Progress*; that's expected.
    verification and is not. One create call on PP-4997 produced **three** independent
    corruptions, none visible in the echo:
    - Markdown headings persisted escaped (`**Heading**` -> `\*\*Heading\*\*`) and render
-     as literal asterisks. Use Jira wiki `h3.` headings instead of `**bold**`.
+     as literal asterisks. Use a real Markdown heading (`## Heading`) rather than bolded
+     text as a pseudo-heading — but send it as Markdown, never as Jira wiki. See gotcha 4.
    - Every blank line was eaten, gluing headings to their paragraphs.
    - `+` characters were silently dropped: a quoted PR title, "durable downloads +
      registry resilience + offline-safe loans", stored double-spaced where each `+` had
@@ -132,6 +133,25 @@ auto-moves to *In Progress* once any sub-task is *In Progress*; that's expected.
    because they went looking for the escaped asterisks and read straight past the dropped
    plus signs sitting in the same response. Reading the artifact back is necessary and
    not sufficient — diff, don't scan. Fix what you find with `jira_update_issue`.
+4. **Descriptions take Markdown, and only a browser proves the formatting.** Write
+   `## Heading` and `- bullet`. The MCP converts Markdown to Jira wiki (`h2.`, `*`) on
+   write. Jira wiki markup sent *directly* is NOT converted: `h3. Why this matters` is
+   stored as literal text and renders on the page as visible `###` characters.
+
+   **The gotcha-3 diff cannot catch this.** A stored literal `###` and a real heading
+   *both* read back as `###`, because the read path renders wiki headings as Markdown —
+   and `expand=renderedFields` is stripped by the MCP layer, so there is no API-only way
+   to tell structure from characters. The sent-vs-stored diff passes cleanly on a ticket
+   that is visibly broken.
+
+   Incident (PP-5070, 2026-09-02): a spike story was created with `h3.` headings on this
+   file's own advice, diffed sent-vs-stored, and reported as verified. All 28 paragraphs
+   were byte-identical and every heading was junk on the page. The write-up had even
+   noted "confirmed through the API round-trip, not by looking at the page" — and then
+   treated that inference as a check.
+
+   Gotcha 3 verifies CONTENT. Only opening the issue in a browser verifies FORMATTING.
+   Do both.
 
 ---
 
@@ -155,5 +175,6 @@ of the board is that it reflects reality right now.
 - [ ] Story + Sub-tasks (or Epic + Stories) shape fits the size; each child self-contained.
 - [ ] Real newlines in descriptions (not literal backslash-n).
 - [ ] Issue read back with `jira_get_issue` and DIFFED against what was sent (the create echo is not the stored text).
+- [ ] Description written in Markdown (`##`, `-`) and the rendered page LOOKED AT in a browser — the diff above cannot tell a heading from literal `###`.
 - [ ] Pointed with a Fibonacci value on `customfield_10033`; assigned; parent Story in the active sprint.
 - [ ] Statuses reflect reality (In Progress / Code Review / Done set as work moves).
