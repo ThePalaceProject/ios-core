@@ -11,6 +11,39 @@ import PalaceLogging
 
 extension Account {
 
+    /// Whether stored credentials can authenticate a `/patrons/me/` request
+    /// *right now*.
+    ///
+    /// Presence is not validity. `hasCredentials()` is
+    /// `hasAuthToken || hasBarcodeAndPIN` — it answers "is something stored",
+    /// not "will it work". An EXPIRED bearer token satisfies it, so the request
+    /// goes out and the server answers 401 with the same OPDS auth-document
+    /// body the gate above exists to avoid. This path passes
+    /// `enableTokenRefresh: false`, so that 401 cannot self-heal: it yields
+    /// nil, and callers (NotificationService FCM registration) read nil as
+    /// "signed out" and re-present sign-in on an account that is fine.
+    ///
+    /// Observed on device 2026-09-03, build 499, Icarus Test Library: an app
+    /// updated over a stale session sent the old token, took a 401, and put the
+    /// login sheet back up. It cleared on relaunch once a fresh token was
+    /// stored — the signature of a credential that is present but no longer
+    /// usable, rather than a missing one.
+    ///
+    /// Expressed as a pure function of two booleans, deliberately.
+    /// `getProfileDocument` reaches `AppContainer.production()` internally, so
+    /// a test cannot observe whether the request was actually sent — the
+    /// existing F-007 test asserts a nil result and sub-second timing against
+    /// `example.invalid`, both of which hold whether or not the request is
+    /// issued, and it survives deleting the gate entirely. The decision is
+    /// therefore lifted somewhere it can genuinely be falsified.
+    ///
+    /// `tokenHasExpired` is false for barcode/PIN credentials and for tokens
+    /// with no expiry date, so basic-auth libraries are unaffected.
+    static func canAuthenticateProfileRequest(hasCredentials: Bool,
+                                              tokenHasExpired: Bool) -> Bool {
+        hasCredentials && !tokenHasExpired
+    }
+
     func getProfileDocument(completion: @escaping (_ profileDocument: UserProfileDocument?) -> Void) {
         guard let profileHref = self.details?.userProfileUrl,
               let profileUrl = URL(string: profileHref)
@@ -30,7 +63,9 @@ extension Account {
         // /patrons/me/ 401 storm at every cold relaunch (PP-4164 → F-007 →
         // refined by F-DG5-002).
         let userAccount = TPPUserAccount.sharedAccount(libraryUUID: self.uuid)
-        if !userAccount.hasCredentials() {
+        if !Account.canAuthenticateProfileRequest(
+            hasCredentials: userAccount.hasCredentials(),
+            tokenHasExpired: userAccount.authTokenHasExpired) {
             completion(nil)
             return
         }
