@@ -10303,8 +10303,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ThePalaceProject/swift-toolkit.git";
 			requirement = {
-				kind = revision;
-				revision = 58413f8680a310ed6d98278687ab711e6be639c8;
+				kind = exactVersion;
+				version = "3.11.0-palace.1";
 			};
 		};
 		E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {

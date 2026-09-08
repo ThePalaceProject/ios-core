@@ -2,7 +2,15 @@
 
 One entry per Readium pin. Added in the same change that moves the pin in
 `Package.resolved`. `scripts/check-dependency-money-paths.sh` matches on the
-version string, so it must appear literally in the heading.
+version string, so it must appear literally in the heading — and only in the
+heading: as of PP-5091 the gate reads `## ` lines rather than the whole file,
+because an unanchored match let one entry's prose satisfy a later pin move.
+
+A fork has no upstream version number, so its heading names whatever
+`Package.resolved` records for it: the revision when it is pinned by bare
+revision, and the tag *and* the revision when it is pinned by tag. Naming both
+is the safe default — the gate demands the version when one is present and the
+revision when one is not, and a heading carrying both satisfies either.
 
 See [readium-upgrade-validation.md](./readium-upgrade-validation.md) for the
 paths to exercise and why this ledger exists.
@@ -90,20 +98,60 @@ Note the LCP device-ID moved to the Keychain in 3.10: that changes behaviour
 across delete/reinstall, so validation should include a reinstall cycle rather
 than a single install.
 
-## ThePalaceProject/swift-toolkit @ 58413f8680a310ed6d98278687ab711e6be639c8
+## 3.11.0-palace.1 — ThePalaceProject/swift-toolkit @ 58413f8680a310ed6d98278687ab711e6be639c8
 
 - Validated against: Palace 3.3.0 (494), iPhone Air simulator (iOS 26.1), A1QA Test Library
 - Validated by: engineering (agent-assisted), SoD-reviewed (architect + qa_test + blast_radius)
-- Date: 2026-08-14
-- Pin: `ThePalaceProject/swift-toolkit` fork = Readium 3.11.0 + the upstream `fix-issue-579` series (restores LCP audiobook chunked streaming-from-license). Pinned by **revision** (a fork branch, no semver version), gated behind `lcp_audiobook_streaming_enabled` (default OFF).
+- Date: 2026-08-14 (pin re-expressed as a tag 2026-09-08, PP-5091 — **no new validation**)
+- Pin: `ThePalaceProject/swift-toolkit` fork = Readium 3.11.0 + the upstream `fix-issue-579` series (restores LCP audiobook chunked streaming-from-license). Gated behind `lcp_audiobook_streaming_enabled` (default OFF).
+
+**Pin form.** Originally taken by bare revision. PP-5091 tagged that exact commit
+`3.11.0-palace.1` in the fork and moved `Palace.xcodeproj` to
+`exact: "3.11.0-palace.1"`. `Package.resolved` still records
+`58413f8680a310ed6d98278687ab711e6be639c8` — the resolved revision did not move,
+so **no code changed and the rows below carry forward unaltered**.
+<!-- audit-verified -->
+
+`Package.resolved` records the revision **and no `version` key**, even though the
+project now states a version requirement. That is not an oversight. The
+`ios-audiobooktoolkit` subproject is part of the same SwiftPM graph and still
+pins this package by bare revision; SwiftPM unifies the two requirements and
+resolves by revision, and a revision-resolved pin carries no version. Observed
+directly: with both projects on the tag the resolve reports
+`Readium … @ 3.11.0-palace.1` and writes the version; with the toolkit on a bare
+revision it reports `@ 58413f8` and writes none. **The `version` key appears here
+only once the `ios-audiobooktoolkit` pin moves too** (PP-5106) — committing it
+before then would commit a state the repository cannot reproduce, since every
+developer's and CI's next resolve would strip it straight back out.
+<!-- audit-verified -->
+
+Both open items below are tracked, not just described: PP-5106 for the toolkit
+repin, PP-5107 for the EPUB/PDF/Adobe exercise.
+
+The heading names the tag *and* the SHA for that reason: the gate demands the
+version when `Package.resolved` carries one and the revision when it does not,
+and today it does not.
+
+> `3.11.0-palace.1` is a SemVer *prerelease*, which sorts **below** upstream
+> `3.11.0`. It is safe only under an `exact:` requirement. Relaxing either
+> project to a range would silently resolve to un-fixed upstream code, and the
+> build would stay green. The non-SemVer alternative (`palace-3.11.0-issue-579.1`)
+> was rejected for the opposite reason: SwiftPM would not parse it as a version,
+> so the pin would have stayed revision-only and the tag would have bought
+> nothing but a name.
 
 | Path | Result | Notes |
 |---|---|---|
 | Audiobook, LCP (streaming) | pass | Flag ON: fresh borrow → instant Listen → **`.lcpa`: 0 bytes** on disk → plays via on-demand chunked decryption. Verified live on the A1QA "Reign of Terror" (Palace Marketplace LCP audiobook). Relaunch durability pinned (reconcile keeps `.downloadSuccessful`). |
 | Audiobook, LCP (local / download-first) | pass | Flag OFF preserves today's download-first path byte-for-byte (unit + reconcile-table + fulfillment tests; full `.lcpa` lands, then Listen). |
-| EPUB, LCP | not validated | Not exercised by this change (streaming is audiobook-only); carries forward from the 3.11.0 base entry. |
-| EPUB, Adobe DRM | not validated | Unchanged by this fork (3.11.0 + audiobook streaming only). |
-| PDF, LCP | not validated | Unchanged. |
-| Audiobook, OverDrive / Findaway | not validated | Unaffected (non-LCP paths). |
+| EPUB, LCP | not validated | **Justification corrected (PP-5091).** This row previously read "not exercised by this change (streaming is audiobook-only)". That is not the whole picture. The fork is 8 commits ahead of, and 0 behind, upstream `3.11.0`, and four of the files it edits are *not* audiobook-specific: `Shared/Toolkit/Data/Resource/BufferingResource.swift`, `Shared/Toolkit/ZIP/ZIPFoundation/ZIPFoundationContainer.swift`, `Shared/Toolkit/Data/ReadError.swift`, and `LCP/Content Protection/LCPDecryptor.swift`. Every LCP EPUB read traverses all four. The row stays `not validated` — nobody has opened an LCP EPUB against this pin — but the reason is "unvalidated shared-code change", not "unrelated code". |
+| EPUB, Adobe DRM | not validated | Same correction: Adobe EPUBs are still ZIP containers read through `ZIPFoundationContainer` and buffered through `BufferingResource`, both of which the fork edits. Not exercised against this pin. |
+| PDF, LCP | not validated | Same correction, and it also traverses `LCPDecryptor`. Not exercised against this pin. |
+| Audiobook, OverDrive / Findaway | not validated | Unaffected (non-LCP fulfillment), but likewise never exercised against this pin. |
 
 Known follow-up: the LCP resource-loader over-fetches (prefetches most of the book); time-to-first-audio win realized, storage win pending a read-ahead cap. Orthogonal to the flag; flag ships OFF.
+
+Known follow-up (PP-5091): the shared-code exposure above is in neither PP-5091's
+scope nor its out-of-scope list. Someone has to open an LCP EPUB, an Adobe EPUB
+and an LCP PDF against a build carrying this pin before 3.3.0 ships, and record
+the outcome here. Until then the four `not validated` rows are the honest state.

@@ -97,8 +97,34 @@ path is then a known gap rather than a silent one.
 
 Add an entry to `readium-money-path-validation.md` in the same change that moves
 the pin. The entry names the version, the build it was validated against, the
-role that validated it, and the per-path outcome. The gate matches on the
-version string, so the version must appear literally.
+role that validated it, and the per-path outcome. The gate matches the version
+string against the entry's `## ` heading, so the version must appear literally
+*there*; naming it only in the body does not satisfy the gate, and as of PP-5091
+no longer appears to.
+
+Three things the gate does not cover, and cannot be assumed away:
+
+- It reads only `Package.resolved`, so a change to the *requirement* in the
+  `.pbxproj` is invisible to it whenever the resolved revision stays put. Moving
+  from `kind = revision` (a 40-character commit, immutable by construction) to
+  `kind = exactVersion` (a tag, which can be force-moved) is exactly that shape:
+  the pin's guarantees weaken and the gate waves it through, because the
+  resolved bytes did not change. The **one-time form change** is what needs a
+  human reviewer. Be precise about what this does and does not leave open: a tag
+  that is later force-moved, or an `exact:` that is later relaxed to a range,
+  both change the resolved revision, so both trip the gate normally. It is only
+  the moment of changing the requirement's shape that passes unseen.
+
+- It reads only the app's `Package.resolved`. The `ios-audiobooktoolkit`
+  submodule pins `swift-toolkit` in its own project too, and that pin is
+  ungated. Keeping the two identical is manual discipline; a drift between them
+  means the app and the audiobook toolkit compile against different Readium
+  code with no signal (see `submodule-tree-drift`).
+- It cannot tell you *which* money paths a pin change touches. A fork whose
+  stated purpose is audiobook streaming can still edit shared container,
+  buffering, and decryption code that EPUB and PDF reads traverse — the
+  `3.11.0-palace.1` entry is exactly that case. Read the pin's actual diff
+  before writing the per-path rows.
 
 ## Scope
 

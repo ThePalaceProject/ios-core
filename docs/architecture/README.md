@@ -98,6 +98,7 @@ Refresh the relevant one before a swarm or rigorous-fix run.
 | [`pr-report-contract.md`](./pr-report-contract.md) | What a PR body must claim and how those claims are reconciled against the diff. |
 | [`readium-money-path-validation.md`](./readium-money-path-validation.md) | One entry per Readium pin, added in the change that moves it. Readium renders and decrypts borrowed content, so a bump can break borrow/fulfillment/playback with no compile error. |
 | [`readium-upgrade-validation.md`](./readium-upgrade-validation.md) | The validation procedure a Readium upgrade must pass before the pin moves. |
+| [`lcp-device-id-migration-validation.md`](./lcp-device-id-migration-validation.md) | Why the LCP device-registration-slot criterion cannot be tested from the app, how Readium's device-ID migration and Palace's license migration interact to create the risk, and the on-device procedure that closes it. |
 
 ## Process, retrospectives, and reviews
 
