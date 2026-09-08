@@ -329,6 +329,8 @@ extension TPPSignInBusinessLogic {
 // is only ever invoked by `ASWebAuthenticationSession` on the main thread.
 extension TPPSignInBusinessLogic: @preconcurrency ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.mainKeyWindow ?? ASPresentationAnchor()
+        // Shared resolver — a bare `ASPresentationAnchor()` is a scene-less
+        // window and is what iOS rejects with `.presentationContextInvalid`.
+        UIApplication.shared.webAuthPresentationAnchor ?? ASPresentationAnchor()
     }
 }
