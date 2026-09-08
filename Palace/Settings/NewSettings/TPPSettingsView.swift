@@ -46,97 +46,31 @@ struct TPPSettingsView: View {
     /// Feature-flag read seam (Wave 1b), resolved from the environment.
     @Environment(\.appContainer) private var appContainer
     @State private var selectedView: Int? = 0
-    @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
-    @State private var switchPromptAccount: Account? = nil
-    @StateObject private var librariesVM: LibrariesSectionViewModel
 
-    init() {
-        let container = AppContainer.production()
-        let env = ProductionLibrariesSectionEnvironment(
-            accountsManager: container.accountsManager,
-            settings: container.settings
-        )
-        _librariesVM = StateObject(wrappedValue: LibrariesSectionViewModel(environment: env))
-    }
-
-    private var sideBarEnabled: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad
-            &&  UIDevice.current.orientation != .portrait
-            &&  UIDevice.current.orientation != .portraitUpsideDown
-    }
-
+    /// PP-5098 removed the iPad two-column shape this screen used to build for
+    /// itself.
+    ///
+    /// It was a `NavigationView(.columns)` gated on `UIDevice.current
+    /// .orientation`, whose detail column started empty *because the library
+    /// list was inline in the master column* (PP-917). That reason is gone with
+    /// the list, and the shape it left behind was a 2021 fossil: `AppTabHostView`
+    /// already wraps this view in `NavigationHostView`, a `NavigationStack`, so
+    /// iPad landscape was nesting a deprecated `NavigationView` inside a
+    /// navigation stack — and only in landscape, because the gate was already
+    /// false in portrait. Deleting it removes a shape that flipped on rotation
+    /// rather than introducing a new one, and takes the unreliable
+    /// `UIDevice.current.orientation` read with it. Settings → Libraries →
+    /// Library Details is now one push chain on every idiom.
+    ///
+    /// Deliberately NOT replaced with `horizontalSizeClass` — that would be
+    /// building the split view this change declined.
     var body: some View {
-        ZStack {
-            if sideBarEnabled {
-                NavigationView {
-                    listView
-                        .navigationTitle(DisplayStrings.settings)
-                    placeholderDetail
-                }
-                .navigationViewStyle(.columns)
-            } else {
-                listView
-            }
-
-            // Loading overlay during a library switch. Stays up while the
-            // auth document loads — when the view model fires its
-            // completion the overlay dismisses + the tab jumps to Catalog
-            // in the same beat, so the user lands on data that has
-            // started populating instead of a stale-then-refreshing
-            // catalog.
-            if librariesVM.isSwitching {
-                switchingOverlay
-                    .transition(.opacity)
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: librariesVM.isSwitching)
-    }
-
-    @ViewBuilder private var switchingOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.25).ignoresSafeArea()
-            VStack(spacing: 12) {
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(.white)
-                Text(DisplayStrings.switchingLibrary)
-                    .palaceFont(.body)
-                    .foregroundStyle(.white)
-            }
-            .padding(28)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.black.opacity(0.6))
-            )
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isModal)
-        .accessibilityLabel(DisplayStrings.switchingLibrary)
-    }
-
-    /// Placeholder shown in the iPad sidebar's detail column before the
-    /// user taps a row. The library list itself is now inline in the
-    /// master column (PP-917), so the detail column starts empty.
-    @ViewBuilder private var placeholderDetail: some View {
-        Text(DisplayStrings.settings)
-            .palaceFont(.body)
-            .foregroundStyle(.secondary)
+        listView
     }
 
     @ViewBuilder private var listView: some View {
         List {
-            // During the launch-hydration window the persisted-account lookup
-            // can resolve empty before the full catalog materializes; show a
-            // skeleton for the MY LIBRARIES section instead of a blank list
-            // that pops in. Cross-fades to the real section via the shared
-            // gentle motion (Reduce Motion drops the animation).
-            if librariesVM.isLoading || DebugSettings.forceSkeletons {
-                SettingsLibrariesSkeletonView()
-                    .transition(.opacity)
-            } else {
-                librariesSection
-                    .transition(.opacity)
-            }
+            librariesEntrySection
             downloadsSection
             playbackSection
             supportSection
@@ -147,142 +81,45 @@ struct TPPSettingsView: View {
         }
         .navigationBarTitle(DisplayStrings.settings)
         .listStyle(GroupedListStyle())
-        .accessibleAnimation(PalaceMotion.gentle, value: librariesVM.isLoading)
-        .onAppear {
-            librariesVM.refresh()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
-            self.orientation = UIDevice.current.orientation
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)) { _ in
-            librariesVM.refresh()
-        }
-        .sheet(isPresented: $librariesVM.showAddLibrarySheet) {
-            UIViewControllerWrapper(
-                TPPAccountList { account in
-                    DispatchQueue.main.async {
-                        // Adding a library goes through the same switch
-                        // chain as tapping an existing row: dismiss the
-                        // picker, show the loading overlay while the auth
-                        // doc loads, then jump to the Catalog tab so the
-                        // user lands in the new library instead of being
-                        // parked on Settings.
-                        librariesVM.showAddLibrarySheet = false
-                        librariesVM.switchToAccount(account) {
-                            AppContainer.production().navigateToTabRoot(.catalog)
-                        }
-                    }
-                },
-                updater: { _ in }
-            )
-        }
     }
 
-    @ViewBuilder private var librariesSection: some View {
-        Section(header: librariesSectionHeader) {
-            ForEach(librariesVM.accounts, id: \.uuid) { account in
-                libraryRow(for: account)
-                    .accessibilityIdentifier("\(AccessibilityID.Settings.accountSection).\(account.uuid)")
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        if account.uuid != librariesVM.currentAccountUUID {
-                            Button(role: .destructive) {
-                                librariesVM.deleteSecondary(account)
-                            } label: {
-                                Label(Strings.Generic.delete, systemImage: "trash")
-                            }
-                            // The app-wide accent overrides the destructive
-                            // role's default; pin the iOS-standard red.
-                            .tint(.red)
-                        }
-                    }
-            }
-        }
-        // Animate add/delete of libraries (list identity keyed on the account
-        // uuids) and fire a success haptic when the current library switches
-        // (the checkmark moves to the newly-active row).
-        .accessibleAnimation(PalaceMotion.standard, value: librariesVM.accounts.map(\.uuid))
-        .palaceHaptic(.success, trigger: librariesVM.currentAccountUUID)
-        .confirmationDialog(
-            switchPromptTitle,
-            isPresented: Binding(
-                get: { switchPromptAccount != nil },
-                set: { isPresented in if !isPresented { switchPromptAccount = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            // Yes → switch + jump to Catalog tab (the prototype behavior).
-            // The loading overlay (see `.overlay` below) stays up while
-            // the auth doc loads; we time the tab jump to the completion
-            // so the catalog opens with data already populated, not a
-            // stale-then-refreshing screen.
-            Button(Strings.Generic.yes) {
-                if let account = switchPromptAccount {
-                    librariesVM.switchToAccount(account) {
-                        AppContainer.production().navigateToTabRoot(.catalog)
+    /// PP-5098: the entry point to the dedicated Libraries screen, which
+    /// replaces the inline MY LIBRARIES list that used to sit here. First row
+    /// on the tab, so the rest of Settings is visible without scrolling past a
+    /// library list of any length.
+    @ViewBuilder private var librariesEntrySection: some View {
+        Section {
+            NavigationLink(
+                destination: LibrariesView(appContainer: appContainer),
+                tag: 1,
+                selection: self.$selectedView
+            ) {
+                HStack(spacing: 12) {
+                    // Monochrome by house convention — Palace chrome does not
+                    // tint its affordances.
+                    Image(systemName: "building.columns")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.secondary.opacity(0.15)))
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(DisplayStrings.libraries)
+                            .palaceFont(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(DisplayStrings.librariesEntrySubtitle)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                switchPromptAccount = nil
+                .padding(.vertical, 4)
             }
-            // Destructive role gives the iOS-standard red "No" used in the
-            // prototype to distinguish from the neutral "Cancel".
-            Button(Strings.Generic.no, role: .destructive) {
-                switchPromptAccount = nil
-            }
-            Button(Strings.Generic.cancel, role: .cancel) {
-                switchPromptAccount = nil
-            }
+            .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(DisplayStrings.libraries). \(DisplayStrings.librariesEntrySubtitle)")
         }
-    }
-
-    private var switchPromptTitle: String {
-        guard let name = switchPromptAccount?.name else { return "" }
-        return String(format: DisplayStrings.switchLibraryPromptFormat, name)
-    }
-
-    /// Builds one library row. The active library uses a NavigationLink
-    /// (tap → manage credentials / AccountDetailView). An inactive library
-    /// uses a Button (tap → confirm-and-switch action sheet) so the user
-    /// can switch between libraries without going through a sign-in flow.
-    @ViewBuilder private func libraryRow(for account: Account) -> some View {
-        let isCurrent = account.uuid == librariesVM.currentAccountUUID
-        if isCurrent {
-            NavigationLink(destination: accountDetail(for: account)) {
-                LibraryRowView(account: account, isCurrent: true)
-            }
-        } else {
-            Button {
-                switchPromptAccount = account
-            } label: {
-                LibraryRowView(account: account, isCurrent: false)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    @ViewBuilder private var librariesSectionHeader: some View {
-        HStack {
-            Text(DisplayStrings.libraries)
-            Spacer()
-            Button {
-                librariesVM.presentAddLibrary()
-            } label: {
-                // Match the surrounding section-header text style so the
-                // button reads as part of the header rather than an oversized
-                // affordance: footnote weight, tight + icon, uppercase.
-                HStack(spacing: 3) {
-                    Image(systemName: "plus")
-                    Text(DisplayStrings.addLibrary)
-                }
-                .font(.footnote.weight(.semibold))
-            }
-            .accessibilityIdentifier(AccessibilityID.Settings.addLibraryButton)
-            .accessibilityLabel(DisplayStrings.addLibrary)
-        }
-    }
-
-    private func accountDetail(for account: Account) -> some View {
-        AccountDetailView(libraryAccountID: account.uuid, appContainer: .production())
-            .navigationBarTitleDisplayMode(.inline)
     }
 
     @ViewBuilder private var downloadsSection: some View {
@@ -602,125 +439,5 @@ enum SupportSectionDecision: Equatable {
             isTriageBotEnabled: isTriageBotEnabled,
             supportEmail: currentAccount?.supportEmail?.rawValue
         )
-    }
-}
-
-// MARK: - LibraryRowView
-
-/// One row in the inline MY LIBRARIES section. Renders the library logo,
-/// name, optional subtitle, and a checkmark on the active library. Loads
-/// the logo lazily through `AccountLogoDelegate` if it isn't already cached.
-private struct LibraryRowView: View {
-    let account: Account
-    let isCurrent: Bool
-
-    @State private var displayLogo: UIImage
-
-    init(account: Account, isCurrent: Bool) {
-        self.account = account
-        self.isCurrent = isCurrent
-        // Prefer the cached logo if present so the cell never renders the
-        // placeholder for a library whose real logo is already on disk.
-        _displayLogo = State(
-            initialValue: account.imageCache.get(for: account.uuid) ?? account.logo
-        )
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Single symbol whose glyph swaps circle <-> checkmark.circle.fill so
-            // the SF Symbol `.replace` effect can cross-fade the selection state.
-            Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
-                .resizable()
-                .frame(width: 22, height: 22)
-                .foregroundStyle(isCurrent ? Color.green : Color.secondary.opacity(0.4))
-                .contentTransition(.symbolEffect(.replace))
-                .accessibleAnimation(PalaceMotion.standard, value: isCurrent)
-                .frame(width: 28)
-                .accessibilityHidden(true)
-
-            Image(uiImage: displayLogo)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 44, height: 44)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(account.name)
-                    .palaceFont(.body)
-                    .lineLimit(2)
-                if let subtitle = account.subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityLabel)
-        .onAppear { loadLogoIfNeeded() }
-    }
-
-    private var accessibilityLabel: String {
-        let prefix = isCurrent ? "\(Strings.Generic.selected). " : ""
-        if let subtitle = account.subtitle, !subtitle.isEmpty {
-            return "\(prefix)\(account.name). \(subtitle)"
-        }
-        return "\(prefix)\(account.name)"
-    }
-
-    private func loadLogoIfNeeded() {
-        if account.imageCache.get(for: account.uuid) != nil { return }
-        guard account.logoUrl != nil else { return }
-        let proxy = LogoLoadProxy { newLogo in
-            // imageCache writes happen inside the Account loader; mirror into
-            // local state so the SwiftUI row updates without waiting for the
-            // next refresh tick.
-            displayLogo = newLogo
-        }
-        account.logoDelegate = proxy
-        // Keep the proxy alive until the load returns by parking it on the
-        // account itself — Account holds `logoDelegate` weakly.
-        LogoProxyHolder.shared.retain(proxy, for: account.uuid)
-        account.loadLogo()
-    }
-}
-
-/// AccountLogoDelegate forwarder used by `LibraryRowView` because SwiftUI
-/// `View` structs can't directly conform to ObjC delegate protocols.
-@MainActor
-private final class LogoLoadProxy: NSObject, @preconcurrency AccountLogoDelegate {
-    private let onUpdate: (UIImage) -> Void
-    init(onUpdate: @escaping (UIImage) -> Void) {
-        self.onUpdate = onUpdate
-    }
-    // `Account` invokes this on the main thread (its logo fetch delivers via
-    // `DispatchQueue.main.async`), so the forwarding runs on the main actor
-    // without an extra hop.
-    func logoDidUpdate(in account: Account, to newLogo: UIImage) {
-        onUpdate(newLogo)
-    }
-}
-
-/// Account.logoDelegate is held weakly. Park proxies here so a row's
-/// in-flight logo load isn't dropped when the proxy goes out of scope.
-/// Lock-backed holder — `@unchecked Sendable` because all access to `proxies`
-/// is serialized through `lock`.
-private final class LogoProxyHolder: @unchecked Sendable {
-    static let shared = LogoProxyHolder()
-    private var proxies: [String: LogoLoadProxy] = [:]
-    private let lock = NSLock()
-
-    func retain(_ proxy: LogoLoadProxy, for uuid: String) {
-        lock.lock(); defer { lock.unlock() }
-        proxies[uuid] = proxy
-    }
-
-    func release(_ uuid: String) {
-        lock.lock(); defer { lock.unlock() }
-        proxies.removeValue(forKey: uuid)
     }
 }

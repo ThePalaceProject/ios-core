@@ -2,7 +2,8 @@
 //  LibrariesSectionViewModelTests.swift
 //  PalaceTests
 //
-//  Covers the inline Settings → MY LIBRARIES section view model (PP-917):
+//  Covers the MY LIBRARIES view model (PP-917), which PP-5098 relocated from
+//  the Settings tab onto the dedicated Libraries screen unchanged:
 //  sorted ordering, stale-uuid filter + persistence, current-library
 //  deletion guard, secondary-library deletion + FCM token cleanup, and
 //  the add-library sheet trigger.
@@ -243,7 +244,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         XCTAssertFalse(sut.isSwitching, "Overlay must come down once the auth doc finishes.")
     }
 
-    /// The add-library path: TPPSettingsView's sheet callback hands a
+    /// The add-library path: LibrariesView's sheet callback hands a
     /// freshly picked account straight to `switchToAccount` — the account
     /// is NOT yet in `accounts`. The optimistic resort must insert it as
     /// the first row, and the completion (which the view uses to jump to
