@@ -255,6 +255,11 @@ final class AccountProfileDocumentTests: XCTestCase {
             done.fulfill()
         })
 
+        // STARVE-001-OK: the gate calls `completion(nil)` synchronously and returns —
+        // there is no fire-and-forget Task, no network, and the injected
+        // `performRequest` is never invoked on this path. The deadline is a
+        // safety net on an already-settled call, not a poll on async work, so it
+        // cannot starve under parallel sim clones.
         wait(for: [done], timeout: 3.0)
         XCTAssertTrue(issued.isEmpty,
                       "With no credentials the gate must block BEFORE the network. A request here is the "

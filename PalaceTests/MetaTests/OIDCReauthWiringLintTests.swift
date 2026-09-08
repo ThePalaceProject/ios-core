@@ -28,7 +28,7 @@ final class OIDCReauthWiringLintTests: XCTestCase {
     }
 
     private var sourcePath: URL {
-        repoRoot.appendingPathComponent("Palace/MyBooks/BorrowOperation.swift")
+        repoRoot.appendingPathComponent("Palace/MyBooks/OIDCReauth.swift")
     }
 
     /// All three OIDC paths that resolve a presentation anchor. The lint used to
@@ -37,7 +37,7 @@ final class OIDCReauthWiringLintTests: XCTestCase {
     /// the sign-in site the field error-3 most likely came from.
     private var anchorSitePaths: [URL] {
         [
-            "Palace/MyBooks/BorrowOperation.swift",
+            "Palace/MyBooks/OIDCReauth.swift",
             "Palace/SignInLogic/TPPSignInBusinessLogic+OIDC.swift",
             "Palace/MyBooks/TokenRefreshInterceptor.swift"
         ].map { repoRoot.appendingPathComponent($0) }
