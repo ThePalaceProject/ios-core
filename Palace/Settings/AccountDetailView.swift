@@ -726,7 +726,8 @@ struct AccountDetailView: View {
             presentingViewController: topVC,
             book: nil as TPPBook?,
             patronIdentifier: ctx.patronIdentifier,
-            libraryName: ctx.libraryName
+            libraryName: ctx.libraryName,
+            libraryUUID: ctx.libraryUUID
         )
     }
 
