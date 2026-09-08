@@ -116,41 +116,103 @@ final class AccountProfileDocumentTests: XCTestCase {
     // where it can genuinely be falsified, and these four cases are its
     // complete truth table.
 
-    /// Live credentials: the only cell that may reach the network.
+    /// Usable credentials: the only cell that may reach the network.
     func testCanAuthenticate_WithValidUnexpiredCredentials_IsTrue() {
         XCTAssertTrue(
             Account.canAuthenticateProfileRequest(hasCredentials: true,
-                                                  tokenHasExpired: false),
+                                                  tokenHasExpired: false,
+                                                  tokenRefreshWillRepair: false),
             "Usable credentials must reach /patrons/me/ — otherwise profile fetch, "
             + "and with it FCM device registration, is dead for every signed-in patron.")
     }
 
-    /// The reported defect: present but expired.
-    func testCanAuthenticate_WithExpiredToken_IsFalse() {
+    /// Expired AND unrepairable: the only cell the expiry arm may block.
+    func testCanAuthenticate_WithExpiredTokenThatCannotBeRefreshed_IsFalse() {
         XCTAssertFalse(
             Account.canAuthenticateProfileRequest(hasCredentials: true,
-                                                  tokenHasExpired: true),
-            "An expired token must NOT be sent. It passes hasCredentials() (presence, "
-            + "not validity), takes a 401 that cannot self-heal under "
-            + "enableTokenRefresh: false, and surfaces to callers as 'signed out'.")
+                                                  tokenHasExpired: true,
+                                                  tokenRefreshWillRepair: false),
+            "An expired token with no refresh available is a doomed request: it takes a "
+            + "401 nothing can repair, and marks the credential stale on the way.")
+    }
+
+    /// Expired but repairable — MUST be sent.
+    ///
+    /// This is the regression the first version of this change introduced. The
+    /// reactive 401 path (`TPPNetworkResponder.handleExpiredTokenIfNeeded` →
+    /// `refreshTokenAndResume` → `setAuthToken`, which writes `.loggedIn`) repairs
+    /// exactly this credential and re-drives the task, so the fetch succeeds today.
+    /// Blocking it deletes a working repair — and it can only fire here, since a
+    /// non-nil expiry is written by the barcode/PIN→token exchange, the very shape
+    /// the refresh can repair.
+    func testCanAuthenticate_WithExpiredTokenThatRefreshWillRepair_IsTrue() {
+        XCTAssertTrue(
+            Account.canAuthenticateProfileRequest(hasCredentials: true,
+                                                  tokenHasExpired: true,
+                                                  tokenRefreshWillRepair: true),
+            "An expired token the reactive 401 refresh can repair MUST still be sent — "
+            + "blocking it removes a repair that works today and strands the fetch.")
     }
 
     /// The original F-007 case, now actually asserted.
     func testCanAuthenticate_WithNoCredentials_IsFalse() {
         XCTAssertFalse(
             Account.canAuthenticateProfileRequest(hasCredentials: false,
-                                                  tokenHasExpired: false),
+                                                  tokenHasExpired: false,
+                                                  tokenRefreshWillRepair: false),
             "Anonymous libraries advertise a userProfileUrl but store no credentials; "
             + "firing anyway is the /patrons/me/ 401 storm of PP-4164 / F-007.")
     }
 
-    /// Degenerate but reachable: no credentials AND a stale expiry flag.
-    /// Pinned so the predicate cannot be rewritten as `!tokenHasExpired` alone,
-    /// which would pass all three cells above.
-    func testCanAuthenticate_WithNoCredentialsAndExpiredFlag_IsFalse() {
+    /// Absence of credentials is decisive over BOTH other inputs.
+    /// Pinned so the predicate cannot be rewritten to ignore `hasCredentials`.
+    func testCanAuthenticate_WithNoCredentials_IsFalseRegardlessOfTokenState() {
+        for expired in [true, false] {
+            for repairable in [true, false] {
+                XCTAssertFalse(
+                    Account.canAuthenticateProfileRequest(hasCredentials: false,
+                                                          tokenHasExpired: expired,
+                                                          tokenRefreshWillRepair: repairable),
+                    "No credentials must be decisive (expired: \(expired), repairable: \(repairable))")
+            }
+        }
+    }
+
+    // MARK: - isTokenExpired: the claims the gate relies on, pinned
+
+    // The gate's docstring asserts that basic-auth libraries and OIDC are
+    // unaffected because `isTokenExpired` is false for them. That was prose.
+    // These drive the real helper so the claim cannot rot silently.
+
+    func testIsTokenExpired_ForBarcodeAndPINCredential_IsFalse() {
         XCTAssertFalse(
-            Account.canAuthenticateProfileRequest(hasCredentials: false,
-                                                  tokenHasExpired: true),
-            "Absence of credentials is decisive on its own.")
+            UserAccountAuthHelper.isTokenExpired(
+                credentials: .barcodeAndPin(barcode: "1234", pin: "0000")),
+            "Basic-auth libraries have no token to expire — the expiry arm must never fire for them.")
+    }
+
+    func testIsTokenExpired_ForTokenWithNoExpiryDate_IsFalse() {
+        XCTAssertFalse(
+            UserAccountAuthHelper.isTokenExpired(
+                credentials: .token(authToken: "t", barcode: "1234", pin: "0000", expirationDate: nil)),
+            "A token with no expiry does not expire. OIDC stores nil here, so the arm cannot fire on OIDC.")
+    }
+
+    func testIsTokenExpired_ForNoCredentials_IsFalse() {
+        XCTAssertFalse(UserAccountAuthHelper.isTokenExpired(credentials: nil),
+                       "Absent credentials are not an expired token — that is the hasCredentials arm's job.")
+    }
+
+    func testIsTokenExpired_ForPastExpiry_IsTrue_AndFutureIsFalse() {
+        let past = Date(timeIntervalSinceNow: -60)
+        let future = Date(timeIntervalSinceNow: 3600)
+        XCTAssertTrue(
+            UserAccountAuthHelper.isTokenExpired(
+                credentials: .token(authToken: "t", barcode: "b", pin: "p", expirationDate: past)),
+            "A token whose expiry has passed is expired")
+        XCTAssertFalse(
+            UserAccountAuthHelper.isTokenExpired(
+                credentials: .token(authToken: "t", barcode: "b", pin: "p", expirationDate: future)),
+            "A token expiring in the future is not expired — pins the comparison direction")
     }
 }

@@ -18,30 +18,45 @@ extension Account {
     /// `hasAuthToken || hasBarcodeAndPIN` — it answers "is something stored",
     /// not "will it work". An EXPIRED bearer token satisfies it, so the request
     /// goes out and the server answers 401 with the same OPDS auth-document
-    /// body the gate above exists to avoid. This path passes
-    /// `enableTokenRefresh: false`, so that 401 cannot self-heal: it yields
-    /// nil, and callers (NotificationService FCM registration) read nil as
-    /// "signed out" and re-present sign-in on an account that is fine.
+    /// body the gate above exists to avoid.
     ///
-    /// Observed on device 2026-09-03, build 499, Icarus Test Library: an app
-    /// updated over a stale session sent the old token, took a 401, and put the
-    /// login sheet back up. It cleared on relaunch once a fresh token was
-    /// stored — the signature of a credential that is present but no longer
-    /// usable, rather than a missing one.
+    /// But an expired token is not automatically a doomed request, and this is
+    /// the distinction the gate has to make. The 401 refresh is REACTIVE and
+    /// lives in the response delegate: `TPPNetworkResponder`'s
+    /// `handleExpiredTokenIfNeeded` marks the credential stale and then calls
+    /// `refreshTokenAndResume(task:)`, which stores a fresh token via
+    /// `setAuthToken` — and that writes `.loggedIn`, healing the stale flag —
+    /// and re-drives THIS task, so the profile fetch succeeds. That path never
+    /// consults `enableTokenRefresh`; the flag gates only the executor's
+    /// PRE-FLIGHT refresh. Blocking every expired token would therefore delete
+    /// a repair that works today, and would delete it for exactly the
+    /// credentials it can fire on: `isTokenExpired` is non-false only for
+    /// `.token` with a non-nil expiry, and that expiry is written by the
+    /// barcode/PIN→token exchange, which is precisely the shape the reactive
+    /// refresh can repair.
     ///
-    /// Expressed as a pure function of two booleans, deliberately.
+    /// So the gate blocks only when the token has expired AND no refresh can
+    /// repair it — `isTokenRefreshRequired()` is the canonical answer to that,
+    /// reused rather than restated so this cannot drift from the responder.
+    ///
+    /// Expressed as a pure function of three booleans, deliberately.
     /// `getProfileDocument` reaches `AppContainer.production()` internally, so
     /// a test cannot observe whether the request was actually sent — the
     /// existing F-007 test asserts a nil result and sub-second timing against
     /// `example.invalid`, both of which hold whether or not the request is
     /// issued, and it survives deleting the gate entirely. The decision is
-    /// therefore lifted somewhere it can genuinely be falsified.
+    /// therefore lifted somewhere it can genuinely be falsified, and the
+    /// WIRING is pinned separately by `AccountProfileGateLintTests` — a pure
+    /// predicate nothing calls is the same vacuity one level up.
     ///
     /// `tokenHasExpired` is false for barcode/PIN credentials and for tokens
-    /// with no expiry date, so basic-auth libraries are unaffected.
+    /// with no expiry date, so basic-auth libraries are unaffected. OIDC stores
+    /// no expiry either, so this arm cannot fire there.
     static func canAuthenticateProfileRequest(hasCredentials: Bool,
-                                              tokenHasExpired: Bool) -> Bool {
-        hasCredentials && !tokenHasExpired
+                                              tokenHasExpired: Bool,
+                                              tokenRefreshWillRepair: Bool) -> Bool {
+        guard hasCredentials else { return false }
+        return !tokenHasExpired || tokenRefreshWillRepair
     }
 
     func getProfileDocument(completion: @escaping (_ profileDocument: UserProfileDocument?) -> Void) {
@@ -65,7 +80,8 @@ extension Account {
         let userAccount = TPPUserAccount.sharedAccount(libraryUUID: self.uuid)
         if !Account.canAuthenticateProfileRequest(
             hasCredentials: userAccount.hasCredentials(),
-            tokenHasExpired: userAccount.authTokenHasExpired) {
+            tokenHasExpired: userAccount.authTokenHasExpired,
+            tokenRefreshWillRepair: userAccount.isTokenRefreshRequired()) {
             completion(nil)
             return
         }
