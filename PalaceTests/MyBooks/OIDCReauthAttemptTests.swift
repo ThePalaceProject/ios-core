@@ -86,4 +86,40 @@ final class OIDCReauthAttemptTests: XCTestCase {
         XCTAssertFalse(outcome.isRetryable,
                        "A dismissed sheet must stay dismissed — retrying would re-present it against the patron's choice")
     }
+
+    // MARK: - shouldRetry: the retry decision as a table
+
+    // SoD review defeated the previous `case` pattern THREE times, because a
+    // source-text lint is monotone — it catches deletion, never addition or
+    // reordering. As a pure function the decision is an ordinary mutant target.
+
+    func testShouldRetry_onlyPresentationFailure_andOnlyOnFirstAttempt() {
+        let all: [OIDCReauthAttempt] = [.succeeded, .patronCancelled, .presentationFailed, .failed]
+        for outcome in all {
+            for attempt in 0..<2 {
+                let expected = (outcome == .presentationFailed) && attempt == 0
+                XCTAssertEqual(
+                    OIDCReauthAttempt.shouldRetry(outcome, attempt: attempt, maxAttempts: 2),
+                    expected,
+                    "shouldRetry(\(outcome), attempt: \(attempt)) must be \(expected)")
+            }
+        }
+    }
+
+    /// The bound is a value, so narrowing it is a killable mutant rather than a
+    /// silent loop-header edit.
+    func testShouldRetry_maxAttemptsOne_neverRetries() {
+        XCTAssertFalse(
+            OIDCReauthAttempt.shouldRetry(.presentationFailed, attempt: 0, maxAttempts: 1),
+            "With one permitted attempt there is no retry — pins the bound itself")
+    }
+
+    /// A dismissed sheet is never re-presented, at any attempt index.
+    func testShouldRetry_patronCancellation_isNeverRetried() {
+        for attempt in 0..<5 {
+            XCTAssertFalse(
+                OIDCReauthAttempt.shouldRetry(.patronCancelled, attempt: attempt, maxAttempts: 5),
+                "Re-presenting a sheet the patron dismissed is a consent defect (attempt \(attempt))")
+        }
+    }
 }

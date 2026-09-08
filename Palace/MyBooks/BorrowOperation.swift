@@ -800,7 +800,15 @@ final class BorrowOperation: @unchecked Sendable {
     /// `attemptOIDCReauth` closure. Tests bypass this entirely by
     /// passing a stub closure. Returns `true` if a new token was
     /// obtained, `false` on failure/cancel/no-OIDC-config.
-    static func attemptOIDCSilentReauth(userAccount: TPPUserAccount) async -> Bool {
+    /// - Parameter present: injected presentation seam. Production passes nil and
+    ///   gets `presentOIDCReauthSession`; tests script a sequence of outcomes so
+    ///   the retry/consent behaviour is driven for real instead of spell-checked
+    ///   by a lint. SoD review's verdict was blunt: the fix is a seam, not more
+    ///   string assertions.
+    static func attemptOIDCSilentReauth(
+        userAccount: TPPUserAccount,
+        present: (@Sendable (URL, String, TPPUserAccount) async -> OIDCReauthAttempt)? = nil
+    ) async -> Bool {
         guard let authDef = userAccount.authDefinition,
               let oidcURL = authDef.oidcAuthenticationUrl else {
             return false
@@ -823,20 +831,48 @@ final class BorrowOperation: @unchecked Sendable {
 
         guard let finalURL = urlComponents.url else { return false }
 
+        return await runOIDCReauthLoop(url: finalURL,
+                                       callbackScheme: callbackScheme,
+                                       userAccount: userAccount,
+                                       present: present)
+    }
+
+    /// The retry loop, separated from URL-building so it can be DRIVEN.
+    ///
+    /// `attemptOIDCSilentReauth` returns early unless the account advertises an
+    /// OIDC URL, and no unit test can synthesize that — so a test aimed at the
+    /// whole function skips, and a skipped test is a silent pass. Splitting the
+    /// loop out is what makes the consent and retry behaviour observable.
+    static func runOIDCReauthLoop(
+        url: URL,
+        callbackScheme: String,
+        userAccount: TPPUserAccount,
+        present: (@Sendable (URL, String, TPPUserAccount) async -> OIDCReauthAttempt)? = nil
+    ) async -> Bool {
+        let finalURL = url
+
         // One retry, and ONLY for a presentation failure we caused. A patron
         // who declined the sheet must not be shown it again.
-        for attempt in 0...1 {
-            let outcome = await presentOIDCReauthSession(
-                url: finalURL,
-                callbackScheme: callbackScheme,
-                userAccount: userAccount
-            )
+        let maxAttempts = 2
+        for attempt in 0..<maxAttempts {
+            // `??` cannot be used here: its right-hand side is an autoclosure,
+            // which may not be `async`.
+            let outcome: OIDCReauthAttempt
+            if let present {
+                outcome = await present(finalURL, callbackScheme, userAccount)
+            } else {
+                outcome = await presentOIDCReauthSession(url: finalURL,
+                                                        callbackScheme: callbackScheme,
+                                                        userAccount: userAccount)
+            }
 
             switch outcome {
             case .succeeded:
                 return true
 
-            case let outcome where outcome.isRetryable && attempt == 0:
+            case let outcome where OIDCReauthAttempt.shouldRetry(outcome,
+                                                                 attempt: attempt,
+                                                                 maxAttempts: maxAttempts):
                 // iOS refused the anchor (code 3). That is our failure, not a
                 // decline: the patron never saw a sheet to decline. Settle and
                 // present once more against a freshly-resolved anchor.
@@ -890,7 +926,16 @@ final class BorrowOperation: @unchecked Sendable {
                 let session = ASWebAuthenticationSession(
                     url: url,
                     callbackURLScheme: callbackScheme
-                ) { callbackURL, error in
+                ) { @MainActor callbackURL, error in
+                    // Explicitly @MainActor rather than relying on inference.
+                    // `ASWebAuthenticationSessionCompletionHandler` is NOT
+                    // annotated in the SDK, so the closure would inherit
+                    // MainActor only by Swift 6 inference over a non-Sendable
+                    // parameter. Off-main delivery would race `didResume` and
+                    // double-resume a CHECKED continuation — which traps. The
+                    // siblings already hop explicitly (TokenRefreshInterceptor
+                    // uses `Task { @MainActor in }`, TPPSignInBusinessLogic+OIDC
+                    // uses `TPPMainThreadRun.asyncIfNeeded`); this matches them.
                     if let error {
                         // Classify rather than collapsing every error to `false`.
                         // `.canceledLogin` (1) is the patron declining;
@@ -1061,6 +1106,24 @@ enum OIDCReauthAttempt: Equatable {
 
     /// Only our own presentation failures are worth another attempt.
     var isRetryable: Bool { self == .presentationFailed }
+
+    /// Whether to present again. THE retry decision, as a value.
+    ///
+    /// This is a function rather than a `switch` pattern because SoD review
+    /// defeated the pattern form three times: a `case` pattern can only be
+    /// pinned by a source-text lint, and `XCTAssertTrue(code.contains(...))` is
+    /// MONOTONE — it detects deletion but never ADDITION or reordering. So
+    /// inserting `case .patronCancelled where attempt == 0: continue` after the
+    /// retry case re-presented a dismissed sheet with every test green, and
+    /// narrowing `0...1` to `0...0` deleted the retry entirely with every test
+    /// green. As a pure function both are ordinary mutants that a table test
+    /// kills. `maxAttempts` is a parameter for the same reason — so the bound
+    /// itself is asserted rather than spelled into a loop header.
+    static func shouldRetry(_ outcome: OIDCReauthAttempt,
+                            attempt: Int,
+                            maxAttempts: Int = 2) -> Bool {
+        outcome.isRetryable && attempt < maxAttempts - 1
+    }
 
     static func classify(error: Error) -> OIDCReauthAttempt {
         guard let sessionError = error as? ASWebAuthenticationSessionError else {

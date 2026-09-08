@@ -36,8 +36,15 @@ extension Account {
     /// refresh can repair.
     ///
     /// So the gate blocks only when the token has expired AND no refresh can
-    /// repair it — `isTokenRefreshRequired()` is the canonical answer to that,
-    /// reused rather than restated so this cannot drift from the responder.
+    /// repair it. `isTokenRefreshRequired()` answers that.
+    ///
+    /// It is NOT the responder's predicate, and an earlier version of this
+    /// comment wrongly claimed reusing it meant the two "cannot drift". They
+    /// already differ: `TPPNetworkResponder` requires `tokenURL != nil` in every
+    /// arm, while `isTokenRefreshRequired`'s non-`isToken` branch does not
+    /// (`UserAccountAuthState.swift`). The divergence is currently unreachable
+    /// in production, but it is a real difference and saying otherwise was the
+    /// same unmeasured-docstring defect this file exists to fix.
     ///
     /// Expressed as a pure function of three booleans, deliberately.
     /// `getProfileDocument` reaches `AppContainer.production()` internally, so

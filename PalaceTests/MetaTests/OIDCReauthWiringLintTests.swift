@@ -59,19 +59,24 @@ final class OIDCReauthWiringLintTests: XCTestCase {
         )
     }
 
-    /// A presentation failure must lead to a retry, not a silent give-up.
-    func testPresentationFailure_isRetried() throws {
+    /// The retry decision must route through the pure `shouldRetry` function.
+    ///
+    /// DEMOTED, deliberately. SoD review established that
+    /// `XCTAssertTrue(code.contains(...))` is MONOTONE in the source text — it
+    /// detects deletion but never ADDITION or reordering. Three rounds of this
+    /// lint were beaten by inserting a case after the one it pinned. The real
+    /// guard is now `OIDCReauthRetryBehaviorTests`, which drives the loop through
+    /// an injected seam and counts presentations, so an inserted case fails on an
+    /// OBSERVED fact. This assertion remains only to catch the decision being
+    /// inlined back into a `case` pattern, where it would again be unreachable by
+    /// a behavioural test. It is a tripwire, not the guard.
+    func testRetryDecision_routesThroughShouldRetry() throws {
         let code = try loadCode()
-        // Pin that the retry decision routes through `isRetryable`, NOT through a
-        // literal `.presentationFailed` pattern. SoD review measured that with a
-        // literal pattern, adding `case .patronCancelled where attempt == 0: continue`
-        // passed every lint and every unit test — the consent guard was decorative.
-        // Routing through the property makes `isRetryable`'s tests load-bearing.
         XCTAssertTrue(
-            code.contains("outcome.isRetryable && attempt == 0"),
-            "The retry decision no longer routes through `OIDCReauthAttempt.isRetryable`. With a literal case "
-            + "pattern the property has zero production readers, so its consent tests pin nothing and a "
-            + "`.patronCancelled` retry branch would pass the whole suite."
+            code.contains("OIDCReauthAttempt.shouldRetry("),
+            "The retry decision is no longer expressed as the pure `shouldRetry` function. Inlining it back "
+            + "into a case pattern makes it un-unit-testable, which is how the consent bypass survived three "
+            + "review rounds. See OIDCReauthRetryBehaviorTests for the behavioural guard."
         )
     }
 

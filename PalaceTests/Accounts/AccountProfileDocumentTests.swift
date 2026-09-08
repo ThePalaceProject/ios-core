@@ -192,37 +192,98 @@ final class AccountProfileDocumentTests: XCTestCase {
 
     // MARK: - isTokenRefreshRequired: the gate's repairability input
 
-    // SoD review found this had NO test anywhere in the suite, despite being the
-    // load-bearing "repairable" input the whole narrowing depends on. These drive
-    // the real helper.
+    // SoD review found my first attempt at these was one test written three
+    // times: all three passed `authDefinition: nil`, and the helper's first line
+    // is `guard let authDefinition else { return false }` — so all three hit the
+    // same early return, production always passes non-nil, and NO test reached a
+    // `true` return. A reviewer inverted the token branch AND forced the
+    // non-token branch to `return true` with the suite still green. These drive
+    // a real auth definition.
 
-    func testIsTokenRefreshRequired_expiredTokenWithBarcodeAndPIN_isTrue() {
+    /// Builds a token-auth definition the way the contract tests do.
+    private func tokenAuthDefinition(tokenURL: String?) -> AccountDetails.Authentication {
+        // `tokenURL` is read from a LINKS array (`rel == "authenticate"`), not a
+        // top-level key — my first fixture used the wrong shape and the guard
+        // below caught it rather than letting the test pass through the helper's
+        // early return.
+        let links = tokenURL.map { """
+        , "links": [{ "rel": "authenticate", "href": "\($0)" }]
+        """ } ?? ""
+        let json = """
+        {
+          "type": "http://thepalaceproject.org/authtype/basic-token",
+          "description": "Token auth"\(links)
+        }
+        """
+        let docAuth = try! JSONDecoder().decode(
+            OPDS2AuthenticationDocument.Authentication.self,
+            from: Data(json.utf8)
+        )
+        return AccountDetails.Authentication(auth: docAuth)
+    }
+
+    /// THE case the whole narrowing rests on: an expired token that CAN be
+    /// refreshed must report repairable, so the gate lets the request through
+    /// and the reactive 401 repair runs. Nothing previously reached this.
+    func testIsTokenRefreshRequired_expiredTokenWithTokenURLAndBarcodePIN_isTrue() {
+        let auth = tokenAuthDefinition(tokenURL: "https://example.invalid/token")
+        guard auth.isToken, auth.tokenURL != nil else {
+            return XCTFail("Fixture did not produce a token auth definition with a tokenURL — "
+                           + "the test would otherwise pass through the early return and prove nothing")
+        }
+
         XCTAssertTrue(
             UserAccountAuthHelper.isTokenRefreshRequired(
-                authDefinition: nil,
+                authDefinition: auth,
                 credentials: .token(authToken: "t", barcode: "b", pin: "p",
                                     expirationDate: Date(timeIntervalSinceNow: -60)),
                 username: "b",
-                pin: "p") == false,
-            "With a nil authDefinition there is no tokenURL to refresh against, so refresh is NOT possible — "
-            + "this is the residual case where the gate legitimately still blocks")
+                pin: "p"),
+            "An expired token with a tokenURL, barcode and PIN IS repairable — this is the input that "
+            + "keeps the gate from deleting the working reactive refresh")
+    }
+
+    /// Same credential, no tokenURL: not repairable, so the gate legitimately blocks.
+    func testIsTokenRefreshRequired_expiredTokenWithoutTokenURL_isFalse() {
+        XCTAssertFalse(
+            UserAccountAuthHelper.isTokenRefreshRequired(
+                authDefinition: tokenAuthDefinition(tokenURL: nil),
+                credentials: .token(authToken: "t", barcode: "b", pin: "p",
+                                    expirationDate: Date(timeIntervalSinceNow: -60)),
+                username: "b",
+                pin: "p"),
+            "With no tokenURL there is nothing to refresh against — the residual case where blocking is right")
+    }
+
+    /// An UNEXPIRED token needs no refresh — pins the expiry direction.
+    func testIsTokenRefreshRequired_unexpiredToken_isFalse() {
+        XCTAssertFalse(
+            UserAccountAuthHelper.isTokenRefreshRequired(
+                authDefinition: tokenAuthDefinition(tokenURL: "https://example.invalid/token"),
+                credentials: .token(authToken: "t", barcode: "b", pin: "p",
+                                    expirationDate: Date(timeIntervalSinceNow: 3600)),
+                username: "b",
+                pin: "p"),
+            "A live token does not need refreshing")
+    }
+
+    /// Missing barcode/PIN cannot drive a refresh even with a tokenURL.
+    func testIsTokenRefreshRequired_expiredTokenWithoutBarcodeOrPIN_isFalse() {
+        XCTAssertFalse(
+            UserAccountAuthHelper.isTokenRefreshRequired(
+                authDefinition: tokenAuthDefinition(tokenURL: "https://example.invalid/token"),
+                credentials: .token(authToken: "t", barcode: nil, pin: nil,
+                                    expirationDate: Date(timeIntervalSinceNow: -60)),
+                username: nil,
+                pin: nil),
+            "The refresh exchange needs a barcode and PIN; without them it cannot repair")
     }
 
     func testIsTokenRefreshRequired_noAuthDefinition_isFalse() {
         XCTAssertFalse(
             UserAccountAuthHelper.isTokenRefreshRequired(
-                authDefinition: nil,
-                credentials: .barcodeAndPin(barcode: "b", pin: "p"),
-                username: "b",
-                pin: "p"),
-            "No auth definition means no refresh mechanism is known — must not claim repairability")
-    }
-
-    func testIsTokenRefreshRequired_noCredentials_isFalse() {
-        XCTAssertFalse(
-            UserAccountAuthHelper.isTokenRefreshRequired(
                 authDefinition: nil, credentials: nil, username: nil, pin: nil),
-            "Nothing stored means nothing to refresh")
+            "No auth definition means no known refresh mechanism")
     }
 
     // MARK: - isTokenExpired: the claims the gate relies on, pinned
