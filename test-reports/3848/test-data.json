@@ -1,0 +1,31 @@
+{
+  "success": true,
+  "xcresult_path": "TestResults.xcresult",
+  "api_used": "none",
+  "build": {
+    "status": "failed",
+    "errors": [
+      "Testing cancelled because the build failed.",
+      "Clang dependency scanner failure: fatal error: file '/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk/usr/lib/swift/shims/module.modulemap' has been modified since the module file '/Users/runner/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/2POB4PVYOSN1Z/SwiftShims-6H64C6LMO9HA.pcm' was built: mtime changed (was 1785128762, now 1787976626)\nnote: please rebuild precompiled file '/Users/runner/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/2POB4PVYOSN1Z/SwiftShims-6H64C6LMO9HA.pcm'\n",
+      "lstat(/Users/runner/Library/Developer/Xcode/DerivedData/Palace-boxbbvwaewjfydbdhnrbituticcn/Build/Intermediates.noindex/Promises.build/Debug-iphonesimulator/Promises.build/Objects-normal/arm64/Promises.swiftmodule): No such file or directory (2)"
+    ],
+    "warnings": [
+      "'sprintf' is deprecated: This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead."
+    ]
+  },
+  "summary": {
+    "tests": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "expected_failures": 0,
+    "flaky": 0,
+    "duration": 0,
+    "duration_formatted": "<1ms",
+    "pass_rate": "N/A"
+  },
+  "tests": [],
+  "classes": {},
+  "failed_tests": [],
+  "flaky_tests": []
+}
