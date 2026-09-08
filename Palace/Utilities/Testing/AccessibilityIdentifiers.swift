@@ -229,6 +229,19 @@ public enum AccessibilityID {
         public static let downloadOnlyOnWiFiToggle = "settings.downloadOnlyOnWiFiToggle"
     }
 
+    // MARK: - Libraries Screen
+
+    /// Dedicated Libraries screen (PP-5098), pushed from the Settings row
+    /// identified by `Settings.manageLibrariesButton`.
+    public enum Libraries {
+        public static let list = "libraries.list"
+        public static let addLibraryButton = "libraries.addLibraryButton"
+        /// Prefix; the account uuid is appended: `libraries.row.<uuid>`.
+        public static let row = "libraries.row"
+        /// Prefix; the account uuid is appended: `libraries.selectionControl.<uuid>`.
+        public static let selectionControl = "libraries.selectionControl"
+    }
+
     // MARK: - Audiobook Player
 
     /// Audiobook Player identifiers
