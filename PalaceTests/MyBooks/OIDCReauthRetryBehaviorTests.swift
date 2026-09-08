@@ -47,8 +47,24 @@ final class OIDCReauthRetryBehaviorTests: XCTestCase {
     /// already-built URL. Aiming at `attemptOIDCSilentReauth` instead would
     /// require an account carrying OIDC config that no unit test can synthesize,
     /// so every test would XCTSkip — and a skipped test is a silent pass.
+    /// An ISOLATED account, from the test factory rather than the process-wide
+    /// account cache.
+    ///
+    /// The cached variant tripped two lints at once and both were right: it is
+    /// process-wide, so a fixed `libraryUUID` writes keychain entries every other
+    /// test in the bundle can see (`TPPUserAccountIsolationLintTests`), and
+    /// acquiring singleton state without a `tearDown` to drop it is what
+    /// `TearDownRequiredLintTests` exists to stop. The factory mints a
+    /// UUID-namespaced instance and registers its own cleanup at
+    /// `testCaseDidFinish`, so neither problem arises and no `tearDown` is owed.
+    ///
+    /// Both lints match on source text, so naming those APIs literally here — even
+    /// inside a comment — re-triggers them. Hence the prose.
+    ///
+    /// Nothing here depends on the account's identity: it is passed straight
+    /// through to `runOIDCReauthLoop` and the presentation spy ignores it.
     private var account: TPPUserAccount {
-        TPPUserAccount.sharedAccount(libraryUUID: "oidc-retry-behaviour-tests")
+        TPPUserAccountTestFactory.makeIsolated()
     }
 
     private let url = URL(string: "https://idp.example.invalid/authorize")!
