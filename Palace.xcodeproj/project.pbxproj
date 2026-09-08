@@ -81,6 +81,7 @@
 		0C26C51E4B1F06A4C02FBB65 /* TPPReauthenticator+Reauthenticating.swift in Sources */ = {isa = PBXBuildFile; fileRef = 540375EB4B496BAA15E4F6F4 /* TPPReauthenticator+Reauthenticating.swift */; };
 		0C3DD40B825558E7A86B603F /* TPPConfigurationCustomRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F80A7E0050FBFEDA0FCD075 /* TPPConfigurationCustomRegistryTests.swift */; };
 		0C6A411969E83D1D9A8BD2EA /* BorrowOperationAuthCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CDE8C912B8AD7B20AF282E /* BorrowOperationAuthCoordinatorTests.swift */; };
+		0C89A007583BD6AB911D6BF9 /* DirectionalNavigationAdapterOwnershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 291713E94497912E9F62F2E8 /* DirectionalNavigationAdapterOwnershipTests.swift */; };
 		0CE51471A7664B7995B5C8A0 /* AudiobookDataManagerSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7BD91AF3E14990B745A0AA /* AudiobookDataManagerSyncTests.swift */; };
 		0D1F4E6BBD1377B4FD118F80 /* AudiobookPositionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF5D304C32FB1B3732F865C /* AudiobookPositionPolicy.swift */; };
 		0D4E64074A2CDB3B28BDE042 /* FakeReachability.swift in Sources */ = {isa = PBXBuildFile; fileRef = E85AF5AB0B70369F9379E5AA /* FakeReachability.swift */; };
@@ -2465,6 +2466,7 @@
 		28B6ED44D40E09EC72287887 /* AdobeDRMHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AdobeDRMHandlerTests.swift; sourceTree = "<group>"; };
 		28F5B74FBB8C3F4B3A64E44F /* AccountErrorReportingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountErrorReportingTests.swift; sourceTree = "<group>"; };
 		28FD1DBB8243D1E1B6EC6083 /* AuthDecisionEvent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthDecisionEvent.swift; sourceTree = "<group>"; };
+		291713E94497912E9F62F2E8 /* DirectionalNavigationAdapterOwnershipTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DirectionalNavigationAdapterOwnershipTests.swift; sourceTree = "<group>"; };
 		2919A501EF80BC9A88CF2B58 /* AlertPresentationRawGuardLintTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AlertPresentationRawGuardLintTests.swift; sourceTree = "<group>"; };
 		29B6905F170E4D98A985ABF4 /* HTMLTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextViewTests.swift; sourceTree = "<group>"; };
 		2A7140DF0127F1C8BA633644 /* BadgeServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeServiceProtocol.swift; sourceTree = "<group>"; };
@@ -4317,6 +4319,7 @@
 				7FF5633A8C4DB8B235E7E15F /* ChapterScrubberModelTests.swift */,
 				2503724327198C2971FEA98D /* ChapterScrubberReadoutTests.swift */,
 				B63A93A84992788F3C54F7F3 /* ChapterScrubberViewTests.swift */,
+				291713E94497912E9F62F2E8 /* DirectionalNavigationAdapterOwnershipTests.swift */,
 			);
 			path = Reader2;
 			sourceTree = "<group>";
@@ -8278,6 +8281,7 @@
 				EDE3138EC9F11969803FA81E /* ButtonTapDebounceTests.swift in Sources */,
 				16BE6C7F98FD50DF05826C51 /* LibraryIconInertLintTests.swift in Sources */,
 				5EC8BED45178B1CB275352AC /* TPPNetworkResponderRetryBufferTests.swift in Sources */,
+				0C89A007583BD6AB911D6BF9 /* DirectionalNavigationAdapterOwnershipTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9674,7 +9678,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 499;
+				CURRENT_PROJECT_VERSION = 501;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -9733,7 +9737,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 499;
+				CURRENT_PROJECT_VERSION = 501;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -9922,7 +9926,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 499;
+				CURRENT_PROJECT_VERSION = 501;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -9983,7 +9987,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 499;
+				CURRENT_PROJECT_VERSION = 501;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
