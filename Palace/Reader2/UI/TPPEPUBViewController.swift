@@ -22,6 +22,22 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     private var keyboardInput: GCKeyboardInput?
     private var keyboardConnectObserver: NSObjectProtocol?
     private var keyboardDisconnectObserver: NSObjectProtocol?
+
+    /// Owns the edge-tap / keyboard page-turn adapter for this controller's lifetime.
+    ///
+    /// `bind(to:)` registers closures that capture the adapter **weakly**, so the
+    /// navigator's observer list does NOT keep it alive. Binding a temporary
+    /// (`DirectionalNavigationAdapter(...).bind(to:)`) therefore deallocates it the
+    /// moment `init` returns, every subsequent edge tap hits `guard let self` and
+    /// returns `false`, and the event falls through to the `.tap` observer below —
+    /// which toggles the toolbar instead of turning the page.
+    ///
+    /// That is not hypothetical: Readium 3.7 captured `[self, ...]` strongly, so the
+    /// unowned temporary survived by accident. 3.9 changed it to `[weak self, ...]`
+    /// and edge-tap paging died silently in Palace 3.2.0 — no compile error, no
+    /// warning, no failing test. This property is the ownership that was always
+    /// required; do not inline it back into the call site.
+    private var directionalNavigationAdapter: DirectionalNavigationAdapter?
     private var isShiftPressed = false
     private lazy var keyboardNavigationHandler = KeyboardNavigationHandler(navigable: self)
     private var lastChapterHREF: String?
@@ -111,7 +127,9 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         // Keyboard events arrive via Readium's JavaScript bridge (keyboard.js captures
         // keydown in WKWebView, calls preventDefault, forwards via messageHandlers).
         // This matches Readium's TestApp configuration.
-        DirectionalNavigationAdapter(
+        // Retained in `directionalNavigationAdapter` — binding alone does NOT keep
+        // it alive (see that property's note).
+        let edgeTapAdapter = DirectionalNavigationAdapter(
             pointerPolicy: DirectionalNavigationAdapter.PointerPolicy(
                 types: [.touch],
                 edges: .horizontal,
@@ -119,7 +137,9 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
                 horizontalEdgeThresholdPercent: 0.2
             ),
             animatedTransition: true
-        ).bind(to: navigator)
+        )
+        edgeTapAdapter.bind(to: navigator)
+        directionalNavigationAdapter = edgeTapAdapter
 
         // Readium key observer — handles keys NOT covered by DirectionalNavigationAdapter
         // (e.g. Escape for toolbar toggle). Arrow/space events are consumed by
