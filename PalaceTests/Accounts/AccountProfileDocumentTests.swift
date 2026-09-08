@@ -246,21 +246,26 @@ final class AccountProfileDocumentTests: XCTestCase {
                         "Precondition: the auth doc must declare a profile URL, or this proves nothing")
 
         var issued: [URLRequest] = []
-        let done = expectation(description: "completion")
+        var completions: [UserProfileDocument?] = []
 
+        // No expectation, and deliberately no deadline. The blocked path is
+        // `completion(nil); return` on the calling thread — no Task, no network,
+        // no main-queue hop — so the call has already settled by the time it
+        // returns. A deadline-poll wait here would be a fixed wall-clock bound on
+        // work that is not async at all, which is what STARVE-001 exists to
+        // stop: it starves under parallel sim clones and fails all three CI
+        // retries. Asserting after the synchronous return is both honest and
+        // strictly stronger — if this path ever becomes asynchronous, this
+        // fails immediately instead of passing on a generous timeout.
         account.getProfileDocument(performRequest: { request, _ in
             issued.append(request)
         }, completion: { document in
-            XCTAssertNil(document)
-            done.fulfill()
+            completions.append(document)
         })
 
-        // STARVE-001-OK: the gate calls `completion(nil)` synchronously and returns —
-        // there is no fire-and-forget Task, no network, and the injected
-        // `performRequest` is never invoked on this path. The deadline is a
-        // safety net on an already-settled call, not a poll on async work, so it
-        // cannot starve under parallel sim clones.
-        wait(for: [done], timeout: 3.0)
+        XCTAssertEqual(completions.count, 1,
+                       "The blocked path must complete synchronously — one call, before this line runs")
+        XCTAssertNil(completions.first ?? nil, "A blocked request yields no profile document")
         XCTAssertTrue(issued.isEmpty,
                       "With no credentials the gate must block BEFORE the network. A request here is the "
                       + "/patrons/me/ 401 storm of PP-4164 / F-007 — and it is observable now, where the "
