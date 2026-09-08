@@ -15,13 +15,22 @@
 import Foundation
 
 extension AccountsManager {
-    func problemReportContext(forLibrary libraryUUID: String?) -> (patronIdentifier: String?, libraryName: String?) {
+    func problemReportContext(
+        forLibrary libraryUUID: String?
+    ) -> (patronIdentifier: String?, libraryName: String?, libraryUUID: String?) {
         let account: TPPUserAccount
-        if let id = libraryUUID ?? currentAccountId {
+        let resolvedID = libraryUUID ?? currentAccountId
+        if let id = resolvedID {
             account = userAccount(for: id)
         } else {
             account = currentUserAccount
         }
-        return (account.authorizationIdentifier, currentAccount?.name)
+        // PP-5078: the resolved ID is returned alongside the name because the two
+        // resolve independently. The patron ID comes from `account` (looked up by
+        // ID), while the name comes from `currentAccount`, which stays nil until
+        // the library registry has loaded. In that window the app knows WHICH
+        // library is selected but cannot name it — the exact state that produced
+        // problem reports with a populated Patron ID and a blank Library line.
+        return (account.authorizationIdentifier, currentAccount?.name, resolvedID)
     }
 }

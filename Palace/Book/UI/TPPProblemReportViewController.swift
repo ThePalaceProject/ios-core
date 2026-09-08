@@ -75,7 +75,8 @@ import PalaceBookModel
         presentingViewController: self,
         book: book,
         patronIdentifier: ctx.patronIdentifier,
-        libraryName: ctx.libraryName
+        libraryName: ctx.libraryName,
+        libraryUUID: ctx.libraryUUID
       )
     } else if let url = accountsManager.currentAccount?.supportURL {
       presentWebView(url)
