@@ -62,10 +62,16 @@ final class OIDCReauthWiringLintTests: XCTestCase {
     /// A presentation failure must lead to a retry, not a silent give-up.
     func testPresentationFailure_isRetried() throws {
         let code = try loadCode()
+        // Pin that the retry decision routes through `isRetryable`, NOT through a
+        // literal `.presentationFailed` pattern. SoD review measured that with a
+        // literal pattern, adding `case .patronCancelled where attempt == 0: continue`
+        // passed every lint and every unit test — the consent guard was decorative.
+        // Routing through the property makes `isRetryable`'s tests load-bearing.
         XCTAssertTrue(
-            code.contains("case .presentationFailed where attempt == 0"),
-            "The retry branch for a presentation failure is gone. Without it a code-3 failure strands the patron "
-            + "with credentialsStale credentials and a sign-in sheet that re-presents until relaunch."
+            code.contains("outcome.isRetryable && attempt == 0"),
+            "The retry decision no longer routes through `OIDCReauthAttempt.isRetryable`. With a literal case "
+            + "pattern the property has zero production readers, so its consent tests pin nothing and a "
+            + "`.patronCancelled` retry branch would pass the whole suite."
         )
     }
 
@@ -79,9 +85,9 @@ final class OIDCReauthWiringLintTests: XCTestCase {
         let code = try loadCode()
 
         XCTAssertTrue(
-            code.contains("UIApplication.shared.mainWindowScene?.windows.first"),
-            "The anchor no longer falls back to a real window from the active scene. Going straight from "
-            + "mainKeyWindow to ASPresentationAnchor() hands iOS a scene-less window and guarantees code 3."
+            code.contains("UIApplication.shared.webAuthPresentationAnchor"),
+            "The anchor no longer uses the shared resolver. Resolving inline is how the three OIDC paths "
+            + "drifted apart in the first place — two of them still carried the scene-less fallback."
         )
 
         XCTAssertFalse(

@@ -836,7 +836,7 @@ final class BorrowOperation: @unchecked Sendable {
             case .succeeded:
                 return true
 
-            case .presentationFailed where attempt == 0:
+            case let outcome where outcome.isRetryable && attempt == 0:
                 // iOS refused the anchor (code 3). That is our failure, not a
                 // decline: the patron never saw a sheet to decline. Settle and
                 // present once more against a freshly-resolved anchor.
@@ -847,6 +847,7 @@ final class BorrowOperation: @unchecked Sendable {
             case .presentationFailed:
                 Log.error(#file, "OIDC silent re-auth: presentation failed twice — leaving credentials stale, borrow retry will 401")
                 return false
+
 
             case .patronCancelled:
                 Log.info(#file, "OIDC silent re-auth: patron dismissed the sheet — not retrying")
@@ -872,6 +873,20 @@ final class BorrowOperation: @unchecked Sendable {
     ) async -> OIDCReauthAttempt {
         await withCheckedContinuation { continuation in
             Task { @MainActor in
+                // `session.start()` returns false when iOS refuses to present,
+                // and in that case the completion handler is NEVER invoked. Without
+                // this the continuation would never resume and the borrow would
+                // await forever — a hang, worse than the bug being fixed. The guard
+                // makes resume one-shot: whichever path arrives first wins and the
+                // other is a no-op, so handling the start failure cannot double-resume.
+                // MainActor-confined, so a plain flag is sufficient.
+                var didResume = false
+                func resumeOnce(_ outcome: OIDCReauthAttempt) {
+                    guard !didResume else { return }
+                    didResume = true
+                    continuation.resume(returning: outcome)
+                }
+
                 let session = ASWebAuthenticationSession(
                     url: url,
                     callbackURLScheme: callbackScheme
@@ -888,13 +903,13 @@ final class BorrowOperation: @unchecked Sendable {
                         // this was the drifted third copy.
                         let outcome = OIDCReauthAttempt.classify(error: error)
                         Log.info(#file, "OIDC silent re-auth session ended: \(outcome) (\(error.localizedDescription))")
-                        continuation.resume(returning: outcome)
+                        resumeOnce(outcome)
                         return
                     }
 
                     guard let callbackURL,
                           let payload = callbackURL.query ?? callbackURL.fragment else {
-                        continuation.resume(returning: .failed)
+                        resumeOnce(.failed)
                         return
                     }
 
@@ -906,13 +921,13 @@ final class BorrowOperation: @unchecked Sendable {
                     }
 
                     guard let accessToken = kvpairs["access_token"] else {
-                        continuation.resume(returning: .failed)
+                        resumeOnce(.failed)
                         return
                     }
 
                     userAccount.setAuthToken(accessToken, barcode: userAccount.barcode, pin: userAccount.PIN, expirationDate: nil)
                     Log.info(#file, "OIDC silent re-auth: token updated successfully")
-                    continuation.resume(returning: .succeeded)
+                    resumeOnce(.succeeded)
                 }
 
                 session.presentationContextProvider = OIDCBorrowPresentationContext.shared
@@ -932,7 +947,13 @@ final class BorrowOperation: @unchecked Sendable {
                 // The 150ms is an empirical guess rather than synchronization, so the
                 // caller also retries once on a code-3 outcome.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    session.start()
+                    // A false return means the session never presented and the
+                    // completion will not fire. Classify it as our presentation
+                    // failure so the caller's retry can act on it.
+                    if !session.start() {
+                        Log.warn(#file, "OIDC silent re-auth: session.start() refused to present")
+                        resumeOnce(.presentationFailed)
+                    }
                 }
             }
         }
@@ -1069,12 +1090,9 @@ private final class OIDCBorrowPresentationContext: NSObject, ASWebAuthentication
         // (code 3). So the fallback manufactured the very failure it was meant
         // to avoid. Prefer any real window from the active scene; keep the bare
         // anchor only as a last resort so the signature stays total.
-        if let keyWindow = UIApplication.shared.mainKeyWindow {
-            return keyWindow
-        }
-        if let sceneWindow = UIApplication.shared.mainWindowScene?.windows.first {
-            return sceneWindow
-        }
-        return ASPresentationAnchor()
+        // Shared resolver, so the three OIDC paths cannot drift apart again.
+        // It filters out keyboard/hidden/non-normal-level windows, which
+        // `windows.first` alone would happily return.
+        UIApplication.shared.webAuthPresentationAnchor ?? ASPresentationAnchor()
     }
 }

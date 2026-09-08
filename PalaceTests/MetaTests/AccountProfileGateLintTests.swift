@@ -67,9 +67,13 @@ final class AccountProfileGateLintTests: XCTestCase {
     /// The gate must actually be consulted.
     func testGetProfileDocument_callsTheCredentialsGate() throws {
         let code = try loadCode()
-        XCTAssertTrue(code.contains("canAuthenticateProfileRequest("),
-                      "getProfileDocument no longer calls canAuthenticateProfileRequest. The predicate's unit tests "
-                      + "stay green when this call is deleted, so they cannot catch it — that is why this lint exists.")
+        // The needle must match the CALL, not the declaration. A bare
+        // "canAuthenticateProfileRequest(" also matches `static func
+        // canAuthenticateProfileRequest(` two lines above, so the assertion could
+        // never fail — SoD review caught that. Match the guarded call form.
+        XCTAssertTrue(code.contains("if !Account.canAuthenticateProfileRequest("),
+                      "getProfileDocument no longer GUARDS on canAuthenticateProfileRequest. The predicate's unit "
+                      + "tests stay green when this call is deleted, so they cannot catch it — that is why this lint exists.")
     }
 
     /// All three inputs must be fed from the live account, not hardcoded.

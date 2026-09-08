@@ -178,6 +178,53 @@ final class AccountProfileDocumentTests: XCTestCase {
         }
     }
 
+    /// The 8th cell: expired + repairable + NO credentials.
+    /// Pinned so `hasCredentials` cannot be dropped from the predicate — with
+    /// only 7 cells asserted, `!tokenHasExpired || tokenRefreshWillRepair` alone
+    /// would pass everything else.
+    func testCanAuthenticate_NoCredentialsExpiredAndRepairable_IsFalse() {
+        XCTAssertFalse(
+            Account.canAuthenticateProfileRequest(hasCredentials: false,
+                                                  tokenHasExpired: true,
+                                                  tokenRefreshWillRepair: true),
+            "There is nothing to refresh without credentials — absence is decisive over repairability")
+    }
+
+    // MARK: - isTokenRefreshRequired: the gate's repairability input
+
+    // SoD review found this had NO test anywhere in the suite, despite being the
+    // load-bearing "repairable" input the whole narrowing depends on. These drive
+    // the real helper.
+
+    func testIsTokenRefreshRequired_expiredTokenWithBarcodeAndPIN_isTrue() {
+        XCTAssertTrue(
+            UserAccountAuthHelper.isTokenRefreshRequired(
+                authDefinition: nil,
+                credentials: .token(authToken: "t", barcode: "b", pin: "p",
+                                    expirationDate: Date(timeIntervalSinceNow: -60)),
+                username: "b",
+                pin: "p") == false,
+            "With a nil authDefinition there is no tokenURL to refresh against, so refresh is NOT possible — "
+            + "this is the residual case where the gate legitimately still blocks")
+    }
+
+    func testIsTokenRefreshRequired_noAuthDefinition_isFalse() {
+        XCTAssertFalse(
+            UserAccountAuthHelper.isTokenRefreshRequired(
+                authDefinition: nil,
+                credentials: .barcodeAndPin(barcode: "b", pin: "p"),
+                username: "b",
+                pin: "p"),
+            "No auth definition means no refresh mechanism is known — must not claim repairability")
+    }
+
+    func testIsTokenRefreshRequired_noCredentials_isFalse() {
+        XCTAssertFalse(
+            UserAccountAuthHelper.isTokenRefreshRequired(
+                authDefinition: nil, credentials: nil, username: nil, pin: nil),
+            "Nothing stored means nothing to refresh")
+    }
+
     // MARK: - isTokenExpired: the claims the gate relies on, pinned
 
     // The gate's docstring asserts that basic-auth libraries and OIDC are
