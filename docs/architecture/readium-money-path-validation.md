@@ -29,6 +29,32 @@ validation, and recording it as such would defeat the purpose of the ledger.
 
 ---
 
+## 58413f8680a310ed6d98278687ab711e6be639c8 (fork: ThePalaceProject/swift-toolkit, 3.11.0 + fix-issue-579)
+
+- Validated against: Palace 3.2.4 (500), Moes Max (iPhone 17 Pro Max, iOS 26.6.1) and iPhone 17 Pro simulator, A1QA Test Library
+- Validated by: iOS maintainer
+- Date: 2026-09-03
+
+Pinned by revision rather than version because the streaming fix is not in any
+upstream Readium release. This is the pin the 3.9.0 entry below anticipated when
+it recorded LCP streaming as `fail` pending the unmerged `fix-issue-579` branch.
+
+| Path | Result | Evidence |
+|---|---|---|
+| Audiobook, LCP streaming | pass | Two Palace Marketplace LCP audiobooks borrowed on device with the flag on produced two 3 KB `.lcpl` licenses and **zero `.lcpa`** — the license alone is playable, which is the behaviour 3.9.0 recorded as broken. After SIGKILL and cold launch both records stayed `download-successful`; the other ten records in the same registry read `download-needed`, a control showing reconciliation ran, so the survivors are not an artifact of `load()` never firing. <!-- audit-verified --> |
+| Audiobook, LCP playback from local | pass | Full CI-parity suite green at this pin, including the LCP fulfillment and registry suites. Unchanged from 3.9.0: the `.lcpa`-on-disk path is untouched by the fork. |
+| Borrow | pass | Exercised on device as the precondition for the streaming rows above — both borrows completed and produced licenses. |
+| Download | pass | Full CI-parity suite green, including `LocalBookContentService` and `BookRegistrySync`. The fork changes no download code; the diff from the 3.2.3 toolkit base is two files and zero source lines. |
+| EPUB / PDF reader | not validated | The fork touches the LCP streaming path; the reader paths were not separately exercised on device for this hotfix. The suite is green, which is weaker evidence than a device pass. |
+| Audiobook, Findaway | not validated | Not exercised. Unchanged from the 3.9.0 entry. |
+| Audiobook, OverDrive | not validated | Not exercised on device. The F1/F2 download-durability fixes were deliberately NOT carried into this pin — they are already in the 3.3.0 toolkit. |
+
+**Audio playback itself was not verified by artifact.** The on-disk and registry
+evidence proves the streaming path is taken and survives relaunch; it says
+nothing about sound. A human ear on the device is still owed.
+
+---
+
 ## 3.9.0
 
 - Validated against: Palace 3.2.3 (490), iPhone 17 Pro simulator (iOS 26.1), A1QA Test Library

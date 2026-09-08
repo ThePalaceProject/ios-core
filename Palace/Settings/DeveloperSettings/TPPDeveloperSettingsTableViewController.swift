@@ -86,6 +86,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let triageBotTicketSubmissionCellIdentifier = "triageBotTicketSubmissionCell"
     private let triageBotAIFallbackCellIdentifier = "triageBotAIFallbackCell"
     private let inAppPlaybackNavCellIdentifier = "inAppPlaybackNavCell"
+    private let lcpStreamingCellIdentifier = "lcpStreamingCell"
     private let triageBotAnthropicKeyCellIdentifier = "triageBotAnthropicKeyCell"
 
     /// Manages the Keychain-backed Anthropic key for the Triage Bot AI
@@ -144,6 +145,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotTicketSubmissionCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotAIFallbackCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: inAppPlaybackNavCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: lcpStreamingCellIdentifier)
     }
 
     // MARK: - UITableViewDataSource
@@ -154,7 +156,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch sectionType {
         case .librarySettings: return 2
         case .triageBot: return 4  // enabled + ticket submission + AI fallback + Anthropic key
-        case .featureFlags: return 1
+        case .featureFlags: return 2  // in-app playback nav + LCP audiobook streaming
         case .dataManagement: return 3  // Clear Cached Data + Reset This Library + Full Reset
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
@@ -200,7 +202,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             case 2: return cellForTriageBotAIFallback()
             default: return cellForTriageBotAnthropicKey()
             }
-        case .featureFlags: return cellForInAppPlaybackNav()
+        case .featureFlags:
+            switch indexPath.row {
+            case 0: return cellForInAppPlaybackNav()
+            default: return cellForLCPAudiobookStreaming()
+            }
         case .libraryRegistryDebugging: return cellForCustomRegsitry()
         case .dataManagement:
             switch indexPath.row {
@@ -461,6 +467,33 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
     @objc func inAppPlaybackNavSwitchDidChange(sender: UISwitch) {
         UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+    }
+
+    /// Local-override toggle for LCP audiobook streaming-from-license (PP-4957).
+    /// Mirrors `cellForInAppPlaybackNav` exactly.
+    ///
+    /// This is not optional convenience. Firebase carries
+    /// `lcp_audiobook_streaming_enabled` TRUE at 100%, so without a local
+    /// override QA can turn streaming ON but has no way to turn it OFF on a
+    /// device — which makes an A/B comparison, and any field workaround,
+    /// impossible. Flagged in SoD review of the 3.2.4 back-port.
+    private func cellForLCPAudiobookStreaming() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: lcpStreamingCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(lcpStreamingCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "LCP Audiobook Streaming"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled,
+            action: #selector(lcpAudiobookStreamingSwitchDidChange)
+        )
+        return cell
+    }
+
+    @objc func lcpAudiobookStreamingSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
     }
 
     private func cellForClearCache() -> UITableViewCell {

@@ -43,6 +43,13 @@ class LocalBookContentService {
     private let bookFileManager: BookFileManager
     private let fileManager: FileManager
     private let lcpContentFulfiller: LCPContentFulfilling
+    /// PP-4957: reads the LCP-audiobook-streaming feature flag. When ON, the
+    /// self-heal `.lcpa` re-download is skipped for an LCP audiobook — a
+    /// streaming book is intentionally content-absent and playable on its
+    /// license alone, so re-fetching the full archive would defeat streaming.
+    /// Injected so tests drive both flag states; production default reads the
+    /// shared flag (local override > Firebase remote, default `false`).
+    private let streamingEnabledProvider: () -> Bool
     /// Per-instance so tests can drive the idle-expiry and heartbeat behaviour
     /// in milliseconds instead of waiting out the production window.
     private let inflightIdleTimeout: TimeInterval
@@ -126,8 +133,10 @@ class LocalBookContentService {
         lcpContentFulfiller: LCPContentFulfilling? = nil,
         inflightIdleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
         downloadCenterHasTransfer: ((String) -> Bool)? = nil,
-        monotonicClock: (() -> UInt64)? = nil
+        monotonicClock: (() -> UInt64)? = nil,
+        streamingEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled }
     ) {
+        self.streamingEnabledProvider = streamingEnabledProvider
         self.inflightIdleTimeout = inflightIdleTimeout
         self.monotonicClock = monotonicClock ?? LocalBookContentService.monotonicNow
         self.downloadCenterHasTransfer = downloadCenterHasTransfer
@@ -331,6 +340,15 @@ class LocalBookContentService {
     func redownloadLCPContentFile(for book: TPPBook) {
         #if LCP
         guard LCPAudiobooks.canOpenBook(book) else { return }
+        // PP-4957: when streaming is ON, an LCP audiobook is intentionally
+        // content-absent and playable on its license alone — the self-heal must
+        // NOT re-fetch the `.lcpa`, or it would re-download the full archive that
+        // the streaming path exists to avoid. Flag OFF → the self-heal below is
+        // unchanged (today's download-first behavior).
+        if streamingEnabledProvider() {
+            Log.info(#file, "PP-4957 streaming ON — skipping self-heal .lcpa re-download for '\(book.title)'")
+            return
+        }
         guard let licenseURL = lcpLicenseURL(forBookIdentifier: book.identifier) else {
             Log.warn(#file, "📥 [LCP RE-DOWNLOAD] No license file found for '\(book.title)' — skipping")
             return
