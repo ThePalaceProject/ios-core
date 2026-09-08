@@ -190,6 +190,78 @@ final class AccountProfileDocumentTests: XCTestCase {
             "There is nothing to refresh without credentials — absence is decisive over repairability")
     }
 
+    /// The cell that was missing through three rounds: credentials present,
+    /// token NOT expired, refresh would repair. Reachable via the
+    /// `isOAuthAndNeedsRefresh` arm. Kills the `||` -> `!=` mutant.
+    func testCanAuthenticate_credentialsUnexpiredAndRepairable_IsTrue() {
+        XCTAssertTrue(
+            Account.canAuthenticateProfileRequest(hasCredentials: true,
+                                                  tokenHasExpired: false,
+                                                  tokenRefreshWillRepair: true),
+            "An unexpired credential must reach the network regardless of repairability — "
+            + "this is the cell I twice claimed to have added and twice added a duplicate of")
+    }
+
+    // MARK: - The gate is REACHED (not just correct)
+
+    // SoD review defeated the gate additively: inserting
+    // `if userAccount.authTokenHasExpired { completion(nil); return }` ABOVE it
+    // re-introduced the round-1 regression with all 42 tests green. Source-text
+    // lints are monotone — they catch deletion, never insertion. Only observing
+    // whether the request was ISSUED catches it, which is what these do.
+
+    /// Builds an account whose auth document declares a user-profile URL.
+    private func accountWithProfileURL(uuid: String) -> Account {
+        let publication = OPDS2Publication(
+            links: [],
+            metadata: OPDS2Publication.Metadata(
+                updated: Date(), description: nil, id: uuid, title: "Seam Test Library"),
+            images: nil
+        )
+        let account = Account(publication: publication, imageCache: mockImageCache)
+        let json: [String: Any] = [
+            "id": uuid,
+            "title": "Seam Test Library",
+            "links": [
+                ["rel": "http://librarysimplified.org/terms/rel/user-profile",
+                 "href": "https://example.invalid/patrons/me/",
+                 "type": "vnd.librarysimplified/user-profile+json"]
+            ],
+            "authentication": []
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        account.authenticationDocument = try! OPDS2AuthenticationDocument.fromData(data)
+        return account
+    }
+
+    /// The gate must be REACHED, and when it blocks, no request may be issued.
+    ///
+    /// This is what the old F-007 guard only claimed to do. It asserted a nil
+    /// document and sub-second timing against `example.invalid`, both of which
+    /// hold whether or not the request goes out — measured, it survived deleting
+    /// the entire gate. Observing the request directly is the difference.
+    func testGetProfileDocument_withoutCredentials_issuesNoRequest() {
+        let account = accountWithProfileURL(uuid: "urn:uuid:seam-no-creds-\(UUID().uuidString)")
+        XCTAssertNotNil(account.details?.userProfileUrl,
+                        "Precondition: the auth doc must declare a profile URL, or this proves nothing")
+
+        var issued: [URLRequest] = []
+        let done = expectation(description: "completion")
+
+        account.getProfileDocument(performRequest: { request, _ in
+            issued.append(request)
+        }, completion: { document in
+            XCTAssertNil(document)
+            done.fulfill()
+        })
+
+        wait(for: [done], timeout: 3.0)
+        XCTAssertTrue(issued.isEmpty,
+                      "With no credentials the gate must block BEFORE the network. A request here is the "
+                      + "/patrons/me/ 401 storm of PP-4164 / F-007 — and it is observable now, where the "
+                      + "old timing-based guard could not see it.")
+    }
+
     // MARK: - isTokenRefreshRequired: the gate's repairability input
 
     // SoD review found my first attempt at these was one test written three

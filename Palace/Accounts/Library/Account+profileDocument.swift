@@ -66,7 +66,22 @@ extension Account {
         return !tokenHasExpired || tokenRefreshWillRepair
     }
 
-    func getProfileDocument(completion: @escaping (_ profileDocument: UserProfileDocument?) -> Void) {
+    /// - Parameter performRequest: injected request seam. Production passes nil
+    ///   and gets the real executor.
+    ///
+    ///   This exists because SoD review defeated the gate ADDITIVELY: inserting
+    ///   `if userAccount.authTokenHasExpired { completion(nil); return }` above
+    ///   the gate re-introduced the round-1 regression with the whole suite
+    ///   green. A source-text lint cannot catch that — it is monotone, detecting
+    ///   deletion but never insertion. Only observing whether the request was
+    ///   actually issued can. An earlier version of this file claimed no such
+    ///   seam was possible because the executor is reached through
+    ///   `AppContainer.production()`; that claim was wrong, and this is the
+    ///   refutation.
+    func getProfileDocument(
+        performRequest: ((URLRequest, @escaping (NYPLResult<Data>) -> Void) -> Void)? = nil,
+        completion: @escaping (_ profileDocument: UserProfileDocument?) -> Void
+    ) {
         guard let profileHref = self.details?.userProfileUrl,
               let profileUrl = URL(string: profileHref)
         else {
@@ -98,7 +113,11 @@ extension Account {
         // credentials — and `getProfileDocument` is called for non-current
         // libraries (LibrariesSectionViewModel). Naming the account keeps a 401
         // retry authenticating as this library rather than the selected one.
-        AppContainer.production().networkExecutor.executeRequest(request.applyCustomUserAgent(), enableTokenRefresh: false, accountId: self.uuid) { result in
+        let send = performRequest ?? { req, done in
+            _ = AppContainer.production().networkExecutor.executeRequest(
+                req, enableTokenRefresh: false, accountId: self.uuid, completion: done)
+        }
+        send(request.applyCustomUserAgent()) { result in
             // The executeRequest completion is a plain (non-Sendable) escaping
             // closure, so `completion` and the parsed `UserProfileDocument`
             // are captured safely here. They are carried across the main-queue

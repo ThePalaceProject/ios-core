@@ -805,10 +805,7 @@ final class BorrowOperation: @unchecked Sendable {
     ///   the retry/consent behaviour is driven for real instead of spell-checked
     ///   by a lint. SoD review's verdict was blunt: the fix is a seam, not more
     ///   string assertions.
-    static func attemptOIDCSilentReauth(
-        userAccount: TPPUserAccount,
-        present: (@Sendable (URL, String, TPPUserAccount) async -> OIDCReauthAttempt)? = nil
-    ) async -> Bool {
+    static func attemptOIDCSilentReauth(userAccount: TPPUserAccount) async -> Bool {
         guard let authDef = userAccount.authDefinition,
               let oidcURL = authDef.oidcAuthenticationUrl else {
             return false
@@ -833,8 +830,7 @@ final class BorrowOperation: @unchecked Sendable {
 
         return await runOIDCReauthLoop(url: finalURL,
                                        callbackScheme: callbackScheme,
-                                       userAccount: userAccount,
-                                       present: present)
+                                       userAccount: userAccount)
     }
 
     /// The retry loop, separated from URL-building so it can be DRIVEN.
@@ -853,8 +849,7 @@ final class BorrowOperation: @unchecked Sendable {
 
         // One retry, and ONLY for a presentation failure we caused. A patron
         // who declined the sheet must not be shown it again.
-        let maxAttempts = 2
-        for attempt in 0..<maxAttempts {
+        for attempt in 0..<OIDCReauthAttempt.maxPresentationAttempts {
             // `??` cannot be used here: its right-hand side is an autoclosure,
             // which may not be `async`.
             let outcome: OIDCReauthAttempt
@@ -870,9 +865,7 @@ final class BorrowOperation: @unchecked Sendable {
             case .succeeded:
                 return true
 
-            case let outcome where OIDCReauthAttempt.shouldRetry(outcome,
-                                                                 attempt: attempt,
-                                                                 maxAttempts: maxAttempts):
+            case let outcome where OIDCReauthAttempt.shouldRetry(outcome, attempt: attempt):
                 // iOS refused the anchor (code 3). That is our failure, not a
                 // decline: the patron never saw a sheet to decline. Settle and
                 // present once more against a freshly-resolved anchor.
@@ -933,9 +926,14 @@ final class BorrowOperation: @unchecked Sendable {
                     // MainActor only by Swift 6 inference over a non-Sendable
                     // parameter. Off-main delivery would race `didResume` and
                     // double-resume a CHECKED continuation — which traps. The
-                    // siblings already hop explicitly (TokenRefreshInterceptor
-                    // uses `Task { @MainActor in }`, TPPSignInBusinessLogic+OIDC
-                    // uses `TPPMainThreadRun.asyncIfNeeded`); this matches them.
+                    // The siblings HOP at runtime (TokenRefreshInterceptor uses
+                    // `Task { @MainActor in }`, TPPSignInBusinessLogic+OIDC uses
+                    // `TPPMainThreadRun.asyncIfNeeded`). This does NOT — review
+                    // measured the SIL and found the annotation emitted then
+                    // erased at the block boundary, adding no `hop_to_executor`.
+                    // It is a compile-time isolation contract, not a hop, so it
+                    // fails fast instead of racing. Do not describe it as
+                    // matching the siblings; it does not.
                     if let error {
                         // Classify rather than collapsing every error to `false`.
                         // `.canceledLogin` (1) is the patron declining;
@@ -1119,9 +1117,14 @@ enum OIDCReauthAttempt: Equatable {
     /// green. As a pure function both are ordinary mutants that a table test
     /// kills. `maxAttempts` is a parameter for the same reason — so the bound
     /// itself is asserted rather than spelled into a loop header.
+    /// The ONE bound. Previously duplicated as a `let` in the loop and a
+    /// defaulted parameter here, which production never passed — two constants
+    /// that could silently disagree.
+    static let maxPresentationAttempts = 2
+
     static func shouldRetry(_ outcome: OIDCReauthAttempt,
                             attempt: Int,
-                            maxAttempts: Int = 2) -> Bool {
+                            maxAttempts: Int = OIDCReauthAttempt.maxPresentationAttempts) -> Bool {
         outcome.isRetryable && attempt < maxAttempts - 1
     }
 

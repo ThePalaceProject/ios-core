@@ -20,12 +20,27 @@ import XCTest
 
 final class OIDCReauthWiringLintTests: XCTestCase {
 
-    private var sourcePath: URL {
+    private var repoRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // MetaTests/
             .deletingLastPathComponent()  // PalaceTests/
             .deletingLastPathComponent()  // repo root
-            .appendingPathComponent("Palace/MyBooks/BorrowOperation.swift")
+    }
+
+    private var sourcePath: URL {
+        repoRoot.appendingPathComponent("Palace/MyBooks/BorrowOperation.swift")
+    }
+
+    /// All three OIDC paths that resolve a presentation anchor. The lint used to
+    /// read only BorrowOperation, so reverting either sibling to the scene-less
+    /// `mainKeyWindow ?? ASPresentationAnchor()` passed everything — including
+    /// the sign-in site the field error-3 most likely came from.
+    private var anchorSitePaths: [URL] {
+        [
+            "Palace/MyBooks/BorrowOperation.swift",
+            "Palace/SignInLogic/TPPSignInBusinessLogic+OIDC.swift",
+            "Palace/MyBooks/TokenRefreshInterceptor.swift"
+        ].map { repoRoot.appendingPathComponent($0) }
     }
 
     /// Strips `//` tails so the lint scans CODE, not the prose that
@@ -80,24 +95,38 @@ final class OIDCReauthWiringLintTests: XCTestCase {
         )
     }
 
-    /// The anchor must not fall straight back to a scene-less window.
+    /// The loop must actually be REACHED.
     ///
-    /// `ASPresentationAnchor()` is a bare `UIWindow` with no scene — precisely
-    /// what iOS rejects with `.presentationContextInvalid`. Falling back to it
-    /// directly from `mainKeyWindow` manufactures the failure it is meant to
-    /// avoid, so the scene-window step between them is load-bearing.
-    func testPresentationAnchor_prefersARealSceneWindow() throws {
+    /// `shouldRetry` and the behavioural tests both live below this call.
+    /// Review showed that replacing `runOIDCReauthLoop(...)` with a direct
+    /// `presentOIDCReauthSession(...) == .succeeded` deletes the retry from
+    /// production while every behavioural test and this lint stayed green —
+    /// the guard was real but nothing pinned the wiring INTO it.
+    func testAttemptOIDCSilentReauth_delegatesToTheRetryLoop() throws {
         let code = try loadCode()
-
         XCTAssertTrue(
-            code.contains("UIApplication.shared.webAuthPresentationAnchor"),
-            "The anchor no longer uses the shared resolver. Resolving inline is how the three OIDC paths "
-            + "drifted apart in the first place — two of them still carried the scene-less fallback."
+            code.contains("await runOIDCReauthLoop("),
+            "attemptOIDCSilentReauth no longer delegates to runOIDCReauthLoop. Calling the single-shot "
+            + "presentation directly deletes the retry from production while every behavioural test — which "
+            + "drives the loop directly — stays green."
         )
+    }
 
-        XCTAssertFalse(
-            code.contains("mainKeyWindow ?? ASPresentationAnchor()"),
-            "The anchor reverted to the scene-less fallback that caused the build-499 presentation failures."
-        )
+    /// ALL THREE anchor sites must use the shared resolver.
+    func testEveryOIDCSite_usesTheSharedAnchorResolver() throws {
+        for path in anchorSitePaths {
+            let code = strippingComments(try String(contentsOf: path, encoding: .utf8))
+
+            XCTAssertTrue(
+                code.contains("UIApplication.shared.webAuthPresentationAnchor"),
+                "\(path.lastPathComponent) no longer uses the shared anchor resolver. Resolving inline is "
+                + "how these three drifted apart, leaving two carrying the scene-less fallback."
+            )
+            XCTAssertFalse(
+                code.contains("mainKeyWindow ?? ASPresentationAnchor()"),
+                "\(path.lastPathComponent) reverted to the scene-less fallback — a UIWindow with no scene, "
+                + "which is exactly what iOS rejects with .presentationContextInvalid."
+            )
+        }
     }
 }
