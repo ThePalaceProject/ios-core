@@ -109,7 +109,32 @@ HOST="${SERVER#*://}"; HOST="${HOST%%/*}"
 printf 'machine %s login %s password %s\n' "$HOST" "$BARCODE" "$PIN" > "$NETRC"
 
 BODY="$(mktemp)"; trap 'rm -f "$NETRC" "$BODY"' EXIT
-STATUS="$(curl -sS -o "$BODY" -w '%{http_code}' -X DELETE --netrc-file "$NETRC" "$URL")"
+
+# Authenticate the way the app does.
+#
+# Libraries advertising `authtype/basic-token` (A1QA is one) expect the barcode
+# and password to be exchanged for a bearer token at /patrons/me/token, and
+# route plain Basic to a DIFFERENT provider — for A1QA, a Millenium ILS the
+# test patron may not exist in. Sending Basic straight at the endpoint
+# therefore returns "Invalid credentials" for credentials that are perfectly
+# valid, which is indistinguishable from a typo. Exchange first, fall back to
+# Basic for libraries that only offer it.
+TOKEN=""
+TOKEN_STATUS="$(curl -sS -o "$BODY" -w '%{http_code}' -X POST \
+  --netrc-file "$NETRC" "$SERVER/$LIBRARY/patrons/me/token/")"
+
+if [ "$TOKEN_STATUS" = "200" ]; then
+  TOKEN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("access_token",""))' "$BODY" 2>/dev/null || true)"
+fi
+
+if [ -n "$TOKEN" ]; then
+  echo "Authenticated via token exchange." >&2
+  STATUS="$(curl -sS -o "$BODY" -w '%{http_code}' -X DELETE \
+    -H "Authorization: Bearer $TOKEN" "$URL")"
+else
+  echo "Token exchange returned $TOKEN_STATUS — falling back to Basic." >&2
+  STATUS="$(curl -sS -o "$BODY" -w '%{http_code}' -X DELETE --netrc-file "$NETRC" "$URL")"
+fi
 
 echo "HTTP $STATUS" >&2
 cat "$BODY"; echo
@@ -124,7 +149,13 @@ Adobe identity deleted. To finish:
   3. Borrow an Adobe title. Activation count starts from zero.
 DONE
     ;;
-  401) echo "Authentication failed — check the barcode/PIN for $LIBRARY." >&2; exit 1 ;;
+  401)
+    if [ -n "$TOKEN" ]; then
+      echo "Token exchange SUCCEEDED but the delete was rejected — this is not a bad barcode/PIN." >&2
+    else
+      echo "Authentication failed — check the barcode/PIN for $LIBRARY." >&2
+    fi
+    exit 1 ;;
   404) echo "No such route. Check --library ($LIBRARY) and --server ($SERVER)." >&2; exit 1 ;;
   *)   echo "Unexpected status $STATUS — nothing was reset." >&2; exit 1 ;;
 esac
