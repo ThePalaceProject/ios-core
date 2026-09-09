@@ -11,7 +11,97 @@ import PalaceLogging
 
 extension Account {
 
-    func getProfileDocument(completion: @escaping (_ profileDocument: UserProfileDocument?) -> Void) {
+    /// Whether stored credentials can authenticate a `/patrons/me/` request
+    /// *right now*.
+    ///
+    /// Presence is not validity. `hasCredentials()` is
+    /// `hasAuthToken || hasBarcodeAndPIN` — it answers "is something stored",
+    /// not "will it work". An EXPIRED bearer token satisfies it, so the request
+    /// goes out and the server answers 401 with the same OPDS auth-document
+    /// body the gate above exists to avoid.
+    ///
+    /// But an expired token is not automatically a doomed request, and this is
+    /// the distinction the gate has to make. The 401 refresh is REACTIVE and
+    /// lives in the response delegate: `TPPNetworkResponder`'s
+    /// `handleExpiredTokenIfNeeded` marks the credential stale and then calls
+    /// `refreshTokenAndResume(task:)`, which stores a fresh token via
+    /// `setAuthToken` — and that writes `.loggedIn`, healing the stale flag —
+    /// and re-drives THIS task, so the profile fetch succeeds. That path never
+    /// consults `enableTokenRefresh`; the flag gates only the executor's
+    /// PRE-FLIGHT refresh. Blocking every expired token would therefore delete
+    /// a repair that works today, and would delete it for exactly the
+    /// credentials it can fire on: `isTokenExpired` is non-false only for
+    /// `.token` with a non-nil expiry, and that expiry is written by the
+    /// barcode/PIN→token exchange, which is precisely the shape the reactive
+    /// refresh can repair.
+    ///
+    /// So the gate blocks only when the token has expired AND no refresh can
+    /// repair it. `isTokenRefreshRequired()` answers that.
+    ///
+    /// It is NOT the responder's predicate, and an earlier version of this
+    /// comment wrongly claimed reusing it meant the two "cannot drift". They
+    /// already differ: `TPPNetworkResponder` requires `tokenURL != nil` in every
+    /// arm, while `isTokenRefreshRequired`'s non-`isToken` branch does not
+    /// (`UserAccountAuthState.swift`). The divergence is currently unreachable
+    /// in production, but it is a real difference and saying otherwise was the
+    /// same unmeasured-docstring defect this file exists to fix.
+    ///
+    /// Expressed as a pure function of three booleans, deliberately: the
+    /// decision is falsifiable on its own, independent of any networking.
+    ///
+    /// This comment used to say a test "cannot observe whether the request was
+    /// actually sent", because `getProfileDocument` reached
+    /// `AppContainer.production()` internally. That was true of the original
+    /// F-007 test — it asserted a nil result and sub-second timing against
+    /// `example.invalid`, both of which hold whether or not the request goes
+    /// out, and it survived deleting the gate entirely. It is no longer true:
+    /// `getProfileDocument` now takes `performRequest:` and `userAccount:`
+    /// seams, and `AccountProfileDocumentTests` drives the gate in BOTH
+    /// directions through them. The claim is left here, corrected rather than
+    /// deleted, because asserting an untestability that had stopped being true
+    /// is the same unmeasured-docstring defect as above.
+    ///
+    /// `tokenHasExpired` is false for barcode/PIN credentials and for tokens
+    /// with no expiry date, so basic-auth libraries are unaffected. OIDC stores
+    /// no expiry either, so this arm cannot fire there.
+    static func canAuthenticateProfileRequest(hasCredentials: Bool,
+                                              tokenHasExpired: Bool,
+                                              tokenRefreshWillRepair: Bool) -> Bool {
+        guard hasCredentials else { return false }
+        return !tokenHasExpired || tokenRefreshWillRepair
+    }
+
+    /// - Parameter performRequest: injected request seam. Production passes nil
+    ///   and gets the real executor.
+    ///
+    ///   This exists because SoD review defeated the gate ADDITIVELY: inserting
+    ///   `if userAccount.authTokenHasExpired { completion(nil); return }` above
+    ///   the gate re-introduced the round-1 regression with the whole suite
+    ///   green. A source-text lint cannot catch that — it is monotone, detecting
+    ///   deletion but never insertion. Only observing whether the request was
+    ///   actually issued can. An earlier version of this file claimed no such
+    ///   seam was possible because the executor is reached through
+    ///   `AppContainer.production()`; that claim was wrong, and this is the
+    ///   refutation.
+    /// - Parameter userAccount: injected account seam. Production passes nil and
+    ///   gets the shared account for this library's UUID.
+    ///
+    ///   Without this the `performRequest:` seam below could only ever be driven
+    ///   in ONE direction. The account was read from the process-wide cache
+    ///   inside this method, so a test could not stage credentials, and every
+    ///   seam test necessarily exercised the no-credentials path — where
+    ///   `authTokenHasExpired` is false. Two independent reviewers found the
+    ///   same live mutant because of it: inserting
+    ///   `if userAccount.authTokenHasExpired { completion(nil); return }` above
+    ///   the gate re-introduces the round-2 regression (blocking an
+    ///   expired-but-repairable token deletes a repair that works) with the
+    ///   whole suite green. A guard one level away from what it guards is the
+    ///   defect this file already exists to fix, reached a third time.
+    func getProfileDocument(
+        performRequest: ((URLRequest, @escaping (NYPLResult<Data>) -> Void) -> Void)? = nil,
+        userAccount injectedUserAccount: TPPUserAccount? = nil,
+        completion: @escaping (_ profileDocument: UserProfileDocument?) -> Void
+    ) {
         guard let profileHref = self.details?.userProfileUrl,
               let profileUrl = URL(string: profileHref)
         else {
@@ -29,8 +119,11 @@ extension Account {
         // call this on every account-change rehydration, producing a
         // /patrons/me/ 401 storm at every cold relaunch (PP-4164 → F-007 →
         // refined by F-DG5-002).
-        let userAccount = TPPUserAccount.sharedAccount(libraryUUID: self.uuid)
-        if !userAccount.hasCredentials() {
+        let userAccount = injectedUserAccount ?? TPPUserAccount.sharedAccount(libraryUUID: self.uuid)
+        if !Account.canAuthenticateProfileRequest(
+            hasCredentials: userAccount.hasCredentials(),
+            tokenHasExpired: userAccount.authTokenHasExpired,
+            tokenRefreshWillRepair: userAccount.isTokenRefreshRequired()) {
             completion(nil)
             return
         }
@@ -40,7 +133,11 @@ extension Account {
         // credentials — and `getProfileDocument` is called for non-current
         // libraries (LibrariesSectionViewModel). Naming the account keeps a 401
         // retry authenticating as this library rather than the selected one.
-        AppContainer.production().networkExecutor.executeRequest(request.applyCustomUserAgent(), enableTokenRefresh: false, accountId: self.uuid) { result in
+        let send = performRequest ?? { req, done in
+            _ = AppContainer.production().networkExecutor.executeRequest(
+                req, enableTokenRefresh: false, accountId: self.uuid, completion: done)
+        }
+        send(request.applyCustomUserAgent()) { result in
             // The executeRequest completion is a plain (non-Sendable) escaping
             // closure, so `completion` and the parsed `UserProfileDocument`
             // are captured safely here. They are carried across the main-queue
