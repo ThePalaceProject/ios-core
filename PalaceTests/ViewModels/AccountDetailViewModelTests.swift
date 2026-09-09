@@ -783,6 +783,41 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         XCTAssertEqual(vm.alertMessage, "Try again")
     }
 
+    /// Pins the empty-title convention the server-suppressed-title path relies
+    /// on: when `TPPSignInBusinessLogic.userFacingSignInError` returns `""`
+    /// (the manager sent `show_title: false` on the problem document), the
+    /// alert must render with no title rather than falling back to the
+    /// client's own "Login Failed". A `nil` title keeps that fallback — the
+    /// two must stay distinguishable here or suppression silently breaks.
+    func testBusinessLogicValidationError_EmptyTitle_RendersNoTitleNotLoginFailed() async {
+        let libraryID = seededLibraryID
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+
+        let err = NSError(domain: "TPPErrorDomain", code: 403)
+        vm.businessLogic(vm.businessLogic, didEncounterValidationError: err,
+                         userFriendlyErrorTitle: "",
+                         andMessage: "Please sign in at your local library instead.")
+
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertEqual(vm.alertTitle, "",
+                       "A server-suppressed title must not acquire a client-side one.")
+        XCTAssertNotEqual(vm.alertTitle, Strings.Error.loginErrorTitle)
+        XCTAssertEqual(vm.alertMessage, "Please sign in at your local library instead.",
+                       "The library's message must still reach the alert in full.")
+    }
+
+    func testBusinessLogicValidationError_NilTitle_StillFallsBackToLoginFailed() async {
+        let libraryID = seededLibraryID
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+
+        let err = NSError(domain: "TPPErrorDomain", code: 500)
+        vm.businessLogic(vm.businessLogic, didEncounterValidationError: err,
+                         userFriendlyErrorTitle: nil, andMessage: "Something went wrong")
+
+        XCTAssertEqual(vm.alertTitle, Strings.Error.loginErrorTitle,
+                       "No server title at all is a different case from a suppressed one.")
+    }
+
     func testBusinessLogicValidationError_CancelledErrorClearsPin() async {
         let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())

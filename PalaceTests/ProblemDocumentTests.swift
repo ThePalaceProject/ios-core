@@ -49,6 +49,79 @@ final class ProblemDocumentTests: XCTestCase {
         XCTAssertEqual(problemDoc.detail, "You have reached your loan limit for this library.")
     }
 
+    // MARK: - show_title (server-controlled title suppression)
+    //
+    // The manager sends `show_title: false` on a problem document whose
+    // `detail` is meant to stand on its own — a library's patron-blocking-rule
+    // message redirecting the patron elsewhere, where the standard
+    // "Blocked by library policy." title adds framing the library does not
+    // want. Absence of the member means "show the title", so every problem
+    // document that predates the flag keeps today's behavior.
+
+    func testProblemDocument_fromData_showTitleFalse_suppressesTitle() throws {
+        let json = """
+    {
+      "type": "http://librarysimplified.org/terms/problem/credentials-blocked-by-policy",
+      "title": "Blocked by library policy.",
+      "status": 403,
+      "detail": "Please sign in at your local library instead.",
+      "show_title": false
+    }
+    """
+        let problemDoc = try TPPProblemDocument.fromData(Data(json.utf8))
+
+        XCTAssertFalse(problemDoc.shouldShowTitle)
+        XCTAssertEqual(problemDoc.detail, "Please sign in at your local library instead.",
+                       "Suppressing the title must not affect the library's message.")
+        XCTAssertEqual(problemDoc.title, "Blocked by library policy.",
+                       "The title is still delivered; only its display is suppressed.")
+    }
+
+    func testProblemDocument_fromData_absentShowTitle_showsTitle() throws {
+        let json = """
+    {
+      "type": "http://librarysimplified.org/terms/problem/credentials-blocked-by-policy",
+      "title": "Blocked by library policy.",
+      "status": 403,
+      "detail": "Your access is restricted by library policy."
+    }
+    """
+        let problemDoc = try TPPProblemDocument.fromData(Data(json.utf8))
+
+        XCTAssertNil(problemDoc.showTitle,
+                     "The member is absent unless the server asks for suppression.")
+        XCTAssertTrue(problemDoc.shouldShowTitle,
+                      "An absent flag must preserve today's behavior.")
+    }
+
+    func testProblemDocument_fromData_showTitleTrue_showsTitle() throws {
+        let json = #"{"type":"about:blank","title":"T","detail":"D","show_title":true}"#
+
+        let problemDoc = try TPPProblemDocument.fromData(Data(json.utf8))
+
+        XCTAssertTrue(problemDoc.shouldShowTitle)
+    }
+
+    func testProblemDocument_showTitle_survivesDictionaryRoundTrip() {
+        let suppressed = TPPProblemDocument.fromDictionary([
+            "type": "about:blank",
+            "title": "Blocked by library policy.",
+            "detail": "Please sign in at your local library instead.",
+            "show_title": false
+        ])
+        XCTAssertFalse(suppressed.shouldShowTitle)
+
+        let restored = TPPProblemDocument.fromDictionary(suppressed.dictionaryValue)
+        XCTAssertFalse(restored.shouldShowTitle,
+                       "dictionaryValue must carry the flag so relayed documents keep it.")
+
+        let unflagged = TPPProblemDocument.fromDictionary([
+            "type": "about:blank", "title": "T", "detail": "D"
+        ])
+        XCTAssertNil(unflagged.dictionaryValue["show_title"],
+                     "A document without the flag must not acquire one.")
+    }
+
     func testProblemDocument_stringValue_combinesTitleAndDetail() throws {
         let json = """
     {

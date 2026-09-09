@@ -649,6 +649,10 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
     /// Precedence: server-supplied problem document > network-connectivity
     /// error > default "invalid credentials". Without the connectivity check,
     /// a dropped Wi-Fi or LTE during sign-in was misreported as bad creds.
+    ///
+    /// A returned title of `""` means the server asked for no title at all
+    /// (`show_title: false`); `nil` means it supplied none and the caller may
+    /// substitute its own. Callers must keep those two cases distinct.
     // `nonisolated`: pure error classifier over an `NSError` + optional
     // problem document, no actor state. Kept off `@MainActor` so nonisolated
     // callers (and the PalaceAuth `AuthReducer` mirror) can invoke it directly.
@@ -657,7 +661,14 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         problemDocument: TPPProblemDocument?
     ) -> (title: String?, message: String?) {
         if let problemDocument {
-            return (problemDocument.title, problemDocument.detail)
+            // `show_title: false` marks a `detail` that should stand on its own
+            // — a library's patron-blocking-rule message, where the standard
+            // "Blocked by library policy." title is framing the library asked
+            // us to drop. Empty rather than nil: nil means "the server gave us
+            // no title" and the display layer substitutes its own
+            // ("Login Failed"), which is exactly what suppression must avoid.
+            let title = problemDocument.shouldShowTitle ? problemDocument.title : ""
+            return (title, problemDocument.detail)
         }
         if isNetworkConnectivityError(error) {
             return (Strings.Error.networkUnavailableErrorTitle,
