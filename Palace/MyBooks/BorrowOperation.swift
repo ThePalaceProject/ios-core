@@ -389,7 +389,18 @@ final class BorrowOperation: @unchecked Sendable {
         if book.requiresAdobeDRM {
             Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
 
-            try await BorrowAdobeActivationStep.run(setProcessing: { [bookRegistry] in bookRegistry.setProcessing($0, for: bookIdentifier) }, activate: { [adobeDRMService] in try await adobeDRMService.ensureDeviceActivated(licensorGracePeriod: $0) })
+            try await BorrowAdobeActivationStep.run(
+                setProcessing: { [bookRegistry] in bookRegistry.setProcessing($0, for: bookIdentifier) },
+                activate: { [adobeDRMService] in try await adobeDRMService.ensureDeviceActivated(licensorGracePeriod: $0) },
+                // Without this the borrow dies silently: the spinner clears, the
+                // sheet keeps its empty progress bar, and the patron is told
+                // nothing. Observed on device 2026-09-09 against A1QA —
+                // ADEPTErrorDomain error 4 twice, no visible indication. PP-3649
+                // requires this path to "fail with a clear error message".
+                onFailure: { [weak self] error in
+                    self?.showBorrowError(.drm(.authenticationFailed), originalError: error, for: book)
+                }
+            )
         }
         #endif
 
