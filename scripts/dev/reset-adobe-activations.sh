@@ -124,7 +124,15 @@ TOKEN_STATUS="$(curl -sS -o "$BODY" -w '%{http_code}' -X POST \
   --netrc-file "$NETRC" "$SERVER/$LIBRARY/patrons/me/token/")"
 
 if [ "$TOKEN_STATUS" = "200" ]; then
-  TOKEN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("access_token",""))' "$BODY" 2>/dev/null || true)"
+  # The CM serialises this model in camelCase: the wire field is `accessToken`,
+  # even though the Python that builds it names the kwarg `access_token`.
+  # Reading the source instead of the response cost a debugging round here, so
+  # both spellings are accepted.
+  TOKEN="$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(d.get("accessToken") or d.get("access_token") or "")
+' "$BODY" 2>/dev/null || true)"
 fi
 
 if [ -n "$TOKEN" ]; then
@@ -132,7 +140,13 @@ if [ -n "$TOKEN" ]; then
   STATUS="$(curl -sS -o "$BODY" -w '%{http_code}' -X DELETE \
     -H "Authorization: Bearer $TOKEN" "$URL")"
 else
-  echo "Token exchange returned $TOKEN_STATUS — falling back to Basic." >&2
+  # Two different situations, and saying "returned 200 — falling back" for the
+  # second one reads as a contradiction.
+  if [ "$TOKEN_STATUS" = "200" ]; then
+    echo "Token exchange succeeded but carried no token field — falling back to Basic." >&2
+  else
+    echo "No token exchange available (HTTP $TOKEN_STATUS) — using Basic." >&2
+  fi
   STATUS="$(curl -sS -o "$BODY" -w '%{http_code}' -X DELETE --netrc-file "$NETRC" "$URL")"
 fi
 
