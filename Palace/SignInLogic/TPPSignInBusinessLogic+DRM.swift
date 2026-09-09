@@ -89,7 +89,7 @@ extension TPPSignInBusinessLogic {
             let clientToken = drm.clientToken else {
 
             let drm = profileDoc.drm?.first
-            Log.info(#file, "\nLicensor: \(drm?.licensor ?? ["N/A": "N/A"])")
+            Log.info(#file, "No licensor token: \(AdobeDeauthorization.redacted(drm?.clientToken))")
 
             TPPErrorLogger.logError(withCode: .noLicensorToken,
                                     summary: "SignIn: no licensor token in user profile doc",
@@ -100,16 +100,24 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        Log.info(#file, "\nLicensor: \(drm.licensor)")
+        Log.info(#file, "Licensor received at sign-in: \(AdobeDeauthorization.redacted(clientToken))")
         userAccount.setLicensor(drm.licensor)
 
-        var licensorItems = clientToken.replacingOccurrences(of: "\n", with: "").components(separatedBy: "|")
-        let tokenPassword = licensorItems.last
-        licensorItems.removeLast()
-        let tokenUsername = (licensorItems as NSArray).componentsJoined(by: "|")
+        // Shared with the sign-out and reset paths. The inline split this
+        // replaces could not fail: a token with no separator yielded an empty
+        // username and the whole token as the password, and Adobe was asked to
+        // authorize with it.
+        guard let parts = AdobeDRMService.splitClientToken(clientToken) else {
+            TPPErrorLogger.logError(withCode: .noLicensorToken,
+                                    summary: "SignIn: malformed licensor client token",
+                                    metadata: loggingContext)
+            finalizeSignIn(forDRMAuthorization: false,
+                           errorMessage: "No credentials were received to authorize access to books with DRM.")
+            return
+        }
 
-        drmAuthorize(username: tokenUsername,
-                     password: tokenPassword,
+        drmAuthorize(username: parts.username,
+                     password: parts.password,
                      loggingContext: loggingContext)
     }
 
@@ -130,7 +138,7 @@ extension TPPSignInBusinessLogic {
         Log.info(#file, """
       ***DRM Auth/Activation Attempt***
       Token username: \(username)
-      Token password: \(password ?? "N/A")
+      Token password: <redacted \((password ?? "").count)-char signature>
       VendorID: \(vendor ?? "N/A")
       """)
 

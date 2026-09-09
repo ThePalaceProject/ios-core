@@ -130,7 +130,14 @@ extension TPPSignInBusinessLogic {
 
         let barcode = userAccount.barcode
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
-        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
+        // Token refresh is ENABLED here, unlike the other sign-in/sign-out legs.
+        // This request's response body is the fresh Adobe licensor, and it is
+        // the only chance to get one before deauthorizing. Refusing to refresh
+        // an about-to-expire bearer token turns a 401 into a permanently
+        // leaked activation slot, which outlives the session we were saving a
+        // round trip on. When the token is not near expiry, or the library is
+        // not token/OAuth, this is a no-op (TPPNetworkExecutor:446).
+        networker.executeRequest(request, enableTokenRefresh: true, accountId: libraryAccountID) { [weak self] result in
             switch result {
             case .success(let data, let response):
                 self?.processLogOut(data: data,
@@ -202,7 +209,7 @@ extension TPPSignInBusinessLogic {
             // Set the fresh Adobe token info into the user account so that the
             // following `deauthorizeDevice` call can use it.
             self.userAccount.setLicensor(drm.licensor)
-            Log.info(#file, "Licensor token updated to \(clientToken) for adobe user ID \(self.userAccount.userID ?? "N/A")")
+            Log.info(#file, "Licensor refreshed at sign-out: \(AdobeDeauthorization.redacted(clientToken)) for adobe user ID \(self.userAccount.userID ?? "N/A")")
         } else {
             Log.error(#file, "Licensor token invalid: \(profileDoc.toJson())")
         }
@@ -423,32 +430,54 @@ extension TPPSignInBusinessLogic {
 
     #if FEATURE_DRM_CONNECTOR
     private func deauthorizeDevice() {
-        guard let licensor = userAccount.licensor else {
-            Log.warn(#file, "No Licensor available to deauthorize device. Will remove user credentials anyway.")
+        let licensor = userAccount.licensor
+
+        // Signing out is the only thing that returns an Adobe activation slot,
+        // so every way of not doing it is worth naming. `attempt` is nil when
+        // the call could not have succeeded — no licensor, an unparseable
+        // client token, or a missing half of the (user, device) pair.
+        guard let attempt = AdobeDeauthorization.attempt(licensor: licensor,
+                                                         userID: userAccount.userID,
+                                                         deviceID: userAccount.deviceID) else {
+            Log.error(#file, "Cannot deauthorize this device — the activation stays consumed. Signing out locally anyway.")
             TPPErrorLogger.logInvalidLicensor(withAccountID: libraryAccountID)
             completeLogOutProcess()
             return
         }
 
-        var licensorItems = (licensor["clientToken"] as? String)?
-            .replacingOccurrences(of: "\n", with: "")
-            .components(separatedBy: "|")
-        let tokenPassword = licensorItems?.last
-        licensorItems?.removeLast()
-        let tokenUsername = licensorItems?.joined(separator: "|")
-        let adobeUserID = userAccount.userID
-        let adobeDeviceID = userAccount.deviceID
+        // The CM's short client token lives 60 minutes (see AdobeLicensorRefresh).
+        // On the sign-out paths that could not read a fresh profile document we
+        // are about to spend the attempt on a token we can already see is dead;
+        // say so, because otherwise the resulting leak has no cause in any log.
+        // Computed here rather than inside the completion: `[String: Any]?` is
+        // not Sendable and the deauthorize callback is `@Sendable`. A Bool is.
+        let licensorWasExpired = AdobeLicensorRefresh.isExpired(licensor)
+        if licensorWasExpired {
+            Log.error(#file, "Adobe licensor is past its expiry at sign-out — deauthorization will be rejected and the activation slot will leak (PP-3649)")
+        }
 
         if let drmAuthorizer = drmAuthorizer {
             drmAuthorizer.deauthorize(
-                withUsername: tokenUsername,
-                password: tokenPassword,
-                userID: adobeUserID,
-                deviceID: adobeDeviceID) { [weak self] success, error in
-                if !success {
-                    // DRM deauthorization failures are expected (e.g., E_DEACT_USER_MISMATCH when user changes PIN)
-                    // Just log locally and continue - the user should still be able to log out
-                    Log.warn(#file, "DRM deauthorization failed (expected): \(error?.localizedDescription ?? "unknown")")
+                withUsername: attempt.username,
+                password: attempt.password,
+                userID: attempt.userID,
+                deviceID: attempt.deviceID) { [weak self] success, error in
+                if case .notFreed(let reason) = AdobeDeauthorization.outcome(success: success, error: error) {
+                    // Not "expected". E_DEACT_USER_MISMATCH explains the cause
+                    // and changes nothing about the consequence: the patron is
+                    // one activation closer to the ceiling, with no way to see
+                    // it and no way to undo it.
+                    Log.error(#file, "Adobe deauthorization failed — activation slot NOT freed: \(reason)")
+
+                    // Reported so the fleet-wide rate is measurable. Until now
+                    // the only evidence a leak had happened was the patron
+                    // eventually hitting E_ACT_TOO_MANY_ACTIVATIONS, by which
+                    // point the sign-out that caused it was long gone.
+                    TPPErrorLogger.logError(
+                        withCode: .invalidLicensor,
+                        summary: "SignOut: Adobe activation NOT released",
+                        metadata: ["reason": reason,
+                                   "licensorWasExpired": licensorWasExpired])
                 }
 
                 // Check if self was deallocated during the DRM callback
