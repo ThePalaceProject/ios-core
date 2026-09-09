@@ -794,93 +794,6 @@ final class BorrowOperation: @unchecked Sendable {
         presentBorrowErrorAlert(title, message, originalError as NSError?, problemDoc, book, retryAction)
     }
 
-    // MARK: - OIDC Silent Re-auth (Production Helper)
-
-    /// Static helper that production wiring uses for the
-    /// `attemptOIDCReauth` closure. Tests bypass this entirely by
-    /// passing a stub closure. Returns `true` if a new token was
-    /// obtained, `false` on failure/cancel/no-OIDC-config.
-    static func attemptOIDCSilentReauth(userAccount: TPPUserAccount) async -> Bool {
-        guard let authDef = userAccount.authDefinition,
-              let oidcURL = authDef.oidcAuthenticationUrl else {
-            return false
-        }
-
-        let callbackScheme = TPPSignInBusinessLogic.oidcCallbackScheme
-        let callbackHost = TPPSignInBusinessLogic.oidcCallbackHost
-        let redirectURI = "\(callbackScheme)://\(callbackHost)/callback"
-
-        guard var urlComponents = URLComponents(url: oidcURL, resolvingAgainstBaseURL: true) else {
-            return false
-        }
-
-        let redirectParam = URLQueryItem(name: "redirect_uri", value: redirectURI)
-        if urlComponents.queryItems != nil {
-            urlComponents.queryItems?.append(redirectParam)
-        } else {
-            urlComponents.queryItems = [redirectParam]
-        }
-
-        guard let finalURL = urlComponents.url else { return false }
-
-        return await withCheckedContinuation { continuation in
-            Task { @MainActor in
-                let session = ASWebAuthenticationSession(
-                    url: finalURL,
-                    callbackURLScheme: callbackScheme
-                ) { callbackURL, error in
-                    if error != nil {
-                        continuation.resume(returning: false)
-                        return
-                    }
-
-                    guard let callbackURL,
-                          let payload = callbackURL.query ?? callbackURL.fragment else {
-                        continuation.resume(returning: false)
-                        return
-                    }
-
-                    var kvpairs = [String: String]()
-                    for param in payload.components(separatedBy: "&") {
-                        let elts = param.components(separatedBy: "=")
-                        guard elts.count >= 2, let key = elts.first else { continue }
-                        kvpairs[key] = elts.dropFirst().joined(separator: "=")
-                    }
-
-                    guard let accessToken = kvpairs["access_token"] else {
-                        continuation.resume(returning: false)
-                        return
-                    }
-
-                    userAccount.setAuthToken(accessToken, barcode: userAccount.barcode, pin: userAccount.PIN, expirationDate: nil)
-                    Log.info(#file, "OIDC silent re-auth: token updated successfully")
-                    continuation.resume(returning: true)
-                }
-
-                session.presentationContextProvider = OIDCBorrowPresentationContext.shared
-                session.prefersEphemeralWebBrowserSession = false
-
-                // F-016: defer the session start so any prior SignInModalHostingController
-                // (or the previous SFAuthenticationViewController) has time to finish
-                // deallocating. Without this, calling session.start() while a previous
-                // auth modal is still in its dealloc cycle produces the runtime warning
-                // "Attempting to load the view of a view controller while it is
-                // deallocating" and iOS cancels the new session with
-                // ASWebAuthenticationSession error 3 ("presentation cancelled by user").
-                // The cancellation leaves the user with still-stale credentials and the
-                // borrow retry 401s again — driving a re-auth loop until the per-book
-                // circuit breaker (hasBorrowReauthBeenAttempted) fires.
-                //
-                // 150ms is empirically enough for the UIKit dealloc + RunLoop drain on
-                // current iOS releases; we keep it explicit (not Task.yield) so the
-                // timing semantics survive a reader future Swift Concurrency rev.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    session.start()
-                }
-            }
-        }
-    }
-
     // MARK: - Coordinator-Routed Retry
 
     /// swarm_66819d80 Module C: coordinator-routed reauth-then-retry.
@@ -962,15 +875,5 @@ final class BorrowOperation: @unchecked Sendable {
                 }
             }
         }
-    }
-}
-
-/// Provides a window anchor for `ASWebAuthenticationSession` in the
-/// borrow flow's OIDC silent reauth path.
-private final class OIDCBorrowPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
-    static let shared = OIDCBorrowPresentationContext()
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.mainKeyWindow ?? ASPresentationAnchor()
     }
 }
