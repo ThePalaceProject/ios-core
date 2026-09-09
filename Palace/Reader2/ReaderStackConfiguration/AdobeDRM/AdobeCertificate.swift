@@ -473,6 +473,28 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// value that is only ever written once, under a bounded budget, is the
     /// smaller change; adding a notification to that setter would alter what
     /// every existing account observer sees.
+    /// Splits an Adobe client token into its `username|password` halves.
+    ///
+    /// Returns `nil` when the token carries no separator, or when either half
+    /// is empty. The old inline split could not express that: for a token with
+    /// no "|" it set password to the whole string and username to "", then
+    /// handed both to Adobe, which answers `authenticationFailed` — the same
+    /// answer it gives for a genuinely rejected credential. Making the
+    /// malformed case representable is the point; see PP-3649.
+    ///
+    /// The username half is rejoined with "|" because a well-formed token may
+    /// legitimately contain separators before the final one.
+    static func splitClientToken(_ clientToken: String) -> (username: String, password: String)? {
+        var items = clientToken
+            .replacingOccurrences(of: "\n", with: "")
+            .components(separatedBy: "|")
+        guard items.count >= 2, let password = items.last, !password.isEmpty else { return nil }
+        items.removeLast()
+        let username = items.joined(separator: "|")
+        guard !username.isEmpty else { return nil }
+        return (username, password)
+    }
+
     static func awaitLicensor(_ account: AdobeActivationAccount,
                               within budget: TimeInterval) async -> [String: Any]? {
         if let licensor = account.licensor { return licensor }
@@ -553,12 +575,26 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
             throw PalaceError.drm(.noActivation)
         }
 
-        var items = clientToken
-            .replacingOccurrences(of: "\n", with: "")
-            .components(separatedBy: "|")
-        let tokenPassword = items.last
-        items.removeLast()
-        let tokenUsername = (items as NSArray).componentsJoined(by: "|")
+        guard let token = Self.splitClientToken(clientToken) else {
+            // Previously this could not fail: a token with no "|" produced an
+            // EMPTY username, which Adobe rejects as `authenticationFailed` —
+            // indistinguishable from a genuine credential rejection. That is
+            // one of the shapes hiding inside PP-3649's 25k events. Never log
+            // the token itself; its SHAPE is what is diagnostic.
+            Log.error(#file, "Adobe client token is malformed — cannot activate")
+            TPPErrorLogger.logError(
+                withCode: .invalidLicensor,
+                summary: "Adobe client token malformed (PP-3649)",
+                metadata: [
+                    "tokenLength": clientToken.count,
+                    "separatorCount": clientToken.filter { $0 == "|" }.count,
+                    "vendor": vendor
+                ]
+            )
+            throw PalaceError.drm(.noActivation)
+        }
+        let tokenUsername = token.username
+        let tokenPassword = token.password
 
         // SINGLE-FLIGHT (PP-4952 / Crashlytics ed05e903). Everything below this
         // line enters Adobe's non-thread-safe C++ RMSDK. Concurrent borrows
@@ -640,10 +676,31 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                             userInfo: [NSLocalizedDescriptionKey: "Adobe device activation failed"]
                         )
                         Log.error(#file, "On-demand Adobe activation failed: \(activationError.localizedDescription)")
+                        // `localizedDescription` on a custom-domain NSError is
+                        // only "The operation couldn't be completed. (domain
+                        // error N.)" — which is why 25k PP-3649 events since
+                        // 3.0.0 carry no usable cause. ADEPT stashes Adobe's own
+                        // code under `originalCode`; record it, plus the domain
+                        // and code, so the next rollout can name the failure
+                        // mode instead of restating that one occurred.
+                        let ns = activationError as NSError
+                        var failureMetadata: [String: Any] = [
+                            "error": activationError.localizedDescription,
+                            "errorDomain": ns.domain,
+                            "errorCode": ns.code,
+                            "vendor": vendor
+                        ]
+                        if let originalCode = ns.userInfo[NYPLADEPTErrorOriginalCodeKey] {
+                            failureMetadata["adobeOriginalCode"] = originalCode
+                        }
+                        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError {
+                            failureMetadata["underlyingDomain"] = underlying.domain
+                            failureMetadata["underlyingCode"] = underlying.code
+                        }
                         TPPErrorLogger.logError(
                             withCode: .invalidLicensor,
                             summary: "On-demand Adobe device activation failed (PP-3649)",
-                            metadata: ["error": activationError.localizedDescription]
+                            metadata: failureMetadata
                         )
                         once.finish(throwing: PalaceError.drm(.authenticationFailed))
                     }
