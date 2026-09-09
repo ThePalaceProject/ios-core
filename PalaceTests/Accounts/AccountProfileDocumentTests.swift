@@ -295,6 +295,20 @@ final class AccountProfileDocumentTests: XCTestCase {
     func testGetProfileDocument_expiredButRefreshableToken_ISSUESTheRequest() {
         let uuid = "urn:uuid:seam-expired-refreshable-\(UUID().uuidString)"
         let account = accountWithProfileURL(uuid: uuid)
+        // lint-ignore: FLUFF-003
+        // Not a constructor non-nil check. `details?.userProfileUrl` is an
+        // optional chain over a PARSED auth document and is genuinely nil when
+        // the fixture's JSON stops declaring the profile link — which is the
+        // regression this pins, since `getProfileDocument` then returns at its
+        // first guard and the request assertion below would fail for a reason
+        // that has nothing to do with the gate.
+        //
+        // The rule matches on `let x = f(...)` followed by XCTAssertNotNil, and
+        // it is inconsistent here: the identical assertion in
+        // testGetProfileDocument_withoutCredentials_issuesNoRequest escapes only
+        // because its argument interpolates `\(UUID().uuidString)`, whose inner
+        // `)` stops the rule's `[^)]*`. Suppressed rather than deleted; deleting
+        // the precondition to satisfy a regex artifact is the wrong trade.
         XCTAssertNotNil(account.details?.userProfileUrl,
                         "Precondition: the auth doc must declare a profile URL, or this proves nothing")
 
