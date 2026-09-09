@@ -63,6 +63,28 @@ esac
 
 URL="$SERVER/$LIBRARY/patrons/me/adobe_id"
 
+# Prompting needs a terminal. Without this check the script blocks forever on
+# `read` when stdin is not a TTY — which is what happens under a wrapper that
+# captures output, a CI step, or a pipe. Fail with the way out instead.
+need_prompt=0
+[ -z "${PALACE_BARCODE:-}" ] && need_prompt=1
+[ -z "${PALACE_PIN:-}" ] && need_prompt=1
+if [ "$need_prompt" -eq 1 ] && [ ! -t 0 ]; then
+  cat >&2 <<'NOTTY'
+Cannot prompt for credentials: stdin is not a terminal.
+
+Either run this in a terminal, or supply both without a prompt:
+
+    PALACE_BARCODE=... PALACE_PIN=... scripts/dev/reset-adobe-activations.sh --library <slug>
+
+To keep them out of your shell history, read them from a file you control:
+
+    set -a; . ./a1qa.env; set +a     # PALACE_BARCODE=... / PALACE_PIN=...
+    scripts/dev/reset-adobe-activations.sh --library <slug>
+NOTTY
+  exit 2
+fi
+
 BARCODE="${PALACE_BARCODE:-}"
 if [ -z "$BARCODE" ]; then
   printf 'Barcode for %s: ' "$LIBRARY" >&2
