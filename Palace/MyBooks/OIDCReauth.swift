@@ -11,8 +11,25 @@
 //  baseline, and this work pushed it past that. The ratchet only ever tightens
 //  by hand, so the remedy is to stop growing the hub, not to raise the number.
 //
-//  Pure move: no behaviour change. `attemptOIDCSilentReauth` stays a static on
-//  BorrowOperation so its cross-module caller (MyBooksDownloadCenter) is
+//  NOT a pure move. This header used to say "pure move: no behaviour change",
+//  which was true only against the intermediate commit that first extracted the
+//  file — not against `develop`, which is what a reader diffs. Independent SoD
+//  review measured five behaviour changes here, and asserting otherwise in a new
+//  critical-path file is the same unmeasured-docstring defect this PR exists to
+//  fix. What actually changed relative to develop:
+//
+//    1. Errors are CLASSIFIED and a presentation failure is retried once. Before:
+//       `if error != nil { resume(false) }` — no classification, no retry.
+//    2. `session.start()`'s return is checked. Before it was unchecked, so a
+//       refused presentation left the continuation un-resumed — a hang.
+//    3. `resumeOnce` guarantees the continuation resumes exactly once (new).
+//    4. The presentation anchor is `webAuthPresentationAnchor`, not
+//       `mainKeyWindow` — develop's shared resolver, already used by the two
+//       sibling OIDC paths and covered by its own tests.
+//    5. The completion handler is explicitly `@MainActor`.
+//
+//  What IS unchanged: `attemptOIDCSilentReauth` stays a static on
+//  BorrowOperation, so its cross-module caller (MyBooksDownloadCenter) is
 //  untouched.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.

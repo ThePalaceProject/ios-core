@@ -114,7 +114,14 @@ request went out — and survived deleting the entire gate.
 - Does **not** alter `TPPNetworkResponder`'s reactive 401 refresh, and does not
   reuse its predicate. The two differ today (the responder requires
   `tokenURL != nil` in every arm; `isTokenRefreshRequired`'s non-token branch
-  does not). That divergence is currently unreachable and is left alone.
+  does not). That divergence is unreachable through production sign-in paths and
+  is left alone. Not absolute: `DeveloperSettingsViewModel.swift:862`
+  ("simulate stuck state") writes an expired token onto `currentUserAccount`
+  regardless of `authType`, which on a SAML/OIDC/basic library yields
+  `tokenExpired && !isToken` — the gate allows the request while the responder's
+  browser-auth bypass performs no repair. That affordance exists to simulate
+  breakage and is debug-menu only, so it is not a defect, but "unreachable"
+  without the qualifier was wrong.
 - Does **not** remove the dead `isOAuthAndNeedsRefresh` conjunct in
   `isTokenRefreshRequired`. It requires `isOauth && tokenURL != nil`, but
   `tokenURL` is assigned non-nil in exactly one arm — `case .token`
@@ -140,8 +147,14 @@ request went out — and survived deleting the entire gate.
 - `OIDCReauthRetryBehaviorTests` — retry/consent driven through the presentation
   spy, asserting observed presentation count.
 - `OIDCReauthAttemptTests`, `WebAuthPresentationAnchorTests`.
-- Mutation on the changed production file: 2/2 killed, baseline PASS, 0 errored,
-  0 uncovered.
+- Mutation, both changed production files (this said "the changed production
+  file", singular, and there are two):
+  - `Account+profileDocument.swift` — 2 points, 2 killed, 0 survived, 0 errored,
+    0 uncovered, baseline PASS.
+  - `OIDCReauth.swift` — 15 points, 8 killed, **0 survived**, 0 errored, 7
+    uncovered. The uncovered are the URL-building guards, the callback parser and
+    the post-loop total-function return: none is drivable without a real
+    `ASWebAuthenticationSession`. Zero survivors is the number that matters.
 - The headline mutant reintroduced by hand and observed to fail by name, then
   reverted and observed green. A green suite is evidence only if red was
   possible.

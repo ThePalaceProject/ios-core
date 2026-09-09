@@ -295,7 +295,6 @@ final class AccountProfileDocumentTests: XCTestCase {
     func testGetProfileDocument_expiredButRefreshableToken_ISSUESTheRequest() {
         let uuid = "urn:uuid:seam-expired-refreshable-\(UUID().uuidString)"
         let account = accountWithProfileURL(uuid: uuid)
-        // lint-ignore: FLUFF-003
         // Not a constructor non-nil check. `details?.userProfileUrl` is an
         // optional chain over a PARSED auth document and is genuinely nil when
         // the fixture's JSON stops declaring the profile link — which is the
@@ -309,6 +308,29 @@ final class AccountProfileDocumentTests: XCTestCase {
         // because its argument interpolates `\(UUID().uuidString)`, whose inner
         // `)` stops the rule's `[^)]*`. Suppressed rather than deleted; deleting
         // the precondition to satisfy a regex artifact is the wrong trade.
+        //
+        // The marker is INERT, and cannot be otherwise for this rule. Measured on a
+        // three-case fixture rather than reasoned:
+        //
+        //   let -> assert, no comment                  FLUFF-003 FIRES
+        //   `// lint-ignore: FLUFF-003` interposed     silent
+        //   `// lint-ignore: ZZZZ-999`  interposed     silent   <- the tell
+        //
+        // The third case is the one that settles it: a marker naming a rule that
+        // does not exist suppresses just as well, so the COMMENT is the suppressor,
+        // not the marker. FLUFF-003 matches `let x = f(...)\s*\n\s*XCTAssertNotNil(`,
+        // and `\s*\n\s*` is whitespace only — any interposed line breaks it, and a
+        // marker IS an interposed line. Detection and suppression are therefore
+        // mutually exclusive here: placing the marker destroys the pattern that
+        // would trigger the rule it suppresses.
+        //
+        // It is kept, adjacent to the assertion, because that is where
+        // `line_has_lint_ignore()` looks (the flagged line and the one above it) and
+        // where it would take effect if the rule were ever tightened to see through
+        // comments. It is documentation of intent today, not a working control —
+        // and saying so is the point, since a control that reads as load-bearing
+        // while doing nothing is the defect class this whole branch is about.
+        // lint-ignore: FLUFF-003
         XCTAssertNotNil(account.details?.userProfileUrl,
                         "Precondition: the auth doc must declare a profile URL, or this proves nothing")
 
