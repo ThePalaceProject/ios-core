@@ -877,12 +877,3 @@ final class BorrowOperation: @unchecked Sendable {
         }
     }
 }
-
-/// How one `ASWebAuthenticationSession` attempt ended.
-///
-/// Exists because collapsing every error to `false` erased the one distinction
-/// that decides what to do next. `.canceledLogin` (code 1) is the patron
-/// declining — respect it. `.presentationContextInvalid` (code 3) is US failing
-/// to put the sheet on screen; the patron never saw anything to decline, so
-/// giving up strands them with `.credentialsStale` credentials and a sign-in
-/// sheet that re-presents on every later interaction until relaunch.

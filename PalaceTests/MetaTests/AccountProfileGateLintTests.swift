@@ -14,13 +14,17 @@
 //  vacuity this change was written to expose, reproduced one level up — a gate
 //  protected by nothing, with a test suite that reports otherwise.
 //
-//  Why a structural lint rather than a runtime test: `getProfileDocument`
-//  resolves its networking through `AppContainer.production().networkExecutor`,
-//  so there is no seam from which a unit test can observe whether the request
-//  was issued. The options were (a) add production surface purely for a test,
-//  (b) leave the wiring unpinned, or (c) assert the structure. Prior review
-//  rejected (a) as duplicated surface and (b) as unfalsifiable. Same reasoning,
-//  and same shape, as FCMRegistrationReadinessLintTests.
+//  This file once justified itself by saying `getProfileDocument` offered no
+//  seam from which a unit test could observe whether the request was issued.
+//  That justification is DEAD: the method now takes `performRequest:` and
+//  `userAccount:`, and `AccountProfileDocumentTests` drives the gate in both
+//  directions through them. Those behavioural tests are the real guard.
+//
+//  What remains here is only a monotone structural check, and monotone means it
+//  detects DELETION but never INSERTION — an `if` added ABOVE the gate leaves it
+//  green. Do not read a pass here as the wiring being safe; that is what the
+//  behavioural tests are for. Kept because a cheap deletion alarm still has
+//  value, not because it gates anything on its own.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //

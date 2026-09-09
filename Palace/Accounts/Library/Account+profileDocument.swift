@@ -46,15 +46,20 @@ extension Account {
     /// in production, but it is a real difference and saying otherwise was the
     /// same unmeasured-docstring defect this file exists to fix.
     ///
-    /// Expressed as a pure function of three booleans, deliberately.
-    /// `getProfileDocument` reaches `AppContainer.production()` internally, so
-    /// a test cannot observe whether the request was actually sent — the
-    /// existing F-007 test asserts a nil result and sub-second timing against
-    /// `example.invalid`, both of which hold whether or not the request is
-    /// issued, and it survives deleting the gate entirely. The decision is
-    /// therefore lifted somewhere it can genuinely be falsified, and the
-    /// WIRING is pinned separately by `AccountProfileGateLintTests` — a pure
-    /// predicate nothing calls is the same vacuity one level up.
+    /// Expressed as a pure function of three booleans, deliberately: the
+    /// decision is falsifiable on its own, independent of any networking.
+    ///
+    /// This comment used to say a test "cannot observe whether the request was
+    /// actually sent", because `getProfileDocument` reached
+    /// `AppContainer.production()` internally. That was true of the original
+    /// F-007 test — it asserted a nil result and sub-second timing against
+    /// `example.invalid`, both of which hold whether or not the request goes
+    /// out, and it survived deleting the gate entirely. It is no longer true:
+    /// `getProfileDocument` now takes `performRequest:` and `userAccount:`
+    /// seams, and `AccountProfileDocumentTests` drives the gate in BOTH
+    /// directions through them. The claim is left here, corrected rather than
+    /// deleted, because asserting an untestability that had stopped being true
+    /// is the same unmeasured-docstring defect as above.
     ///
     /// `tokenHasExpired` is false for barcode/PIN credentials and for tokens
     /// with no expiry date, so basic-auth libraries are unaffected. OIDC stores
@@ -78,8 +83,23 @@ extension Account {
     ///   seam was possible because the executor is reached through
     ///   `AppContainer.production()`; that claim was wrong, and this is the
     ///   refutation.
+    /// - Parameter userAccount: injected account seam. Production passes nil and
+    ///   gets the shared account for this library's UUID.
+    ///
+    ///   Without this the `performRequest:` seam below could only ever be driven
+    ///   in ONE direction. The account was read from the process-wide cache
+    ///   inside this method, so a test could not stage credentials, and every
+    ///   seam test necessarily exercised the no-credentials path — where
+    ///   `authTokenHasExpired` is false. Two independent reviewers found the
+    ///   same live mutant because of it: inserting
+    ///   `if userAccount.authTokenHasExpired { completion(nil); return }` above
+    ///   the gate re-introduces the round-2 regression (blocking an
+    ///   expired-but-repairable token deletes a repair that works) with the
+    ///   whole suite green. A guard one level away from what it guards is the
+    ///   defect this file already exists to fix, reached a third time.
     func getProfileDocument(
         performRequest: ((URLRequest, @escaping (NYPLResult<Data>) -> Void) -> Void)? = nil,
+        userAccount injectedUserAccount: TPPUserAccount? = nil,
         completion: @escaping (_ profileDocument: UserProfileDocument?) -> Void
     ) {
         guard let profileHref = self.details?.userProfileUrl,
@@ -99,7 +119,7 @@ extension Account {
         // call this on every account-change rehydration, producing a
         // /patrons/me/ 401 storm at every cold relaunch (PP-4164 → F-007 →
         // refined by F-DG5-002).
-        let userAccount = TPPUserAccount.sharedAccount(libraryUUID: self.uuid)
+        let userAccount = injectedUserAccount ?? TPPUserAccount.sharedAccount(libraryUUID: self.uuid)
         if !Account.canAuthenticateProfileRequest(
             hasCredentials: userAccount.hasCredentials(),
             tokenHasExpired: userAccount.authTokenHasExpired,

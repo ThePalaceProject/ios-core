@@ -105,9 +105,13 @@ final class AccountProfileDocumentTests: XCTestCase {
     // MARK: - The gate decision (states x events, asserted directly)
     //
     // These assert the PREDICATE, not `getProfileDocument`, and that is
-    // deliberate. `getProfileDocument` reaches `AppContainer.production()`
-    // internally, so no test can observe whether the request was actually
-    // issued. The F-007 test above claims to "kill the gate-removal mutation";
+    // deliberate: the decision is worth pinning on its own, in every
+    // combination, without dragging networking in. They are NOT the only guard
+    // — `getProfileDocument` now takes `performRequest:` and `userAccount:`
+    // seams and is driven in both directions below. An earlier version of this
+    // comment claimed no test could observe whether the request was issued;
+    // that stopped being true when the seams landed.
+    // The F-007 test above claims to "kill the gate-removal mutation";
     // measured on 2026-09-03 it does not — with the entire credentials gate
     // deleted, every test in this file still passed, because
     // `https://example.invalid/` fails DNS fast enough to satisfy both a nil
@@ -272,6 +276,86 @@ final class AccountProfileDocumentTests: XCTestCase {
                       + "old timing-based guard could not see it.")
     }
 
+    /// THE test the seam existed for, and the one that was missing.
+    ///
+    /// Two independent reviewers found the same live mutant: inserting
+    /// `if userAccount.authTokenHasExpired { completion(nil); return }` above the
+    /// gate survived the entire suite. It re-introduces the round-2 regression —
+    /// blocking an expired-but-repairable token deletes a repair that works,
+    /// because the reactive 401 path refreshes the token and re-drives the task.
+    ///
+    /// Nothing caught it because the only seam test drove the NEGATIVE direction
+    /// (no credentials, where `authTokenHasExpired` is false), and the structural
+    /// lint is monotone so an inserted `if` leaves it green. A guard one level
+    /// away from what it guards — the very defect this file was written to fix.
+    ///
+    /// The account had to become injectable for this to be writable at all: it
+    /// was previously read from the process-wide cache inside the method, so no
+    /// test could stage credentials.
+    func testGetProfileDocument_expiredButRefreshableToken_ISSUESTheRequest() {
+        let uuid = "urn:uuid:seam-expired-refreshable-\(UUID().uuidString)"
+        let account = accountWithProfileURL(uuid: uuid)
+        XCTAssertNotNil(account.details?.userProfileUrl,
+                        "Precondition: the auth doc must declare a profile URL, or this proves nothing")
+
+        let user = TPPUserAccountTestFactory.makeIsolated()
+        user.setAuthDefinitionWithoutUpdate(
+            authDefinition: tokenAuthDefinition(tokenURL: "https://example.invalid/token"))
+        user.setAuthToken("expired-bearer-token",
+                          barcode: "1234567890",
+                          pin: "1234",
+                          expirationDate: Date(timeIntervalSinceNow: -3600))
+
+        // Precondition the whole test rests on: this is the expired-BUT-REPAIRABLE
+        // cell. If any of these drifts, the test would pass for the wrong reason.
+        XCTAssertTrue(user.hasCredentials(), "Precondition: credentials are present")
+        XCTAssertTrue(user.authTokenHasExpired, "Precondition: the token has expired")
+        XCTAssertTrue(user.isTokenRefreshRequired(),
+                      "Precondition: a refresh CAN repair this — that is what makes blocking it a regression")
+
+        var issued: [URLRequest] = []
+        account.getProfileDocument(performRequest: { request, _ in
+            issued.append(request)
+        }, userAccount: user, completion: { _ in })
+
+        XCTAssertEqual(issued.count, 1,
+                       "An expired token a refresh can repair MUST still be sent: the 401 path refreshes and "
+                       + "re-drives the task, so blocking here deletes a working repair (the round-2 regression). "
+                       + "Zero requests means an `if authTokenHasExpired` slipped in above the gate.")
+        XCTAssertEqual(issued.first?.url?.absoluteString, "https://example.invalid/patrons/me/",
+                       "and it must be THIS library's profile URL")
+    }
+
+    /// The other side of the same cell, so the pair brackets the gate.
+    ///
+    /// Expired AND unrepairable (no tokenURL, so no refresh can fix it) must be
+    /// blocked. Without this, widening the gate to always-allow would pass.
+    func testGetProfileDocument_expiredAndUnrepairableToken_issuesNoRequest() {
+        let uuid = "urn:uuid:seam-expired-unrepairable-\(UUID().uuidString)"
+        let account = accountWithProfileURL(uuid: uuid)
+
+        let user = TPPUserAccountTestFactory.makeIsolated()
+        user.setAuthDefinitionWithoutUpdate(authDefinition: tokenAuthDefinition(tokenURL: nil))
+        user.setAuthToken("expired-bearer-token",
+                          barcode: "1234567890",
+                          pin: "1234",
+                          expirationDate: Date(timeIntervalSinceNow: -3600))
+
+        XCTAssertTrue(user.hasCredentials(), "Precondition: credentials are present")
+        XCTAssertTrue(user.authTokenHasExpired, "Precondition: the token has expired")
+        XCTAssertFalse(user.isTokenRefreshRequired(),
+                       "Precondition: NO refresh can repair this — no token URL to refresh against")
+
+        var issued: [URLRequest] = []
+        account.getProfileDocument(performRequest: { request, _ in
+            issued.append(request)
+        }, userAccount: user, completion: { _ in })
+
+        XCTAssertTrue(issued.isEmpty,
+                      "An expired token nothing can repair must NOT be sent — its 401 returns the OPDS auth "
+                      + "document the app reads back as \"signed out\", which is the defect this gate exists for.")
+    }
+
     // MARK: - isTokenRefreshRequired: the gate's repairability input
 
     // SoD review found my first attempt at these was one test written three
@@ -279,8 +363,15 @@ final class AccountProfileDocumentTests: XCTestCase {
     // is `guard let authDefinition else { return false }` — so all three hit the
     // same early return, production always passes non-nil, and NO test reached a
     // `true` return. A reviewer inverted the token branch AND forced the
-    // non-token branch to `return true` with the suite still green. These drive
-    // a real auth definition.
+    // non-token branch to `return true` with the suite still green.
+    //
+    // A LATER round caught this comment overclaiming: only the TOKEN branch was
+    // actually addressed. Every fixture here was `tokenAuthDefinition` (isToken)
+    // or nil, so the OAuth arm below `if authDefinition.isToken` — the
+    // `isOAuthAndNeedsRefresh` term — stayed unreached, and the reviewer's
+    // non-token mutant was still live while this text said otherwise. Writing
+    // that a branch is covered does not cover it. The OAuth fixture and the two
+    // tests driving it exist because of that.
 
     /// Builds a token-auth definition the way the contract tests do.
     private func tokenAuthDefinition(tokenURL: String?) -> AccountDetails.Authentication {
@@ -302,6 +393,91 @@ final class AccountProfileDocumentTests: XCTestCase {
             from: Data(json.utf8)
         )
         return AccountDetails.Authentication(auth: docAuth)
+    }
+
+    /// Builds an OAuth-with-intermediary definition, which is NOT `isToken`.
+    ///
+    /// This is the only way to reach the arm below `if authDefinition.isToken`.
+    /// Every other fixture in this file is token-auth or nil, which is exactly
+    /// how a reviewer's non-token `return true` mutant stayed alive.
+    private func oauthAuthDefinition(tokenURL: String?) -> AccountDetails.Authentication {
+        let links = tokenURL.map { """
+        , "links": [{ "rel": "authenticate", "href": "\($0)" }]
+        """ } ?? ""
+        let json = """
+        {
+          "type": "http://librarysimplified.org/authtype/OAuth-with-intermediary",
+          "description": "OAuth intermediary"\(links)
+        }
+        """
+        let docAuth = try! JSONDecoder().decode(
+            OPDS2AuthenticationDocument.Authentication.self,
+            from: Data(json.utf8)
+        )
+        return AccountDetails.Authentication(auth: docAuth)
+    }
+
+    /// The non-token branch, driven to `true` by the only route that can reach it.
+    ///
+    /// My first version of this test aimed at the `isOAuthAndNeedsRefresh` term
+    /// and failed its own precondition guard, which turned out to be a finding
+    /// rather than a bad fixture: that term is
+    /// `isOauth && !hasAuthToken && tokenURL != nil`, and `tokenURL` is assigned
+    /// a non-nil value in exactly ONE arm of `AccountDetails.Authentication`'s
+    /// initialiser — `case .token` (`Account.swift:189`). Every other arm,
+    /// `.oauthIntermediary` included, sets it to nil; the OAuth link is parsed
+    /// into `oauthIntermediaryUrl` instead. So `isOauth` IMPLIES `tokenURL == nil`,
+    /// the conjunct is always false, and the branch reduces in practice to
+    /// `tokenExpired && hasCredentials`.
+    ///
+    /// That is why a reviewer's non-token `return true` mutant survived: nothing
+    /// could reach the arm through a term that cannot be true. This drives the
+    /// reachable route instead — a non-token definition with an EXPIRED token
+    /// credential — so the branch is genuinely pinned.
+    ///
+    /// The dead conjunct is NOT touched here: `isTokenRefreshRequired` is
+    /// pre-existing and this PR only calls it. Removing it is its own change.
+    func testIsTokenRefreshRequired_nonTokenAuthWithExpiredTokenCredential_isTrue() {
+        let auth = oauthAuthDefinition(tokenURL: "https://example.invalid/authenticate")
+        guard auth.isOauth, !auth.isToken else {
+            return XCTFail("Fixture is not OAuth-with-intermediary — the test would take the isToken "
+                           + "branch or the early return and prove nothing")
+        }
+        XCTAssertNil(auth.tokenURL,
+                     "Documents the finding above: OAuth never carries a tokenURL, so the "
+                     + "`isOAuthAndNeedsRefresh` conjunct in production is unreachable")
+
+        XCTAssertTrue(
+            UserAccountAuthHelper.isTokenRefreshRequired(
+                authDefinition: auth,
+                credentials: .token(authToken: "expired", barcode: "1234567890", pin: "1234",
+                                    expirationDate: Date(timeIntervalSinceNow: -3600)),
+                username: "1234567890",
+                pin: "1234"),
+            "A non-token definition holding an EXPIRED token credential is repairable — this is the "
+            + "only way the non-token branch returns true, and it was previously unreached")
+    }
+
+    /// The same branch, driven to `false`, so the pair brackets it.
+    ///
+    /// An unexpired credential on the same non-token definition must report
+    /// false. A mutant hard-coding this branch to `true` fails here; a mutant
+    /// hard-coding it to `false` fails the test above. Neither was detectable
+    /// before, because no test entered this arm at all.
+    func testIsTokenRefreshRequired_nonTokenAuthWithUnexpiredCredential_isFalse() {
+        let auth = oauthAuthDefinition(tokenURL: "https://example.invalid/authenticate")
+        guard auth.isOauth, !auth.isToken else {
+            return XCTFail("Fixture is not OAuth-with-intermediary")
+        }
+
+        XCTAssertFalse(
+            UserAccountAuthHelper.isTokenRefreshRequired(
+                authDefinition: auth,
+                credentials: .token(authToken: "live", barcode: "1234567890", pin: "1234",
+                                    expirationDate: Date(timeIntervalSinceNow: 3600)),
+                username: "1234567890",
+                pin: "1234"),
+            "Nothing needs repairing while the credential is still valid")
     }
 
     /// THE case the whole narrowing rests on: an expired token that CAN be
