@@ -34,7 +34,7 @@ final class AdobeActivationDedupTests: XCTestCase {
         private let lock = NSLock()
         private var _userID: String?
         private var _deviceID: String?
-        private let _licensor: [String: Any]?
+        private var _licensor: [String: Any]?
 
         init(licensor: [String: Any]?, userID: String? = nil, deviceID: String? = nil) {
             self._licensor = licensor
@@ -47,6 +47,9 @@ final class AdobeActivationDedupTests: XCTestCase {
         var licensor: [String: Any]? { _licensor }
         func setUserID(_ id: String) { lock.withLock { _userID = id } }
         func setDeviceID(_ id: String) { lock.withLock { _deviceID = id } }
+        // PP-3649: activation now re-mints the licensor before use, so the
+        // double must be able to record the write.
+        func setLicensor(_ licensor: [String: Any]) { lock.withLock { _licensor = licensor } }
     }
 
     private var drm: TPPDRMAuthorizingMock!

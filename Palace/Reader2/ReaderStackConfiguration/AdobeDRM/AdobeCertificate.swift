@@ -449,7 +449,8 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
             authorizer: { self.adeptInstance },
             userAccount: AppContainer.production().accountsManager.currentUserAccount,
             isDRMAvailable: AdobeCertificate.isDRMAvailable,
-            licensorGracePeriod: licensorGracePeriod
+            licensorGracePeriod: licensorGracePeriod,
+            refreshLicensor: { await Self.freshLicensorFromProfileDocument() }
         )
     }
 
@@ -484,6 +485,33 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     ///
     /// The username half is rejoined with "|" because a well-formed token may
     /// legitimately contain separators before the final one.
+    /// Maps an ADEPT error onto the `DRMError` the patron-facing alert reads.
+    ///
+    /// PP-3649. The activation failure path used to throw a hardcoded
+    /// `.authenticationFailed` regardless of what Adobe actually said, so every
+    /// failure told the patron "Please sign out and sign in again". For
+    /// `E_ACT_TOO_MANY_ACTIVATIONS` that advice is actively harmful — signing
+    /// back in consumes ANOTHER activation, which is the resource that has run
+    /// out. The correct guidance ("Please deauthorize a device and try again")
+    /// already existed; nothing routed to it.
+    ///
+    /// Mapping here rather than at the call site is deliberate: this is the
+    /// last point where the original `NSError` still exists. Downstream it has
+    /// been flattened into a `PalaceError`, and the Adobe code is gone.
+    static func drmError(for error: Error) -> DRMError {
+        let ns = error as NSError
+        guard ns.domain == NYPLADEPTErrorDomain,
+              let adept = NYPLADEPTError(rawValue: ns.code) else {
+            return .authenticationFailed
+        }
+        switch adept {
+        case .tooManyActivations:                      return .tooManyActivations
+        case .authenticationFailed:                    return .authenticationFailed
+        case .userNotActivated, .invalidUserActivation: return .noActivation
+        default:                                       return .adobeError
+        }
+    }
+
     static func splitClientToken(_ clientToken: String) -> (username: String, password: String)? {
         var items = clientToken
             .replacingOccurrences(of: "\n", with: "")
@@ -493,6 +521,32 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         let username = items.joined(separator: "|")
         guard !username.isEmpty else { return nil }
         return (username, password)
+    }
+
+    /// Fetches the patron profile document and returns the Adobe licensor it
+    /// carries — a token minted seconds ago rather than at sign-in.
+    ///
+    /// The iOS counterpart of Android's `runPatronProfileRequest` inside
+    /// `BorrowACSM.adobeDeviceActivate`. Returns nil on any failure; the caller
+    /// falls back to the stored licensor rather than failing the borrow, since
+    /// a stored token may still be inside its hour.
+    static func freshLicensorFromProfileDocument() async -> [String: Any]? {
+        guard let account = AppContainer.production().accountsManager.currentAccount else {
+            return nil
+        }
+        let box: LicensorBox = await withCheckedContinuation { (continuation: CheckedContinuation<LicensorBox, Never>) in
+            let once = OneShotValueContinuation(continuation)
+            account.getProfileDocument { document in
+                guard let drm = document?.drm?.first,
+                      let vendor = drm.vendor, !vendor.isEmpty,
+                      let clientToken = drm.clientToken, !clientToken.isEmpty else {
+                    once.finish(nil)
+                    return
+                }
+                once.finish(drm.licensor)
+            }
+        }
+        return box.licensor
     }
 
     static func awaitLicensor(_ account: AdobeActivationAccount,
@@ -547,7 +601,8 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                                userAccount: AdobeActivationAccount,
                                isDRMAvailable: Bool,
                                timeout: TimeInterval = AdobeActivationCoordinator.defaultTimeout,
-                               licensorGracePeriod: TimeInterval = 0) async throws {
+                               licensorGracePeriod: TimeInterval = 0,
+                               refreshLicensor: (() async -> [String: Any]?)? = nil) async throws {
         if let userID = userAccount.userID,
            let deviceID = userAccount.deviceID,
            authorizer()?.isUserAuthorized(userID, withDevice: deviceID) == true {
@@ -568,7 +623,27 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         // testing down the wrong path. Wait a bounded moment for credentials
         // that are already on their way; a licensor that never arrives still
         // fails below, so this defers the guard rather than removing it.
-        guard let licensor = await Self.awaitLicensor(userAccount, within: licensorGracePeriod),
+        // PP-3649. The stored licensor is written once at sign-in and never
+        // updated; its short client token dies after 60 minutes, while
+        // activation now happens at first Adobe borrow — arbitrarily later.
+        // Re-mint before activating, as Android's BorrowACSM does. The
+        // grace-period read stays FIRST so the PP-5025 sign-in race is still
+        // handled for a licensor that has not landed yet.
+        let storedLicensor = await Self.awaitLicensor(userAccount, within: licensorGracePeriod)
+        let resolved = await AdobeLicensorRefresh.resolve(
+            stored: storedLicensor,
+            fetch: { await refreshLicensor?() }
+        )
+        if resolved.wasRefreshed, let fresh = resolved.licensor {
+            // `[String: Any]` is not Sendable; carry it across the hop in a
+            // read-only box, as BorrowErrorDictBox does for the same reason.
+            let box = LicensorBox(fresh)
+            await MainActor.run {
+                if let licensor = box.licensor { userAccount.setLicensor(licensor) }
+            }
+        }
+
+        guard let licensor = resolved.licensor,
               let vendor = licensor["vendor"] as? String, !vendor.isEmpty,
               let clientToken = licensor["clientToken"] as? String, !clientToken.isEmpty else {
             Log.error(#file, "No Adobe DRM licensor credentials stored — cannot activate")
@@ -702,11 +777,39 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                             summary: "On-demand Adobe device activation failed (PP-3649)",
                             metadata: failureMetadata
                         )
-                        once.finish(throwing: PalaceError.drm(.authenticationFailed))
+                        once.finish(throwing: PalaceError.drm(Self.drmError(for: activationError)))
                     }
                 }
             }
         }
+    }
+}
+
+/// Resumes a non-throwing continuation exactly once.
+///
+/// `getProfileDocument` takes a completion handler, and a completion handler
+/// invoked twice would resume a `CheckedContinuation` twice — a hard runtime
+/// trap, not a recoverable error. Sibling of `OneShotContinuation` below,
+/// which does the same job for the throwing activation path.
+private final class LicensorBox: @unchecked Sendable {
+    let licensor: [String: Any]?
+    init(_ licensor: [String: Any]?) { self.licensor = licensor }
+}
+
+private final class OneShotValueContinuation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<LicensorBox, Never>?
+
+    init(_ continuation: CheckedContinuation<LicensorBox, Never>) {
+        self.continuation = continuation
+    }
+
+    func finish(_ value: [String: Any]?) {
+        let c: CheckedContinuation<LicensorBox, Never>? = lock.withLock {
+            defer { continuation = nil }
+            return continuation
+        }
+        c?.resume(returning: LicensorBox(value))
     }
 }
 

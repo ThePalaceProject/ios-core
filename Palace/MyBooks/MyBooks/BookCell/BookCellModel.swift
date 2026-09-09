@@ -198,6 +198,7 @@ class BookCellModel: ObservableObject {
         loadBookCoverImage()
         bindRegistryState()
         bindReachability()
+        bindProcessingState()
         setupStableButtonState()
         #if LCP
         prefetchLCPStreamingIfPossible()
@@ -476,6 +477,45 @@ class BookCellModel: ObservableObject {
     /// would otherwise sit there for ~60s waiting on URLSession's timeout).
     /// `dropFirst()` skips the CurrentValueSubject's replay so we only act
     /// on actual transitions.
+    /// Clears the spinner when the registry says this book is no longer being
+    /// processed.
+    ///
+    /// The cell raises `isLoading` itself on tap, but only a handful of
+    /// specific completion paths ever lowered it — so any borrow that failed
+    /// without one of those firing left the spinner up for the lifetime of the
+    /// cell. `bindReachability` above is the same defect patched for exactly
+    /// one cause (a mid-flight network drop); this is the general case.
+    ///
+    /// Observed 2026-09-09: an Adobe activation failure surfaced its alert, and
+    /// dismissing the alert left the list cell spinning, because the failure
+    /// path clears the REGISTRY's processing flag and nothing connected that to
+    /// the cell. The store has always broadcast this notification; nobody
+    /// listened.
+    private func bindProcessingState() {
+        // App-side symbols deliberately, not the package's internal ones: the
+        // registry keeps a separate declaration with the same runtime string
+        // to avoid a cross-module ambiguity. Same notification, same keys —
+        // this mirrors what BookDetailViewModel already does.
+        NotificationCenter.default.publisher(for: NSNotification.TPPBookProcessingDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] notification in
+                guard let self else { return }
+                guard let info = notification.userInfo,
+                      let bookID = info[TPPNotificationKeys.bookProcessingBookIDKey] as? String,
+                      bookID == self.currentBookIdentifier,
+                      let processing = info[TPPNotificationKeys.bookProcessingValueKey] as? Bool
+                else { return }
+
+                // Only ever LOWER the spinner from here. Raising it on the
+                // registry's say-so would fight the cell's own tap handling,
+                // which sets isLoading before any registry write happens.
+                if !processing, self.isLoading {
+                    self.isLoading = false
+                }
+            }
+            .store(in: &cancellables)
+    }
+
     private func bindReachability() {
         reachability.connectivityPublisher
             .dropFirst()

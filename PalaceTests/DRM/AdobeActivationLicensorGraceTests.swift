@@ -71,6 +71,9 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
         var reads: Int { lock.withLock { licensorReadCount } }
         func setUserID(_ id: String) { lock.withLock { _userID = id } }
         func setDeviceID(_ id: String) { lock.withLock { _deviceID = id } }
+        // PP-3649: activation re-mints the licensor before use, so the double
+        // must accept the write.
+        func setLicensor(_ licensor: [String: Any]) { lock.withLock { _licensor = licensor } }
     }
 
     private var drm: TPPDRMAuthorizingMock!
