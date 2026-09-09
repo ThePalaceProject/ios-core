@@ -398,7 +398,14 @@ final class BorrowOperation: @unchecked Sendable {
                 // ADEPTErrorDomain error 4 twice, no visible indication. PP-3649
                 // requires this path to "fail with a clear error message".
                 onFailure: { [weak self] error in
-                    self?.showBorrowError(.drm(.authenticationFailed), originalError: error, for: book)
+                    // The activation path has already mapped Adobe's code onto
+                    // a PalaceError (AdobeDRMService.drmError(for:)); re-deriving
+                    // it here would read `error as NSError` on a value whose
+                    // domain is Palace.PalaceError and silently fall back to
+                    // .authenticationFailed — which is exactly the bug that told
+                    // patrons to sign in again when their activations had run out.
+                    let palaceError = (error as? PalaceError) ?? .drm(.authenticationFailed)
+                    self?.showBorrowError(palaceError, originalError: error, for: book)
                 }
             )
         }
