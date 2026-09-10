@@ -47,6 +47,18 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
     /// basic/token readiness-race regression where `logIn()` used to silently
     /// no-op before `/patrons/me` was ever requested).
     private var _executedRequestURLs: [URL] = []
+    /// Whether each executed request asked for a proactive token refresh,
+    /// keyed by URL. Recorded because the flag is not observable any other way:
+    /// it is consumed inside the executor, and a caller flipping it changes
+    /// which failure arm runs (`TPPNetworkExecutor:882-899` presents the
+    /// sign-in modal on a refresh 401) without changing any response a test
+    /// can see.
+    private(set) var tokenRefreshByURL: [URL: Bool] {
+        get { lock.withLock { _tokenRefreshByURL } }
+        set { lock.withLock { _tokenRefreshByURL = newValue } }
+    }
+    private var _tokenRefreshByURL: [URL: Bool] = [:]
+
     private(set) var executedRequestURLs: [URL] {
         get { lock.withLock { _executedRequestURLs } }
         set { lock.withLock { _executedRequestURLs = newValue } }
@@ -82,6 +94,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
     func reset() {
         generation += 1
         executedRequestURLs.removeAll()
+        tokenRefreshByURL.removeAll()
         // Drop any join hook so a stale closure can't fire a torn-down
         // expectation on a later test's request.
         onExecuteRequest = nil
@@ -93,6 +106,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
 
         if let reqURL = req.url {
             executedRequestURLs.append(reqURL)
+            tokenRefreshByURL[reqURL] = enableTokenRefresh
         }
         // Join seam: notify AFTER recording, so a test woken by this callback
         // reads a URL list that already contains this request.

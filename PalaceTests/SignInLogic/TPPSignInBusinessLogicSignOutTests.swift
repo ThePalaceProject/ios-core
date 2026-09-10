@@ -403,4 +403,44 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         XCTAssertTrue(bookRegistry.registry.isEmpty,
                       "Sign-out must reset() the book registry — the mock's reset(_:) clears the registry dictionary; observing this proves reset() ran, not just isSyncing flipping")
     }
+
+    // MARK: - Proactive token refresh must stay OFF on this leg
+
+    /// Pins `enableTokenRefresh: false` on the sign-out profile request.
+    ///
+    /// A one-word flag with no visible effect on the happy path, which is
+    /// exactly why it needs a test. Setting it true arms
+    /// `TPPNetworkExecutor:882-899`: a proactive refresh that 401s — an expired
+    /// card, the case someone would flip the flag to help — calls
+    /// `markCredentialsStale()` AND `presentSignInModalForCurrentAccount(...)`
+    /// when the refreshing account is the current one, which at sign-out it
+    /// almost always is. The executor ignores the refresh result, so the
+    /// sign-out completes underneath the sheet and the patron is handed a
+    /// sign-in prompt for the library they just left.
+    ///
+    /// Nothing about a green suite would show that. The flag WAS flipped to
+    /// true during development for a real reason — the response body carries
+    /// the fresh Adobe licensor — survived a full passing suite, and was caught
+    /// only by a reviewer reading the executor. This asserts what the caller
+    /// actually requested, not what the source says, so an equivalent flip
+    /// through any other route fails too.
+    ///
+    /// The BORROW path deliberately opts in (`freshLicensorFromProfileDocument`):
+    /// prompting re-auth mid-borrow is already this app's design. Sign-out is
+    /// the one flow where it never is, so only this leg is pinned.
+    func test_signOutProfileRequest_doesNotArmProactiveTokenRefresh() async {
+        seedSignedInBasicUserWithAdobe()
+
+        businessLogic.performLogOut()
+        await drainMainQueueAsync()
+
+        let asked = networkExecutor.tokenRefreshByURL
+        XCTAssertFalse(asked.isEmpty,
+                       "sign-out issued no request — the flag assertion below would be vacuous")
+        for (url, enabled) in asked {
+            XCTAssertFalse(enabled,
+                           "sign-out asked for a proactive token refresh on \(url). A refresh that "
+                           + "401s presents the sign-in modal on the way OUT of the account.")
+        }
+    }
 }

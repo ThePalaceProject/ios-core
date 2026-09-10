@@ -54,7 +54,8 @@ final class BorrowAdobeActivationStepTests: XCTestCase {
 
         try await BorrowAdobeActivationStep.run(
             setProcessing: { _ in },
-            activate: { budget in recorder.noteBudget(budget) }
+            activate: { budget in recorder.noteBudget(budget) },
+            onFailure: { _ in }
         )
 
         XCTAssertEqual(recorder.budgets.count, 1)
@@ -69,7 +70,8 @@ final class BorrowAdobeActivationStepTests: XCTestCase {
 
         try await BorrowAdobeActivationStep.run(
             setProcessing: { recorder.note($0 ? "processing:true" : "processing:false") },
-            activate: { _ in recorder.note("activate") }
+            activate: { _ in recorder.note("activate") },
+            onFailure: { _ in }
         )
 
         XCTAssertEqual(recorder.events, ["processing:true", "activate"],
@@ -81,7 +83,8 @@ final class BorrowAdobeActivationStepTests: XCTestCase {
 
         try await BorrowAdobeActivationStep.run(
             setProcessing: { recorder.note($0 ? "processing:true" : "processing:false") },
-            activate: { _ in }
+            activate: { _ in },
+            onFailure: { _ in }
         )
 
         XCTAssertFalse(recorder.events.contains("processing:false"),
@@ -96,14 +99,70 @@ final class BorrowAdobeActivationStepTests: XCTestCase {
         do {
             try await BorrowAdobeActivationStep.run(
                 setProcessing: { recorder.note($0 ? "processing:true" : "processing:false") },
-                activate: { _ in throw ActivationFailed() }
+                activate: { _ in throw ActivationFailed() },
+                onFailure: { _ in recorder.note("surfaced") }
             )
             XCTFail("the activation error must reach the caller")
         } catch {
             XCTAssertTrue(error is ActivationFailed, "the original error must propagate unchanged, got \(error)")
         }
 
-        XCTAssertEqual(recorder.events, ["processing:true", "processing:false"],
-                       "a failed activation must clear the spinner — otherwise the cell spins forever with no clearer")
+        XCTAssertEqual(recorder.events, ["processing:true", "processing:false", "surfaced"],
+                       "a failed activation must clear the spinner AND surface the failure, in that order")
+    }
+
+    // MARK: - Surfacing the failure to the patron
+
+    /// The defect this exists to prevent, observed on device 2026-09-09:
+    /// Adobe activation failed twice against A1QA (ADEPTErrorDomain error 4),
+    /// the borrow was abandoned, and the patron saw only a sheet with an empty
+    /// progress bar and a Cancel button. Nothing told them anything had gone
+    /// wrong. PP-3649 shipped the on-demand activation with an explicit
+    /// acceptance criterion that this path "fails with a clear error message".
+    ///
+    /// Clearing the spinner is NOT sufficient and is already covered above —
+    /// a cleared spinner with no message is exactly what the patron saw.
+    func test_run_whenActivationThrows_surfacesTheFailureToThePatron() async {
+        let recorder = Recorder()
+        let surfaced = SurfacedError()
+
+        do {
+            try await BorrowAdobeActivationStep.run(
+                setProcessing: { recorder.note($0 ? "processing:true" : "processing:false") },
+                activate: { _ in throw ActivationFailed() },
+                onFailure: { error in
+                    recorder.note("surfaced")
+                    surfaced.store(error)
+                }
+            )
+            XCTFail("the activation error must still reach the caller")
+        } catch {
+            XCTAssertTrue(error is ActivationFailed)
+        }
+
+        XCTAssertTrue(recorder.events.contains("surfaced"),
+                      "a failed activation must tell the patron — clearing the spinner silently is the defect")
+        XCTAssertTrue(surfaced.value is ActivationFailed,
+                      "the ORIGINAL error must be handed to the presenter, not a substitute")
+    }
+
+    func test_run_onSuccess_doesNotSurfaceAFailure() async throws {
+        let recorder = Recorder()
+
+        try await BorrowAdobeActivationStep.run(
+            setProcessing: { _ in },
+            activate: { _ in },
+            onFailure: { _ in recorder.note("surfaced") }
+        )
+
+        XCTAssertFalse(recorder.events.contains("surfaced"),
+                       "a successful activation must not raise a borrow-failed alert")
+    }
+
+    private final class SurfacedError: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value: Error?
+        func store(_ e: Error) { lock.withLock { _value = e } }
+        var value: Error? { lock.withLock { _value } }
     }
 }

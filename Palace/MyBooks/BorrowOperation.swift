@@ -389,7 +389,31 @@ final class BorrowOperation: @unchecked Sendable {
         if book.requiresAdobeDRM {
             Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
 
-            try await BorrowAdobeActivationStep.run(setProcessing: { [bookRegistry] in bookRegistry.setProcessing($0, for: bookIdentifier) }, activate: { [adobeDRMService] in try await adobeDRMService.ensureDeviceActivated(licensorGracePeriod: $0) })
+            try await BorrowAdobeActivationStep.run(
+                setProcessing: { [bookRegistry] in bookRegistry.setProcessing($0, for: bookIdentifier) },
+                activate: { [adobeDRMService] in try await adobeDRMService.ensureDeviceActivated(licensorGracePeriod: $0) },
+                // Without this the borrow dies silently: the spinner clears, the
+                // sheet keeps its empty progress bar, and the patron is told
+                // nothing. Observed on device 2026-09-09 against A1QA —
+                // ADEPTErrorDomain error 4 twice, no visible indication. PP-3649
+                // requires this path to "fail with a clear error message".
+                onFailure: { [weak self] error in
+                    // The activation path has already mapped Adobe's code onto
+                    // a PalaceError (PalaceError.drmError(for:)); re-deriving it
+                    // here would read `error as NSError` on a value whose domain
+                    // is Palace.PalaceError and fall back silently — which is
+                    // exactly the bug that told patrons to sign in again when
+                    // their activations had run out.
+                    //
+                    // The fallback is `.adobeError`, matching the consolidated
+                    // table. It is currently unreachable (every throw site on
+                    // this path is already a PalaceError), and that is the point:
+                    // an unreachable branch that still says "sign out and sign in
+                    // again" is one refactor away from saying it to a patron.
+                    let palaceError = (error as? PalaceError) ?? .drm(.adobeError)
+                    self?.showBorrowError(palaceError, originalError: error, for: book)
+                }
+            )
         }
         #endif
 
@@ -794,93 +818,6 @@ final class BorrowOperation: @unchecked Sendable {
         presentBorrowErrorAlert(title, message, originalError as NSError?, problemDoc, book, retryAction)
     }
 
-    // MARK: - OIDC Silent Re-auth (Production Helper)
-
-    /// Static helper that production wiring uses for the
-    /// `attemptOIDCReauth` closure. Tests bypass this entirely by
-    /// passing a stub closure. Returns `true` if a new token was
-    /// obtained, `false` on failure/cancel/no-OIDC-config.
-    static func attemptOIDCSilentReauth(userAccount: TPPUserAccount) async -> Bool {
-        guard let authDef = userAccount.authDefinition,
-              let oidcURL = authDef.oidcAuthenticationUrl else {
-            return false
-        }
-
-        let callbackScheme = TPPSignInBusinessLogic.oidcCallbackScheme
-        let callbackHost = TPPSignInBusinessLogic.oidcCallbackHost
-        let redirectURI = "\(callbackScheme)://\(callbackHost)/callback"
-
-        guard var urlComponents = URLComponents(url: oidcURL, resolvingAgainstBaseURL: true) else {
-            return false
-        }
-
-        let redirectParam = URLQueryItem(name: "redirect_uri", value: redirectURI)
-        if urlComponents.queryItems != nil {
-            urlComponents.queryItems?.append(redirectParam)
-        } else {
-            urlComponents.queryItems = [redirectParam]
-        }
-
-        guard let finalURL = urlComponents.url else { return false }
-
-        return await withCheckedContinuation { continuation in
-            Task { @MainActor in
-                let session = ASWebAuthenticationSession(
-                    url: finalURL,
-                    callbackURLScheme: callbackScheme
-                ) { callbackURL, error in
-                    if error != nil {
-                        continuation.resume(returning: false)
-                        return
-                    }
-
-                    guard let callbackURL,
-                          let payload = callbackURL.query ?? callbackURL.fragment else {
-                        continuation.resume(returning: false)
-                        return
-                    }
-
-                    var kvpairs = [String: String]()
-                    for param in payload.components(separatedBy: "&") {
-                        let elts = param.components(separatedBy: "=")
-                        guard elts.count >= 2, let key = elts.first else { continue }
-                        kvpairs[key] = elts.dropFirst().joined(separator: "=")
-                    }
-
-                    guard let accessToken = kvpairs["access_token"] else {
-                        continuation.resume(returning: false)
-                        return
-                    }
-
-                    userAccount.setAuthToken(accessToken, barcode: userAccount.barcode, pin: userAccount.PIN, expirationDate: nil)
-                    Log.info(#file, "OIDC silent re-auth: token updated successfully")
-                    continuation.resume(returning: true)
-                }
-
-                session.presentationContextProvider = OIDCBorrowPresentationContext.shared
-                session.prefersEphemeralWebBrowserSession = false
-
-                // F-016: defer the session start so any prior SignInModalHostingController
-                // (or the previous SFAuthenticationViewController) has time to finish
-                // deallocating. Without this, calling session.start() while a previous
-                // auth modal is still in its dealloc cycle produces the runtime warning
-                // "Attempting to load the view of a view controller while it is
-                // deallocating" and iOS cancels the new session with
-                // ASWebAuthenticationSession error 3 ("presentation cancelled by user").
-                // The cancellation leaves the user with still-stale credentials and the
-                // borrow retry 401s again — driving a re-auth loop until the per-book
-                // circuit breaker (hasBorrowReauthBeenAttempted) fires.
-                //
-                // 150ms is empirically enough for the UIKit dealloc + RunLoop drain on
-                // current iOS releases; we keep it explicit (not Task.yield) so the
-                // timing semantics survive a reader future Swift Concurrency rev.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    session.start()
-                }
-            }
-        }
-    }
-
     // MARK: - Coordinator-Routed Retry
 
     /// swarm_66819d80 Module C: coordinator-routed reauth-then-retry.
@@ -962,15 +899,5 @@ final class BorrowOperation: @unchecked Sendable {
                 }
             }
         }
-    }
-}
-
-/// Provides a window anchor for `ASWebAuthenticationSession` in the
-/// borrow flow's OIDC silent reauth path.
-private final class OIDCBorrowPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
-    static let shared = OIDCBorrowPresentationContext()
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.mainKeyWindow ?? ASPresentationAnchor()
     }
 }

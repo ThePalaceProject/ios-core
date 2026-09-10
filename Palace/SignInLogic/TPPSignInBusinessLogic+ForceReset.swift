@@ -250,32 +250,46 @@ extension TPPSignInBusinessLogic {
             Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no drmAuthorizer (likely -noDRM build)")
             return
         }
-        guard let licensor = userAccount.licensor else {
+        let licensor = userAccount.licensor
+        guard let attempt = AdobeDeauthorization.attempt(licensor: licensor,
+                                                         userID: userAccount.userID,
+                                                         deviceID: userAccount.deviceID) else {
             Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no licensor on userAccount (patron never activated)")
             return
         }
 
-        var licensorItems = (licensor["clientToken"] as? String)?
-            .replacingOccurrences(of: "\n", with: "")
-            .components(separatedBy: "|")
-        let tokenPassword = licensorItems?.last
-        licensorItems?.removeLast()
-        let tokenUsername = licensorItems?.joined(separator: "|")
-        let adobeUserID = userAccount.userID
-        let adobeDeviceID = userAccount.deviceID
+        // A token we cannot parse must NOT skip the call here. Reset Account
+        // exists to unwedge a patron whose Adobe state has gone bad, and the
+        // LOCAL activation clear — which RMSDK performs whatever the network
+        // answers — is the whole repair. Skipping would withhold it from
+        // precisely the malformed-token case this screen is for, while freeing
+        // no slot that was ever freeable.
+        if !attempt.canReleaseServerSlot {
+            Log.error(#file, "[RESET_ACCOUNT] step 2.5 — client token is unparseable; the server-side activation will NOT be released, but the local activation clear still runs (PP-3649). Token: \(AdobeClientToken.redacted(licensor?["clientToken"] as? String))")
+        } else if AdobeLicensorRefresh.isExpired(licensor) {
+            Log.error(#file, "[RESET_ACCOUNT] step 2.5 — licensor is past its expiry; the server-side activation will NOT be released (PP-3649)")
+        }
 
         Log.info(#file, "[RESET_ACCOUNT] step 2.5 — dispatching DRM deauthorize (fire-and-forget)")
 
         drmAuthorizer.deauthorize(
-            withUsername: tokenUsername,
-            password: tokenPassword,
-            userID: adobeUserID,
-            deviceID: adobeDeviceID
+            withUsername: attempt.username,
+            password: attempt.password,
+            userID: attempt.userID,
+            deviceID: attempt.deviceID
         ) { success, error in
-            // Non-success is expected for stuck patrons (E_DEACT_USER_MISMATCH
-            // or similar) — RMSDK still clears local activation, which is what
-            // matters for the next sign-in's clean re-activation.
-            Log.info(#file, "[RESET_ACCOUNT] step 2.5 — DRM deauthorize callback (success=\(success), error=\(error?.localizedDescription ?? "nil")). Local activation cleared regardless.")
+            // RMSDK clears the LOCAL activation either way, which is what makes
+            // the next sign-in re-activate cleanly. The server-side slot is a
+            // different thing and is not cleared by failing — so for a patron
+            // who reached here BECAUSE they hit the activation ceiling, a failed
+            // deauthorize means Reset Account spends another slot rather than
+            // recovering one. Log it where that is legible.
+            switch AdobeDeauthorization.outcome(success: success, error: error) {
+            case .freed:
+                Log.info(#file, "[RESET_ACCOUNT] step 2.5 — Adobe activation released")
+            case .notFreed(let reason):
+                Log.error(#file, "[RESET_ACCOUNT] step 2.5 — Adobe activation NOT released: \(reason). Local activation cleared regardless; the server-side slot stays consumed.")
+            }
         }
     }
 

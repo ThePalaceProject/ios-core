@@ -37,19 +37,31 @@ enum BorrowAdobeActivationStep {
     ///   - setProcessing: raises/clears the book's processing spinner.
     ///   - activate: performs device activation with the grace period it is
     ///     handed. Injected rather than taking an `AdobeDRMService` so this
-    ///     step's three responsibilities — the budget it opts into, the spinner
-    ///     order, and the clear-on-throw — are all pinnable by tests. The
-    ///     concrete service reaches `AppContainer.production()` internally,
-    ///     which is not a seam a test can stand behind.
+    ///     step's responsibilities — the budget it opts into, the spinner
+    ///     order, the clear-on-throw, and the failure it surfaces — are all
+    ///     pinnable by tests. The concrete service reaches
+    ///     `AppContainer.production()` internally, which is not a seam a test
+    ///     can stand behind.
+    ///   - onFailure: surfaces the activation failure to the patron. NOT
+    ///     optional, deliberately: clearing the spinner without telling anyone
+    ///     is exactly the defect this parameter exists to prevent, and a
+    ///     defaulted `nil` would let a future call site re-introduce the
+    ///     silence without the compiler objecting.
     /// - Throws: whatever `activate` throws, after clearing the processing
-    ///   state.
+    ///   state and surfacing the failure.
     static func run(setProcessing: @escaping @MainActor (Bool) -> Void,
-                    activate: (TimeInterval) async throws -> Void) async throws {
+                    activate: (TimeInterval) async throws -> Void,
+                    onFailure: @escaping @MainActor (Error) -> Void) async throws {
         await MainActor.run { setProcessing(true) }
         do {
             try await activate(AdobeDRMService.defaultLicensorGracePeriod)
         } catch {
-            await MainActor.run { setProcessing(false) }
+            // Order matters: drop the spinner first so the alert does not
+            // land on top of a still-spinning cell, then tell the patron.
+            await MainActor.run {
+                setProcessing(false)
+                onFailure(error)
+            }
             throw error
         }
     }

@@ -838,6 +838,7 @@ private final class OIDCPresentationContextProvider: NSObject, ASWebAuthenticati
     static let shared = OIDCPresentationContextProvider()
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.mainKeyWindow ?? ASPresentationAnchor()
+        // Shared resolver — see UIApplication.webAuthPresentationAnchor.
+        UIApplication.shared.webAuthPresentationAnchor ?? ASPresentationAnchor()
     }
 }

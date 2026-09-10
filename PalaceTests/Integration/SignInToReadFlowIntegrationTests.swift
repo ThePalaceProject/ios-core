@@ -179,7 +179,7 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
       "drm": [
         {
           "drm:vendor": "test-vendor",
-          "drm:clientToken": "client-token",
+          "drm:clientToken": "NYPL|1893456000|patron-uuid-fixed|c2lnbmF0dXJl",
           "drm:scheme": "http://librarysimplified.org/terms/drm/scheme/ACS"
         }
       ],
