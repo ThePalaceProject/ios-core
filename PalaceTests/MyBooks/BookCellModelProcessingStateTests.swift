@@ -213,7 +213,7 @@ final class BookCellModelProcessingStateTests: XCTestCase {
         drainMainQueue()
 
         XCTAssertEqual(publishedValues, [false],
-                       "three identical broadcasts republished isLoading \\(publishedValues.count) times; "
+                       "three identical broadcasts republished isLoading \(publishedValues.count) times; "
                        + "the `self.isLoading` guard is what keeps this at one")
     }
 }

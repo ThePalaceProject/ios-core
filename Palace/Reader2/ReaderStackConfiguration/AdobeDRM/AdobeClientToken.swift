@@ -87,8 +87,14 @@ enum AdobeClientToken {
         guard let parts = split(clientToken) else {
             return "unparseable (\(clientToken.count) chars, no separator)"
         }
+        // The CM mints SHORTNAME|expires|patronIdentifier|signature, so the
+        // username half is 3 fields and `first` is a library short name — not
+        // patron data. A token of an UNEXPECTED shape has no such guarantee:
+        // for a single-separator token the username half is the whole leading
+        // string, and echoing it is how a redactor leaks the thing it exists to
+        // hide. Only name the library when the shape is the one we know.
         let fields = parts.username.components(separatedBy: "|")
-        let library = fields.first ?? "?"
+        let library = fields.count >= 3 ? (fields.first ?? "?") : "<unexpected \(fields.count + 1)-field token>"
         let expiryText = expiry(clientToken)
             .map(ISO8601DateFormatter().string(from:)) ?? "unreadable"
         return "\(library)|expires \(expiryText)|<redacted \(parts.password.count)-char signature>"

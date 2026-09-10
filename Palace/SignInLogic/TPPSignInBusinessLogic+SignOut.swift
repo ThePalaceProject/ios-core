@@ -137,7 +137,32 @@ extension TPPSignInBusinessLogic {
         // leaked activation slot, which outlives the session we were saving a
         // round trip on. When the token is not near expiry, or the library is
         // not token/OAuth, this is a no-op (TPPNetworkExecutor:446).
-        networker.executeRequest(request, enableTokenRefresh: true, accountId: libraryAccountID) { [weak self] result in
+        // enableTokenRefresh stays FALSE here, and the reason is not the one
+        // the earlier version of this comment gave.
+        //
+        // Turning it on does fetch a fresher licensor, which is what sign-out
+        // needs to deauthorize. But it also arms `TPPNetworkExecutor:882-899`:
+        // when the proactive refresh itself 401s — an expired card, precisely
+        // the case this was meant to help — that path calls
+        // `markCredentialsStale()` AND
+        // `presentSignInModalForCurrentAccount(...)` whenever the refreshing
+        // account is the current one, which sign-out almost always is. The
+        // executor then ignores the refresh result, so the sign-out completes
+        // underneath the sheet. The patron taps Sign Out and is handed a
+        // sign-in prompt for the library they just left.
+        //
+        // `enableTokenRefresh: true` had ZERO production call sites before this
+        // branch, so that failure branch has never run in the field. An RC is
+        // not where to find out. The stale-licensor case is still REPORTED —
+        // `deauthorizeDevice` logs an expired licensor and reports the leaked
+        // activation to Crashlytics — so the loss is a repair we never had, not
+        // a diagnosis.
+        //
+        // The borrow path is deliberately different: `freshLicensorFromProfileDocument`
+        // DOES opt in, because a patron borrowing with a dead token genuinely
+        // needs to re-authenticate and a sign-in prompt is the right answer
+        // there. Signing out is the one flow where it never is.
+        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
             switch result {
             case .success(let data, let response):
                 self?.processLogOut(data: data,

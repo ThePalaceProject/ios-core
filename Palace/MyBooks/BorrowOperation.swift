@@ -399,12 +399,18 @@ final class BorrowOperation: @unchecked Sendable {
                 // requires this path to "fail with a clear error message".
                 onFailure: { [weak self] error in
                     // The activation path has already mapped Adobe's code onto
-                    // a PalaceError (AdobeDRMService.drmError(for:)); re-deriving
-                    // it here would read `error as NSError` on a value whose
-                    // domain is Palace.PalaceError and silently fall back to
-                    // .authenticationFailed — which is exactly the bug that told
-                    // patrons to sign in again when their activations had run out.
-                    let palaceError = (error as? PalaceError) ?? .drm(.authenticationFailed)
+                    // a PalaceError (PalaceError.drmError(for:)); re-deriving it
+                    // here would read `error as NSError` on a value whose domain
+                    // is Palace.PalaceError and fall back silently — which is
+                    // exactly the bug that told patrons to sign in again when
+                    // their activations had run out.
+                    //
+                    // The fallback is `.adobeError`, matching the consolidated
+                    // table. It is currently unreachable (every throw site on
+                    // this path is already a PalaceError), and that is the point:
+                    // an unreachable branch that still says "sign out and sign in
+                    // again" is one refactor away from saying it to a patron.
+                    let palaceError = (error as? PalaceError) ?? .drm(.adobeError)
                     self?.showBorrowError(palaceError, originalError: error, for: book)
                 }
             )

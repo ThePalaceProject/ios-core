@@ -137,8 +137,7 @@ extension TPPSignInBusinessLogic {
 
         Log.info(#file, """
       ***DRM Auth/Activation Attempt***
-      Token username: \(username)
-      Token password: <redacted \((password ?? "").count)-char signature>
+      Token: \(AdobeClientToken.redacted([username, password ?? ""].joined(separator: "|")))
       VendorID: \(vendor ?? "N/A")
       """)
 
