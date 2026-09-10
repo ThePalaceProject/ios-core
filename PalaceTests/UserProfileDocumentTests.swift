@@ -318,4 +318,84 @@ class UserProfileDocumentTests: XCTestCase {
             XCTAssertEqual(customErrorCode, TPPErrorCode.parseProfileValueNotFound.rawValue)
         }
     }
+
+    // MARK: - Redaction (PP-3649)
+    //
+    // `toJson()` used to be written into a `Log.error`, and `Log.error` is
+    // appended to `Documents/Logs/palace_error.log` — a file the patron can
+    // export from Settings and routinely attaches to support tickets. The
+    // encoded document carries `simplified:authorization_identifier`, which IS
+    // the library barcode, and `drm:clientToken`, which Adobe accepts as a
+    // credential for its 60-minute window. The branch that logged it fires
+    // whenever `drm:vendor` is absent, including with a perfectly good token,
+    // so it was not a rare path.
+
+    func test_loggableSummary_neverContainsTheBarcode() throws {
+        let doc = try UserProfileDocument.fromData(Data(validJson.utf8))
+
+        let summary = doc.loggableSummary
+
+        XCTAssertFalse(summary.contains("23333999999915"),
+                       "the authorization identifier is the patron's barcode and reached a patron-exportable log: \(summary)")
+        XCTAssertTrue(summary.contains("present (14 chars)"),
+                      "presence and length must survive — 'absent' and 'present but wrong' are different defects: \(summary)")
+    }
+
+    func test_loggableSummary_neverContainsTheClientTokenSignature() throws {
+        let doc = try UserProfileDocument.fromData(Data(validJson.utf8))
+
+        let summary = doc.loggableSummary
+
+        XCTAssertFalse(summary.contains("c2lnbmF0dXJl"),
+                       "the client token signature is a live credential and reached the log: \(summary)")
+        XCTAssertTrue(summary.contains("NYPL"),
+                      "which library minted the token is non-secret and is the field investigations use: \(summary)")
+    }
+
+    func test_loggableSummary_reportsTheFieldsDiagnosisActuallyUses() throws {
+        let doc = try UserProfileDocument.fromData(Data(validJson.utf8))
+
+        let summary = doc.loggableSummary
+
+        XCTAssertTrue(summary.contains("vendor: NYPL"), summary)
+        XCTAssertTrue(summary.contains("scheme: http://librarysimplified.org/terms/drm/scheme/ACS"), summary)
+    }
+
+    func test_loggableSummary_distinguishesAbsentDRMFromEmptyDRM() throws {
+        // A document with no `drm` key at all and one with `"drm": []` are
+        // different server answers with different causes, and the log line this
+        // feeds exists precisely to tell them apart.
+        let noDRM = """
+        {"simplified:authorization_identifier": "abc"}
+        """
+        let emptyDRM = """
+        {"simplified:authorization_identifier": "abc", "drm": []}
+        """
+
+        let a = try UserProfileDocument.fromData(Data(noDRM.utf8)).loggableSummary
+        let b = try UserProfileDocument.fromData(Data(emptyDRM.utf8)).loggableSummary
+
+        XCTAssertTrue(a.contains("drm: [absent]"), a)
+        XCTAssertTrue(b.contains("drm: [empty]"), b)
+    }
+
+    func test_loggableSummary_absentIdentifierIsNamedRatherThanBlank() throws {
+        let doc = try UserProfileDocument.fromData(Data("{}".utf8))
+
+        XCTAssertTrue(doc.loggableSummary.contains("authorizationIdentifier: absent"),
+                      doc.loggableSummary)
+    }
+
+    /// The negative control. Without it these tests would pass against a
+    /// `loggableSummary` that returned a constant, and against one that had
+    /// quietly gone back to embedding `toJson()`.
+    func test_toJson_stillContainsTheSecrets_soTheRedactionIsMeasurable() throws {
+        let doc = try UserProfileDocument.fromData(Data(validJson.utf8))
+
+        let json = doc.toJson()
+
+        XCTAssertTrue(json.contains("23333999999915"),
+                      "if toJson stopped carrying the barcode, the redaction tests above prove nothing")
+        XCTAssertTrue(json.contains("c2lnbmF0dXJl"))
+    }
 }

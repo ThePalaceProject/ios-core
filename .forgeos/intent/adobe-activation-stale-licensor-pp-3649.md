@@ -89,28 +89,53 @@ activation and a harmless no-op produced identical output.
   before activation and prefers a usable fresh licensor, falling back to the
   stored one when the fetch yields nothing usable, so an unreachable refresh
   cannot turn a working borrow into a broken one.
-- Adobe's error is mapped to `DRMError` **at the throw site** in
-  `AdobeCertificate`, where the `NYPLADEPTErrorDomain` code still exists. The
+- Adobe's error is mapped to `DRMError` through the SINGLE table on
+  `PalaceError.drmError(for:)`, called at the throw site in `AdobeCertificate`
+  where the `NYPLADEPTErrorDomain` code still exists. Round 1 of this branch
+  added a SECOND table on `AdobeDRMService` that disagreed with the existing
+  one on `userNotActivated`/`invalidUserActivation` and on the unknown-code
+  fallback; the copy is gone and the new arms live on the original. The
   previous mapping sat downstream in `BorrowOperation`, after the error had been
   flattened to a hardcoded `PalaceError.drm(.authenticationFailed)`, so it took
   its fallback branch on every input and told a patron at the activation ceiling
   to sign out and back in — which consumes another activation.
-- `AdobeDeauthorization.attempt(...)` refuses a client token that cannot be
-  split, and `AdobeDeauthorization.outcome(...)` has **no benign case**: a
+- `AdobeDeauthorization.attempt(...)` returns nil only when there is no
+  licensor at all, and reports `canReleaseServerSlot == false` for a client
+  token that cannot be split. Round 1 refused outright on an unparseable token,
+  which ALSO skipped RMSDK's clear of the LOCAL activation — the repair Reset
+  Account exists to perform, withheld from exactly the malformed-token patron
+  who needs it. `AdobeDeauthorization.outcome(...)` has **no benign case**: a
   deauthorization that did not succeed leaves the slot consumed regardless of
   cause. Sign-out reports the failure at error level plus Crashlytics.
+- The BORROW-side profile fetch enables token refresh too
+  (`Account.getProfileDocument(enableTokenRefresh:)`, opted into only by
+  `freshLicensorFromProfileDocument`). `canAuthenticateProfileRequest`
+  deliberately lets an expired-but-repairable token through on the reasoning a
+  refresh will fix it; with the flag hardcoded false nothing did the fixing
+  before the request went out.
+- That fetch is bounded (`AdobeDRMService.boundedLicensor`, one-shot latch, 20s).
+  It sits on the borrow path and OUTSIDE the activation deadline, so an
+  unresumed continuation there would wedge the borrow — the shape that already
+  cost this branch a ten-hour hang.
 - The sign-out profile request enables token refresh. Its response body carries
   the fresh licensor and is the only chance to obtain one before deauthorizing;
   refusing to refresh an about-to-expire bearer token traded one round trip for
   a permanently leaked activation slot.
 - Three copies of an inline client-token split (sign-in, sign-out, Reset Account)
-  share `AdobeDRMService.splitClientToken`. The inline version could not fail —
+  share `AdobeClientToken.split`. The inline version could not fail —
   a token with no separator yielded an empty username and the whole token as the
-  password, and that was sent to Adobe.
+  password, and that was sent to Adobe. The owner is `AdobeClientToken`, a new
+  UNGATED type: round 1 put the split on `AdobeDRMService`, which lives inside
+  `#if FEATURE_DRM_CONNECTOR`, while its two ungated callers are compiled into
+  `Palace-noDRM` — so that target did not build, and PR CI (DRM scheme only)
+  would not have said so.
 - The Adobe client token is redacted in the device log
   (`Documents/Logs/palace_error.log`, patron-exportable and routinely attached
   to support tickets). Library, expiry and signature length survive; the
-  signature does not.
+  signature and the patron identifier do not. The sign-out path's
+  `profileDoc.toJson()` — which encoded the patron's BARCODE and the whole
+  client token into a `Log.error`, and fires whenever `drm:vendor` is nil —
+  is replaced by `UserProfileDocument.loggableSummary`.
 - `BookCellModel` observes `TPPBookProcessingDidChange` so the list-row spinner
   clears when the borrow ends, including when it ends in an error alert.
 
@@ -140,6 +165,10 @@ activation and a harmless no-op produced identical output.
 - Palace/SignInLogic/TPPSignInBusinessLogic+DRM.swift
 - Palace/SignInLogic/TPPSignInBusinessLogic+ForceReset.swift
 - Palace/SignInLogic/TPPSignInBusinessLogic+SignOut.swift
+- Palace/Reader2/ReaderStackConfiguration/AdobeDRM/AdobeClientToken.swift
+- Palace/Accounts/Library/Account+profileDocument.swift
+- Palace/Accounts/User/UserProfileDocument.swift
+- Palace/ErrorHandling/PalaceError.swift
 - PalaceTests/DRM/AdobeClientTokenSplitTests.swift
 - PalaceTests/DRM/AdobeDRMErrorMappingTests.swift
 - PalaceTests/DRM/AdobeDeauthorizationTests.swift
@@ -147,10 +176,45 @@ activation and a harmless no-op produced identical output.
 - PalaceTests/DRM/AdobeActivationDedupTests.swift
 - PalaceTests/DRM/AdobeActivationLicensorGraceTests.swift
 - PalaceTests/MyBooks/BorrowAdobeActivationStepTests.swift
+- PalaceTests/DRM/AdobeActivationRefreshLicensorTests.swift
+- PalaceTests/MyBooks/BookCellModelProcessingStateTests.swift
+- PalaceTests/Mocks/TPPDRMAuthorizingMockTimeoutTests.swift
+- PalaceTests/Mocks/TPPDRMAuthorizingMock.swift
+- PalaceTests/Accounts/AccountProfileDocumentTests.swift
+- PalaceTests/UserProfileDocumentTests.swift
 - scripts/dev/reset-adobe-activations.sh
 - .claude/skills/reset-adobe-activations/SKILL.md
 
 ## Verification
+
+### Round 2 — the SoD review fixes
+
+`Palace-noDRM` did not compile before this round and does now, verified by
+building the scheme rather than by reading: 4 errors / `** BUILD FAILED **`
+before, 0 errors / `** BUILD SUCCEEDED **` after.
+
+Mutation, per changed file (mechanically derived, `palace_mutate.py`):
+
+| File | Result |
+|---|---|
+| `AdobeLicensorRefresh.swift` | 7/7 killed (100%) |
+| `AdobeClientToken.swift` | 4/4 killed (100%) |
+| `AdobeDeauthorization.swift` | 1/1 killed (100%) |
+| `PalaceError.swift` (diff-scoped) | 1/1 killed (100%) |
+| `BookCellModel.swift` (diff-scoped) | 1/1 killed (100%) |
+| `AdobeCertificate.swift` (diff-scoped) | 1 survivor, see below |
+
+Two survivors were fixed by changing the CODE, not by adding a test: a
+`stored != nil` guard in `resolve` that gated only a log line, and a `Bool`
+return on the licensor latch that no caller outside consumed — both were
+distinctions no test could justify, and both are gone (the latch now returns
+`timedOut` to its caller, where it is asserted). One survivor is
+DELIBERATELY left: `separatorCount` inside a `TPPErrorLogger.logError` metadata
+dictionary in `AdobeCertificate`. It feeds a Crashlytics non-fatal and nothing
+else; `TPPErrorLogger` is a static with no seam at that call site, so killing it
+would take a coverage-only test, which this project bans.
+
+### Round 1
 
 `AdobeDeauthorization.swift` has **no mutation points** — `palace_mutate.py`
 reports none, because the file is guard/switch shaped with no comparison or
@@ -160,9 +224,13 @@ reintroduced and required to produce a NAMED failing test.
 
 | Defect reintroduced | Test that caught it |
 |---|---|
-| split that cannot fail | `test_attempt_whenClientTokenHasNoSeparator_isRefusedRatherThanSentAsGarbage` |
+| split that cannot fail | `test_split_noSeparator_returnsNilRatherThanAnEmptyUsername` |
 | every failure treated as benign | `test_outcome_failure_isALeakedActivation_notAnExpectedNoOp` (+2) |
 | token logged in plaintext | `test_redacted_neverContainsTheSignature` |
+
+(The first two test names moved in round 2 — the split and the redaction now
+live on `AdobeClientToken`, so their tests live in
+`AdobeClientTokenSplitTests`. The reintroduction result is unchanged.)
 
 12 tests → 5 failures with the defects in, 12 → 0 with them out.
 

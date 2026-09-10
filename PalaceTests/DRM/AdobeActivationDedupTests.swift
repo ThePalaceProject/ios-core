@@ -171,7 +171,18 @@ final class AdobeActivationDedupTests: XCTestCase {
 
         XCTAssertEqual(drm.authorizeCallCount, 1,
                        "a failed activation must not be retried by the coalesced caller — that reintroduces the concurrent RMSDK entry")
-        guard case .drm(.authenticationFailed)? = secondError as? PalaceError else {
+        // `.adobeError`, not `.authenticationFailed`. The mock fails with an
+        // NSError in domain "AdobeDRM" — the same shape production synthesises
+        // when RMSDK reports failure with no error object — and the single Adobe
+        // mapping table (`PalaceError.drmError`) answers `.adobeError` for
+        // anything outside the ADEPT domain. It used to answer
+        // `.authenticationFailed`, whose recovery hint is "Please sign out and
+        // sign in again" — the one piece of advice that spends ANOTHER
+        // activation, which is the resource PP-3649's patrons have run out of.
+        // What this test is FOR is that the coalesced caller sees the failure at
+        // all rather than a silent success; which DRM case it carries is pinned
+        // by `AdobeDRMErrorMappingTests`.
+        guard case .drm(.adobeError)? = secondError as? PalaceError else {
             return XCTFail("the coalesced borrow must surface the activation failure, got \(String(describing: secondError))")
         }
     }

@@ -465,64 +465,6 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// promptly once credentials land.
     static let licensorPollInterval: TimeInterval = 0.1
 
-    /// Reads `account.licensor`, and if it is absent, re-reads it until it
-    /// appears or `budget` is exhausted.
-    ///
-    /// Polling rather than observing deliberately: `TPPUserAccount.setLicensor`
-    /// writes without posting `notifyAccountDidChange()` (unlike its immediate
-    /// neighbour `setPatron`), so there is no change signal to await. Polling a
-    /// value that is only ever written once, under a bounded budget, is the
-    /// smaller change; adding a notification to that setter would alter what
-    /// every existing account observer sees.
-    /// Splits an Adobe client token into its `username|password` halves.
-    ///
-    /// Returns `nil` when the token carries no separator, or when either half
-    /// is empty. The old inline split could not express that: for a token with
-    /// no "|" it set password to the whole string and username to "", then
-    /// handed both to Adobe, which answers `authenticationFailed` — the same
-    /// answer it gives for a genuinely rejected credential. Making the
-    /// malformed case representable is the point; see PP-3649.
-    ///
-    /// The username half is rejoined with "|" because a well-formed token may
-    /// legitimately contain separators before the final one.
-    /// Maps an ADEPT error onto the `DRMError` the patron-facing alert reads.
-    ///
-    /// PP-3649. The activation failure path used to throw a hardcoded
-    /// `.authenticationFailed` regardless of what Adobe actually said, so every
-    /// failure told the patron "Please sign out and sign in again". For
-    /// `E_ACT_TOO_MANY_ACTIVATIONS` that advice is actively harmful — signing
-    /// back in consumes ANOTHER activation, which is the resource that has run
-    /// out. The correct guidance ("Please deauthorize a device and try again")
-    /// already existed; nothing routed to it.
-    ///
-    /// Mapping here rather than at the call site is deliberate: this is the
-    /// last point where the original `NSError` still exists. Downstream it has
-    /// been flattened into a `PalaceError`, and the Adobe code is gone.
-    static func drmError(for error: Error) -> DRMError {
-        let ns = error as NSError
-        guard ns.domain == NYPLADEPTErrorDomain,
-              let adept = NYPLADEPTError(rawValue: ns.code) else {
-            return .authenticationFailed
-        }
-        switch adept {
-        case .tooManyActivations:                      return .tooManyActivations
-        case .authenticationFailed:                    return .authenticationFailed
-        case .userNotActivated, .invalidUserActivation: return .noActivation
-        default:                                       return .adobeError
-        }
-    }
-
-    static func splitClientToken(_ clientToken: String) -> (username: String, password: String)? {
-        var items = clientToken
-            .replacingOccurrences(of: "\n", with: "")
-            .components(separatedBy: "|")
-        guard items.count >= 2, let password = items.last, !password.isEmpty else { return nil }
-        items.removeLast()
-        let username = items.joined(separator: "|")
-        guard !username.isEmpty else { return nil }
-        return (username, password)
-    }
-
     /// Fetches the patron profile document and returns the Adobe licensor it
     /// carries — a token minted seconds ago rather than at sign-in.
     ///
@@ -534,21 +476,102 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         guard let account = AppContainer.production().accountsManager.currentAccount else {
             return nil
         }
-        let box: LicensorBox = await withCheckedContinuation { (continuation: CheckedContinuation<LicensorBox, Never>) in
-            let once = OneShotValueContinuation(continuation)
-            account.getProfileDocument { document in
+        return await boundedLicensor(timeout: profileDocumentTimeout) { done in
+            // `enableTokenRefresh: true`. This fetch is the whole point of the
+            // PP-3649 refresh, and the case it exists for — a session old
+            // enough that the stored licensor died — is also the case where the
+            // bearer token has expired. Sending it as-is earns a 401 and a
+            // fallback to the stale licensor, i.e. no refresh at all.
+            account.getProfileDocument(enableTokenRefresh: true) { document in
                 guard let drm = document?.drm?.first,
                       let vendor = drm.vendor, !vendor.isEmpty,
                       let clientToken = drm.clientToken, !clientToken.isEmpty else {
-                    once.finish(nil)
+                    done(nil)
                     return
                 }
-                once.finish(drm.licensor)
+                done(drm.licensor)
             }
-        }
-        return box.licensor
+        }.licensor
     }
 
+    /// How long the borrow path will wait for the profile-document fetch before
+    /// giving up on a fresh licensor and activating with the stored one.
+    ///
+    /// Chosen against the executor's own budget rather than picked: a profile
+    /// request that is going to answer does so well inside this, and one that
+    /// is not going to answer must not be the thing that decides how long a
+    /// borrow takes.
+    static let profileDocumentTimeout: TimeInterval = 20
+
+    /// Awaits a callback-style licensor producer under a wall-clock deadline.
+    ///
+    /// Bounded because this sits on the BORROW path and OUTSIDE the activation
+    /// deadline below — `resolve` runs before `activationCoordinator.activate`,
+    /// so nothing downstream would ever have rescued it. `getProfileDocument`
+    /// hands its completion to `URLSession` via the executor, and this branch
+    /// has already shipped one ten-hour hang from an await with no bound; an
+    /// unresumed continuation here would wedge the borrow the same way, with
+    /// the added cruelty that the fallback it is guarding (activate with the
+    /// stored licensor) works perfectly well.
+    ///
+    /// A one-shot latch, NOT a task group. The note on `ensureDeviceActivated`
+    /// below records why the group cannot work: it awaits every child on scope
+    /// exit and `cancelAll()` is only cooperative, so a continuation nobody
+    /// resumes keeps the group — and the caller — suspended forever. Whichever
+    /// arrives first here, the producer's completion or the deadline, claims
+    /// the continuation and the caller genuinely unwinds.
+    /// - Returns: the licensor the producer supplied, and whether the DEADLINE
+    ///   is what released the await.
+    ///
+    ///   `timedOut` is returned rather than logged from inside the deadline task
+    ///   because "who won the latch" is the only interesting thing this function
+    ///   decides, and a decision that leaves the function only as a log line is
+    ///   a decision no test can assert. An earlier draft had the latch answer
+    ///   that question with a `Bool` return nobody outside consumed; mutation
+    ///   flipped it both ways with the suite green. Returning it moves the
+    ///   report to the caller, where it is observable.
+    static func boundedLicensor(
+        timeout: TimeInterval,
+        produce: @escaping (@escaping ([String: Any]?) -> Void) -> Void
+    ) async -> (licensor: [String: Any]?, timedOut: Bool) {
+        let box: LicensorBox = await withCheckedContinuation { (continuation: CheckedContinuation<LicensorBox, Never>) in
+            let once = OneShotValueContinuation(continuation)
+
+            let deadline = Task {
+                // Return rather than fall through on cancellation: `try?` would
+                // swallow the cancellation error and fire the timeout anyway,
+                // racing — and often beating — a fetch that actually answered.
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                } catch {
+                    return
+                }
+                // At-most-once: a fetch that lands in the microseconds after the
+                // sleep wakes wins the latch, and this call is then a no-op — so
+                // a successful refresh can never be reported as a timeout.
+                once.finish(nil, timedOut: true)
+            }
+
+            produce { licensor in
+                deadline.cancel()
+                once.finish(licensor, timedOut: false)
+            }
+        }
+        if box.timedOut {
+            Log.error(#file, "Adobe licensor refresh timed out after \(timeout)s — activating with the stored licensor (PP-3649)")
+        }
+        return (box.licensor, box.timedOut)
+    }
+
+    /// Reads `account.licensor`, and if it is absent, re-reads it until it
+    /// appears or `budget` is exhausted.
+    ///
+    /// Polling rather than observing deliberately: `TPPUserAccount.setLicensor`
+    /// writes without posting `notifyAccountDidChange()` (unlike its immediate
+    /// neighbour `setPatron`), so there is no change signal to await. Polling a
+    /// value that is only ever written once, under a bounded budget, is the
+    /// smaller change; adding a notification to that setter would alter what
+    /// every existing account observer sees.
     static func awaitLicensor(_ account: AdobeActivationAccount,
                               within budget: TimeInterval) async -> [String: Any]? {
         if let licensor = account.licensor { return licensor }
@@ -650,7 +673,7 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
             throw PalaceError.drm(.noActivation)
         }
 
-        guard let token = Self.splitClientToken(clientToken) else {
+        guard let token = AdobeClientToken.split(clientToken) else {
             // Previously this could not fail: a token with no "|" produced an
             // EMPTY username, which Adobe rejects as `authenticationFailed` —
             // indistinguishable from a genuine credential rejection. That is
@@ -777,7 +800,7 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                             summary: "On-demand Adobe device activation failed (PP-3649)",
                             metadata: failureMetadata
                         )
-                        once.finish(throwing: PalaceError.drm(Self.drmError(for: activationError)))
+                        once.finish(throwing: PalaceError.drm(PalaceError.drmError(for: activationError)))
                     }
                 }
             }
@@ -785,17 +808,29 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     }
 }
 
-/// Resumes a non-throwing continuation exactly once.
+/// Carries a non-Sendable `[String: Any]` licensor across a concurrency hop.
 ///
-/// `getProfileDocument` takes a completion handler, and a completion handler
-/// invoked twice would resume a `CheckedContinuation` twice — a hard runtime
-/// trap, not a recoverable error. Sibling of `OneShotContinuation` below,
-/// which does the same job for the throwing activation path.
+/// Read-only after construction, which is what makes the `@unchecked` sound.
+/// Same job as `BorrowErrorDictBox`, for the same reason.
 private final class LicensorBox: @unchecked Sendable {
     let licensor: [String: Any]?
-    init(_ licensor: [String: Any]?) { self.licensor = licensor }
+    /// Whether the DEADLINE produced this box rather than the fetch. Carried
+    /// here so `boundedLicensor` can report it to its caller instead of the
+    /// deadline task logging in place.
+    let timedOut: Bool
+    init(_ licensor: [String: Any]?, timedOut: Bool = false) {
+        self.licensor = licensor
+        self.timedOut = timedOut
+    }
 }
 
+/// Resumes a non-throwing continuation exactly once.
+///
+/// Two producers race for it: `getProfileDocument`'s completion handler and the
+/// refresh deadline. A completion handler invoked twice, or a deadline that
+/// fires after the fetch landed, would resume a `CheckedContinuation` twice — a
+/// hard runtime trap, not a recoverable error. Sibling of `OneShotContinuation`
+/// below, which does the same job for the throwing activation path.
 private final class OneShotValueContinuation: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<LicensorBox, Never>?
@@ -804,12 +839,15 @@ private final class OneShotValueContinuation: @unchecked Sendable {
         self.continuation = continuation
     }
 
-    func finish(_ value: [String: Any]?) {
+    /// At-most-once. The loser's call is a silent no-op, which is what stops a
+    /// fetch that lands microseconds after the sleep wakes from being reported
+    /// as a timeout — false telemetry being worse than none.
+    func finish(_ value: [String: Any]?, timedOut: Bool) {
         let c: CheckedContinuation<LicensorBox, Never>? = lock.withLock {
             defer { continuation = nil }
             return continuation
         }
-        c?.resume(returning: LicensorBox(value))
+        c?.resume(returning: LicensorBox(value, timedOut: timedOut))
     }
 }
 

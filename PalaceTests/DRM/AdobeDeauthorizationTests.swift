@@ -31,20 +31,53 @@ final class AdobeDeauthorizationTests: XCTestCase {
 
         XCTAssertEqual(attempt?.username, "PALACE|123|patron-1")
         XCTAssertEqual(attempt?.password, "thesignature")
+        XCTAssertEqual(attempt?.canReleaseServerSlot, true,
+                       "a token that splits can authenticate, so the slot is releasable")
     }
 
-    func test_attempt_whenClientTokenHasNoSeparator_isRefusedRatherThanSentAsGarbage() {
-        // The previous inline split produced (username: "", password: whole-token)
-        // for this input and handed it to Adobe, which cannot succeed. Refusing
-        // makes the impossibility visible instead of spending a round trip.
+    func test_attempt_whenClientTokenHasNoSeparator_stillCallsButCannotFreeTheSlot() {
+        // THE inversion this test exists to record. The first version of this
+        // guard returned nil here, on the reasoning that a token which cannot
+        // be split cannot authenticate — true, and not the whole story.
+        // `deauthorize` has TWO effects: the network release, which this input
+        // genuinely cannot achieve, and RMSDK's clear of the LOCAL activation
+        // files, which it achieves regardless. That local clear is what lets the
+        // next sign-in re-activate, and it is the entire point of Reset Account.
+        // Returning nil withheld it from the patron whose token had gone bad —
+        // exactly the patron the screen exists for.
         let attempt = AdobeDeauthorization.attempt(
             licensor: ["vendor": "V", "clientToken": "no-separators-at-all"],
             userID: "user", deviceID: "device")
 
-        XCTAssertNil(attempt)
+        XCTAssertNotNil(attempt, "the local activation clear must still be attempted")
+        XCTAssertEqual(attempt?.canReleaseServerSlot, false,
+                       "but the caller must be able to say the slot is lost")
+    }
+
+    func test_attempt_unparseableToken_sendsEmptyCredentials_notTheRawToken() {
+        // `develop` sent (username: "", password: <whole token>) here. Passing
+        // the raw token as a password is not more likely to work and puts a
+        // credential-shaped string into whatever Adobe logs.
+        let attempt = AdobeDeauthorization.attempt(
+            licensor: ["vendor": "V", "clientToken": "no-separators-at-all"],
+            userID: "user", deviceID: "device")
+
+        XCTAssertEqual(attempt?.username, "")
+        XCTAssertEqual(attempt?.password, "")
+    }
+
+    func test_attempt_licensorWithNoClientTokenAtAll_stillClearsLocally() {
+        let attempt = AdobeDeauthorization.attempt(
+            licensor: ["vendor": "V"], userID: "user", deviceID: "device")
+
+        XCTAssertNotNil(attempt)
+        XCTAssertEqual(attempt?.canReleaseServerSlot, false)
     }
 
     func test_attempt_withoutLicensor_cannotBeMade() {
+        // The one genuine skip: no licensor means no Adobe state was ever
+        // written for this library, so there is nothing to clear and nothing to
+        // release. This is `develop`'s bar, restored exactly.
         XCTAssertNil(AdobeDeauthorization.attempt(licensor: nil, userID: "u", deviceID: "d"))
     }
 
@@ -69,11 +102,16 @@ final class AdobeDeauthorizationTests: XCTestCase {
         XCTAssertNil(noUser?.userID)
     }
 
-    func test_attempt_stillRefusesTheOneThingThatCannotWork() {
-        // The guard that survives: a token that cannot be split cannot
-        // authenticate, whatever Adobe does with the rest.
-        XCTAssertNil(AdobeDeauthorization.attempt(licensor: ["vendor": "V", "clientToken": "nosep"],
-                                                  userID: "u", deviceID: "d"))
+    func test_attempt_expiredButParseableToken_isStillReleasable() {
+        // Expiry and parseability are different questions, and only the second
+        // is knowable with certainty from here. An expired token will very
+        // likely be rejected — the caller logs that separately — but the app
+        // does not get to decide that on Adobe's behalf.
+        let attempt = AdobeDeauthorization.attempt(
+            licensor: ["vendor": "V", "clientToken": expiredToken],
+            userID: "u", deviceID: "d")
+
+        XCTAssertEqual(attempt?.canReleaseServerSlot, true)
     }
 
     // MARK: - What we conclude afterwards
@@ -116,6 +154,20 @@ final class AdobeDeauthorizationTests: XCTestCase {
         }
     }
 
+    // MARK: - The literal that mirrors an ADEPT header
+
+    /// `AdobeDeauthorization` compiles into `Palace-noDRM`, where the ADEPT
+    /// headers do not exist, so it spells the userInfo key out rather than
+    /// importing `NYPLADEPTErrorOriginalCodeKey`. That is a duplication, and a
+    /// duplication nobody compares is a drift waiting to happen: if the header
+    /// ever renames the key, `outcome` would silently stop naming the Adobe code
+    /// and every leak would go back to being anonymous. This is the comparison.
+    func test_adobeOriginalCodeKey_matchesTheADEPTHeaderConstant() {
+        XCTAssertEqual(AdobeDeauthorization.adobeOriginalCodeKey,
+                       NYPLADEPTErrorOriginalCodeKey,
+                       "the ungated literal has drifted from the ADEPT header it mirrors")
+    }
+
     // MARK: - The condition that made the leak predictable
 
     func test_expiredLicensor_isRecognisedBeforeTheAttemptIsSpent() {
@@ -124,35 +176,5 @@ final class AdobeDeauthorizationTests: XCTestCase {
         XCTAssertTrue(AdobeLicensorRefresh.isExpired(
             ["vendor": "V", "clientToken": expiredToken]))
         XCTAssertFalse(AdobeLicensorRefresh.isExpired(liveLicensor()))
-    }
-
-    // MARK: - Redaction (these tokens are live credentials for 60 minutes)
-
-    func test_redacted_neverContainsTheSignature() {
-        // `Documents/Logs/palace_error.log` is exportable by the patron and is
-        // routinely attached to support tickets. This is the assertion that
-        // matters: the secret half must not survive.
-        let signature = "s3cr3tSignatureValue"
-        let output = AdobeDeauthorization.redacted("PALACE|1893456000|patron-1|\(signature)")
-
-        XCTAssertFalse(output.contains(signature),
-                       "the signature reached the log: \(output)")
-    }
-
-    func test_redacted_keepsWhatDiagnosisActuallyNeeds() {
-        // Which library minted it and when it dies are the two questions asked
-        // of this value in every investigation so far; both are non-secret.
-        let output = AdobeDeauthorization.redacted("PALACE|1893456000|patron-1|sig")
-
-        XCTAssertTrue(output.contains("PALACE"), output)
-        XCTAssertTrue(output.contains("2030-01-01"), "expiry should be readable: \(output)")
-    }
-
-    func test_redacted_distinguishesAbsentFromMalformed() {
-        // "none" and "unparseable" are different defects with different fixes,
-        // and collapsing them is how a malformed token reads as no token.
-        XCTAssertEqual(AdobeDeauthorization.redacted(nil), "none")
-        XCTAssertEqual(AdobeDeauthorization.redacted(""), "none")
-        XCTAssertTrue(AdobeDeauthorization.redacted("garbage").contains("unparseable"))
     }
 }

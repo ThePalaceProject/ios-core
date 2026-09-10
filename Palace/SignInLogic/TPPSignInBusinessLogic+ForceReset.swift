@@ -254,11 +254,19 @@ extension TPPSignInBusinessLogic {
         guard let attempt = AdobeDeauthorization.attempt(licensor: licensor,
                                                          userID: userAccount.userID,
                                                          deviceID: userAccount.deviceID) else {
-            Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no usable licensor to deauthorize with")
+            Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no licensor on userAccount (patron never activated)")
             return
         }
 
-        if AdobeLicensorRefresh.isExpired(licensor) {
+        // A token we cannot parse must NOT skip the call here. Reset Account
+        // exists to unwedge a patron whose Adobe state has gone bad, and the
+        // LOCAL activation clear — which RMSDK performs whatever the network
+        // answers — is the whole repair. Skipping would withhold it from
+        // precisely the malformed-token case this screen is for, while freeing
+        // no slot that was ever freeable.
+        if !attempt.canReleaseServerSlot {
+            Log.error(#file, "[RESET_ACCOUNT] step 2.5 — client token is unparseable; the server-side activation will NOT be released, but the local activation clear still runs (PP-3649). Token: \(AdobeClientToken.redacted(licensor?["clientToken"] as? String))")
+        } else if AdobeLicensorRefresh.isExpired(licensor) {
             Log.error(#file, "[RESET_ACCOUNT] step 2.5 — licensor is past its expiry; the server-side activation will NOT be released (PP-3649)")
         }
 

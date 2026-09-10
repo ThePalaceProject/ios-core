@@ -209,9 +209,16 @@ extension TPPSignInBusinessLogic {
             // Set the fresh Adobe token info into the user account so that the
             // following `deauthorizeDevice` call can use it.
             self.userAccount.setLicensor(drm.licensor)
-            Log.info(#file, "Licensor refreshed at sign-out: \(AdobeDeauthorization.redacted(clientToken)) for adobe user ID \(self.userAccount.userID ?? "N/A")")
+            Log.info(#file, "Licensor refreshed at sign-out: \(AdobeClientToken.redacted(clientToken)) for adobe user ID \(self.userAccount.userID ?? "N/A")")
         } else {
-            Log.error(#file, "Licensor token invalid: \(profileDoc.toJson())")
+            // NOT `toJson()`. `Log.error` is persisted to
+            // `Documents/Logs/palace_error.log`, which the patron can export and
+            // routinely attaches to support tickets, and the encoded document
+            // carries `simplified:authorization_identifier` (the BARCODE) and
+            // `drm:clientToken` (a live credential) in full. This branch fires
+            // whenever `drm.vendor` is nil — including with a perfectly good
+            // client token — so it is not a rare path.
+            Log.error(#file, "Licensor token invalid: \(profileDoc.loggableSummary)")
         }
 
         self.deauthorizeDevice()
@@ -433,9 +440,9 @@ extension TPPSignInBusinessLogic {
         let licensor = userAccount.licensor
 
         // Signing out is the only thing that returns an Adobe activation slot,
-        // so every way of not doing it is worth naming. `attempt` is nil when
-        // the call could not have succeeded — no licensor, an unparseable
-        // client token, or a missing half of the (user, device) pair.
+        // so every way of not doing it is worth naming. `attempt` is nil only
+        // when there is no licensor at all — nothing to authenticate with and
+        // nothing for RMSDK to clear.
         guard let attempt = AdobeDeauthorization.attempt(licensor: licensor,
                                                          userID: userAccount.userID,
                                                          deviceID: userAccount.deviceID) else {
@@ -443,6 +450,17 @@ extension TPPSignInBusinessLogic {
             TPPErrorLogger.logInvalidLicensor(withAccountID: libraryAccountID)
             completeLogOutProcess()
             return
+        }
+
+        // A licensor whose client token will not split cannot authenticate, so
+        // the server-side slot is already lost. The call still goes out: RMSDK
+        // clears the LOCAL activation whatever the network answers, and that
+        // clear is what lets the next sign-in re-activate. Refusing to call it
+        // would withhold the repair from the patron who most needs it while
+        // freeing nothing extra.
+        if !attempt.canReleaseServerSlot {
+            Log.error(#file, "Adobe client token is unparseable at sign-out — the activation slot will NOT be freed; deauthorizing anyway for the local clear (PP-3649). Token: \(AdobeClientToken.redacted(licensor?["clientToken"] as? String))")
+            TPPErrorLogger.logInvalidLicensor(withAccountID: libraryAccountID)
         }
 
         // The CM's short client token lives 60 minutes (see AdobeLicensorRefresh).

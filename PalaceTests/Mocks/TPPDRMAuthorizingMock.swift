@@ -51,6 +51,18 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
         set { lock.withLock { _authorizeCallCount = newValue } }
     }
 
+    /// The (vendorID, username, password) triple of the most recent `authorize`.
+    ///
+    /// Without this a test can only assert THAT activation happened, never
+    /// WITH WHAT — so "activated with the freshly minted licensor" and
+    /// "activated with the stale stored one" are the same observation, and
+    /// PP-3649's whole fix is unfalsifiable. Recorded rather than subclassed
+    /// because three suites need it.
+    private var _lastAuthorizeArgs: (vendorID: String?, username: String?, password: String?)?
+    var lastAuthorizeArgs: (vendorID: String?, username: String?, password: String?)? {
+        lock.withLock { _lastAuthorizeArgs }
+    }
+
     /// When true, `authorize` captures the completion instead of calling it
     /// immediately. Call `completeDeferredAuthorize()` to fire the callback.
     /// Lets a test hold ONE activation in flight while other callers race in —
@@ -128,55 +140,60 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
         set { lock.withLock { _deferredDeauthCompletion = newValue } }
     }
 
-    /// TEST SEAM — a continuation resumed the instant `deauthorize(...)` is
-    /// ENTERED. Lets a test `await` the "deauthorize was invoked" edge
-    /// deterministically instead of spinning a `Timer.scheduledTimer` that
-    /// polls `deauthorizeWasCalled` on a wall-clock ceiling — a poll that
-    /// starves under parallel-sim-clone oversubscription and blows the
-    /// executionTimeAllowance. Behaviour is otherwise identical: the deferred-
-    /// completion mechanism is unchanged.
-    private var _deauthorizeCalledContinuation: CheckedContinuation<Void, Never>?
-
-    /// Await the point at which `deauthorize(...)` is invoked. Resolves
-    /// immediately if it was already called; otherwise suspends until the next
-    /// `deauthorize` entry resumes it.
     /// Waits for `deauthorize` to be called, and FAILS rather than hangs if it
     /// never is.
     ///
-    /// The unbounded version of this held a run open for **ten hours** at 0%
-    /// CPU on 2026-09-10, when a production change stopped reaching
-    /// `deauthorize` for one input. A test that cannot fail cannot report, and
-    /// the wait is what turned a one-second diagnosis into an overnight stall.
-    /// `XCTFail` does not halt the caller, so on timeout this returns and lets
-    /// the caller's own assertions run against the un-deauthorized state.
-    func _awaitDeauthorizeCalledForTesting(timeout: TimeInterval = 5) async {
-        if lock.withLock({ _deauthorizeWasCalled }) { return }
+    /// A polling loop, deliberately, and the boring choice is the point. The
+    /// unbounded `withCheckedContinuation` this replaces held a run open for
+    /// **ten hours** at 0% CPU on 2026-09-10 when a production change stopped
+    /// reaching `deauthorize`.
+    ///
+    /// The first repair was worse than the bug: a `withTaskGroup` racing the
+    /// continuation against `Task.sleep`. That cannot work, and review caught
+    /// it. `withTaskGroup` awaits every child before it returns, and a
+    /// `CheckedContinuation` that is never resumed does not observe
+    /// cancellation — so when the sleep leg won, the group could not drain and
+    /// the call hung exactly as before, with the `XCTFail` unreachable. A
+    /// timeout that cannot fire reports the same thing as no timeout.
+    ///
+    /// Polling has no such failure mode: every iteration re-reads the flag and
+    /// the loop is bounded by wall clock. `XCTFail` does not halt the caller,
+    /// so on timeout this returns and lets the caller's own assertions run
+    /// against the un-deauthorized state and say something more specific.
+    func _awaitDeauthorizeCalledForTesting(timeout: TimeInterval = 5,
+                                           file: StaticString = #filePath,
+                                           line: UInt = #line) async {
+        if await _awaitDeauthorizeCalledOrTimeout(timeout: timeout) { return }
+        XCTFail("deauthorize() was never called within \(timeout)s — the sign-out path returned before reaching it",
+                file: file, line: line)
+    }
 
-        let signalled: Bool = await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    let fireNow: Bool = self.lock.withLock {
-                        // Re-check under the lock to close the race with `deauthorize`.
-                        if self._deauthorizeWasCalled { return true }
-                        self._deauthorizeCalledContinuation = continuation
-                        return false
-                    }
-                    if fireNow { continuation.resume() }
-                }
-                return true
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                return false
-            }
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
+    /// The same wait, reporting nothing.
+    ///
+    /// - Returns: `true` if `deauthorize` was called within `timeout`, `false`
+    ///   if the deadline passed.
+    ///
+    /// Split out so the deadline can be PROVEN to fire without recording a
+    /// failure. The proof test used to drive the asserting wrapper under
+    /// `XCTExpectFailure`, and that is not sound: `XCTExpectFailure` installs an
+    /// issue matcher on the current execution context, the `XCTFail` above is
+    /// reached after an `await` that may resume on a different thread, and
+    /// whether the matcher is still in scope then depends on scheduling. It
+    /// passed run alone and failed in a fifteen-suite run — the same code, twice,
+    /// with opposite verdicts. A guard whose own proof is order-dependent proves
+    /// nothing, so the proof now drives a function that returns its verdict
+    /// instead of reporting it.
+    func _awaitDeauthorizeCalledOrTimeout(timeout: TimeInterval) async -> Bool {
+        let condition = { self.lock.withLock { self._deauthorizeWasCalled } }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            try? await Task.sleep(nanoseconds: 2_000_000)  // 2ms
         }
-
-        if !signalled && !lock.withLock({ _deauthorizeWasCalled }) {
-            XCTFail("deauthorize() was never called within \(timeout)s — the sign-out path returned before reaching it")
-        }
+        // Re-read AFTER the loop rather than reporting `false` outright: a
+        // `deauthorize` that lands between the last poll and the deadline did
+        // happen, and calling that a timeout would be a manufactured failure.
+        return condition()
     }
 
     func isUserAuthorized(_ userID: String!, withDevice device: String!) -> Bool {
@@ -189,6 +206,7 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
         let didPark: Bool = lock.withLock {
             _authorizeWasCalled = true
             _authorizeCallCount += 1
+            _lastAuthorizeArgs = (vendorID, username, password)
             let shouldPark = _shouldDeferAuthorize && !_authorizeDeferralDrained
             if shouldPark {
                 _deferredAuthCompletions.append(completion)
@@ -218,21 +236,12 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
     }
 
     func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: (@Sendable (Bool, Error?) -> Void)!) {
-        // Flip the flag and hand off any waiting continuation under one lock
-        // acquisition so `_awaitDeauthorizeCalledForTesting` can't miss the edge.
-        let waiter: CheckedContinuation<Void, Never>? = lock.withLock {
+        // One lock acquisition for both writes: `_awaitDeauthorizeCalledForTesting`
+        // polls this flag and must never observe the count without the flag.
+        lock.withLock {
             _deauthorizeWasCalled = true
             _deauthorizeCallCount += 1
-            let c = _deauthorizeCalledContinuation
-            _deauthorizeCalledContinuation = nil
-            return c
         }
-        // Load-bearing: `_awaitDeauthorizeCalledForTesting` suspends on this
-        // continuation, and three sign-out critical-path tests await it BEFORE
-        // deauthorize fires. Dropping the resume suspends them forever — a suite
-        // wedge, not a failure. (Deleted by accident while pruning the unused
-        // authorize-side seam; restored after review caught it.)
-        waiter?.resume()
 
         if shouldDeferDeauthorize {
             deferredDeauthCompletion = completion
@@ -259,7 +268,7 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
         authorizeShouldSucceed = true
         deferredDeauthCompletion = nil
         lock.withLock {
-            _deauthorizeCalledContinuation = nil
+            _lastAuthorizeArgs = nil
             _deferredAuthCompletions = []
             _authorizeDeferralDrained = false
             _drainedOutcome = (true, nil)

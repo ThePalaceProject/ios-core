@@ -24,13 +24,19 @@
 //     consequence: the slot is still consumed. A leaked activation and a
 //     harmless one produced identical output.
 //
+//  This type is UNGATED on purpose — `TPPSignInBusinessLogic+ForceReset.swift`
+//  calls it and is compiled into `Palace-noDRM`. Everything it needs about a
+//  client token lives in `AdobeClientToken`, which has no DRM dependency for
+//  the same reason.
+//
 
 import Foundation
 import PalaceLogging
 
 enum AdobeDeauthorization {
 
-    /// Everything Adobe needs to release a (user, device) pair.
+    /// Everything Adobe needs to release a (user, device) pair, plus whether
+    /// this attempt can actually do that.
     ///
     /// `userID` and `deviceID` are optional deliberately. An earlier version of
     /// this required both to be non-empty, on the reasoning that Adobe releases
@@ -45,31 +51,49 @@ enum AdobeDeauthorization {
     /// Refusing on an unverifiable precondition is the worse error here: a
     /// patron holding a licensor but no stored deviceID would skip
     /// deauthorization ENTIRELY and leak the activation, which is the defect
-    /// this type exists to fix. So the guard covers only what is provable — a
-    /// client token that cannot be split cannot authenticate anything — and the
-    /// (user, device) pair is passed through exactly as the previous code did.
-    /// `TPPIdleSignOutRegressionTests` exercises precisely that case.
+    /// this type exists to fix. So the guard covers only what is provable, and
+    /// the (user, device) pair is passed through exactly as the previous code
+    /// did. `TPPIdleSignOutRegressionTests` exercises precisely that case.
     struct Attempt: Equatable {
         let username: String
         let password: String
         let userID: String?
         let deviceID: String?
+
+        /// Whether the credentials in this attempt can authenticate to Adobe at
+        /// all — i.e. whether the SERVER-side slot has any chance of coming
+        /// back. False means the call is worth making for its LOCAL effect only
+        /// (see `attempt(licensor:userID:deviceID:)`), and the caller should say
+        /// so in the log rather than read the inevitable failure as bad luck.
+        let canReleaseServerSlot: Bool
     }
 
-    /// - Returns: nil when the call cannot possibly free anything, so the
-    ///   caller can say so rather than spend a round trip and read the
-    ///   inevitable failure as bad luck.
+    /// - Returns: nil only when there is no Adobe state at all to act on. A
+    ///   licensor whose client token cannot be split still yields an attempt,
+    ///   with `canReleaseServerSlot == false`.
+    ///
+    ///   An earlier version of this returned nil for the unparseable token too,
+    ///   and that was the same unverifiable-precondition mistake corrected
+    ///   above, made on the other half. `deauthorize` has TWO effects: it asks
+    ///   Adobe to release the slot, and RMSDK clears the LOCAL activation files
+    ///   regardless of what the network says. The local clear is what lets the
+    ///   next sign-in re-activate cleanly, and it is the entire reason Reset
+    ///   Account calls this at all — so refusing to call on a malformed token
+    ///   withheld the repair from exactly the patron who needed it: one who HAS
+    ///   activated and whose stored token has gone bad. `develop` called
+    ///   `deauthorize` whenever a licensor existed; this restores that bar and
+    ///   keeps the diagnosis the branch added.
     static func attempt(licensor: [String: Any]?,
                         userID: String?,
                         deviceID: String?) -> Attempt? {
-        guard let clientToken = licensor?["clientToken"] as? String,
-              let parts = AdobeDRMService.splitClientToken(clientToken)
-        else { return nil }
+        guard let licensor else { return nil }
 
-        return Attempt(username: parts.username,
-                       password: parts.password,
+        let parts = (licensor["clientToken"] as? String).flatMap(AdobeClientToken.split)
+        return Attempt(username: parts?.username ?? "",
+                       password: parts?.password ?? "",
                        userID: userID,
-                       deviceID: deviceID)
+                       deviceID: deviceID,
+                       canReleaseServerSlot: parts != nil)
     }
 
     /// What the deauthorization did to the patron's activation count.
@@ -82,6 +106,16 @@ enum AdobeDeauthorization {
         case notFreed(reason: String)
     }
 
+    /// The `NSError.userInfo` key under which ADEPT stashes Adobe's own error
+    /// code.
+    ///
+    /// Spelled out rather than referencing `NYPLADEPTErrorOriginalCodeKey`
+    /// because this type compiles into `Palace-noDRM`, where the ADEPT headers
+    /// are absent. `AdobeDeauthorizationTests` asserts (under
+    /// `#if FEATURE_DRM_CONNECTOR`) that the two strings are equal, so the
+    /// literal cannot silently drift from the header it mirrors.
+    static let adobeOriginalCodeKey = "originalCode"
+
     static func outcome(success: Bool, error: Error?) -> Outcome {
         guard !success else { return .freed }
 
@@ -90,28 +124,9 @@ enum AdobeDeauthorization {
         }
 
         let ns = error as NSError
-        if let originalCode = ns.userInfo[NYPLADEPTErrorOriginalCodeKey] as? String {
+        if let originalCode = ns.userInfo[adobeOriginalCodeKey] as? String {
             return .notFreed(reason: originalCode)
         }
         return .notFreed(reason: "\(ns.domain) \(ns.code): \(ns.localizedDescription)")
-    }
-
-    /// A description of a client token safe to write to the device log.
-    ///
-    /// `Documents/Logs/palace_error.log` is exportable by the patron and gets
-    /// attached to support tickets, and these tokens are live credentials for
-    /// their 60-minute window. Everything actually used for diagnosis —
-    /// is it present, is it the right shape, which library minted it, when
-    /// does it die — survives redaction; only the signature is dropped.
-    static func redacted(_ clientToken: String?) -> String {
-        guard let clientToken, !clientToken.isEmpty else { return "none" }
-        guard let parts = AdobeDRMService.splitClientToken(clientToken) else {
-            return "unparseable (\(clientToken.count) chars, no separator)"
-        }
-        let fields = parts.username.components(separatedBy: "|")
-        let library = fields.first ?? "?"
-        let expiry = AdobeLicensorRefresh.clientTokenExpiry(clientToken)
-            .map(ISO8601DateFormatter().string(from:)) ?? "unreadable"
-        return "\(library)|expires \(expiry)|<redacted \(parts.password.count)-char signature>"
     }
 }
