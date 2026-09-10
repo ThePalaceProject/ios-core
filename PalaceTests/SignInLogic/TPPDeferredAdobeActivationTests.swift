@@ -72,7 +72,7 @@ final class TPPSaveDRMCredentialsTests: XCTestCase {
         let licensor = businessLogic.userAccount.licensor
         XCTAssertNotNil(licensor, "Licensor should be saved from profile doc")
         XCTAssertEqual(licensor?["vendor"] as? String, "NYPL")
-        XCTAssertEqual(licensor?["clientToken"] as? String, "someToken")
+        XCTAssertEqual(licensor?["clientToken"] as? String, "NYPL|1893456000|patron-uuid-fixed|c2lnbmF0dXJl")
 
         // Adobe authorize() should NOT have been called
         XCTAssertFalse(drmAuthorizer.authorizeWasCalled,
@@ -225,7 +225,7 @@ final class TPPLoginNoActivationTests: XCTestCase {
         XCTAssertNotNil(licensor, "DRM licensor credentials should be saved during login")
         XCTAssertEqual(licensor?["vendor"] as? String, "NYPL",
                        "Vendor should be saved from profile document")
-        XCTAssertEqual(licensor?["clientToken"] as? String, "someToken",
+        XCTAssertEqual(licensor?["clientToken"] as? String, "NYPL|1893456000|patron-uuid-fixed|c2lnbmF0dXJl",
                        "Client token should be saved from profile document")
         #endif
     }

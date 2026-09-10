@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import XCTest
 @testable import Palace
 
 /// `@unchecked Sendable`: `TPPDRMAuthorizing` completions are `@Sendable`, so this
@@ -139,17 +140,42 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
     /// Await the point at which `deauthorize(...)` is invoked. Resolves
     /// immediately if it was already called; otherwise suspends until the next
     /// `deauthorize` entry resumes it.
-    func _awaitDeauthorizeCalledForTesting() async {
-        let alreadyCalled: Bool = lock.withLock { _deauthorizeWasCalled }
-        if alreadyCalled { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let fireNow: Bool = lock.withLock {
-                // Re-check under the lock to close the race with `deauthorize`.
-                if _deauthorizeWasCalled { return true }
-                _deauthorizeCalledContinuation = continuation
+    /// Waits for `deauthorize` to be called, and FAILS rather than hangs if it
+    /// never is.
+    ///
+    /// The unbounded version of this held a run open for **ten hours** at 0%
+    /// CPU on 2026-09-10, when a production change stopped reaching
+    /// `deauthorize` for one input. A test that cannot fail cannot report, and
+    /// the wait is what turned a one-second diagnosis into an overnight stall.
+    /// `XCTFail` does not halt the caller, so on timeout this returns and lets
+    /// the caller's own assertions run against the un-deauthorized state.
+    func _awaitDeauthorizeCalledForTesting(timeout: TimeInterval = 5) async {
+        if lock.withLock({ _deauthorizeWasCalled }) { return }
+
+        let signalled: Bool = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    let fireNow: Bool = self.lock.withLock {
+                        // Re-check under the lock to close the race with `deauthorize`.
+                        if self._deauthorizeWasCalled { return true }
+                        self._deauthorizeCalledContinuation = continuation
+                        return false
+                    }
+                    if fireNow { continuation.resume() }
+                }
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 return false
             }
-            if fireNow { continuation.resume() }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+
+        if !signalled && !lock.withLock({ _deauthorizeWasCalled }) {
+            XCTFail("deauthorize() was never called within \(timeout)s — the sign-out path returned before reaching it")
         }
     }
 
