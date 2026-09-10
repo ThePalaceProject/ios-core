@@ -48,13 +48,32 @@ final class AdobeDeauthorizationTests: XCTestCase {
         XCTAssertNil(AdobeDeauthorization.attempt(licensor: nil, userID: "u", deviceID: "d"))
     }
 
-    func test_attempt_withoutDeviceID_cannotBeMade() {
-        // Adobe deauthorizes a (user, device) pair. Missing either half means
-        // the call cannot free anything, so it must not read as an attempt.
-        XCTAssertNil(AdobeDeauthorization.attempt(licensor: liveLicensor(),
-                                                  userID: "u", deviceID: nil))
-        XCTAssertNil(AdobeDeauthorization.attempt(licensor: liveLicensor(),
-                                                  userID: nil, deviceID: "d"))
+    func test_attempt_withoutDeviceID_isStillMade_becauseRefusingWouldLeakTheSlot() {
+        // This assertion is inverted from its first version, and the inversion
+        // is the point. Requiring a (user, device) pair looked obviously right
+        // — Adobe releases a pair — but `NYPLADEPT` is a binary, so whether a
+        // nil userID actually fails there cannot be established from this repo.
+        // Refusing on an unverifiable precondition means a patron with a
+        // licensor and no stored deviceID skips deauthorization entirely and
+        // leaks the activation: strictly worse than attempting and failing.
+        // `TPPIdleSignOutRegressionTests` seeds exactly this shape and asserts
+        // deauthorize IS called.
+        let noDevice = AdobeDeauthorization.attempt(licensor: liveLicensor(),
+                                                    userID: "u", deviceID: nil)
+        XCTAssertNotNil(noDevice)
+        XCTAssertNil(noDevice?.deviceID, "the missing half is passed through, not invented")
+
+        let noUser = AdobeDeauthorization.attempt(licensor: liveLicensor(),
+                                                  userID: nil, deviceID: "d")
+        XCTAssertNotNil(noUser)
+        XCTAssertNil(noUser?.userID)
+    }
+
+    func test_attempt_stillRefusesTheOneThingThatCannotWork() {
+        // The guard that survives: a token that cannot be split cannot
+        // authenticate, whatever Adobe does with the rest.
+        XCTAssertNil(AdobeDeauthorization.attempt(licensor: ["vendor": "V", "clientToken": "nosep"],
+                                                  userID: "u", deviceID: "d"))
     }
 
     // MARK: - What we conclude afterwards
