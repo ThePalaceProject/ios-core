@@ -15,7 +15,7 @@ class UserProfileDocumentTests: XCTestCase {
       {
         "drm:vendor": "NYPL",
         "drm:scheme": "http://librarysimplified.org/terms/drm/scheme/ACS",
-        "drm:clientToken": "someToken",
+        "drm:clientToken": "NYPL|1893456000|patron-uuid-fixed|c2lnbmF0dXJl",
         "drm:testExtra":"extra property"
       }
     ],
@@ -42,7 +42,7 @@ class UserProfileDocumentTests: XCTestCase {
       {
         "drm:vendor": "NYPL",
         "drm:scheme": "http://librarysimplified.org/terms/drm/scheme/ACS",
-        "drm:clientToken": "someToken"
+        "drm:clientToken": "NYPL|1893456000|patron-uuid-fixed|c2lnbmF0dXJl"
       }
     ],
     "links": [
@@ -87,7 +87,7 @@ class UserProfileDocumentTests: XCTestCase {
       {
         "drm:vendor": "NYPL",
         "drm:scheme": "http://librarysimplified.org/terms/drm/scheme/ACS",
-        "drm:clientToken": "someToken"
+        "drm:clientToken": "NYPL|1893456000|patron-uuid-fixed|c2lnbmF0dXJl"
       }
     ],
     "links": [
@@ -183,7 +183,7 @@ class UserProfileDocumentTests: XCTestCase {
                 XCTAssert(drms.count == 1)
                 XCTAssert(drms[0].vendor == "NYPL")
                 XCTAssert(drms[0].scheme == "http://librarysimplified.org/terms/drm/scheme/ACS")
-                XCTAssert(drms[0].clientToken == "someToken")
+                XCTAssert(drms[0].clientToken == "NYPL|1893456000|patron-uuid-fixed|c2lnbmF0dXJl")
                 XCTAssertNil(drms[0].serverToken)
             }
 
@@ -221,7 +221,7 @@ class UserProfileDocumentTests: XCTestCase {
                 XCTAssert(drms.count == 1)
                 XCTAssert(drms[0].vendor == "NYPL")
                 XCTAssert(drms[0].scheme == "http://librarysimplified.org/terms/drm/scheme/ACS")
-                XCTAssert(drms[0].clientToken == "someToken")
+                XCTAssert(drms[0].clientToken == "NYPL|1893456000|patron-uuid-fixed|c2lnbmF0dXJl")
                 XCTAssertNil(drms[0].serverToken)
             }
 
