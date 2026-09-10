@@ -160,7 +160,12 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
     /// the loop is bounded by wall clock. `XCTFail` does not halt the caller,
     /// so on timeout this returns and lets the caller's own assertions run
     /// against the un-deauthorized state and say something more specific.
-    func _awaitDeauthorizeCalledForTesting(timeout: TimeInterval = 5,
+    /// Default 20s, not 5s. The ceiling exists to turn a hang into a failure,
+    /// and 20s does that just as well while leaving room for a loaded machine
+    /// under `-test-iterations 3`. A bound tight enough to redden a merely slow
+    /// run trains everyone to ignore the signal, which costs more than the hang
+    /// it was guarding.
+    func _awaitDeauthorizeCalledForTesting(timeout: TimeInterval = 20,
                                            file: StaticString = #filePath,
                                            line: UInt = #line) async {
         if await _awaitDeauthorizeCalledOrTimeout(timeout: timeout) { return }
