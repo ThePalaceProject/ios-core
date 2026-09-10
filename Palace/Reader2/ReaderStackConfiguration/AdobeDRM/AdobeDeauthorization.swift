@@ -31,11 +31,29 @@ import PalaceLogging
 enum AdobeDeauthorization {
 
     /// Everything Adobe needs to release a (user, device) pair.
+    ///
+    /// `userID` and `deviceID` are optional deliberately. An earlier version of
+    /// this required both to be non-empty, on the reasoning that Adobe releases
+    /// a (user, device) pair and neither half can be missing. That reasoning is
+    /// plausible and unverifiable here: `NYPLADEPT` ships as a binary, so what
+    /// `deauthorizeWithUsername:password:userID:deviceID:` does with a nil
+    /// userID — fail, or resolve it from the local activation — cannot be read
+    /// from this repo. Its header declares username and password
+    /// `NSString *const` and these two plain nullable `NSString*`, which is a
+    /// hint in the other direction.
+    ///
+    /// Refusing on an unverifiable precondition is the worse error here: a
+    /// patron holding a licensor but no stored deviceID would skip
+    /// deauthorization ENTIRELY and leak the activation, which is the defect
+    /// this type exists to fix. So the guard covers only what is provable — a
+    /// client token that cannot be split cannot authenticate anything — and the
+    /// (user, device) pair is passed through exactly as the previous code did.
+    /// `TPPIdleSignOutRegressionTests` exercises precisely that case.
     struct Attempt: Equatable {
         let username: String
         let password: String
-        let userID: String
-        let deviceID: String
+        let userID: String?
+        let deviceID: String?
     }
 
     /// - Returns: nil when the call cannot possibly free anything, so the
@@ -45,9 +63,7 @@ enum AdobeDeauthorization {
                         userID: String?,
                         deviceID: String?) -> Attempt? {
         guard let clientToken = licensor?["clientToken"] as? String,
-              let parts = AdobeDRMService.splitClientToken(clientToken),
-              let userID, !userID.isEmpty,
-              let deviceID, !deviceID.isEmpty
+              let parts = AdobeDRMService.splitClientToken(clientToken)
         else { return nil }
 
         return Attempt(username: parts.username,
