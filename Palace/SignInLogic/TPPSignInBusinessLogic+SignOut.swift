@@ -130,15 +130,7 @@ extension TPPSignInBusinessLogic {
 
         let barcode = userAccount.barcode
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
-        // Token refresh is ENABLED here, unlike the other sign-in/sign-out legs.
-        // This request's response body is the fresh Adobe licensor, and it is
-        // the only chance to get one before deauthorizing. Refusing to refresh
-        // an about-to-expire bearer token turns a 401 into a permanently
-        // leaked activation slot, which outlives the session we were saving a
-        // round trip on. When the token is not near expiry, or the library is
-        // not token/OAuth, this is a no-op (TPPNetworkExecutor:446).
-        // enableTokenRefresh stays FALSE here, and the reason is not the one
-        // the earlier version of this comment gave.
+        // enableTokenRefresh stays FALSE here.
         //
         // Turning it on does fetch a fresher licensor, which is what sign-out
         // needs to deauthorize. But it also arms `TPPNetworkExecutor:882-899`:
@@ -151,12 +143,24 @@ extension TPPSignInBusinessLogic {
         // underneath the sheet. The patron taps Sign Out and is handed a
         // sign-in prompt for the library they just left.
         //
-        // `enableTokenRefresh: true` had ZERO production call sites before this
-        // branch, so that failure branch has never run in the field. An RC is
-        // not where to find out. The stale-licensor case is still REPORTED —
-        // `deauthorizeDevice` logs an expired licensor and reports the leaked
-        // activation to Crashlytics — so the loss is a repair we never had, not
-        // a diagnosis.
+        // An earlier version of this comment justified the revert by claiming
+        // `enableTokenRefresh: true` had no production call sites. That was
+        // false, and the way it was reached is worth recording: the census
+        // grepped the LITERAL `enableTokenRefresh: true`, while the contract is
+        // semantic — `GET(useTokenIfAvailable: Bool = true)` and three siblings
+        // forward a defaulted-true straight into the same parameter
+        // (TPPNetworkExecutor:388, 676, 700, 720). That arm is live production
+        // and runs constantly.
+        //
+        // The revert stands anyway, on the narrower ground that actually holds:
+        // prompting re-auth mid-BORROW is already this app's design, so the
+        // borrow leg's opt-in adds a route to an outcome it already produces.
+        // Sign-out is the one flow where a sign-in sheet is never the right
+        // answer, whatever the rest of the app does.
+        //
+        // The stale-licensor case is still REPORTED — `deauthorizeDevice` logs
+        // an expired licensor and reports the leaked activation to Crashlytics
+        // — so what is lost is a repair, not a diagnosis.
         //
         // The borrow path is deliberately different: `freshLicensorFromProfileDocument`
         // DOES opt in, because a patron borrowing with a dead token genuinely

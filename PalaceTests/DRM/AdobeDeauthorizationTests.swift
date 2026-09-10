@@ -177,4 +177,35 @@ final class AdobeDeauthorizationTests: XCTestCase {
             ["vendor": "V", "clientToken": expiredToken]))
         XCTAssertFalse(AdobeLicensorRefresh.isExpired(liveLicensor()))
     }
+
+    // MARK: - The shape guard on the redactor
+
+    func test_redacted_doesNotEchoAFieldFromAnUnexpectedlyShapedToken() {
+        // The CM mints SHORTNAME|expires|patronIdentifier|signature, so the
+        // username half is 3 fields and `first` is a library short name — not
+        // patron data. A token of any OTHER shape carries no such guarantee: for
+        // a single-separator token the username half IS the whole leading
+        // string, and echoing it is how a redactor leaks the thing it exists to
+        // hide.
+        let output = AdobeClientToken.redacted("possibly-a-patron-identifier|sig")
+
+        XCTAssertFalse(output.contains("possibly-a-patron-identifier"),
+                       "a 2-field token had its leading half echoed: \(output)")
+        XCTAssertTrue(output.contains("unexpected"),
+                      "the unexpected shape should be named so it is diagnosable: \(output)")
+    }
+
+    func test_redacted_countsFieldsFromTheWholeToken() {
+        // The arithmetic: `fields` is the username half only, so the reported
+        // count adds back the signature. A 2-field token must say 2, not 1.
+        let output = AdobeClientToken.redacted("abc|sig")
+        XCTAssertTrue(output.contains("2-field"), "off-by-one in the shape report: \(output)")
+    }
+
+    func test_redacted_stillNamesTheLibraryForARealToken() {
+        // Clean path — the guard must not suppress the diagnosis it exists to protect.
+        let output = AdobeClientToken.redacted("PALACE|1893456000|patron-1|sig")
+        XCTAssertTrue(output.contains("PALACE"), output)
+        XCTAssertFalse(output.contains("patron-1"), "the patron identifier must not survive: \(output)")
+    }
 }
