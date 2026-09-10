@@ -197,6 +197,60 @@ specific, named, already-tracked flake that passes in isolation — and that fla
 must have a de-flake item per #2. Never `--admin` over a red board whose failure
 you have not individually identified; that is how real breakage lands.
 
+## Commit and PR voice
+
+**Write the change, not a verdict on the code you found.** Commit subjects and PR
+titles are imperative and describe what the change DOES:
+
+    refresh the Adobe licensor before device activation
+    bound the deauthorize wait so a hang fails instead of stalling
+    make AdobeClientToken ungated so Palace-noDRM compiles
+
+Not what the previous state failed to be:
+
+    the Adobe licensor went stale, and the error said the wrong thing
+    the fixture token was not a token, and the wait for it could not fail
+    the noDRM target did not compile, and three guards refused too much
+
+Both forms carry the same information. The second reads as an indictment, and
+the person reading it is usually the person who wrote the code — often a
+colleague, frequently you six months ago, sometimes the author of the commit
+you are extending. None of them chose to be wrong.
+
+**Four habits produce the bad version, all of them easy to spot in a draft:**
+
+1. **The reversal.** "A redactor that is not called is not a redactor." "The
+   split could not fail." "It leaked the slot it was supposed to free." These
+   are epigrams, and an epigram is a scored point. Say what happened:
+   "`redacted()` was not called on this path"; "the split accepted a token with
+   no separator".
+2. **Reconstructing intent.** "The reasoning was X — correct about the cause and
+   wrong about the consequence." You are guessing at someone's thinking and then
+   grading it. Describe the behaviour and leave the person out.
+3. **Rhetorical emphasis.** ALL CAPS for scorn rather than for a term of art,
+   "silently", "nobody", "never once", "of course". Reserve emphasis for
+   invariants a reader must not miss.
+4. **Blaming a person where the situation explains it.** Most defects here are
+   invisible from the diff: the invariant lives in another repository, the
+   fixture could not express the failing input, CI never built that target.
+   Naming the reason a defect was *unseeable* is more useful than implying
+   someone should have seen it, and it is usually the truer account.
+
+**Keep the precision.** This is not a request to be vague or breezy. Bodies
+should still state the exact mechanism, the measured evidence, and what was NOT
+fixed. "Adobe rejects a client token past its 60-minute expiry; activation moved
+to borrow time in 3.0.0, so the token is usually expired by then" is precise and
+carries no verdict. Vagueness is a different failure and not an improvement.
+
+**The test before committing:** if the author of the code you are changing read
+this subject line over your shoulder, would it describe your change or
+characterise their work? Rewrite until it is the first.
+
+Applies to commit subjects and bodies, PR titles and descriptions, code comments
+about prior implementations, and review findings. Reviews especially — a
+reviewer's job is to name a defect precisely, which is exactly the context where
+an epigram feels earned.
+
 ## Documentation — where to look, and where a new doc goes
 
 **[`docs/README.md`](./docs/README.md) is the map.** Read it before grepping the
