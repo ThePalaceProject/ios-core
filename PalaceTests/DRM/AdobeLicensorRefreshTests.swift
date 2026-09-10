@@ -109,12 +109,20 @@ final class AdobeLicensorRefreshTests: XCTestCase {
     /// The CM writes SHORTNAME|expires|patron|signature with a 60-minute TTL.
     /// Before this predicate existed, staleness was not a state the codebase
     /// could name — which is why no test could fail and PP-3649 shipped.
-    func test_clientTokenExpiry_readsTheNumericDateFromTheToken() {
-        // 2026-09-09T20:00:00Z
-        let expiry = Date(timeIntervalSince1970: 1788998400)
-        let token = "A1QA|1788998400|patron123|c2lnbmF0dXJl"
+    ///
+    /// The reader itself now lives on `AdobeClientToken` (see
+    /// `AdobeClientTokenSplitTests` for its own coverage); what this asserts is
+    /// that `isExpired` — the predicate production actually calls — is wired to
+    /// it, so a token's own expiry is what decides staleness.
+    func test_isExpired_readsTheNumericDateFromTheToken() {
+        let expiry = Date(timeIntervalSince1970: 1788998400)   // 2026-09-09T20:00:00Z
+        let licensor: [String: Any] = ["vendor": "V",
+                                       "clientToken": "A1QA|1788998400|patron123|c2lnbmF0dXJl"]
 
-        XCTAssertEqual(AdobeLicensorRefresh.clientTokenExpiry(token), expiry)
+        XCTAssertFalse(AdobeLicensorRefresh.isExpired(licensor,
+                                                      now: expiry.addingTimeInterval(-1)))
+        XCTAssertTrue(AdobeLicensorRefresh.isExpired(licensor,
+                                                     now: expiry.addingTimeInterval(1)))
     }
 
     func test_isExpired_pastToken_isExpired() {
@@ -132,7 +140,7 @@ final class AdobeLicensorRefreshTests: XCTestCase {
         XCTAssertFalse(AdobeLicensorRefresh.isExpired(licensor))
     }
 
-    /// An unparseable token is splitClientToken's failure, not staleness.
+    /// An unparseable token is `AdobeClientToken.split`'s failure, not staleness.
     /// Reporting it as expired would mask the real defect behind a refresh.
     func test_isExpired_unparseableToken_isNotReportedAsStale() {
         XCTAssertFalse(AdobeLicensorRefresh.isExpired(["vendor": "V", "clientToken": "noSeparator"]))

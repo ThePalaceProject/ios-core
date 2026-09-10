@@ -97,9 +97,32 @@ extension Account {
     ///   expired-but-repairable token deletes a repair that works) with the
     ///   whole suite green. A guard one level away from what it guards is the
     ///   defect this file already exists to fix, reached a third time.
+    /// - Parameter enableTokenRefresh: whether the executor may proactively
+    ///   refresh a near-expiry bearer token before issuing this request.
+    ///
+    ///   Defaults to `false`, which is what every pre-existing caller meant:
+    ///   `NotificationService.updateToken()` and `LibrariesSectionViewModel`
+    ///   fetch profiles for arbitrary — often non-current — libraries on
+    ///   rehydration, and a background poll is not a reason to spend a token
+    ///   exchange.
+    ///
+    ///   The Adobe borrow path passes `true`, and that asymmetry is the point.
+    ///   `canAuthenticateProfileRequest` below deliberately lets an
+    ///   EXPIRED-but-repairable token through, on the reasoning that a refresh
+    ///   will fix it — but nothing repaired it: with refresh disabled the
+    ///   expired bearer went out as-is, the CM answered 401, and
+    ///   `AdobeLicensorRefresh.resolve` fell back to the stale stored licensor.
+    ///   That is exactly the PP-3649 case (an expired session, a licensor older
+    ///   than its 60 minutes), so the headline fix would have missed the case
+    ///   it targets. `TPPNetworkExecutor:446` gates the refresh on
+    ///   `authTokenNearExpiry && (isToken || isOauth) && tokenURL != nil`, and
+    ///   `isTokenNearExpiry` is true for an already-expired token too — so this
+    ///   is a no-op for basic auth and for a healthy session, and a repair
+    ///   exactly where the gate above promised one.
     func getProfileDocument(
-        performRequest: ((URLRequest, @escaping (NYPLResult<Data>) -> Void) -> Void)? = nil,
+        performRequest: ((URLRequest, Bool, @escaping (NYPLResult<Data>) -> Void) -> Void)? = nil,
         userAccount injectedUserAccount: TPPUserAccount? = nil,
+        enableTokenRefresh: Bool = false,
         completion: @escaping (_ profileDocument: UserProfileDocument?) -> Void
     ) {
         guard let profileHref = self.details?.userProfileUrl,
@@ -133,11 +156,16 @@ extension Account {
         // credentials — and `getProfileDocument` is called for non-current
         // libraries (LibrariesSectionViewModel). Naming the account keeps a 401
         // retry authenticating as this library rather than the selected one.
-        let send = performRequest ?? { req, done in
+        // `enableTokenRefresh` is threaded THROUGH the seam, not read inside the
+        // production closure, so a test can observe the value the caller asked
+        // for. A flag only the un-injectable branch consults is a flag no test
+        // can be wrong about — the same shape as the gate this file already
+        // exists to make observable.
+        let send = performRequest ?? { req, refresh, done in
             _ = AppContainer.production().networkExecutor.executeRequest(
-                req, enableTokenRefresh: false, accountId: self.uuid, completion: done)
+                req, enableTokenRefresh: refresh, accountId: self.uuid, completion: done)
         }
-        send(request.applyCustomUserAgent()) { result in
+        send(request.applyCustomUserAgent(), enableTokenRefresh) { result in
             // The executeRequest completion is a plain (non-Sendable) escaping
             // closure, so `completion` and the parsed `UserProfileDocument`
             // are captured safely here. They are carried across the main-queue

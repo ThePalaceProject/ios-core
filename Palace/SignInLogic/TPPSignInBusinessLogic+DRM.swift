@@ -89,7 +89,7 @@ extension TPPSignInBusinessLogic {
             let clientToken = drm.clientToken else {
 
             let drm = profileDoc.drm?.first
-            Log.info(#file, "No licensor token: \(AdobeDeauthorization.redacted(drm?.clientToken))")
+            Log.info(#file, "No licensor token: \(AdobeClientToken.redacted(drm?.clientToken))")
 
             TPPErrorLogger.logError(withCode: .noLicensorToken,
                                     summary: "SignIn: no licensor token in user profile doc",
@@ -100,14 +100,14 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        Log.info(#file, "Licensor received at sign-in: \(AdobeDeauthorization.redacted(clientToken))")
+        Log.info(#file, "Licensor received at sign-in: \(AdobeClientToken.redacted(clientToken))")
         userAccount.setLicensor(drm.licensor)
 
         // Shared with the sign-out and reset paths. The inline split this
         // replaces could not fail: a token with no separator yielded an empty
         // username and the whole token as the password, and Adobe was asked to
         // authorize with it.
-        guard let parts = AdobeDRMService.splitClientToken(clientToken) else {
+        guard let parts = AdobeClientToken.split(clientToken) else {
             TPPErrorLogger.logError(withCode: .noLicensorToken,
                                     summary: "SignIn: malformed licensor client token",
                                     metadata: loggingContext)

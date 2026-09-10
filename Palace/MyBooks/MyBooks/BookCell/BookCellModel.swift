@@ -470,13 +470,6 @@ class BookCellModel: ObservableObject {
             .assign(to: &$stableButtonState)
     }
 
-    /// react to mid-flight network drops. The pre-flight check on
-    /// Download/Reserve handles the cold-offline tap; this subscription
-    /// handles the case where reachability drops AFTER the user already
-    /// kicked off a borrow/download (so isLoading is true and the spinner
-    /// would otherwise sit there for ~60s waiting on URLSession's timeout).
-    /// `dropFirst()` skips the CurrentValueSubject's replay so we only act
-    /// on actual transitions.
     /// Clears the spinner when the registry says this book is no longer being
     /// processed.
     ///
@@ -516,6 +509,14 @@ class BookCellModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// Lowers the spinner when connectivity drops mid-flight.
+    ///
+    /// The pre-flight check on Download/Reserve handles the cold-offline tap;
+    /// this subscription handles the case where reachability drops AFTER the
+    /// user already kicked off a borrow/download (so `isLoading` is true and the
+    /// spinner would otherwise sit there for ~60s waiting on URLSession's
+    /// timeout). `dropFirst()` skips the CurrentValueSubject's replay so we only
+    /// act on actual transitions.
     private func bindReachability() {
         reachability.connectivityPublisher
             .dropFirst()

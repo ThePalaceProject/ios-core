@@ -42,24 +42,6 @@ enum AdobeLicensorRefresh {
         return true
     }
 
-    /// The expiry embedded in a short client token.
-    ///
-    /// The CM writes `SHORTNAME|expires|patronIdentifier|signature`, where
-    /// `expires` is a NumericDate — seconds since the epoch, RFC 7519 — set by
-    /// `_encode_short_client_token`. Reading it here is what turns a
-    /// cross-repository invariant (the CM's 60-minute TTL, expressed only in
-    /// `adobe_vendor_id.py`) into a local, testable predicate.
-    ///
-    /// - Returns: nil when the token cannot be parsed. An unparseable token is
-    ///   a DIFFERENT failure — `splitClientToken` owns it — and must not be
-    ///   reported here as staleness.
-    static func clientTokenExpiry(_ clientToken: String) -> Date? {
-        guard let parts = AdobeDRMService.splitClientToken(clientToken) else { return nil }
-        let fields = parts.username.components(separatedBy: "|")
-        guard fields.count >= 2, let seconds = Double(fields[1]) else { return nil }
-        return Date(timeIntervalSince1970: seconds)
-    }
-
     /// Whether the licensor's token is already past its expiry.
     ///
     /// Deliberately returns FALSE when the expiry cannot be read. Manufacturing
@@ -69,7 +51,7 @@ enum AdobeLicensorRefresh {
     /// gate behaviour.
     static func isExpired(_ licensor: [String: Any]?, now: Date = Date()) -> Bool {
         guard let clientToken = licensor?["clientToken"] as? String,
-              let expiry = clientTokenExpiry(clientToken) else { return false }
+              let expiry = AdobeClientToken.expiry(clientToken) else { return false }
         return expiry < now
     }
 
@@ -101,9 +83,16 @@ enum AdobeLicensorRefresh {
         if isExpired(stored) {
             Log.error(#file, "Refresh failed and the stored Adobe licensor is EXPIRED — activation will be rejected as bad credentials (PP-3649)")
         }
-        if stored != nil {
-            Log.info(#file, "Licensor refresh yielded nothing usable — activating with the stored licensor")
-        }
+        // Unconditional, and the `if stored != nil` that used to wrap it is gone
+        // deliberately. It gated nothing but the wording of a log line, so no
+        // test could ever justify it — mutation confirmed exactly that, flipping
+        // it to `== nil` with the whole suite green. A predicate with no
+        // behaviour is not coverage worth buying with a coverage-only test; it
+        // is a distinction to delete. The absent-stored case is unambiguous in
+        // the log regardless: `ensureDeviceActivated`'s next line is
+        // "No Adobe DRM licensor credentials stored — cannot activate", at error
+        // level.
+        Log.info(#file, "Licensor refresh yielded nothing usable — falling back to the stored licensor")
         return (stored, false)
     }
 }
