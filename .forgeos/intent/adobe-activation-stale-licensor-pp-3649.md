@@ -53,6 +53,36 @@ another activation.
 Following the advice reproduces the escalation: each sign-in spends a slot,
 sign-out fails to return one, and the account walks to the ceiling.
 
+## Root cause
+
+Two independent defects that compounded.
+
+**1. The licensor is written once and never refreshed.** `TPPUserAccount.setLicensor`
+is the only writer, called on the user-profile leg of sign-in. The CM's token
+carries a 60-minute expiry it enforces on decode. PP-3649 (3.0.0) moved device
+activation off sign-in and onto the first Adobe borrow, so the gap between mint
+and use became unbounded. Nothing in between re-mints it. Android avoids this by
+re-running the patron profile request immediately before activating.
+
+The deeper shape: `hasLicensor()` reports PRESENCE, never VALIDITY. An expired
+credential is indistinguishable from a good one at every call site, so staleness
+was unrepresentable in the type and no amount of testing the callers would have
+surfaced it. The same shape as `hasCredentials()` vs `authTokenHasExpired`.
+
+**2. The error was mapped after the discriminator was destroyed.**
+`AdobeCertificate` threw a hardcoded `PalaceError.drm(.authenticationFailed)`.
+By the time `BorrowOperation` tried to read `NYPLADEPTErrorDomain` off the
+NSError, the domain was `Palace.PalaceError` and the ADEPT code no longer
+existed, so the mapping took its fallback branch on every input. It compiled,
+ran, and did nothing — and the fallback was a plausible value, which is why it
+read as working code.
+
+**3. Sign-out's deauthorization failed silently.** It is the only thing that
+frees an activation slot. It ran with the stored (possibly expired) licensor on
+every non-success path, split the client token with code that could not fail,
+and logged every failure as `warn` with the word "(expected)". A leaked
+activation and a harmless no-op produced identical output.
+
 ## Claims
 
 - `AdobeLicensorRefresh.resolve(stored:fetch:)` re-fetches the profile document
