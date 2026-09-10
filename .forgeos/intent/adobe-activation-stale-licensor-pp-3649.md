@@ -25,6 +25,34 @@ Crashlytics: ~25,421 events / ~4,013 users, first seen in 3.0.0.
 Device evidence (2026-09-09): activation failed 555ms into the borrow against a
 15s licensor grace period — the credential was present and simply old.
 
+## Reproduction
+
+On device (Moes Max, A1QA Test Library, build 498):
+
+1. Sign in to A1QA. The circulation manager mints a short client token; iOS
+   stores it once and never refreshes it.
+2. Wait past the token's 60-minute TTL, or simply come back to the app later.
+3. Borrow any Adobe-DRM title (used here: *Endless Summer*,
+   `urn:isbn:9781488097300`).
+
+Observed: the borrow fails ~555ms in. The alert reads "Borrowing Endless Summer
+could not be completed. Please sign out and sign in again." The book row keeps
+spinning after the alert is dismissed.
+
+`Documents/Logs/palace_error.log` at the time:
+
+    Palace/AdobeCertificate.swift: On-demand Adobe activation failed:
+      (org.nypl.labs.ADEPTErrorDomain error 5.)
+    adobeOriginalCode=E_ACT_TOO_MANY_ACTIVATIONS ... /adept/Activate 7528:528:7528
+    Palace/DownloadStartCoordinator.swift: Borrow failed: DRM authentication failed
+
+The last line is the defect in miniature: Adobe said "too many activations",
+the patron was told to sign out and back in, and following that advice consumes
+another activation.
+
+Following the advice reproduces the escalation: each sign-in spends a slot,
+sign-out fails to return one, and the account walks to the ceiling.
+
 ## Claims
 
 - `AdobeLicensorRefresh.resolve(stored:fetch:)` re-fetches the profile document
