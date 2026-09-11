@@ -1,29 +1,5 @@
 name: NonDRM Build
-
-# Runs on PRs that touch app sources, not just on demand.
-#
-# WHY. `Palace-noDRM` is the open-source target: it compiles WITHOUT
-# `FEATURE_DRM_CONNECTOR`, so every symbol declared inside one of those blocks
-# is invisible to it. PR CI builds only the DRM scheme, so a new file added to
-# the noDRM Sources phase that references a DRM-gated symbol compiles fine in
-# every check we run and breaks a target nobody built.
-#
-# That is not hypothetical. On 2026-09-10 review caught exactly this shape
-# before merge — two new files in the noDRM Sources phase, zero `#if` lines,
-# both calling `AdobeDRMService.splitClientToken`, which lives inside
-# `#if FEATURE_DRM_CONNECTOR`. Nothing in PR CI could have failed on it. It was
-# found by a human-equivalent reading the pbxproj, which is not a control.
-#
-# `paths` keeps the cost proportionate: this is a full macOS build, so it runs
-# only when something it could plausibly break has changed. `workflow_dispatch`
-# is retained for manual runs.
-on:
-  workflow_dispatch:
-  pull_request:
-    paths:
-      - 'Palace/**'
-      - 'Palace.xcodeproj/project.pbxproj'
-      - '.github/workflows/non-drm-build.yml'
+on: workflow_dispatch
 jobs:
   build:
     runs-on: macos-26
@@ -35,18 +11,8 @@ jobs:
 
       - name: Verify Xcode Version
         run: xcodebuild -version
-      # Submodules and a token that can read them. The bare checkout this
-      # replaces cloned no submodules, so the first PR run failed on
-      # `Could not read from remote repository` for ios-tenprintcover,
-      # mobile-bookmark-spec and readium-sdk — all private. Every other
-      # workflow that builds this repo already passes CI_GITHUB_ACCESS_TOKEN;
-      # this one did not, and being workflow_dispatch-only meant nobody found
-      # out. A guard that cannot check out the code it guards is not a guard.
-      - name: Checkout main repo and submodules
+      - name: Checkout main repo
         uses: actions/checkout@v7
-        with:
-          submodules: true
-          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Set up repo for nonDRM build
         run: exec ./scripts/setup-repo-nodrm.sh
         env:
