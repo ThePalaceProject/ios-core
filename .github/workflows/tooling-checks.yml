@@ -98,6 +98,22 @@ jobs:
       #     "is this detector a CI step yet?" with a substring scan of THIS
       #     file, so naming it here — even in a comment — trips that ratchet.
       #     (Same shape as the ratchet-detectors-count-comment-mentions trap.)
+      # Jira release-sync guards. The 3.3.0 (502) sync stamped a release
+      # fixVersion onto ten tickets that were still in To Do — an epic listed
+      # beside its delivered children, and eight follow-ups named in commit
+      # bodies as deferred work. Whoever validates the release then has to
+      # unpick them by hand. The guards are decision logic inside a workflow
+      # `run:` block, so the test replays them over real payload shapes.
+      - name: Jira release-sync guard test
+        run: |
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional.
+          if [ ! -f scripts/tests/test_jira_release_sync_guards.sh ]; then
+            echo "::error::scripts/tests/test_jira_release_sync_guards.sh is missing — the gate cannot be verified."
+            exit 1
+          fi
+          bash scripts/tests/test_jira_release_sync_guards.sh
+
       - name: verify-pr detector wiring test
         run: |
           # TRACKED file: absence means the gate was deleted, not that it is
