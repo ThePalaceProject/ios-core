@@ -119,16 +119,51 @@ jobs:
             # fixVersion corrupts release reporting. Skip any ticket that already
             # carries a different "iOS *" fixVersion — it was attributed to an
             # earlier release and is a re-mention, not new work in this one.
-            EXISTING=$(curl -s --fail \
-              --url "${JIRA_URL}/rest/api/3/issue/$KEY?fields=fixVersions" \
+            ISSUE_JSON=$(curl -s --fail \
+              --url "${JIRA_URL}/rest/api/3/issue/$KEY?fields=fixVersions,status" \
               --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
-              --header 'Accept: application/json' \
-              | jq -r '.fields.fixVersions[]?.name' 2>/dev/null) || EXISTING=""
+              --header 'Accept: application/json') || ISSUE_JSON=""
+            EXISTING=$(printf '%s' "$ISSUE_JSON" | jq -r '.fields.fixVersions[]?.name' 2>/dev/null) || EXISTING=""
             PRIOR_IOS=$(printf '%s\n' "$EXISTING" | grep -E '^iOS ' | grep -vxF "$RELEASE_NAME" || true)
             if [ -n "$PRIOR_IOS" ]; then
               echo "Skipping $KEY — already shipped in: $(printf '%s' "$PRIOR_IOS" | tr '\n' ',' | sed 's/,$//')"
               skipped=$((skipped + 1))
               continue
+            fi
+
+            # Second over-inclusion class, which the fixVersion guard above
+            # cannot see: a key that has NEVER shipped and was never worked in
+            # this release either. Two ways it reaches the release body, both
+            # observed in the 3.3.0 (502) run:
+            #
+            #   * an EPIC listed in a PR title beside its delivered children
+            #     (PP-4086 "Implement App Rating Prompt for iOS" — To Do, while
+            #     PP-4087..4091 were Done), and
+            #   * a FOLLOW-UP ticket named in a commit body as deferred work
+            #     ("Deferred: … separate ticket"). Eight of the ten offenders
+            #     were this shape. House style asks commit bodies to record what
+            #     was NOT done, so these mentions are correct and will keep
+            #     appearing; the body cannot distinguish them from delivery.
+            #
+            # ReleaseNotes.py cannot tell a mention from an attribution — its
+            # own header notes it falls back to branch name, body and commits
+            # when a PR title carries no key. Jira can: work still in the To Do
+            # category was not completed in this release, whatever the notes say.
+            # Anything further along (In Progress, Code Review, Done) is kept —
+            # PP-5118 shipped in 3.3.0 while sitting in Code Review, so gating
+            # on "Done" would drop real work.
+            STATUS_CAT=$(printf '%s' "$ISSUE_JSON" | jq -r '.fields.status.statusCategory.key // empty' 2>/dev/null) || STATUS_CAT=""
+            if [ "$STATUS_CAT" = "new" ]; then
+              STATUS_NAME=$(printf '%s' "$ISSUE_JSON" | jq -r '.fields.status.name // "To Do"' 2>/dev/null)
+              echo "Skipping $KEY — status is '$STATUS_NAME' (not started; a mention, not delivery)"
+              skipped=$((skipped + 1))
+              continue
+            fi
+            # An unreadable status must not silently become a skip: absence of
+            # evidence is not evidence of a mention. Fall through and tag, which
+            # is the pre-existing behaviour and is correctable by hand.
+            if [ -z "$STATUS_CAT" ]; then
+              echo "Note: could not read status for $KEY — tagging anyway (verify manually)"
             fi
             echo "Adding $RELEASE_NAME to $KEY..."
             if curl -s --fail -X PUT \
