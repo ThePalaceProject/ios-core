@@ -129,11 +129,51 @@ MUTATION_WHOLE_FILE=false
 # that adds a new state machine, retry handler, or borrow/download/DRM router.
 CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks/|SignInLogic/|MyBooks/(Download|Borrow|BookSignInRedirectHandler|AdobeDRMHandler|LCPFulfillmentHandler|RightsManagementDispatcher|MyBooksDownload|BackgroundDownloadHandler|OverdriveDownloadHandler)|Book/UI/BookDetail/(BookButtonMapper|BorrowReducer)|Accounts/User/TPPUserAccount|Accounts/Library/AccountsManager|Network/TPPNetworkExecutor|Packages/PalaceAuth/)'
 # Sim selection. Honors the harness allocator's per-session UDID so parallel
-# agents on the same machine don't collide on one device. Falls back to the
-# pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
-# sim UDID" — this default is the documented fallback, not a hardcode.
+# agents on the same machine don't collide on one device.
+#
+# The fallback UDID below is a convenience for ONE machine and is absent from
+# most others — any outside contributor's, and this repo's own after a simulator
+# wipe. An unresolvable `-destination id=...` does NOT produce `BUILD FAILED`:
+# xcodebuild exits having printed "The requested device could not be found" and
+# NEITHER verdict string, which this script records as "Build did not complete".
+# Four legs (build, unit_tests, coverage_floors, audiobook_smoke) then go red
+# pointing at the diff, and nothing anywhere names the simulator.
+#
+# Measured 2026-09-10: two consecutive full runs lost to exactly that, plus a
+# confident wrong diagnosis (machine load) built on top of it. So resolve the id
+# to a device that exists, and if none does, say so instead of proceeding.
 BASELINE_COMPARE="${BASELINE_COMPARE:-false}"
-SIM_ID="${HARNESS_SESSION_SIM_UDID:-DF4A2A27-9888-429D-A749-2E157A049A37}"
+SIM_FALLBACK_UDID="DF4A2A27-9888-429D-A749-2E157A049A37"
+
+# Prints a usable simulator UDID, or nothing.
+resolve_sim_id() {
+  local want="$1" available
+  available="$(xcrun simctl list devices available 2>/dev/null || true)"
+  if [ -n "$want" ] && printf '%s' "$available" | grep -qF "$want"; then
+    printf '%s' "$want"; return 0
+  fi
+  # CLAUDE.md documents iPhone 16 Pro as the destination; accept newer iPhones
+  # too rather than fail on a machine that has moved on.
+  printf '%s' "$available" \
+    | grep -E "iPhone (1[6-9]|2[0-9])" \
+    | grep -oE "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}" \
+    | head -1
+}
+
+SIM_ID="$(resolve_sim_id "${HARNESS_SESSION_SIM_UDID:-$SIM_FALLBACK_UDID}")"
+if [ -z "$SIM_ID" ]; then
+  echo "FATAL: no usable iOS simulator found." >&2
+  echo "  HARNESS_SESSION_SIM_UDID=${HARNESS_SESSION_SIM_UDID:-<unset>}" >&2
+  echo "  fallback $SIM_FALLBACK_UDID is not present on this host," >&2
+  echo "  and no available iPhone simulator matched." >&2
+  echo "" >&2
+  echo "Create one (Xcode > Window > Devices and Simulators), or run under an" >&2
+  echo "allocator that exports HARNESS_SESSION_SIM_UDID." >&2
+  exit 2
+fi
+if [ "$SIM_ID" != "${HARNESS_SESSION_SIM_UDID:-}" ]; then
+  echo "note: using simulator $SIM_ID (HARNESS_SESSION_SIM_UDID unset or unavailable)" >&2
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -453,8 +493,18 @@ else
 # routinely newer than this one's, and its failures would be reported as ours.
 RESULT_BUNDLE="${TMPDIR:-/tmp}/verify-pr-$$.xcresult"
 rm -rf "$RESULT_BUNDLE"
+# Timeouts match scripts/xcodebuild-test-optimized.sh (the CI path), which has had
+# them since it was written. This script did not, and that asymmetry IS the
+# defect: a hanging test fails in CI after 300s and hangs FOREVER locally.
+# On 2026-09-10 an unbounded `await` in a test mock held this leg open for ten
+# hours at 0% CPU — no output, no failure, indistinguishable from slow progress.
+# The local pre-push check is precisely where that must not be possible.
 TEST_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination "id=$SIM_ID" -resultBundlePath "$RESULT_BUNDLE" test 2>&1 || true)
+  -destination "id=$SIM_ID" -resultBundlePath "$RESULT_BUNDLE" \
+  -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 120 \
+  -maximum-test-execution-time-allowance 300 \
+  test 2>&1 || true)
 
 # The xcresult is the authoritative tally; stdout is a fallback.
 #
