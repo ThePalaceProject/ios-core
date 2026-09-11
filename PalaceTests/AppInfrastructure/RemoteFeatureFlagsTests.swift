@@ -153,9 +153,21 @@ final class RemoteFeatureFlagsTests: XCTestCase {
             }
             XCTFail("withTimeout must throw when the operation exceeds the bound")
         } catch is FirebaseManager.RemoteConfigFetchTimeout {
+            // The bound this assertion must discriminate is the INNER hang (10s),
+            // not a wall-clock ideal. 2.0s was tight enough to fail on a loaded
+            // runner: measured 2026-09-11, this family produced one 4.851s
+            // sample against a 0.217s median — 22x — and reddened a PR whose
+            // diff contained no Swift at all.
+            //
+            // 8.0s still fails a regression that lets the inner sleep run to
+            // completion, which is the only thing this can usefully detect, and
+            // it no longer measures the machine. The tight bound is kept as an
+            // opt-in below rather than deleted — it is the more sensitive
+            // instrument, it just cannot gate CI.
             let elapsed = Date().timeIntervalSince(start)
-            XCTAssertLessThan(elapsed, 2.0,
-                              "withTimeout(0.2s) must bound a hanging operation well under the inner 10s, got \(elapsed)s")
+            XCTAssertLessThan(elapsed, 8.0,
+                              "withTimeout(0.2s) must return before the inner 10s sleep completes, got \(elapsed)s")
+            assertPromptlyBounded(elapsed, label: "cancellable hang")
         } catch {
             XCTFail("Expected RemoteConfigFetchTimeout, got \(type(of: error)): \(error)")
         }
@@ -179,9 +191,17 @@ final class RemoteFeatureFlagsTests: XCTestCase {
             }
             XCTFail("withTimeout must throw when a non-cancellable operation exceeds the bound")
         } catch is FirebaseManager.RemoteConfigFetchTimeout {
+            // Reaching this catch is itself the proof. The inner operation never
+            // resumes and ignores cancellation, so a task-group implementation
+            // that re-awaited its child at scope exit would hang here forever
+            // rather than throw — the 120s hang this test was written for. The
+            // elapsed figure adds only "promptly", which is a property of the
+            // machine as much as of the code, so it is reported rather than
+            // gated at CI-hostile tightness.
             let elapsed = Date().timeIntervalSince(start)
-            XCTAssertLessThan(elapsed, 2.0,
-                              "withTimeout must bound a NON-cancellable hang (the real Firebase case) by orphaning it, got \(elapsed)s")
+            XCTAssertLessThan(elapsed, 8.0,
+                              "withTimeout must orphan a NON-cancellable hang and return, got \(elapsed)s")
+            assertPromptlyBounded(elapsed, label: "non-cancellable hang")
         } catch {
             XCTFail("Expected RemoteConfigFetchTimeout, got \(type(of: error)): \(error)")
         }
@@ -320,4 +340,38 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         XCTAssertTrue(flags.isInAppPlaybackNavEnabled,
                       "in-app-nav ON must not be suppressed by continuation OFF")
     }
+
+    /// The tight timing bound, kept as an opt-in rather than deleted.
+    ///
+    /// `withTimeout(0.2s)` should return in well under a second on an idle
+    /// machine, and a regression that widened the bound without breaking it
+    /// entirely would show up here first. But a wall-clock assertion at that
+    /// tightness measures the runner: on 2026-09-11 this family logged one
+    /// 4.851s sample against a 0.217s median and turned a PR red whose diff
+    /// contained no Swift. CLAUDE.md's CI contract is explicit that a test which
+    /// flips with unrelated load cannot gate CI.
+    ///
+    /// So the sensitive instrument is preserved and made deliberate. Run it with
+    /// `TEST_RUNNER_PALACE_STRESS_TIMING=1`, the same shape
+    /// `AccountRegistryStorePoolStarvationTests` uses for its load-sensitive
+    /// variant. Off by default it reports rather than fails, so a drift toward
+    /// the bound is still visible in the log.
+    private func assertPromptlyBounded(_ elapsed: TimeInterval,
+                                       label: String,
+                                       file: StaticString = #filePath,
+                                       line: UInt = #line) {
+        let tight: TimeInterval = 2.0
+        guard ProcessInfo.processInfo.environment["PALACE_STRESS_TIMING"] == "1" else {
+            if elapsed >= tight {
+                print("[timing] \(label): \(elapsed)s exceeded the \(tight)s opt-in bound "
+                      + "— load, or a real widening. Re-run with "
+                      + "TEST_RUNNER_PALACE_STRESS_TIMING=1 on an idle machine to tell them apart.")
+            }
+            return
+        }
+        XCTAssertLessThan(elapsed, tight,
+                          "\(label): withTimeout must return promptly; got \(elapsed)s",
+                          file: file, line: line)
+    }
+
 }
