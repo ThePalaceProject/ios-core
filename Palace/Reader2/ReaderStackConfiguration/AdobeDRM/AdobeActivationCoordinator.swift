@@ -48,6 +48,10 @@ protocol AdobeActivationAccount: AnyObject, Sendable {
     var licensor: [String: Any]? { get }
     func setUserID(_ id: String)
     func setDeviceID(_ id: String)
+    /// Persists a licensor refreshed at activation time (PP-3649). The
+    /// keychain copy is written at sign-in and never updated otherwise, which
+    /// is how a 60-minute token reaches Adobe hours stale.
+    func setLicensor(_ licensor: [String: Any])
 }
 
 extension TPPUserAccount: AdobeActivationAccount {}

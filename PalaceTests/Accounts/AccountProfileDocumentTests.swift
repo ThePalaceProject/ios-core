@@ -261,7 +261,7 @@ final class AccountProfileDocumentTests: XCTestCase {
         // retries. Asserting after the synchronous return is both honest and
         // strictly stronger — if this path ever becomes asynchronous, this
         // fails immediately instead of passing on a generous timeout.
-        account.getProfileDocument(performRequest: { request, _ in
+        account.getProfileDocument(performRequest: { request, _, _ in
             issued.append(request)
         }, completion: { document in
             completions.append(document)
@@ -350,7 +350,7 @@ final class AccountProfileDocumentTests: XCTestCase {
                       "Precondition: a refresh CAN repair this — that is what makes blocking it a regression")
 
         var issued: [URLRequest] = []
-        account.getProfileDocument(performRequest: { request, _ in
+        account.getProfileDocument(performRequest: { request, _, _ in
             issued.append(request)
         }, userAccount: user, completion: { _ in })
 
@@ -383,13 +383,57 @@ final class AccountProfileDocumentTests: XCTestCase {
                        "Precondition: NO refresh can repair this — no token URL to refresh against")
 
         var issued: [URLRequest] = []
-        account.getProfileDocument(performRequest: { request, _ in
+        account.getProfileDocument(performRequest: { request, _, _ in
             issued.append(request)
         }, userAccount: user, completion: { _ in })
 
         XCTAssertTrue(issued.isEmpty,
                       "An expired token nothing can repair must NOT be sent — its 401 returns the OPDS auth "
                       + "document the app reads back as \"signed out\", which is the defect this gate exists for.")
+    }
+
+    // MARK: - enableTokenRefresh reaches the executor (PP-3649)
+
+    /// The gate above deliberately lets an EXPIRED-but-repairable token through
+    /// on the reasoning that a refresh will fix it. Nothing was doing the
+    /// fixing on the way IN: every caller hardcoded `enableTokenRefresh: false`,
+    /// so the expired bearer went out as-is and the repair was left entirely to
+    /// the reactive 401 path — which, for the Adobe borrow, means a 401 on
+    /// `/patrons/me/`, a `markCredentialsStale`, and a licensor refresh that
+    /// silently falls back to the stale stored token. That is the PP-3649 case
+    /// the fix is FOR, so the fix would have missed it.
+    ///
+    /// The flag is threaded through the seam rather than read inside the
+    /// production-only closure precisely so this is observable. A flag only the
+    /// un-injectable branch consults is a flag no test can be wrong about.
+    func testGetProfileDocument_defaultsToNoTokenRefresh() {
+        let account = accountWithProfileURL(uuid: "urn:uuid:seam-refresh-default-\(UUID().uuidString)")
+        let user = TPPUserAccountTestFactory.makeIsolated()
+        user.setBarcode("1234567890", PIN: "1234")
+
+        var flags: [Bool] = []
+        account.getProfileDocument(performRequest: { _, refresh, _ in
+            flags.append(refresh)
+        }, userAccount: user, completion: { _ in })
+
+        XCTAssertEqual(flags, [false],
+                       "background profile polls (NotificationService, LibrariesSectionViewModel) must not "
+                       + "spend a token exchange; only the borrow path opts in")
+    }
+
+    func testGetProfileDocument_borrowPathOptIn_reachesTheExecutor() {
+        let account = accountWithProfileURL(uuid: "urn:uuid:seam-refresh-optin-\(UUID().uuidString)")
+        let user = TPPUserAccountTestFactory.makeIsolated()
+        user.setBarcode("1234567890", PIN: "1234")
+
+        var flags: [Bool] = []
+        account.getProfileDocument(performRequest: { _, refresh, _ in
+            flags.append(refresh)
+        }, userAccount: user, enableTokenRefresh: true, completion: { _ in })
+
+        XCTAssertEqual(flags, [true],
+                       "the caller asked for a proactive refresh and the executor never heard about it — "
+                       + "the Adobe licensor refresh would fetch with an expired bearer and 401")
     }
 
     // MARK: - isTokenRefreshRequired: the gate's repairability input

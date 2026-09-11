@@ -389,7 +389,31 @@ final class BorrowOperation: @unchecked Sendable {
         if book.requiresAdobeDRM {
             Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
 
-            try await BorrowAdobeActivationStep.run(setProcessing: { [bookRegistry] in bookRegistry.setProcessing($0, for: bookIdentifier) }, activate: { [adobeDRMService] in try await adobeDRMService.ensureDeviceActivated(licensorGracePeriod: $0) })
+            try await BorrowAdobeActivationStep.run(
+                setProcessing: { [bookRegistry] in bookRegistry.setProcessing($0, for: bookIdentifier) },
+                activate: { [adobeDRMService] in try await adobeDRMService.ensureDeviceActivated(licensorGracePeriod: $0) },
+                // Without this the borrow dies silently: the spinner clears, the
+                // sheet keeps its empty progress bar, and the patron is told
+                // nothing. Observed on device 2026-09-09 against A1QA —
+                // ADEPTErrorDomain error 4 twice, no visible indication. PP-3649
+                // requires this path to "fail with a clear error message".
+                onFailure: { [weak self] error in
+                    // The activation path has already mapped Adobe's code onto
+                    // a PalaceError (PalaceError.drmError(for:)); re-deriving it
+                    // here would read `error as NSError` on a value whose domain
+                    // is Palace.PalaceError and fall back silently — which is
+                    // exactly the bug that told patrons to sign in again when
+                    // their activations had run out.
+                    //
+                    // The fallback is `.adobeError`, matching the consolidated
+                    // table. It is currently unreachable (every throw site on
+                    // this path is already a PalaceError), and that is the point:
+                    // an unreachable branch that still says "sign out and sign in
+                    // again" is one refactor away from saying it to a patron.
+                    let palaceError = (error as? PalaceError) ?? .drm(.adobeError)
+                    self?.showBorrowError(palaceError, originalError: error, for: book)
+                }
+            )
         }
         #endif
 

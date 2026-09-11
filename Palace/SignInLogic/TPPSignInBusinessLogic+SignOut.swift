@@ -130,6 +130,42 @@ extension TPPSignInBusinessLogic {
 
         let barcode = userAccount.barcode
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
+        // enableTokenRefresh stays FALSE here.
+        //
+        // Turning it on does fetch a fresher licensor, which is what sign-out
+        // needs to deauthorize. But it also arms `TPPNetworkExecutor:882-899`:
+        // when the proactive refresh itself 401s — an expired card, precisely
+        // the case this was meant to help — that path calls
+        // `markCredentialsStale()` AND
+        // `presentSignInModalForCurrentAccount(...)` whenever the refreshing
+        // account is the current one, which sign-out almost always is. The
+        // executor then ignores the refresh result, so the sign-out completes
+        // underneath the sheet. The patron taps Sign Out and is handed a
+        // sign-in prompt for the library they just left.
+        //
+        // An earlier version of this comment justified the revert by claiming
+        // `enableTokenRefresh: true` had no production call sites. That was
+        // false, and the way it was reached is worth recording: the census
+        // grepped the LITERAL `enableTokenRefresh: true`, while the contract is
+        // semantic — `GET(useTokenIfAvailable: Bool = true)` and three siblings
+        // forward a defaulted-true straight into the same parameter
+        // (TPPNetworkExecutor:388, 676, 700, 720). That arm is live production
+        // and runs constantly.
+        //
+        // The revert stands anyway, on the narrower ground that actually holds:
+        // prompting re-auth mid-BORROW is already this app's design, so the
+        // borrow leg's opt-in adds a route to an outcome it already produces.
+        // Sign-out is the one flow where a sign-in sheet is never the right
+        // answer, whatever the rest of the app does.
+        //
+        // The stale-licensor case is still REPORTED — `deauthorizeDevice` logs
+        // an expired licensor and reports the leaked activation to Crashlytics
+        // — so what is lost is a repair, not a diagnosis.
+        //
+        // The borrow path is deliberately different: `freshLicensorFromProfileDocument`
+        // DOES opt in, because a patron borrowing with a dead token genuinely
+        // needs to re-authenticate and a sign-in prompt is the right answer
+        // there. Signing out is the one flow where it never is.
         networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
             switch result {
             case .success(let data, let response):
@@ -202,9 +238,16 @@ extension TPPSignInBusinessLogic {
             // Set the fresh Adobe token info into the user account so that the
             // following `deauthorizeDevice` call can use it.
             self.userAccount.setLicensor(drm.licensor)
-            Log.info(#file, "Licensor token updated to \(clientToken) for adobe user ID \(self.userAccount.userID ?? "N/A")")
+            Log.info(#file, "Licensor refreshed at sign-out: \(AdobeClientToken.redacted(clientToken)) for adobe user ID \(self.userAccount.userID ?? "N/A")")
         } else {
-            Log.error(#file, "Licensor token invalid: \(profileDoc.toJson())")
+            // NOT `toJson()`. `Log.error` is persisted to
+            // `Documents/Logs/palace_error.log`, which the patron can export and
+            // routinely attaches to support tickets, and the encoded document
+            // carries `simplified:authorization_identifier` (the BARCODE) and
+            // `drm:clientToken` (a live credential) in full. This branch fires
+            // whenever `drm.vendor` is nil — including with a perfectly good
+            // client token — so it is not a rare path.
+            Log.error(#file, "Licensor token invalid: \(profileDoc.loggableSummary)")
         }
 
         self.deauthorizeDevice()
@@ -423,32 +466,65 @@ extension TPPSignInBusinessLogic {
 
     #if FEATURE_DRM_CONNECTOR
     private func deauthorizeDevice() {
-        guard let licensor = userAccount.licensor else {
-            Log.warn(#file, "No Licensor available to deauthorize device. Will remove user credentials anyway.")
+        let licensor = userAccount.licensor
+
+        // Signing out is the only thing that returns an Adobe activation slot,
+        // so every way of not doing it is worth naming. `attempt` is nil only
+        // when there is no licensor at all — nothing to authenticate with and
+        // nothing for RMSDK to clear.
+        guard let attempt = AdobeDeauthorization.attempt(licensor: licensor,
+                                                         userID: userAccount.userID,
+                                                         deviceID: userAccount.deviceID) else {
+            Log.error(#file, "Cannot deauthorize this device — the activation stays consumed. Signing out locally anyway.")
             TPPErrorLogger.logInvalidLicensor(withAccountID: libraryAccountID)
             completeLogOutProcess()
             return
         }
 
-        var licensorItems = (licensor["clientToken"] as? String)?
-            .replacingOccurrences(of: "\n", with: "")
-            .components(separatedBy: "|")
-        let tokenPassword = licensorItems?.last
-        licensorItems?.removeLast()
-        let tokenUsername = licensorItems?.joined(separator: "|")
-        let adobeUserID = userAccount.userID
-        let adobeDeviceID = userAccount.deviceID
+        // A licensor whose client token will not split cannot authenticate, so
+        // the server-side slot is already lost. The call still goes out: RMSDK
+        // clears the LOCAL activation whatever the network answers, and that
+        // clear is what lets the next sign-in re-activate. Refusing to call it
+        // would withhold the repair from the patron who most needs it while
+        // freeing nothing extra.
+        if !attempt.canReleaseServerSlot {
+            Log.error(#file, "Adobe client token is unparseable at sign-out — the activation slot will NOT be freed; deauthorizing anyway for the local clear (PP-3649). Token: \(AdobeClientToken.redacted(licensor?["clientToken"] as? String))")
+            TPPErrorLogger.logInvalidLicensor(withAccountID: libraryAccountID)
+        }
+
+        // The CM's short client token lives 60 minutes (see AdobeLicensorRefresh).
+        // On the sign-out paths that could not read a fresh profile document we
+        // are about to spend the attempt on a token we can already see is dead;
+        // say so, because otherwise the resulting leak has no cause in any log.
+        // Computed here rather than inside the completion: `[String: Any]?` is
+        // not Sendable and the deauthorize callback is `@Sendable`. A Bool is.
+        let licensorWasExpired = AdobeLicensorRefresh.isExpired(licensor)
+        if licensorWasExpired {
+            Log.error(#file, "Adobe licensor is past its expiry at sign-out — deauthorization will be rejected and the activation slot will leak (PP-3649)")
+        }
 
         if let drmAuthorizer = drmAuthorizer {
             drmAuthorizer.deauthorize(
-                withUsername: tokenUsername,
-                password: tokenPassword,
-                userID: adobeUserID,
-                deviceID: adobeDeviceID) { [weak self] success, error in
-                if !success {
-                    // DRM deauthorization failures are expected (e.g., E_DEACT_USER_MISMATCH when user changes PIN)
-                    // Just log locally and continue - the user should still be able to log out
-                    Log.warn(#file, "DRM deauthorization failed (expected): \(error?.localizedDescription ?? "unknown")")
+                withUsername: attempt.username,
+                password: attempt.password,
+                userID: attempt.userID,
+                deviceID: attempt.deviceID) { [weak self] success, error in
+                if case .notFreed(let reason) = AdobeDeauthorization.outcome(success: success, error: error) {
+                    // Not "expected". E_DEACT_USER_MISMATCH explains the cause
+                    // and changes nothing about the consequence: the patron is
+                    // one activation closer to the ceiling, with no way to see
+                    // it and no way to undo it.
+                    Log.error(#file, "Adobe deauthorization failed — activation slot NOT freed: \(reason)")
+
+                    // Reported so the fleet-wide rate is measurable. Until now
+                    // the only evidence a leak had happened was the patron
+                    // eventually hitting E_ACT_TOO_MANY_ACTIVATIONS, by which
+                    // point the sign-out that caused it was long gone.
+                    TPPErrorLogger.logError(
+                        withCode: .invalidLicensor,
+                        summary: "SignOut: Adobe activation NOT released",
+                        metadata: ["reason": reason,
+                                   "licensorWasExpired": licensorWasExpired])
                 }
 
                 // Check if self was deallocated during the DRM callback

@@ -63,6 +63,44 @@ import Foundation
         case settings = "settings"
     }
 
+    /// A description of this document safe to write to a persisted log.
+    ///
+    /// `toJson()` is NOT. `Log.error`/`Log.fault` are appended to
+    /// `Documents/Logs/palace_error.log`, which the patron can export and
+    /// routinely attaches to support tickets, and the encoded document carries
+    /// `simplified:authorization_identifier` — the patron's BARCODE — and
+    /// `drm:clientToken`, a credential Adobe accepts for its 60-minute window.
+    ///
+    /// Everything a reader of that log actually asks of this value survives:
+    /// which fields arrived, how many DRM entries there are, which vendor,
+    /// which library minted the token and when it dies. Only the barcode and
+    /// the token's signature are withheld — and their PRESENCE and LENGTH are
+    /// still reported, because "absent" and "present but wrong" are different
+    /// defects and collapsing them is how a malformed value reads as a missing
+    /// one.
+    var loggableSummary: String {
+        let identifier = authorizationIdentifier.map { "present (\($0.count) chars)" } ?? "absent"
+        let expires = authorizationExpires.map(ISO8601DateFormatter().string(from:)) ?? "absent"
+
+        let drmSummary: String
+        if let drm, !drm.isEmpty {
+            drmSummary = drm.map { entry in
+                let vendor = entry.vendor.flatMap { $0.isEmpty ? nil : $0 } ?? "absent"
+                let serverToken = (entry.serverToken?.isEmpty == false) ? "present" : "absent"
+                return "{vendor: \(vendor), scheme: \(entry.scheme ?? "absent"), "
+                     + "clientToken: \(AdobeClientToken.redacted(entry.clientToken)), "
+                     + "serverToken: \(serverToken)}"
+            }.joined(separator: ", ")
+        } else {
+            drmSummary = drm == nil ? "absent" : "empty"
+        }
+
+        return "UserProfileDocument(authorizationIdentifier: \(identifier), "
+             + "authorizationExpires: \(expires), "
+             + "settings.synchronizeAnnotations: \(settings?.synchronizeAnnotations.map(String.init) ?? "absent"), "
+             + "links: \(links?.count ?? 0), drm: [\(drmSummary)])"
+    }
+
     func toJson() -> String {
         let jsonEncoder = JSONEncoder()
         let jsonData = try? jsonEncoder.encode(self)
