@@ -62,6 +62,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -75,6 +76,34 @@ PARALLEL = re.compile(
 SERIAL = re.compile(
     r"Test Case '-\[[\w.]*?([\w]+) ([\w]+)\]' (passed|failed) \(([\d.]+) seconds\)"
 )
+
+
+# A failure this many times the passing median is a wall-clock event rather
+# than a logic change. 5x is conservative: the observed incident was 22x, and
+# ordinary run-to-run variance on a shared runner stays well under 5x.
+DURATION_OUTLIER_FACTOR = 5.0
+# One failure against at least this many passes is too thin to name a branch.
+THIN_EVIDENCE_PASSES = 10
+
+
+def classify_new_failure(pass_secs, fail_secs):
+    """How much weight the NEW verdict's accusation can carry.
+
+    Returns "duration-outlier", "thin-evidence", or "branch-signature".
+
+    Separated from the printing so it can be asserted directly. The verdict it
+    qualifies is the one a reader acts on — it says "fix the change, not the
+    environment" — so the decision behind it should be checkable without a
+    network round trip.
+    """
+    if pass_secs and fail_secs:
+        pm = statistics.median(pass_secs)
+        fm = statistics.median(fail_secs)
+        if pm > 0 and fm >= DURATION_OUTLIER_FACTOR * pm:
+            return "duration-outlier"
+    if len(fail_secs) == 1 and len(pass_secs) >= THIN_EVIDENCE_PASSES:
+        return "thin-evidence"
+    return "branch-signature"
 
 
 def sh(cmd: list[str]) -> str:
@@ -378,6 +407,9 @@ def main(argv: list[str]) -> int:
 
     print(f"{args.test} — {len(found)} run(s) of {args.workflow!r} on {repo}\n")
     per_branch: dict[str, list[str]] = defaultdict(list)
+    # Durations, so the verdict can weigh HOW a test failed and not only WHERE.
+    pass_secs: list[float] = []
+    fail_secs: list[float] = []
     flaky_runs: list[str] = []
     any_seen = False
 
@@ -395,6 +427,11 @@ def main(argv: list[str]) -> int:
         any_seen = True
         verdicts = [v for _, v, _ in res]
         detail = " · ".join(f"{v} {s}s" for _, v, s in res)
+        for _, _v, _secs in res:
+            try:
+                (fail_secs if _v == "failed" else pass_secs).append(float(_secs))
+            except (TypeError, ValueError):
+                pass
         mixed = "passed" in verdicts and "failed" in verdicts
         flag = "  <- MIXED, retry is masking this" if mixed else ""
         if mixed:
@@ -417,8 +454,34 @@ def main(argv: list[str]) -> int:
         print("  Retry reports the run green while the defect stays. Do NOT re-run to")
         print("  clear it; a test that flips on load is measuring the machine, not the code.")
     elif failing and not (failing & passing) and len(passing) > 0:
+        # Branch-exclusivity is not causation. Before telling someone their diff
+        # introduced a failure, check whether the failure looks like the machine.
+        #
+        # Measured 2026-09-11: this verdict told a branch of TWO files — a shell
+        # script and a pytest, zero Swift — that it had introduced a failure in
+        # RemoteFeatureFlagsTests.testWithTimeout_…. That test had 46 passing
+        # samples at a 0.217s median and ONE failure at 4.851s, 22x the median,
+        # against a 2.0s wall-clock assertion. The diff could not reach Swift
+        # execution at all. The verdict was literally true — it did fail only
+        # there — and its CONCLUSION sent the reader at their own diff.
+        kind = classify_new_failure(pass_secs, fail_secs)
+        outlier = kind == "duration-outlier"
+        thin = kind == "thin-evidence"
+
         print(f"VERDICT: NEW — fails only on {', '.join(sorted(failing))}, passes elsewhere.")
-        print("  This branch introduced it. Fix the change, not the environment.")
+        if outlier:
+            _fm, _pm = statistics.median(fail_secs), statistics.median(pass_secs)
+            print(f"  BUT the failure is a DURATION OUTLIER: {_fm:.3f}s against a passing")
+            print(f"  median of {_pm:.3f}s ({_fm / _pm:.0f}x). A wall-clock bound blown by that")
+            print("  margin is evidence of LOAD, not of the diff. Before changing code, ask")
+            print("  whether the diff touches anything this test executes — if it does not,")
+            print("  the runner is the better suspect and the test is asserting a timing")
+            print("  bound it cannot hold under load.")
+        elif thin:
+            print(f"  Weak evidence: ONE failing sample against {len(pass_secs)} passing. A single")
+            print("  loss is not a branch signature — widen with --limit before acting.")
+        else:
+            print("  This branch introduced it. Fix the change, not the environment.")
     elif failing and passing:
         print(f"VERDICT: MIXED across branches — fails on {', '.join(sorted(failing))}, "
               f"passes on {', '.join(sorted(passing))}.")
