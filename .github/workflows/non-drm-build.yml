@@ -35,8 +35,18 @@ jobs:
 
       - name: Verify Xcode Version
         run: xcodebuild -version
-      - name: Checkout main repo
+      # Submodules and a token that can read them. The bare checkout this
+      # replaces cloned no submodules, so the first PR run failed on
+      # `Could not read from remote repository` for ios-tenprintcover,
+      # mobile-bookmark-spec and readium-sdk — all private. Every other
+      # workflow that builds this repo already passes CI_GITHUB_ACCESS_TOKEN;
+      # this one did not, and being workflow_dispatch-only meant nobody found
+      # out. A guard that cannot check out the code it guards is not a guard.
+      - name: Checkout main repo and submodules
         uses: actions/checkout@v7
+        with:
+          submodules: true
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Set up repo for nonDRM build
         run: exec ./scripts/setup-repo-nodrm.sh
         env:
