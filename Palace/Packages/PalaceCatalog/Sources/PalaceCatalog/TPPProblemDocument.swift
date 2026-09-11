@@ -4,7 +4,7 @@ import Foundation
  Represents a Problem Document, outlined in https://tools.ietf.org/html/rfc7807
  */
 // Sendable: `final` + every stored property is an immutable `let` of a Sendable
-// value type (String?/Int?). The APIs that return mutable shapes
+// value type (String?/Int?/Bool?). The APIs that return mutable shapes
 // (`dictionaryValue`, `stringValue`) are computed and build fresh values per call.
 // NSObject is an allowed superclass for a checked Sendable conformance.
 @objcMembers public final class TPPProblemDocument: NSObject, Codable, Sendable {
@@ -46,6 +46,7 @@ import Foundation
     private static let statusKey = "status"
     private static let detailKey = "detail"
     private static let instanceKey = "instance"
+    private static let showTitleKey = "show_title"
 
     /// Per RFC7807, this identifies the type of problem.
     public let type: String?
@@ -64,12 +65,30 @@ import Foundation
     /// the problem.
     public let instance: String?
 
+    /// Palace extension (`show_title`): whether the client should display a
+    /// title alongside `detail`. The server sends `false` when `detail` is
+    /// meant to stand on its own — e.g. a library's patron-blocking-rule
+    /// message that redirects the patron to a different library, where the
+    /// standard "Blocked by library policy." title is unwanted framing.
+    ///
+    /// `nil` when the server did not send the member, which is the common
+    /// case; prefer `shouldShowTitle` over reading this directly.
+    public let showTitle: Bool?
+
+    /// Whether to display a title with this problem's `detail`. Defaults to
+    /// `true` when the server sent no `show_title`, so documents that predate
+    /// the extension keep displaying a title as they always have.
+    public var shouldShowTitle: Bool {
+        showTitle ?? true
+    }
+
     private init(_ dict: [String: Any]) {
         self.type = dict[TPPProblemDocument.typeKey] as? String
         self.title = dict[TPPProblemDocument.titleKey] as? String
         self.status = dict[TPPProblemDocument.statusKey] as? Int
         self.detail = dict[TPPProblemDocument.detailKey] as? String
         self.instance = dict[TPPProblemDocument.instanceKey] as? String
+        self.showTitle = dict[TPPProblemDocument.showTitleKey] as? Bool
         super.init()
     }
 
@@ -137,13 +156,17 @@ import Foundation
             ?? (dict["message"] as? String)
             ?? (dict["title"] as? String)
         let title = dict["title"] as? String
-        return TPPProblemDocument([
+        var members: [String: Any] = [
             typeKey: dict["type"] as? String ?? "",
             titleKey: title ?? NSLocalizedString("Download Error", comment: ""),
             statusKey: dict["status"] as? Int ?? noStatus,
             detailKey: detail ?? NSLocalizedString("The server returned an error. You may need to return the book and borrow it again.", comment: ""),
             instanceKey: dict["instance"] as? String ?? ""
-        ])
+        ]
+        if let showTitle = dict[showTitleKey] as? Bool {
+            members[showTitleKey] = showTitle
+        }
+        return TPPProblemDocument(members)
     }
 
     /**
@@ -156,13 +179,19 @@ import Foundation
     }
 
     @objc public var dictionaryValue: [String: Any] {
-        return [
+        var dict: [String: Any] = [
             TPPProblemDocument.typeKey: type ?? "",
             TPPProblemDocument.titleKey: title ?? "",
             TPPProblemDocument.statusKey: status ?? TPPProblemDocument.noStatus,
             TPPProblemDocument.detailKey: detail ?? "",
             TPPProblemDocument.instanceKey: instance ?? ""
         ]
+        // Only present when the server sent it, so documents without the
+        // extension keep the dictionary shape every existing consumer sees.
+        if let showTitle {
+            dict[TPPProblemDocument.showTitleKey] = showTitle
+        }
+        return dict
     }
 
     @objc public var stringValue: String {

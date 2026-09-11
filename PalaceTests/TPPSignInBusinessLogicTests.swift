@@ -260,6 +260,72 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         XCTAssertEqual(message, "Too many attempts.")
     }
 
+    // MARK: - Server-suppressed title (patron blocking rules)
+    //
+    // A library can configure its patron-blocking-rule message to display
+    // without the standard title (the message often redirects the patron to a
+    // different library, where "Blocked by library policy." is unwanted
+    // framing). The manager signals this with `show_title: false` on the
+    // problem document; this layer must honor it without dropping the message.
+
+    private func blockedByPolicyDocument(showTitle: Bool?) throws -> TPPProblemDocument {
+        var members = """
+        "type": "http://librarysimplified.org/terms/problem/credentials-blocked-by-policy",
+        "title": "Blocked by library policy.",
+        "status": 403,
+        "detail": "Please sign in at your local library instead."
+        """
+        if let showTitle {
+            members += ",\n\"show_title\": \(showTitle)"
+        }
+        return try TPPProblemDocument.fromData(Data("{\(members)}".utf8))
+    }
+
+    func testUserFacingSignInError_ShowTitleFalse_SuppressesTitleAndKeepsMessage() throws {
+        let error = NSError(domain: "TPPErrorDomain", code: 403)
+        let problemDoc = try blockedByPolicyDocument(showTitle: false)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: problemDoc)
+
+        // Empty — not nil — is how this layer says "render no title": a nil
+        // title means "no server info" and falls back to "Login Failed" in
+        // AccountDetailViewModel, which is the framing we are removing.
+        XCTAssertEqual(title, "")
+        XCTAssertNotNil(title, "nil would fall back to the client's own 'Login Failed' title.")
+        XCTAssertEqual(message, "Please sign in at your local library instead.",
+                       "The library's configured message must still display in full.")
+    }
+
+    func testUserFacingSignInError_ShowTitleAbsent_KeepsServerTitle() throws {
+        let error = NSError(domain: "TPPErrorDomain", code: 403)
+        let problemDoc = try blockedByPolicyDocument(showTitle: nil)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: problemDoc)
+
+        XCTAssertEqual(title, "Blocked by library policy.",
+                       "Without the flag, behavior is unchanged from today.")
+        XCTAssertEqual(message, "Please sign in at your local library instead.")
+    }
+
+    func testUserFacingSignInError_ShowTitleTrue_KeepsServerTitle() throws {
+        let error = NSError(domain: "TPPErrorDomain", code: 403)
+        let problemDoc = try blockedByPolicyDocument(showTitle: true)
+
+        let (title, _) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: problemDoc)
+
+        XCTAssertEqual(title, "Blocked by library policy.")
+    }
+
+    func testUserFacingSignInError_ShowTitleFalse_DoesNotSuppressNonDocumentErrors() {
+        // The flag lives on the problem document; a connectivity failure with
+        // no document must keep its own title rather than inheriting suppression.
+        let error = urlError(NSURLErrorNotConnectedToInternet)
+
+        let (title, _) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.networkUnavailableErrorTitle)
+    }
+
     func testIsNetworkConnectivityError_OnlyRecognizesURLErrorDomain() {
         XCTAssertTrue(TPPSignInBusinessLogic.isNetworkConnectivityError(urlError(NSURLErrorNotConnectedToInternet)))
         XCTAssertTrue(TPPSignInBusinessLogic.isNetworkConnectivityError(urlError(NSURLErrorCannotFindHost)))
