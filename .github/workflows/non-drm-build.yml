@@ -1,8 +1,33 @@
 name: NonDRM Build
-on: workflow_dispatch
+
+# Palace-noDRM is the build that runs the app without Adobe DRM — including on
+# a simulator, which is how most people first run it. It has its own inputs
+# (the --no-private dependency path, a subset of the Embed Frameworks phase),
+# so a PR that leaves the DRM build green can still break it. This job runs on
+# every PR that touches those inputs; `workflow_dispatch` stays for ad-hoc runs.
+#
+# The wiring here is pinned by scripts/tests/test_nodrm_workflow_wiring.py.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Palace/**'
+      - 'Palace.xcodeproj/**'
+      - 'ios-audiobooktoolkit'
+      - 'scripts/setup-repo-nodrm.sh'
+      - 'scripts/build-3rd-party-dependencies.sh'
+      - 'scripts/build-carthage.sh'
+      - 'scripts/fetch-audioengine.sh'
+      - 'scripts/xcode-build-nodrm.sh'
+      - 'scripts/check-nodrm-app-excludes-audioengine.sh'
+      - '.github/workflows/non-drm-build.yml'
+
 jobs:
   build:
     runs-on: macos-26
+    env:
+      # The build writes here; the product check below reads from here.
+      NODRM_DERIVED_DATA_PATH: ${{ github.workspace }}/nodrm-derived-data
     steps:
       - name: Set up Xcode 26
         uses: maxim-lobanov/setup-xcode@v1
@@ -11,25 +36,50 @@ jobs:
 
       - name: Verify Xcode Version
         run: xcodebuild -version
+
+      # `submodules: true` + the CI token, like every other workflow that
+      # builds this project: PalaceAudiobookToolkit is a submodule and the
+      # noDRM target links it, so a bare checkout has nothing to build.
       - name: Checkout main repo
         uses: actions/checkout@v7
+        with:
+          submodules: true
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - name: Set up repo for nonDRM build
         run: exec ./scripts/setup-repo-nodrm.sh
         env:
           BUILD_CONTEXT: ci
+
+      # --no-private skips the private mobile-certificates step only. Findaway's
+      # AudioEngine SDK is a public download and is fetched on this path too:
+      # PalaceAudiobookToolkit weak-links it, and a weak link still needs the
+      # framework present to link.
       - name: Build 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh --no-private
         env:
           BUILD_CONTEXT: ci
+
       # tee to a log so the @objc-witness-drift gate below can scan the build
       # warnings. `set -o pipefail` is set EXPLICITLY: GitHub's default bash does
       # NOT enable it, so `cmd | tee` would return tee's exit 0 and mask a
       # failing build as a green step.
       - name: Build Palace without DRM support
         shell: bash
+        env:
+          NODRM_DERIVED_DATA_PATH: ${{ env.NODRM_DERIVED_DATA_PATH }}
         run: |
           set -o pipefail
           ./scripts/xcode-build-nodrm.sh 2>&1 | tee nodrm-build-output.log
+
+      # The noDRM product must ship WITHOUT Findaway's SDK and must be able to
+      # launch without it: no embedded AudioEngine.framework, and the toolkit's
+      # AudioEngine load command weak. Both would build green if broken; the
+      # second would only show as a dyld failure at launch.
+      - name: Check the noDRM product excludes AudioEngine
+        env:
+          NODRM_DERIVED_DATA_PATH: ${{ env.NODRM_DERIVED_DATA_PATH }}
+        run: scripts/check-nodrm-app-excludes-audioengine.sh "$NODRM_DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/Palace-noDRM.app"
 
       # PP-4895: the noDRM target is where the URLSession auth-challenge witness
       # drift was visible. Which target sees it is decided by ClangImporter

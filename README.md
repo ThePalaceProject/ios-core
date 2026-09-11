@@ -25,6 +25,12 @@ cd ios-core
 ```
 Open `Palace.xcodeproj` and build the `Palace-noDRM` target.
 
+The dependency script downloads Findaway's AudioEngine SDK (a public download from
+`cdn.audioengine.io`) on this path too: `PalaceAudiobookToolkit` weak-links it and
+cannot link without it. The `Palace-noDRM` app does **not** embed the SDK — Findaway
+audiobooks are switched off at runtime — and CI's `NonDRM Build` workflow checks the
+built product for exactly that.
+
 # Building With Adobe DRM
 
 ## Building the Application from Scratch

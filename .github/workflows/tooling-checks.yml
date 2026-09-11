@@ -300,6 +300,33 @@ jobs:
             exit 1
           fi
           bash scripts/tests/test_check_doc_hygiene.sh
+
+      # 5c. noDRM build inputs: build-carthage.sh must fetch AudioEngine on the
+      #     --no-private path (the toolkit weak-links it and cannot link without
+      #     it) and fetch-audioengine.sh must fail loudly on a bad download.
+      #     Runs the real scripts in a sandbox with curl/carthage/swift stubbed.
+      - name: noDRM build-inputs test
+        run: |
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Skipping here turns a removed test into a green check.
+          if [ ! -f scripts/tests/test_nodrm_build_inputs.sh ]; then
+            echo "::error::scripts/tests/test_nodrm_build_inputs.sh is missing — the gate cannot be verified."
+            exit 1
+          fi
+          bash scripts/tests/test_nodrm_build_inputs.sh
+
+      # 5d. noDRM product detector: Palace-noDRM.app must not embed Findaway's
+      #     AudioEngine.framework and the toolkit's AudioEngine link must be
+      #     weak. Asserts the clean path, each violation, and that "no product"
+      #     is exit 2 rather than a pass. Guards the NonDRM Build workflow gate.
+      - name: noDRM product detector test
+        run: |
+          # TRACKED file: see above. Absence is a deleted gate.
+          if [ ! -f scripts/tests/test_check_nodrm_app_excludes_audioengine.sh ]; then
+            echo "::error::scripts/tests/test_check_nodrm_app_excludes_audioengine.sh is missing — the gate cannot be verified."
+            exit 1
+          fi
+          bash scripts/tests/test_check_nodrm_app_excludes_audioengine.sh
       - name: contributor-surface gate
         run: |
           # TRACKED file: see above. Absence is a deleted gate.
