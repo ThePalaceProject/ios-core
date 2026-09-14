@@ -336,3 +336,114 @@ def test_nested_block_comment_is_fully_stripped():
 def test_escaped_quote_inside_literal_does_not_end_it():
     keys, _ = ps.extract_swift(r'Text("say \"hi\" // not a comment")')
     assert len(keys) == 1
+
+
+# ------------------------------------------------- canonical-variant matching
+
+def test_canonical_folds_capitalisation():
+    # "Add bookmark" vs "Add Bookmark" is a recase, not a new string; the
+    # existing translation stays correct and must not be re-paid for.
+    assert ps.canonical("Add bookmark") == ps.canonical("Add Bookmark")
+
+
+def test_canonical_folds_positional_specifiers():
+    # The toolkit writes bare specifiers, Transifex holds positional. Same
+    # string; treating them as different orphans a real translation.
+    assert ps.canonical("%d hours and %d minutes") == ps.canonical("%1$d hours and %2$d minutes")
+
+
+def test_canonical_folds_trailing_punctuation_and_curly_quotes():
+    assert ps.canonical("Narrators") == ps.canonical("Narrators:")
+    assert ps.canonical("We can’t load") == ps.canonical("We can't load")
+
+
+def test_canonical_keeps_distinct_strings_distinct():
+    # The fold must not be so aggressive that it merges different messages.
+    assert ps.canonical("Borrow this book") != ps.canonical("Return this book")
+    assert ps.canonical("%d books") != ps.canonical("%d holds")
+
+
+def test_unescape_decodes_escaped_quote_and_newline():
+    assert ps.unescape(r'say \"hi\"') == 'say "hi"'
+    assert ps.unescape(r'a\nb') == "a\nb"
+
+
+# ------------------------------------------------------------ developer paths
+
+def test_developer_paths_are_recognised():
+    assert ps.is_developer_path("Palace/Settings/DeveloperSettings/X.swift") is True
+    assert ps.is_developer_path("Palace/Settings/Debug/Y.swift") is True
+    assert ps.is_developer_path("Palace/Settings/Debug/MockBackend/Z.swift") is True
+
+
+def test_shipping_paths_are_not_developer_paths():
+    assert ps.is_developer_path("Palace/Reader2/UI/Reader.swift") is False
+    assert ps.is_developer_path("Palace/CarPlay/CarPlayTemplateManager.swift") is False
+
+
+# ---------------------------------------------------------- key migration map
+
+def test_migration_map_resolves_old_key_to_new(tmp_path):
+    m = tmp_path / "map.json"
+    m.write_text(json.dumps({"Add Bookmark": "Add bookmark"}))
+    assert ps.load_migrations(m) == {"Add Bookmark": "Add bookmark"}
+
+
+def test_missing_migration_map_is_not_an_error(tmp_path):
+    assert ps.load_migrations(tmp_path / "nope.json") == {}
+
+
+def test_inventory_excludes_developer_paths_by_default(tmp_path):
+    dev = tmp_path / "Settings" / "DeveloperSettings"; dev.mkdir(parents=True)
+    (dev / "D.swift").write_text('NSLocalizedString("Dump caches", comment: "")')
+    ship = tmp_path / "Reader"; ship.mkdir()
+    (ship / "S.swift").write_text('NSLocalizedString("Borrow", comment: "")')
+    keys, _ = ps.inventory([tmp_path])
+    assert keys == {"Borrow"}
+
+
+def test_inventory_can_include_developer_paths_on_request(tmp_path):
+    dev = tmp_path / "Settings" / "DeveloperSettings"; dev.mkdir(parents=True)
+    (dev / "D.swift").write_text('NSLocalizedString("Dump caches", comment: "")')
+    keys, _ = ps.inventory([tmp_path], include_developer=True)
+    assert keys == {"Dump caches"}
+
+
+# ------------------------------------ positional/bare specifier compatibility
+
+def test_bare_source_accepts_positional_translation():
+    # The whole point of positional form is that a translation may reorder
+    # arguments. Flagging it would block the safest thing a translator can do.
+    assert ps.specifier_mismatch("%d hours and %d minutes",
+                                 "%1$d Stunden und %2$d Minuten") is None
+
+
+def test_bare_source_accepts_reordered_positional_translation():
+    assert ps.specifier_mismatch("%@ by %@", "%2$@ de %1$@") is None
+
+
+def test_positional_translation_with_wrong_type_is_rejected():
+    assert ps.specifier_mismatch("%d books", "%1$@ Bucher") is not None
+
+
+def test_positional_translation_with_missing_index_is_rejected():
+    # %1$ used twice, %2$ never -> the second argument is silently dropped.
+    assert ps.specifier_mismatch("%@ of %@", "%1$@ von %1$@") is not None
+
+
+def test_positional_translation_with_out_of_range_index_is_rejected():
+    assert ps.specifier_mismatch("%@ of %@", "%1$@ von %3$@") is not None
+
+
+def test_target_mixing_positional_and_bare_is_rejected():
+    # iOS does not allow mixing the two forms in one format string; the
+    # arguments bind unpredictably.
+    assert ps.specifier_mismatch("%@ of %@", "%1$@ von %@") is not None
+
+
+def test_target_with_fewer_conversions_is_rejected():
+    assert ps.specifier_mismatch("%@ of %@", "%@ von") is not None
+
+
+def test_target_with_more_conversions_is_rejected():
+    assert ps.specifier_mismatch("%@ only", "%@ and %@") is not None

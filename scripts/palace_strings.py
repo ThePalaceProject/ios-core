@@ -214,17 +214,37 @@ def _specifiers(s: str) -> list[tuple[str, str]]:
 
 
 def specifier_mismatch(source: str, target: str) -> str | None:
-    """None when target carries the same conversions as source.
+    """None when target's conversions are compatible with source's.
 
-    Compared as a sorted multiset, so reordering is permitted -- a translator
-    reordering via positional specifiers (%1$@ / %2$@) is doing the right
-    thing. Dropping, adding, or retyping a specifier is a crash in
-    String(format:) and is always reported.
+    Compatible means the same conversions are consumed, in one of two forms:
+
+    * bare in both -- types must line up in order;
+    * positional in the target -- indices must be exactly 1..n with no gaps or
+      repeats, and the type at index i must match source's i-th conversion.
+
+    The second case is not a defect but the CORRECT way to reorder arguments,
+    and rejecting it would block the safest thing a translator can do. What is
+    always a defect is dropping, adding, repeating or retyping a conversion:
+    `String(format:)` then reads the wrong argument, which is undefined
+    behaviour in a release build.
     """
-    a, b = sorted(_specifiers(source)), sorted(_specifiers(target))
-    if a == b:
+    src, tgt = _specifiers(source), _specifiers(target)
+    src_types = [t for _i, t in src]
+    if any(i for i, _t in tgt):                      # target uses positional form
+        if any(not i for i, _t in tgt):
+            return "target mixes positional and bare conversions"
+        idx = sorted(int(i) for i, _t in tgt)
+        if idx != list(range(1, len(src_types) + 1)):
+            return f"target indices {idx} are not exactly 1..{len(src_types)}"
+        for i, ty in tgt:
+            want = src_types[int(i) - 1]
+            if ty != want:
+                return f"%{i}$ is {ty!r} in target but {want!r} in source"
         return None
-    return f"source {[x[0] + x[1] for x in a]} != target {[x[0] + x[1] for x in b]}"
+
+    if src_types != [t for _i, t in tgt]:            # both bare: order must hold
+        return f"source {src_types} != target {[t for _i, t in tgt]}"
+    return None
 
 
 # --------------------------------------------------------------- key hygiene
@@ -359,17 +379,80 @@ def check_stringsdict(root: Path, langs: list[str]) -> list[Finding]:
     return [Finding("stringsdict_missing_key", l, k, "renders the key verbatim")
             for l, keys in sorted(present.items()) for k in sorted(every - keys)]
 
+
+# ------------------------------------------------ canonical-variant matching
+
+# Both repos ship strings that resolve against the app bundle, so an inventory
+# scoped to one of them under-reports and then reports the other's live strings
+# as dead.
+DEFAULT_SOURCES = ["Palace", "ios-audiobooktoolkit/PalaceAudiobookToolkit"]
+
+# Paths whose strings never reach a patron. Excluded from translation scope.
+_DEVELOPER_PATH = re.compile(r"DeveloperSettings|Settings/Debug|MockBackend|DebugMenu", re.I)
+
+_POSITIONAL = re.compile(r"%(\d+)\$")
+_CURLY = {"\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"',
+          "\u2026": "...", "\u00a0": " "}
+
+
+def unescape(s: str) -> str:
+    r"""Decode .strings escapes. Keys carry \" and \n; the CDS stores them decoded,
+    so an escaped key never matches its own translation without this."""
+    return (s.replace('\\"', '"').replace("\\n", "\n")
+             .replace("\\t", "\t").replace("\\\\", "\\"))
+
+
+def canonical(s: str) -> str:
+    """Fold differences that are mechanical rather than semantic.
+
+    A recase ("Add bookmark" vs "Add Bookmark") or a specifier-form change
+    ("%d hours" vs "%1$d hours") changes the KEY while leaving the translation
+    correct. Without folding, both orphan a translation the project already
+    owns and already paid for.
+    """
+    import unicodedata
+    s = unicodedata.normalize("NFKC", unescape(s))
+    for a, b in _CURLY.items():
+        s = s.replace(a, b)
+    s = _POSITIONAL.sub("%", s)
+    return re.sub(r"\s+", " ", s).strip().lower().rstrip(" .:")
+
+
+def is_developer_path(path: str) -> bool:
+    """True for source that ships only to developers."""
+    return _DEVELOPER_PATH.search(str(path)) is not None
+
+
+def load_migrations(path: Path) -> dict[str, str]:
+    """old key -> current key, for translations carried across a key change.
+
+    Absent file is normal (most trees have no migrations pending), not an error.
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return {str(k): str(v) for k, v in json.load(fh).items()}
+    except (FileNotFoundError, OSError, ValueError):
+        return {}
+
 # ------------------------------------------------------------------ inventory
 
 SOURCE_SUFFIXES = (".swift", ".m", ".mm")
 
 
-def inventory(paths: list[Path]) -> tuple[set[str], dict[str, list[str]]]:
+def inventory(paths: list[Path], include_developer: bool = False
+              ) -> tuple[set[str], dict[str, list[str]]]:
+    """Localizable keys across the given roots.
+
+    Developer-only source is excluded by default: those strings never reach a
+    patron, so counting them inflates the translation bill.
+    """
     keys: set[str] = set()
     dynamic: dict[str, list[str]] = {}
     for base in paths:
         files = [base] if base.is_file() else [p for p in base.rglob("*") if p.suffix in SOURCE_SUFFIXES]
         for f in files:
+            if not include_developer and is_developer_path(f):
+                continue
             try:
                 text = f.read_text(encoding="utf-8", errors="replace")
             except OSError:
@@ -392,14 +475,16 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--lproj-root", type=Path, default=Path("Palace"))
         p.add_argument("--langs", default="en,de,es,fr,it")
         p.add_argument("--source", type=Path, action="append", default=None)
+        p.add_argument("--include-developer", action="store_true",
+                       help="include strings that ship only to developers")
         p.add_argument("--json", action="store_true")
 
     a = ap.parse_args(argv)
     langs = [l.strip() for l in a.langs.split(",") if l.strip()]
-    sources = a.source or [Path("Palace")]
+    sources = a.source or [Path(p) for p in DEFAULT_SOURCES if Path(p).exists()]
 
     if a.cmd == "inventory":
-        keys, dynamic = inventory(sources)
+        keys, dynamic = inventory(sources, a.include_developer)
         if a.json:
             print(json.dumps({"keys": sorted(keys), "dynamic": dynamic}, indent=1, ensure_ascii=False))
         else:
@@ -414,7 +499,7 @@ def main(argv: list[str] | None = None) -> int:
         # Coverage is measured against the keys the SOURCE actually asks for.
         # Comparing the tables only to each other reports 100% for a tree whose
         # tables are empty in every language, which is exactly backwards.
-        wanted, _ = inventory(sources)
+        wanted, _ = inventory(sources, a.include_developer)
         for l in langs:
             table = _read_table(a.lproj_root, l) or {}
             have = len(wanted & set(table))
