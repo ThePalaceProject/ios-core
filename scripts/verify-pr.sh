@@ -200,13 +200,38 @@ count_lines() {
   printf '%s' "$1" | grep -c . || true
 }
 
+# Pick the integration branch this one was actually cut from: the candidate
+# leaving the FEWEST commits between its merge-base and HEAD.
+#
+# This used to return the first of develop/main/master that EXISTS, which is
+# origin/develop on essentially every checkout. So a branch cut from a release
+# branch was scored against develop and inherited the entire release delta.
+# Measured 2026-09-14 (PP-5128): a 4-file Reader2 fix off origin/release/3.3.0
+# was judged as 26 production files and failed the intent-recorded leg naming
+# files that belong to other people's release commits. Release and hotfix
+# branches are integration branches too, so they are candidates.
+#
+# Scoring, not ordering: for a branch off release/3.3.0 the release branch
+# leaves only that branch's own commits, while develop leaves those PLUS
+# everything the release branch landed since the two diverged. The nearest
+# candidate is by construction the one it was cut from.
 detect_base_branch() {
-  for candidate in origin/develop origin/main origin/master; do
-    if git rev-parse --verify "$candidate" &>/dev/null; then
-      echo "$candidate"
-      return
+  local best="" best_n="" mb n candidate
+  for candidate in $(git for-each-ref --format='%(refname:short)' \
+                       'refs/remotes/origin/release/*' \
+                       'refs/remotes/origin/hotfix/*' 2>/dev/null) \
+                   origin/develop origin/main origin/master; do
+    git rev-parse --verify "$candidate" >/dev/null 2>&1 || continue
+    mb=$(git merge-base "$candidate" HEAD 2>/dev/null) || continue
+    n=$(git rev-list --count "${mb}..HEAD" 2>/dev/null) || continue
+    if [ -z "$best_n" ] || [ "$n" -lt "$best_n" ]; then
+      best="$candidate"; best_n="$n"
     fi
   done
+  if [ -n "$best" ]; then
+    echo "$best"
+    return
+  fi
   echo "HEAD~10"
 }
 
