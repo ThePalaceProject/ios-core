@@ -305,6 +305,36 @@ class LocalBookContentService {
         // So they skip this logic that deleted the local audio files, used by other
         // audiobook types.
         // TODO: Update LCP so we don't have to special case it here.
+        // Clear decrypted chapters before anything below can throw (PP-5127).
+        //
+        // The manifest branch below is what deletes an audiobook's decrypted
+        // chapters track by track, and LCP titles skip it — there is no
+        // loadable manifest, and the filenames are hashes of track paths that
+        // cannot be reconstructed once the licence is gone. Nothing else
+        // reached those files on this path, so they outlived the loan: a title
+        // returned outside the app left 51 playable MP3 files and 1.1 GB
+        // behind after the book had gone from the shelf.
+        //
+        // The in-app Return path never showed the defect, because
+        // `BookReturnService` fires its own forced purge alongside this call.
+        // Every other way a loan ends — expiry, a return from another device,
+        // a librarian revoking it, any server-driven reconciliation — arrives
+        // here and only here.
+        //
+        // Run for every audiobook rather than only the LCP branch. Non-LCP
+        // titles have no orphans to collect, so the sweep is a no-op for them,
+        // and keeping it off `isLcpAudiobook` means it does not depend on a
+        // `#if LCP` build condition to be reachable.
+        //
+        // Unforced on purpose: the sweep cannot tell one book's chapters from
+        // another's, so it declines while any OTHER audiobook is still
+        // downloading or on the shelf. That leaves an expired title's files
+        // waiting for the last audiobook to go, which is the right way round —
+        // re-downloading a book someone is listening to would be worse than
+        // the leak.
+        AudiobookCacheSweep(bookRegistry: bookRegistry, fileManager: fileManager)
+            .purge(force: false, excluding: book.identifier)
+
         if !isLcpAudiobook {
             let manifestData = try Data(contentsOf: bookURL)
             let manifest = try Manifest.customDecoder().decode(Manifest.self, from: manifestData)
