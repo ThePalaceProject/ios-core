@@ -18,7 +18,6 @@ public enum PalaceFeatureFlag: String, Sendable {
     case circuitBreakerEnabled = "circuit_breaker_enabled"
     case carPlayEnabled = "carplay_enabled"
     case opds2Enabled = "opds2_enabled"
-    case readingStatsEnabled = "reading_stats_enabled"
     case advancedTypographyEnabled = "advanced_typography_enabled"
     case triageBotEnabled = "triage_bot_enabled"
     case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
