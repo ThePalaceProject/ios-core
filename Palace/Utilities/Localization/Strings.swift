@@ -705,7 +705,7 @@ struct Strings {
     }
 
     struct TPPReaderAppearance {
-        static let blackOnWhiteText = NSLocalizedString("Appearance Selector: Open dyslexic font", comment: "OpenDyslexicFont")
+        static let blackOnWhiteText = NSLocalizedString("Appearance Selector: Black on white text", comment: "BlackOnWhiteText")
         static let blackOnSepiaText = NSLocalizedString("Appearance Selector: Black on sepia text", comment: "BlackOnSepiaText")
         static let whiteOnBlackText = NSLocalizedString("Appearance Selector: White on black text", comment: "WhiteOnBlackText")
     }

@@ -156,9 +156,10 @@ def test_check_detects_specifier_mismatch_across_languages(tmp_path):
     assert any(f.kind == "specifier_mismatch" for f in findings)
 
 
-def test_parse_strings_handles_escaped_quotes():
+def test_parse_strings_decodes_escaped_quotes():
+    # In-memory strings are real characters; the file carries the escapes.
     text = '"say \\"hi\\"" = "sag \\"hallo\\"";\n'
-    assert ps.parse_strings(text) == {'say \\"hi\\"': 'sag \\"hallo\\"'}
+    assert ps.parse_strings(text) == {'say "hi"': 'sag "hallo"'}
 
 
 def test_parse_strings_ignores_comments():
@@ -230,7 +231,7 @@ def test_extracts_multiline_literal_with_continuation():
 def test_multiline_without_continuation_keeps_newline():
     src = 'NSLocalizedString("""\n    A\n    B\n    """, comment: "")'
     keys, _ = ps.extract_swift(src)
-    assert any("\\n" in k for k in keys), keys
+    assert any("\n" in k for k in keys), keys
 
 
 def test_status_measures_against_source_not_other_tables(tmp_path, capsys):
@@ -458,10 +459,10 @@ def test_written_table_round_trips():
 
 
 def test_writer_escapes_quotes_and_newlines():
-    text = ps.render_strings({'Say "hi"': 'Sag "hallo"\nbitte'}, {})
-    back = ps.parse_strings(text)
-    assert list(back) == ['Say \\"hi\\"']
-    assert back['Say \\"hi\\"'] == 'Sag \\"hallo\\"\\nbitte'
+    original = {'Say "hi"': 'Sag "hallo"\nbitte'}
+    text = ps.render_strings(original, {})
+    assert r'\"hi\"' in text and r"\n" in text
+    assert ps.parse_strings(text) == original
 
 
 def test_writer_emits_developer_comment_when_present():
@@ -556,3 +557,76 @@ def test_source_map_prefers_the_value_argument(tmp_path):
 def test_source_map_falls_back_to_the_key_for_prose(tmp_path):
     (tmp_path / "V.swift").write_text('NSLocalizedString("Borrow", comment: "c")')
     assert ps.source_map([tmp_path]) == {"Borrow": "Borrow"}
+
+
+def test_render_is_idempotent_over_a_read_write_cycle():
+    # Two keys were corrupted by a read-merge-write cycle re-escaping what was
+    # already escaped, before parse and render were made symmetric.
+    original = {'Remove "%@" from holds?': '"%@" entfernen?'}
+    once = ps.render_strings(original, {})
+    twice = ps.render_strings(ps.parse_strings(once), {})
+    assert once == twice
+    assert ps.parse_strings(twice) == original
+
+
+def test_render_escapes_a_raw_quote_that_was_never_escaped():
+    out = ps.render_strings({'say "hi"': 'sag "hallo"'}, {})
+    assert r'\"hi\"' in out and out.count('";') == 1
+
+
+def test_interpolated_literal_escapes_a_literal_percent():
+    # VERIFIED against SwiftUI: Text("\(n)% complete") builds "%lld%% complete".
+    # Leaving the % bare makes "% c" parse as a conversion, so the key both
+    # fails to match AND would consume an argument if it were ever formatted.
+    assert ps.normalize_interpolation(r"\(badge.progressPercentage)% complete") == "%lld%% complete"
+
+
+def test_interpolated_literal_without_percent_is_unchanged_otherwise():
+    assert ps.normalize_interpolation(r"\(items.count) items") == "%lld items"
+
+
+def test_ambiguous_expression_is_not_guessed_as_an_int():
+    # A bare name carries no type signal. Defaulting to %lld would invent a key
+    # that never matches; %@ is the conservative choice and the key is reported
+    # as unconfirmed either way.
+    assert ps.infer_specifier("n") == "%@"
+
+
+def test_plain_literal_percent_is_not_escaped():
+    # A literal with no interpolation is stored verbatim by SwiftUI -- escaping
+    # it here would invent a key that never matches.
+    keys, _ = ps.extract_swift('Text("50% off")')
+    assert keys == {"50% off"}
+
+
+# ------------------------------------------------- Swift literal escape decoding
+
+def test_unicode_escape_is_decoded_to_the_real_character():
+    # Swift compiles "\u{2019}" to U+2019, so the RUNTIME key contains the
+    # character. Keeping the escape text produces a key that never matches.
+    keys, _ = ps.extract_swift(r'NSLocalizedString("We can\u{2019}t load", comment: "c")')
+    assert keys == {"We can’t load"}
+
+
+def test_escaped_quote_is_decoded():
+    keys, _ = ps.extract_swift(r'NSLocalizedString("Remove \"%@\"?", comment: "c")')
+    assert keys == {'Remove "%@"?'}
+
+
+def test_escaped_newline_is_decoded():
+    keys, _ = ps.extract_swift(r'NSLocalizedString("a\nb", comment: "c")')
+    assert keys == {"a\nb"}
+
+
+def test_decoding_survives_a_render_parse_round_trip():
+    key = "We can’t load \"it\"\nnow"
+    text = ps.render_strings({key: "x"}, {})
+    assert list(ps.parse_strings(text)) == [key]
+
+
+def test_explicit_int_cast_is_decisive():
+    # `Int(presenter.overallDownloadProgress * 100)` reads as floating-point by
+    # name and is an Int by construction. The cast is the one signal worth
+    # trusting over a name-shaped guess.
+    assert ps.infer_specifier("Int(presenter.overallDownloadProgress * 100") == "%lld"
+    assert ps.infer_specifier("Double(x)") == "%lf"

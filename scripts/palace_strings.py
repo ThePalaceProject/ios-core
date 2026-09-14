@@ -67,6 +67,26 @@ _MULTILINE = re.compile(r'"""(.*?)"""', re.S)
 _CONCAT = re.compile(rf'{_STR}\s*\+\s*(?=")', re.S)
 
 
+
+_SWIFT_ESCAPE = re.compile(r"\\u\{([0-9A-Fa-f]{1,8})\}|\\(.)")
+_SIMPLE = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", '"': '"', "'": "'", "\\": "\\"}
+
+
+def decode_swift_literal(s: str) -> str:
+    r"""Decode Swift source escapes to the characters the compiler produces.
+
+    The runtime key is the COMPILED literal: `"We can\u{2019}t"` is a string
+    containing U+2019, not the seven characters of the escape. Carrying the
+    escape text into a .strings key produces a key that never matches, and then
+    escaping its backslash on write compounds it.
+    """
+    def repl(m: re.Match) -> str:
+        if m.group(1) is not None:
+            return chr(int(m.group(1), 16))
+        return _SIMPLE.get(m.group(2), m.group(2))
+    return _SWIFT_ESCAPE.sub(repl, s)
+
+
 def strip_comments(src: str) -> str:
     """Remove Swift comments, leaving string literals intact.
 
@@ -172,11 +192,11 @@ def extract_swift(src: str) -> tuple[set[str], list[str]]:
         call, literal = m.group(1), m.group(2)
         interpolated = r"\(" in literal
         if not interpolated:
-            keys.add(literal)
+            keys.add(decode_swift_literal(literal))
         elif call in _RUNTIME_KEY_MACROS:
             dynamic.append(literal)
         else:
-            keys.add(normalize_interpolation(literal))
+            keys.add(decode_swift_literal(normalize_interpolation(literal)))
     for m in _MACRO_NONLITERAL.finditer(src):
         dynamic.append(m.group(0).strip())
     return keys, dynamic
@@ -190,9 +210,17 @@ def extract_swift(src: str) -> tuple[set[str], list[str]]:
 # `genstrings` emits %@ for all three, so a key taken from genstrings (or from
 # assuming %@) can never match at runtime and the string renders English
 # forever, silently.
-_INT_EXPR = re.compile(r"(^\s*\d+\s*$)|\.count\b|\bcount\b|Count\b|Index\b|"
-                       r"Retries\b|Retry\b|\bseconds\b|\bminutes\b|\bhours\b|\bdays\b|\blines\b")
-_DOUBLE_EXPR = re.compile(r"progress\b|Progress\b|\bratio\b|Ratio\b|percentage\b")
+_INT_EXPR = re.compile(
+    r"^\s*Int\s*\("            # an explicit Int(...) cast is decisive
+    r"|^\s*\d+\s*$"            # an integer literal
+    r"|\.count\b|\bcount\b|Count\b|Index\b|Retries\b|Retry\b"
+    r"|[Pp]ercent\w*\b"         # percentComplete / progressPercentage are Int here
+    r"|\bseconds\b|\bminutes\b|\bhours\b|\bdays\b|\blines\b")
+# Deliberately no Double rule. Every candidate in this tree that "looked"
+# floating-point turned out to be an Int cast or a String property, so a
+# Double heuristic here produced only false positives. An explicit cast is
+# the one signal worth trusting.
+_DOUBLE_EXPR = re.compile(r"^\s*(?:Double|Float|CGFloat)\s*\(")
 
 
 def infer_specifier(expr: str) -> str:
@@ -220,6 +248,11 @@ def normalize_interpolation(literal: str) -> str:
     """
     out, i = [], 0
     while i < len(literal):
+        # SwiftUI builds a FORMAT STRING for an interpolated literal, so a
+        # literal percent must be escaped exactly as SwiftUI escapes it.
+        # Verified: Text("\(n)% complete") -> "%lld%% complete".
+        if literal[i] == "%":
+            out.append("%%"); i += 1; continue
         if literal.startswith(r"\(", i):
             depth, i = 1, i + 2
             start = i
@@ -300,8 +333,14 @@ def is_format_only(key: str) -> bool:
 # ------------------------------------------------------------ .strings tables
 
 def parse_strings(text: str) -> dict[str, str]:
-    """Parse a .strings file, preserving escape sequences verbatim."""
-    return {m.group(1): m.group(2) for m in _STRINGS_ENTRY.finditer(_COMMENT_BLOCK.sub("", text))}
+    """Parse a .strings file into real characters.
+
+    In-memory strings are always decoded and the file is always escaped, so
+    render(parse(render(x))) == render(x). Preserving escapes here instead made
+    every read-merge-write cycle double the backslashes.
+    """
+    return {unescape(m.group(1)): unescape(m.group(2))
+            for m in _STRINGS_ENTRY.finditer(_COMMENT_BLOCK.sub("", text))}
 
 
 def _read_table(root: Path, lang: str) -> dict[str, str] | None:
@@ -474,7 +513,13 @@ def load_migrations(path: Path) -> dict[str, str]:
 # ------------------------------------------------------------ writing tables
 
 def _escape(s: str) -> str:
-    """Escape a value for a .strings literal."""
+    """Escape a value for a .strings literal, idempotently.
+
+    `parse_strings` preserves escapes rather than decoding them, so escaping a
+    value that is already escaped doubles its backslashes -- and an apply cycle
+    that reads, merges and rewrites does exactly that, silently, every run.
+    Normalising first makes render(parse(render(x))) == render(x).
+    """
     return (s.replace("\\", "\\\\").replace('"', '\\"')
              .replace("\n", "\\n").replace("\t", "\\t"))
 
@@ -595,8 +640,9 @@ def source_map(paths: list[Path], include_developer: bool = False) -> dict[str, 
             except OSError:
                 continue
             for m in _VALUE_CALL.finditer(src):
-                if m.group(1) in out and m.group(2):
-                    out[m.group(1)] = m.group(2)
+                k = decode_swift_literal(m.group(1))
+                if k in out and m.group(2):
+                    out[k] = decode_swift_literal(m.group(2))
     return out
 
 
