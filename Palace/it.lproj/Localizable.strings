@@ -21,10 +21,6 @@
 
 "%@ alignment" = "Allineamento %@";
 
-"%@ badge, %@ tier" = "Badge %@, livello %@";
-
-"%@ day%@" = "%@ giorno%@";
-
 "%@ font" = "Carattere della categoria %@";
 
 "%@ preset" = "Preimpostazione %@";
@@ -46,10 +42,6 @@
 
 /* VoiceOver position component stating how far through the book the patron is, e.g. `45% read` */
 "%d%% read" = "%d%% letto";
-
-"%lld active days" = "%lld giorni attivi";
-
-"%lld%% complete" = "%lld%% completato";
 
 "(%lld/%lld retries)" = "(%lld/%lld tentativi)";
 
@@ -111,12 +103,6 @@
 
 /* VoiceOver label for the footnote return link (doc-backlink) that returns the reader to the reference */
 "Back to reference" = "Torna al riferimento";
-
-"Badges" = "Badge";
-
-"Best" = "Record";
-
-"Best streak: %@ days" = "Serie più lunga: %@ giorni";
 
 /* VoiceOver rotor title for block-by-block reader navigation */
 "Blocks" = "Blocchi";
@@ -270,8 +256,6 @@
 /* VoiceOver announcement when the current reading position cannot be determined */
 "Current position unavailable" = "Posizione attuale non disponibile";
 
-"Current streak: %@ days" = "Serie attuale: %@ giorni";
-
 "Custom Rotor Actions" = "Azioni del rotore personalizzate";
 
 "DEFAULT" = "PREDEFINITO";
@@ -321,8 +305,6 @@
 "Due %@" = "Scade il %@";
 
 "Duration" = "Durata";
-
-"Earned %@" = "Ottenuto il %@";
 
 /* VoiceOver: Indicates the book is an ebook (used by polish-phase Continue row). */
 "Ebook" = "Ebook";
@@ -450,8 +432,6 @@
 
 "Keep Hold" = "Mantieni la prenotazione";
 
-"Keep reading to earn achievements!" = "Continui a leggere per ottenere riconoscimenti!";
-
 /* Book detail metadata label for the work's language */
 "Language" = "Lingua";
 
@@ -506,12 +486,6 @@
 
 "No Internet Connection" = "Nessuna connessione a Internet";
 
-"No active streak" = "Nessuna serie attiva";
-
-"No badges earned yet" = "Nessun badge ottenuto finora";
-
-"No badges earned yet. Keep reading to earn achievements." = "Nessun badge ottenuto finora. Continui a leggere per ottenere riconoscimenti.";
-
 /* Title of the Holds empty state shown when the patron has no reserved or held books */
 "No holds yet" = "Nessuna prenotazione";
 
@@ -519,10 +493,6 @@
 "No matching page was found in this book." = "In questo libro non è stata trovata nessuna pagina corrispondente.";
 
 "No pending offline actions" = "Nessuna azione offline in attesa";
-
-"No reading data yet" = "Nessun dato di lettura";
-
-"No reading data yet. Start reading to see your activity chart." = "Nessun dato di lettura. Inizi a leggere per vedere il grafico della sua attività.";
 
 /* Accessibility value when search has no results */
 "No results" = "Nessun risultato";
@@ -639,20 +609,8 @@
 /* Reached the end of the results. */
 "Reached the end of the results." = "Fine dei risultati raggiunta.";
 
-"Reading Activity" = "Attività di lettura";
-
-"Reading Stats" = "Statistiche di lettura";
-
-"Reading Streak" = "Serie di lettura";
-
 /* VoiceOver label for the reader's drag-to-navigate position control */
 "Reading position" = "Posizione di lettura";
-
-"Reading streak calendar" = "Calendario della serie di lettura";
-
-"Reading streak: %@. %@" = "Serie di lettura: %@. %@";
-
-"Recent Badges" = "Badge recenti";
 
 "Recent logs (%lld lines · redacted)" = "Registri recenti (%lld righe · anonimizzati)";
 
@@ -796,8 +754,6 @@
 
 "Start over" = "Ricomincia";
 
-"Start reading to see your activity chart." = "Inizi a leggere per vedere il grafico della sua attività.";
-
 "Starts a new question. Your sent ticket is unaffected." = "Avvia una nuova domanda. La richiesta già inviata resta invariata.";
 
 "Step %@ of %@" = "Passaggio %@ di %@";
@@ -809,8 +765,6 @@
 
 /* VoiceOver: X button on the audiobook mini-player. Stops playback, saves the position, and dismisses the player. */
 "Stop audiobook" = "Interrompi l'audiolibro";
-
-"Streak Details" = "Dettagli della serie";
 
 "Support" = "Assistenza";
 
@@ -886,8 +840,6 @@
 
 "Ticket preview — review, edit, and send" = "Anteprima della richiesta — rivedere, modificare e inviare";
 
-"Time Period" = "Periodo";
-
 /* VoiceOver: audiobook chapter elapsed time, %@ is a spoken duration */
 "Time elapsed: %@" = "Tempo trascorso: %@";
 
@@ -931,8 +883,6 @@
 
 /* Age check verified */
 "Verified" = "Verificato";
-
-"View All" = "Vedi tutto";
 
 "Visual" = "Visivo";
 
@@ -1008,8 +958,6 @@
 
 /* VoiceOver fragment appended to a Continue Listening row card when the audiobook is actively playing. */
 "currently playing" = "in riproduzione";
-
-"days" = "giorni";
 
 /* Placeholder; final wording awaits design review per feedback_no_new_copy_without_design */
 "opds.error.feed_invalid" = "Al momento non è possibile caricare il catalogo della sua biblioteca — riprovi tra un istante.";
