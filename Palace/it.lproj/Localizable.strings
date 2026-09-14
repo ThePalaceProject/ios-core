@@ -257,7 +257,7 @@
 /* Button on the My Books empty state that opens the catalog tab */
 "Browse the Catalog" = "Esplora il catalogo";
 
-"Button Shapes" = "Forme dei pulsanti";
+"Button Shapes" = "Forme pulsanti";
 
 "By Sample Author" = "Di Autore di esempio";
 
@@ -299,7 +299,7 @@
 "CarPlay.Error.tryAgain" = "Impossibile riprodurre l'audiolibro. Riprovi";
 
 /* CarPlay alert message asking user to open the app on their phone */
-"CarPlay.OpenApp.message" = "Apra prima Palace sull'iPhone, poi selezioni di nuovo il libro";
+"CarPlay.OpenApp.message" = "Apra prima Palace su iPhone, poi selezioni di nuovo il libro";
 
 /* CarPlay alert short message asking user to open the app */
 "CarPlay.OpenApp.messageShort" = "Apra prima Palace sull'iPhone";
@@ -404,7 +404,7 @@
 
 "Currently Playing: %@" = "Attualmente in riproduzione: %@";
 
-"Custom Rotor Actions" = "Azioni del rotore personalizzate";
+"Custom Rotor Actions" = "Azioni rotore personalizzate";
 
 "DEFAULT" = "PREDEFINITO";
 

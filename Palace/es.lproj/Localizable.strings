@@ -257,7 +257,7 @@
 /* Button on the My Books empty state that opens the catalog tab */
 "Browse the Catalog" = "Explorar el catálogo";
 
-"Button Shapes" = "Formas de botones";
+"Button Shapes" = "Contornos de botones";
 
 "By Sample Author" = "Por Autor de ejemplo";
 
@@ -323,7 +323,7 @@
 "CarPlay.noAudiobooks" = "No hay audiolibros";
 
 /* CarPlay tab title for now playing screen */
-"CarPlay.nowPlaying" = "Reproduciendo";
+"CarPlay.nowPlaying" = "En reproducción";
 
 "Catalog" = "Catálogo";
 

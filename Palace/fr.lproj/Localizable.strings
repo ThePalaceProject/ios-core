@@ -257,7 +257,7 @@
 /* Button on the My Books empty state that opens the catalog tab */
 "Browse the Catalog" = "Parcourir le catalogue";
 
-"Button Shapes" = "Formes de boutons";
+"Button Shapes" = "Boutons avec contour";
 
 "By Sample Author" = "Par Auteur exemple";
 
@@ -323,7 +323,7 @@
 "CarPlay.noAudiobooks" = "Aucun livre audio";
 
 /* CarPlay tab title for now playing screen */
-"CarPlay.nowPlaying" = "Lecture en cours";
+"CarPlay.nowPlaying" = "À l’écoute";
 
 "Catalog" = "Catalogue";
 
@@ -404,7 +404,7 @@
 
 "Currently Playing: %@" = "Lecture en cours : %@";
 
-"Custom Rotor Actions" = "Actions de rotor personnalisées";
+"Custom Rotor Actions" = "Actions du rotor personnalisées";
 
 "DEFAULT" = "PAR DÉFAUT";
 
