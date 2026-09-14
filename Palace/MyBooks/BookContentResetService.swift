@@ -138,37 +138,12 @@ final class BookContentResetService: @unchecked Sendable {
     /// segments) from the system Caches directory. Skipped when there
     /// are still active audiobooks in the registry, unless `force` is
     /// true (i.e. the caller is in a return / sign-out context).
+    ///
+    /// The sweep itself lives in `AudiobookCacheSweep` so the per-book delete
+    /// path in `LocalBookContentService` can reach it without depending on
+    /// this service (PP-5127).
     func purgeAllAudiobookCaches(force: Bool = false) {
-        if !force && hasActiveAudiobooks() { return }
-        guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
-        let audioExtensions: Set<String> = ["mp3", "m4a", "mp4", "aac", "oga", "wav"]
-        if let contents = try? fileManager.contentsOfDirectory(at: cachesDir, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey], options: [.skipsHiddenFiles]) {
-            for url in contents {
-                do {
-                    let rv = try url.resourceValues(forKeys: [.isDirectoryKey])
-                    if rv.isDirectory == true { continue }
-                    if audioExtensions.contains(url.pathExtension.lowercased()) {
-                        try? fileManager.removeItem(at: url)
-                    }
-                } catch {
-                    // ignore
-                }
-            }
-        }
-    }
-
-    /// Returns true if the current account has any audiobooks in
-    /// downloadNeeded / downloading / downloadSuccessful / used state —
-    /// the proxy used by `purgeAllAudiobookCaches` to decide whether
-    /// purging is safe.
-    private func hasActiveAudiobooks() -> Bool {
-        let matchingStates: [TPPBookState] = [.downloadNeeded, .downloading, .downloadSuccessful, .used]
-        var hasActive = false
-        let accountId = accountsManager.currentAccountId ?? ""
-        bookRegistry.with(account: accountId) { registry in
-            let audiobooks = registry.myBooks.filter { $0.defaultBookContentType == .audiobook }
-            hasActive = audiobooks.contains { matchingStates.contains(registry.state(for: $0.identifier)) }
-        }
-        return hasActive
+        AudiobookCacheSweep(bookRegistry: bookRegistry, fileManager: fileManager)
+            .purge(force: force)
     }
 }
