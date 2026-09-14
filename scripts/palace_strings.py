@@ -306,12 +306,18 @@ def main(argv: list[str] | None = None) -> int:
     findings = check_tables(a.lproj_root, langs)
 
     if a.cmd == "status":
-        tables = {l: (_read_table(a.lproj_root, l) or {}) for l in langs}
-        every = set().union(*(set(t) for t in tables.values())) if tables else set()
+        # Coverage is measured against the keys the SOURCE actually asks for.
+        # Comparing the tables only to each other reports 100% for a tree whose
+        # tables are empty in every language, which is exactly backwards.
+        wanted, _ = inventory(sources)
         for l in langs:
-            have = len(tables[l])
-            pct = 100.0 * have / len(every) if every else 100.0
-            print(f"  {l}: {have}/{len(every)} keys ({pct:.1f}%)")
+            table = _read_table(a.lproj_root, l) or {}
+            have = len(wanted & set(table))
+            pct = 100.0 * have / len(wanted) if wanted else 100.0
+            missing = len(wanted - set(table))
+            extra = len(set(table) - wanted)
+            print(f"  {l}: {have}/{len(wanted)} source keys ({pct:.1f}%)"
+                  f"  missing={missing} not-in-source={extra}")
         return 0
 
     by_kind: dict[str, int] = {}

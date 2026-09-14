@@ -230,3 +230,16 @@ def test_multiline_without_continuation_keeps_newline():
     src = 'NSLocalizedString("""\n    A\n    B\n    """, comment: "")'
     keys, _ = ps.extract_swift(src)
     assert any("\\n" in k for k in keys), keys
+
+
+def test_status_measures_against_source_not_other_tables(tmp_path, capsys):
+    # A tree whose tables are all empty must NOT report 100%. Comparing tables
+    # only to each other is self-referential and always says "complete".
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("Borrow", comment: "")\nText("Hold")\n')
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"Borrow": "Ausleihen"})
+    rc = ps.main(["status", "--lproj-root", str(tmp_path), "--langs", "de",
+                  "--source", str(src)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "1/2" in out and "50.0%" in out, out
