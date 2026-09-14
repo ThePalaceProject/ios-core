@@ -187,10 +187,11 @@ def test_cli_check_exits_zero_on_clean_tree(tmp_path):
 # ------------------------------------------- SwiftUI interpolation vs dynamic
 
 def test_swiftui_interpolation_becomes_a_format_key():
-    # Text("\(n) active days") is a LocalizedStringKey: the real key is the
-    # format-normalised string. Treating it as dynamic loses a real translation.
+    # Text("\(n) active days") is a LocalizedStringKey, and for an Int SwiftUI
+    # builds "%lld active days" -- NOT "%@". This test previously asserted %@,
+    # which is the key genstrings emits and which can never match at runtime.
     keys, dynamic = ps.extract_swift(r'Text("\(streak.activeDates.count) active days")')
-    assert keys == {"%@ active days"}
+    assert keys == {"%lld active days"}
     assert dynamic == []
 
 
@@ -496,3 +497,62 @@ def test_validate_accepts_a_clean_batch():
     ok = ps.validate_translations({"%d books": "%d Bucher", "Borrow": "Ausleihen"},
                                   {"%d books": "%d books", "Borrow": "Borrow"})
     assert ok == []
+
+
+# --------------------------------- SwiftUI type-specific interpolation keys
+
+def test_int_interpolation_uses_lld_not_at():
+    # VERIFIED against SwiftUI: Text("\(Int) retries") builds key "%lld retries".
+    # Emitting "%@" produces a key that can never match, so the string renders
+    # English forever and no check ever notices.
+    assert ps.infer_specifier("action.retryCount") == "%lld"
+    assert ps.infer_specifier("streak.activeDates.count") == "%lld"
+    assert ps.infer_specifier("42") == "%lld"
+
+
+def test_string_interpolation_uses_at():
+    assert ps.infer_specifier("book.title") == "%@"
+
+
+def test_normalize_interpolation_uses_inferred_specifier():
+    assert ps.normalize_interpolation(r"(\(action.retryCount)/\(action.maxRetries) retries)") \
+        == "(%lld/%lld retries)"
+    assert ps.normalize_interpolation(r"\(book.title) by \(book.author)") == "%@ by %@"
+
+
+def test_interpolated_keys_are_reported_as_unconfirmed(tmp_path):
+    # Static inference cannot be trusted for every expression; the authoritative
+    # answer is the compiler. Surface them rather than silently shipping a guess.
+    (tmp_path / "V.swift").write_text(r'Text("\(vm.items.count) items")')
+    keys, _, unconfirmed = ps.inventory_detailed([tmp_path])
+    assert "%lld items" in keys
+    assert any("items" in u for u in unconfirmed)
+
+
+def test_check_uses_supplied_source_map_for_specifier_parity(tmp_path):
+    # English is the CODE, not a committed table: `en.lproj/Localizable.strings`
+    # is not in the Xcode project, so a file there would never ship and could
+    # drift from the source unnoticed.
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"%lld books": "%@ Bucher"})
+    findings = ps.check_tables(tmp_path, ["de"], source={"%lld books": "%lld books"})
+    assert any(f.kind == "specifier_mismatch" for f in findings)
+
+
+def test_check_without_source_map_still_cross_compares_languages(tmp_path):
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "A", "b": "B"})
+    _write_strings(tmp_path / "fr.lproj" / "Localizable.strings", {"a": "A"})
+    findings = ps.check_tables(tmp_path, ["de", "fr"])
+    assert any(f.kind == "missing_key" and f.lang == "fr" for f in findings)
+
+
+def test_source_map_prefers_the_value_argument(tmp_path):
+    # For an identifier key the English is the `value:`, not the key. Using the
+    # key would compare a translation against a string with no specifiers.
+    (tmp_path / "V.swift").write_text(
+        'NSLocalizedString("CarPlay.chapterNumber", value: "Chapter %d", comment: "c")')
+    assert ps.source_map([tmp_path]) == {"CarPlay.chapterNumber": "Chapter %d"}
+
+
+def test_source_map_falls_back_to_the_key_for_prose(tmp_path):
+    (tmp_path / "V.swift").write_text('NSLocalizedString("Borrow", comment: "c")')
+    assert ps.source_map([tmp_path]) == {"Borrow": "Borrow"}

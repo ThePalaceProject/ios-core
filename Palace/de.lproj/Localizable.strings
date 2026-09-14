@@ -1,2 +1,159 @@
+"(%lld/%lld retries)" = "(%lld/%lld Versuche)";
+
+"Accessibility" = "Bedienungshilfen";
+
+"Adds rotor actions for jumping between chapters and bookmarks." = "Fügt Rotoraktionen hinzu, mit denen Sie zwischen Kapiteln und Lesezeichen springen können.";
+
+"App Health" = "App-Zustand";
+
 "Back" = "Zurück";
 
+"Borrow sample book" = "Beispielbuch ausleihen";
+
+"Button Shapes" = "Tastenformen";
+
+"By Sample Author" = "Von Beispielautor";
+
+"CarPlay.Error.authMessage" = "Bitte in der App bei Ihrer Bibliothek anmelden";
+
+"CarPlay.Error.authRequired" = "Anmeldung erforderlich";
+
+"CarPlay.Error.downloadRequired" = "Bitte das Hörbuch zuerst in der App laden";
+
+"CarPlay.Error.drmMessage" = "Problem mit der Hörbuch-Lizenz. Bitte in der App erneut versuchen";
+
+"CarPlay.Error.notDownloaded" = "Nicht heruntergeladen";
+
+"CarPlay.Error.offline" = "Keine Verbindung";
+
+"CarPlay.Error.offlineMessage" = "Internetverbindung herstellen oder das Hörbuch zum Offline-Hören laden";
+
+"CarPlay.Error.playbackFailed" = "Wiedergabefehler";
+
+"CarPlay.Error.tryAgain" = "Wiedergabe nicht möglich. Bitte erneut versuchen";
+
+"CarPlay.OpenApp.message" = "Bitte zuerst Palace auf dem iPhone öffnen und das Buch erneut auswählen";
+
+"CarPlay.OpenApp.messageShort" = "Zuerst Palace auf dem iPhone öffnen";
+
+"CarPlay.OpenApp.messageShortest" = "Zuerst Palace öffnen";
+
+"CarPlay.chapterNumber" = "Kapitel %d";
+
+"CarPlay.chapters" = "Kapitel";
+
+"CarPlay.downloadAudiobooks" = "Hörbücher aus Ihrer Bibliothek laden, um sie in CarPlay zu hören";
+
+"CarPlay.library" = "Bibliothek";
+
+"CarPlay.noAudiobooks" = "Keine Hörbücher";
+
+"CarPlay.nowPlaying" = "Wiedergabe";
+
+"Category: %@" = "Kategorie: %@";
+
+"Clear All" = "Alle löschen";
+
+"Copy details" = "Details kopieren";
+
+"Copy the ticket details to email support yourself" = "Details der Anfrage kopieren, um selbst eine E-Mail an den Support zu senden";
+
+"Couldn't send" = "Senden nicht möglich";
+
+"Custom Rotor Actions" = "Benutzerdefinierte Rotoraktionen";
+
+"Describe what's happening…" = "Beschreiben Sie, was passiert…";
+
+"Edit your ticket description" = "Beschreibung Ihrer Anfrage bearbeiten";
+
+"Failed" = "Fehlgeschlagen";
+
+"Fixed it" = "Problem behoben";
+
+"Guided troubleshooting step %@ of %@" = "Geführte Fehlerbehebung, Schritt %@ von %@";
+
+"Haptic Feedback" = "Haptisches Feedback";
+
+"High Contrast Boost" = "Kontrastverstärkung";
+
+"Include %@ in the ticket" = "%@ in die Anfrage aufnehmen";
+
+"Include recent logs in the ticket" = "Aktuelle Protokolle in die Anfrage aufnehmen";
+
+"Increases contrast beyond the system setting for better readability." = "Erhöht den Kontrast über die Systemeinstellung hinaus, um die Lesbarkeit zu verbessern.";
+
+"Motion & Animation" = "Bewegung & Animation";
+
+"No pending offline actions" = "Keine ausstehenden Offline-Aktionen";
+
+"Nothing was lost — pick one:" = "Nichts ist verloren gegangen — wählen Sie eine Option:";
+
+"Offline Queue" = "Offline-Warteschlange";
+
+"Pending" = "Ausstehend";
+
+"Performance Summary" = "Leistungsübersicht";
+
+"Preview" = "Vorschau";
+
+"Preview of accessibility settings" = "Vorschau der Einstellungen für Bedienungshilfen";
+
+"Processing actions..." = "Verarbeitung der Aktionen...";
+
+"Recent logs (%lld lines · redacted)" = "Aktuelle Protokolle (%lld Zeilen · anonymisiert)";
+
+"Reduce App Animations" = "App-Animationen reduzieren";
+
+"Reduces animations beyond the system Reduce Motion setting." = "Reduziert Animationen über die Systemeinstellung „Bewegung reduzieren“ hinaus.";
+
+"Reference: %@" = "Referenz: %@";
+
+"Refresh" = "Aktualisieren";
+
+"Retry All" = "Alle wiederholen";
+
+"Sample Book Title" = "Beispiel-Buchtitel";
+
+"Sent" = "Gesendet";
+
+"Shows outlines around interactive elements." = "Zeigt Umrisse um interaktive Elemente an.";
+
+"Skip & file a ticket" = "Überspringen & Anfrage senden";
+
+"Skip remaining steps and file a support ticket" = "Restliche Schritte überspringen und eine Anfrage an den Support senden";
+
+"Skip this follow-up question and file the ticket without an answer" = "Diese Rückfrage überspringen und die Anfrage ohne Antwort senden";
+
+"Skip this question" = "Frage überspringen";
+
+"Start over" = "Neu beginnen";
+
+"Starts a new question. Your sent ticket is unaffected." = "Beginnt eine neue Frage. Ihre bereits gesendete Anfrage bleibt unverändert.";
+
+"Step %@ of %@" = "Schritt %@ von %@";
+
+"Still broken" = "Problem besteht weiter";
+
+"Support will reply within 1 business day." = "Der Support antwortet innerhalb von 1 Werktag.";
+
+"Thanks, I'm good" = "Danke, das genügt";
+
+"These settings supplement your system accessibility preferences. They do not override system settings." = "Diese Einstellungen ergänzen Ihre Einstellungen für die Bedienungshilfen des Systems. Sie setzen die Systemeinstellungen nicht außer Kraft.";
+
+"This step did not resolve the issue" = "Dieser Schritt hat das Problem nicht behoben";
+
+"This step resolved the issue" = "Dieser Schritt hat das Problem behoben";
+
+"Ticket couldn't send — retry, copy details, or start over" = "Anfrage konnte nicht gesendet werden — erneut versuchen, Details kopieren oder neu beginnen";
+
+"Ticket preview" = "Vorschau der Anfrage";
+
+"Ticket preview — review, edit, and send" = "Vorschau der Anfrage — prüfen, bearbeiten und senden";
+
+"Verbosity" = "Ausführlichkeit";
+
+"Visual" = "Visuell";
+
+"VoiceOver Announcements" = "VoiceOver-Ankündigungen";
+
+"What you said" = "Ihre Beschreibung";

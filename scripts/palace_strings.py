@@ -182,6 +182,34 @@ def extract_swift(src: str) -> tuple[set[str], list[str]]:
     return keys, dynamic
 
 
+
+# SwiftUI builds a type-specific specifier per interpolation, VERIFIED:
+#   Text("\(Int) x")    -> "%lld x"
+#   Text("\(Double) x") -> "%lf x"
+#   Text("\(String) x") -> "%@ x"
+# `genstrings` emits %@ for all three, so a key taken from genstrings (or from
+# assuming %@) can never match at runtime and the string renders English
+# forever, silently.
+_INT_EXPR = re.compile(r"(^\s*\d+\s*$)|\.count\b|\bcount\b|Count\b|Index\b|"
+                       r"Retries\b|Retry\b|\bseconds\b|\bminutes\b|\bhours\b|\bdays\b|\blines\b")
+_DOUBLE_EXPR = re.compile(r"progress\b|Progress\b|\bratio\b|Ratio\b|percentage\b")
+
+
+def infer_specifier(expr: str) -> str:
+    """Best-effort specifier for one interpolated expression.
+
+    Deliberately conservative: only clearly numeric shapes are narrowed, and
+    every interpolated key is still reported as unconfirmed, because the only
+    authoritative source is the compiler (`xcodebuild -exportLocalizations`).
+    """
+    e = expr.strip()
+    if _DOUBLE_EXPR.search(e):
+        return "%lf"
+    if _INT_EXPR.search(e):
+        return "%lld"
+    return "%@"
+
+
 def normalize_interpolation(literal: str) -> str:
     r"""Collapse SwiftUI \(...) segments to %@, as LocalizedStringKey does.
 
@@ -194,13 +222,14 @@ def normalize_interpolation(literal: str) -> str:
     while i < len(literal):
         if literal.startswith(r"\(", i):
             depth, i = 1, i + 2
+            start = i
             while i < len(literal) and depth:
                 if literal[i] == "(":
                     depth += 1
                 elif literal[i] == ")":
                     depth -= 1
                 i += 1
-            out.append("%@")
+            out.append(infer_specifier(literal[start:i - 1]))
         else:
             out.append(literal[i])
             i += 1
@@ -286,7 +315,8 @@ def _read_table(root: Path, lang: str) -> dict[str, str] | None:
     return None
 
 
-def check_tables(root: Path, langs: list[str]) -> list[Finding]:
+def check_tables(root: Path, langs: list[str],
+                 source: dict[str, str] | None = None) -> list[Finding]:
     """Findings across the committed tables. Empty list means a clean tree."""
     tables = {l: _read_table(root, l) for l in langs}
     findings: list[Finding] = []
@@ -298,8 +328,14 @@ def check_tables(root: Path, langs: list[str]) -> list[Finding]:
     if not present:
         return findings
 
+    # English lives in the CODE. `en.lproj/Localizable.strings` is not wired
+    # into the Xcode project, so a committed en table would never ship and
+    # could drift from the source silently. Prefer the extracted source map.
     source_lang = langs[0]
-    source = present.get(source_lang, {})
+    if source is None:
+        source = present.get(source_lang, {})
+    else:
+        source_lang = "<source>"
     every_key: set[str] = set().union(*(set(t) for t in present.values()))
 
     for lang, table in present.items():
@@ -512,6 +548,58 @@ def inventory(paths: list[Path], include_developer: bool = False
     return keys, dynamic
 
 
+def inventory_detailed(paths: list[Path], include_developer: bool = False):
+    """(keys, dynamic, unconfirmed) -- unconfirmed are interpolated SwiftUI keys
+    whose specifier was inferred statically and needs compiler confirmation."""
+    keys, dynamic = inventory(paths, include_developer)
+    unconfirmed: list[str] = []
+    for base in paths:
+        files = [base] if base.is_file() else [p for p in base.rglob("*") if p.suffix in SOURCE_SUFFIXES]
+        for f in files:
+            if not include_developer and is_developer_path(f):
+                continue
+            try:
+                src = preprocess(f.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+            for m in _CALL_LITERAL.finditer(src):
+                call, lit = m.group(1), m.group(2)
+                if r"\(" in lit and call not in _RUNTIME_KEY_MACROS:
+                    unconfirmed.append(normalize_interpolation(lit))
+    return keys, dynamic, sorted(set(unconfirmed))
+
+
+
+_VALUE_CALL = re.compile(
+    r'\b(?:NSLocalizedString|CFCopyLocalizedString)\s*\(\s*"((?:[^"\\]|\\.)*)"'
+    r'(?:\s*,\s*tableName\s*:[^,]*)?(?:\s*,\s*bundle\s*:[^,]*)?'
+    r'\s*,\s*value\s*:\s*"((?:[^"\\]|\\.)*)"', re.S)
+
+
+def source_map(paths: list[Path], include_developer: bool = False) -> dict[str, str]:
+    """key -> the English the runtime falls back to.
+
+    For a prose key that is the key itself. For an identifier key it is the
+    `value:` argument, and using the key instead would compare a translation
+    against a string carrying none of its format specifiers.
+    """
+    keys, _ = inventory(paths, include_developer)
+    out = {k: k for k in keys}
+    for base in paths:
+        files = [base] if base.is_file() else [p for p in base.rglob("*") if p.suffix in SOURCE_SUFFIXES]
+        for f in files:
+            if not include_developer and is_developer_path(f):
+                continue
+            try:
+                src = preprocess(f.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+            for m in _VALUE_CALL.finditer(src):
+                if m.group(1) in out and m.group(2):
+                    out[m.group(1)] = m.group(2)
+    return out
+
+
 # ------------------------------------------------------------------------ CLI
 
 def main(argv: list[str] | None = None) -> int:
@@ -541,7 +629,8 @@ def main(argv: list[str] | None = None) -> int:
                 print("  ", key)
         return 0
 
-    findings = check_tables(a.lproj_root, langs) + check_stringsdict(a.lproj_root, langs)
+    findings = (check_tables(a.lproj_root, langs, source_map(sources, a.include_developer))
+                + check_stringsdict(a.lproj_root, langs))
 
     if a.cmd == "status":
         # Coverage is measured against the keys the SOURCE actually asks for.
