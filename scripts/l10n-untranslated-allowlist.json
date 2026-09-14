@@ -1,0 +1,6 @@
+{
+  "_comment": "Keys deliberately NOT translated. Every entry needs a reason: this list is reviewed in PR and must not become a dumping ground for work someone skipped. Consumed by palace_strings.py export/check.",
+  "skip": {
+    "Lorem ipsum dolor sit amet, consectetur adipiscing elit.": "Latin placeholder inside an #if DEBUG block in ReadingRulerView; never shown to a patron."
+  }
+}

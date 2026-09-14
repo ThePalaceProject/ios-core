@@ -1,10 +1,8 @@
 /* Informs the user an offline return was queued */
 "\"%@\" will be returned automatically when you're back online." = "La devolución de \"%@\" se realizará automáticamente cuando vuelva a estar en línea.";
 
-/* The number of hours and minutes */
 "%02d hr %02 dmin" = "%02d h %02d min";
 
-/* Hours and minutes remaining */
 "%02d hr, %02d min remaining" = "Quedan %02d h, %02d min";
 
 "%02d min remaining" = "Quedan %02d minutos";
@@ -31,12 +29,15 @@
 
 "%@ font" = "Fuente de la categoría %@";
 
+/* Time into the current chapter, then time remaining in the current chapter. */
 "%@ played. %@ remaining." = "%1$@ reproducido. %2$@ restante(s).";
 
 "%@ preset" = "Preajuste %@";
 
+/* The amount of hours and minutes left */
 "%@ remaining" = "%@ restante(s)";
 
+/* How much time is left in the entire book, not just the chapter. */
 "%@ remaining in the book." = "%@ restante(s) en el libro.";
 
 "%@ speed. Faster than normal." = "Velocidad %@. Más rápida de lo normal.";
@@ -45,8 +46,10 @@
 
 "%@ theme" = "Tema %@";
 
+/* A concise string that expreses the percent progress, where %@ is the percentage */
 "%@ through chapter" = "%@ del capítulo";
 
+/* localized time until playback pauses, for voice over */
 "%@ until playback pauses" = "%@ hasta que la reproducción se detenga";
 
 "%@ version %@ (%@)" = "%1$@ versión %2$@ (%3$@)";
@@ -78,6 +81,7 @@
 
 "%d second" = "%d segundo";
 
+/* Audiobook skip interval option, e.g. '30 seconds' */
 "%d seconds" = "%d segundos";
 
 /* VoiceOver position component stating how far through the book the patron is, e.g. `45% read` */
@@ -92,21 +96,27 @@
 
 "1.0× (Normal)" = "×1,0 (normal)";
 
+/* 15 Minutes */
 "15 Minutes" = "15 minutos";
 
+/* 30 Minutes */
 "30 Minutes" = "30 minutos";
 
 /* 45 Minutes */
 "45 Minutes" = "45 minutos";
 
+/* 60 Minutes */
 "60 Minutes" = "60 minutos";
 
 "A" = "A";
 
+/* A Problem Has Occurred */
 "A Problem Has Occurred" = "Ha ocurrido un problema";
 
+/* Toast shown when a bookmark already exists at the current audiobook position */
 "A bookmark has already been saved at this location." = "Ya se ha guardado un marcador en esta ubicación.";
 
+/* Title shown when the audiobook fails to load within the timeout */
 "A problem has occurred." = "Ha ocurrido un problema";
 
 "ABCabc" = "ABCabc";
@@ -118,20 +128,26 @@
 /* VoiceOver: Settings list section header for About, Privacy, Licenses */
 "About and legal" = "Información y avisos legales";
 
+/* Title for a Accept button */
 "Accept" = "Aceptar";
 
 "Accessibility" = "Accesibilidad";
 
+/* Title for account section */
 "Account" = "Cuenta";
 
 "Account unavailable" = "Cuenta no disponible";
 
+/* Title for acknowledgements section */
 "Acknowledgements" = "Reconocimientos";
 
+/* Accessibility label for button to add a bookmark */
 "Add Bookmark" = "Añadir marcador";
 
+/* Title of button to add a new library */
 "Add Library" = "Añadir biblioteca";
 
+/* VoiceOver: Label for the audiobook add-bookmark control */
 "Add bookmark" = "Añadir marcador";
 
 /* Subtitle on the Settings row that opens the Libraries screen. */
@@ -141,6 +157,7 @@
 
 "Advanced" = "Avanzado";
 
+/* Title for Age Verification */
 "Age Verification" = "Verificación de edad";
 
 /* VoiceOver: Label for the audiobook AirPlay route picker */
@@ -150,12 +167,15 @@
 
 "Also available as an audiobook." = "También disponible como audiolibro.";
 
+/* Generic error message while handling sign-in redirection during authentication */
 "An error occurred during the authentication process" = "Se ha producido un error durante el proceso de autenticación";
 
+/* Error message used when a low-level error occured while opening a publication */
 "An error was encountered while trying to open this book." = "Se detectó un error al intentar abrir este libro.";
 
 "An unknown error occurred while trying to sign out." = "Se ha producido un error desconocido al tratar de cerrar sesión.";
 
+/* A generic error message for when a network request fails */
 "An unknown error occurred. Please check your connection or try again later." = "Se ha producido un error desconocido. Comprueba tu conexión o vuelve a intentarlo más tarde.";
 
 "Announcement" = "Anuncio";
@@ -174,13 +194,16 @@
 /* Title of the app-rating sentiment gate shown after a positive moment (finishing a book or borrowing). */
 "Are you enjoying The Palace Project?" = "¿Le gusta The Palace Project?";
 
+/* Message shown in an alert to the user prior to returning a reserved title. */
 "Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book." = "¿Estás seguro de que quieres eliminar &quot;%@&quot; de tus reservas? Ya no estarás en la fila para recibir este libro.";
 
+/* Message shown in an alert to the user prior to deleting a title */
 "Are you sure you want to delete \"%@\"?" = "¿Seguro que quieres eliminar \"%@\"?";
 
 /* Message shown in an alert to the user prior to removing a held title. */
 "Are you sure you want to remove \"%@\" from your holds? You will no longer be in line for this book." = "¿Seguro que desea eliminar \"%@\" de sus reservas? Ya no estará en la lista de espera para este libro.";
 
+/* Message shown in an alert to the user prior to returning a title */
 "Are you sure you want to return \"%@\"?" = "¿Seguro que quieres devolver \"%@\"?";
 
 /* Body of the confirmation dialog shown when the patron closes the audiobook mini-player */
@@ -192,6 +215,7 @@
 /* Book detail metadata label for the target reader audience (Adult, Young Adult, Children, etc.) */
 "Audience" = "Público";
 
+/* Audiobook badge accessibility */
 "Audiobook" = "Audiolibro";
 
 /* Title when a cold-load playback failure dismisses the player */
@@ -199,12 +223,15 @@
 
 "Authenticate to reveal your PIN." = "Autentícate para revelar tu PIN.";
 
+/* Title for an error related to expired credentials */
 "Authentication Expired" = "Autenticación caducada";
 
+/* Title for an error related to credentials being required */
 "Authentication Required" = "Autenticacion obligatoria";
 
 "Author" = "Autor";
 
+/* Text for Back button */
 "Back" = "Atrás";
 
 /* VoiceOver label for the footnote return link (doc-backlink) that returns the reader to the reference */
@@ -223,8 +250,10 @@
 /* VoiceOver: Accessibility label for the book reading area */
 "Book reader" = "Área de lectura";
 
+/* Toast shown after successfully adding an audiobook bookmark */
 "Bookmark added" = "Marcador agregado";
 
+/* VoiceOver: Show bookmarks list */
 "Bookmarks" = "Marcadores";
 
 /* VoiceOver: Label for a list of books */
@@ -265,8 +294,10 @@
 
 "CANCEL" = "Cancelar";
 
+/* An alert title stating the user has disallowed the app to access the user's location */
 "Camera Access Disabled" = "Acceso a la cámara deshabilitado";
 
+/* Button that says to cancel and go back to the last screen. */
 "Cancel" = "Cancelar";
 
 "Cancel Hold" = "Cancelar la reserva";
@@ -325,6 +356,7 @@
 /* CarPlay tab title for now playing screen */
 "CarPlay.nowPlaying" = "En reproducción";
 
+/* VoiceOver: Label for main catalog / browse region */
 "Catalog" = "Catálogo";
 
 "Categories" = "Categorías";
@@ -353,6 +385,7 @@
 /* Accessibility hint for filter clear button */
 "Clears applied filters for this group" = "Borra los filtros aplicados a este grupo";
 
+/* Title for close button */
 "Close" = "Cerrar";
 
 /* VoiceOver: Close (X) control on the audiobook mini-player. Presents a confirmation before stopping playback. */
@@ -367,6 +400,7 @@
 /* VoiceOver hint for the Continue section header when expanded. */
 "Collapses the Continue section." = "Contrae la sección Continuar.";
 
+/* Title for alert that explains that the page could not download the information */
 "Connection Failed" = "Conexión fallida";
 
 /* Title shown in the streaming reader when the device is offline; the asset is online-only and cannot be cached. */
@@ -402,12 +436,14 @@
 /* VoiceOver announcement when the current reading position cannot be determined */
 "Current position unavailable" = "Posición actual no disponible";
 
+/* Announce which track is highlighted in the table of contents. */
 "Currently Playing: %@" = "Reproduciendo: %@";
 
 "Custom Rotor Actions" = "Acciones del rotor personalizadas";
 
 "DEFAULT" = "PREDETERMINADO";
 
+/* VoiceOver label for the reader control that makes text smaller */
 "Decrease font size" = "Disminuir tamaño de fuente";
 
 /* VoiceOver: Label for the audiobook speed decrease stepper */
@@ -428,12 +464,16 @@
 
 "Distributor" = "Distribuidor";
 
+/* An alert message asking the user to perform navigation to the synced reading position or not */
 "Do you want to move to the page on which you left off?" = "¿Quieres ir a la página en la que te quedaste?";
 
+/* An alert message asking the user to perform navigation to the synced listening position or not */
 "Do you want to move to the time on which you left off?" = "¿Quieres pasar al momento en el que lo dejaste?";
 
+/* Title for registration. Asking the user if they already have a library card. */
 "Don't have a library card?" = "¿No tienes tarjeta de biblioteca?";
 
+/* Button title for hiding picker view */
 "Done" = "Hecho";
 
 "Double tap to select the %@ theme" = "Pulse dos veces para seleccionar el tema %@";
@@ -445,6 +485,7 @@
 
 "Download Error" = "Error de descarga";
 
+/* Alert title when a download fails */
 "Download Failed" = "Descarga fallida";
 
 /* Toggle label to restrict downloads to Wi-Fi connections */
@@ -459,15 +500,18 @@
 /* VoiceOver announcement when a download begins */
 "Download started for %@." = "Descarga de %@ iniciada.";
 
+/* Label under the audiobook download progress bar */
 "Downloading" = "Descargando";
 
 /* VoiceOver accessibility label for download progress indicator, %@ is the book title */
 "Downloading %@" = "Descargando %@";
 
+/* Downloading... */
 "Downloading..." = "Descargando";
 
 "Downloading:" = "Descargando:";
 
+/* The percentage of the chapter that has been downloaded, formatting for string should be localized at this point. */
 "Downloading: %@%%" = "Descargando: %@%%";
 
 /* Section header for download-related settings */
@@ -487,6 +531,7 @@
 
 "Edit your ticket description" = "Editar la descripción de su solicitud";
 
+/* End of Chapter */
 "End of Chapter" = "Fin del capítulo";
 
 /* Message in the prompt asking which print page to navigate to */
@@ -513,10 +558,12 @@
 
 "Failed" = "Fallidas";
 
+/* Error message shown to user when CoreLocation does not return the current location. */
 "Failed to get current location. Please try again." = "No se pudo obtener la ubicación actual. Inténtalo de nuevo.";
 
 "Failed to open book" = "Error al abrir el libro";
 
+/* Fast forward a configurable number of seconds */
 "Fast Forward %d seconds" = "Avance rápido %d segundos";
 
 /* VoiceOver: Filter button with no filters applied */
@@ -532,6 +579,7 @@
 
 "Filters" = "Filtros";
 
+/* Button that lets user know they can select a library they have a card for */
 "Find Your Library" = "Encuentra tu biblioteca";
 
 "Finishing up…" = "Finalizando…";
@@ -566,6 +614,7 @@
 
 "Forgot your password?" = "¿Has olvidado tu contraseña?";
 
+/* Format filter picker label */
 "Format" = "Formato";
 
 "Get Help" = "Ayuda";
@@ -599,6 +648,7 @@
 /* Description under the audiobook skip-interval settings */
 "How far the audiobook skip buttons jump. Set each direction independently; applies to all audiobooks." = "La distancia que saltan los botones de avance y retroceso del audiolibro. Configure cada dirección por separado; se aplica a todos los audiolibros.";
 
+/* Longer description to describe action of the button. */
 "If another device is available, send the audio over Bluetooth or Airplay. Otherwise do nothing." = "Si hay otro dispositivo disponible, envía el audio por Bluetooth o Airplay. De lo contrario, no hagas nada.";
 
 "Import" = "Importación";
@@ -617,6 +667,7 @@
 
 "Include recent logs in the ticket" = "Incluir los registros recientes en la solicitud";
 
+/* VoiceOver label for the reader control that makes text larger */
 "Increase font size" = "Aumentar tamaño de fuente";
 
 /* VoiceOver: Label for the audiobook speed increase stepper */
@@ -628,10 +679,12 @@
 
 "Information" = "Información";
 
+/* Alert notifying user that bookmark save failed. */
 "Internal Error, bookmark failed to save." = "Error interno, no se pudo guardar el marcador.";
 
 "Invalid Credentials" = "Credenciales no válidas";
 
+/* Warning message offering the user the choice of interrupting the download or return of a book to log out immediately, or waiting until that finishes. */
 "It looks like you may have a book download or return in progress. Would you like to stop that and continue logging out?" = "Parece que hay una descarga o devolución de un libro en curso. ¿Prefieres interrumpirla y seguir cerrando sesión?";
 
 "Keep" = "Conservar";
@@ -645,6 +698,7 @@
 
 "Less than 1 min remaining" = "Queda menos de 1 minuto";
 
+/* A title for a list of libraries the user may select or add to. */
 "Libraries" = "Bibliotecas";
 
 /* Barcode image accessibility */
@@ -669,6 +723,7 @@
 /* Log preview screen title */
 "Log Preview" = "Vista previa del registro";
 
+/* Title for login error alert */
 "Login Failed" = "Inicio de sesión fallido";
 
 "Manage Hold" = "Gestionar la reserva";
@@ -692,6 +747,7 @@
 
 "Motion & Animation" = "Movimiento y animación";
 
+/* Perform navigation */
 "Move" = "Moverse";
 
 "My Books" = "Mis libros";
@@ -701,8 +757,10 @@
 
 "Narrators" = "Narradores:";
 
+/* Button title for completing age verification */
 "Next" = "Siguiente";
 
+/* Accessibility label to go forward in the publication */
 "Next Chapter" = "Capítulo siguiente";
 
 /* Full Keyboard Access: Custom action to go to next page (Tab-Z menu) */
@@ -714,6 +772,7 @@
 /* Alert title shown when the user attempts to download or reserve a book while offline */
 "No Connection" = "Sin conexión";
 
+/* Title shown when sign-in fails because the device lost connectivity */
 "No Internet Connection" = "Sin conexión a internet";
 
 "No email account is set for this device." = "No se ha configurado ninguna cuenta de correo electrónico para este dispositivo.";
@@ -757,16 +816,20 @@
 /* VoiceOver: Accessibility label for the collapsed audiobook pill; %@ is the book title */
 "Now playing: %@" = "Reproduciendo ahora: %@";
 
+/* Button to dismiss announcement alert */
 "OK" = "Aceptar";
 
+/* Off */
 "Off" = "Apagado";
 
 "Offline Queue" = "Cola sin conexión";
 
 "On Hold" = "Reservado";
 
+/* A title for a button that will open the Settings app */
 "Open Settings" = "Abrir Configuración";
 
+/* Description of Open eBooks app displayed during 1st launch tutorial */
 "Open eBooks provides free books to the children who need them the most.\n\nThe collection includes thousands of popular and award-winning titles as well as hundreds of public domain works." = "La aplicación Open eBooks proporciona libros gratuitos a los niños que más los necesitan.\n\nLa colección incluye miles de títulos populares y galardonados, así como cientos de obras de dominio público.";
 
 /* Typography button accessibility hint */
@@ -784,6 +847,7 @@
 /* Section header for related books */
 "Other books by this author" = "Otros libros del mismo autor";
 
+/* PDF */
 "PDF" = "PDF";
 
 "PIN" = "PIN";
@@ -812,6 +876,7 @@
 /* Title of the reader navigation tab listing the book's print pages */
 "Pages" = "Páginas";
 
+/* VoiceOver: Pause audiobook */
 "Pause" = "Pausa";
 
 "Pending" = "Pendientes";
@@ -820,13 +885,16 @@
 
 "Place Hold" = "Reservar";
 
+/* VoiceOver: Play audiobook */
 "Play" = "Reproducir";
 
 /* Section header for audiobook playback settings */
 "Playback" = "Reproducción";
 
+/* Describe where the sound can be sent. Example: Bluetooth Speakers. */
 "Playback Destination" = "Destino de reproducción";
 
+/* Title to set how fast the audio plays */
 "Playback Speed" = "Velocidad de reproducción";
 
 /* VoiceOver: Label for the audiobook seek slider */
@@ -837,21 +905,25 @@
 
 "Playback slider value: %@" = "Valor del control de reproducción: %@";
 
+/* VoiceOver: Label for the audiobook playback-speed control */
 "Playback speed" = "Velocidad de reproducción";
 
 /* VoiceOver: current audiobook playback speed value, %@ is a rate like 1.5x */
 "Playback speed: %@" = "Velocidad de reproducción: %@";
 
+/* Fallback detail shown under the "Download Failed" alert when the underlying failure reason has no user-facing description (e.g. a generic URLSession error or DRM fulfillment error with no localizedDescription). */
 "Please check your connection and try again." = "Comprueba la conexión y vuelve a intentarlo.";
 
 "Please check your username and password and try again." = "Compruebe su nombre de usuario y su contraseña e inténtelo de nuevo.";
 
 "Please contact %@ to report an issue." = "Contacta con %@ para informar de un problema.";
 
+/* Caption for asking user to enter their birth year */
 "Please enter your birth year" = "Introduce tu año de nacimiento";
 
 "Please force-quit and reopen Palace, then try again. If the problem persists, email support@thepalaceproject.org." = "Cierre Palace por completo, vuelva a abrirlo e inténtelo de nuevo. Si el problema persiste, escriba a support@thepalaceproject.org.";
 
+/* Error message to please try again. */
 "Please try again later." = "Inténtalo de nuevo en otro momento.";
 
 /* Message shown when the audiobook fails to load, prompting a retry */
@@ -861,6 +933,7 @@
 
 "Please wait a moment before switching library accounts" = "Espere un momento antes de cambiar de cuenta de biblioteca.";
 
+/* Generic Wait message */
 "Please wait..." = "Espera, por favor";
 
 "Preparing book…" = "Preparando el libro…";
@@ -871,11 +944,13 @@
 
 "Preview of accessibility settings" = "Vista previa de los ajustes de accesibilidad";
 
+/* Accessibility label to go backward in the publication */
 "Previous Chapter" = "Capítulo anterior";
 
 /* Full Keyboard Access: Custom action to go to previous page (Tab-Z menu) */
 "Previous page" = "Página anterior";
 
+/* Title for Privacy Policy section */
 "Privacy Policy" = "Política de privacidad";
 
 "Processing actions..." = "Procesando acciones...";
@@ -887,10 +962,13 @@
 /* Reached the end of the results. */
 "Reached the end of the results." = "Se ha llegado al final de los resultados.";
 
+/* Accessibility label to read current chapter */
 "Read" = "Leer";
 
+/* Reader settings screen title */
 "Reader Settings" = "Configuración del lector";
 
+/* Reader settings */
 "Reader settings" = "Configuración del lector";
 
 /* VoiceOver label for the reader's drag-to-navigate position control */
@@ -908,12 +986,15 @@
 
 "Refresh" = "Actualizar";
 
+/* Title for a Reject button */
 "Reject" = "Rechazar";
 
+/* Button that says to try again */
 "Reload" = "Recargar";
 
 "Remove" = "Eliminar";
 
+/* Accessibility label for button to remove a bookmark */
 "Remove Bookmark" = "Eliminar marcador";
 
 "Remove Hold" = "Eliminar la reserva";
@@ -931,8 +1012,10 @@
 
 "Reset to preset defaults" = "Restablecer los valores predeterminados del preajuste";
 
+/* A button to continue reading title. */
 "Resume" = "Reanudar";
 
+/* Button to retry loading an audiobook that timed out */
 "Retry" = "Reintentar";
 
 "Retry All" = "Reintentar todo";
@@ -946,8 +1029,10 @@
 /* VoiceOver announcement when user taps Retry on a failed return */
 "Retrying return for %@." = "Reintentando la devolución de %@.";
 
+/* Button title for keeping an audiobook */
 "Return" = "Devolver";
 
+/* Alert title when returning a book fails */
 "Return Failed" = "Devolución fallida";
 
 "Return Loan" = "Devolver el préstamo";
@@ -964,6 +1049,7 @@
 /* VoiceOver announcement when a return succeeds */
 "Returned %@." = "Devolución de %@ realizada.";
 
+/* Rewind a configurable number of seconds */
 "Rewind %d seconds" = "Rebobinar %d segundos";
 
 /* Button to apply filters and show results */
@@ -971,6 +1057,7 @@
 
 "Sample Book Title" = "Título de libro de ejemplo";
 
+/* Explain how to set a bookmark. */
 "Save the current location bookmark for later listening." = "Guarde el marcador de ubicación actual para escucharlo más tarde.";
 
 /* VoiceOver: Button to scan library card barcode */
@@ -979,6 +1066,7 @@
 /* Brightness slider accessibility */
 "Screen brightness" = "Brillo de la pantalla";
 
+/* Placeholder for Search Field */
 "Search" = "Buscar";
 
 /* VoiceOver: Button to search for books */
@@ -1000,8 +1088,10 @@
 /* VoiceOver label for search results area */
 "Search results list" = "Lista de resultados de búsqueda";
 
+/* Placeholder for birth year textfield */
 "Select Year" = "Seleccionar año";
 
+/* Explain what a table of contents is. */
 "Select a chapter or track from a list." = "Selecciona un capítulo o pista de una lista.";
 
 /* VoiceOver: Indicates an item is currently selected (e.g. the active library in Settings). */
@@ -1020,7 +1110,6 @@
 /* Title for session expired alert */
 "Session Expired" = "Sesión caducada";
 
-/* VoiceOver hint for a speed preset button */
 "Sets playback speed" = "Define la velocidad de reproducción";
 
 "Settings" = "Configuración";
@@ -1044,12 +1133,15 @@
 
 "Side Loading" = "Importación local";
 
+/* Sign-in web view screen title */
 "Sign In" = "Iniciar sesión";
 
+/* Title for sign in error alert */
 "Sign In Error" = "Error de inicio de sesión";
 
 "Sign in" = "Iniciar sesión";
 
+/* Title for sign out action */
 "Sign out" = "Cerrar sesión";
 
 "Sign up for a library card" = "Solicitar una tarjeta de la biblioteca";
@@ -1084,16 +1176,21 @@
 
 "Skip this question" = "Omitir esta pregunta";
 
+/* Sleep Timer */
 "Sleep Timer" = "Temporizador de reposo";
 
+/* VoiceOver: Label for the audiobook sleep-timer control */
 "Sleep timer" = "Temporizador de reposo";
 
 "Software Licenses" = "Licencias de software";
 
+/* Expired DRM certificate message */
 "Some books will be unavailable in this version. Please try updating to the latest version of the application." = "Algunos libros no estarán disponibles en esta versión. Prueba a actualizar la aplicación a la versión más actual.";
 
+/* Expired DRM certificate title */
 "Something went wrong with the Adobe DRM system" = "Algo ha ido mal con el sistema Adobe DRM";
 
+/* Header label for sort options */
 "Sort By" = "Ordenar por";
 
 "Sort By:" = "Ordenar por:";
@@ -1101,13 +1198,13 @@
 /* VoiceOver: Current sort option, e.g. 'Sort by Title' */
 "Sort by %@" = "Ordenar por %@";
 
-/* VoiceOver label for the row of speed preset buttons */
 "Speed presets" = "Preajustes de velocidad";
 
 "Start over" = "Empezar de nuevo";
 
 "Starts a new question. Your sent ticket is unaffected." = "Inicia una pregunta nueva. La solicitud ya enviada no se ve afectada.";
 
+/* Do not perform navigation */
 "Stay" = "Quedarse";
 
 "Step %@ of %@" = "Paso %@ de %@";
@@ -1132,7 +1229,6 @@
 /* Accessibility hint for search results list */
 "Swipe to browse results. Double tap to open a book." = "Deslice para explorar los resultados. Toque dos veces para abrir un libro.";
 
-/* VoiceOver hint for the playback speed slider */
 "Swipe up or down with one finger to adjust" = "Deslice hacia arriba o hacia abajo con un dedo para ajustar el valor";
 
 /* VoiceOver: Button to switch between libraries */
@@ -1146,32 +1242,44 @@
 
 "Sync Bookmarks" = "Sincronizar marcadores";
 
+/* An alert title notifying the user the listening position has been synced */
 "Sync Listening Position" = "Posición de escucha sincronizada";
 
+/* An alert title notifying the user the reading position has been synced */
 "Sync Reading Position" = "Posición de lectura sincronizada";
 
+/* Title for Table of Contents in eReader */
 "Table of Contents" = "Índice";
 
+/* VoiceOver: Open table of contents */
 "Table of contents" = "Índice";
 
+/* Developer Settings */
 "Testing" = "Pruebas";
 
+/* Alert title */
 "Thank You" = "Gracias";
 
 "Thanks, I'm good" = "Gracias, es suficiente";
 
+/* Message for sign-in error alert caused by failed DRM authorization */
 "The DRM Library is taking longer than expected. Please wait and try again later.\n\nIf the problem persists, try to sign out and back in again from the Library Settings menu." = "La biblioteca de DRM está tardando más de lo esperado. Espera y vuelve a intentarlo más tarde.\n\nSi el problema persiste, prueba a cerrar sesión y vuelve a iniciarla desde el menú de configuración de la biblioteca.";
 
+/* Body for registration. Explaining the reason for requesting the user's location and instructions for how to provide permission. */
 "The Palace App requires a one-time location check in order to verify your library service area. Once you choose \"Create Card\", please select \"Allow Once\" in the popup so we can verify this information." = "La aplicación Palace requiere una verificación de ubicación única para verificar el área de servicio de su biblioteca. Una vez que elija &quot;Crear tarjeta&quot;, seleccione &quot;Permitir una vez&quot; en la ventana emergente para que podamos verificar esta información.";
 
 "The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation." = "La aplicación Palace requiere una verificación de ubicación única para verificar el área de servicio de su biblioteca. Has desactivado los servicios de ubicación para esta aplicación. Para habilitarlo, seleccione el botón &#39;Abrir configuración&#39; a continuación y luego continúe con la creación de la tarjeta.";
 
+/* Expired license warning */
 "The book license has expired." = "La licencia del libro ha caducado.";
 
+/* Error message used when trying to import a publication that is not valid */
 "The book you were trying to open is invalid." = "El libro que intentabas abrir no es válido.";
 
+/* Error message when trying to read an EPUB that is invalid */
 "The book you were trying to read is corrupted. Please try downloading it again." = "El libro que intentabas leer está dañado. Prueba a descargarlo de nuevo.";
 
+/* Error message when trying to read a publication with a unsupported format */
 "The book you were trying to read is in an unsupported format." = "El libro que intentabas leer tiene un formato no compatible.";
 
 /* Toast shown when saving an audiobook bookmark fails to persist */
@@ -1187,16 +1295,19 @@
 
 "The download could not be completed.\nScroll down to 'View Issues' to see details." = "No se ha podido completar la descarga.\nBaja hasta \"Ver problemas\" para conocer los detalles.";
 
+/* Alert message when downloading a book fails, %@ is the book title */
 "The download for %@ could not be completed." = "No se ha podido completar la descarga de %@.";
 
 "The page could not load due to a connection error." = "La página no se ha podido cargar debido a un error de conexión.";
 
+/* Alert message when returning a book fails, %@ is the book title */
 "The return of %@ could not be completed." = "No se pudo completar la devolución de %@.";
 
 "The server returned an error. You may need to return the book and borrow it again." = "El servidor ha devuelto un error. Puede que tenga que devolver el libro y volver a pedirlo prestado.";
 
 "Theme" = "Tema";
 
+/* Text showing in bookmarks view when there are no bookmarks */
 "There are no bookmarks for this book." = "No hay ningún marcador para este libro.";
 
 /* No search results available. */
@@ -1267,6 +1378,7 @@
 /* Body copy of the empty-state shown in the Catalog search screen when a query returns no books */
 "Try a different search term." = "Pruebe con otro término de búsqueda.";
 
+/* Recovery instructions for when the URL to sign in is missing */
 "Try force-quitting the app and repeat the sign-in process." = "Prueba a forzar el cierre de la aplicación y repite el proceso de inicio de sesión.";
 
 "Two times normal speed." = "Dos veces la velocidad normal.";
@@ -1278,6 +1390,7 @@
 
 "Typography preview" = "Vista previa tipográfica";
 
+/* Error message for when the library profile url is missing from the authentication document the server provided. */
 "Unable to contact the server because the URL for signing in is missing." = "No se puede contactar con el servidor porque falta la URL para iniciar sesión.";
 
 "Unable to load PDF file" = "No se puede cargar el archivo PDF";
@@ -1287,10 +1400,13 @@
 /* Error message shown to user when an unknown location error occurs. */
 "Unknown error occurred. Please try again." = "Se ha producido un error desconocido. Inténtelo de nuevo.";
 
+/* Unsupported format */
 "Unsupported format" = "Formato no compatible";
 
+/* Title for User Agreement section */
 "User Agreement" = "Contrato de usuario";
 
+/* Error message shown to user when location services are denied. */
 "User denied location access. Go to system settings to enable location access for the Palace App." = "Acceso a la ubicación denegado al usuario. Vaya a la configuración del sistema para habilitar el acceso a la ubicación para la aplicación Palace.";
 
 "Verbosity" = "Verbosidad";
@@ -1306,6 +1422,7 @@
 
 "VoiceOver Announcements" = "Anuncios de VoiceOver";
 
+/* button title */
 "Wait" = "Esperar";
 
 /* Alert message when library data fails to load, no retry available */
@@ -1320,13 +1437,16 @@
 /* Follow-up shown after a negative sentiment-gate response, offering to open a feedback email. */
 "We're sorry to hear that. Would you like to share feedback?" = "Lamentamos saberlo. ¿Desea enviarnos sus comentarios?";
 
+/* Message describing the fact that new patron sign up is not supported by the current selected library */
 "We're sorry. Currently we do not support signups for new patrons via the app." = "Sentimos decirte que, en estos momentos, no admitimos el registro de nuevos mecenas a través de la aplicación.";
 
+/* Message for error loading the web-based card creator */
 "We're sorry. Our sign up system is currently down. Please try again later." = "Sentimos decirte que nuestro sistema de registro sufre problemas en este momento. Vuelve a intentarlo en otro momento.";
 
 /* Format label for streaming-media (text/html) titles. */
 "Web Article" = "Artículo web";
 
+/* Welcome text */
 "Welcome to Open eBooks" = "Te damos la bienvenida a Open eBooks";
 
 "What you said" = "Su descripción";
@@ -1369,6 +1489,7 @@
 
 "You have already checked out this loan. You may need to refresh your My Books list to download the title." = "Ya has pasado este préstamo por caja. Es posible que debas actualizar la lista Mis libros para descargar el título.";
 
+/* Registration message shown to user when location access has been denied. */
 "You have disabled location services for this app." = "Has desactivado los servicios de ubicación para esta aplicación.";
 
 "You must enable camera access for this application in order to sign up for a library card." = "Debes habilitar el acceso a la cámara a esta aplicación para poder sacarte una tarjeta de biblioteca.";
@@ -1383,10 +1504,13 @@
 /* Alert title when a book's DRM license has expired */
 "Your Loan Has Expired" = "Su préstamo ha finalizado";
 
+/* Message to prompt user to re-authenticate */
 "Your authentication details have expired. Please sign in again." = "Tus datos de autenticación han caducado. Inicia sesión de nuevo.";
 
+/* Warning message offering the user the choice of interrupting book registry syncing to log out immediately, or waiting until that finishes. */
 "Your bookmarks and reading positions are in the process of being saved to the server. Would you like to stop that and continue logging out?" = "Tus marcadores y posiciones de lectura están en proceso de guardarse en el servidor. ¿Prefieres interrumpirlo y seguir cerrando sesión?";
 
+/* Alert message */
 "Your report will be reviewed as soon as possible." = "Se revisará tu informe a la mayor brevedad.";
 
 /* Message explaining that the user's session has expired */
@@ -1407,8 +1531,10 @@
 /* VoiceOver fragment appended to a Continue Listening row card when the audiobook is actively playing. */
 "currently playing" = "reproduciéndose ahora";
 
+/* Title for web-based card creator page */
 "eCard" = "eCard";
 
+/* The ePub file format, shown as a book format label */
 "ePub" = "ePub";
 
 /* Placeholder; final wording awaits design review per feedback_no_new_copy_without_design */
@@ -1416,4 +1542,5 @@
 
 "returning" = "devolviendo";
 
+/* Abbreviations for seconds */
 "sec" = "seg";

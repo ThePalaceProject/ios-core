@@ -630,3 +630,101 @@ def test_explicit_int_cast_is_decisive():
     # trusting over a name-shaped guess.
     assert ps.infer_specifier("Int(presenter.overallDownloadProgress * 100") == "%lld"
     assert ps.infer_specifier("Double(x)") == "%lf"
+
+
+# ------------------------------------------- export / import work-file cycle
+
+def test_export_lists_only_keys_missing_from_the_tables(tmp_path):
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("Borrow", comment: "Button")\n'
+                                 'NSLocalizedString("Return", comment: "Button")\n')
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"Borrow": "Ausleihen"})
+    work = ps.build_work_file([src], tmp_path, ["de"])
+    assert [s["key"] for s in work["strings"]] == ["Return"]
+    assert work["strings"][0]["english"] == "Return"
+    assert work["strings"][0]["comment"] == "Button"
+    assert work["strings"][0]["de"] == ""
+
+
+def test_export_skips_format_only_keys(tmp_path):
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("%@ %@", comment: "")')
+    work = ps.build_work_file([src], tmp_path, ["de"])
+    assert work["strings"] == []
+
+
+def test_export_uses_the_value_argument_as_english(tmp_path):
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text(
+        'NSLocalizedString("CarPlay.x", value: "Chapters", comment: "c")')
+    work = ps.build_work_file([src], tmp_path, ["de"])
+    assert work["strings"][0]["english"] == "Chapters"
+
+
+def test_import_writes_validated_values(tmp_path):
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("Borrow", comment: "b")')
+    work = {"languages": ["de"], "strings": [{"key": "Borrow", "english": "Borrow", "de": "Ausleihen"}]}
+    findings = ps.apply_work_file(work, [src], tmp_path)
+    assert findings == []
+    assert ps.parse_strings((tmp_path / "de.lproj" / "Localizable.strings")
+                            .read_text(encoding="utf-8")) == {"Borrow": "Ausleihen"}
+
+
+def test_import_refuses_a_specifier_mismatch_and_writes_nothing(tmp_path):
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("%d books", comment: "b")')
+    work = {"languages": ["de"], "strings": [{"key": "%d books", "english": "%d books", "de": "%@ Bucher"}]}
+    findings = ps.apply_work_file(work, [src], tmp_path)
+    assert any(f.kind == "specifier_mismatch" for f in findings)
+    assert not (tmp_path / "de.lproj" / "Localizable.strings").exists()
+
+
+def test_import_ignores_a_blank_value_rather_than_writing_it(tmp_path):
+    # A partially-filled work file is normal: a human may return one language
+    # at a time. Blanks are skipped, not written as empty strings.
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("Borrow", comment: "b")')
+    work = {"languages": ["de"], "strings": [{"key": "Borrow", "english": "Borrow", "de": "  "}]}
+    assert ps.apply_work_file(work, [src], tmp_path) == []
+    assert not (tmp_path / "de.lproj" / "Localizable.strings").exists()
+
+
+def test_import_rejects_a_key_that_is_not_in_the_source(tmp_path):
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("Borrow", comment: "b")')
+    work = {"languages": ["de"], "strings": [{"key": "Ghost", "english": "Ghost", "de": "Geist"}]}
+    findings = ps.apply_work_file(work, [src], tmp_path)
+    assert any(f.kind == "unknown_key" for f in findings)
+
+
+def test_allowlisted_keys_are_not_exported(tmp_path):
+    # The escape hatch: a key deliberately not translated (a debug placeholder,
+    # a brand name) is recorded WITH A REASON rather than nagging every export.
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("Lorem ipsum", comment: "")\n'
+                                 'NSLocalizedString("Borrow", comment: "")\n')
+    allow = tmp_path / "allow.json"
+    allow.write_text(json.dumps({"skip": {"Lorem ipsum": "debug placeholder"}}))
+    work = ps.build_work_file([src], tmp_path, ["de"], allowlist=ps.load_allowlist(allow))
+    assert [s["key"] for s in work["strings"]] == ["Borrow"]
+
+
+def test_allowlist_absent_is_not_an_error(tmp_path):
+    assert ps.load_allowlist(tmp_path / "nope.json") == {}
+
+
+def test_require_complete_fails_on_an_untranslated_new_string(tmp_path):
+    # The forcing function: a developer adds a string, ships nothing else, and
+    # CI stops the PR. This is the whole reason the loop does not need AI in CI.
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("Renew this loan", comment: "")')
+    findings = ps.check_tables(tmp_path, ["de"], require=ps.inventory([src])[0])
+    assert any(f.kind == "untranslated" and f.key == "Renew this loan" for f in findings)
+
+
+def test_require_complete_passes_once_translated(tmp_path):
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text('NSLocalizedString("Renew this loan", comment: "")')
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"Renew this loan": "Leihfrist"})
+    assert ps.check_tables(tmp_path, ["de"], require=ps.inventory([src])[0]) == []

@@ -72,6 +72,21 @@ jobs:
           fi
           python3 -m pytest scripts/tests/ -q
 
+      # 2b. Localization drift. Deterministic on purpose: detection is a set
+      #     difference, so it needs no translation engine and runs on ubuntu in
+      #     seconds. PRODUCING the translations is a developer-side step
+      #     (`export` -> fill -> `import`); CI only refuses to let an
+      #     untranslated string reach a release.
+      - name: localization tables complete and consistent
+        run: |
+          # TRACKED file: its absence is a deleted gate, not an opt-out.
+          if [ ! -f scripts/palace_strings.py ]; then
+            echo "::error::scripts/palace_strings.py is missing — the localization gate cannot run."
+            exit 1
+          fi
+          python3 scripts/palace_strings.py check \
+            --lproj-root Palace --langs de,es,fr,it --require-complete
+
       # 3. Hook-wiring fixture test. Proves the pre-commit detector hook
       #    correctly blocks on a violation, identifies the detector, and honors
       #    bypass envvars — and that every wired detector is invoked with an

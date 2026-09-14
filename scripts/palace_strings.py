@@ -355,7 +355,8 @@ def _read_table(root: Path, lang: str) -> dict[str, str] | None:
 
 
 def check_tables(root: Path, langs: list[str],
-                 source: dict[str, str] | None = None) -> list[Finding]:
+                 source: dict[str, str] | None = None,
+                 require: set[str] | None = None) -> list[Finding]:
     """Findings across the committed tables. Empty list means a clean tree."""
     tables = {l: _read_table(root, l) for l in langs}
     findings: list[Finding] = []
@@ -364,6 +365,18 @@ def check_tables(root: Path, langs: list[str],
         if table is None:
             findings.append(Finding("missing_table", lang, "", f"no {lang}.lproj/Localizable.strings"))
     present = {l: t for l, t in tables.items() if t is not None}
+
+    if require:
+        # A source key absent from EVERY table is a string someone added and
+        # never translated. This is the check that makes the loop work without
+        # an AI in CI: detection is a set difference; only production needs one.
+        # Evaluated before the no-tables early return, because a tree with no
+        # tables at all is the strongest case of untranslated, not a reason to skip.
+        have: set[str] = set().union(*(set(t) for t in present.values())) if present else set()
+        for key in sorted(require - have):
+            findings.append(Finding("untranslated", "", key,
+                                    "new source string with no translation in any language"))
+
     if not present:
         return findings
 
@@ -566,6 +579,7 @@ def validate_translations(candidate: dict[str, str], source: dict[str, str]) -> 
 # ------------------------------------------------------------------ inventory
 
 SOURCE_SUFFIXES = (".swift", ".m", ".mm")
+ALLOWLIST_PATH = Path(__file__).resolve().parent / "l10n-untranslated-allowlist.json"
 
 
 def inventory(paths: list[Path], include_developer: bool = False
@@ -646,13 +660,125 @@ def source_map(paths: list[Path], include_developer: bool = False) -> dict[str, 
     return out
 
 
+
+# --------------------------------------------------- work-file export/import
+
+def load_allowlist(path: Path) -> dict[str, str]:
+    """key -> why it is deliberately untranslated.
+
+    Every entry carries a reason so the list cannot quietly become a dumping
+    ground, and so a reviewer can see what was waived and on what grounds.
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return {str(k): str(v) for k, v in (json.load(fh).get("skip") or {}).items()}
+    except (FileNotFoundError, OSError, ValueError):
+        return {}
+
+
+def build_work_file(sources: list[Path], lproj_root: Path, langs: list[str],
+                    include_developer: bool = False,
+                    allowlist: dict[str, str] | None = None) -> dict:
+    """The keys that still need a translation, as a fillable document.
+
+    Deliberately a plain data file rather than an agent-only path: whoever
+    fills it -- a translation skill, a contractor, a volunteer with a
+    spreadsheet -- hands it back to `apply_work_file`, which validates the
+    same way regardless. The AI is a pluggable producer, not a dependency.
+    """
+    keys, _ = inventory(sources, include_developer)
+    english = source_map(sources, include_developer)
+    comments = _comment_map(sources, include_developer)
+    have = {l: set(_read_table(lproj_root, l) or {}) for l in langs}
+    rows = []
+    for key in sorted(keys):
+        if is_format_only(key) or key in (allowlist or {}):
+            continue
+        missing = [l for l in langs if key not in have[l]]
+        if not missing:
+            continue
+        row = {"key": key, "english": english.get(key, key),
+               "comment": comments.get(key, ""), "needs": missing}
+        for l in langs:
+            row[l] = "" if l in missing else (_read_table(lproj_root, l) or {}).get(key, "")
+        rows.append(row)
+    return {"languages": list(langs),
+            "instructions": ("Fill the language fields for each string. Copy every format "
+                             "specifier verbatim -- identical set, count and type. Leave a "
+                             "field blank to skip it; blanks are ignored, never written."),
+            "strings": rows}
+
+
+def _comment_map(sources: list[Path], include_developer: bool = False) -> dict[str, str]:
+    """key -> the developer comment, which is the only context a translator gets."""
+    pat = re.compile(
+        r'\b(?:NSLocalizedString|CFCopyLocalizedString)\s*\(\s*"((?:[^"\\]|\\.)*)"'
+        r'(?:[^)]*?)comment\s*:\s*"((?:[^"\\]|\\.)*)"', re.S)
+    out: dict[str, str] = {}
+    for base in sources:
+        files = [base] if base.is_file() else [p for p in base.rglob("*") if p.suffix in SOURCE_SUFFIXES]
+        for f in files:
+            if not include_developer and is_developer_path(f):
+                continue
+            try:
+                src = preprocess(f.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+            for m in pat.finditer(src):
+                k = decode_swift_literal(m.group(1))
+                if m.group(2):
+                    out.setdefault(k, decode_swift_literal(m.group(2)))
+    return out
+
+
+def apply_work_file(work: dict, sources: list[Path], lproj_root: Path,
+                    include_developer: bool = False) -> list[Finding]:
+    """Validate a filled work file and write it. Returns findings; writes nothing if any.
+
+    All-or-nothing on purpose: a half-applied batch leaves the tables in a state
+    nobody chose, and the whole point of the gate is that what lands is what was
+    reviewed.
+    """
+    keys, _ = inventory(sources, include_developer)
+    english = source_map(sources, include_developer)
+    langs = work.get("languages") or []
+    findings: list[Finding] = []
+    staged: dict[str, dict[str, str]] = {l: {} for l in langs}
+
+    for row in work.get("strings", []):
+        key = row.get("key", "")
+        if key not in keys:
+            findings.append(Finding("unknown_key", "", key, "not present in the source"))
+            continue
+        for l in langs:
+            value = (row.get(l) or "").strip()
+            if not value:
+                continue                      # blank means "not my language / not yet"
+            staged[l][key] = value
+
+    for l in langs:
+        findings.extend(Finding(f.kind, l, f.key, f.detail)
+                        for f in validate_translations(staged[l], english))
+    if findings:
+        return findings
+
+    for l in langs:
+        if not staged[l]:
+            continue
+        p = lproj_root / f"{l}.lproj" / "Localizable.strings"
+        existing = _read_table(lproj_root, l) or {}
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(render_strings({**existing, **staged[l]}, _comment_map(sources, include_developer)),
+                     encoding="utf-8")
+    return []
+
 # ------------------------------------------------------------------------ CLI
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    for name in ("inventory", "status", "check"):
+    for name in ("inventory", "status", "check", "export", "import"):
         p = sub.add_parser(name)
         p.add_argument("--lproj-root", type=Path, default=Path("Palace"))
         p.add_argument("--langs", default="en,de,es,fr,it")
@@ -660,10 +786,44 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--include-developer", action="store_true",
                        help="include strings that ship only to developers")
         p.add_argument("--json", action="store_true")
+        p.add_argument("--file", type=Path,
+                       help="work file to write (export) or read (import)")
+        p.add_argument("--require-complete", action="store_true",
+                       help="also fail when a source string has no translation at all")
 
     a = ap.parse_args(argv)
     langs = [l.strip() for l in a.langs.split(",") if l.strip()]
     sources = a.source or [Path(p) for p in DEFAULT_SOURCES if Path(p).exists()]
+
+    if a.cmd == "export":
+        work = build_work_file(sources, a.lproj_root, langs, a.include_developer,
+                               load_allowlist(ALLOWLIST_PATH))
+        out = a.file or Path("l10n-work.json")
+        out.write_text(json.dumps(work, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        n = len(work["strings"])
+        print(f"{n} string(s) need translation -> {out}")
+        if n:
+            print("  fill the language fields, then: "
+                  f"python3 scripts/palace_strings.py import --file {out}")
+        return 0
+
+    if a.cmd == "import":
+        src = a.file or Path("l10n-work.json")
+        try:
+            work = json.loads(src.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            print(f"cannot read {src}: {exc}")
+            return 1
+        findings = apply_work_file(work, sources, a.lproj_root, a.include_developer)
+        for f in findings[:40]:
+            print(f"  {f.kind:20} {f.lang:3} {f.key!r} {f.detail}")
+        if findings:
+            print(f"REJECTED {len(findings)} finding(s) — nothing written")
+            return 1
+        filled = sum(1 for r in work.get("strings", [])
+                     for l in work.get("languages", []) if (r.get(l) or "").strip())
+        print(f"OK — applied {filled} value(s)")
+        return 0
 
     if a.cmd == "inventory":
         keys, dynamic = inventory(sources, a.include_developer)
@@ -675,7 +835,12 @@ def main(argv: list[str] | None = None) -> int:
                 print("  ", key)
         return 0
 
-    findings = (check_tables(a.lproj_root, langs, source_map(sources, a.include_developer))
+    _req = None
+    if a.require_complete:
+        _allow = load_allowlist(ALLOWLIST_PATH)
+        _req = {k for k in inventory(sources, a.include_developer)[0]
+                if not is_format_only(k) and k not in _allow}
+    findings = (check_tables(a.lproj_root, langs, source_map(sources, a.include_developer), _req)
                 + check_stringsdict(a.lproj_root, langs))
 
     if a.cmd == "status":

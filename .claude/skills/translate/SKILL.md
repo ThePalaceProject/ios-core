@@ -45,6 +45,33 @@ language code (`fr`, `it`, `de`, `es`) is a language; anything else is a path.
 
 ## Step 2 — Build the work list
 
+`export` writes exactly what is missing into a work file, and `import` validates
+and applies it. Use that pair rather than editing `.strings` by hand: the same
+two commands are what a human translator's workflow runs
+(`docs/Operations/localization-workflow.md`), so the process does not depend on
+an agent being present.
+
+```bash
+python3 scripts/palace_strings.py export --file l10n-work.json   # what is missing
+# fill the de/es/fr/it fields in l10n-work.json
+python3 scripts/palace_strings.py import --file l10n-work.json   # validate + write
+python3 scripts/palace_strings.py check --require-complete       # what CI runs
+```
+
+`import` refuses the WHOLE batch and writes nothing if any value fails: a
+specifier that does not match the English, an empty value, a value that is
+really a symbol name, or a key absent from the source. Fix and re-run; do not
+work around it by editing the table directly, because CI runs the same checks.
+
+A blank field is skipped, never written — so returning one language at a time
+is fine. `l10n-work.json` is scratch and is not committed.
+
+A string that genuinely should not be translated goes in
+`scripts/l10n-untranslated-allowlist.json` **with a reason**, not into the
+tables as a copy of the English.
+
+### Reading what is still missing
+
 ```bash
 python3 scripts/palace_strings.py status                    # every language
 python3 scripts/palace_strings.py status --langs de         # one language

@@ -18,6 +18,7 @@ survive the admission test below, index them, and delete the rest**.
 | The release regression pass | [`regression-suite/DESIGN.md`](./regression-suite/DESIGN.md), [`Testing/REGRESSION_TEST_MATRIX.md`](./Testing/REGRESSION_TEST_MATRIX.md) |
 | A recurring failure and its class | [`regressions/recurrence-classes.md`](./regressions/recurrence-classes.md) |
 | How to run something operationally | [`Operations/`](./Operations/) |
+| Adding or changing a user-facing string | [`Operations/localization-workflow.md`](./Operations/localization-workflow.md) |
 | How to investigate a reported bug | [`bug-investigation-process.md`](./bug-investigation-process.md) |
 | **A case where verification passed while the bug was live** | [`../.forgeos/wall-failures/INDEX.md`](../.forgeos/wall-failures/INDEX.md) |
 | Build, test, and workflow rules that bind every change | [`../CLAUDE.md`](../CLAUDE.md) |
