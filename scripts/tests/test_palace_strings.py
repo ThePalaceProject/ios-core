@@ -447,3 +447,52 @@ def test_target_with_fewer_conversions_is_rejected():
 
 def test_target_with_more_conversions_is_rejected():
     assert ps.specifier_mismatch("%@ only", "%@ and %@") is not None
+
+
+# --------------------------------------------------------- writing .strings
+
+def test_written_table_round_trips():
+    text = ps.render_strings({"Borrow": "Ausleihen", "Hold": "Vormerken"}, {})
+    assert ps.parse_strings(text) == {"Borrow": "Ausleihen", "Hold": "Vormerken"}
+
+
+def test_writer_escapes_quotes_and_newlines():
+    text = ps.render_strings({'Say "hi"': 'Sag "hallo"\nbitte'}, {})
+    back = ps.parse_strings(text)
+    assert list(back) == ['Say \\"hi\\"']
+    assert back['Say \\"hi\\"'] == 'Sag \\"hallo\\"\\nbitte'
+
+
+def test_writer_emits_developer_comment_when_present():
+    text = ps.render_strings({"Borrow": "Ausleihen"}, {"Borrow": "Button title"})
+    assert "/* Button title */" in text
+
+
+def test_writer_output_is_deterministically_ordered():
+    a = ps.render_strings({"b": "B", "a": "A"}, {})
+    b = ps.render_strings({"a": "A", "b": "B"}, {})
+    assert a == b
+
+
+def test_validate_rejects_specifier_mismatch():
+    bad = ps.validate_translations({"%d books": "%@ Bucher"}, {"%d books": "%d books"})
+    assert any(f.kind == "specifier_mismatch" for f in bad)
+
+
+def test_validate_rejects_empty_value():
+    assert any(f.kind == "empty_value"
+               for f in ps.validate_translations({"Borrow": "  "}, {"Borrow": "Borrow"}))
+
+
+def test_validate_rejects_identifier_shaped_value():
+    # A "translation" that is just the key echoed back is untranslated, and
+    # writing it would look like coverage while rendering a symbol to a patron.
+    bad = ps.validate_translations({"Sort By": "MyBooksViewControllerGroupSortBy"},
+                                   {"Sort By": "Sort By"})
+    assert any(f.kind == "identifier_value" for f in bad)
+
+
+def test_validate_accepts_a_clean_batch():
+    ok = ps.validate_translations({"%d books": "%d Bucher", "Borrow": "Ausleihen"},
+                                  {"%d books": "%d books", "Borrow": "Borrow"})
+    assert ok == []

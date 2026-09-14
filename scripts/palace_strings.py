@@ -434,6 +434,54 @@ def load_migrations(path: Path) -> dict[str, str]:
     except (FileNotFoundError, OSError, ValueError):
         return {}
 
+
+# ------------------------------------------------------------ writing tables
+
+def _escape(s: str) -> str:
+    """Escape a value for a .strings literal."""
+    return (s.replace("\\", "\\\\").replace('"', '\\"')
+             .replace("\n", "\\n").replace("\t", "\\t"))
+
+
+def render_strings(mapping: dict[str, str], comments: dict[str, str]) -> str:
+    """Render a .strings table.
+
+    Sorted by key so a re-render produces no diff noise and a real change is
+    visible in review -- the ticket asks for a reviewable diff, and an
+    unstable order destroys that.
+    """
+    out: list[str] = []
+    for key in sorted(mapping):
+        note = comments.get(key)
+        if note:
+            out.append(f"/* {note} */")
+        out.append(f'"{_escape(key)}" = "{_escape(mapping[key])}";')
+        out.append("")
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def validate_translations(candidate: dict[str, str], source: dict[str, str]) -> list[Finding]:
+    """Reject a batch before it reaches a table.
+
+    A bad translation written to disk is worse than a missing one: it looks
+    like coverage. Each check corresponds to a failure a patron would see --
+    a crash (specifier), a blank label (empty), or a raw symbol (identifier).
+    """
+    findings: list[Finding] = []
+    for key, value in sorted(candidate.items()):
+        if not value or not value.strip():
+            findings.append(Finding("empty_value", "", key, "renders as an empty label"))
+            continue
+        if is_identifier_key(value) and not is_identifier_key(key):
+            findings.append(Finding("identifier_value", "", key,
+                                    f"value {value!r} is a symbol, not a translation"))
+        src = source.get(key)
+        if src:
+            bad = specifier_mismatch(src, value)
+            if bad:
+                findings.append(Finding("specifier_mismatch", "", key, bad))
+    return findings
+
 # ------------------------------------------------------------------ inventory
 
 SOURCE_SUFFIXES = (".swift", ".m", ".mm")
