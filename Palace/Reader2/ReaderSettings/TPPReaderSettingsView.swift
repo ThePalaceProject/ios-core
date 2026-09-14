@@ -101,7 +101,7 @@ struct TPPReaderSettingsView: View {
             }
             .buttonStyle(SettingsButtonStyle(settings: settings))
             .disabled(!settings.canDecreaseFontSize)
-            .accessibility(label: Text("DecreaseFontSize"))
+            .accessibilityLabel(Strings.ReaderFontSize.decrease)
 
             Divider()
                 .frame(height: buttonHeight)
@@ -116,7 +116,7 @@ struct TPPReaderSettingsView: View {
             }
             .buttonStyle(SettingsButtonStyle(settings: settings))
             .disabled(!settings.canIncreaseFontSize)
-            .accessibility(label: Text("IncreaseFontSize"))
+            .accessibilityLabel(Strings.ReaderFontSize.increase)
         }
     }
 

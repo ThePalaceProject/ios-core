@@ -46,7 +46,7 @@ enum ChapterScrubberReadout {
         // count is known to be positive here — guarding it again would be an
         // unreachable branch.
         if let page = target.page {
-            parts.append(String(format: Strings.TPPBaseReaderViewController.pageOf, page) + "\(target.pageCount)")
+            parts.append(String(format: Strings.TPPBaseReaderViewController.pageOf, page, target.pageCount))
         }
         parts.append(String(format: Strings.TPPBaseReaderViewController.percentRead, target.percent))
         return parts.joined(separator: ", ")

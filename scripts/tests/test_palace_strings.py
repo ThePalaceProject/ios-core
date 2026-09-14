@@ -243,3 +243,96 @@ def test_status_measures_against_source_not_other_tables(tmp_path, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "1/2" in out and "50.0%" in out, out
+
+
+# --------------------------------------------- unsafe degradation (identifier)
+
+def test_identifier_key_without_value_fallback_is_unsafe(tmp_path):
+    f = tmp_path / "V.swift"
+    f.write_text('.accessibilityLabel(Text("IncreaseFontSize"))')
+    assert ps.scan_unsafe_keys([tmp_path]) == [("IncreaseFontSize", str(f))]
+
+
+def test_identifier_key_with_value_fallback_is_safe(tmp_path):
+    # Foundation returns `value` on a miss, so this degrades to English.
+    (tmp_path / "V.swift").write_text(
+        'NSLocalizedString("CarPlay.chapters", value: "Chapters", comment: "c")')
+    assert ps.scan_unsafe_keys([tmp_path]) == []
+
+
+def test_empty_value_fallback_is_still_unsafe(tmp_path):
+    # Verified against Foundation: value "" is treated as absent.
+    (tmp_path / "V.swift").write_text(
+        'NSLocalizedString("CarPlay.chapters", value: "", comment: "c")')
+    assert [k for k, _ in ps.scan_unsafe_keys([tmp_path])] == ["CarPlay.chapters"]
+
+
+def test_prose_key_is_never_unsafe(tmp_path):
+    (tmp_path / "V.swift").write_text('NSLocalizedString("Borrow this book", comment: "c")')
+    assert ps.scan_unsafe_keys([tmp_path]) == []
+
+
+def test_stringsdict_missing_key_detected(tmp_path):
+    import plistlib
+    def w(lang, keys):
+        d = {k: {"NSStringLocalizedFormatKey": "%#@n@",
+                 "n": {"NSStringFormatSpecTypeKey": "NSStringPluralRuleType",
+                       "NSStringFormatValueTypeKey": "d", "one": "1", "other": "%d"}} for k in keys}
+        p = tmp_path / f"{lang}.lproj" / "Localizable.stringsdict"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        plistlib.dump(d, open(p, "wb"))
+    w("en", ["day_suffix_long", "day_suffix_short"])
+    w("de", ["day_suffix_long"])
+    findings = ps.check_stringsdict(tmp_path, ["en", "de"])
+    assert any(f.lang == "de" and f.key == "day_suffix_short" for f in findings)
+
+
+def test_stringsdict_equal_key_sets_pass(tmp_path):
+    import plistlib
+    for lang in ("en", "de"):
+        p = tmp_path / f"{lang}.lproj" / "Localizable.stringsdict"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        plistlib.dump({"k": {"NSStringLocalizedFormatKey": "%#@n@"}}, open(p, "wb"))
+    assert ps.check_stringsdict(tmp_path, ["en", "de"]) == []
+
+
+def test_prose_with_trailing_ellipsis_is_not_an_identifier_key():
+    # "Loading..." renders correctly on a miss; flagging it would send a
+    # reviewer to backfill a key that is already safe.
+    assert ps.is_identifier_key("Loading...") is False
+    assert ps.is_identifier_key("More...") is False
+    assert ps.is_identifier_key("Filtering...") is False
+
+
+def test_internal_dot_is_still_an_identifier_key():
+    assert ps.is_identifier_key("opds.error.feed_invalid") is True
+    assert ps.is_identifier_key("CarPlay.Error.offline") is True
+
+
+# ------------------------------------------------------------ comment safety
+
+def test_string_in_line_comment_is_not_a_key():
+    # A commented-out call site must not inject a phantom key that every
+    # language is then asked to translate.
+    keys, _ = ps.extract_swift('// was Text("IncreaseFontSize") before PP-5094\nText("Real")')
+    assert keys == {"Real"}
+
+
+def test_string_in_block_comment_is_not_a_key():
+    keys, _ = ps.extract_swift('/* Text("Ghost") */ Text("Real")')
+    assert keys == {"Real"}
+
+
+def test_double_slash_inside_a_literal_does_not_start_a_comment():
+    keys, _ = ps.extract_swift('Text("http://example.com/a")')
+    assert keys == {"http://example.com/a"}
+
+
+def test_nested_block_comment_is_fully_stripped():
+    keys, _ = ps.extract_swift('/* outer /* inner Text("Ghost") */ still */ Text("Real")')
+    assert keys == {"Real"}
+
+
+def test_escaped_quote_inside_literal_does_not_end_it():
+    keys, _ = ps.extract_swift(r'Text("say \"hi\" // not a comment")')
+    assert len(keys) == 1

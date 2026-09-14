@@ -67,6 +67,46 @@ _MULTILINE = re.compile(r'"""(.*?)"""', re.S)
 _CONCAT = re.compile(rf'{_STR}\s*\+\s*(?=")', re.S)
 
 
+def strip_comments(src: str) -> str:
+    """Remove Swift comments, leaving string literals intact.
+
+    A regex cannot do this: `"http://x"` contains `//` inside a literal, and a
+    commented-out call site contains a literal inside a comment. Both directions
+    corrupt the inventory -- the second invents a key that every language is
+    then asked to translate.
+    """
+    out, i, n = [], 0, len(src)
+    depth = 0          # nested /* */ depth
+    while i < n:
+        two = src[i:i + 2]
+        if depth:
+            if two == "/*":
+                depth += 1; i += 2; continue
+            if two == "*/":
+                depth -= 1; i += 2; continue
+            i += 1; continue
+        if two == "/*":
+            depth = 1; i += 2; continue
+        if two == "//":
+            j = src.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        ch = src[i]
+        if ch == '"':
+            # copy the literal verbatim, honouring backslash escapes
+            out.append(ch); i += 1
+            while i < n:
+                if src[i] == "\\" and i + 1 < n:
+                    out.append(src[i:i + 2]); i += 2; continue
+                out.append(src[i])
+                if src[i] == '"':
+                    i += 1; break
+                i += 1
+            continue
+        out.append(ch); i += 1
+    return "".join(out)
+
+
 def _fold_multiline(src: str) -> str:
     """Rewrite Swift \"\"\" literals into equivalent single-line literals.
 
@@ -106,7 +146,7 @@ def _fold_concatenation(src: str) -> str:
 
 def preprocess(src: str) -> str:
     """Resolve compile-time literal composition before extraction."""
-    return _fold_concatenation(_fold_multiline(src))
+    return _fold_concatenation(_fold_multiline(strip_comments(src)))
 
 
 # ------------------------------------------------------------------ extraction
@@ -197,7 +237,10 @@ def is_identifier_key(key: str) -> bool:
     """
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.]*", key):
         return False
-    return bool(re.search(r"[a-z][A-Z]", key) or "_" in key or "." in key)
+    # Trailing ellipsis is prose punctuation, not namespacing: "Loading..."
+    # renders correctly on a miss and must not be flagged.
+    stem = key.rstrip(".")
+    return bool(re.search(r"[a-z][A-Z]", stem) or "_" in stem or "." in stem)
 
 
 def is_format_only(key: str) -> bool:
@@ -254,6 +297,68 @@ def check_tables(root: Path, langs: list[str]) -> list[Finding]:
     return findings
 
 
+
+# ------------------------------------------------- unsafe-degradation checking
+
+_VALUE_ARG = (r'"{key}"\s*,\s*(?:tableName\s*:[^,]*,\s*)?(?:bundle\s*:[^,]*,\s*)?'
+              r'value\s*:\s*"(?:[^"\\]|\\.)+"')
+
+
+def has_value_fallback(src: str, key: str) -> bool:
+    """True when this key's call site supplies a non-empty `value:`.
+
+    Foundation returns `value` when the key is absent, so such a call degrades
+    to readable English. Verified: value nil -> the key; value "Chapters" ->
+    "Chapters"; value "" -> the key (empty is treated as absent).
+    """
+    return re.search(_VALUE_ARG.format(key=re.escape(key)), src, re.S) is not None
+
+
+def scan_unsafe_keys(paths: list[Path]) -> list[tuple[str, str]]:
+    """Identifier-shaped keys that would render raw to the user on a miss.
+
+    A prose key degrades to readable English because the key IS the English.
+    An identifier-shaped key degrades to gibberish -- unless its call site
+    supplies `value:`. Those are the only ones that need backfilling.
+    """
+    unsafe: list[tuple[str, str]] = []
+    for base in paths:
+        files = [base] if base.is_file() else [p for p in base.rglob("*") if p.suffix in SOURCE_SUFFIXES]
+        for f in files:
+            try:
+                raw = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            keys, _ = extract_swift(raw)
+            for key in keys:
+                if is_identifier_key(key) and not has_value_fallback(preprocess(raw), key):
+                    unsafe.append((key, str(f)))
+    return sorted(set(unsafe))
+
+
+def stringsdict_keys(root: Path, lang: str) -> set[str] | None:
+    """Top-level keys of a language's .stringsdict, or None when absent."""
+    import plistlib
+    try:
+        with open(root / f"{lang}.lproj" / "Localizable.stringsdict", "rb") as fh:
+            return set(plistlib.load(fh))
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def check_stringsdict(root: Path, langs: list[str]) -> list[Finding]:
+    """Plural tables must carry identical key sets across languages.
+
+    `.stringsdict` has the same no-per-key-fallback behaviour as `.strings`:
+    a language whose dict EXISTS but lacks a key renders that key verbatim.
+    """
+    present = {l: k for l in langs if (k := stringsdict_keys(root, l)) is not None}
+    if not present:
+        return []
+    every = set().union(*present.values())
+    return [Finding("stringsdict_missing_key", l, k, "renders the key verbatim")
+            for l, keys in sorted(present.items()) for k in sorted(every - keys)]
+
 # ------------------------------------------------------------------ inventory
 
 SOURCE_SUFFIXES = (".swift", ".m", ".mm")
@@ -303,7 +408,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("  ", key)
         return 0
 
-    findings = check_tables(a.lproj_root, langs)
+    findings = check_tables(a.lproj_root, langs) + check_stringsdict(a.lproj_root, langs)
 
     if a.cmd == "status":
         # Coverage is measured against the keys the SOURCE actually asks for.
