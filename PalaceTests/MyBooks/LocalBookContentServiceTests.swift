@@ -365,16 +365,14 @@ final class LocalBookContentServiceTests: XCTestCase {
     /// this test actually drives. Closing the gap needs an `isOnWiFi` seam; the
     /// precedent is `DownloadStartDispatcher.swift:62`, which takes
     /// `isOnWiFi: @escaping () -> Bool`.
-    func testDownloadCentreFetch_whenNotOnWiFiAndWiFiOnlySet_doesNotFetch() throws {
+    func testDownloadCentreFetch_whenNotOnWiFiAndWiFiOnlySet_doesNotFetch() async throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let fulfiller = SpyLCPContentFulfiller()
         let center = try makeDownloadCentre(fulfiller: fulfiller,
                                             connected: true,
                                             downloadOnlyOnWiFi: true)
 
-        let expectation = expectation(description: "fetch decision made")
-        Task { await center.startLCPContentFetchIfNeeded(for: book); expectation.fulfill() }
-        wait(for: [expectation], timeout: 5)
+        await center.startLCPContentFetchIfNeeded(for: book, account: appContainer.accountsManager.currentAccountId ?? "")
 
         XCTAssertEqual(fulfiller.callCount, 0,
                        "download-only-on-WiFi is a preference the patron set — the completion path must not pull a multi-hundred-megabyte archive over cellular (PP-5135)")
@@ -383,16 +381,14 @@ final class LocalBookContentServiceTests: XCTestCase {
     /// The inverse, so the test above cannot pass merely because the trigger
     /// never fires: with the preference off, the same call DOES fetch. Deleting
     /// the guard fails the test above; deleting the trigger fails this one.
-    func testDownloadCentreFetch_whenPolicyAllows_fetches() throws {
+    func testDownloadCentreFetch_whenPolicyAllows_fetches() async throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let fulfiller = SpyLCPContentFulfiller()
         let center = try makeDownloadCentre(fulfiller: fulfiller,
                                             connected: true,
                                             downloadOnlyOnWiFi: false)
 
-        let expectation = expectation(description: "fetch decision made")
-        Task { await center.startLCPContentFetchIfNeeded(for: book); expectation.fulfill() }
-        wait(for: [expectation], timeout: 5)
+        await center.startLCPContentFetchIfNeeded(for: book, account: appContainer.accountsManager.currentAccountId ?? "")
 
         XCTAssertEqual(fulfiller.callCount, 1,
                        "with the policy satisfied the .lcpa must be fetched, or a borrowed audiobook never gets its audio (PP-5135)")
