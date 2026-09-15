@@ -206,6 +206,97 @@ final class GeneralCacheTests: XCTestCase {
         XCTAssertEqual(result, "Fresh", "noCache should always use fetcher")
     }
 
+    // MARK: - Thread-pool saturation (PP-5134)
+
+    /// Cover loads call `get` from Swift-concurrency tasks, so on a busy catalog
+    /// every thread in the shared pool can be inside `get` at once while
+    /// lower-priority `set`/`clearMemory` writes keep arriving. The cache must
+    /// keep making progress under that load. When it could not, the whole pool
+    /// sat waiting on the cache forever and every other async job in the app —
+    /// including the catalog feed fetch — stopped with it: the "All Fiction
+    /// never loads" report.
+    ///
+    /// The priority split below is what makes this fail on the old design;
+    /// with readers and writers at the same priority it passed.
+    func testGetAndSet_fromSaturatedThreadPool_allComplete() {
+        let diskCache = GeneralCache<String, Data>(
+            cacheName: "PoolSaturation-\(UUID().uuidString)",
+            mode: .memoryAndDisk
+        )
+        let keys = (0..<32).map { "cover-\($0)" }
+        let payload = Data(repeating: 0xAB, count: 16_000)
+        for key in keys {
+            diskCache.set(payload, for: key, expiresIn: 3600)
+        }
+
+        // Twice the pool width, so every pool thread is a reader at some point.
+        let readerCount = ProcessInfo.processInfo.activeProcessorCount * 2
+        let finished = expectation(description: "every reader and writer returns")
+
+        // Mirror production priorities: covers are read from tasks started by
+        // the UI (user-initiated), while `ImageCache` writes from its
+        // `.utility` processing queue.
+        let writes = OperationQueue()
+        writes.qualityOfService = .utility
+        writes.maxConcurrentOperationCount = 4
+        for i in 0..<400 {
+            writes.addOperation {
+                diskCache.set(payload, for: keys[i % keys.count], expiresIn: 3600)
+                if i % 10 == 0 { diskCache.clearMemory() }
+            }
+        }
+
+        Task.detached(priority: .userInitiated) {
+            await withTaskGroup(of: Void.self) { group in
+                for reader in 0..<readerCount {
+                    group.addTask {
+                        for i in 0..<400 {
+                            _ = diskCache.get(for: keys[(reader + i) % keys.count])
+                        }
+                    }
+                }
+            }
+            finished.fulfill()
+        }
+
+        // Deliberately no `writes.waitUntilAllOperationsAreFinished()`: if this
+        // regresses, the writers are stuck too, and a blocking join would turn
+        // a failed assertion into a hung test run. A healthy run takes well under
+        // a second and a deadlock never finishes, so the timeout only needs
+        // headroom for a loaded CI simulator.
+        wait(for: [finished], timeout: 10)   // STARVE-001-OK: detecting a deadlock needs a bound; a Task join would hang the suite forever on regression
+        diskCache.clear()
+    }
+
+    /// A read must never resurrect a value that a later `remove` deleted.
+    /// `get` reads from disk and then re-inserts into memory; if a `remove`
+    /// lands between those two steps the stale value would be served from
+    /// memory afterwards (e.g. an old library logo after its URL changed).
+    func testRemove_afterConcurrentDiskReads_leavesNoValue() {
+        let diskCache = GeneralCache<String, Data>(
+            cacheName: "RemoveOrdering-\(UUID().uuidString)",
+            mode: .memoryAndDisk
+        )
+        let key = "logo"
+        let payload = Data(repeating: 0x01, count: 64_000)
+
+        for _ in 0..<50 {
+            diskCache.set(payload, for: key, expiresIn: 3600)
+            diskCache.clearMemory()
+            DispatchQueue.concurrentPerform(iterations: 8) { i in
+                if i == 0 {
+                    diskCache.remove(for: key)
+                } else {
+                    _ = diskCache.get(for: key)
+                }
+            }
+            // Whatever order the readers ran in, the remove came after the set
+            // and nothing set the key again, so it must be gone.
+            XCTAssertNil(diskCache.get(for: key), "A removed key must not come back from memory")
+        }
+        diskCache.clear()
+    }
+
     // MARK: - File URL
 
     func testFileURL_returnsURL() {
@@ -233,14 +324,12 @@ final class GeneralCacheTests: XCTestCase {
         let firstURL = diskCache.fileURL(for: firstKey)
         let cacheDir = firstURL.deletingLastPathComponent()
 
-        // Wait for the async barrier write to FULLY materialize — poll the
-        // written FILE, not just the directory. The directory is created before
-        // the file is written, so waiting on directory-existence alone returns
-        // while the file write is still queued; that pending write then races
-        // the `removeItem` below and recreates the directory, flaking the
-        // "directory is gone" precondition. This surfaced once `MallocStackLogging`
-        // (which slowed allocations enough to mask the race) was removed from the
-        // test scheme. Polling the file makes the test timing-independent.
+        // Poll the written FILE, not just the directory. Writes used to be
+        // async barrier blocks, and waiting on directory-existence alone
+        // returned while the file write was still queued, racing the
+        // `removeItem` below. `set` now writes synchronously (PP-5134), so this
+        // returns at once, but the poll stays correct if writes move off the
+        // caller's thread again.
         awaitCondition(timeout: 5.0) {
             FileManager.default.fileExists(atPath: firstURL.path)
         }
