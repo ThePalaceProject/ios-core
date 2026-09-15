@@ -45,12 +45,12 @@ struct TypographySettingsView: View {
 
                     // Font size
                     sliderSection(
-                        title: "Font Size",
+                        title: Strings.ReaderTypography.fontSize,
                         value: $viewModel.fontSize,
                         range: TypographySettings.minFontSize...TypographySettings.maxFontSize,
                         step: TypographySettings.fontSizeStep,
                         format: "%.0f pt",
-                        accessibilityLabel: "Font size"
+                        accessibilityLabel: Strings.ReaderTypography.fontSize
                     )
 
                     Divider()
@@ -58,12 +58,12 @@ struct TypographySettingsView: View {
 
                     // Line spacing
                     sliderSection(
-                        title: "Line Spacing",
+                        title: Strings.ReaderTypography.lineSpacing,
                         value: $viewModel.lineSpacing,
                         range: TypographySettings.minLineSpacing...TypographySettings.maxLineSpacing,
                         step: TypographySettings.lineSpacingStep,
                         format: "%.1fx",
-                        accessibilityLabel: "Line spacing"
+                        accessibilityLabel: Strings.ReaderTypography.lineSpacing
                     )
 
                     Divider()
@@ -77,12 +77,12 @@ struct TypographySettingsView: View {
 
                     // Paragraph spacing
                     sliderSection(
-                        title: "Paragraph Spacing",
+                        title: Strings.ReaderTypography.paragraphSpacing,
                         value: $viewModel.paragraphSpacing,
                         range: TypographySettings.minParagraphSpacing...TypographySettings.maxParagraphSpacing,
                         step: 2,
                         format: "%.0f pt",
-                        accessibilityLabel: "Paragraph spacing"
+                        accessibilityLabel: Strings.ReaderTypography.paragraphSpacing
                     )
 
                     Divider()
@@ -96,12 +96,12 @@ struct TypographySettingsView: View {
 
                     // Letter spacing
                     sliderSection(
-                        title: "Letter Spacing",
+                        title: Strings.ReaderTypography.letterSpacing,
                         value: $viewModel.letterSpacing,
                         range: TypographySettings.minLetterSpacing...TypographySettings.maxLetterSpacing,
                         step: 0.1,
                         format: "%.1f pt",
-                        accessibilityLabel: "Letter spacing"
+                        accessibilityLabel: Strings.ReaderTypography.letterSpacing
                     )
 
                     Divider()
@@ -109,12 +109,12 @@ struct TypographySettingsView: View {
 
                     // Word spacing
                     sliderSection(
-                        title: "Word Spacing",
+                        title: Strings.ReaderTypography.wordSpacing,
                         value: $viewModel.wordSpacing,
                         range: TypographySettings.minWordSpacing...TypographySettings.maxWordSpacing,
                         step: 0.5,
                         format: "%.1f pt",
-                        accessibilityLabel: "Word spacing"
+                        accessibilityLabel: Strings.ReaderTypography.wordSpacing
                     )
 
                     // Reset button

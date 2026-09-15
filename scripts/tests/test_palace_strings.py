@@ -1154,18 +1154,9 @@ def test_an_nslocalizedstring_argument_is_not_flagged():
     assert ps.unlocalized_literals(src) == []
 
 
-# Pre-existing violations elsewhere in the tree are BASELINED, exactly as the
-# doc gates do it: the count may not grow, and a baselined file that starts
-# coming back clean also fails, so the amnesty can neither expand nor go stale.
-# The 14 strings behind these sites were invisible to the inventory entirely —
-# no localizing call ever names them — so "594/594" was really 594 of 608.
-_UNLOCALIZED_BASELINE = {
-    "Palace/Packages/PalaceTriageBot/Sources/TriageBotUI/KBMatchCard.swift": 4,
-    "Palace/Packages/PalaceTriageBot/Sources/TriageBotUI/SupportChatView.swift": 1,
-    "Palace/Packages/PalaceTriageBot/Sources/TriageBotUI/TicketPreviewCard.swift": 3,
-    "Palace/Reader2/Typography/TypographySettingsView.swift": 5,
-    "Palace/Reader2/UI/TPPEPUBViewController.swift": 1,
-}
+# The tree is CLEAN, so the check asserts zero rather than a baseline. It was
+# baselined at 14 for one commit; those are now localized, and a baseline kept
+# past the point where it is empty is a permanent invitation to add to it.
 
 
 def _scan_tree_for_unlocalized() -> dict[str, int]:
@@ -1181,20 +1172,12 @@ def _scan_tree_for_unlocalized() -> dict[str, int]:
     return counts
 
 
-def test_no_new_literal_lands_in_a_non_localizing_position():
+def test_no_display_literal_sits_in_a_non_localizing_position():
     counts = _scan_tree_for_unlocalized()
-    new = {f: n for f, n in counts.items()
-           if n > _UNLOCALIZED_BASELINE.get(f, 0)}
-    assert not new, ("new unlocalized display literals: " + repr(new)
-                     + "\npass the value through NSLocalizedString; "
-                       "Text(aString) performs no lookup")
-
-
-def test_the_baseline_does_not_go_stale():
-    counts = _scan_tree_for_unlocalized()
-    fixed = {f: n for f, n in _UNLOCALIZED_BASELINE.items()
-             if counts.get(f, 0) < n}
-    assert not fixed, ("these improved — lower the baseline: " + repr(fixed))
+    assert counts == {}, (
+        "display literals that no lookup can reach: " + repr(counts)
+        + "\nText(aString) performs no lookup — pass the value through "
+          "NSLocalizedString at the call site")
 
 
 def test_the_settings_rows_proven_on_device_are_fixed():

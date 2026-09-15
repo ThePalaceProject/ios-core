@@ -12,18 +12,18 @@ python3 scripts/palace_strings.py report
 
 | Language | Translated | Of translatable | Missing |
 |---|---:|---:|---:|
-| en | 0 | 0.0% | 579 |
-| de | 578 | 99.8% | 1 |
-| es | 578 | 99.8% | 1 |
-| fr | 578 | 99.8% | 1 |
-| it | 578 | 99.8% | 1 |
+| en | 0 | 0.0% | 594 |
+| de | 593 | 99.8% | 1 |
+| es | 593 | 99.8% | 1 |
+| fr | 593 | 99.8% | 1 |
+| it | 593 | 99.8% | 1 |
 
 ## Scope
 
-- **592** localizable keys in the source (app + audiobook toolkit).
+- **607** localizable keys in the source (app + audiobook toolkit).
 - **12** are format-only (`%@ %@`, `%02d:%02d`) with nothing to translate.
 - **1** is deliberately untranslated; see `scripts/l10n-untranslated-allowlist.json`, which records a reason for each.
-- **579** are therefore in scope.
+- **594** are therefore in scope.
 
 ## Needs confirmation
 
@@ -39,4 +39,4 @@ python3 scripts/palace_strings.py packet --file /tmp/review-packet
 
 See `docs/Operations/localization-workflow.md` for how strings are added and translated.
 
-<!-- l10n-state: a84364b1497e76b1 -->
+<!-- l10n-state: 316453ae6ed006e1 -->

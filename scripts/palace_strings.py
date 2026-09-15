@@ -547,8 +547,12 @@ def check_stringsdict(root: Path, langs: list[str]) -> list[Finding]:
 # `message:` is absent for the same reason: it is overwhelmingly an internal
 # error string (`licenseError(message:)`, `handleBookmarksSyncFail(message:)`),
 # and including it produced 8 false positives against 0 real ones.
-_DISPLAY_LABELS = ("title", "header", "footer",
-                   "caption", "placeholder", "subtitle")
+# `accessibilityLabel:` is display text too — VoiceOver speaks it. The SwiftUI
+# MODIFIER of that name localizes a literal and is in `_CALLS_RE`, so only a
+# plain helper taking one as a `String` parameter reaches here, which is
+# exactly the defect.
+_DISPLAY_LABELS = ("title", "header", "footer", "caption",
+                   "placeholder", "subtitle", "accessibilityLabel")
 
 # UIKit, CarPlay and Foundation initialisers taking an English literal are a
 # REAL but separate surface — they need `NSLocalizedString`, not a SwiftUI
@@ -557,28 +561,59 @@ _DISPLAY_LABELS = ("title", "header", "footer",
 # counts them so they are reported rather than silently dropped.
 _SYSTEM_CALLEE = re.compile(r"^(?:UI|CP|NS|CN|MK|AV|WK)[A-Z]|^DispatchQueue$|^init$")
 
+# Data models that happen to carry a `title`. `OPDS2CatalogsFeed.Metadata` is
+# a serialized feed field, not a label — the server's own feed titles are not
+# translated either, so translating ours would be inconsistent as well as
+# pointless. Named individually rather than guessed at by a heuristic.
+_DATA_MODEL_CALLEE = frozenset({"Metadata"})
+
 _LABELLED_LITERAL = re.compile(
-    r"\b([A-Za-z_]\w*)\s*\(\s*(?:" + "|".join(_DISPLAY_LABELS) + r")\s*:\s*"
+    r"\b(?:" + "|".join(_DISPLAY_LABELS) + r")\s*:\s*"
     r'"((?:[^"\\]|\\.)*)"')
+
+
+def _enclosing_callee(src: str, at: int) -> str | None:
+    """The function whose argument list encloses position `at`.
+
+    Walks back to the innermost unmatched `(` and reads the identifier before
+    it. Anchoring on the label's OWN call rather than on the first argument is
+    what lets a second labelled literal in the same call be seen — the earlier
+    first-argument-only form missed all five `accessibilityLabel:` arguments in
+    `TypographySettingsView` because a `title:` matched first.
+    """
+    depth = 0
+    i = at - 1
+    while i >= 0:
+        c = src[i]
+        if c == ")":
+            depth += 1
+        elif c == "(":
+            if depth == 0:
+                m = re.search(r"([A-Za-z_]\w*)\s*$", src[:i])
+                return m.group(1) if m else None
+            depth -= 1
+        i -= 1
+    return None
 
 
 def unlocalized_literals(src: str) -> list[tuple[str, str]]:
     """(callee, literal) for literals passed to a non-localizing callee.
 
-    A callee in `_CALLS_RE` is a SwiftUI initializer that DOES localize a
-    literal, so those are skipped — flagging `Section(header: Text("Support"))`
-    would make the check unrunnable on this tree. Everything else taking a
-    display-labelled literal is a plain function whose parameter is a `String`,
-    which is the defect.
+    A callee in `_CALLS_RE` is a SwiftUI initialiser or modifier that DOES
+    localize a literal, so those are skipped — flagging
+    `Section(header: Text("Support"))` would make the check unrunnable on this
+    tree. Everything else taking a display-labelled literal is a plain function
+    whose parameter is a `String`, which is the defect.
     """
     src = preprocess(src)
     localizing = set(_CALLS_RE.split("|"))
     out: list[tuple[str, str]] = []
     for m in _LABELLED_LITERAL.finditer(src):
-        callee = m.group(1)
-        if callee in localizing or _SYSTEM_CALLEE.match(callee):
+        callee = _enclosing_callee(src, m.start())
+        if (callee is None or callee in localizing
+                or callee in _DATA_MODEL_CALLEE or _SYSTEM_CALLEE.match(callee)):
             continue
-        out.append((callee, decode_swift_literal(m.group(2))))
+        out.append((callee, decode_swift_literal(m.group(1))))
     return out
 
 
@@ -590,9 +625,12 @@ def system_literals(src: str) -> list[tuple[str, str]]:
     nobody could act on.
     """
     src = preprocess(src)
-    return [(m.group(1), decode_swift_literal(m.group(2)))
-            for m in _LABELLED_LITERAL.finditer(src)
-            if _SYSTEM_CALLEE.match(m.group(1))]
+    out: list[tuple[str, str]] = []
+    for m in _LABELLED_LITERAL.finditer(src):
+        callee = _enclosing_callee(src, m.start())
+        if callee and _SYSTEM_CALLEE.match(callee):
+            out.append((callee, decode_swift_literal(m.group(1))))
+    return out
 
 
 

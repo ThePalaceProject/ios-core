@@ -61,6 +61,21 @@ struct Strings {
         static let fontCategorySerif = NSLocalizedString("Serif", value: "Serif", comment: "Font picker section: typefaces with serifs")
         static let fontCategorySansSerif = NSLocalizedString("Sans-Serif", value: "Sans-Serif", comment: "Font picker section: typefaces without serifs")
         static let fontCategoryAccessibility = NSLocalizedString("Accessibility", value: "Accessibility", comment: "Font picker section: typefaces chosen for readability, e.g. OpenDyslexic")
+
+        // Slider titles. `sliderSection(title:)` takes a `String`, and
+        // `Text(aString)` performs no lookup, so these rendered English in
+        // every language. One string serves both the visible title and the
+        // VoiceOver label — they previously differed only in capitalisation,
+        // which is not a distinction worth translating twice.
+        static let fontSize = NSLocalizedString("Font Size", value: "Font Size", comment: "Reader typography slider: text size")
+        static let lineSpacing = NSLocalizedString("Line Spacing", value: "Line Spacing", comment: "Reader typography slider: space between lines")
+        static let paragraphSpacing = NSLocalizedString("Paragraph Spacing", value: "Paragraph Spacing", comment: "Reader typography slider: space between paragraphs")
+        static let letterSpacing = NSLocalizedString("Letter Spacing", value: "Letter Spacing", comment: "Reader typography slider: space between letters")
+        static let wordSpacing = NSLocalizedString("Word Spacing", value: "Word Spacing", comment: "Reader typography slider: space between words")
+
+        // Readium's `EditingAction` takes a plain `String`, so this reached the
+        // system text-selection menu untranslated.
+        static let highlight = NSLocalizedString("Highlight", value: "Highlight", comment: "Text-selection menu item in the reader that highlights the selection.")
     }
 
     struct AgeCheck {
