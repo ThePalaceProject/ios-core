@@ -1492,7 +1492,6 @@
 		E510BDCAF453CCCAE05C1B17 /* LoanEvictionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5100330CFD49E96FBC331D75 /* LoanEvictionPolicy.swift */; };
 		E512240C2DDFC41D00D034A4 /* UIViewController+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E512240B2DDFC41700D034A4 /* UIViewController+Extensions.swift */; };
 		E512240D2DDFC41D00D034A4 /* UIViewController+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E512240B2DDFC41700D034A4 /* UIViewController+Extensions.swift */; };
-		E5158C202935345F0007ABDB /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
 		E516ED802F77A5F00051052A /* ErrorActivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A40759C732F4FC1B0587021 /* ErrorActivityTracker.swift */; };
 		E51818442927FD8E00C03AD5 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4CF275C66F30013C200 /* Strings.swift */; };
 		E51919D82B508EE400C08E86 /* URLRequest+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */; };
@@ -1548,8 +1547,6 @@
 		E544C4F02A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4EE2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift */; };
 		E544C4F72A3C1E4A00B2DC9D /* Dictionary+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4F62A3C1E4A00B2DC9D /* Dictionary+Extensions.swift */; };
 		E544C4F82A3C1E4A00B2DC9D /* Dictionary+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4F62A3C1E4A00B2DC9D /* Dictionary+Extensions.swift */; };
-		E549954828EE1AAA00EA0D9B /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
-		E549955228EE1ADB00EA0D9B /* TXNativeExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */; };
 		E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4D4275C7C940013C200 /* View+Extensions.swift */; };
 		E54DD4E6275C8EAA0013C200 /* Font+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */; };
 		E54DD4F9275D9E7F0013C200 /* UIViewControllerWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */; };
@@ -1665,8 +1662,6 @@
 		E5D10C0012F0A10000DC0003 /* DeviceLogCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */; };
 		E5D10C0012F0A10000DC0004 /* LogPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */; };
 		E5D10C0012F0A10000DC0006 /* LogPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */; };
-		E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
-		E5D3288B292C0D68008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
 		E5D8C8DE2D829B2000667A99 /* HTMLTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */; };
 		E5D8C8DF2D829B2000667A99 /* HTMLTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */; };
 		E5DA92E52D06A412005AEEC3 /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */; };
@@ -1791,7 +1786,6 @@
 		E75499F72A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75499F62A1D6863009FF821 /* TPPAppDelegate+Extensions.swift */; };
 		E75499F82A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75499F62A1D6863009FF821 /* TPPAppDelegate+Extensions.swift */; };
 		E755D731530F71F947164E93 /* AudiobookSessionManagerFlagGatePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 787DCAF97FD5E190363EC3CA /* AudiobookSessionManagerFlagGatePresentationTests.swift */; };
-		E75ED6D2297720DE006BBD5F /* TXNativeExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */; };
 		E75ED6DC29772E6D006BBD5F /* valid.xml in Resources */ = {isa = PBXBuildFile; fileRef = 111559F119B8FAA10003BE94 /* valid.xml */; };
 		E75ED6DD29772EBE006BBD5F /* invalid.xml in Resources */ = {isa = PBXBuildFile; fileRef = 111559F019B8FAA10003BE94 /* invalid.xml */; };
 		E75ED6DE29772EC1006BBD5F /* main.xml in Resources */ = {isa = PBXBuildFile; fileRef = 11F54C1D194109120086FCAF /* main.xml */; };
@@ -3354,8 +3348,6 @@
 		E544C4EE2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksSimplifiedBearerToken.swift; sourceTree = "<group>"; };
 		E544C4F62A3C1E4A00B2DC9D /* Dictionary+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Dictionary+Extensions.swift"; sourceTree = "<group>"; };
 		E544E7132C8A14D400802EB9 /* AudiobookTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookTrackerTests.swift; sourceTree = "<group>"; };
-		E549954728EE1AAA00EA0D9B /* TransifexManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransifexManager.swift; sourceTree = "<group>"; };
-		E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TXNativeExtensions.swift; sourceTree = "<group>"; };
 		E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIViewControllerWrapper.swift; sourceTree = "<group>"; };
 		E54DD4CF275C66F30013C200 /* Strings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Strings.swift; sourceTree = "<group>"; };
 		E54DD4D4275C7C940013C200 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
@@ -3435,7 +3427,6 @@
 		E5CDE8C912B8AD7B20AF282E /* BorrowOperationAuthCoordinatorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BorrowOperationAuthCoordinatorTests.swift; sourceTree = "<group>"; };
 		E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLogCollector.swift; sourceTree = "<group>"; };
 		E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogPreviewViewController.swift; sourceTree = "<group>"; };
-		E5D32881292C0D34008BFD01 /* txstrings.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = txstrings.json; sourceTree = "<group>"; };
 		E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextView.swift; sourceTree = "<group>"; };
 		E5DE86FB2D6C39C6003D356E /* BookImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookImageView.swift; sourceTree = "<group>"; };
 		E5DF75302E6B4AF700971F19 /* SamplePreviewManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SamplePreviewManager.swift; sourceTree = "<group>"; };
@@ -4927,7 +4918,6 @@
 				5DD567AE22B95A30001F0C83 /* String+MD5.swift */,
 				E54DD4CF275C66F30013C200 /* Strings.swift */,
 				E7C0F2F0299586E8003A10C5 /* Strings+objC.swift */,
-				E5D3288C292C0D93008BFD01 /* Transifex */,
 				54172B43D47BE5FCE8A1B975 /* TPPAttributedString.swift */,
 				95C7D04F855F2DA251329CDD /* TPPLocalization.swift */,
 			);
@@ -6631,16 +6621,6 @@
 			path = DeveloperSettings;
 			sourceTree = "<group>";
 		};
-		E5D3288C292C0D93008BFD01 /* Transifex */ = {
-			isa = PBXGroup;
-			children = (
-				E549954728EE1AAA00EA0D9B /* TransifexManager.swift */,
-				E5D32881292C0D34008BFD01 /* txstrings.json */,
-				E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */,
-			);
-			path = Transifex;
-			sourceTree = "<group>";
-		};
 		E5E4AAC42EB2913700CC1D67 /* FeatureFlags */ = {
 			isa = PBXGroup;
 			children = (
@@ -7228,7 +7208,6 @@
 				E50BC9DB2CBF6FE900660937 /* XCRemoteSwiftPackageReference "PureLayout" */,
 				E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */,
 				E58EAE982ECCDC5D00CDA626 /* XCRemoteSwiftPackageReference "swift-atomics" */,
-				E58EB0792ECCFE0E00CDA626 /* XCRemoteSwiftPackageReference "transifex-swift" */,
 				E7D51772BFB94BFBA1AE8862 /* XCRemoteSwiftPackageReference "std-uritemplate-swift" */,
 				AD4024ABF2AB1F4247E45BD3 /* XCLocalSwiftPackageReference "PalaceLogging" */,
 				01E7F95547C1EDA1F89213C6 /* XCLocalSwiftPackageReference "PalaceKeychain" */,
@@ -7384,7 +7363,6 @@
 				E50221C429881CDD00A8A80B /* Localizable.strings in Resources */,
 				73D8D27A25A68D3B00DF5F69 /* TPPReaderPositions.storyboard in Resources */,
 				E50221CE29881D2800A8A80B /* Localizable.strings in Resources */,
-				E5D3288B292C0D68008BFD01 /* txstrings.json in Resources */,
 				73EB0B6C25821DF4006BC997 /* OpenDyslexic3-Regular.ttf in Resources */,
 				73EB0B6D25821DF4006BC997 /* GoogleService-Info.plist in Resources */,
 			);
@@ -7413,7 +7391,6 @@
 				E50221C329881CDD00A8A80B /* Localizable.strings in Resources */,
 				7347F0272459E10900558D7F /* TPPReaderPositions.storyboard in Resources */,
 				E50221CD29881D2800A8A80B /* Localizable.strings in Resources */,
-				E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */,
 				84B7A3481B84E8FE00584FB2 /* OpenDyslexic3-Regular.ttf in Resources */,
 				738EF2D02405E38800F388FB /* GoogleService-Info.plist in Resources */,
 			);
@@ -8358,7 +8335,6 @@
 				2126FE6625C089110095C45C /* ReaderFormatModule.swift in Sources */,
 				21E41787292810EE00A78606 /* CGSize.swift in Sources */,
 				21399900268F9F2500B4EB60 /* TPPAccountListCell.swift in Sources */,
-				E75ED6D2297720DE006BBD5F /* TXNativeExtensions.swift in Sources */,
 				21E4178D292810F600A78606 /* TPPPDFBackButton.swift in Sources */,
 				E5515EBF2AD8E13E000BDFE9 /* TPPEPUBViewController.swift in Sources */,
 				73EB0A8825821DF4006BC997 /* TPPBackgroundExecutor.swift in Sources */,
@@ -8373,7 +8349,6 @@
 				73EB0A8A25821DF4006BC997 /* TPPReturnPromptHelper.swift in Sources */,
 				E50547492E625377007CCFAB /* BookService.swift in Sources */,
 				216D2E3A274286D200472538 /* TPPLCPLicense.swift in Sources */,
-				E5158C202935345F0007ABDB /* TransifexManager.swift in Sources */,
 				E5E4AACE2EB2914B00CC1D67 /* RemoteFeatureFlags.swift in Sources */,
 				E51818442927FD8E00C03AD5 /* Strings.swift in Sources */,
 				73EB0A8E25821DF4006BC997 /* TPPSignInBusinessLogic+UI.swift in Sources */,
@@ -9042,7 +9017,6 @@
 				7340DA6224B7E45C00361387 /* URLResponse+NYPL.swift in Sources */,
 				E562DE492D38BB8C003A1A40 /* Image+Extension.swift in Sources */,
 				E7C0F2F1299586E8003A10C5 /* Strings+objC.swift in Sources */,
-				E549955228EE1ADB00EA0D9B /* TXNativeExtensions.swift in Sources */,
 				E2CFEDD31B1544149D45935E /* AccountDetailViewModel.swift in Sources */,
 				F8724E8F85D04DC1941AFC2B /* AccountDetailView.swift in Sources */,
 				0AE0A02A9BFC49CE91440D55 /* AccountDetailView+Constants.swift in Sources */,
@@ -9094,7 +9068,6 @@
 				17631AED25E488CD006079C4 /* TPPAgeCheckViewController.swift in Sources */,
 				E5AD72F52E552A36005A8070 /* FacetsSelectorView.swift in Sources */,
 				E6D848E32171334800CEC142 /* TPPContentTypeBadge.swift in Sources */,
-				E549954828EE1AAA00EA0D9B /* TransifexManager.swift in Sources */,
 				E731FF4C2864C934001DB7F2 /* TPPPDFPreviewGridCell.swift in Sources */,
 				E544C4F72A3C1E4A00B2DC9D /* Dictionary+Extensions.swift in Sources */,
 				219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */,
@@ -10239,14 +10212,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.3.0;
-			};
-		};
-		E58EB0792ECCFE0E00CDA626 /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/transifex/transifex-swift/";
-			requirement = {
-				kind = exactVersion;
-				version = 1.0.2;
 			};
 		};
 		E7498A842A0E7F460037DD93 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {

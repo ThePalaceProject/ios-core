@@ -161,10 +161,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             // This would prevent iOS from purging downloaded audiobook files
         }
 
-        if !TPPProcessInfo.isRunningTests {
-            TransifexManager.setup()
-        }
-
         // `queue: .main` + `Task { @MainActor }`: `signingIn` mutates the
         // `@MainActor` `isSigningIn` flag. Post can arrive off-main, so hop to the
         // main actor before touching main-actor state (previously `queue: nil`

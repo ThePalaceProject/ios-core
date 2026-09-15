@@ -939,3 +939,175 @@ def test_a_key_translated_via_stringsdict_counts_as_translated(tmp_path):
         plistlib.dump({"day_count": {"NSStringLocalizedFormatKey": "%#@d@"}}, open(p, "wb"))
     findings = ps.check_tables(tmp_path, ["de"], require=ps.inventory([src])[0])
     assert not any(f.kind == "untranslated" for f in findings), findings
+
+
+# ------------------------------------------ runtime translation SDK detection
+#
+# The tables this tool checks are INERT while a runtime translation SDK is
+# installed: Transifex Native swizzles `Bundle.localizedString(forKey:...)` and
+# never calls `super` once activated, so the committed `.strings` files are read
+# by nobody. Coverage reported 100% for three years against a cache last written
+# in 2022. A gate that cannot see that condition reports a green board on an app
+# that ships English.
+
+def test_flags_a_source_file_importing_a_runtime_translation_sdk(tmp_path):
+    src = tmp_path / "Palace"
+    src.mkdir()
+    (src / "Manager.swift").write_text("import Transifex\n\nclass M {}\n", encoding="utf-8")
+    findings = ps.check_no_runtime_translation_sdk([src], tmp_path)
+    assert [f.kind for f in findings] == ["runtime_translation_sdk"]
+    assert "Manager.swift" in findings[0].key
+
+
+def test_flags_the_package_pin_even_with_no_swift_import(tmp_path):
+    # The pin alone re-links the SDK; a later commit only has to call setup().
+    src = tmp_path / "Palace"
+    src.mkdir()
+    (src / "Clean.swift").write_text("class M {}\n", encoding="utf-8")
+    proj = tmp_path / "Palace.xcodeproj"
+    proj.mkdir()
+    (proj / "project.pbxproj").write_text(
+        'repositoryURL = "https://github.com/transifex/transifex-swift/";\n', encoding="utf-8")
+    findings = ps.check_no_runtime_translation_sdk([src], tmp_path)
+    assert [f.kind for f in findings] == ["runtime_translation_sdk"]
+    assert "project.pbxproj" in findings[0].key
+
+
+def test_flags_the_resolved_pin(tmp_path):
+    src = tmp_path / "Palace"
+    src.mkdir()
+    resolved = tmp_path / "Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+    resolved.mkdir(parents=True)
+    (resolved / "Package.resolved").write_text(
+        json.dumps({"pins": [{"identity": "transifex-swift"}]}), encoding="utf-8")
+    findings = ps.check_no_runtime_translation_sdk([src], tmp_path)
+    assert [f.kind for f in findings] == ["runtime_translation_sdk"]
+    assert "Package.resolved" in findings[0].key
+
+
+def test_a_clean_tree_produces_no_finding(tmp_path):
+    # The clean path must PASS. A detector that only ever sees violations in its
+    # fixture cannot tell a working gate from one that fires on everything.
+    src = tmp_path / "Palace"
+    src.mkdir()
+    (src / "Strings.swift").write_text(
+        'let a = NSLocalizedString("Borrow", value: "Borrow", comment: "")\n', encoding="utf-8")
+    assert ps.check_no_runtime_translation_sdk([src], tmp_path) == []
+
+
+def test_the_word_transifex_in_a_comment_is_not_a_finding(tmp_path):
+    # This repo's own docs and migration map name the retired service. Flagging
+    # prose would make the gate unrunnable on the commit that removes the SDK.
+    src = tmp_path / "Palace"
+    src.mkdir()
+    (src / "Note.swift").write_text(
+        "// Transifex used to fetch these at runtime; it no longer does.\n", encoding="utf-8")
+    assert ps.check_no_runtime_translation_sdk([src], tmp_path) == []
+
+
+def test_the_real_repo_has_no_runtime_translation_sdk():
+    root = Path(__file__).resolve().parents[2]
+    srcs = [root / p for p in ps.DEFAULT_SOURCES if (root / p).exists()]
+    findings = ps.check_no_runtime_translation_sdk(srcs, root)
+    assert findings == [], "\n".join(f"{f.key}: {f.detail}" for f in findings)
+
+
+# ------------------------------------------------------ bundle-scoped lookups
+#
+# `NSLocalizedString(key, bundle: Bundle.audiobookToolkit()!, ...)` resolves
+# against THAT framework's bundle. A translation for such a key in the app's
+# `Palace/de.lproj` is never read — Foundation looks in the bundle the call
+# names, and nowhere else. 30 reviewed values sat in the app tables unreachable
+# for exactly this reason.
+
+def test_a_foreign_bundle_argument_scopes_the_key_away_from_the_app():
+    src = ('NSLocalizedString("Decrease speed", bundle: Bundle.audiobookToolkit()!, '
+           'value: "Decrease speed", comment: "Button")')
+    native, foreign = ps.bundle_scoped_keys(src)
+    assert foreign == {"Decrease speed"}
+    assert native == set()
+
+
+def test_no_bundle_argument_means_the_main_bundle():
+    src = 'NSLocalizedString("Borrow", value: "Borrow", comment: "Button")'
+    native, foreign = ps.bundle_scoped_keys(src)
+    assert native == {"Borrow"}
+    assert foreign == set()
+
+
+def test_an_explicit_main_bundle_is_not_foreign():
+    src = 'NSLocalizedString("Borrow", bundle: Bundle.main, value: "Borrow", comment: "")'
+    native, foreign = ps.bundle_scoped_keys(src)
+    assert native == {"Borrow"}
+    assert foreign == set()
+
+
+def test_inventory_drops_a_key_only_ever_looked_up_in_another_bundle(tmp_path):
+    (tmp_path / "Player.swift").write_text(
+        'NSLocalizedString("Speed presets", bundle: Bundle.audiobookToolkit()!, '
+        'value: "Speed presets", comment: "")\n'
+        'Text("Borrow")\n', encoding="utf-8")
+    keys, _ = ps.inventory([tmp_path])
+    assert "Borrow" in keys
+    assert "Speed presets" not in keys
+
+
+def test_inventory_keeps_a_key_that_is_also_looked_up_in_the_main_bundle(tmp_path):
+    # Three keys really are reached both ways. Dropping them because ONE call
+    # site names another bundle would leave the app rendering the raw key.
+    (tmp_path / "Player.swift").write_text(
+        'NSLocalizedString("Decrease speed", bundle: Bundle.audiobookToolkit()!, '
+        'value: "Decrease speed", comment: "")\n', encoding="utf-8")
+    (tmp_path / "Strings.swift").write_text(
+        'NSLocalizedString("Decrease speed", value: "Decrease speed", comment: "")\n',
+        encoding="utf-8")
+    keys, _ = ps.inventory([tmp_path])
+    assert "Decrease speed" in keys
+
+
+def test_a_swiftui_text_in_a_framework_file_still_counts_as_the_app_bundle(tmp_path):
+    # SwiftUI `Text` has no bundle argument and resolves against Bundle.main
+    # regardless of which module the view is compiled into.
+    (tmp_path / "View.swift").write_text('Text("Speed presets")\n', encoding="utf-8")
+    keys, _ = ps.inventory([tmp_path])
+    assert "Speed presets" in keys
+
+
+def test_fingerprint_ignores_a_language_that_ships_no_table(tmp_path):
+    # The CI gate runs `--langs de,es,fr,it`; the documented regeneration command
+    # defaults to `en,de,es,fr,it`. English lives in the code and ships no table,
+    # so naming it must not change the fingerprint — otherwise the report is
+    # PERMANENTLY stale and the gate that detects staleness becomes noise.
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "A"})
+    src = tmp_path / "src"; src.mkdir()
+    (src / "S.swift").write_text('Text("a")\n', encoding="utf-8")
+    with_en = ps.state_fingerprint([src], tmp_path, ["en", "de"])
+    without = ps.state_fingerprint([src], tmp_path, ["de"])
+    assert with_en == without
+
+
+def test_fingerprint_still_changes_when_a_shipped_value_changes(tmp_path):
+    # The relaxation above must not make the fingerprint blind.
+    src = tmp_path / "src"; src.mkdir()
+    (src / "S.swift").write_text('Text("a")\n', encoding="utf-8")
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "A"})
+    before = ps.state_fingerprint([src], tmp_path, ["en", "de"])
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "B"})
+    assert ps.state_fingerprint([src], tmp_path, ["en", "de"]) != before
+
+
+def test_a_missing_development_language_table_is_not_a_finding(tmp_path):
+    # English lives in the CODE. `en.lproj/Localizable.strings` is deliberately
+    # not wired into the Xcode project, so reporting its absence turns the
+    # documented no-flag command into a permanent red that teaches people to
+    # ignore the gate.
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "A"})
+    kinds = [f.kind for f in ps.check_tables(tmp_path, ["en", "de"])]
+    assert "missing_table" not in kinds
+
+
+def test_a_missing_translation_table_is_still_a_finding(tmp_path):
+    # The relaxation is for the development language ONLY.
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "A"})
+    findings = ps.check_tables(tmp_path, ["en", "de", "fr"])
+    assert [(f.kind, f.lang) for f in findings if f.kind == "missing_table"] == [("missing_table", "fr")]

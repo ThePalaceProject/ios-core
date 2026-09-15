@@ -236,15 +236,6 @@
       }
     },
     {
-      "identity" : "transifex-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/transifex/transifex-swift/",
-      "state" : {
-        "revision" : "e983af3184c456f6061620667a455aa95e99df32",
-        "version" : "1.0.2"
-      }
-    },
-    {
       "identity" : "ulid.swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/yaslab/ULID.swift.git",

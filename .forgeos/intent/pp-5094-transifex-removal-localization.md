@@ -12,7 +12,7 @@ related_prs: []
 Palace fetches its translations from Transifex at runtime. All of that data is
 static, so the runtime dependency buys nothing and adds a third-party failure
 point. This lands the translations in the repo, builds the tooling that keeps
-them honest, and removes the source defects that auditing them exposed.
+them honest, and corrects the source defects that auditing them exposed.
 
 ## Claims
 
@@ -39,11 +39,14 @@ them honest, and removes the source defects that auditing them exposed.
 
 ## Anti-claims
 
-- Does NOT remove the Transifex SDK, `TransifexManager`, the SPM dependency, or
-  the `txstrings.json` bundled cache. Until that lands these tables are INERT
-  for `NSLocalizedString` call sites: the SDK's swizzle never calls `super`, so
-  a lookup goes to the Transifex provider and, on a miss, returns the English
-  source. Only SwiftUI `Text("literal")` reads the tables today.
+- The Transifex SDK is REMOVED in this branch — the manager, the SPM
+  dependency, the `txstrings.json` bundled cache, the token, and the
+  `localizedStringWithFormat` override, in both repos. This is what makes the
+  tables live: the swizzle never called `super`, so every `NSLocalizedString`
+  lookup went to the CDS provider and, on a miss, returned English. Before this
+  branch only SwiftUI `Text("literal")` read the committed tables.
+- Does NOT keep a service-side fallback of any kind. There is no network path
+  for a string any more; a key missing from a table renders that key.
 - Does NOT change locale selection or fallback behaviour. No code decides which
   language to use differently than before.
 - Does NOT add, remove, or reword any English string except the five defects
@@ -59,6 +62,16 @@ them honest, and removes the source defects that auditing them exposed.
 ## Files in scope
 
 - Palace/Utilities/Localization/Strings.swift
+- Palace/AppInfrastructure/TPPAppDelegate.swift
+- Palace/TPPSecrets.swift
+- Palace/Utilities/TPPProcessInfo.swift
+- Palace/Utilities/Localization/Transifex/ (deleted — SDK glue, cache, 3 files)
+- Palace/Book/UI/BookDetail/HalfSheetview.swift
+- Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift
+- Palace/Reader2/Typography/ReaderTheme.swift
+- Palace/Reader2/Typography/TypographySettings.swift
+- Palace/Reader2/Typography/FontFamily.swift
+- Palace/Reader2/Typography/FontPickerView.swift
 - Palace/Reader2/UI/TPPBaseReaderViewController.swift
 - Palace/Reader2/BusinessLogic/ChapterScrubberReadout.swift
 - Palace/Reader2/ReaderSettings/TPPReaderSettingsView.swift
@@ -73,6 +86,8 @@ them honest, and removes the source defects that auditing them exposed.
 - Palace/de.lproj/Localizable.stringsdict
 - Palace/es.lproj/Localizable.stringsdict
 - Palace/fr.lproj/Localizable.stringsdict
+- Palace/en.lproj/Localizable.stringsdict
+- Palace/it.lproj/Localizable.stringsdict
 - Palace/Stats/ (deleted — unreachable feature, 20 files)
 - PalaceTests/Stats/ (deleted — 7 files)
 - PalaceTests/UIPolish/BadgeUnlockPhaseTests.swift (deleted)
@@ -87,6 +102,10 @@ them honest, and removes the source defects that auditing them exposed.
 - .claude/skills/translate/SKILL.md (new)
 - .claude/skills/translate/references/glossary.md (new)
 - docs/Operations/localization-workflow.md (new)
+- docs/Operations/localization-status.md (generated)
+- .forgeos/contracts/Utilities.json
+- README.md
+- ios-audiobooktoolkit (submodule pin)
 - docs/README.md
 
 ## Source defects fixed here

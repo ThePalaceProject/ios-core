@@ -1,14 +1,6 @@
 /* Informs the user an offline return was queued */
 "\"%@\" will be returned automatically when you're back online." = "Le retour de \"%@\" sera effectué automatiquement dès que vous serez de nouveau en ligne.";
 
-"%02d hr %02 dmin" = "%02d h %02d min";
-
-"%02d hr, %02d min remaining" = "%02d h, %02d min restantes";
-
-"%02d min remaining" = "%02d min restantes";
-
-"%02dmin" = "%02dmin";
-
 /* VoiceOver: audiobook cell label with author but no narrator */
 "%1$@, audiobook, by %2$@" = "%1$@, livre audio, de %2$@";
 
@@ -40,10 +32,6 @@
 /* How much time is left in the entire book, not just the chapter. */
 "%@ remaining in the book." = "%@ restant dans le livre.";
 
-"%@ speed. Faster than normal." = "Vitesse %@. Plus rapide que la normale.";
-
-"%@ speed. Slower than normal." = "Vitesse %@. Plus lente que la normale.";
-
 "%@ theme" = "Thème %@";
 
 /* A concise string that expreses the percent progress, where %@ is the percentage */
@@ -60,26 +48,8 @@
 /* Accessibility value for search results count. %d is number of books */
 "%d books" = "%d livres";
 
-"%d hour and %d minute" = "%1$d heure et %2$d minute";
-
-"%d hour and %d minutes" = "%1$d heure et %2$d minutes";
-
-"%d hours and %d minute" = "%1$d heures et %2$d minutes";
-
-"%d hours and %d minutes" = "%1$d heures et %2$d minutes";
-
-"%d hours, %d minutes and %d seconds" = "%1$d heures, %2$d minutes et %3$d secondes";
-
-"%d minute" = "%d minute";
-
-"%d minutes" = "%d minutes";
-
-"%d minutes and %d seconds" = "%1$d minutes et %2$d secondes";
-
 /* VoiceOver accessibility value for download progress */
 "%d percent complete" = "%d pour cent terminé";
-
-"%d second" = "%d seconde";
 
 /* Audiobook skip interval option, e.g. '30 seconds' */
 "%d seconds" = "%d secondes";
@@ -91,10 +61,6 @@
 
 /* Accessibility value when search has one result */
 "1 book" = "1 livre";
-
-"1.0×" = "1.0×";
-
-"1.0× (Normal)" = "1,0× (Normale)";
 
 /* 15 Minutes */
 "15 Minutes" = "15 minutes";
@@ -453,8 +419,6 @@
 /* VoiceOver: Label for the audiobook speed decrease stepper */
 "Decrease speed" = "Réduire la vitesse";
 
-"Decreases playback speed by 0.05 times" = "Diminue la vitesse de lecture de 0,05";
-
 "Delete" = "Effacer";
 
 "Delete Server Data" = "Supprimer les données du serveur";
@@ -681,8 +645,6 @@
 
 "Increases contrast beyond the system setting for better readability." = "Augmente le contraste au-delà du réglage système pour une meilleure lisibilité.";
 
-"Increases playback speed by 0.05 times" = "Augmente la vitesse de lecture de 0,05";
-
 "Information" = "Informations";
 
 /* Alert notifying user that bookmark save failed. */
@@ -707,8 +669,6 @@
 "Left" = "À gauche";
 
 "Less" = "Moins";
-
-"Less than 1 min remaining" = "Moins d'1 minute restante";
 
 /* A title for a list of libraries the user may select or add to. */
 "Libraries" = "Bibliothèques";
@@ -818,8 +778,6 @@
 
 /* Dismisses the stop-playback confirmation, leaving playback and the mini-player unchanged */
 "No, Cancel" = "Non, annuler";
-
-"Normal speed." = "Vitesse normale.";
 
 /* Sentiment-gate button; a negative response that leads to a feedback option instead of the App Store. */
 "Not really" = "Pas vraiment";
@@ -1141,8 +1099,6 @@
 /* Title for session expired alert */
 "Session Expired" = "Session expirée";
 
-"Sets playback speed" = "Définit la vitesse de lecture";
-
 "Settings" = "Réglages";
 
 /* Feedback follow-up button; opens a pre-composed support email. */
@@ -1232,8 +1188,6 @@
 /* VoiceOver: Current sort option, e.g. 'Sort by Title' */
 "Sort by %@" = "Trier par %@";
 
-"Speed presets" = "Préréglages de vitesse";
-
 "Start over" = "Recommencer";
 
 "Starts a new question. Your sent ticket is unaffected." = "Démarre une nouvelle question. La demande déjà envoyée reste inchangée.";
@@ -1262,8 +1216,6 @@
 
 /* Accessibility hint for search results list */
 "Swipe to browse results. Double tap to open a book." = "Balayez pour parcourir les résultats. Touchez deux fois pour ouvrir un livre.";
-
-"Swipe up or down with one finger to adjust" = "Balayez vers le haut ou vers le bas avec un doigt pour ajuster la valeur";
 
 /* VoiceOver: Button to switch between libraries */
 "Switch Library" = "Changer de bibliothèque";
@@ -1375,10 +1327,6 @@
 /* Alert message when a book loan expires without a known end date */
 "This title is no longer available because your loan period ended. It has been removed from your device." = "Ce titre n'est plus disponible, car votre période d'emprunt est terminée. Il a été supprimé de votre appareil.";
 
-"Three quarters of normal speed. Slower." = "Trois quarts de la vitesse normale. Ralentissez.";
-
-"Three times normal speed. Fastest." = "Trois fois la vitesse normale. La plus rapide.";
-
 "Ticket couldn't send — retry, copy details, or start over" = "La demande n'a pas pu être envoyée — réessayer, copier les détails ou recommencer";
 
 "Ticket preview" = "Aperçu de la demande";
@@ -1414,8 +1362,6 @@
 
 /* Recovery instructions for when the URL to sign in is missing */
 "Try force-quitting the app and repeat the sign-in process." = "Essayez de forcer la fermeture de l'application et répétez le processus de connexion.";
-
-"Two times normal speed." = "Deux fois la vitesse normale.";
 
 "Typography" = "Typographie";
 
