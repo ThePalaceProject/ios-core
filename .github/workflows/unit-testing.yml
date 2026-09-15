@@ -19,10 +19,11 @@ jobs:
 
   build-and-test:
     runs-on: macos-15
-    # Cap the whole job. The test step has its own 60-min bound, but the ~15
-    # post-processing steps (xcresult parse, snapshot find, Pages deploy) are
-    # unbounded — a hang there could otherwise burn the 360-min default.
-    timeout-minutes: 90
+    # Cap the whole job. The test step has its own bound (see below), but the
+    # ~15 post-processing steps (xcresult parse, snapshot find, Pages deploy)
+    # are unbounded — a hang there could otherwise burn the 360-min default.
+    # 105 = the test step's 75 plus the ~15 of post-processing, plus slack.
+    timeout-minutes: 105
     permissions:
       contents: write
       pull-requests: write
@@ -128,7 +129,21 @@ jobs:
         
       - name: Run Palace unit tests
         id: tests
-        timeout-minutes: 60
+        # 75, not 60. MEASURED 2026-09-15 across three runs of the same suite:
+        #   1x depth (no test failed an iteration)  9,200 executions  30 min
+        #   3x depth (a test failed an iteration)  26,118 executions  53 min
+        #   2x depth, hit the old 60-min wall      17,594 executions  60 min
+        # A clean pass is 30 minutes. `-test-iterations 3` repeats the WHOLE
+        # plan when any single test fails an iteration, which adds 23-30, so a
+        # 60-minute bound could not fit the retry policy this same workflow
+        # configures. PR #1472 died here twice on different flakes, each of
+        # which PASSED on retry — the tests were fine, the clock was not.
+        #
+        # This is a bound, not the fix. The fix is to make a retry re-run the
+        # FAILING tests instead of all 9,100; ~2/3 of the wall-clock in any run
+        # that flakes once is re-running tests that already passed. Tracked
+        # separately — do not raise this number again in its place.
+        timeout-minutes: 75
         # tee to a log so the @objc-witness-drift gate below can scan the build
         # warnings. `set -o pipefail` is set EXPLICITLY here: GitHub's default
         # bash shell does NOT enable pipefail, so `cmd | tee` returns tee's exit
