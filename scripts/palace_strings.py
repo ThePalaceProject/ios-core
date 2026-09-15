@@ -366,6 +366,17 @@ def is_format_only(key: str) -> bool:
 
 # ------------------------------------------------------------ .strings tables
 
+# Foundation's .strings reader accepts BOTH comment forms. The parser stripped
+# only `/* */`, so a `// "key" = "value";` line — which Foundation ignores —
+# was read as a live entry: a translator could comment a string out and the
+# gate would still count it present.
+_COMMENT_LINE = re.compile(r"^[ \t]*//[^\n]*$", re.M)
+
+
+def _decomment(text: str) -> str:
+    return _COMMENT_LINE.sub("", _COMMENT_BLOCK.sub("", text))
+
+
 def parse_strings(text: str) -> dict[str, str]:
     """Parse a .strings file into real characters.
 
@@ -374,7 +385,28 @@ def parse_strings(text: str) -> dict[str, str]:
     every read-merge-write cycle double the backslashes.
     """
     return {unescape(m.group(1)): unescape(m.group(2))
-            for m in _STRINGS_ENTRY.finditer(_COMMENT_BLOCK.sub("", text))}
+            for m in _STRINGS_ENTRY.finditer(_decomment(text))}
+
+
+def unparseable_residue(text: str) -> str | None:
+    """The first fragment Foundation would choke on, or None.
+
+    This parser is a regex over entries: anything that is not an entry is
+    silently skipped. Foundation is not so forgiving — ONE stray token
+    invalidates the whole file, and every string in that language falls back to
+    English. So a table Foundation refuses outright read here as complete and
+    the gate passed it, which is the worst outcome this project can produce and
+    the one it could not see.
+
+    Checked here rather than by shelling out to `plutil -lint`, because CI runs
+    on ubuntu where `plutil` does not exist — a check that silently no-ops on
+    the machine that gates merges is not a check.
+    """
+    leftover = _STRINGS_ENTRY.sub("", _decomment(text))
+    for line in leftover.splitlines():
+        if line.strip():
+            return line.strip()[:120]
+    return None
 
 
 DEVELOPMENT_LANGUAGE = "en"
@@ -406,6 +438,17 @@ def check_tables(root: Path, langs: list[str],
         # from the source silently. Its absence is the design, not a defect.
         if table is None and lang != DEVELOPMENT_LANGUAGE:
             findings.append(Finding("missing_table", lang, "", f"no {lang}.lproj/Localizable.strings"))
+        if table is not None:
+            # A file Foundation rejects sends the WHOLE language to English.
+            path = root / f"{lang}.lproj" / "Localizable.strings"
+            try:
+                residue = unparseable_residue(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError):
+                residue = None
+            if residue:
+                findings.append(Finding("malformed_table", lang, residue,
+                                        "Foundation rejects the whole file; every "
+                                        "string in this language falls back to English"))
     present = {l: t for l, t in tables.items() if t is not None}
 
     if report is not None:
@@ -524,6 +567,53 @@ def check_stringsdict(root: Path, langs: list[str]) -> list[Finding]:
     every = set().union(*present.values())
     return [Finding("stringsdict_missing_key", l, k, "renders the key verbatim")
             for l, keys in sorted(present.items()) for k in sorted(every - keys)]
+
+
+# -------------------------------- carrying a translation across a rewording
+
+def canonical_carry(orphans: dict[str, str], wanted: set[str]) -> dict[str, str]:
+    """{new_key: value} for orphaned translations that belong to a live key.
+
+    When an English string is reworded its key changes and every translation is
+    orphaned — the lookup misses and the patron sees English again. This finds
+    the ones whose SOURCE is the same string under `canonical()` (case,
+    punctuation, curly quotes, spacing) and carries the value across.
+
+    Three things it deliberately will NOT do, because each is a way to install
+    a wrong translation that looks recovered:
+
+    * No fuzzy matching. `Returns %@` -> `Returned %@.` scores 0.82 on string
+      similarity and is present tense against past; the old value is simply
+      wrong for the new string and no ratio can tell.
+    * No carry when the specifiers differ. `Downloads %@` -> `Downloads` drops
+      a placeholder, and the carried value renders a dangling `%@`.
+    * No carry when two orphans canonicalise the same. Picking one is guessing.
+
+    The recovery this replaces consulted a hand-maintained migration list, so
+    it carried only the drifts someone had already noticed — 17 caught, 4
+    missed, and one of the four cost real quality.
+    """
+    live = {canonical(k) for k in wanted}
+    by_canon: dict[str, list[tuple[str, str]]] = {}
+    for old, value in orphans.items():
+        c = canonical(old)
+        if old in wanted:
+            continue                      # not an orphan; the live value wins
+        by_canon.setdefault(c, []).append((old, value))
+
+    out: dict[str, str] = {}
+    for new in wanted:
+        if new in orphans:
+            continue
+        cands = by_canon.get(canonical(new), [])
+        if len(cands) != 1:
+            continue                      # absent, or ambiguous
+        old, value = cands[0]
+        if _specifiers(old) != _specifiers(new):
+            continue                      # placeholder set changed
+        out[new] = value
+    return out
+
 
 
 # ----------------------------------- literals in a NON-localizing position
