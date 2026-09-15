@@ -573,6 +573,12 @@ struct Strings {
         static let addLibrary = NSLocalizedString("Add Library", comment: "Title of button to add a new library")
         static let myLibraries = NSLocalizedString("My Libraries", comment: "Section header on the Libraries screen, above the list of the patron's own libraries.")
         static let librariesEntrySubtitle = NSLocalizedString("Add, remove, or configure libraries", comment: "Subtitle on the Settings row that opens the Libraries screen.")
+        // `row(title:)` takes a `String`, and `Text(aString)` performs NO
+        // lookup — only a string LITERAL is a `LocalizedStringKey`. These two
+        // rows passed raw English and rendered it in every language while
+        // "Hilfe" / "Assistenza" sat unused in the tables. Verified on device.
+        static let getHelp = NSLocalizedString("Get Help", value: "Get Help", comment: "Settings row that opens the support chat.")
+        static let sideLoading = NSLocalizedString("Side Loading", value: "Side Loading", comment: "Settings row that opens the locally-imported books screen.")
         static let switchLibraryPromptFormat = NSLocalizedString("Would you like to switch to %@?", comment: "Confirmation shown when choosing an inactive library's selection control. %@ is the library name.")
         static let switchToLibraryFormat = NSLocalizedString("Switch to %@", comment: "VoiceOver label for the selection control on an inactive library's row. %@ is the library name.")
         static let switchingLibrary = NSLocalizedString("Switching library…", comment: "Loading overlay text shown while the app switches the active library.")

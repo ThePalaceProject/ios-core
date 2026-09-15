@@ -1111,3 +1111,96 @@ def test_a_missing_translation_table_is_still_a_finding(tmp_path):
     _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "A"})
     findings = ps.check_tables(tmp_path, ["en", "de", "fr"])
     assert [(f.kind, f.lang) for f in findings if f.kind == "missing_table"] == [("missing_table", "fr")]
+
+
+# ------------------------------------- a literal in a NON-localizing position
+#
+# `Text(_ key: LocalizedStringKey)` looks a key up ONLY for a string LITERAL.
+# Pass a `String` variable and Swift picks `Text(_ content: S) where S:
+# StringProtocol`, which renders the characters verbatim. So a helper typed
+# `func row(title: String)` that renders `Text(title)` localizes nothing, and an
+# English literal handed to it renders English in every language — while the
+# extractor still sees a quoted string near a UI call and the table still
+# carries a perfectly good translation nobody reads.
+#
+# Found on device: Settings showed "Get Help" in German and Italian with
+# "Hilfe" and "Assistenza" sitting unused in the tables.
+
+def test_flags_a_literal_passed_to_a_title_parameter_of_a_plain_helper():
+    src = 'row(title: "Get Help", index: 10, selection: self.$sel, destination: v)'
+    assert ps.unlocalized_literals(src) == [("row", "Get Help")]
+
+
+def test_an_already_localized_value_in_the_same_position_is_not_flagged():
+    # Every other caller in the real file passes `DisplayStrings.x`, which is an
+    # NSLocalizedString result. Only a LITERAL can be the defect.
+    src = 'row(title: DisplayStrings.aboutApp, index: 2, selection: s, destination: v)'
+    assert ps.unlocalized_literals(src) == []
+
+
+def test_a_swiftui_initializer_in_the_same_shape_is_not_flagged():
+    # `Section(header: Text("Support"))` and `Button("Borrow")` DO localize —
+    # flagging them would make the detector unrunnable on this tree.
+    for src in ('Section(header: Text("Support"))',
+                'Button("Borrow") { borrow() }',
+                'Label("Catalog", systemImage: "book")',
+                'Text("Get Help")',
+                'NavigationLink("Settings", destination: v)'):
+        assert ps.unlocalized_literals(src) == [], src
+
+
+def test_an_nslocalizedstring_argument_is_not_flagged():
+    src = 'row(title: NSLocalizedString("Get Help", comment: ""), index: 10)'
+    assert ps.unlocalized_literals(src) == []
+
+
+# Pre-existing violations elsewhere in the tree are BASELINED, exactly as the
+# doc gates do it: the count may not grow, and a baselined file that starts
+# coming back clean also fails, so the amnesty can neither expand nor go stale.
+# The 14 strings behind these sites were invisible to the inventory entirely —
+# no localizing call ever names them — so "594/594" was really 594 of 608.
+_UNLOCALIZED_BASELINE = {
+    "Palace/Packages/PalaceTriageBot/Sources/TriageBotUI/KBMatchCard.swift": 4,
+    "Palace/Packages/PalaceTriageBot/Sources/TriageBotUI/SupportChatView.swift": 1,
+    "Palace/Packages/PalaceTriageBot/Sources/TriageBotUI/TicketPreviewCard.swift": 3,
+    "Palace/Reader2/Typography/TypographySettingsView.swift": 5,
+    "Palace/Reader2/UI/TPPEPUBViewController.swift": 1,
+}
+
+
+def _scan_tree_for_unlocalized() -> dict[str, int]:
+    root = Path(__file__).resolve().parents[2]
+    counts: dict[str, int] = {}
+    for f in sorted((root / "Palace").rglob("*.swift")):
+        rel = str(f.relative_to(root))
+        if ps.is_developer_path(f) or "/Tests/" in rel or rel.endswith("Tests.swift"):
+            continue
+        n = len(ps.unlocalized_literals(f.read_text(encoding="utf-8", errors="replace")))
+        if n:
+            counts[rel] = n
+    return counts
+
+
+def test_no_new_literal_lands_in_a_non_localizing_position():
+    counts = _scan_tree_for_unlocalized()
+    new = {f: n for f, n in counts.items()
+           if n > _UNLOCALIZED_BASELINE.get(f, 0)}
+    assert not new, ("new unlocalized display literals: " + repr(new)
+                     + "\npass the value through NSLocalizedString; "
+                       "Text(aString) performs no lookup")
+
+
+def test_the_baseline_does_not_go_stale():
+    counts = _scan_tree_for_unlocalized()
+    fixed = {f: n for f, n in _UNLOCALIZED_BASELINE.items()
+             if counts.get(f, 0) < n}
+    assert not fixed, ("these improved — lower the baseline: " + repr(fixed))
+
+
+def test_the_settings_rows_proven_on_device_are_fixed():
+    # The regression this QA run actually caught: Settings rendered "Get Help"
+    # in German and Italian. Named explicitly so a revert fails loudly rather
+    # than merely nudging a count.
+    root = Path(__file__).resolve().parents[2]
+    src = (root / "Palace/Settings/NewSettings/TPPSettingsView.swift").read_text(encoding="utf-8")
+    assert ps.unlocalized_literals(src) == []

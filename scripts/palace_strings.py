@@ -526,6 +526,76 @@ def check_stringsdict(root: Path, langs: list[str]) -> list[Finding]:
             for l, keys in sorted(present.items()) for k in sorted(every - keys)]
 
 
+# ----------------------------------- literals in a NON-localizing position
+
+# `Text(_ key: LocalizedStringKey)` performs a lookup only for a string
+# LITERAL. Hand it a `String` and Swift selects
+# `Text(_ content: S) where S: StringProtocol`, which renders the characters
+# verbatim. A helper typed `func row(title: String)` rendering `Text(title)`
+# therefore localizes NOTHING, and an English literal passed to it renders
+# English in every language — while the extractor still sees a quoted string
+# beside a UI-shaped call and the tables still carry a translation nobody
+# reads. Found on device: Settings showed "Get Help" in German and Italian
+# with "Hilfe" and "Assistenza" sitting unused.
+#
+# Argument labels that name displayed text. A literal here is user-visible by
+# construction, so if the callee is not itself a localizing initializer the
+# literal can only reach the screen untranslated.
+# `label:` and `text:` are deliberately absent: `DispatchQueue(label:)` is a
+# thread name, not display text, and including it produced 6 false positives
+# on the first run.
+# `message:` is absent for the same reason: it is overwhelmingly an internal
+# error string (`licenseError(message:)`, `handleBookmarksSyncFail(message:)`),
+# and including it produced 8 false positives against 0 real ones.
+_DISPLAY_LABELS = ("title", "header", "footer",
+                   "caption", "placeholder", "subtitle")
+
+# UIKit, CarPlay and Foundation initialisers taking an English literal are a
+# REAL but separate surface — they need `NSLocalizedString`, not a SwiftUI
+# literal, and there are dozens of them predating this work. Scoping them out
+# keeps this check about the defect it was built for; `system_literals()`
+# counts them so they are reported rather than silently dropped.
+_SYSTEM_CALLEE = re.compile(r"^(?:UI|CP|NS|CN|MK|AV|WK)[A-Z]|^DispatchQueue$|^init$")
+
+_LABELLED_LITERAL = re.compile(
+    r"\b([A-Za-z_]\w*)\s*\(\s*(?:" + "|".join(_DISPLAY_LABELS) + r")\s*:\s*"
+    r'"((?:[^"\\]|\\.)*)"')
+
+
+def unlocalized_literals(src: str) -> list[tuple[str, str]]:
+    """(callee, literal) for literals passed to a non-localizing callee.
+
+    A callee in `_CALLS_RE` is a SwiftUI initializer that DOES localize a
+    literal, so those are skipped — flagging `Section(header: Text("Support"))`
+    would make the check unrunnable on this tree. Everything else taking a
+    display-labelled literal is a plain function whose parameter is a `String`,
+    which is the defect.
+    """
+    src = preprocess(src)
+    localizing = set(_CALLS_RE.split("|"))
+    out: list[tuple[str, str]] = []
+    for m in _LABELLED_LITERAL.finditer(src):
+        callee = m.group(1)
+        if callee in localizing or _SYSTEM_CALLEE.match(callee):
+            continue
+        out.append((callee, decode_swift_literal(m.group(2))))
+    return out
+
+
+def system_literals(src: str) -> list[tuple[str, str]]:
+    """The UIKit/CarPlay half `unlocalized_literals` deliberately skips.
+
+    Separate function, not a flag, so a caller has to ask for it: the two
+    populations need different fixes and conflating them produced a list
+    nobody could act on.
+    """
+    src = preprocess(src)
+    return [(m.group(1), decode_swift_literal(m.group(2)))
+            for m in _LABELLED_LITERAL.finditer(src)
+            if _SYSTEM_CALLEE.match(m.group(1))]
+
+
+
 # -------------------------------------------- runtime translation SDK guard
 
 # Module names of SDKs that fetch translations at runtime. Each of these
