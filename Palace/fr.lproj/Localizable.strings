@@ -261,7 +261,7 @@
 
 "Borrow" = "Emprunter";
 
-"Borrow Failed" = "Échec de l&#39;emprunt";
+"Borrow Failed" = "Échec de l'emprunt";
 
 /* VoiceOver announcement when a borrow fails */
 "Borrow failed for %@." = "Échec de l’emprunt de %@.";
@@ -468,7 +468,7 @@
 "Do you want to move to the page on which you left off?" = "Voulez-vous revenir à la page sur laquelle vous vous êtes arrêté ?";
 
 /* An alert message asking the user to perform navigation to the synced listening position or not */
-"Do you want to move to the time on which you left off?" = "Voulez-vous revenir à l&#39;heure à laquelle vous vous êtes arrêté ?";
+"Do you want to move to the time on which you left off?" = "Voulez-vous revenir à l'heure à laquelle vous vous êtes arrêté ?";
 
 /* Title for registration. Asking the user if they already have a library card. */
 "Don't have a library card?" = "Vous n'avez pas de carte de bibliothèque ?";
@@ -559,7 +559,7 @@
 "Failed" = "Échec";
 
 /* Error message shown to user when CoreLocation does not return the current location. */
-"Failed to get current location. Please try again." = "Impossible d&#39;obtenir la position actuelle. Veuillez réessayer.";
+"Failed to get current location. Please try again." = "Impossible d'obtenir la position actuelle. Veuillez réessayer.";
 
 "Failed to open book" = "Échec de l’ouverture du livre";
 
@@ -680,7 +680,7 @@
 "Information" = "Informations";
 
 /* Alert notifying user that bookmark save failed. */
-"Internal Error, bookmark failed to save." = "Erreur interne : échec de l&#39;enregistrement du favori.";
+"Internal Error, bookmark failed to save." = "Erreur interne : échec de l'enregistrement du favori.";
 
 "Invalid Credentials" = "Identifiants non valides";
 
@@ -929,7 +929,7 @@
 /* Message shown when the audiobook fails to load, prompting a retry */
 "Please try again." = "Veuillez réessayer.";
 
-"Please wait" = "S&#39;il vous plaît, attendez";
+"Please wait" = "S'il vous plaît, attendez";
 
 "Please wait a moment before switching library accounts" = "Veuillez patienter un moment avant de changer de compte de bibliothèque";
 
@@ -1058,7 +1058,7 @@
 "Sample Book Title" = "Exemple de titre de livre";
 
 /* Explain how to set a bookmark. */
-"Save the current location bookmark for later listening." = "Enregistrez le signet de l&#39;emplacement actuel pour une écoute ultérieure.";
+"Save the current location bookmark for later listening." = "Enregistrez le signet de l'emplacement actuel pour une écoute ultérieure.";
 
 /* VoiceOver: Button to scan library card barcode */
 "Scan Barcode" = "Scanner le code-barres";
@@ -1243,7 +1243,7 @@
 "Sync Bookmarks" = "Synchroniser les signets";
 
 /* An alert title notifying the user the listening position has been synced */
-"Sync Listening Position" = "Position d&#39;écoute synchronisée";
+"Sync Listening Position" = "Position d'écoute synchronisée";
 
 /* An alert title notifying the user the reading position has been synced */
 "Sync Reading Position" = "Position de lecture synchronisée";
@@ -1266,9 +1266,9 @@
 "The DRM Library is taking longer than expected. Please wait and try again later.\n\nIf the problem persists, try to sign out and back in again from the Library Settings menu." = "La bibliothèque DRM prend plus de temps que prévu. Veuillez patienter et réessayer plus tard.\n\nSi le problème persiste, essayez de vous déconnecter et de vous reconnecter à partir du menu Paramètres de la bibliothèque.";
 
 /* Body for registration. Explaining the reason for requesting the user's location and instructions for how to provide permission. */
-"The Palace App requires a one-time location check in order to verify your library service area. Once you choose \"Create Card\", please select \"Allow Once\" in the popup so we can verify this information." = "L&#39;application Palace nécessite une vérification de localisation unique afin de vérifier la zone de service de votre bibliothèque. Une fois que vous avez choisi « Créer une carte », veuillez sélectionner « Autoriser une fois » dans la fenêtre contextuelle afin que nous puissions vérifier ces informations.";
+"The Palace App requires a one-time location check in order to verify your library service area. Once you choose \"Create Card\", please select \"Allow Once\" in the popup so we can verify this information." = "L'application Palace nécessite une vérification de localisation unique afin de vérifier la zone de service de votre bibliothèque. Une fois que vous avez choisi « Créer une carte », veuillez sélectionner « Autoriser une fois » dans la fenêtre contextuelle afin que nous puissions vérifier ces informations.";
 
-"The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation." = "L&#39;application Palace nécessite une vérification de localisation unique afin de vérifier la zone de service de votre bibliothèque. Vous avez désactivé les services de localisation pour cette application. Pour l&#39;activer, veuillez sélectionner le bouton « Ouvrir les paramètres » ci-dessous, puis poursuivre la création de la carte.";
+"The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation." = "L'application Palace nécessite une vérification de localisation unique afin de vérifier la zone de service de votre bibliothèque. Vous avez désactivé les services de localisation pour cette application. Pour l'activer, veuillez sélectionner le bouton « Ouvrir les paramètres » ci-dessous, puis poursuivre la création de la carte.";
 
 /* Expired license warning */
 "The book license has expired." = "La licence du livre a expiré.";
@@ -1407,7 +1407,7 @@
 "User Agreement" = "Accord de l'utilisateur";
 
 /* Error message shown to user when location services are denied. */
-"User denied location access. Go to system settings to enable location access for the Palace App." = "L&#39;utilisateur a refusé l&#39;accès à la localisation. Accédez aux paramètres système pour activer l’accès à la localisation pour l’application Palace.";
+"User denied location access. Go to system settings to enable location access for the Palace App." = "L'utilisateur a refusé l'accès à la localisation. Accédez aux paramètres système pour activer l’accès à la localisation pour l’application Palace.";
 
 "Verbosity" = "Verbosité";
 
@@ -1487,7 +1487,7 @@
 /* Alert message shown when the user attempts to download or reserve a book while offline */
 "You don’t appear to be connected to the internet. Reconnect and try again." = "Aucune connexion à Internet ne semble active. Rétablissez la connexion et réessayez.";
 
-"You have already checked out this loan. You may need to refresh your My Books list to download the title." = "Vous avez déjà vérifié ce prêt. Vous devrez peut-être actualiser votre liste Mes livres pour télécharger le titre.";
+"You have already checked out this loan. You may need to refresh your My Books list to download the title." = "Vous avez déjà emprunté ce titre. Vous devrez peut-être actualiser votre liste Mes livres pour le télécharger.";
 
 /* Registration message shown to user when location access has been denied. */
 "You have disabled location services for this app." = "Vous avez désactivé les services de localisation pour cette application.";

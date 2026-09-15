@@ -820,3 +820,78 @@ def test_packet_writes_one_csv_per_language(tmp_path):
     info = ps.build_packet([src], tmp_path, ["de", "fr"], out)
     assert (out / "de.csv").exists() and (out / "fr.csv").exists()
     assert info["values"] == info["strings"] * 2
+
+
+# ------------------------------------------------- HTML entity contamination
+
+def test_validate_rejects_an_html_entity_in_a_value():
+    # `l&#39;emprunt` renders literally to a patron. 19 of these survived the
+    # validator because it checked specifiers, empties and symbol-names but
+    # never looked for entity encoding.
+    bad = ps.validate_translations({"Borrow failed": "Échec de l&#39;emprunt"},
+                                   {"Borrow failed": "Borrow failed"})
+    assert any(f.kind == "html_entity" for f in bad)
+
+
+def test_validate_rejects_a_quot_entity():
+    bad = ps.validate_translations({'Remove "%@"?': "Rimuovere &quot;%@&quot;?"},
+                                   {'Remove "%@"?': 'Remove "%@"?'})
+    assert any(f.kind == "html_entity" for f in bad)
+
+
+def test_validate_allows_a_literal_ampersand():
+    # "Health & safety" is ordinary text, not an encoding artifact.
+    ok = ps.validate_translations({"Terms & conditions": "Bedingungen & Konditionen"},
+                                  {"Terms & conditions": "Terms & conditions"})
+    assert not any(f.kind == "html_entity" for f in ok)
+
+
+def test_decode_entities_restores_real_punctuation():
+    assert ps.decode_html_entities("l&#39;emprunt") == "l'emprunt"
+    assert ps.decode_html_entities("&quot;%@&quot;") == '"%@"'
+    assert ps.decode_html_entities("A & B") == "A & B"
+
+
+def test_check_tables_also_rejects_html_entities(tmp_path):
+    # The gate has its own loop and does NOT call validate_translations; a
+    # detector added to only one of the two passes the CI gate while the other
+    # rejects the same value.
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings",
+                   {"Borrow failed": "Fehler bei l&#39;emprunt"})
+    findings = ps.check_tables(tmp_path, ["de"], source={"Borrow failed": "Borrow failed"})
+    assert any(f.kind == "html_entity" for f in findings)
+
+
+# ------------------------- imported-data contamination (the class, not one case)
+
+def test_validate_rejects_a_zero_width_character():
+    bad = ps.validate_translations({"Borrow": "Aus​leihen"}, {"Borrow": "Borrow"})
+    assert any(f.kind == "invisible_character" for f in bad)
+
+
+def test_validate_rejects_a_byte_order_mark_inside_a_value():
+    bad = ps.validate_translations({"Borrow": "﻿Ausleihen"}, {"Borrow": "Borrow"})
+    assert any(f.kind == "invisible_character" for f in bad)
+
+
+def test_validate_rejects_a_control_character():
+    bad = ps.validate_translations({"Borrow": "Aus\x07leihen"}, {"Borrow": "Borrow"})
+    assert any(f.kind == "control_character" for f in bad)
+
+
+def test_validate_allows_a_non_breaking_space():
+    # French requires U+00A0 before ? ! : ; — it is correct typography here,
+    # not contamination, and flagging it would fight the style guide.
+    ok = ps.validate_translations({"Ready?": "Prêt ?"}, {"Ready?": "Ready?"})
+    assert ok == []
+
+
+def test_validate_flags_trailing_whitespace():
+    bad = ps.validate_translations({"Borrow": "Ausleihen "}, {"Borrow": "Borrow"})
+    assert any(f.kind == "stray_whitespace" for f in bad)
+
+
+def test_validate_allows_a_deliberate_leading_space_in_the_source():
+    # If the ENGLISH carries the space, the translation should too.
+    ok = ps.validate_translations({" of ": " von "}, {" of ": " of "})
+    assert not any(f.kind == "stray_whitespace" for f in ok)

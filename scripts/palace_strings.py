@@ -407,6 +407,9 @@ def check_tables(root: Path, langs: list[str],
         for key, value in sorted(table.items()):
             if not value.strip():
                 findings.append(Finding("empty_value", lang, key, "renders as an empty label"))
+            if _HTML_ENTITY.search(value):
+                findings.append(Finding("html_entity", lang, key,
+                                        "HTML entity encoding renders literally to a patron"))
             src = source.get(key)
             if src is not None and lang != source_lang:
                 bad = specifier_mismatch(src, value)
@@ -564,6 +567,24 @@ def render_strings(mapping: dict[str, str], comments: dict[str, str]) -> str:
     return "\n".join(out).rstrip("\n") + "\n"
 
 
+_HTML_ENTITY = re.compile(r"&(?:quot|apos|amp|lt|gt|nbsp|#\d+|#x[0-9A-Fa-f]+);")
+# Invisible characters that survive a copy-paste or a bad export and are
+# impossible to see in review. U+00A0 is EXCLUDED: French typography requires it
+# before ? ! : ; and flagging it would fight the style guide.
+_INVISIBLE = re.compile(r"[\u200b-\u200f\u2028\u2029\ufeff\u00ad]")
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def decode_html_entities(s: str) -> str:
+    """Decode HTML entities that leaked into a translation.
+
+    A `.strings` value is not HTML. `&#39;` reaches the patron as those five
+    characters, not an apostrophe.
+    """
+    import html
+    return html.unescape(s)
+
+
 def validate_translations(candidate: dict[str, str], source: dict[str, str]) -> list[Finding]:
     """Reject a batch before it reaches a table.
 
@@ -579,6 +600,21 @@ def validate_translations(candidate: dict[str, str], source: dict[str, str]) -> 
         if is_identifier_key(value) and not is_identifier_key(key):
             findings.append(Finding("identifier_value", "", key,
                                     f"value {value!r} is a symbol, not a translation"))
+        if _HTML_ENTITY.search(value):
+            findings.append(Finding("html_entity", "", key,
+                                    "value carries HTML entity encoding; a .strings value "
+                                    "is not HTML and renders it literally"))
+        if _INVISIBLE.search(value):
+            findings.append(Finding("invisible_character", "", key,
+                                    "zero-width or bidi character — invisible in review, "
+                                    "breaks search and comparison"))
+        if _CONTROL.search(value):
+            findings.append(Finding("control_character", "", key,
+                                    "control character in a user-facing string"))
+        src_for_ws = source.get(key)
+        if src_for_ws is not None and value != value.strip() and src_for_ws == src_for_ws.strip():
+            findings.append(Finding("stray_whitespace", "", key,
+                                    "leading/trailing whitespace the English does not have"))
         src = source.get(key)
         if src:
             bad = specifier_mismatch(src, value)

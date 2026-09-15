@@ -1293,7 +1293,7 @@
 
 "The download could not be completed." = "Der Download konnte nicht abgeschlossen werden.";
 
-"The download could not be completed.\nScroll down to 'View Issues' to see details." = "Der Download konnte nicht abgeschlossen werden.\nScrollen Sie nach unten zu &quot;Probleme anzeigen&quot;, um Details anzuzeigen.";
+"The download could not be completed.\nScroll down to 'View Issues' to see details." = "Der Download konnte nicht abgeschlossen werden.\nScrollen Sie nach unten zu \"Probleme anzeigen\", um Details anzuzeigen.";
 
 /* Alert message when downloading a book fails, %@ is the book title */
 "The download for %@ could not be completed." = "Der Download für %@ konnte nicht abgeschlossen werden.";

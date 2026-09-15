@@ -195,7 +195,7 @@
 "Are you enjoying The Palace Project?" = "¿Le gusta The Palace Project?";
 
 /* Message shown in an alert to the user prior to returning a reserved title. */
-"Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book." = "¿Estás seguro de que quieres eliminar &quot;%@&quot; de tus reservas? Ya no estarás en la fila para recibir este libro.";
+"Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book." = "¿Estás seguro de que quieres eliminar \"%@\" de tus reservas? Ya no estarás en la fila para recibir este libro.";
 
 /* Message shown in an alert to the user prior to deleting a title */
 "Are you sure you want to delete \"%@\"?" = "¿Seguro que quieres eliminar \"%@\"?";
@@ -259,7 +259,7 @@
 /* VoiceOver: Label for a list of books */
 "Books list" = "Lista de libros";
 
-"Borrow" = "Tomar prestado";
+"Borrow" = "Pedir prestado";
 
 "Borrow Failed" = "Préstamo fallido";
 
@@ -367,7 +367,7 @@
 
 "Chapters" = "Capítulos";
 
-"Check Out" = "Tomar prestado";
+"Check Out" = "Pedir prestado";
 
 /* Message shown when sign-in fails because the device lost connectivity */
 "Check your connection and try again." = "Compruebe su conexión e inténtelo de nuevo.";
@@ -1266,9 +1266,9 @@
 "The DRM Library is taking longer than expected. Please wait and try again later.\n\nIf the problem persists, try to sign out and back in again from the Library Settings menu." = "La biblioteca de DRM está tardando más de lo esperado. Espera y vuelve a intentarlo más tarde.\n\nSi el problema persiste, prueba a cerrar sesión y vuelve a iniciarla desde el menú de configuración de la biblioteca.";
 
 /* Body for registration. Explaining the reason for requesting the user's location and instructions for how to provide permission. */
-"The Palace App requires a one-time location check in order to verify your library service area. Once you choose \"Create Card\", please select \"Allow Once\" in the popup so we can verify this information." = "La aplicación Palace requiere una verificación de ubicación única para verificar el área de servicio de su biblioteca. Una vez que elija &quot;Crear tarjeta&quot;, seleccione &quot;Permitir una vez&quot; en la ventana emergente para que podamos verificar esta información.";
+"The Palace App requires a one-time location check in order to verify your library service area. Once you choose \"Create Card\", please select \"Allow Once\" in the popup so we can verify this information." = "La aplicación Palace requiere una verificación de ubicación única para verificar el área de servicio de su biblioteca. Una vez que elija \"Crear tarjeta\", seleccione \"Permitir una vez\" en la ventana emergente para que podamos verificar esta información.";
 
-"The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation." = "La aplicación Palace requiere una verificación de ubicación única para verificar el área de servicio de su biblioteca. Has desactivado los servicios de ubicación para esta aplicación. Para habilitarlo, seleccione el botón &#39;Abrir configuración&#39; a continuación y luego continúe con la creación de la tarjeta.";
+"The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation." = "La aplicación Palace requiere una verificación de ubicación única para verificar el área de servicio de su biblioteca. Has desactivado los servicios de ubicación para esta aplicación. Para habilitarlo, seleccione el botón 'Abrir configuración' a continuación y luego continúe con la creación de la tarjeta.";
 
 /* Expired license warning */
 "The book license has expired." = "La licencia del libro ha caducado.";
@@ -1487,7 +1487,7 @@
 /* Alert message shown when the user attempts to download or reserve a book while offline */
 "You don’t appear to be connected to the internet. Reconnect and try again." = "No parece haber conexión a Internet. Vuelva a conectarse e inténtelo de nuevo.";
 
-"You have already checked out this loan. You may need to refresh your My Books list to download the title." = "Ya has pasado este préstamo por caja. Es posible que debas actualizar la lista Mis libros para descargar el título.";
+"You have already checked out this loan. You may need to refresh your My Books list to download the title." = "Ya ha pedido prestado este título. Es posible que deba actualizar la lista Mis libros para descargarlo.";
 
 /* Registration message shown to user when location access has been denied. */
 "You have disabled location services for this app." = "Has desactivado los servicios de ubicación para esta aplicación.";

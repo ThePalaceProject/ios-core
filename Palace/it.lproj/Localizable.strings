@@ -195,7 +195,7 @@
 "Are you enjoying The Palace Project?" = "Le piace The Palace Project?";
 
 /* Message shown in an alert to the user prior to returning a reserved title. */
-"Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book." = "Sei sicuro di voler rimuovere &quot;%@&quot; dalle tue prenotazioni? Non sarai più in fila per questo libro.";
+"Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book." = "Sei sicuro di voler rimuovere \"%@\" dalle tue prenotazioni? Non sarai più in fila per questo libro.";
 
 /* Message shown in an alert to the user prior to deleting a title */
 "Are you sure you want to delete \"%@\"?" = "Vuoi davvero eliminare “%@”?";
@@ -468,7 +468,7 @@
 "Do you want to move to the page on which you left off?" = "Vuoi passare alla pagina dove avevi interrotto la lettura?";
 
 /* An alert message asking the user to perform navigation to the synced listening position or not */
-"Do you want to move to the time on which you left off?" = "Vuoi tornare all&#39;ora in cui ti eri interrotto?";
+"Do you want to move to the time on which you left off?" = "Vuoi tornare all'ora in cui ti eri interrotto?";
 
 /* Title for registration. Asking the user if they already have a library card. */
 "Don't have a library card?" = "Non hai una tessera della biblioteca?";
@@ -1266,9 +1266,9 @@
 "The DRM Library is taking longer than expected. Please wait and try again later.\n\nIf the problem persists, try to sign out and back in again from the Library Settings menu." = "La biblioteca DRM sta impiegando più tempo del previsto. Attendi e riprova più tardi.\n\nSe il problema persiste, prova a disconnetterti e ad accedere nuovamente dal menu Impostazioni biblioteca.";
 
 /* Body for registration. Explaining the reason for requesting the user's location and instructions for how to provide permission. */
-"The Palace App requires a one-time location check in order to verify your library service area. Once you choose \"Create Card\", please select \"Allow Once\" in the popup so we can verify this information." = "L&#39;app Palace richiede un controllo della posizione una tantum per verificare l&#39;area di servizio della tua biblioteca. Dopo aver scelto &quot;Crea carta&quot;, seleziona &quot;Consenti una volta&quot; nel popup in modo da poter verificare queste informazioni.";
+"The Palace App requires a one-time location check in order to verify your library service area. Once you choose \"Create Card\", please select \"Allow Once\" in the popup so we can verify this information." = "L'app Palace richiede un controllo della posizione una tantum per verificare l'area di servizio della tua biblioteca. Dopo aver scelto \"Crea carta\", seleziona \"Consenti una volta\" nel popup in modo da poter verificare queste informazioni.";
 
-"The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation." = "L&#39;app Palace richiede un controllo della posizione una tantum per verificare l&#39;area di servizio della tua biblioteca. Hai disabilitato i servizi di localizzazione per questa app. Per abilitare, seleziona il pulsante &quot;Apri impostazioni&quot; di seguito, quindi continua con la creazione della carta.";
+"The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation." = "L'app Palace richiede un controllo della posizione una tantum per verificare l'area di servizio della tua biblioteca. Hai disabilitato i servizi di localizzazione per questa app. Per abilitare, seleziona il pulsante \"Apri impostazioni\" di seguito, quindi continua con la creazione della carta.";
 
 /* Expired license warning */
 "The book license has expired." = "La licenza del libro è scaduta.";
@@ -1407,7 +1407,7 @@
 "User Agreement" = "Accordo per gli utenti";
 
 /* Error message shown to user when location services are denied. */
-"User denied location access. Go to system settings to enable location access for the Palace App." = "L&#39;utente ha negato l&#39;accesso alla posizione. Vai alle impostazioni di sistema per abilitare l&#39;accesso alla posizione per l&#39;app Palace.";
+"User denied location access. Go to system settings to enable location access for the Palace App." = "L'utente ha negato l'accesso alla posizione. Vai alle impostazioni di sistema per abilitare l'accesso alla posizione per l'app Palace.";
 
 "Verbosity" = "Verbosità";
 
@@ -1487,7 +1487,7 @@
 /* Alert message shown when the user attempts to download or reserve a book while offline */
 "You don’t appear to be connected to the internet. Reconnect and try again." = "Non risulta alcuna connessione a Internet. Ristabilisca la connessione e riprovi.";
 
-"You have already checked out this loan. You may need to refresh your My Books list to download the title." = "Hai già preso in prestito questo libro. Potrebbe essere necessario aggiornare l’elenco I miei libri per scaricare il titolo.";
+"You have already checked out this loan. You may need to refresh your My Books list to download the title." = "Ha già preso in prestito questo titolo. Potrebbe essere necessario aggiornare l’elenco I miei libri per scaricarlo.";
 
 /* Registration message shown to user when location access has been denied. */
 "You have disabled location services for this app." = "Hai disabilitato i servizi di localizzazione per questa app.";
