@@ -1415,6 +1415,39 @@ extension MyBooksDownloadCenter {
         localContentService.redownloadLCPContentFile(for: book)
     }
 
+    /// PP-5135: start the background `.lcpa` fetch for an LCP audiobook that
+    /// finished fulfillment holding only its `.lcpl` license.
+    ///
+    /// With LCP streaming ON, `LCPFulfillmentHandler` deliberately marks the book
+    /// downloaded on the license alone so playback can start immediately instead
+    /// of waiting on a multi-gigabyte archive. That is a good trade for START-UP
+    /// latency and a bad one for the shelf's promise: the patron is told the book
+    /// is Downloaded. This restores the second half — the archive also arrives,
+    /// in the background, so going offline works.
+    ///
+    /// `lcpContentFileMissing` is the existing seam for exactly this condition
+    /// (LCP-openable, content file absent); on noDRM it is always false, so this
+    /// compiles and no-ops there without an `#if`.
+    func startLCPContentFetchIfNeeded(for book: TPPBook) async {
+        // The INJECTED accountsManager, not `AccountsManager.shared`: CLAUDE.md
+        // forbids `.shared` reads in new code, and a test download center wired to
+        // a different account must not resolve paths through the live singleton.
+        let account = accountsManager.currentAccountId ?? ""
+        guard lcpContentFileMissing(for: book, account: account) else { return }
+
+        guard LocalBookContentService.backgroundFetchAllowed(
+            isConnectedToNetwork: reachability.isConnectedToNetwork(),
+            isOnWiFi: reachability.isOnWiFi,
+            downloadOnlyOnWiFi: settings.downloadOnlyOnWiFi
+        ) else {
+            Log.info(#file, "PP-5135: '\(book.title)' has no .lcpa yet, but a background fetch is not allowed right now (offline, or cellular with download-only-on-WiFi set) — it will be retried on the next open")
+            return
+        }
+
+        Log.info(#file, "PP-5135: fulfillment left '\(book.title)' license-only — fetching the .lcpa in the background so the book works offline")
+        redownloadLCPContentFile(for: book)
+    }
+
     func deleteLocalContent(for identifier: String, account: String? = nil) {
         localContentService.deleteLocalContent(for: identifier, account: account)
     }
@@ -1603,6 +1636,23 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         await taskIdentifierToBook.remove(task.taskIdentifier)
         await downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
         await downloadCoordinator.registerCompletion(identifier: book.identifier)
+
+        // PP-5135: a streaming LCP audiobook finishes this path with ONLY its
+        // `.lcpl` license on disk and the book marked downloaded, so the shelf
+        // says "Downloaded" while the device holds no audio and the book cannot
+        // be opened offline at all.
+        //
+        // Placed HERE, after `bookIdentifierToDownloadInfo.remove` above, and not
+        // in `LCPFulfillmentHandler` where it reads more naturally. The fetch runs
+        // through `redownloadLCPContentFile`, whose duplicate-suppression guard
+        // asks `downloadCenterHasTransfer` — which is `downloadInfo(for:) != nil`.
+        // Triggering during fulfillment means that entry is still live (it is
+        // cleared ~100 ms later, by the cleanup just above), so the fetch would
+        // hit "already transferring — skipping duplicate" and silently do
+        // nothing. An earlier revision of this fix did exactly that and was inert
+        // for every fresh borrow; two reviewers caught it by reading the guard
+        // rather than the call. Do not move this earlier.
+        await startLCPContentFetchIfNeeded(for: book)
         // Reliability WS-A: download reached a terminal outcome — drop the
         // durable record and reset the transient-transfer retry counter.
         await stateManager.finishTerminalBookkeeping(for: book.identifier, keepRecord: dispatchResult.followUpTaskInFlight)

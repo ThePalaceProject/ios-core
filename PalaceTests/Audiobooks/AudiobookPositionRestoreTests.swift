@@ -256,28 +256,178 @@ final class AudiobookPositionRestoreTests: XCTestCase {
                      "Only candidate exceeds the duration cap → filtered out → no fallback position")
     }
 
-    // MARK: - isUserAuthenticated — auth-doc load failure (return false, line ~1517)
+    // MARK: - PP-5135: a failed readiness await, offline vs library switch
 
-    /// When the current account's auth-document load has FAILED
-    /// (`.detailsFailed`), `awaitReady()` throws and the manager must surface
-    /// the patron as not-authenticated (→ `.notAuthenticated` open error).
-    /// Pins the `catch { return false }` branch: the `return false` → `return
-    /// true` mutant would report the patron authenticated despite an auth-doc
-    /// load failure, opening the book against a stale/absent auth surface.
-    func testIsUserAuthenticated_authDocLoadFailed_returnsFalse() async {
-        let manager = makeIsolatedManager()
-        let account = makeAccount(uuid: "pp4542-failed-auth")
-        account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "HTTP 503")))
-        manager.currentAccount = account
+    // These drive `offlineAuthFallback` directly rather than through a fixture.
+    // `isUserAuthenticated()` returns false at its FIRST guard unless
+    // `currentAccount` resolves, and that getter goes through the registry store,
+    // which this target cannot populate — `accounts()` stays empty even after
+    // `preloadAccountsFromDiskCacheSync()`.
+    //
+    // That is not a detail: it is how the test these replaced passed. It was named
+    // `testIsUserAuthenticated_authDocLoadFailed_returnsFalse` and its comment
+    // claimed to pin the `catch { return false }` branch against a
+    // `return false -> return true` mutant. It never reached that branch. It
+    // asserted false and got it from the nil-account guard, and would have passed
+    // with the whole catch deleted. Rebuilding it on the same fixture reproduced
+    // the same emptiness, which is what sent the decision into a pure function.
 
-        let container = makeTestAppContainer(accountsManager: manager, bookRegistry: registryMock)
-        let sutWithFailedAuth = AudiobookSessionManager(appContainer: container)
+    // WIRING tests. An earlier revision of this change asserted that no test in
+    // this target could populate `currentAccount`, and recorded that as an
+    // anti-claim. THAT WAS WRONG. `AccountsManager._seedAccountForTesting`
+    // exists, nine suites use it, and
+    // `PalaceTests/Accounts/CredentialSnapshotInvalidationTests` already seeds an
+    // account, parks a terminal state and sets per-uuid credentials. Three
+    // fixture attempts failed and I generalised from that to impossibility
+    // instead of looking for the seam. These cover the catch -> fallback path
+    // that the pure tests below cannot reach, and it is the path the round-2
+    // uuid-scoping bug lived on.
+    //
+    // `awaitReady()` resolves a terminal state on its FAST PATH, so parking
+    // `.detailsFailed` makes the catch reachable synchronously, with no network.
 
-        let authed = await sutWithFailedAuth.isUserAuthenticated()
-        XCTAssertFalse(authed,
-                       "A failed auth-document load must surface as not-authenticated (the open path maps this to .notAuthenticated)")
+    /// Offline, credentials stored for THIS library: the patron opens their
+    /// downloaded book. End to end through `isUserAuthenticated()`.
+    func testIsUserAuthenticated_offlineWithStoredCredentials_isAuthenticated() throws {
+        let (manager, account, cleanup) = try seedCurrentAccount(uuid: "pp5135-wiring-offline")
+        defer { cleanup() }
+        manager.userAccount(for: account.uuid).setBarcode("12345", PIN: "6789")
+        AccountStateStore.shared.setState(
+            .detailsFailed(.authDocumentFetchFailed(underlyingDescription: "offline")), for: account.uuid)
 
+        XCTAssertNotNil(manager.currentAccount,
+                        "precondition: the seed must make currentAccount resolve, or isUserAuthenticated returns false at its first guard and this asserts nothing")
+
+        let sut = AudiobookSessionManager(appContainer: makeTestAppContainer(accountsManager: manager, bookRegistry: registryMock))
+        let authed = runAsync { await sut.isUserAuthenticated() }
+
+        XCTAssertTrue(authed,
+                      "offline is not signed-out — a patron with stored credentials must be able to open a downloaded audiobook (PP-5135)")
         manager.cancelBackgroundWork()
+    }
+
+    /// Same unreachable auth document, no credentials: still refused.
+    func testIsUserAuthenticated_offlineWithoutCredentials_isNotAuthenticated() throws {
+        let (manager, account, cleanup) = try seedCurrentAccount(uuid: "pp5135-wiring-nocreds")
+        defer { cleanup() }
+        manager.userAccount(for: account.uuid).removeAll()
+        AccountStateStore.shared.setState(
+            .detailsFailed(.authDocumentFetchFailed(underlyingDescription: "offline")), for: account.uuid)
+
+        // Precondition: this test asserts FALSE, which is also what the
+        // nil-account guard returns — the exact vacuity that made the test this
+        // suite replaced pass without reaching the branch it named.
+        XCTAssertNotNil(manager.currentAccount,
+                        "precondition: currentAccount must resolve, or this asserts nothing")
+
+        let sut = AudiobookSessionManager(appContainer: makeTestAppContainer(accountsManager: manager, bookRegistry: registryMock))
+        XCTAssertFalse(runAsync { await sut.isUserAuthenticated() },
+                       "no stored credentials is genuinely signed-out, offline or not")
+        manager.cancelBackgroundWork()
+    }
+
+    /// A library switch is not offline. Credentials ARE stored, so this fails if
+    /// the `.evicted` narrowing is deleted — through the real gate, not the pure
+    /// function.
+    func testIsUserAuthenticated_evictedByLibrarySwitch_isNotAuthenticated() throws {
+        let (manager, account, cleanup) = try seedCurrentAccount(uuid: "pp5135-wiring-evicted")
+        defer { cleanup() }
+        manager.userAccount(for: account.uuid).setBarcode("12345", PIN: "6789")
+        AccountStateStore.shared.setState(
+            .detailsEvicted(.libraryDeselected(uuid: account.uuid)), for: account.uuid)
+
+        // See the note above: asserting FALSE means the nil guard could supply it.
+        XCTAssertNotNil(manager.currentAccount,
+                        "precondition: currentAccount must resolve, or this asserts nothing")
+
+        let sut = AudiobookSessionManager(appContainer: makeTestAppContainer(accountsManager: manager, bookRegistry: registryMock))
+        XCTAssertFalse(runAsync { await sut.isUserAuthenticated() },
+                       "an evicted account is a library switch, not an offline device (PP-5135)")
+        manager.cancelBackgroundWork()
+    }
+
+    /// Seeds a fixture account INTO the manager's registry store so
+    /// `currentAccount` resolves. Returns a cleanup the caller must invoke.
+    private func seedCurrentAccount(uuid: String) throws -> (AccountsManager, Account, () -> Void) {
+        let manager = makeIsolatedManager()
+        let account = makeAccount(uuid: uuid)
+        let cleanupSeed = manager._seedAccountForTesting(account)
+        manager.currentAccount = account
+        let cleanup: () -> Void = {
+            manager.userAccount(for: account.uuid).removeAll()
+            AccountStateStore.shared.setState(.notLoaded, for: account.uuid)
+            cleanupSeed()
+        }
+        return (manager, account, cleanup)
+    }
+
+    /// Bridges the async gate into a synchronous test body.
+    private func runAsync<T>(_ work: @escaping () async -> T) -> T {
+        let done = expectation(description: "async work")
+        var result: T!
+        Task { result = await work(); done.fulfill() }
+        wait(for: [done], timeout: 5)
+        return result
+    }
+
+    /// The FULL (error x credentials) table — all five `AccountLoadError` cases
+    /// plus `CancellationError` and an unrelated error, x credentials.
+    ///
+    /// `readinessTimedOut` is included even though this call site uses the
+    /// UNBOUNDED `awaitReady()` and so cannot raise it today: it is thrown by the
+    /// bounded sibling (`Account+State.swift:157`), and a future call site that
+    /// adopts the bound must not silently change meaning here.
+    ///
+    /// An earlier revision covered 5 of these 12 cells and named only
+    /// `accountNotFound` in its census — leaving `malformedAuthDocument` and
+    /// `readinessTimedOut`, which this change also flips from false to true,
+    /// both untested and undocumented. `AccountLoadError` is a finite enum, so
+    /// sampling it is a choice, not a constraint. `backgroundFetchAllowed` is
+    /// already driven over its whole input cube; this matches.
+    ///
+    /// The rule: `.evicted` is false regardless of credentials (a library switch
+    /// is not an offline device); everything else follows the credentials,
+    /// because the auth document says whether a library REQUIRES auth and cannot
+    /// say whether the patron is signed in.
+    func testOfflineAuthFallback_overTheWholeErrorTable() {
+        let errors: [(name: String, error: Error)] = [
+            ("authDocumentFetchFailed", AccountLoadError.authDocumentFetchFailed(underlyingDescription: "offline")),
+            ("malformedAuthDocument", AccountLoadError.malformedAuthDocument(reason: "schema")),
+            ("accountNotFound", AccountLoadError.accountNotFound(uuid: "gone-from-catalog")),
+            ("readinessTimedOut", AccountLoadError.readinessTimedOut(timeout: 30)),
+            ("evicted", AccountLoadError.evicted(reason: .libraryDeselected(uuid: "switched-away"))),
+            ("cancellation", CancellationError()),
+            ("unrelated", NSError(domain: "Test", code: 1)),
+        ]
+
+        for (name, error) in errors {
+            let isEviction = (name == "evicted")
+            for hasCredentials in [true, false] {
+                let expected = isEviction ? false : hasCredentials
+                XCTAssertEqual(
+                    AudiobookSessionManager.offlineAuthFallback(error: error, hasStoredCredentials: hasCredentials),
+                    expected,
+                    "\(name) + credentials=\(hasCredentials) must be \(expected): eviction is a library switch and never authenticates; every other readiness failure is an offline signal and follows the keychain")
+            }
+        }
+    }
+
+    /// Named single cells for the two the field actually produced, so a failure
+    /// reads as the patron-facing rule rather than a table index.
+    func testOfflineAuthFallback_authDocFailedWithCredentials_isAuthenticated() {
+        XCTAssertTrue(
+            AudiobookSessionManager.offlineAuthFallback(
+                error: AccountLoadError.authDocumentFetchFailed(underlyingDescription: "offline"),
+                hasStoredCredentials: true),
+            "offline is not signed-out — this is the seven-consecutive-refusals defect (PP-5135)")
+    }
+
+    func testOfflineAuthFallback_evictedByLibrarySwitch_isNotAuthenticatedEvenWithCredentials() {
+        XCTAssertFalse(
+            AudiobookSessionManager.offlineAuthFallback(
+                error: AccountLoadError.evicted(reason: .libraryDeselected(uuid: "some-library")),
+                hasStoredCredentials: true),
+            "an evicted account is a library switch, not an offline device — the offline fallback must not apply (PP-5135)")
     }
 
     /// Control case: when there is no current account at all, the patron is
