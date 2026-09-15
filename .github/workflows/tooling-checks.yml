@@ -77,6 +77,16 @@ jobs:
       #     seconds. PRODUCING the translations is a developer-side step
       #     (`export` -> fill -> `import`); CI only refuses to let an
       #     untranslated string reach a release.
+      # The inventory spans BOTH repos: the audiobook player's strings resolve
+      # against the app bundle and are translated in `Palace/*.lproj`. This job
+      # checks out with `submodules: false` for speed, so the one public
+      # submodule the gate needs is fetched here — no token required. Deliberately
+      # NOT `--depth 1`: a shallow clone carries the default branch's tip, and the
+      # recorded pin is frequently not the tip (a stacked cross-repo change points
+      # it at a PR branch), which fails in a way that reads like a missing repo.
+      - name: Check out the audiobook toolkit (the gate reads its strings)
+        run: git submodule update --init ios-audiobooktoolkit
+
       - name: localization tables complete and consistent
         run: |
           # TRACKED file: its absence is a deleted gate, not an opt-out.
@@ -84,6 +94,9 @@ jobs:
             echo "::error::scripts/palace_strings.py is missing — the localization gate cannot run."
             exit 1
           fi
+          # No `--source`: the tool refuses to run on a partial checkout rather
+          # than quietly grading a subset, so this command is only correct
+          # BECAUSE the submodule step above ran.
           python3 scripts/palace_strings.py check \
             --lproj-root Palace --langs de,es,fr,it --require-complete
 

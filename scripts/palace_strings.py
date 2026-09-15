@@ -1041,7 +1041,25 @@ def main(argv: list[str] | None = None) -> int:
 
     a = ap.parse_args(argv)
     langs = [l.strip() for l in a.langs.split(",") if l.strip()]
-    sources = a.source or [Path(p) for p in DEFAULT_SOURCES if Path(p).exists()]
+    if a.source:
+        sources = a.source
+    else:
+        sources = [Path(p) for p in DEFAULT_SOURCES]
+        # Skipping an absent root silently is the worst available behaviour: the
+        # tool keeps working, prints a smaller inventory, demands fewer
+        # translations, and produces a report fingerprint no full checkout can
+        # ever match. CI ran exactly that way — 556 of 592 keys graded, the other
+        # 36 never checked in any language — and the only symptom was a
+        # `stale_report` finding that looked like someone had forgotten to
+        # regenerate a document.
+        missing = [p for p in sources if not p.exists()]
+        if missing:
+            for p in missing:
+                print(f"source root not found: {p}")
+            print("The inventory spans both repos. Check out the submodule "
+                  "(git submodule update --init ios-audiobooktoolkit) or name "
+                  "the roots explicitly with --source.")
+            return 2
 
     if a.cmd == "report":
         out = a.file or REPORT_PATH

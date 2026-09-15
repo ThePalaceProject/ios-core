@@ -173,7 +173,8 @@ def test_cli_check_exits_nonzero_on_drift(tmp_path):
     _write_strings(tmp_path / "en.lproj" / "Localizable.strings", {"a": "a", "b": "b"})
     _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "A"})
     r = subprocess.run([sys.executable, str(SCRIPT), "check", "--lproj-root", str(tmp_path),
-                        "--langs", "en,de"], capture_output=True, text=True)
+                        "--source", str(tmp_path), "--langs", "en,de"],
+                       capture_output=True, text=True)
     assert r.returncode != 0
 
 
@@ -181,7 +182,8 @@ def test_cli_check_exits_zero_on_clean_tree(tmp_path):
     _write_strings(tmp_path / "en.lproj" / "Localizable.strings", {"a": "a"})
     _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "A"})
     r = subprocess.run([sys.executable, str(SCRIPT), "check", "--lproj-root", str(tmp_path),
-                        "--langs", "en,de"], capture_output=True, text=True)
+                        "--source", str(tmp_path), "--langs", "en,de"],
+                       capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
 
 
@@ -895,3 +897,31 @@ def test_validate_allows_a_deliberate_leading_space_in_the_source():
     # If the ENGLISH carries the space, the translation should too.
     ok = ps.validate_translations({" of ": " von "}, {" of ": " of "})
     assert not any(f.kind == "stray_whitespace" for f in ok)
+
+
+# --------------------------------------------- the inventory needs ALL sources
+
+def test_cli_refuses_to_run_when_a_source_root_is_absent(tmp_path):
+    # `DEFAULT_SOURCES` spans both repos. When the submodule is not checked out
+    # the tool used to silently drop it and compute over a SUBSET — 556 keys
+    # instead of 592. Every number it printed was then wrong in the safe-looking
+    # direction: fewer keys demanded, fewer gaps found, and a report fingerprint
+    # that could never match the one a developer committed. CI ran the gate that
+    # way for the whole life of the gate.
+    r = subprocess.run([sys.executable, str(SCRIPT), "check", "--lproj-root", str(tmp_path)],
+                       capture_output=True, text=True, cwd=tmp_path)
+    assert r.returncode != 0
+    out = r.stdout + r.stderr
+    assert "ios-audiobooktoolkit" in out
+    assert "submodule" in out.lower()
+
+
+def test_an_explicit_source_still_overrides_the_defaults(tmp_path):
+    # The escape hatch has to keep working, or the check above makes the tool
+    # unusable anywhere but a fully checked-out tree.
+    (tmp_path / "S.swift").write_text('Text("a")\n', encoding="utf-8")
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"a": "A"})
+    r = subprocess.run([sys.executable, str(SCRIPT), "check", "--lproj-root", str(tmp_path),
+                        "--source", str(tmp_path), "--langs", "de"],
+                       capture_output=True, text=True, cwd=tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
