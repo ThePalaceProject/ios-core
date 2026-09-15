@@ -24,6 +24,60 @@ struct Strings {
         )
     }
 
+    struct ReaderFontSize {
+        // PP-5094: these were `Text("IncreaseFontSize")` -- a SwiftUI
+        // LocalizedStringKey with no `value:`, so VoiceOver announced the raw
+        // identifier in every language, English included.
+        static let decrease = NSLocalizedString(
+            "Decrease font size",
+            value: "Decrease font size",
+            comment: "VoiceOver label for the reader control that makes text smaller"
+        )
+        static let increase = NSLocalizedString(
+            "Increase font size",
+            value: "Increase font size",
+            comment: "VoiceOver label for the reader control that makes text larger"
+        )
+    }
+
+    struct ReaderTypography {
+        // These describe a VISUAL PROPERTY, not a product name, so they are
+        // translated. Font family names (SF Pro, Georgia, OpenDyslexic) are
+        // proper names and deliberately are NOT.
+        static let themeLight = NSLocalizedString("Light", value: "Light", comment: "Reader colour theme: black text on white")
+        static let themeDark = NSLocalizedString("Dark", value: "Dark", comment: "Reader colour theme: light text on a dark background")
+        static let themeSepia = NSLocalizedString("Sepia", value: "Sepia", comment: "Reader colour theme: dark text on a warm paper tone")
+        static let themeSolarized = NSLocalizedString("Solarized", value: "Solarized", comment: "Reader colour theme: the Solarized low-contrast palette")
+        static let themeNight = NSLocalizedString("Night", value: "Night", comment: "Reader colour theme: very low brightness for dark rooms")
+
+        static let marginNarrow = NSLocalizedString("Narrow", value: "Narrow", comment: "Reader page margin width")
+        static let marginMedium = NSLocalizedString("Medium", value: "Medium", comment: "Reader page margin width")
+        static let marginWide = NSLocalizedString("Wide", value: "Wide", comment: "Reader page margin width")
+        static let marginExtraWide = NSLocalizedString("Extra Wide", value: "Extra Wide", comment: "Reader page margin width")
+
+        static let alignLeft = NSLocalizedString("Left", value: "Left", comment: "Reader text alignment: ragged right edge")
+        static let alignJustified = NSLocalizedString("Justified", value: "Justified", comment: "Reader text alignment: both edges flush")
+
+        static let fontCategorySerif = NSLocalizedString("Serif", value: "Serif", comment: "Font picker section: typefaces with serifs")
+        static let fontCategorySansSerif = NSLocalizedString("Sans-Serif", value: "Sans-Serif", comment: "Font picker section: typefaces without serifs")
+        static let fontCategoryAccessibility = NSLocalizedString("Accessibility", value: "Accessibility", comment: "Font picker section: typefaces chosen for readability, e.g. OpenDyslexic")
+
+        // Slider titles. `sliderSection(title:)` takes a `String`, and
+        // `Text(aString)` performs no lookup, so these rendered English in
+        // every language. One string serves both the visible title and the
+        // VoiceOver label — they previously differed only in capitalisation,
+        // which is not a distinction worth translating twice.
+        static let fontSize = NSLocalizedString("Font Size", value: "Font Size", comment: "Reader typography slider: text size")
+        static let lineSpacing = NSLocalizedString("Line Spacing", value: "Line Spacing", comment: "Reader typography slider: space between lines")
+        static let paragraphSpacing = NSLocalizedString("Paragraph Spacing", value: "Paragraph Spacing", comment: "Reader typography slider: space between paragraphs")
+        static let letterSpacing = NSLocalizedString("Letter Spacing", value: "Letter Spacing", comment: "Reader typography slider: space between letters")
+        static let wordSpacing = NSLocalizedString("Word Spacing", value: "Word Spacing", comment: "Reader typography slider: space between words")
+
+        // Readium's `EditingAction` takes a plain `String`, so this reached the
+        // system text-selection menu untranslated.
+        static let highlight = NSLocalizedString("Highlight", value: "Highlight", comment: "Text-selection menu item in the reader that highlights the selection.")
+    }
+
     struct AgeCheck {
         static let title = NSLocalizedString("Age Verification", comment: "Title for Age Verification")
         static let titleLabel = NSLocalizedString("Please enter your birth year", comment: "Caption for asking user to enter their birth year")
@@ -83,7 +137,7 @@ struct Strings {
 
     struct Error {
         static let loginFailedErrorTitle = NSLocalizedString("Login Failed", comment: "")
-        static let loadFailedError = NSLocalizedString("The page could not load due to a conection error.", comment: "")
+        static let loadFailedError = pageLoadFailedError
         static let invalidCredentialsErrorTitle = NSLocalizedString("Invalid Credentials", comment: "")
         static let invalidCredentialsErrorMessage = NSLocalizedString("Please check your username and password and try again.", comment: "")
         static let networkUnavailableErrorTitle = NSLocalizedString("No Internet Connection", comment: "Title shown when sign-in fails because the device lost connectivity")
@@ -114,7 +168,7 @@ struct Strings {
         static let loginErrorDescription = NSLocalizedString("An error occurred during the authentication process",
                                                              comment: "Generic error message while handling sign-in redirection during authentication")
         static let userDeniedLocationAccess = NSLocalizedString("User denied location access. Go to system settings to enable location access for the Palace App.", comment: "Error message shown to user when location services are denied.")
-        static let uknownLocationError = NSLocalizedString("Unkown error occurred. Please try again.", comment: "Error message shown to user when an unknown location error occurs.")
+        static let uknownLocationError = NSLocalizedString("Unknown error occurred. Please try again.", value: "Unknown error occurred. Please try again.", comment: "Error message shown to user when an unknown location error occurs.")
         static let locationFetchFailed = NSLocalizedString("Failed to get current location. Please try again.", comment: "Error message shown to user when CoreLocation does not return the current location.")
         static let tryAgain = NSLocalizedString("Please try again later.", comment: "Error message to please try again.")
     }
@@ -241,7 +295,7 @@ struct Strings {
         static let audiobookDownloading = NSLocalizedString("Downloading", comment: "Label under the audiobook download progress bar")
         static let playbackSpeed = NSLocalizedString("Playback speed", comment: "VoiceOver: Label for the audiobook playback-speed control")
         static let sleepTimer = NSLocalizedString("Sleep timer", comment: "VoiceOver: Label for the audiobook sleep-timer control")
-        static let airplay = NSLocalizedString("AirPlay", comment: "VoiceOver: Label for the audiobook AirPlay route picker")
+        static let airplay = NSLocalizedString("AirPlay", value: "AirPlay", comment: "VoiceOver: Label for the audiobook AirPlay route picker")
         static let addBookmark = NSLocalizedString("Add bookmark", comment: "VoiceOver: Label for the audiobook add-bookmark control")
         static let bookmarkAdded = NSLocalizedString("Bookmark added", comment: "Toast shown after successfully adding an audiobook bookmark")
         static let bookmarkAddFailed = NSLocalizedString("Could not add bookmark", comment: "Toast shown when adding an audiobook bookmark fails")
@@ -534,6 +588,12 @@ struct Strings {
         static let addLibrary = NSLocalizedString("Add Library", comment: "Title of button to add a new library")
         static let myLibraries = NSLocalizedString("My Libraries", comment: "Section header on the Libraries screen, above the list of the patron's own libraries.")
         static let librariesEntrySubtitle = NSLocalizedString("Add, remove, or configure libraries", comment: "Subtitle on the Settings row that opens the Libraries screen.")
+        // `row(title:)` takes a `String`, and `Text(aString)` performs NO
+        // lookup — only a string LITERAL is a `LocalizedStringKey`. These two
+        // rows passed raw English and rendered it in every language while
+        // "Hilfe" / "Assistenza" sat unused in the tables. Verified on device.
+        static let getHelp = NSLocalizedString("Get Help", value: "Get Help", comment: "Settings row that opens the support chat.")
+        static let sideLoading = NSLocalizedString("Side Loading", value: "Side Loading", comment: "Settings row that opens the locally-imported books screen.")
         static let switchLibraryPromptFormat = NSLocalizedString("Would you like to switch to %@?", comment: "Confirmation shown when choosing an inactive library's selection control. %@ is the library name.")
         static let switchToLibraryFormat = NSLocalizedString("Switch to %@", comment: "VoiceOver label for the selection control on an inactive library's row. %@ is the library name.")
         static let switchingLibrary = NSLocalizedString("Switching library…", comment: "Loading overlay text shown while the app switches the active library.")
@@ -604,7 +664,7 @@ struct Strings {
         static let previousChapter = NSLocalizedString("Previous Chapter", comment: "Accessibility label to go backward in the publication")
         static let nextChapter = NSLocalizedString("Next Chapter", comment: "Accessibility label to go forward in the publication")
         static let read = NSLocalizedString("Read", comment: "Accessibility label to read current chapter")
-        static let pageOf = NSLocalizedString("Page %d of ", value: "Page %d of ", comment: "States the page count out of total pages, i.e. `Page 1 of 20`")
+        static let pageOf = NSLocalizedString("Page %1$d of %2$d", value: "Page %1$d of %2$d", comment: "States the page count out of total pages, i.e. `Page 1 of 20`. Both operands are positional so a translation may reorder them.")
         static let navigatedToPage = NSLocalizedString("Page %@", value: "Page %@", comment: "VoiceOver announcement after navigating to a print page, e.g. `Page 12`")
         static let whereAmI = NSLocalizedString("Where am I?", value: "Where am I?", comment: "VoiceOver custom action that announces the patron's current reading position without moving focus")
         static let percentRead = NSLocalizedString("%d%% read", value: "%d%% read", comment: "VoiceOver position component stating how far through the book the patron is, e.g. `45% read`")
@@ -637,7 +697,7 @@ struct Strings {
     }
 
     struct TPPBook {
-        static let epubContentType = NSLocalizedString("ePub", comment: "ePub")
+        static let epubContentType = NSLocalizedString("ePub", value: "ePub", comment: "The ePub file format, shown as a book format label")
         static let pdfContentType = NSLocalizedString("PDF", comment: "PDF")
         static let audiobookContentType = NSLocalizedString("Audiobook", comment: "Audiobook")
         static let unsupportedContentType = NSLocalizedString("Unsupported format", comment: "Unsupported format")
@@ -689,7 +749,7 @@ struct Strings {
     }
 
     struct TPPReaderAppearance {
-        static let blackOnWhiteText = NSLocalizedString("Appearance Selector: Open dyslexic font", comment: "OpenDyslexicFont")
+        static let blackOnWhiteText = NSLocalizedString("Appearance Selector: Black on white text", comment: "BlackOnWhiteText")
         static let blackOnSepiaText = NSLocalizedString("Appearance Selector: Black on sepia text", comment: "BlackOnSepiaText")
         static let whiteOnBlackText = NSLocalizedString("Appearance Selector: White on black text", comment: "WhiteOnBlackText")
     }
@@ -735,6 +795,7 @@ struct Strings {
 
     struct TPPSigninBusinessLogic {
         static let ecard = NSLocalizedString("eCard",
+                                             value: "eCard",
                                              comment: "Title for web-based card creator page")
         static let ecardErrorMessage = NSLocalizedString("We're sorry. Our sign up system is currently down. Please try again later.",
                                                          comment: "Message for error loading the web-based card creator")
@@ -862,16 +923,25 @@ struct Strings {
         /// which renders a loan-duration label on already-borrowed books.
         static let borrowingInProgress = NSLocalizedString("Borrowing…", comment: "Status label shown while a borrow request is in flight, before the download begins.")
         static let due = NSLocalizedString("Due", comment: "")
-        static let holdStatus = NSLocalizedString(
-            "You are %1$@ in line. %2$d %3$@ in use.",
-            comment: "User hold position and number of copies in use. Format: 'You are 5th in line. 3 copies in use.'"
-        )
+        /// Hold position plus how many copies are out, as ONE plural-aware
+        /// sentence. It was assembled from a `copy`/`copies` fragment chosen in
+        /// Swift, which cannot express German verb agreement ("1 Exemplar IST",
+        /// "3 Exemplare SIND") and forces every language into English word
+        /// order. The plural rules live in Localizable.stringsdict.
+        static func holdStatus(position: String, copiesInUse: Int) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "hold_status_copies_in_use",
+                    value: "You are %1$@ in line. %2$d copies in use.",
+                    comment: "Hold position and copies in use, e.g. 'You are 5th in line. 3 copies in use.' Plural forms in Localizable.stringsdict."
+                ),
+                position, copiesInUse
+            )
+        }
         static let holdPositionOnly = NSLocalizedString(
             "You are %1$@ in line.",
             comment: "User hold position without copies info. Format: 'You are 5th in line.'"
         )
-        static let copy = NSLocalizedString("copy", comment: "")
-        static let copies = NSLocalizedString("copies", comment: "")
         static let returning = NSLocalizedString("returning", comment: "")
         static let manageHold = BookButton.manageHold
     }

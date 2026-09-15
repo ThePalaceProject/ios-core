@@ -456,11 +456,9 @@ private extension HalfSheetView {
         if details.holdPosition > 0 {
             if details.copiesAvailable > 0 {
                 Text(
-                    String(
-                        format: DisplayStrings.holdStatus,
-                        details.holdPosition.ordinal(),
-                        details.copiesAvailable,
-                        details.copiesAvailable == 1 ? DisplayStrings.copy : DisplayStrings.copies
+                    DisplayStrings.holdStatus(
+                        position: details.holdPosition.ordinal(),
+                        copiesInUse: details.copiesAvailable
                     )
                 )
                 .font(.footnote)

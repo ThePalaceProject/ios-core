@@ -53,7 +53,7 @@ struct TPPPDFAccessibilityToolbar: View {
     }
 
     private var pageStatus: String {
-        String(format: Strings.TPPBaseReaderViewController.pageOf, currentPage + 1) + "\(pageCount)"
+        String(format: Strings.TPPBaseReaderViewController.pageOf, currentPage + 1, pageCount)
     }
 
     private func goBackward() {

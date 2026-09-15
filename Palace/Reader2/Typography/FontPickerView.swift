@@ -21,7 +21,7 @@ struct FontPickerView: View {
                 ForEach(FontCategory.allCases, id: \.self) { category in
                     let fonts = availableFonts.filter { $0.category == category }
                     if !fonts.isEmpty {
-                        Section(header: Text(category.rawValue).accessibilityAddTraits(.isHeader)) {
+                        Section(header: Text(category.displayName).accessibilityAddTraits(.isHeader)) {
                             ForEach(fonts) { font in
                                 FontRow(
                                     font: font,

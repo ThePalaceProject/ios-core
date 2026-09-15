@@ -32,12 +32,12 @@ struct KBMatchCard: View {
             // "file a ticket" path (when there's nothing to walk through).
             if hasGuidedSteps {
                 BotUI.PrimaryButton(
-                    title: "Walk me through it",
+                    title: BotStrings.walkMeThroughIt,
                     systemImage: "list.bullet.rectangle"
                 ) { onAction(.walkMeThroughIt) }
             } else {
                 BotUI.PrimaryButton(
-                    title: "File a ticket",
+                    title: BotStrings.fileATicket,
                     systemImage: "envelope.fill"
                 ) { onAction(.fileAnyway) }
             }
@@ -48,14 +48,14 @@ struct KBMatchCard: View {
                 if KBMatchActionPolicy.showsNotifyMeOnFix(
                     entryHasFixVersion: entry.fixedInVersion != nil
                 ) {
-                    BotUI.SecondaryChip(title: "Notify me", systemImage: "bell.fill") {
+                    BotUI.SecondaryChip(title: BotStrings.notifyMe, systemImage: "bell.fill") {
                         onAction(.notifyMe)
                     }
                 }
                 if hasGuidedSteps {
                     // When guided flow is the primary, file-ticket becomes
                     // a secondary "skip the steps" affordance.
-                    BotUI.SecondaryChip(title: "Just file a ticket", systemImage: "envelope") {
+                    BotUI.SecondaryChip(title: BotStrings.justFileATicket, systemImage: "envelope") {
                         onAction(.fileAnyway)
                     }
                 }

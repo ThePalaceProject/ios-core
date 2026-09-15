@@ -90,7 +90,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         // DRM-protected flag. DRM titles get an empty action list (no
         // long-press menu); non-DRM titles get Readium's defaults plus the
         // Palace Highlight action.
-        let highlight = EditingAction(title: "Highlight",
+        let highlight = EditingAction(title: Strings.ReaderTypography.highlight,
                                       action: #selector(highlightSelection))
         let editingActions = ReaderEditingActions.resolve(
             for: book,

@@ -53,7 +53,7 @@ built product for exactly that.
 
 Unless the DRM dependencies change (which is very seldom) you shouldn't need to run the `bootstrap-drm.sh` script more than once.
 
-Other 3rd party dependencies come from a mix of Swift Package Manager (Readium 3.x, Firebase, SQLite.swift, PureLayout, snapshot-testing, ULID, std-uritemplate, transifex), git submodules (`ios-audiobooktoolkit`, `ios-tenprintcover`, plus DRM-only submodules), and local Swift packages under `Palace/Packages/` (`PalaceAuth`, `PalaceCatalog`, `PalaceKeychain`, `PalaceLogging`, `PalaceNetwork`).
+Other 3rd party dependencies come from a mix of Swift Package Manager (Readium 3.x, Firebase, SQLite.swift, PureLayout, snapshot-testing, ULID, std-uritemplate), git submodules (`ios-audiobooktoolkit`, `ios-tenprintcover`, plus DRM-only submodules), and local Swift packages under `Palace/Packages/` (`PalaceAuth`, `PalaceCatalog`, `PalaceKeychain`, `PalaceLogging`, `PalaceNetwork`).
 
 To rebuild non-SPM dependencies use the idempotent script:
 ```bash

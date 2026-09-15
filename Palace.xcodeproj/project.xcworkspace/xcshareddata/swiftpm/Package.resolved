@@ -1,5 +1,5 @@
 {
-  "originHash" : "a4c0ca3d1fe3dbc11c80025f5f30cb1be22328dde502f9b6e6e526895c24c43e",
+  "originHash" : "079988df7dc3e0f8d72b814231b93747572524b2b92601442c9aa4c1bb65c2a6",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -233,15 +233,6 @@
       "state" : {
         "revision" : "8d6ad267714cac3ae747cefdd21f7a6665006e1f",
         "version" : "2.13.7"
-      }
-    },
-    {
-      "identity" : "transifex-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/transifex/transifex-swift/",
-      "state" : {
-        "revision" : "e983af3184c456f6061620667a455aa95e99df32",
-        "version" : "1.0.2"
       }
     },
     {

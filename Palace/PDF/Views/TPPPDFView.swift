@@ -106,7 +106,7 @@ struct TPPPDFView: View {
             guard metadata.currentPage > 0 else { return }
             metadata.currentPage -= 1
         }
-        let status = String(format: Strings.TPPBaseReaderViewController.pageOf, metadata.currentPage + 1) + "\(document.pageCount)"
+        let status = String(format: Strings.TPPBaseReaderViewController.pageOf, metadata.currentPage + 1, document.pageCount)
         UIAccessibility.post(notification: .pageScrolled, argument: status)
     }
 

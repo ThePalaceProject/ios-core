@@ -15,7 +15,7 @@ final class TPPProcessInfo: NSObject {
     /// before launching the app, so checking either is reliable.
     ///
     /// Use this to gate side-effecting startup code (Firebase, Crashlytics,
-    /// Transifex, analytics, remote config) that would otherwise hit real
+    /// analytics, remote config) that would otherwise hit real
     /// network endpoints during tests, leak dispatch state, and corrupt the
     /// libdispatch state of subsequent test executions.
     static var isRunningTests: Bool {
