@@ -39,4 +39,4 @@ python3 scripts/palace_strings.py packet --file /tmp/review-packet
 
 See `docs/Operations/localization-workflow.md` for how strings are added and translated.
 
-<!-- l10n-state: 316453ae6ed006e1 -->
+<!-- l10n-state: 0ede192be17ed9da -->

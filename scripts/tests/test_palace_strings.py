@@ -1187,3 +1187,103 @@ def test_the_settings_rows_proven_on_device_are_fixed():
     root = Path(__file__).resolve().parents[2]
     src = (root / "Palace/Settings/NewSettings/TPPSettingsView.swift").read_text(encoding="utf-8")
     assert ps.unlocalized_literals(src) == []
+
+
+# --------------------------------- the parser must agree with Foundation
+#
+# `parse_strings` is a regex that skips anything not matching an entry.
+# Foundation is not: ONE stray token invalidates the whole file and every
+# string in that language falls back to English. So a table Foundation refuses
+# outright read as complete, and the gate said OK — the worst outcome this
+# project can produce, and the one it could not see. Verified against
+# `plutil -lint`, which rejects the file the parser accepted.
+#
+# CI runs on ubuntu, where `plutil` does not exist, so the parser has to refuse
+# the residue itself rather than shelling out.
+
+def test_residue_between_entries_is_reported():
+    bad = '"Borrow" = "Ausleihen";\njunk\n"Return" = "Zurückgeben";\n'
+    assert ps.unparseable_residue(bad) is not None
+
+
+def test_a_clean_table_has_no_residue():
+    # The clean path must pass, or the check is unrunnable on the real tables.
+    ok = '/* a comment */\n"Borrow" = "Ausleihen";\n\n"Return" = "Zurückgeben";\n'
+    assert ps.unparseable_residue(ok) is None
+
+
+def test_line_comments_are_not_read_as_entries():
+    # Foundation ignores a `//` line; the parser read the commented-out entry
+    # as live, so a translator could "remove" a string and the gate would still
+    # count it as present.
+    src = '"Borrow" = "Ausleihen";\n// "Return" = "Zurückgeben";\n'
+    assert ps.parse_strings(src) == {"Borrow": "Ausleihen"}
+    assert ps.unparseable_residue(src) is None
+
+
+def test_an_unterminated_entry_is_residue():
+    assert ps.unparseable_residue('"Borrow" = "Ausleihen"\n') is not None
+
+
+def test_check_tables_reports_a_malformed_table(tmp_path):
+    (tmp_path / "de.lproj").mkdir(parents=True)
+    (tmp_path / "de.lproj" / "Localizable.strings").write_text(
+        '"a" = "A";\njunk\n', encoding="utf-8")
+    kinds = [f.kind for f in ps.check_tables(tmp_path, ["de"])]
+    assert "malformed_table" in kinds
+
+
+def test_the_shipped_tables_are_free_of_residue():
+    root = Path(__file__).resolve().parents[2]
+    for lang in ("de", "es", "fr", "it"):
+        p = root / "Palace" / f"{lang}.lproj" / "Localizable.strings"
+        assert ps.unparseable_residue(p.read_text(encoding="utf-8")) is None, lang
+
+
+# ------------------------------- carrying a translation across a key rewording
+#
+# When an English string is reworded, its key changes and every translation of
+# it is orphaned — the lookup misses and the patron sees English again. The
+# recovery pass for the Transifex corpus consulted a HAND-MAINTAINED migration
+# list, so it only carried the drifts someone had already noticed: it caught 17
+# and missed 4. One of the four cost real quality — French shipped
+# "S'il vous plaît, attendez" where the orphan held "Veuillez patienter", and
+# Italian shipped the archaic "attendere prego" over "Attendi".
+#
+# A canonical sweep is mechanical and complete where a list is neither.
+
+def test_carries_a_translation_across_a_case_change():
+    assert ps.canonical_carry({"Try Again": "Erneut versuchen"}, {"Try again"}) \
+        == {"Try again": "Erneut versuchen"}
+
+
+def test_carries_across_trailing_punctuation():
+    assert ps.canonical_carry({"Narrators:": "Erzähler"}, {"Narrators"}) \
+        == {"Narrators": "Erzähler"}
+
+
+def test_does_not_carry_when_the_key_still_exists():
+    # Not an orphan — the live translation wins; a carry would overwrite it.
+    assert ps.canonical_carry({"Borrow": "Ausleihen"}, {"Borrow"}) == {}
+
+
+def test_does_not_carry_across_a_meaning_change():
+    # `Returns %@` -> `Returned %@.` is present tense to past. The old value is
+    # WRONG for the new string, and string similarity cannot tell. Only an
+    # exact canonical match carries.
+    assert ps.canonical_carry({"Returns %@": "Devuelve %@"}, {"Returned %@."}) == {}
+
+
+def test_does_not_carry_when_the_specifiers_differ():
+    # `Downloads %@` -> `Downloads` drops a placeholder; carrying the old value
+    # leaves a dangling %@ that renders as garbage.
+    assert ps.canonical_carry({"Downloads %@": "Descargas %@"}, {"Downloads"}) == {}
+
+
+def test_prefers_nothing_over_an_ambiguous_carry():
+    # Two orphans canonicalise the same. Guessing which one is right is how a
+    # recovery pass silently installs the wrong translation.
+    # Both canonicalise to "try again"; `canonical` keeps `!`, so the pair has
+    # to differ only in case for this to be the ambiguous shape.
+    orphans = {"Try Again": "Erneut versuchen", "TRY AGAIN": "Nochmal"}
+    assert ps.canonical_carry(orphans, {"Try again"}) == {}

@@ -947,7 +947,7 @@
 /* Message shown when the audiobook fails to load, prompting a retry */
 "Please try again." = "Veuillez réessayer.";
 
-"Please wait" = "S'il vous plaît, attendez";
+"Please wait" = "Veuillez patienter";
 
 "Please wait a moment before switching library accounts" = "Veuillez patienter un moment avant de changer de compte de bibliothèque";
 

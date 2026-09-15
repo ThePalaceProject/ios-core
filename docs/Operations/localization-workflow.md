@@ -100,6 +100,21 @@ work someone skipped.
 and there should not be: it is not in the Xcode project, so a file there would
 never ship while looking authoritative. The key IS the English.
 
+**A reworded string orphans its translation — sweep, don't remember.**
+`canonical_carry(orphans, wanted)` matches an orphaned source to a live key
+under `canonical()` (case, punctuation, curly quotes, spacing) and proposes the
+carry. It deliberately refuses three things, because each installs a wrong
+translation that looks recovered: no fuzzy matching (`Returns %@` to
+`Returned %@.` scores 0.82 and is present tense against past), no carry when
+the specifier set changed (`Downloads %@` to `Downloads` leaves a dangling
+`%@`), and no carry when two orphans canonicalise the same.
+
+**A carry is a candidate, not an answer.** Run against the retired Transifex
+corpus it proposed 4 per language; 8 differed from what shipped and only 2 were
+improvements — the other 6 were informal-register values that would have made
+Spanish and Italian worse. Review each one; the hand-maintained migration list
+this replaces carried 17 and missed 4, and one of the misses cost real quality.
+
 **Changing an English string changes the key**, which orphans its translations.
 `status` will show the old key as no-longer-in-source and the new one as
 untranslated. If the change was cosmetic — a recase, a specifier switched
