@@ -64,6 +64,20 @@ from _checklib import read_diff
 
 # --- Claim grammars --------------------------------------------------------
 
+# Every grammar below is IGNORECASE, so `[A-Z]\w+` also matches a lowercase
+# word. That is deliberate — `removes fetchTranslations` is a real claim about a
+# real symbol — but it means an ordinary English article or pronoun after a
+# claim verb is captured as a type name. "removes the Transifex SDK" parsed as a
+# claim to remove a type called `the`, which no diff can ever satisfy, so the
+# gate blocked plain prose. Suppressing it only inside an `## Anti-claims`
+# section (the earlier fix) left the commoner case — a declarative sentence —
+# still blocking. No identifier in this tree is an English function word.
+_NOT_A_NAME = frozenset({
+    "the", "a", "an", "this", "that", "these", "those", "its", "it",
+    "all", "any", "both", "each", "every", "some", "no", "our", "their",
+})
+
+
 _REM_RE = re.compile(r"\bremoves?\s+`?([A-Z][\w\.]+)`?",
                      flags=re.IGNORECASE)
 _REN_RE = re.compile(
@@ -181,13 +195,25 @@ def _parse_claims_from_text(text: str, source: str) -> list[_Claim]:
     """
     text = _strip_non_claim_regions(text)
     claims: list[_Claim] = []
+    # Fixing only REM would leave the same false positive live in three other
+    # grammars that share its shape, so every captured name goes through the
+    # same filter.
+    def _named(*groups: str) -> bool:
+        return not any(g.lower() in _NOT_A_NAME for g in groups)
+
     for m in _REN_RE.finditer(text):
+        if not _named(m.group(1), m.group(2)):
+            continue
         claims.append(_Claim(kind="REN", args=(m.group(1), m.group(2)),
                              source=source))
     for m in _EXT_RE.finditer(text):
+        if not _named(m.group(1), m.group(2)):
+            continue
         claims.append(_Claim(kind="EXT", args=(m.group(1), m.group(2)),
                              source=source))
     for m in _MIG_RE.finditer(text):
+        if not _named(m.group(1), m.group(2)):
+            continue
         claims.append(_Claim(kind="MIG", args=(m.group(1), m.group(2)),
                              source=source))
     for m in _ADDFLD_RE.finditer(text):
@@ -208,6 +234,8 @@ def _parse_claims_from_text(text: str, source: str) -> list[_Claim]:
     rem_seen: set[str] = set()
     for m in _REM_RE.finditer(text):
         name = m.group(1)
+        if name.lower() in _NOT_A_NAME:
+            continue
         if name in renamed_first_args:
             continue
         if name in extracted_first_args:

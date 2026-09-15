@@ -306,3 +306,60 @@ def test_fenced_hash_line_inside_anti_claims_does_not_swallow_later_claims(tmp_p
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+# --- Articles are not type names -------------------------------------------
+#
+# Every claim grammar carries `flags=re.IGNORECASE`, so `[A-Z]\w+` matches a
+# lowercase word too and "removes the Transifex SDK" parsed as a claim to
+# remove a type called `the`. Such a claim can never be satisfied by any diff,
+# so the gate blocked ordinary English prose. An earlier fix suppressed it only
+# inside an `## Anti-claims` section, which left the far commoner case — a
+# plain declarative sentence — still blocking.
+
+_NEUTRAL_DIFF = (
+    "diff --git a/Palace/Foo/Other.swift b/Palace/Foo/Other.swift\n"
+    "index 111..222 100644\n"
+    "--- a/Palace/Foo/Other.swift\n"
+    "+++ b/Palace/Foo/Other.swift\n"
+    "@@ -1,2 +1,3 @@\n"
+    " import Foundation\n"
+    "+let unrelated = 1\n"
+)
+
+
+@pytest.mark.parametrize("sentence", [
+    "This removes the Transifex SDK.",
+    "Renames the helper to the wrapper.",
+    "Extracts the reducer into the package.",
+    "Migrates the store to the actor.",
+])
+def test_an_article_after_a_claim_verb_is_not_a_claim(tmp_path, sentence):
+    # REN, EXT and MIG share REM's `[A-Z]\w+` + IGNORECASE shape, so each can
+    # capture an article the same way. Fixing only REM leaves three live.
+    msg = _write(tmp_path, "msg.txt", f"Cleanup\n\n{sentence}\n")
+    diff = _write(tmp_path, "diff.txt", _NEUTRAL_DIFF)
+    r = _run(msg, diff)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_real_removal_claim_is_still_caught(tmp_path):
+    # The suppression must be a stop-word list, not a weakened grammar: an
+    # unsupported claim about a REAL name must still block.
+    msg = _write(tmp_path, "msg.txt",
+                 "Cleanup\n\nThis removes TransifexManager from the app.\n")
+    diff = _write(tmp_path, "diff.txt", _NEUTRAL_DIFF)
+    r = _run(msg, diff)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "TransifexManager" in (r.stdout + r.stderr)
+
+
+def test_a_lowercase_identifier_is_still_a_claim(tmp_path):
+    # IGNORECASE is deliberate — `removes fetchTranslations` is a real claim
+    # about a real symbol. Only English function words are excluded.
+    msg = _write(tmp_path, "msg.txt",
+                 "Cleanup\n\nThis removes fetchTranslations.\n")
+    diff = _write(tmp_path, "diff.txt", _NEUTRAL_DIFF)
+    r = _run(msg, diff)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "fetchTranslations" in (r.stdout + r.stderr)
