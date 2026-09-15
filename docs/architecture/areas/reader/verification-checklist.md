@@ -148,6 +148,11 @@ The reader area does **not** currently emit a unified `readerOpenOutcome` teleme
 - `PalaceTests/Reader/KeyboardNavigationFKATests.swift`
 - `PalaceTests/Reader2/EPUBSearchViewModelTests.swift`
 - `PalaceTests/Reader2/TPPBaseReaderViewControllerInitialLocationTests.swift`
+- `PalaceTests/Reader2/TPPReaderPositionsVCTOCTests.swift` — PP-5128; the Contents tab
+  must populate without a Bookmarks round-trip. Pins the main-actor ordering that
+  `presentPositionsVC()` produces (business logic constructed + view loaded + made to
+  appear in ONE turn), so the async TOC load is provably still queued when the table
+  takes its first snapshot.
 - `PalaceTests/Reader2/TPPReaderTOCBusinessLogicTests.swift`
 - `PalaceTests/Reader2/BookmarkBusinessLogicTests.swift`
 - `PalaceTests/Reader2/TPPReadiumBookmarkTests.swift`
@@ -224,6 +229,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
+| 2026-09-14 | PP-5128 (reader TOC blank) | Added `TPPReaderPositionsVCTOCTests.swift` to the §6 XCTest inventory. It pins the main-actor ordering that decides whether the Contents tab renders at all, and the Contents-only scoping of the post-load reload. |
 | 2026-05-28 | swarm rigor meta-improvement (this PR) | Initial baseline. Derived from PR #1012 (PP-4297 copy/paste gating), PR #1008 (PP-4454 Marketplace LCP-PDF), and the in-flight `fix/PP-4297-reader-copy-paste-gating` branch wiring `ReadiumPDFViewController`. Reader3/ confirmed empty — PDF lives under `Palace/PDF/`. |
 
 ---
