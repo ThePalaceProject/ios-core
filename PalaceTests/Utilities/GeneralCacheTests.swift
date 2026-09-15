@@ -264,7 +264,7 @@ final class GeneralCacheTests: XCTestCase {
         // a failed assertion into a hung test run. A healthy run takes well under
         // a second and a deadlock never finishes, so the timeout only needs
         // headroom for a loaded CI simulator.
-        wait(for: [finished], timeout: 10)
+        wait(for: [finished], timeout: 10)   // STARVE-001-OK: detecting a deadlock needs a bound; a Task join would hang the suite forever on regression
         diskCache.clear()
     }
 
