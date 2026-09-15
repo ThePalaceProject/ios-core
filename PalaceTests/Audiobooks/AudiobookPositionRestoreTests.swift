@@ -288,7 +288,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
 
     /// Offline, credentials stored for THIS library: the patron opens their
     /// downloaded book. End to end through `isUserAuthenticated()`.
-    func testIsUserAuthenticated_offlineWithStoredCredentials_isAuthenticated() throws {
+    func testIsUserAuthenticated_offlineWithStoredCredentials_isAuthenticated() async throws {
         let (manager, account, cleanup) = try seedCurrentAccount(uuid: "pp5135-wiring-offline")
         defer { cleanup() }
         manager.userAccount(for: account.uuid).setBarcode("12345", PIN: "6789")
@@ -299,7 +299,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
                         "precondition: the seed must make currentAccount resolve, or isUserAuthenticated returns false at its first guard and this asserts nothing")
 
         let sut = AudiobookSessionManager(appContainer: makeTestAppContainer(accountsManager: manager, bookRegistry: registryMock))
-        let authed = runAsync { await sut.isUserAuthenticated() }
+        let authed = await sut.isUserAuthenticated()
 
         XCTAssertTrue(authed,
                       "offline is not signed-out — a patron with stored credentials must be able to open a downloaded audiobook (PP-5135)")
@@ -307,7 +307,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     }
 
     /// Same unreachable auth document, no credentials: still refused.
-    func testIsUserAuthenticated_offlineWithoutCredentials_isNotAuthenticated() throws {
+    func testIsUserAuthenticated_offlineWithoutCredentials_isNotAuthenticated() async throws {
         let (manager, account, cleanup) = try seedCurrentAccount(uuid: "pp5135-wiring-nocreds")
         defer { cleanup() }
         manager.userAccount(for: account.uuid).removeAll()
@@ -321,7 +321,8 @@ final class AudiobookPositionRestoreTests: XCTestCase {
                         "precondition: currentAccount must resolve, or this asserts nothing")
 
         let sut = AudiobookSessionManager(appContainer: makeTestAppContainer(accountsManager: manager, bookRegistry: registryMock))
-        XCTAssertFalse(runAsync { await sut.isUserAuthenticated() },
+        let authed = await sut.isUserAuthenticated()
+        XCTAssertFalse(authed,
                        "no stored credentials is genuinely signed-out, offline or not")
         manager.cancelBackgroundWork()
     }
@@ -329,7 +330,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     /// A library switch is not offline. Credentials ARE stored, so this fails if
     /// the `.evicted` narrowing is deleted — through the real gate, not the pure
     /// function.
-    func testIsUserAuthenticated_evictedByLibrarySwitch_isNotAuthenticated() throws {
+    func testIsUserAuthenticated_evictedByLibrarySwitch_isNotAuthenticated() async throws {
         let (manager, account, cleanup) = try seedCurrentAccount(uuid: "pp5135-wiring-evicted")
         defer { cleanup() }
         manager.userAccount(for: account.uuid).setBarcode("12345", PIN: "6789")
@@ -341,7 +342,8 @@ final class AudiobookPositionRestoreTests: XCTestCase {
                         "precondition: currentAccount must resolve, or this asserts nothing")
 
         let sut = AudiobookSessionManager(appContainer: makeTestAppContainer(accountsManager: manager, bookRegistry: registryMock))
-        XCTAssertFalse(runAsync { await sut.isUserAuthenticated() },
+        let authed = await sut.isUserAuthenticated()
+        XCTAssertFalse(authed,
                        "an evicted account is a library switch, not an offline device (PP-5135)")
         manager.cancelBackgroundWork()
     }
@@ -359,15 +361,6 @@ final class AudiobookPositionRestoreTests: XCTestCase {
             cleanupSeed()
         }
         return (manager, account, cleanup)
-    }
-
-    /// Bridges the async gate into a synchronous test body.
-    private func runAsync<T>(_ work: @escaping () async -> T) -> T {
-        let done = expectation(description: "async work")
-        var result: T!
-        Task { result = await work(); done.fulfill() }
-        wait(for: [done], timeout: 5)
-        return result
     }
 
     /// The FULL (error x credentials) table — all five `AccountLoadError` cases

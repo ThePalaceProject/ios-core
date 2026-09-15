@@ -1411,43 +1411,6 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
 
 extension MyBooksDownloadCenter {
 
-    func redownloadLCPContentFile(for book: TPPBook) {
-        localContentService.redownloadLCPContentFile(for: book)
-    }
-
-    /// PP-5135: start the background `.lcpa` fetch for an LCP audiobook that
-    /// finished fulfillment holding only its `.lcpl` license.
-    ///
-    /// With LCP streaming ON, `LCPFulfillmentHandler` deliberately marks the book
-    /// downloaded on the license alone so playback can start immediately instead
-    /// of waiting on a multi-gigabyte archive. That is a good trade for START-UP
-    /// latency and a bad one for the shelf's promise: the patron is told the book
-    /// is Downloaded. This restores the second half — the archive also arrives,
-    /// in the background, so going offline works.
-    ///
-    /// `lcpContentFileMissing` is the existing seam for exactly this condition
-    /// (LCP-openable, content file absent); on noDRM it is always false, so this
-    /// compiles and no-ops there without an `#if`.
-    func startLCPContentFetchIfNeeded(for book: TPPBook) async {
-        // The INJECTED accountsManager, not `AccountsManager.shared`: CLAUDE.md
-        // forbids `.shared` reads in new code, and a test download center wired to
-        // a different account must not resolve paths through the live singleton.
-        let account = accountsManager.currentAccountId ?? ""
-        guard lcpContentFileMissing(for: book, account: account) else { return }
-
-        guard LocalBookContentService.backgroundFetchAllowed(
-            isConnectedToNetwork: reachability.isConnectedToNetwork(),
-            isOnWiFi: reachability.isOnWiFi,
-            downloadOnlyOnWiFi: settings.downloadOnlyOnWiFi
-        ) else {
-            Log.info(#file, "PP-5135: '\(book.title)' has no .lcpa yet, but a background fetch is not allowed right now (offline, or cellular with download-only-on-WiFi set) — it will be retried on the next open")
-            return
-        }
-
-        Log.info(#file, "PP-5135: fulfillment left '\(book.title)' license-only — fetching the .lcpa in the background so the book works offline")
-        redownloadLCPContentFile(for: book)
-    }
-
     func deleteLocalContent(for identifier: String, account: String? = nil) {
         localContentService.deleteLocalContent(for: identifier, account: account)
     }
@@ -1652,7 +1615,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         // nothing. An earlier revision of this fix did exactly that and was inert
         // for every fresh borrow; two reviewers caught it by reading the guard
         // rather than the call. Do not move this earlier.
-        await startLCPContentFetchIfNeeded(for: book)
+        await startLCPContentFetchIfNeeded(for: book, account: accountsManager.currentAccountId ?? "")
         // Reliability WS-A: download reached a terminal outcome — drop the
         // durable record and reset the transient-transfer retry counter.
         await stateManager.finishTerminalBookkeeping(for: book.identifier, keepRecord: dispatchResult.followUpTaskInFlight)
