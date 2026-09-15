@@ -45,13 +45,13 @@ class LocalBookContentService {
     private let bookFileManager: BookFileManager
     private let fileManager: FileManager
     private let lcpContentFulfiller: LCPContentFulfilling
-    /// PP-4957: reads the LCP-audiobook-streaming feature flag. When ON, the
-    /// self-heal `.lcpa` re-download is skipped for an LCP audiobook — a
-    /// streaming book is intentionally content-absent and playable on its
-    /// license alone, so re-fetching the full archive would defeat streaming.
-    /// Injected so tests drive both flag states; production default reads the
-    /// shared flag (local override > Firebase remote, default `false`).
-    private let streamingEnabledProvider: () -> Bool
+    // PP-5135: this type deliberately holds NO streaming-flag seam. It used to,
+    // and read it to skip the self-heal `.lcpa` re-download while streaming was
+    // ON — which is what left every "Downloaded" LCP audiobook with no audio on
+    // disk and unplayable offline. The content fetch is now unconditional, so
+    // the flag is not merely unused here but unrepresentable, and the
+    // short-circuit cannot be reintroduced by a caller passing a provider.
+
     /// Per-instance so tests can drive the idle-expiry and heartbeat behaviour
     /// in milliseconds instead of waiting out the production window.
     private let inflightIdleTimeout: TimeInterval
@@ -123,6 +123,29 @@ class LocalBookContentService {
     /// timeout, so a stalled connection fails there first.
     static let inflightContentDownloadIdleTimeout: TimeInterval = 180
 
+    /// PP-5135: whether a BACKGROUND `.lcpa` fetch may start right now, given
+    /// connectivity and the patron's download preference.
+    ///
+    /// The archive is hundreds of megabytes. `downloadOnlyOnWiFi` is a setting
+    /// the patron actually set, and 3.2.x honoured it for this transfer — the
+    /// download-first path refuses at `DownloadStartReducer.reduceRegular`
+    /// (`.failWifi`). Re-introducing the fetch without this check would spend
+    /// their cellular data against that stated preference, which is a worse
+    /// defect than the one being fixed.
+    ///
+    /// Pure and static so every caller shares one rule and a flipped conditional
+    /// is caught by mutation testing. Offline returns false: there is nothing to
+    /// fetch, and the open path must not queue work that cannot run.
+    static func backgroundFetchAllowed(
+        isConnectedToNetwork: Bool,
+        isOnWiFi: Bool,
+        downloadOnlyOnWiFi: Bool
+    ) -> Bool {
+        guard isConnectedToNetwork else { return false }
+        if downloadOnlyOnWiFi && !isOnWiFi { return false }
+        return true
+    }
+
     private static func monotonicNow() -> UInt64 {
         DispatchTime.now().uptimeNanoseconds
     }
@@ -135,10 +158,8 @@ class LocalBookContentService {
         lcpContentFulfiller: LCPContentFulfilling? = nil,
         inflightIdleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
         downloadCenterHasTransfer: ((String) -> Bool)? = nil,
-        monotonicClock: (() -> UInt64)? = nil,
-        streamingEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled }
+        monotonicClock: (() -> UInt64)? = nil
     ) {
-        self.streamingEnabledProvider = streamingEnabledProvider
         self.inflightIdleTimeout = inflightIdleTimeout
         self.monotonicClock = monotonicClock ?? LocalBookContentService.monotonicNow
         self.downloadCenterHasTransfer = downloadCenterHasTransfer
@@ -342,15 +363,22 @@ class LocalBookContentService {
     func redownloadLCPContentFile(for book: TPPBook) {
         #if LCP
         guard LCPAudiobooks.canOpenBook(book) else { return }
-        // PP-4957: when streaming is ON, an LCP audiobook is intentionally
-        // content-absent and playable on its license alone — the self-heal must
-        // NOT re-fetch the `.lcpa`, or it would re-download the full archive that
-        // the streaming path exists to avoid. Flag OFF → the self-heal below is
-        // unchanged (today's download-first behavior).
-        if streamingEnabledProvider() {
-            Log.info(#file, "PP-4957 streaming ON — skipping self-heal .lcpa re-download for '\(book.title)'")
-            return
-        }
+        // PP-5135: this is deliberately NOT gated on the streaming flag.
+        //
+        // PP-4957 short-circuited here when streaming was ON, on the reasoning
+        // that a streaming LCP audiobook is "intentionally content-absent"
+        // because its `.lcpl` license alone makes it playable. That holds only
+        // while the device is online — and the same book is reported to the
+        // patron as Downloaded, so going offline (the whole point of
+        // downloading) left the open with no audio behind it and it dead-ended
+        // in `PublicationOpenError`. Measured on device for PP-5135: every
+        // borrowed LCP audiobook had its `.lcpl` and not one `.lcpa`.
+        //
+        // Streaming keeps its benefit — the patron starts playing immediately
+        // instead of waiting on a multi-gigabyte archive — because this fetch is
+        // a BACKGROUND transfer nobody blocks on. The guards below already make
+        // it safe to call unconditionally: it skips when the `.lcpa` is present,
+        // when the download center is transferring, and when a claim is held.
         guard let licenseURL = lcpLicenseURL(forBookIdentifier: book.identifier) else {
             Log.warn(#file, "📥 [LCP RE-DOWNLOAD] No license file found for '\(book.title)' — skipping")
             return
