@@ -925,3 +925,17 @@ def test_an_explicit_source_still_overrides_the_defaults(tmp_path):
                         "--source", str(tmp_path), "--langs", "de"],
                        capture_output=True, text=True, cwd=tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
+
+def test_a_key_translated_via_stringsdict_counts_as_translated(tmp_path):
+    # Plurals live in .stringsdict, not .strings. Without this, every plural key
+    # is reported untranslated forever and the gate trains people to ignore it.
+    import plistlib
+    src = tmp_path / "src"; src.mkdir()
+    (src / "V.swift").write_text(
+        'NSLocalizedString("day_count", value: "%d days", comment: "c")')
+    for lang in ("de",):
+        p = tmp_path / f"{lang}.lproj" / "Localizable.stringsdict"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        plistlib.dump({"day_count": {"NSStringLocalizedFormatKey": "%#@d@"}}, open(p, "wb"))
+    findings = ps.check_tables(tmp_path, ["de"], require=ps.inventory([src])[0])
+    assert not any(f.kind == "untranslated" for f in findings), findings

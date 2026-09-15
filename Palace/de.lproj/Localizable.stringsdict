@@ -34,6 +34,22 @@
 			<string>%d T</string>
 		</dict>
 	</dict>
+	<key>hold_status_copies_in_use</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Sie sind an %1$@ Stelle in der Warteliste. %2$#@copies@</string>
+		<key>copies</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d Exemplar ist in Benutzung.</string>
+			<key>other</key>
+			<string>%d Exemplare sind in Benutzung.</string>
+		</dict>
+	</dict>
 	<key>hour_suffix_long</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

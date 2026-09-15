@@ -383,6 +383,10 @@ def check_tables(root: Path, langs: list[str],
         # Evaluated before the no-tables early return, because a tree with no
         # tables at all is the strongest case of untranslated, not a reason to skip.
         have: set[str] = set().union(*(set(t) for t in present.values())) if present else set()
+        # A plural key is translated in .stringsdict, not .strings. Counting only
+        # the .strings tables reports every plural as untranslated forever.
+        for lang in langs:
+            have |= stringsdict_keys(root, lang) or set()
         for key in sorted(require - have):
             findings.append(Finding("untranslated", "", key,
                                     "new source string with no translation in any language"))

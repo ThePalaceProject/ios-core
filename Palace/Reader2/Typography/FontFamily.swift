@@ -13,6 +13,15 @@ enum FontCategory: String, Codable, CaseIterable {
     case serif = "Serif"
     case sansSerif = "Sans-Serif"
     case accessibility = "Accessibility"
+
+    /// Localized section title. `rawValue` is the Codable value and stays English.
+    var displayName: String {
+        switch self {
+        case .serif: return Strings.ReaderTypography.fontCategorySerif
+        case .sansSerif: return Strings.ReaderTypography.fontCategorySansSerif
+        case .accessibility: return Strings.ReaderTypography.fontCategoryAccessibility
+        }
+    }
 }
 
 /// Represents a font family available for use in the EPUB reader.
@@ -29,7 +38,7 @@ enum TPPFontFamily: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Human-readable display name shown in the font picker.
+    /// Font family names are PROPER NAMES and are deliberately not localized.
     var displayName: String { rawValue }
 
     /// The CSS font-family value injected into EPUB content via Readium.

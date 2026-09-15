@@ -40,6 +40,29 @@ struct Strings {
         )
     }
 
+    struct ReaderTypography {
+        // These describe a VISUAL PROPERTY, not a product name, so they are
+        // translated. Font family names (SF Pro, Georgia, OpenDyslexic) are
+        // proper names and deliberately are NOT.
+        static let themeLight = NSLocalizedString("Light", value: "Light", comment: "Reader colour theme: black text on white")
+        static let themeDark = NSLocalizedString("Dark", value: "Dark", comment: "Reader colour theme: light text on a dark background")
+        static let themeSepia = NSLocalizedString("Sepia", value: "Sepia", comment: "Reader colour theme: dark text on a warm paper tone")
+        static let themeSolarized = NSLocalizedString("Solarized", value: "Solarized", comment: "Reader colour theme: the Solarized low-contrast palette")
+        static let themeNight = NSLocalizedString("Night", value: "Night", comment: "Reader colour theme: very low brightness for dark rooms")
+
+        static let marginNarrow = NSLocalizedString("Narrow", value: "Narrow", comment: "Reader page margin width")
+        static let marginMedium = NSLocalizedString("Medium", value: "Medium", comment: "Reader page margin width")
+        static let marginWide = NSLocalizedString("Wide", value: "Wide", comment: "Reader page margin width")
+        static let marginExtraWide = NSLocalizedString("Extra Wide", value: "Extra Wide", comment: "Reader page margin width")
+
+        static let alignLeft = NSLocalizedString("Left", value: "Left", comment: "Reader text alignment: ragged right edge")
+        static let alignJustified = NSLocalizedString("Justified", value: "Justified", comment: "Reader text alignment: both edges flush")
+
+        static let fontCategorySerif = NSLocalizedString("Serif", value: "Serif", comment: "Font picker section: typefaces with serifs")
+        static let fontCategorySansSerif = NSLocalizedString("Sans-Serif", value: "Sans-Serif", comment: "Font picker section: typefaces without serifs")
+        static let fontCategoryAccessibility = NSLocalizedString("Accessibility", value: "Accessibility", comment: "Font picker section: typefaces chosen for readability, e.g. OpenDyslexic")
+    }
+
     struct AgeCheck {
         static let title = NSLocalizedString("Age Verification", comment: "Title for Age Verification")
         static let titleLabel = NSLocalizedString("Please enter your birth year", comment: "Caption for asking user to enter their birth year")
@@ -879,16 +902,25 @@ struct Strings {
         /// which renders a loan-duration label on already-borrowed books.
         static let borrowingInProgress = NSLocalizedString("Borrowing…", comment: "Status label shown while a borrow request is in flight, before the download begins.")
         static let due = NSLocalizedString("Due", comment: "")
-        static let holdStatus = NSLocalizedString(
-            "You are %1$@ in line. %2$d %3$@ in use.",
-            comment: "User hold position and number of copies in use. Format: 'You are 5th in line. 3 copies in use.'"
-        )
+        /// Hold position plus how many copies are out, as ONE plural-aware
+        /// sentence. It was assembled from a `copy`/`copies` fragment chosen in
+        /// Swift, which cannot express German verb agreement ("1 Exemplar IST",
+        /// "3 Exemplare SIND") and forces every language into English word
+        /// order. The plural rules live in Localizable.stringsdict.
+        static func holdStatus(position: String, copiesInUse: Int) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "hold_status_copies_in_use",
+                    value: "You are %1$@ in line. %2$d copies in use.",
+                    comment: "Hold position and copies in use, e.g. 'You are 5th in line. 3 copies in use.' Plural forms in Localizable.stringsdict."
+                ),
+                position, copiesInUse
+            )
+        }
         static let holdPositionOnly = NSLocalizedString(
             "You are %1$@ in line.",
             comment: "User hold position without copies info. Format: 'You are 5th in line.'"
         )
-        static let copy = NSLocalizedString("copy", comment: "")
-        static let copies = NSLocalizedString("copies", comment: "")
         static let returning = NSLocalizedString("returning", comment: "")
         static let manageHold = BookButton.manageHold
     }

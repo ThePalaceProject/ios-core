@@ -306,11 +306,9 @@ struct NormalBookCell: View {
         if details.holdPosition > 0 {
             if details.copiesAvailable > 0 {
                 Text(
-                    String(
-                        format: Strings.BookDetailView.holdStatus,
-                        details.holdPosition.ordinal(),
-                        details.copiesAvailable,
-                        details.copiesAvailable == 1 ? Strings.BookDetailView.copy : Strings.BookDetailView.copies
+                    Strings.BookDetailView.holdStatus(
+                        position: details.holdPosition.ordinal(),
+                        copiesInUse: details.copiesAvailable
                     )
                 )
                 .font(.footnote)
