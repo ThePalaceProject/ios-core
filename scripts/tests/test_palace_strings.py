@@ -728,3 +728,95 @@ def test_require_complete_passes_once_translated(tmp_path):
     (src / "V.swift").write_text('NSLocalizedString("Renew this loan", comment: "")')
     _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"Renew this loan": "Leihfrist"})
     assert ps.check_tables(tmp_path, ["de"], require=ps.inventory([src])[0]) == []
+
+
+# --------------------------------------------- status report + staleness gate
+
+def _tiny_tree(tmp_path, keys=("Borrow",), de="Ausleihen"):
+    src = tmp_path / "src"; src.mkdir(exist_ok=True)
+    (src / "V.swift").write_text("".join(
+        f'NSLocalizedString("{k}", comment: "c")\n' for k in keys))
+    for lang in ("de", "es", "fr", "it"):
+        _write_strings(tmp_path / f"{lang}.lproj" / "Localizable.strings",
+                       {k: de for k in keys})
+    return src
+
+
+def test_report_includes_a_fingerprint_of_the_current_state(tmp_path):
+    src = _tiny_tree(tmp_path)
+    text = ps.build_report([src], tmp_path, ["de", "es", "fr", "it"])
+    assert ps.REPORT_FINGERPRINT_MARKER in text
+    assert ps.state_fingerprint([src], tmp_path, ["de", "es", "fr", "it"]) in text
+
+
+def test_report_is_stale_once_a_translation_changes(tmp_path):
+    src = _tiny_tree(tmp_path)
+    langs = ["de", "es", "fr", "it"]
+    doc = tmp_path / "status.md"
+    doc.write_text(ps.build_report([src], tmp_path, langs))
+    assert ps.report_is_current(doc, [src], tmp_path, langs) is True
+
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"Borrow": "Leihen"})
+    assert ps.report_is_current(doc, [src], tmp_path, langs) is False
+
+
+def test_report_is_stale_once_a_source_string_is_added(tmp_path):
+    src = _tiny_tree(tmp_path)
+    langs = ["de", "es", "fr", "it"]
+    doc = tmp_path / "status.md"
+    doc.write_text(ps.build_report([src], tmp_path, langs))
+    (src / "W.swift").write_text('NSLocalizedString("Return", comment: "c")')
+    assert ps.report_is_current(doc, [src], tmp_path, langs) is False
+
+
+def test_missing_report_is_not_current(tmp_path):
+    src = _tiny_tree(tmp_path)
+    assert ps.report_is_current(tmp_path / "nope.md", [src], tmp_path, ["de"]) is False
+
+
+def test_report_states_real_counts(tmp_path):
+    src = _tiny_tree(tmp_path, keys=("Borrow", "Return"))
+    # Return is present in every table too, so coverage is complete
+    for lang in ("de", "es", "fr", "it"):
+        _write_strings(tmp_path / f"{lang}.lproj" / "Localizable.strings",
+                       {"Borrow": "A", "Return": "B"})
+    text = ps.build_report([src], tmp_path, ["de", "es", "fr", "it"])
+    assert "2" in text and "100.0%" in text
+
+
+def test_check_fails_when_the_report_is_stale(tmp_path):
+    src = _tiny_tree(tmp_path)
+    langs = ["de", "es", "fr", "it"]
+    doc = tmp_path / "status.md"
+    doc.write_text(ps.build_report([src], tmp_path, langs))
+    _write_strings(tmp_path / "de.lproj" / "Localizable.strings", {"Borrow": "Leihen"})
+    findings = ps.check_tables(tmp_path, langs, report=(doc, [src]))
+    assert any(f.kind == "stale_report" for f in findings)
+
+
+def test_check_passes_when_the_report_is_current(tmp_path):
+    src = _tiny_tree(tmp_path)
+    langs = ["de", "es", "fr", "it"]
+    doc = tmp_path / "status.md"
+    doc.write_text(ps.build_report([src], tmp_path, langs))
+    findings = ps.check_tables(tmp_path, langs, report=(doc, [src]))
+    assert not any(f.kind == "stale_report" for f in findings)
+
+
+def test_packet_includes_a_reviewer_brief(tmp_path):
+    src = _tiny_tree(tmp_path)
+    out = tmp_path / "packet"
+    ps.build_packet([src], tmp_path, ["de"], out)
+    brief = (out / "README.md").read_text(encoding="utf-8")
+    # the brief must state the limits of what was checked, or a reviewer may
+    # read automated mechanics as a linguistic endorsement
+    assert "native speaker" in brief.lower()
+    assert "%@" in brief          # the specifier constraint on their suggestions
+
+
+def test_packet_writes_one_csv_per_language(tmp_path):
+    src = _tiny_tree(tmp_path)
+    out = tmp_path / "packet"
+    info = ps.build_packet([src], tmp_path, ["de", "fr"], out)
+    assert (out / "de.csv").exists() and (out / "fr.csv").exists()
+    assert info["values"] == info["strings"] * 2

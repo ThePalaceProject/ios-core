@@ -45,6 +45,34 @@ half-applied batch would leave the tables in a state nobody chose.
 
 `l10n-work.json` is scratch. Do not commit it.
 
+## The status document, and getting a review
+
+`docs/Operations/localization-status.md` reports current coverage. It is
+GENERATED — never hand-edit it:
+
+```bash
+python3 scripts/palace_strings.py report
+```
+
+`check` fails when it does not describe the current tables, so it cannot drift:
+change a translation without regenerating and you get
+`stale_report ... run: python3 scripts/palace_strings.py report`. Commit the
+regenerated document with the translations that changed it.
+
+To send the strings for outside linguistic review:
+
+```bash
+python3 scripts/palace_strings.py packet --file /tmp/review-packet
+```
+
+That writes one CSV per language with empty `REVIEW_` columns, the glossary the
+translations follow, and a brief stating plainly what was and was not checked —
+mechanics only, no native speaker. The brief is generated, so the packet is
+complete without anyone writing a covering note.
+
+Coverage is not quality. The status document says how many strings have a
+translation; it says nothing about whether any of them are good.
+
 ## Step 3, three ways
 
 **With Claude Code.** Run `/translate`. It reads

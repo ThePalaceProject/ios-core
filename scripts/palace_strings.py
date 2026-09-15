@@ -356,7 +356,8 @@ def _read_table(root: Path, lang: str) -> dict[str, str] | None:
 
 def check_tables(root: Path, langs: list[str],
                  source: dict[str, str] | None = None,
-                 require: set[str] | None = None) -> list[Finding]:
+                 require: set[str] | None = None,
+                 report: tuple[Path, list[Path]] | None = None) -> list[Finding]:
     """Findings across the committed tables. Empty list means a clean tree."""
     tables = {l: _read_table(root, l) for l in langs}
     findings: list[Finding] = []
@@ -365,6 +366,15 @@ def check_tables(root: Path, langs: list[str],
         if table is None:
             findings.append(Finding("missing_table", lang, "", f"no {lang}.lproj/Localizable.strings"))
     present = {l: t for l, t in tables.items() if t is not None}
+
+    if report is not None:
+        # A generated document that nobody is forced to regenerate drifts, and a
+        # stale coverage report is worse than none: it reads as current.
+        doc, doc_sources = report
+        if not report_is_current(doc, doc_sources, root, langs):
+            findings.append(Finding("stale_report", "", str(doc),
+                                    "does not describe the current tables — "
+                                    "run: python3 scripts/palace_strings.py report"))
 
     if require:
         # A source key absent from EVERY table is a string someone added and
@@ -772,13 +782,215 @@ def apply_work_file(work: dict, sources: list[Path], lproj_root: Path,
                      encoding="utf-8")
     return []
 
+
+# ----------------------------------------------------- status report + staleness
+
+REPORT_FINGERPRINT_MARKER = "<!-- l10n-state:"
+REPORT_PATH = Path("docs/Operations/localization-status.md")
+
+
+def state_fingerprint(sources: list[Path], lproj_root: Path, langs: list[str],
+                      include_developer: bool = False) -> str:
+    """A hash over everything the report describes.
+
+    Covers the SOURCE keys and every shipped value, so adding a string,
+    translating one, or editing one all change it. That is what lets a stale
+    report be detected mechanically rather than remembered.
+    """
+    import hashlib
+    keys, _ = inventory(sources, include_developer)
+    h = hashlib.sha256()
+    for k in sorted(keys):
+        h.update(k.encode("utf-8")); h.update(b"\x00")
+    for lang in langs:
+        h.update(lang.encode("utf-8")); h.update(b"\x01")
+        for k, v in sorted((_read_table(lproj_root, lang) or {}).items()):
+            h.update(k.encode("utf-8")); h.update(b"\x02")
+            h.update(v.encode("utf-8")); h.update(b"\x03")
+    return h.hexdigest()[:16]
+
+
+def build_report(sources: list[Path], lproj_root: Path, langs: list[str],
+                 include_developer: bool = False) -> str:
+    """The committed status document. Regenerated, never hand-edited."""
+    keys, _, unconfirmed = inventory_detailed(sources, include_developer)
+    allow = load_allowlist(ALLOWLIST_PATH)
+    fmt = {k for k in keys if is_format_only(k)}
+    translatable = keys - fmt - set(allow)
+    tables = {l: (_read_table(lproj_root, l) or {}) for l in langs}
+    fp = state_fingerprint(sources, lproj_root, langs, include_developer)
+
+    lines = [
+        "# Localization status",
+        "",
+        "**Generated — do not hand-edit.** Regenerate with:",
+        "",
+        "```bash",
+        "python3 scripts/palace_strings.py report",
+        "```",
+        "",
+        "`palace_strings.py check` fails when this document does not describe the "
+        "current tables, so it cannot drift silently.",
+        "",
+        "## Coverage",
+        "",
+        "| Language | Translated | Of translatable | Missing |",
+        "|---|---:|---:|---:|",
+    ]
+    for lang in langs:
+        have = len(translatable & set(tables[lang]))
+        pct = 100.0 * have / len(translatable) if translatable else 100.0
+        lines.append(f"| {lang} | {have} | {pct:.1f}% | {len(translatable) - have} |")
+
+    lines += [
+        "",
+        "## Scope",
+        "",
+        f"- **{len(keys)}** localizable keys in the source (app + audiobook toolkit).",
+        f"- **{len(fmt)}** {'is' if len(fmt) == 1 else 'are'} format-only "
+        "(`%@ %@`, `%02d:%02d`) with nothing to translate.",
+        f"- **{len(allow)}** {'is' if len(allow) == 1 else 'are'} deliberately "
+        "untranslated; see `scripts/l10n-untranslated-allowlist.json`, which records "
+        "a reason for each.",
+        f"- **{len(translatable)}** are therefore in scope.",
+        "",
+        "## Needs confirmation",
+        "",
+        f"**{len(unconfirmed)}** interpolated SwiftUI keys have a statically inferred "
+        "format specifier. SwiftUI builds `%lld` for an `Int` and `%lf` for a `Double`, "
+        "and escapes a literal `%` to `%%`; the inference is a heuristic and the "
+        "authoritative answer is `xcodebuild -exportLocalizations`.",
+        "",
+        "## Reviewing the translations",
+        "",
+        "This document reports COVERAGE, not quality. Nothing here means a native "
+        "speaker has read anything. To produce a packet for linguistic review:",
+        "",
+        "```bash",
+        "python3 scripts/palace_strings.py packet --file /tmp/review-packet",
+        "```",
+        "",
+        "See `docs/Operations/localization-workflow.md` for how strings are added "
+        "and translated.",
+        "",
+        f"{REPORT_FINGERPRINT_MARKER} {fp} -->",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def report_is_current(path: Path, sources: list[Path], lproj_root: Path,
+                      langs: list[str], include_developer: bool = False) -> bool:
+    """True when the report on disk describes the current state."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return False
+    want = state_fingerprint(sources, lproj_root, langs, include_developer)
+    return f"{REPORT_FINGERPRINT_MARKER} {want} -->" in text
+
+
+
+_BRIEF = """# Palace iOS — translation review packet
+
+Product: Palace, a public-library reading app (ebooks and audiobooks), iOS.
+Source language: English. Languages under review: {langs}.
+{count} strings, {values} translated values.
+
+## What this is, and what it is not
+
+**No native speaker has reviewed any of this.** That is the gap this review
+closes. Nothing in these files is a linguistic endorsement.
+
+What was checked is mechanical only and says nothing about whether the language
+is good:
+
+| checked automatically | NOT checked |
+| --- | --- |
+| Format specifiers match the source in set, count and type | Whether it reads naturally |
+| No empty values | Register and formality |
+| No value is a symbol name instead of a translation | Library-domain terminology |
+| Key sets identical across languages | Gender, agreement, idiom |
+| Tables parse and load at runtime | Whether a term matches the patron's own library |
+
+## Constraints on any replacement you suggest
+
+1. **Format specifiers must survive verbatim** — `%@`, `%d`, `%lld`, and
+   positional `%1$@` / `%2$@` — identical in set, count and type. Reordering is
+   allowed only by switching to positional form. A dropped or retyped specifier
+   is undefined behaviour at runtime, not a cosmetic slip.
+2. **Length matters in places.** German runs ~30% longer than English; CarPlay
+   strings render on a dashboard with hard width limits; tab and button labels
+   truncate. The `len_ratio` column flags candidates.
+3. **Do NOT abbreviate accessibility strings.** Many are spoken by VoiceOver
+   rather than displayed; they have no layout budget and clarity beats brevity.
+4. **Do not translate** product and format names: Palace, Adobe, LCP, Readium,
+   OverDrive, Bibliotheca, Axis 360, AirPlay, CarPlay, ePub, PDF, VoiceOver.
+
+## Where to start
+
+`REVIEW_verdict`, `REVIEW_suggested_replacement` and `REVIEW_notes` are empty
+columns for you. `developer_comment` is the context the engineer wrote and is
+often the only clue to intent.
+
+Questions we would most value judgement on:
+
+- **Formality.** Is the register right for a public-library app in each
+  language? This decision touches nearly every string.
+- **Library terminology** — borrow, hold/reservation, return, loan, copies.
+  Does each match what a patron meets in their own library's catalogue?
+- **Agreement around placeholders.** `%@` is usually a book title whose gender
+  is unknown when the string is written. Translations recast to avoid agreeing
+  with it — did that succeed, or does it read stiffly?
+- **Anything where the ENGLISH is the problem.** If a string cannot be
+  translated well because the source is ambiguous or assembles a sentence from
+  fragments, say so — the English can change.
+
+A severity signal helps: **critical** (wrong meaning, or the transaction is
+inverted), **major** (unnatural, wrong register, internally inconsistent),
+**minor** (preference).
+"""
+
+
+def _reviewer_brief(langs: list[str], count: int) -> str:
+    return _BRIEF.format(langs=", ".join(langs), count=count, values=count * len(langs))
+
+
+def build_packet(sources: list[Path], lproj_root: Path, langs: list[str],
+                 out_dir: Path, include_developer: bool = False) -> dict:
+    """CSVs for an outside linguistic reviewer, plus the termbase they follow."""
+    import csv as _csv
+    out_dir.mkdir(parents=True, exist_ok=True)
+    english = source_map(sources, include_developer)
+    comments = _comment_map(sources, include_developer)
+    tables = {l: (_read_table(lproj_root, l) or {}) for l in langs}
+    keys = sorted(set().union(*(set(t) for t in tables.values())) if tables else set())
+
+    for lang in langs:
+        with open(out_dir / f"{lang}.csv", "w", newline="", encoding="utf-8-sig") as fh:
+            w = _csv.writer(fh)
+            w.writerow(["key", "english", "translation", "developer_comment",
+                        "len_en", "len_target", "len_ratio",
+                        "REVIEW_verdict", "REVIEW_suggested_replacement", "REVIEW_notes"])
+            for k in keys:
+                en, tg = english.get(k, k), tables[lang].get(k, "")
+                ratio = f"{len(tg)/len(en):.2f}" if en else ""
+                w.writerow([k, en, tg, comments.get(k, ""), len(en), len(tg), ratio, "", "", ""])
+    (out_dir / "README.md").write_text(_reviewer_brief(langs, len(keys)), encoding="utf-8")
+    glossary = Path(".claude/skills/translate/references/glossary.md")
+    if glossary.is_file():
+        (out_dir / "glossary-used.md").write_text(glossary.read_text(encoding="utf-8"),
+                                                  encoding="utf-8")
+    return {"languages": list(langs), "strings": len(keys),
+            "values": len(keys) * len(langs), "dir": str(out_dir)}
+
 # ------------------------------------------------------------------------ CLI
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    for name in ("inventory", "status", "check", "export", "import"):
+    for name in ("inventory", "status", "check", "export", "import", "report", "packet"):
         p = sub.add_parser(name)
         p.add_argument("--lproj-root", type=Path, default=Path("Palace"))
         p.add_argument("--langs", default="en,de,es,fr,it")
@@ -794,6 +1006,22 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     langs = [l.strip() for l in a.langs.split(",") if l.strip()]
     sources = a.source or [Path(p) for p in DEFAULT_SOURCES if Path(p).exists()]
+
+    if a.cmd == "report":
+        out = a.file or REPORT_PATH
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(build_report(sources, a.lproj_root, langs, a.include_developer),
+                       encoding="utf-8")
+        print(f"wrote {out}")
+        return 0
+
+    if a.cmd == "packet":
+        out = a.file or Path("l10n-review-packet")
+        info = build_packet(sources, a.lproj_root, langs, out, a.include_developer)
+        print(f"{info['strings']} string(s) x {len(info['languages'])} language(s) "
+              f"= {info['values']} values -> {info['dir']}")
+        print("  one CSV per language with empty REVIEW_ columns, plus the glossary.")
+        return 0
 
     if a.cmd == "export":
         work = build_work_file(sources, a.lproj_root, langs, a.include_developer,
@@ -840,7 +1068,9 @@ def main(argv: list[str] | None = None) -> int:
         _allow = load_allowlist(ALLOWLIST_PATH)
         _req = {k for k in inventory(sources, a.include_developer)[0]
                 if not is_format_only(k) and k not in _allow}
-    findings = (check_tables(a.lproj_root, langs, source_map(sources, a.include_developer), _req)
+    _report = (REPORT_PATH, sources) if a.require_complete and REPORT_PATH.exists() else None
+    findings = (check_tables(a.lproj_root, langs, source_map(sources, a.include_developer),
+                             _req, _report)
                 + check_stringsdict(a.lproj_root, langs))
 
     if a.cmd == "status":
