@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 // Swift 6 `complete`: `Publication`, `Link`, and `Locator` are non-Sendable
 // Readium types captured by the `@Sendable` `Task` in `init` (and returned from
 // the `async` locator helpers). `@preconcurrency` is the honest ceiling until
@@ -46,16 +47,28 @@ class TPPReaderTOCBusinessLogic {
             switch tocResult {
             case .success(let toc):
                 self.tocElements = flatten(toc)
-            case .failure:
+                if self.tocElements.isEmpty {
+                    // The condition that can actually occur, and the one worth
+                    // recording: a publication whose TOC really is empty looks
+                    // identical on screen to a regression of PP-5128 (Contents
+                    // blank because the load had not landed). Without this line
+                    // there is nothing to tell the two apart in the field.
+                    Log.error(#file, "Table of contents resolved to no entries")
+                }
+            case .failure(let error):
+                Log.error(#file, "Table of contents failed to load: \(error)")
                 return
             }
         }
     }
 
-    /// Test seam: awaits the `init`-spawned TOC load so a test can JOIN the
-    /// real work instead of polling `tocElements`. No-op in production
-    /// (never called there). Returns once the load has finished (success or
-    /// failure).
+    /// Awaits the `init`-spawned TOC load. Returns once the load has finished
+    /// (success or failure); returns immediately if it already has.
+    ///
+    /// `TPPReaderPositionsVC` uses this to reload its table when the elements
+    /// land — the load cannot complete before the VC's first `reloadData()`,
+    /// because it is a main-actor job queued behind the turn that presents the
+    /// VC. Tests use it to JOIN the real work instead of polling `tocElements`.
     func awaitTOCLoad() async {
         await tocLoadTask?.value
     }

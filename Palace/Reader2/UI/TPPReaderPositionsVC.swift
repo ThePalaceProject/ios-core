@@ -132,6 +132,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
 
         tableView.dataSource = self
         tableView.delegate = self
+        reloadWhenTOCLoadCompletes()
 
         noBookmarksLabel.text = bookmarksBusinessLogic?.noBookmarksText
         view.insertSubview(noBookmarksLabel, belowSubview: tableView)
@@ -183,6 +184,40 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         tableView.reloadData()
+    }
+
+    /// Reloads the Contents tab once the asynchronous TOC load lands.
+    ///
+    /// `TPPReaderTOCBusinessLogic` fills `tocElements` from a `Task` spawned in
+    /// its `init`, and the class is `@MainActor`, so that job cannot run until
+    /// the main-actor turn that constructed it yields — a turn that presents
+    /// this VC and therefore already contains `viewWillAppear`'s `reloadData()`.
+    /// The table would otherwise keep the zero-row snapshot it took before the
+    /// TOC existed, and only an unrelated reload (switching to Bookmarks and
+    /// back) would make the contents appear.
+    ///
+    /// Scoped to the Contents tab on purpose. The bookmark cell resolves its
+    /// chapter name through `tocBusinessLogic?.title(for:)` (see
+    /// `cellForRowAt`), so reloading while Bookmarks is showing would flip a
+    /// visible label from the stored `bookmark.chapter` to a TOC-resolved title
+    /// mid-view, truncate the `.fade` of a bookmark delete, dismiss an open
+    /// swipe-to-delete, and move VoiceOver focus. Nothing is lost by waiting:
+    /// returning to Contents reloads via `didSelectSegment`.
+    private func reloadWhenTOCLoadCompletes() {
+        Task { [weak self] in
+            // Bind the business logic BEFORE suspending. `await self?.x?.y()`
+            // keeps a strong `self` alive for the whole expression, including
+            // across the suspension, which delays deallocation of a screen the
+            // patron has already dismissed. Binding first retains only the
+            // business logic, which its own init-Task already holds.
+            guard let logic = self?.tocBusinessLogic else { return }
+            await logic.awaitTOCLoad()
+            guard let self, self.currentTab == .toc else { return }
+            self.tableView.reloadData()
+            // The rows arrive after this screen was announced, so VoiceOver is
+            // still describing an empty table until we say otherwise.
+            UIAccessibility.post(notification: .layoutChanged, argument: self.tableView)
+        }
     }
 
     // MARK: - UITableViewDataSource
