@@ -217,12 +217,6 @@
       "line": 10
     },
     {
-      "name": "TransifexManager",
-      "kind": "class",
-      "file": "Localization/Transifex/TransifexManager.swift",
-      "line": 11
-    },
-    {
       "name": "asyncIfNeeded",
       "kind": "func",
       "file": "Concurrency/TPPMainThreadChecker.swift",
@@ -371,12 +365,6 @@
       "kind": "func",
       "file": "Concurrency/TPPBackgroundExecutor.swift",
       "line": 47
-    },
-    {
-      "name": "setup",
-      "kind": "func",
-      "file": "Localization/Transifex/TransifexManager.swift",
-      "line": 12
     },
     {
       "name": "titleFontName",

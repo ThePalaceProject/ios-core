@@ -1,14 +1,6 @@
 /* Informs the user an offline return was queued */
 "\"%@\" will be returned automatically when you're back online." = "Le retour de \"%@\" sera effectué automatiquement dès que vous serez de nouveau en ligne.";
 
-"%02d hr %02 dmin" = "%02d h %02d min";
-
-"%02d hr, %02d min remaining" = "%02d h, %02d min restantes";
-
-"%02d min remaining" = "%02d min restantes";
-
-"%02dmin" = "%02dmin";
-
 /* VoiceOver: audiobook cell label with author but no narrator */
 "%1$@, audiobook, by %2$@" = "%1$@, livre audio, de %2$@";
 
@@ -40,10 +32,6 @@
 /* How much time is left in the entire book, not just the chapter. */
 "%@ remaining in the book." = "%@ restant dans le livre.";
 
-"%@ speed. Faster than normal." = "Vitesse %@. Plus rapide que la normale.";
-
-"%@ speed. Slower than normal." = "Vitesse %@. Plus lente que la normale.";
-
 "%@ theme" = "Thème %@";
 
 /* A concise string that expreses the percent progress, where %@ is the percentage */
@@ -60,26 +48,8 @@
 /* Accessibility value for search results count. %d is number of books */
 "%d books" = "%d livres";
 
-"%d hour and %d minute" = "%1$d heure et %2$d minute";
-
-"%d hour and %d minutes" = "%1$d heure et %2$d minutes";
-
-"%d hours and %d minute" = "%1$d heures et %2$d minutes";
-
-"%d hours and %d minutes" = "%1$d heures et %2$d minutes";
-
-"%d hours, %d minutes and %d seconds" = "%1$d heures, %2$d minutes et %3$d secondes";
-
-"%d minute" = "%d minute";
-
-"%d minutes" = "%d minutes";
-
-"%d minutes and %d seconds" = "%1$d minutes et %2$d secondes";
-
 /* VoiceOver accessibility value for download progress */
 "%d percent complete" = "%d pour cent terminé";
-
-"%d second" = "%d seconde";
 
 /* Audiobook skip interval option, e.g. '30 seconds' */
 "%d seconds" = "%d secondes";
@@ -91,10 +61,6 @@
 
 /* Accessibility value when search has one result */
 "1 book" = "1 livre";
-
-"1.0×" = "1.0×";
-
-"1.0× (Normal)" = "1,0× (Normale)";
 
 /* 15 Minutes */
 "15 Minutes" = "15 minutes";
@@ -209,6 +175,9 @@
 
 /* Body of the confirmation dialog shown when the patron closes the audiobook mini-player */
 "Are you sure you want to stop playing your audiobook and close the player?" = "Voulez-vous vraiment arrêter la lecture de votre livre audio et fermer le lecteur ?";
+
+/* Support bot: start a new question after one is answered. */
+"Ask another question" = "Poser une autre question";
 
 /* Sentiment-gate button; defers the prompt and resets the cooldown. */
 "Ask me later" = "Me le demander plus tard";
@@ -453,15 +422,17 @@
 /* VoiceOver: Label for the audiobook speed decrease stepper */
 "Decrease speed" = "Réduire la vitesse";
 
-"Decreases playback speed by 0.05 times" = "Diminue la vitesse de lecture de 0,05";
-
 "Delete" = "Effacer";
 
 "Delete Server Data" = "Supprimer les données du serveur";
 
+/* Support bot: placeholder in the message field when describing a problem. */
 "Describe what's happening…" = "Décrivez ce qui se passe…";
 
 "Description" = "Description";
+
+/* Support bot: throw away the drafted ticket without sending it. */
+"Discard" = "Abandonner";
 
 /* VoiceOver: Done button on the full audiobook player, dismisses to the mini-player */
 "Dismiss player" = "Masquer le lecteur";
@@ -560,6 +531,7 @@
 /* VoiceOver hint for the Continue section header when collapsed. */
 "Expands to show the most recent book." = "Se développe pour afficher le livre le plus récent.";
 
+/* Reader page margin width */
 "Extra Wide" = "Très large";
 
 "Failed" = "Échec";
@@ -571,6 +543,9 @@
 
 /* Fast forward a configurable number of seconds */
 "Fast Forward %d seconds" = "Avance rapide de %d secondes";
+
+/* Support bot: open a support ticket instead of self-serving. */
+"File a ticket" = "Envoyer une demande";
 
 /* VoiceOver: Filter button with no filters applied */
 "Filter" = "Filtrer";
@@ -593,6 +568,9 @@
 "Fixed it" = "Problème résolu";
 
 "Font" = "Police";
+
+/* Reader typography slider: text size */
+"Font Size" = "Taille de la police";
 
 /* OriginalFont */
 "Font selector: Default book font" = "Sélecteur de police : police par défaut du livre";
@@ -623,6 +601,7 @@
 /* Format filter picker label */
 "Format" = "Format";
 
+/* Settings row that opens the support chat. */
 "Get Help" = "Aide";
 
 "Get Help is temporarily unavailable" = "L'aide est temporairement indisponible";
@@ -647,6 +626,9 @@
 "Hide Barcode" = "Masquer le code-barres";
 
 "High Contrast Boost" = "Renforcement du contraste";
+
+/* Text-selection menu item in the reader that highlights the selection. */
+"Highlight" = "Surligner";
 
 /* Nav title for Holds */
 "Holds" = "Réservations";
@@ -681,8 +663,6 @@
 
 "Increases contrast beyond the system setting for better readability." = "Augmente le contraste au-delà du réglage système pour une meilleure lisibilité.";
 
-"Increases playback speed by 0.05 times" = "Augmente la vitesse de lecture de 0,05";
-
 "Information" = "Informations";
 
 /* Alert notifying user that bookmark save failed. */
@@ -693,9 +673,13 @@
 /* Warning message offering the user the choice of interrupting the download or return of a book to log out immediately, or waiting until that finishes. */
 "It looks like you may have a book download or return in progress. Would you like to stop that and continue logging out?" = "Il semble que vous ayez un téléchargement ou un retour de livre en cours. Souhaitez-vous l'arrêter et poursuivre la déconnexion ?";
 
+/* Support bot: skip the guided fix and go straight to a ticket. */
+"Just file a ticket" = "Envoyer directement une demande";
+
 /* Reader text alignment: both edges flush */
 "Justified" = "Justifié";
 
+/* Button title for keeping an audiobook */
 "Keep" = "Conserver";
 
 "Keep Hold" = "Conserver la réservation";
@@ -708,7 +692,8 @@
 
 "Less" = "Moins";
 
-"Less than 1 min remaining" = "Moins d'1 minute restante";
+/* Reader typography slider: space between letters */
+"Letter Spacing" = "Espacement des lettres";
 
 /* A title for a list of libraries the user may select or add to. */
 "Libraries" = "Bibliothèques";
@@ -718,6 +703,9 @@
 
 /* Reader colour theme: black text on white */
 "Light" = "Clair";
+
+/* Reader typography slider: space between lines */
+"Line Spacing" = "Interligne";
 
 "Listen" = "Écouter";
 
@@ -749,6 +737,7 @@
 
 "Margins" = "Marges";
 
+/* Reader page margin width */
 "Medium" = "Moyen";
 
 "Missing book" = "Livre introuvable";
@@ -774,6 +763,7 @@
 
 "Narrators" = "Narrateurs :";
 
+/* Reader page margin width */
 "Narrow" = "Étroit";
 
 /* Button title for completing age verification */
@@ -797,6 +787,7 @@
 /* Title shown when sign-in fails because the device lost connectivity */
 "No Internet Connection" = "Aucune connexion Internet";
 
+/* Alert title */
 "No email account is set for this device." = "Aucun compte de messagerie n'est défini pour cet appareil.";
 
 /* Title of the Holds empty state shown when the patron has no reserved or held books */
@@ -819,8 +810,6 @@
 /* Dismisses the stop-playback confirmation, leaving playback and the mini-player unchanged */
 "No, Cancel" = "Non, annuler";
 
-"Normal speed." = "Vitesse normale.";
-
 /* Sentiment-gate button; a negative response that leads to a feedback option instead of the App Store. */
 "Not really" = "Pas vraiment";
 
@@ -828,6 +817,9 @@
 "Nothing here yet" = "Rien ici pour le moment";
 
 "Nothing was lost — pick one:" = "Rien n'a été perdu — choisissez une option :";
+
+/* Support bot: be told when a known issue is resolved. */
+"Notify me" = "M'avertir";
 
 /* VoiceOver: Combined accessibility label for the audiobook mini-player, including title and author */
 "Now playing: %1$@ by %2$@. Double-tap to expand." = "Lecture en cours : %1$@ de %2$@. Touchez deux fois pour développer.";
@@ -898,6 +890,9 @@
 /* Title of the reader navigation tab listing the book's print pages */
 "Pages" = "Pages";
 
+/* Reader typography slider: space between paragraphs */
+"Paragraph Spacing" = "Espacement des paragraphes";
+
 /* VoiceOver: Pause audiobook */
 "Pause" = "Pause";
 
@@ -938,6 +933,7 @@
 
 "Please check your username and password and try again." = "Veuillez vérifier votre nom d'utilisateur et votre mot de passe, puis réessayer.";
 
+/* Alert message */
 "Please contact %@ to report an issue." = "Veuillez contacter %@ pour signaler un problème.";
 
 /* Caption for asking user to enter their birth year */
@@ -1124,6 +1120,9 @@
 
 "Selecting \"Delete\" will remove all bookmarks from the server for %@." = "Sélectionner « Supprimer » supprimera tous les signets du serveur pour %@.";
 
+/* Support bot: submit the drafted ticket. */
+"Send" = "Envoyer";
+
 /* Accessibility hint for send to support button */
 "Sends this error report to the support team" = "Envoie ce rapport d'erreur à l'équipe d'assistance";
 
@@ -1140,8 +1139,6 @@
 
 /* Title for session expired alert */
 "Session Expired" = "Session expirée";
-
-"Sets playback speed" = "Définit la vitesse de lecture";
 
 "Settings" = "Réglages";
 
@@ -1162,6 +1159,7 @@
 /* VoiceOver hint announced for the collapsed audiobook pill explaining that tapping restores the full mini-player */
 "Shows the full audiobook player controls" = "Affiche les commandes complètes du lecteur de livre audio";
 
+/* Settings row that opens the locally-imported books screen. */
 "Side Loading" = "Import local";
 
 /* Sign-in web view screen title */
@@ -1232,8 +1230,6 @@
 /* VoiceOver: Current sort option, e.g. 'Sort by Title' */
 "Sort by %@" = "Trier par %@";
 
-"Speed presets" = "Préréglages de vitesse";
-
 "Start over" = "Recommencer";
 
 "Starts a new question. Your sent ticket is unaffected." = "Démarre une nouvelle question. La demande déjà envoyée reste inchangée.";
@@ -1262,8 +1258,6 @@
 
 /* Accessibility hint for search results list */
 "Swipe to browse results. Double tap to open a book." = "Balayez pour parcourir les résultats. Touchez deux fois pour ouvrir un livre.";
-
-"Swipe up or down with one finger to adjust" = "Balayez vers le haut ou vers le bas avec un doigt pour ajuster la valeur";
 
 /* VoiceOver: Button to switch between libraries */
 "Switch Library" = "Changer de bibliothèque";
@@ -1302,6 +1296,7 @@
 /* Body for registration. Explaining the reason for requesting the user's location and instructions for how to provide permission. */
 "The Palace App requires a one-time location check in order to verify your library service area. Once you choose \"Create Card\", please select \"Allow Once\" in the popup so we can verify this information." = "L'application Palace nécessite une vérification de localisation unique afin de vérifier la zone de service de votre bibliothèque. Une fois que vous avez choisi « Créer une carte », veuillez sélectionner « Autoriser une fois » dans la fenêtre contextuelle afin que nous puissions vérifier ces informations.";
 
+/* Registration message shown to user when location access has been denied. */
 "The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation." = "L'application Palace nécessite une vérification de localisation unique afin de vérifier la zone de service de votre bibliothèque. Vous avez désactivé les services de localisation pour cette application. Pour l'activer, veuillez sélectionner le bouton « Ouvrir les paramètres » ci-dessous, puis poursuivre la création de la carte.";
 
 /* Expired license warning */
@@ -1375,10 +1370,6 @@
 /* Alert message when a book loan expires without a known end date */
 "This title is no longer available because your loan period ended. It has been removed from your device." = "Ce titre n'est plus disponible, car votre période d'emprunt est terminée. Il a été supprimé de votre appareil.";
 
-"Three quarters of normal speed. Slower." = "Trois quarts de la vitesse normale. Ralentissez.";
-
-"Three times normal speed. Fastest." = "Trois fois la vitesse normale. La plus rapide.";
-
 "Ticket couldn't send — retry, copy details, or start over" = "La demande n'a pas pu être envoyée — réessayer, copier les détails ou recommencer";
 
 "Ticket preview" = "Aperçu de la demande";
@@ -1412,10 +1403,13 @@
 /* Body copy of the empty-state shown in the Catalog search screen when a query returns no books */
 "Try a different search term." = "Essayez un autre terme de recherche.";
 
+/* Support bot: retry a submission that failed. */
+"Try again" = "Réessayer";
+
 /* Recovery instructions for when the URL to sign in is missing */
 "Try force-quitting the app and repeat the sign-in process." = "Essayez de forcer la fermeture de l'application et répétez le processus de connexion.";
 
-"Two times normal speed." = "Deux fois la vitesse normale.";
+"Type your answer (or tap Skip)…" = "Saisissez votre réponse (ou touchez Ignorer)…";
 
 "Typography" = "Typographie";
 
@@ -1459,6 +1453,9 @@
 /* button title */
 "Wait" = "Attendre";
 
+/* Support bot: accept a guided, step-by-step fix. */
+"Walk me through it" = "Me guider pas à pas";
+
 /* Alert message when library data fails to load, no retry available */
 "We can’t get your library right now. Please close and reopen the app to try again." = "Votre bibliothèque est momentanément inaccessible. Veuillez fermer puis rouvrir l’application pour réessayer.";
 
@@ -1500,6 +1497,9 @@
 
 /* Reader page margin width */
 "Wide" = "Large";
+
+/* Reader typography slider: space between words */
+"Word Spacing" = "Espacement des mots";
 
 "Would you like to return it?" = "Souhaitez-vous le retourner ?";
 

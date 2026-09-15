@@ -186,7 +186,7 @@ struct TPPSettingsView: View {
             case .triageBot:
                 let chat = TriageBotSupportView()
                 let wrapper = chat.anyView()
-                row(title: "Get Help", index: 10, selection: self.$selectedView, destination: wrapper)
+                row(title: DisplayStrings.getHelp, index: 10, selection: self.$selectedView, destination: wrapper)
                     .accessibilityIdentifier("settings.row.getHelp")
                     .accessibilityLabel("Get Help — chat with our support bot")
                 // PP-4884: give a privacy-conscious patron a way to send fewer
@@ -261,7 +261,7 @@ struct TPPSettingsView: View {
                 let destination = SideLoadingView(
                     manager: AppContainer.production().sideloadedBookManager
                 ).anyView()
-                row(title: "Side Loading", index: 11, selection: self.$selectedView, destination: destination)
+                row(title: DisplayStrings.sideLoading, index: 11, selection: self.$selectedView, destination: destination)
                     .accessibilityIdentifier("settings.row.sideLoading")
             }
         }

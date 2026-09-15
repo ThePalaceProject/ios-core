@@ -117,6 +117,22 @@ inside an interpolated string is escaped to `%%`. `palace_strings.py` reports
 every interpolated key as needing confirmation for this reason; `genstrings`
 gets it wrong in the same direction, so agreement between them proves nothing.
 
+**A `bundle:` argument decides which table is read.**
+`NSLocalizedString(key, bundle: Bundle.audiobookToolkit()!, ...)` resolves
+against *that framework's* bundle and nowhere else, so a translation of it in
+`Palace/de.lproj` is never read. The audiobook player's 32 own strings are like
+this: they live in `ios-audiobooktoolkit/{en,de,es,fr,it}.lproj/Localizable.strings`
+and are translated there, not here. `palace_strings.py` scopes them out of the
+app inventory automatically — you only need to know which repo to edit. SwiftUI
+`Text` takes no bundle and always reads `Bundle.main`, whatever module it is
+compiled into.
+
+**No runtime translation service may be linked.** `check` fails on an `import`
+of one or on an SPM pin for one, in either repo. Such an SDK swizzles
+`Bundle.localizedString(forKey:value:table:)` and never calls through, so every
+committed table goes inert while it reports full coverage — which is exactly
+what happened here between 2022 and 2026.
+
 **Translating an unreachable screen costs real money.** Before adding strings to
 a new view, check something constructs it outside its own file. Two parked
 prototypes were translated into four languages before anyone asked.

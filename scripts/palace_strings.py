@@ -203,6 +203,40 @@ def extract_swift(src: str) -> tuple[set[str], list[str]]:
 
 
 
+# A `bundle:` argument names WHERE Foundation looks. Anything but the main
+# bundle means the key belongs to that framework's own tables, and a
+# translation of it in the app's `Palace/*.lproj` is read by nobody.
+_MAIN_BUNDLE = re.compile(r"^\s*(?:Bundle\s*\.\s*)?main\b")
+
+
+def bundle_scoped_keys(src: str) -> tuple[set[str], set[str]]:
+    """(main-bundle keys, foreign-bundle keys) for NSLocalizedString literals.
+
+    Only this macro takes a `bundle:`. SwiftUI's `Text`/`Label` and the
+    `LocalizedStringKey` forms always resolve against `Bundle.main`, whatever
+    module they are compiled into, so they are main-bundle by construction and
+    are not considered here.
+    """
+    src = preprocess(src)
+    native: set[str] = set()
+    foreign: set[str] = set()
+    for m in re.finditer(r"\bNSLocalizedString\s*\(", src):
+        i, depth, j = m.end(), 1, m.end()
+        while j < len(src) and depth:
+            depth += (src[j] == "(") - (src[j] == ")")
+            j += 1
+        args = src[i:j - 1]
+        lit = re.match(r'\s*"((?:[^"\\]|\\.)*)"', args)
+        if not lit:
+            continue                      # runtime-computed key; no static key exists
+        key = decode_swift_literal(lit.group(1))
+        arg = re.search(r"\bbundle\s*:\s*([^,]+)", args)
+        target = foreign if arg and not _MAIN_BUNDLE.match(arg.group(1)) else native
+        target.add(key)
+    return native, foreign
+
+
+
 # SwiftUI builds a type-specific specifier per interpolation, VERIFIED:
 #   Text("\(Int) x")    -> "%lld x"
 #   Text("\(Double) x") -> "%lf x"
@@ -343,6 +377,9 @@ def parse_strings(text: str) -> dict[str, str]:
             for m in _STRINGS_ENTRY.finditer(_COMMENT_BLOCK.sub("", text))}
 
 
+DEVELOPMENT_LANGUAGE = "en"
+
+
 def _read_table(root: Path, lang: str) -> dict[str, str] | None:
     for enc in ("utf-8", "utf-16"):
         try:
@@ -363,7 +400,11 @@ def check_tables(root: Path, langs: list[str],
     findings: list[Finding] = []
 
     for lang, table in tables.items():
-        if table is None:
+        # The development language is the exception: English lives in the CODE,
+        # and `en.lproj/Localizable.strings` is deliberately not wired into the
+        # Xcode project, so a committed one would never ship and could drift
+        # from the source silently. Its absence is the design, not a defect.
+        if table is None and lang != DEVELOPMENT_LANGUAGE:
             findings.append(Finding("missing_table", lang, "", f"no {lang}.lproj/Localizable.strings"))
     present = {l: t for l, t in tables.items() if t is not None}
 
@@ -483,6 +524,166 @@ def check_stringsdict(root: Path, langs: list[str]) -> list[Finding]:
     every = set().union(*present.values())
     return [Finding("stringsdict_missing_key", l, k, "renders the key verbatim")
             for l, keys in sorted(present.items()) for k in sorted(every - keys)]
+
+
+# ----------------------------------- literals in a NON-localizing position
+
+# `Text(_ key: LocalizedStringKey)` performs a lookup only for a string
+# LITERAL. Hand it a `String` and Swift selects
+# `Text(_ content: S) where S: StringProtocol`, which renders the characters
+# verbatim. A helper typed `func row(title: String)` rendering `Text(title)`
+# therefore localizes NOTHING, and an English literal passed to it renders
+# English in every language — while the extractor still sees a quoted string
+# beside a UI-shaped call and the tables still carry a translation nobody
+# reads. Found on device: Settings showed "Get Help" in German and Italian
+# with "Hilfe" and "Assistenza" sitting unused.
+#
+# Argument labels that name displayed text. A literal here is user-visible by
+# construction, so if the callee is not itself a localizing initializer the
+# literal can only reach the screen untranslated.
+# `label:` and `text:` are deliberately absent: `DispatchQueue(label:)` is a
+# thread name, not display text, and including it produced 6 false positives
+# on the first run.
+# `message:` is absent for the same reason: it is overwhelmingly an internal
+# error string (`licenseError(message:)`, `handleBookmarksSyncFail(message:)`),
+# and including it produced 8 false positives against 0 real ones.
+# `accessibilityLabel:` is display text too — VoiceOver speaks it. The SwiftUI
+# MODIFIER of that name localizes a literal and is in `_CALLS_RE`, so only a
+# plain helper taking one as a `String` parameter reaches here, which is
+# exactly the defect.
+_DISPLAY_LABELS = ("title", "header", "footer", "caption",
+                   "placeholder", "subtitle", "accessibilityLabel")
+
+# UIKit, CarPlay and Foundation initialisers taking an English literal are a
+# REAL but separate surface — they need `NSLocalizedString`, not a SwiftUI
+# literal, and there are dozens of them predating this work. Scoping them out
+# keeps this check about the defect it was built for; `system_literals()`
+# counts them so they are reported rather than silently dropped.
+_SYSTEM_CALLEE = re.compile(r"^(?:UI|CP|NS|CN|MK|AV|WK)[A-Z]|^DispatchQueue$|^init$")
+
+# Data models that happen to carry a `title`. `OPDS2CatalogsFeed.Metadata` is
+# a serialized feed field, not a label — the server's own feed titles are not
+# translated either, so translating ours would be inconsistent as well as
+# pointless. Named individually rather than guessed at by a heuristic.
+_DATA_MODEL_CALLEE = frozenset({"Metadata"})
+
+_LABELLED_LITERAL = re.compile(
+    r"\b(?:" + "|".join(_DISPLAY_LABELS) + r")\s*:\s*"
+    r'"((?:[^"\\]|\\.)*)"')
+
+
+def _enclosing_callee(src: str, at: int) -> str | None:
+    """The function whose argument list encloses position `at`.
+
+    Walks back to the innermost unmatched `(` and reads the identifier before
+    it. Anchoring on the label's OWN call rather than on the first argument is
+    what lets a second labelled literal in the same call be seen — the earlier
+    first-argument-only form missed all five `accessibilityLabel:` arguments in
+    `TypographySettingsView` because a `title:` matched first.
+    """
+    depth = 0
+    i = at - 1
+    while i >= 0:
+        c = src[i]
+        if c == ")":
+            depth += 1
+        elif c == "(":
+            if depth == 0:
+                m = re.search(r"([A-Za-z_]\w*)\s*$", src[:i])
+                return m.group(1) if m else None
+            depth -= 1
+        i -= 1
+    return None
+
+
+def unlocalized_literals(src: str) -> list[tuple[str, str]]:
+    """(callee, literal) for literals passed to a non-localizing callee.
+
+    A callee in `_CALLS_RE` is a SwiftUI initialiser or modifier that DOES
+    localize a literal, so those are skipped — flagging
+    `Section(header: Text("Support"))` would make the check unrunnable on this
+    tree. Everything else taking a display-labelled literal is a plain function
+    whose parameter is a `String`, which is the defect.
+    """
+    src = preprocess(src)
+    localizing = set(_CALLS_RE.split("|"))
+    out: list[tuple[str, str]] = []
+    for m in _LABELLED_LITERAL.finditer(src):
+        callee = _enclosing_callee(src, m.start())
+        if (callee is None or callee in localizing
+                or callee in _DATA_MODEL_CALLEE or _SYSTEM_CALLEE.match(callee)):
+            continue
+        out.append((callee, decode_swift_literal(m.group(1))))
+    return out
+
+
+def system_literals(src: str) -> list[tuple[str, str]]:
+    """The UIKit/CarPlay half `unlocalized_literals` deliberately skips.
+
+    Separate function, not a flag, so a caller has to ask for it: the two
+    populations need different fixes and conflating them produced a list
+    nobody could act on.
+    """
+    src = preprocess(src)
+    out: list[tuple[str, str]] = []
+    for m in _LABELLED_LITERAL.finditer(src):
+        callee = _enclosing_callee(src, m.start())
+        if callee and _SYSTEM_CALLEE.match(callee):
+            out.append((callee, decode_swift_literal(m.group(1))))
+    return out
+
+
+
+# -------------------------------------------- runtime translation SDK guard
+
+# Module names of SDKs that fetch translations at runtime. Each of these
+# swizzles `Bundle.localizedString(forKey:value:table:)` and, once activated,
+# never calls through to Foundation — so every committed `.strings` table is
+# read by nobody while one is installed.
+_RUNTIME_SDK_IMPORTS = re.compile(r"^\s*(?:@_implementationOnly\s+)?import\s+"
+                                  r"(Transifex|Lokalise|LokaliseSDK|Phrase|Applanga|Localizely)\b",
+                                  re.M)
+
+# The SPM pins for the same services. The pin alone is enough: it re-links the
+# SDK, and a later commit only has to call `setup()` for the tables to go dark
+# again with no signal anywhere.
+_RUNTIME_SDK_PINS = re.compile(r"transifex-swift|lokalise-ios|applanga|localizely", re.I)
+
+
+def check_no_runtime_translation_sdk(sources: list[Path], repo_root: Path) -> list[Finding]:
+    """Findings for any runtime translation SDK still wired into the app.
+
+    This is the condition that made the whole inventory lie. Transifex Native
+    reported 100% translated while serving a CDS cache last written in Dec 2022,
+    because its swizzle answered every lookup before Foundation saw it. A
+    completeness gate that cannot see the swizzle grades tables nothing reads.
+
+    Only IMPORTS and PACKAGE PINS count. The word itself is left alone: this
+    repo's docs, key-migration map and this very comment name the retired
+    service, and a detector that flagged prose could not survive its own
+    removal commit.
+    """
+    findings: list[Finding] = []
+    for root in sources:
+        for f in sorted(Path(root).rglob("*.swift")):
+            m = _RUNTIME_SDK_IMPORTS.search(f.read_text(encoding="utf-8", errors="replace"))
+            if m:
+                findings.append(Finding(
+                    "runtime_translation_sdk", "", str(f.relative_to(repo_root))
+                    if f.is_relative_to(repo_root) else str(f),
+                    f"imports {m.group(1)} — its swizzle answers before the .strings tables do"))
+
+    for rel in ("Palace.xcodeproj/project.pbxproj",
+                "Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"):
+        path = repo_root / rel
+        if not path.exists():
+            continue
+        m = _RUNTIME_SDK_PINS.search(path.read_text(encoding="utf-8", errors="replace"))
+        if m:
+            findings.append(Finding("runtime_translation_sdk", "", rel,
+                                    f"still pins {m.group(0)} — remove the package reference"))
+    return findings
+
 
 
 # ------------------------------------------------ canonical-variant matching
@@ -640,6 +841,8 @@ def inventory(paths: list[Path], include_developer: bool = False
     patron, so counting them inflates the translation bill.
     """
     keys: set[str] = set()
+    native: set[str] = set()
+    foreign: set[str] = set()
     dynamic: dict[str, list[str]] = {}
     for base in paths:
         files = [base] if base.is_file() else [p for p in base.rglob("*") if p.suffix in SOURCE_SUFFIXES]
@@ -652,9 +855,15 @@ def inventory(paths: list[Path], include_developer: bool = False
                 continue
             k, d = extract_swift(text)
             keys |= k
+            n, fo = bundle_scoped_keys(text)
+            native |= n
+            foreign |= fo
             if d:
                 dynamic[str(f)] = d
-    return keys, dynamic
+    # A key reached ONLY through another framework's bundle is that framework's
+    # to translate; carrying it here produces reviewed values nothing reads.
+    # A key reached both ways stays — dropping it would render the raw key.
+    return keys - (foreign - native), dynamic
 
 
 def inventory_detailed(paths: list[Path], include_developer: bool = False):
@@ -843,8 +1052,16 @@ def state_fingerprint(sources: list[Path], lproj_root: Path, langs: list[str],
     for k in sorted(keys):
         h.update(k.encode("utf-8")); h.update(b"\x00")
     for lang in langs:
+        table = _read_table(lproj_root, lang)
+        # A language that ships no table contributes nothing. English lives in
+        # the CODE and has no `en.lproj/Localizable.strings`, so naming it must
+        # not move the hash — the gate runs `--langs de,es,fr,it` while the
+        # documented regeneration command defaults to `en,de,es,fr,it`, and a
+        # fingerprint sensitive to that difference is stale on every run.
+        if table is None:
+            continue
         h.update(lang.encode("utf-8")); h.update(b"\x01")
-        for k, v in sorted((_read_table(lproj_root, lang) or {}).items()):
+        for k, v in sorted(table.items()):
             h.update(k.encode("utf-8")); h.update(b"\x02")
             h.update(v.encode("utf-8")); h.update(b"\x03")
     return h.hexdigest()[:16]
@@ -1129,7 +1346,8 @@ def main(argv: list[str] | None = None) -> int:
     _report = (REPORT_PATH, sources) if a.require_complete and REPORT_PATH.exists() else None
     findings = (check_tables(a.lproj_root, langs, source_map(sources, a.include_developer),
                              _req, _report)
-                + check_stringsdict(a.lproj_root, langs))
+                + check_stringsdict(a.lproj_root, langs)
+                + check_no_runtime_translation_sdk(sources, Path.cwd()))
 
     if a.cmd == "status":
         # Coverage is measured against the keys the SOURCE actually asks for.

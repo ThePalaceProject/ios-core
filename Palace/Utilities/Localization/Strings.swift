@@ -61,6 +61,21 @@ struct Strings {
         static let fontCategorySerif = NSLocalizedString("Serif", value: "Serif", comment: "Font picker section: typefaces with serifs")
         static let fontCategorySansSerif = NSLocalizedString("Sans-Serif", value: "Sans-Serif", comment: "Font picker section: typefaces without serifs")
         static let fontCategoryAccessibility = NSLocalizedString("Accessibility", value: "Accessibility", comment: "Font picker section: typefaces chosen for readability, e.g. OpenDyslexic")
+
+        // Slider titles. `sliderSection(title:)` takes a `String`, and
+        // `Text(aString)` performs no lookup, so these rendered English in
+        // every language. One string serves both the visible title and the
+        // VoiceOver label — they previously differed only in capitalisation,
+        // which is not a distinction worth translating twice.
+        static let fontSize = NSLocalizedString("Font Size", value: "Font Size", comment: "Reader typography slider: text size")
+        static let lineSpacing = NSLocalizedString("Line Spacing", value: "Line Spacing", comment: "Reader typography slider: space between lines")
+        static let paragraphSpacing = NSLocalizedString("Paragraph Spacing", value: "Paragraph Spacing", comment: "Reader typography slider: space between paragraphs")
+        static let letterSpacing = NSLocalizedString("Letter Spacing", value: "Letter Spacing", comment: "Reader typography slider: space between letters")
+        static let wordSpacing = NSLocalizedString("Word Spacing", value: "Word Spacing", comment: "Reader typography slider: space between words")
+
+        // Readium's `EditingAction` takes a plain `String`, so this reached the
+        // system text-selection menu untranslated.
+        static let highlight = NSLocalizedString("Highlight", value: "Highlight", comment: "Text-selection menu item in the reader that highlights the selection.")
     }
 
     struct AgeCheck {
@@ -573,6 +588,12 @@ struct Strings {
         static let addLibrary = NSLocalizedString("Add Library", comment: "Title of button to add a new library")
         static let myLibraries = NSLocalizedString("My Libraries", comment: "Section header on the Libraries screen, above the list of the patron's own libraries.")
         static let librariesEntrySubtitle = NSLocalizedString("Add, remove, or configure libraries", comment: "Subtitle on the Settings row that opens the Libraries screen.")
+        // `row(title:)` takes a `String`, and `Text(aString)` performs NO
+        // lookup — only a string LITERAL is a `LocalizedStringKey`. These two
+        // rows passed raw English and rendered it in every language while
+        // "Hilfe" / "Assistenza" sat unused in the tables. Verified on device.
+        static let getHelp = NSLocalizedString("Get Help", value: "Get Help", comment: "Settings row that opens the support chat.")
+        static let sideLoading = NSLocalizedString("Side Loading", value: "Side Loading", comment: "Settings row that opens the locally-imported books screen.")
         static let switchLibraryPromptFormat = NSLocalizedString("Would you like to switch to %@?", comment: "Confirmation shown when choosing an inactive library's selection control. %@ is the library name.")
         static let switchToLibraryFormat = NSLocalizedString("Switch to %@", comment: "VoiceOver label for the selection control on an inactive library's row. %@ is the library name.")
         static let switchingLibrary = NSLocalizedString("Switching library…", comment: "Loading overlay text shown while the app switches the active library.")

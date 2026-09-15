@@ -21,7 +21,12 @@ This skill writes translated values. That is all it does.
   `en.lproj/Localizable.strings` at all — for the flat keys the key *is* the English string.
   `en.lproj/Localizable.stringsdict` exists because plural rules have nowhere else to live, and
   it is still English source, still off limits.)
-- It **never** runs `genstrings`, `xcodebuild -exportLocalizations`, or a Transifex push/pull.
+- It **never** runs `genstrings`, `xcodebuild -exportLocalizations`, or any translation-service
+  push/pull. There is no service; the tables in this repo are the only source.
+- It **never** moves a string between repos. A key whose call site passes
+  `bundle: Bundle.audiobookToolkit()!` resolves against that framework's bundle and belongs in
+  `ios-audiobooktoolkit/{de,es,fr,it}.lproj/`; `palace_strings.py` already scopes those out of
+  the app's work list, so if one appears here, something is wrong — hand it back.
 - A key that is **absent from the code** is a signal to hand back to the developer, not a thing
   to invent.
 
