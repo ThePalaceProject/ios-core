@@ -131,6 +131,7 @@
 /* Title for a Accept button */
 "Accept" = "Accetta";
 
+/* Font picker section: typefaces chosen for readability, e.g. OpenDyslexic */
 "Accessibility" = "Accessibilità";
 
 /* Title for account section */
@@ -443,6 +444,9 @@
 
 "DEFAULT" = "PREDEFINITO";
 
+/* Reader colour theme: light text on a dark background */
+"Dark" = "Scuro";
+
 /* VoiceOver label for the reader control that makes text smaller */
 "Decrease font size" = "Diminuisci la dimensione del carattere";
 
@@ -555,6 +559,8 @@
 
 /* VoiceOver hint for the Continue section header when collapsed. */
 "Expands to show the most recent book." = "Si espande per mostrare il libro più recente.";
+
+"Extra Wide" = "Molto largo";
 
 "Failed" = "Non riuscite";
 
@@ -687,12 +693,18 @@
 /* Warning message offering the user the choice of interrupting the download or return of a book to log out immediately, or waiting until that finishes. */
 "It looks like you may have a book download or return in progress. Would you like to stop that and continue logging out?" = "Sembra che sia in corso il download o la restituzione di un libro. Vuoi interrompere l’operazione e procedere alla disconnessione?";
 
+/* Reader text alignment: both edges flush */
+"Justified" = "Giustificato";
+
 "Keep" = "Conserva";
 
 "Keep Hold" = "Mantieni la prenotazione";
 
 /* Book detail metadata label for the work's language */
 "Language" = "Lingua";
+
+/* Reader text alignment: ragged right edge */
+"Left" = "A sinistra";
 
 "Less" = "Meno";
 
@@ -703,6 +715,9 @@
 
 /* Barcode image accessibility */
 "Library barcode" = "Codice a barre della tessera della biblioteca";
+
+/* Reader colour theme: black text on white */
+"Light" = "Chiaro";
 
 "Listen" = "Ascolta";
 
@@ -734,6 +749,8 @@
 
 "Margins" = "Margini";
 
+"Medium" = "Medio";
+
 "Missing book" = "Libro non trovato";
 
 "More" = "Altro…";
@@ -757,6 +774,8 @@
 
 "Narrators" = "Narratori:";
 
+"Narrow" = "Stretto";
+
 /* Button title for completing age verification */
 "Next" = "Avanti";
 
@@ -765,6 +784,9 @@
 
 /* Full Keyboard Access: Custom action to go to next page (Tab-Z menu) */
 "Next page" = "Pagina successiva";
+
+/* Reader colour theme: very low brightness for dark rooms */
+"Night" = "Notte";
 
 /* Negative answer in a confirmation prompt. */
 "No" = "No";
@@ -1057,6 +1079,9 @@
 
 "Sample Book Title" = "Titolo di libro di esempio";
 
+/* Font picker section: typefaces without serifs */
+"Sans-Serif" = "Senza grazie";
+
 /* Explain how to set a bookmark. */
 "Save the current location bookmark for later listening." = "Salva il segnalibro della posizione corrente per un ascolto successivo.";
 
@@ -1104,8 +1129,14 @@
 
 "Sent" = "Inviata";
 
+/* Reader colour theme: dark text on a warm paper tone */
+"Sepia" = "Seppia";
+
 /* Book detail metadata label introducing the series this title belongs to */
 "Series" = "Serie";
+
+/* Font picker section: typefaces with serifs */
+"Serif" = "Serif";
 
 /* Title for session expired alert */
 "Session Expired" = "Sessione scaduta";
@@ -1183,6 +1214,9 @@
 "Sleep timer" = "Timer di sospensione";
 
 "Software Licenses" = "Licenze software";
+
+/* Reader colour theme: the Solarized low-contrast palette */
+"Solarized" = "Solarized";
 
 /* Expired DRM certificate message */
 "Some books will be unavailable in this version. Please try updating to the latest version of the application." = "Alcuni libri non saranno disponibili in questa versione. Prova ad aggiornare all’ultima versione dell’applicazione.";
@@ -1464,6 +1498,9 @@
 /* Alert title when download is blocked due to Wi-Fi only setting */
 "Wi-Fi Required" = "Wi-Fi necessario";
 
+/* Reader page margin width */
+"Wide" = "Largo";
+
 "Would you like to return it?" = "Vuoi restituirlo?";
 
 /* Confirmation shown when choosing an inactive library's selection control. %@ is the library name. */
@@ -1480,9 +1517,6 @@
 
 /* User hold position without copies info. Format: 'You are 5th in line.' */
 "You are %1$@ in line." = "Lei è al %1$@ posto nella lista d’attesa.";
-
-/* User hold position and number of copies in use. Format: 'You are 5th in line. 3 copies in use.' */
-"You are %1$@ in line. %2$d %3$@ in use." = "Lei è al %1$@ posto nella lista d’attesa. %2$d %3$@ in uso.";
 
 /* Alert message shown when the user attempts to download or reserve a book while offline */
 "You don’t appear to be connected to the internet. Reconnect and try again." = "Non risulta alcuna connessione a Internet. Ristabilisca la connessione e riprovi.";
@@ -1521,10 +1555,6 @@
 
 /* VoiceOver fragment '%@' is an author name — used in Continue Listening / Continue Reading card labels. */
 "by %@" = "di %@";
-
-"copies" = "copie";
-
-"copy" = "copia";
 
 "currently" = "attualmente";
 
