@@ -182,18 +182,41 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # iteration"), so at 1 we OMIT both flags (a bare `xcodebuild test` runs each
     # test once). Only >1 gets the retry+iterations pair.
     #
-    # -test-repetition-relaunch-enabled YES (DEFLAKE-PLAN, highest-leverage): a
-    # retry reruns each failed test in a FRESH process instead of the same wedged
-    # clone. Class-A "clone-wedge collateral" (a victim hung to 120s by leaked work
-    # wedging a per-clone global) then passes on retry — the wedge is gone in the
-    # new process — so the run stays green under the existing retry-as-safety-net
-    # contract (summary.failed still gates REAL failures that fail all attempts).
-    # This papers over wedges rather than fixing them; the per-test wedge-source
-    # fixes continue in parallel (DEFLAKE-PLAN P1/P2) and the watchdog still names
-    # culprits in the logs. Only applied alongside the retry pair (>1 iteration).
+    # NO -test-repetition-relaunch-enabled. It was added (DEFLAKE-PLAN) to make a
+    # retry re-run in a FRESH process so a victim wedged by a leaked per-clone
+    # global would pass on the retry. It does do that — and it also silently
+    # converts the per-test retry into a repetition of the WHOLE plan.
+    #
+    # MEASURED 2026-09-15, four configurations against one prebuilt bundle, a
+    # plan of one always-failing and three always-passing tests:
+    #
+    #     flags                                              failing  passing
+    #     retry + iterations 3 + relaunch YES                   3x       3x
+    #     retry + relaunch YES                                  3x       3x
+    #     retry + iterations 3                                  3x       1x
+    #     retry                                                 3x       1x
+    #
+    # The retry CAP is 3 in all four; only the passing-test count moves. So
+    # `relaunch` is the multiplier and `-test-iterations` is not — the opposite
+    # of what the first reading of the flags suggests. In CI that was 30 minutes
+    # against 53, one flaky test re-running all ~9,100, and a 60-minute step
+    # bound that PR #1472 timed out against twice on tests that each PASSED on
+    # retry. On a 10x-billed macOS runner it is ~230 wasted billable minutes per
+    # affected run.
+    #
+    # What this costs: a retry now re-enters the SAME process, so a victim of a
+    # genuine clone wedge fails its retries too and the board goes red. That is
+    # the condition the per-test fixes (DEFLAKE-PLAN P1/P2) exist to remove, and
+    # ISOLATED_SERIAL_TESTS below already quarantines the known wedge-prone
+    # classes out of the oversubscribed parallel leg. Both failures seen on
+    # 2026-09-15 are one of each kind: a 120.000s wedge (would have needed the
+    # relaunch) and a 0.031s assertion flake (would not).
+    #
+    # Trade accepted deliberately: pay in occasional red on a wedge rather than
+    # in 23-30 minutes on EVERY run that stumbles once. Revisit when P1/P2 land.
     RETRY_ITER_ARGS=()
     if [ "${CI_TEST_ITERATIONS:-3}" -gt 1 ]; then
-        RETRY_ITER_ARGS=(-retry-tests-on-failure -test-iterations "${CI_TEST_ITERATIONS:-3}" -test-repetition-relaunch-enabled YES)
+        RETRY_ITER_ARGS=(-retry-tests-on-failure -test-iterations "${CI_TEST_ITERATIONS:-3}")
     fi
 
     # Capture xcodebuild output so we can detect a COMPILE failure that
