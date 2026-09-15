@@ -18,17 +18,39 @@ public enum CachePolicy {
     case noCache
 }
 
-// `@unchecked Sendable`: every access to mutable state (`memoryCache`, disk
-// files) is serialized through the concurrent `queue` with `.barrier` writes;
+// `@unchecked Sendable`: every read and write of the cache files, and every
+// memory-cache access that has to stay consistent with them, happens under
+// `lock`. The memory-only clears skip the lock because `NSCache` is itself
+// thread-safe and dropping a memory entry can never make a read wrong (the
+// value is still on disk, or in `.memoryOnly` mode it is simply gone).
 // `memoryWarningObserver` is set once during `init` and only read in `deinit`.
-// `Key`/`Value` are constrained to `Sendable` so cached values can cross the
-// queue boundary safely (all call sites use `GeneralCache<String, Data>`).
+// `Key`/`Value` are constrained to `Sendable` so cached values can cross
+// threads safely (all call sites use `GeneralCache<String, Data>`).
 public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codable & Sendable>: @unchecked Sendable {
     private let memoryCache = NSCache<WrappedKey, Entry>()
     private let fileManager = FileManager.default
     private let cacheDirectory: URL
-    private let queue = DispatchQueue(label: "com.Palace.GeneralCache", attributes: .concurrent)
     private let mode: CachingMode
+
+    /// Serializes cache reads and writes on the calling thread.
+    ///
+    /// This is a lock rather than a dispatch queue on purpose. Covers are read
+    /// from Swift-concurrency tasks, whose threads come from a pool only as
+    /// wide as the CPU count. The previous design read with `queue.sync` and
+    /// wrote with `queue.async(flags: .barrier)` from `ImageCache`'s `.utility`
+    /// processing queue. Once a barrier was queued every new reader waited
+    /// behind it, and the barrier needed a fresh low-priority worker thread to
+    /// run — which the system will not start while all the higher-priority
+    /// pool threads count as busy, and they were busy waiting on this queue. On
+    /// a full catalog screen that deadlocked the entire pool permanently, so
+    /// every async job in the app stopped, feed loads included (PP-5134).
+    ///
+    /// A lock cannot do that: the thread releasing it wakes the next waiter
+    /// directly, so no operation here ever needs a thread that is not already
+    /// running. The cost is that readers no longer run concurrently with each
+    /// other, and writes do their disk I/O on the caller's thread instead of in
+    /// the background.
+    private let lock = NSLock()
     private var memoryWarningObserver: NSObjectProtocol?
 
     private final class Entry: Codable, Sendable {
@@ -112,23 +134,22 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     }
 
     private func handleMemoryWarning() {
-        queue.async(flags: .barrier) { [weak self] in
-            guard let self = self else { return }
-            self.memoryCache.removeAllObjects()
-        }
+        // Runs on the main thread; deliberately does not take `lock`, which a
+        // reader may be holding across disk I/O. See the type comment.
+        memoryCache.removeAllObjects()
     }
 
     public func set(_ value: Value, for key: Key, expiresIn interval: TimeInterval? = nil) {
         let expirationDate = interval.map { Date().addingTimeInterval($0) }
         let entry = Entry(value: value, expiration: expirationDate)
         let wrappedKey = WrappedKey(key)
-        queue.async(flags: .barrier) {
-            if self.mode == .memoryOnly || self.mode == .memoryAndDisk {
-                let cost = self.estimatedCost(for: value)
-                self.memoryCache.setObject(entry, forKey: wrappedKey, cost: cost)
+        lock.withLock {
+            if mode == .memoryOnly || mode == .memoryAndDisk {
+                let cost = estimatedCost(for: value)
+                memoryCache.setObject(entry, forKey: wrappedKey, cost: cost)
             }
-            if self.mode == .diskOnly || self.mode == .memoryAndDisk {
-                self.saveToDisk(entry, for: key)
+            if mode == .diskOnly || mode == .memoryAndDisk {
+                saveToDisk(entry, for: key)
             }
         }
     }
@@ -141,7 +162,7 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     }
 
     public func get(for key: Key) -> Value? {
-        return queue.sync {
+        return lock.withLock {
             let wrappedKey = WrappedKey(key)
             if mode == .memoryOnly || mode == .memoryAndDisk,
                let entry = memoryCache.object(forKey: wrappedKey), !entry.isExpired {
@@ -152,7 +173,7 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
             do {
                 let attrs = try fileManager.attributesOfItem(atPath: url.path)
                 if let exp = attrs[.modificationDate] as? Date, exp < Date() {
-                    remove(for: key)
+                    removeWhileLocked(key)
                     return nil
                 }
                 let raw = try Data(contentsOf: url, options: .mappedIfSafe)
@@ -162,7 +183,7 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
                 } else {
                     let diskEntry = try JSONDecoder().decode(Entry.self, from: raw)
                     guard !diskEntry.isExpired else {
-                        remove(for: key)
+                        removeWhileLocked(key)
                         return nil
                     }
                     value = diskEntry.value
@@ -226,34 +247,36 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     }
 
     public func remove(for key: Key) {
-        let wrappedKey = WrappedKey(key)
-        queue.async(flags: .barrier) {
-            if self.mode == .memoryOnly || self.mode == .memoryAndDisk {
-                self.memoryCache.removeObject(forKey: wrappedKey)
-            }
-            if self.mode == .diskOnly || self.mode == .memoryAndDisk {
-                try? self.fileManager.removeItem(at: self.fileURL(for: key))
-            }
+        lock.withLock { removeWhileLocked(key) }
+    }
+
+    /// The body of `remove(for:)`, for callers that already hold `lock`
+    /// (`NSLock` is not reentrant).
+    private func removeWhileLocked(_ key: Key) {
+        if mode == .memoryOnly || mode == .memoryAndDisk {
+            memoryCache.removeObject(forKey: WrappedKey(key))
+        }
+        if mode == .diskOnly || mode == .memoryAndDisk {
+            try? fileManager.removeItem(at: fileURL(for: key))
         }
     }
 
     public func clear() {
-        queue.async(flags: .barrier) {
-            if self.mode == .memoryOnly || self.mode == .memoryAndDisk {
-                self.memoryCache.removeAllObjects()
+        lock.withLock {
+            if mode == .memoryOnly || mode == .memoryAndDisk {
+                memoryCache.removeAllObjects()
             }
-            if self.mode == .diskOnly || self.mode == .memoryAndDisk {
-                (try? self.fileManager.contentsOfDirectory(at: self.cacheDirectory,
-                                                           includingPropertiesForKeys: nil))?
-                    .forEach { try? self.fileManager.removeItem(at: $0) }
+            if mode == .diskOnly || mode == .memoryAndDisk {
+                (try? fileManager.contentsOfDirectory(at: cacheDirectory,
+                                                      includingPropertiesForKeys: nil))?
+                    .forEach { try? fileManager.removeItem(at: $0) }
             }
         }
     }
 
     public func clearMemory() {
-        queue.async(flags: .barrier) {
-            self.memoryCache.removeAllObjects()
-        }
+        // No `lock`: see `handleMemoryWarning` and the type comment.
+        memoryCache.removeAllObjects()
     }
 
     private func saveToDisk(_ entry: Entry, for key: Key) {
