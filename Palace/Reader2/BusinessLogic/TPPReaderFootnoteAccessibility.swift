@@ -77,11 +77,31 @@ enum TPPReaderFootnoteAccessibility {
     }
   }
 
+  /// The EPUB Open Container Format namespace that `epub:type` lives in.
+  /// Readium serves spine documents as `application/xhtml+xml`, so WKWebView
+  /// parses them as XML and `epub:type` becomes a NAMESPACED attribute.
+  static let epubOPSNamespace = "http://www.idpf.org/2007/ops"
+
   /// JavaScript that annotates inline footnote elements in the rendered Readium
   /// WKWebView with `aria-label`s, so VoiceOver speaks the role + marker. It is a
   /// thin mirror of `accessibilityLabel(role:marker:)` — the Swift composer is
   /// the spec (and is unit-tested); this applies the same rule in the DOM, where
   /// the per-element marker text is known. Idempotent: re-running only re-labels.
+  ///
+  /// Two DOM details this MUST get right, both of which silently label nothing
+  /// when got wrong (see `TPPReaderFootnoteAccessibilityDOMTests`, which executes
+  /// this script in a real `WKWebView` against both parse modes):
+  ///
+  /// 1. A CSS attribute selector with no namespace component matches ONLY
+  ///    attributes in no namespace, so `[epub\:type]` matches nothing in an
+  ///    XML-parsed document — which is every Readium spine resource. Element
+  ///    selection therefore does not filter on that attribute at all; it walks
+  ///    every element and resolves the attribute per-element, where
+  ///    `getAttributeNS` can ask for the OPS namespace explicitly.
+  /// 2. `epub:type` and `role` are CONCATENATED into one token list, not
+  ///    `||`-chained: an element carrying an unrelated `epub:type` (say
+  ///    `"chapter"`) alongside `role="doc-noteref"` must still classify as a
+  ///    reference.
   ///
   /// Returns the element count it labelled (for logging / verification).
   static func annotationJavaScript() -> String {
@@ -93,16 +113,21 @@ enum TPPReaderFootnoteAccessibility {
     return """
     (function() {
       var NUMBERED = \(numbered), GENERIC = \(generic), NOTE = \(note), BACKLINK = \(backlink);
+      var OPS = \(jsString(epubOPSNamespace));
       function roleOf(el) {
-        var t = ((el.getAttribute('epub:type') || el.getAttribute('role') || '')).toLowerCase();
-        if (!t) return null;
+        // getAttributeNS finds the XML-parsed (namespaced) attribute; the
+        // getAttribute fallback covers HTML-parsed resources, where the literal
+        // attribute name is 'epub:type' and getAttributeNS returns null.
+        var et = el.getAttributeNS(OPS, 'type') || el.getAttribute('epub:type') || '';
+        var t = (et + ' ' + (el.getAttribute('role') || '')).toLowerCase();
+        if (!t.trim()) return null;
         var toks = t.split(/\\s+/).map(function(x){ return x.indexOf('doc-') === 0 ? x.slice(4) : x; });
         if (toks.indexOf('noteref') >= 0) return 'reference';
         if (toks.indexOf('backlink') >= 0) return 'backlink';
         if (toks.indexOf('footnote') >= 0 || toks.indexOf('endnote') >= 0 || toks.indexOf('rearnote') >= 0) return 'note';
         return null;
       }
-      var nodes = document.querySelectorAll('[epub\\\\:type],[role]');
+      var nodes = document.querySelectorAll('*');
       var n = 0;
       for (var i = 0; i < nodes.length; i++) {
         var el = nodes[i], r = roleOf(el);
