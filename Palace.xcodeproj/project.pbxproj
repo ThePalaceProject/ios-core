@@ -564,6 +564,7 @@
 		5BF461D820B15576F9CBE189 /* AdobeDRMErrorMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0957B08E999BB01710A4D4B /* AdobeDRMErrorMappingTests.swift */; };
 		5C5CFDA86E67C6186A24EFF9 /* BackgroundDownloadHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FDB637C01812EEB10919A6E /* BackgroundDownloadHandler.swift */; };
 		5C89F2830C766E791E48CE21 /* LCPKeychainMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A303E282D7EFD80AED446401 /* LCPKeychainMigration.swift */; };
+		5CAE0C9A75037E8150CAECC3 /* TPPReaderFootnoteAccessibilityDOMTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318EDE748E5F2B871A7C944A /* TPPReaderFootnoteAccessibilityDOMTests.swift */; };
 		5CD40DBE898E0C7AE14CB1F0 /* AccountsManagerIsolationLintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A399B178C9ECF3F62C62172 /* AccountsManagerIsolationLintTests.swift */; };
 		5CDD263A7FFB392F96FA4F03 /* LegacySAMLAuthAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F432B33DEBD1715E2687C7 /* LegacySAMLAuthAdapter.swift */; };
 		5CEA72012CA84F958EF2C35D /* TPPBookRegistryStateConcurrencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E84425098451FD5099C428F /* TPPBookRegistryStateConcurrencyTests.swift */; };
@@ -2533,6 +2534,7 @@
 		317C8F0150303A9AC53BC44F /* MyBooksDownloadCenterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadCenterTests.swift; sourceTree = "<group>"; };
 		317F2DC09E9CFECAF62DA385 /* BookDetailOpenRoutingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookDetailOpenRoutingTests.swift; sourceTree = "<group>"; };
 		3183C58974AE89BE550AC866 /* XCTestCase+testUserDefaults.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "XCTestCase+testUserDefaults.swift"; sourceTree = "<group>"; };
+		318EDE748E5F2B871A7C944A /* TPPReaderFootnoteAccessibilityDOMTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPReaderFootnoteAccessibilityDOMTests.swift; sourceTree = "<group>"; };
 		31CC0A3CFA3E9E20C65B5C01 /* PlaybackRateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PlaybackRateTests.swift; sourceTree = "<group>"; };
 		3248EFDDABC9F2BE1324CA2A /* TPPNetworkExecutorConcurrencyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPNetworkExecutorConcurrencyTests.swift; sourceTree = "<group>"; };
 		3260782E24602A4B3FF7E20B /* FontManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontManagerTests.swift; sourceTree = "<group>"; };
@@ -4371,6 +4373,9 @@
 				B63A93A84992788F3C54F7F3 /* ChapterScrubberViewTests.swift */,
 				291713E94497912E9F62F2E8 /* DirectionalNavigationAdapterOwnershipTests.swift */,
 				F405D16E6DC8840E937F0C0B /* TPPReaderPositionsVCTOCTests.swift */,
+				706597D90105F91EC5B57071 /* DirectionalNavigationAdapterOwnershipTests.swift */,
+				686BD020FBA7CBE404FED86D /* TPPReaderPositionsVCTOCTests.swift */,
+				318EDE748E5F2B871A7C944A /* TPPReaderFootnoteAccessibilityDOMTests.swift */,
 			);
 			path = Reader2;
 			sourceTree = "<group>";
@@ -8360,6 +8365,11 @@
 				33E83EC5D177993247F1E1FD /* AdobeActivationRefreshLicensorTests.swift in Sources */,
 				E24657D7475C2C67F7566540 /* BookCellModelProcessingStateTests.swift in Sources */,
 				1CEDA6F3B4F89D61AE3E3B40 /* TPPReaderPositionsVCTOCTests.swift in Sources */,
+				30F8F68DD028ACA8D9C79365 /* MyBooksDownloadCenterCachePurgeTests.swift in Sources */,
+				9637EE29B2D4F2281006CBB7 /* TPPReaderPositionsVCTOCTests.swift in Sources */,
+				B78652B9C0B9DA164CD5DDFF /* LocalizationTablesTests.swift in Sources */,
+				FE20BF5E312373406E6CBC73 /* ReaderPageOfFormatTests.swift in Sources */,
+				5CAE0C9A75037E8150CAECC3 /* TPPReaderFootnoteAccessibilityDOMTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9772,7 +9782,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 504;
+				CURRENT_PROJECT_VERSION = 505;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -9831,7 +9841,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 504;
+				CURRENT_PROJECT_VERSION = 505;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -10020,7 +10030,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 504;
+				CURRENT_PROJECT_VERSION = 505;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -10081,7 +10091,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 504;
+				CURRENT_PROJECT_VERSION = 505;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
