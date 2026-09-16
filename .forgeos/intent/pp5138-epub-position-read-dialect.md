@@ -74,13 +74,29 @@ either dialect.
 
 ## Files in scope
 
+Consolidated across both amendments below — the intent-recorded gate reads
+this section only, so every file the branch touches is listed here.
+
 - Palace/Reader2/Bookmarks/EPUBPositionDialect.swift
 - Palace/Reader2/Bookmarks/TPPBookLocation+Locator.swift
 - Palace/Reader2/Bookmarks/TPPBookmarkFactory.swift
+- Palace/Reader2/Bookmarks/TPPAnnotations.swift
 - Palace/Reader2/BusinessLogic/TPPLastReadPositionSynchronizer.swift
+- Palace/Reader2/BusinessLogic/TPPLastReadPositionPoster.swift
+- Palace/Reader2/ReaderPresentation/ReaderModule.swift
+- Palace/AppInfrastructure/ReaderService.swift
 - PalaceTests/Sync/EPUBPositionWireFormatTests.swift
+- PalaceTests/Sync/BookmarkSpecConformanceTests.swift
 - PalaceTests/Reader/EPUBPositionDialectTests.swift
+- PalaceTests/Reader2/TPPLastReadPositionPosterTests.swift
+- PalaceTests/Reader2/TPPLastReadPositionSynchronizerTests.swift
 - Palace.xcodeproj/project.pbxproj
+- .gitmodules
+- mobile-specs
+- mobile-bookmark-spec
+- .claude/skills/swarm/SKILL.md
+- docs/SystemRequirements.md
+- docs/architecture/triage-bot-shared-architecture-proposal.md
 
 ---
 
@@ -130,7 +146,7 @@ bytes we already store.
   neither is done here
 - does NOT change the audiobook or PDF position paths
 
-## Additional files in scope
+### Files added to scope by this amendment (see the consolidated list above)
 
 - Palace/Reader2/BusinessLogic/TPPLastReadPositionPoster.swift
 - Palace/Reader2/Bookmarks/TPPAnnotations.swift
@@ -159,7 +175,7 @@ Verified the suite catches the real defect by reintroducing it in
 `makeSnapshot`: the posted-payload assertions go red on `@type`,
 `progressWithinChapter` and `locations`.
 
-## Additional files in scope
+### Files added to scope by this amendment (see the consolidated list above)
 
 - .gitmodules
 - mobile-specs
