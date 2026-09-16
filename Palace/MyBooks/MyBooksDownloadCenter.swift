@@ -1615,7 +1615,15 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         // nothing. An earlier revision of this fix did exactly that and was inert
         // for every fresh borrow; two reviewers caught it by reading the guard
         // rather than the call. Do not move this earlier.
-        await startLCPContentFetchIfNeeded(for: book, account: accountsManager.currentAccountId ?? "")
+        //
+        // PP-5148: only on the SUCCESS arm. Both arms fall through to here, and a
+        // download can fail AFTER its licence has landed — at which point the book
+        // still looks fetchable, and the app would start pulling the archive for a
+        // book it has just marked `.downloadFailed` and raised an alert for. The
+        // patron sees an error and is told nothing about the gigabytes still
+        // moving. `failureRequiringAlert` is re-read from the dispatcher above, so
+        // by this line it is the final verdict rather than the parse-time guess.
+        await startLCPContentFetchIfNeeded(for: book, account: accountsManager.currentAccountId ?? "", afterFailedDownload: failureRequiringAlert)
         // Reliability WS-A: download reached a terminal outcome — drop the
         // durable record and reset the transient-transfer retry counter.
         await stateManager.finishTerminalBookkeeping(for: book.identifier, keepRecord: dispatchResult.followUpTaskInFlight)
