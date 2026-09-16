@@ -372,7 +372,7 @@ final class LocalBookContentServiceTests: XCTestCase {
                                             connected: true,
                                             downloadOnlyOnWiFi: true)
 
-        await center.startLCPContentFetchIfNeeded(for: book, account: appContainer.accountsManager.currentAccountId ?? "")
+        await center.startLCPContentFetchIfNeeded(for: book, account: appContainer.accountsManager.currentAccountId ?? "", afterFailedDownload: false)
 
         XCTAssertEqual(fulfiller.callCount, 0,
                        "download-only-on-WiFi is a preference the patron set — the completion path must not pull a multi-hundred-megabyte archive over cellular (PP-5135)")
@@ -388,10 +388,72 @@ final class LocalBookContentServiceTests: XCTestCase {
                                             connected: true,
                                             downloadOnlyOnWiFi: false)
 
-        await center.startLCPContentFetchIfNeeded(for: book, account: appContainer.accountsManager.currentAccountId ?? "")
+        // A DISTINCT account, not `accountsManager.currentAccountId`. Passing the
+        // live value would make the assertion below tautological — it would hold
+        // even if this method ignored its parameter and resolved the account
+        // itself, which is precisely the defect PP-5146 exists to remove.
+        await center.startLCPContentFetchIfNeeded(for: book, account: "pp5147-explicit-account", afterFailedDownload: false)
 
         XCTAssertEqual(fulfiller.callCount, 1,
                        "with the policy satisfied the .lcpa must be fetched, or a borrowed audiobook never gets its audio (PP-5135)")
+        // EVERY resolution, in order — not just the last one. There are THREE on
+        // this path, which is itself the finding: the missing-check, the licence
+        // lookup, and the destination. I expected two, asserted two, and the
+        // array came back `[pinned, nil, pinned]` — the licence was still being
+        // resolved against the live library while the destination was pinned.
+        // Asserting only the final value would not have shown that, and neither
+        // would counting.
+        XCTAssertEqual(bookFileManager.resolvedAccounts,
+                       ["pp5147-explicit-account", "pp5147-explicit-account", "pp5147-explicit-account"],
+                       "all three resolutions on the fetch path — missing-check, licence lookup, destination — must agree on the caller's library. A `nil` in any slot means that step re-resolved the current library for itself, which is the structure PP-5146 removes: the archive could be read from one library's directory and written into another's.")
+    }
+
+    /// PP-5148: a download that FAILED must not leave a multi-gigabyte transfer
+    /// running behind the error the patron was just shown.
+    ///
+    /// The fetch sits at the end of `handleDownloadCompletion`, which both the
+    /// success and the failure arms fall through to. For most failures the fetch
+    /// stops on its own because no licence ever arrived — but a download can fail
+    /// AFTER the licence lands, and then the app starts pulling the archive for a
+    /// book it has just marked `.downloadFailed`. The patron sees an error, is
+    /// told nothing about the transfer, and pays for the data.
+    ///
+    /// This drives the real completion path rather than calling the fetch
+    /// directly: the guard lives in that body, and a test that called the fetch
+    /// itself could not see it. A bare `fakeDownloadTask()` reports no MIME type,
+    /// which the completion parser rejects outright — that is the failure arm.
+    func testHandleDownloadCompletion_whenTheDownloadFailed_startsNoBackgroundFetch() async throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let stateManager = DownloadStateManager()
+        let center = try makeDownloadCentre(fulfiller: fulfiller,
+                                            connected: true,
+                                            downloadOnlyOnWiFi: false,
+                                            stateManager: stateManager)
+
+        let task = fakeDownloadTask()
+        await stateManager.taskIdentifierToBook.set(task.taskIdentifier, value: book)
+
+        // Precondition: this book is exactly the shape that WOULD be fetched on a
+        // success — licence present, archive absent. Without it the assertion
+        // below would hold for the wrong reason.
+        // The account the PRODUCTION call site computes, not a literal of my own.
+        // A literal agrees only because the spy ignores the account, so the
+        // precondition would keep passing if the two ever diverged — and a
+        // precondition that cannot fail is the thing it is guarding against.
+        let productionAccount = appContainer.accountsManager.currentAccountId ?? ""
+        XCTAssertTrue(center.lcpContentFileMissing(for: book, account: productionAccount),
+                      "precondition: the book must look fetchable, or this test passes even with the guard removed")
+
+        let location = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp5148-\(UUID().uuidString).bin")
+        try Data("not a book".utf8).write(to: location)
+        defer { try? FileManager.default.removeItem(at: location) }
+
+        await center.handleDownloadCompletion(session: Self.inertSession(), task: task, location: location)
+
+        XCTAssertEqual(fulfiller.callCount, 0,
+                       "a failed download must not start a background .lcpa transfer. The patron has been shown an error and marked this book failed; quietly pulling gigabytes for it — on cellular, if their settings allow — is not something they agreed to (PP-5148).")
     }
 
     /// Builds a download centre whose settings, reachability and local-content
@@ -399,7 +461,8 @@ final class LocalBookContentServiceTests: XCTestCase {
     /// inherited from the test host.
     private func makeDownloadCentre(fulfiller: SpyLCPContentFulfiller,
                                     connected: Bool,
-                                    downloadOnlyOnWiFi: Bool) throws -> MyBooksDownloadCenter {
+                                    downloadOnlyOnWiFi: Bool,
+                                    stateManager: DownloadStateManager? = nil) throws -> MyBooksDownloadCenter {
         let suiteName = "pp5135-\(UUID().uuidString)"
         let isolatedDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName),
                                              "could not create an isolated defaults suite")
@@ -408,6 +471,20 @@ final class LocalBookContentServiceTests: XCTestCase {
         settings.downloadOnlyOnWiFi = downloadOnlyOnWiFi
 
         let service = makeService(fulfiller: fulfiller)
+        if let stateManager {
+            // The completion path reads the book back out of the state manager,
+            // so a test that drives it must own the one the centre uses.
+            return MyBooksDownloadCenter(
+                bookRegistry: registry,
+                accountsManager: appContainer.accountsManager,
+                bookFileManager: bookFileManager,
+                localContentService: service,
+                stateManager: stateManager,
+                reachability: MockReachability(initiallyConnected: connected),
+                settings: settings,
+                urlSession: Self.inertSession()
+            )
+        }
         return MyBooksDownloadCenter(
             bookRegistry: registry,
             accountsManager: appContainer.accountsManager,
@@ -416,6 +493,14 @@ final class LocalBookContentServiceTests: XCTestCase {
             reachability: MockReachability(initiallyConnected: connected),
             settings: settings
         )
+    }
+
+    /// A session that can never reach the network, so an accidental `.resume()`
+    /// fails loudly instead of hanging the suite.
+    private static func inertSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [NoNetworkURLProtocol.self]
+        return URLSession(configuration: config)
     }
 
     // MARK: - PP-5135: the fetch's PLACEMENT in the completion path
@@ -434,8 +519,11 @@ final class LocalBookContentServiceTests: XCTestCase {
     /// test injected a spy trigger and so asserted the call and never the callee.
     ///
     /// Asserted against the source text rather than by driving the method:
-    /// `handleDownloadCompletion` needs a live `URLSessionDownloadTask`, and the
-    /// invariant is positional, not behavioural. `PalaceTests/MetaTests/` pins
+    /// The invariant is positional, not behavioural: the ordering is what makes
+    /// the fetch reach its work, and ordering is not something a running test can
+    /// observe. (`handleDownloadCompletion` itself IS drivable — see the PP-5148
+    /// test above — so the earlier version of this note, which said it was not,
+    /// was wrong about the reason even though a lint is still the right tool.) `PalaceTests/MetaTests/` pins
     /// wiring facts the same way for the same reason. Move the call five lines up
     /// and this fails while everything else stays green.
     func testContentFetchIsTriggeredAfterDownloadInfoIsCleared() throws {
@@ -475,6 +563,68 @@ final class LocalBookContentServiceTests: XCTestCase {
     /// The ordering rule above was derived from this predicate. If the guard stops
     /// consulting `downloadInfo`, that derivation no longer holds and a green lint
     /// would be asserting a rule that does not bind any more.
+    /// Pins WHICH account the download centre hands to the fetch.
+    ///
+    /// The expression is evaluated inside `handleDownloadCompletion`, and the
+    /// account it produces is not observable from the outside: every path the
+    /// completion takes resolves the same live value, so a test that drives the
+    /// body cannot tell a correct id from a wrong one. Mutating it to `""`
+    /// survives the whole suite — the gap QA raised on PP-5135.
+    ///
+    /// A correction worth recording, because the first version of this comment
+    /// asserted it: the body is NOT unreachable. `DownloadReissuePersistenceTests`
+    /// drives it at five call sites, and the PP-5148 test above drives it here.
+    /// What is unreachable is the DISTINCTION — which is a different claim, and
+    /// the one that actually justifies a lint. Reaching for "no test can call
+    /// this" when the truth is "no test can tell the difference" is how an
+    /// untested line gets excused instead of covered.
+    ///
+    /// So this asserts over source what the runtime cannot: that the call takes
+    /// its account from the INJECTED `accountsManager`, not from
+    /// `AccountsManager.shared` and not from a literal.
+    func testContentFetchResolvesTheAccountFromTheInjectedManager() throws {
+        let source = try downloadCenterSource()
+        let lines = source.components(separatedBy: .newlines)
+
+        // The call may wrap across lines, so read the whole argument list rather
+        // than the first line of it. Keying on one line would make this lint fail
+        // the moment someone reformatted a correct call — a guard that cries wolf
+        // gets deleted, and then it guards nothing.
+        let callIndex = try XCTUnwrap(
+            lines.firstIndex { $0.contains("startLCPContentFetchIfNeeded(") && !$0.contains("func ") },
+            "the call to `startLCPContentFetchIfNeeded(` is gone — see the ordering lint above.")
+        let call = lines[callIndex..<min(callIndex + 6, lines.count)].joined(separator: " ")
+
+        XCTAssertTrue(call.contains("accountsManager.currentAccountId"),
+            """
+            the fetch is no longer given the account from the INJECTED \
+            `accountsManager`. Whatever it is given now decides which library's \
+            directory the .lcpa is checked against and written into, so a patron \
+            with two library cards can have the audio land where the book will \
+            never find it. An empty string here is silently wrong, not a crash \
+            (PP-5147). Actual call: \(call.trimmingCharacters(in: .whitespaces))
+            """)
+
+        // PP-5148's argument is mutation-invisible for the same reason the account
+        // is, and worse: hardcoding it to `true` stops PP-5135 fetching for EVERY
+        // successful borrow while the whole suite stays green. The success arm
+        // cannot be driven here — a `fakeDownloadTask` reports no MIME type, so
+        // the completion parser always takes the failure branch — so source is the
+        // only place this can be pinned.
+        XCTAssertTrue(call.contains("afterFailedDownload: failureRequiringAlert"),
+            """
+            the fetch no longer takes its failed/succeeded verdict from \
+            `failureRequiringAlert`. A literal here is silent in both directions: \
+            `true` disables the PP-5135 fix entirely and every test still passes; \
+            `false` restores the PP-5148 defect, starting a multi-gigabyte transfer \
+            behind an error the patron was just shown (PP-5148). \
+            Actual call: \(call.trimmingCharacters(in: .whitespaces))
+            """)
+
+        XCTAssertFalse(call.contains("AccountsManager.shared"),
+            "the fetch resolves its account through `AccountsManager.shared`. CLAUDE.md forbids `.shared` reads in new code, and a download centre wired to a different account in a test would resolve paths through the live singleton instead of its own.")
+    }
+
     func testDuplicateGuardStillConsultsDownloadInfo() throws {
         let source = try downloadCenterSource()
         XCTAssertTrue(
@@ -937,7 +1087,13 @@ private final class SpyProgressReporter: DownloadProgressPublishing {
 /// recent account passed for assertions.
 private final class SpyBookFileManager: BookFileManager {
     private let tempDir: URL
-    var lastResolvedAccount: String?
+    var lastResolvedAccount: String? { resolvedAccounts.last ?? nil }
+    /// Retained PER CALL, not just the latest — the same reason
+    /// `SpyLCPContentFulfiller` keeps its handlers per call. "Most recent" cannot
+    /// distinguish "the destination resolved correctly" from "something resolved
+    /// after it and happened to agree", and PP-5146 was found precisely because a
+    /// SECOND resolution overwrote the first with the wrong account.
+    private(set) var resolvedAccounts: [String?] = []
     /// Identifier whose lookup should return nil — exercises the
     /// "Could not resolve fileUrl" branch.
     var failResolutionForIdentifier: String?
@@ -962,7 +1118,7 @@ private final class SpyBookFileManager: BookFileManager {
     }
 
     override func fileUrl(for book: TPPBook, account: String?) -> URL? {
-        lastResolvedAccount = account
+        resolvedAccounts.append(account)
         if book.identifier == failResolutionForIdentifier { return nil }
         return fakeURLFor(book)
     }
