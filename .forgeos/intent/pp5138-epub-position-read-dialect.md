@@ -137,3 +137,34 @@ bytes we already store.
 - Palace/Reader2/ReaderPresentation/ReaderModule.swift
 - Palace/AppInfrastructure/ReaderService.swift
 - PalaceTests/Reader2/TPPLastReadPositionPosterTests.swift
+
+---
+
+## Amendment 2, 2026-09-16 — vendored spec repointed and wired
+
+The earlier anti-claim "does NOT repoint the submodule, does NOT wire the
+fixture corpus" is withdrawn at the owner's direction; both are done here.
+
+- migrates the `mobile-bookmark-spec` submodule to `mobile-specs` (path and
+  name both change; the old repo is archived and was pinned at its first commit)
+- adds `PalaceTests/Sync/BookmarkSpecConformanceTests.swift`, running the
+  spec's own fixture corpus and reading the required-key list out of
+  `locatorSchema.json` rather than restating it
+- updates the submodule-name guard lists in `.claude/skills/swarm/SKILL.md`,
+  which protect against the gitlink-to-symlink destruction incident
+
+The corpus is read from the working tree via `#filePath`, and its absence
+FAILS rather than skips. Verified by hiding the corpus: all 5 cases fail.
+Verified the suite catches the real defect by reintroducing it in
+`makeSnapshot`: the posted-payload assertions go red on `@type`,
+`progressWithinChapter` and `locations`.
+
+## Additional files in scope
+
+- .gitmodules
+- mobile-specs
+- mobile-bookmark-spec
+- PalaceTests/Sync/BookmarkSpecConformanceTests.swift
+- .claude/skills/swarm/SKILL.md
+- docs/SystemRequirements.md
+- docs/architecture/triage-bot-shared-architecture-proposal.md

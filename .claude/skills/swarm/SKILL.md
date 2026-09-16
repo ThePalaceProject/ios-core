@@ -108,7 +108,7 @@ git submodule update --init -- ios-audiobooktoolkit 2>/dev/null || true
 
 # Other 7 submodules — symlinks are safe
 for sub in adept-ios adobe-content-filter ios-audiobook-overdrive \
-           ios-tenprintcover mobile-bookmark-spec readium-sdk readium-shared-js; do
+           ios-tenprintcover mobile-specs readium-sdk readium-shared-js; do
   if [ ! -L "$sub" ]; then
     [ -d "$sub" ] && [ -z "$(ls -A "$sub" 2>/dev/null)" ] && rmdir "$sub"
     [ ! -e "$sub" ] && [ -e "$MAIN/$sub/.git" ] && ln -s "$MAIN/$sub" "$sub"
@@ -476,7 +476,7 @@ if [ "$ARCH_REVIEW" != "APPROVED" ] && { [ -z "$ARCH_SKIPPED" ] || [ "$ARCH_SKIP
 fi
 
 # Check 1: Submodule typechanges accidentally staged (PR #1018 arch1)
-if git diff --cached --name-only | grep -E "^(adept-ios|adobe-content-filter|ios-audiobook-overdrive|ios-tenprintcover|mobile-bookmark-spec|readium-sdk|readium-shared-js|adobe-rmsdk)$"; then
+if git diff --cached --name-only | grep -E "^(adept-ios|adobe-content-filter|ios-audiobook-overdrive|ios-tenprintcover|mobile-specs|readium-sdk|readium-shared-js|adobe-rmsdk)$"; then
   echo "BLOCK: submodule typechanges staged — git restore --staged them"
   exit 1
 fi
