@@ -67,10 +67,88 @@ PROJECT = "Palace.xcodeproj"
 SCHEME = "Palace"
 
 # SIM_ID: prefer the harness-allocated UDID (HARNESS_SESSION_SIM_UDID env var)
-# so parallel agents and CI can each pin a different sim. Fall back to the
-# author's local sim for direct dev invocation; the script is still allowed to
-# pick a different UDID via env without code changes.
-SIM_ID = os.environ.get("HARNESS_SESSION_SIM_UDID", "DF4A2A27-9888-429D-A749-2E157A049A37")
+# so parallel agents and CI can each pin a different sim.
+#
+# The fallback below is a convenience for ONE machine and is absent from most
+# others — any outside contributor's, and this repo's own after a simulator
+# wipe. It is NOT trusted blindly, because an unresolvable
+# `-destination id=...` does not fail in a way that names the cause: xcodebuild
+# prints "The requested device could not be found" and exits without running a
+# test, which this tool would score as every mutant ERRORED — a mutation report
+# that looks like a tooling result and is really a missing simulator.
+#
+# So resolve the id against devices that actually exist, and if none does, say
+# so and stop. Mirrors resolve_sim_id() in scripts/verify-pr.sh; keep the two in
+# step. Resolution is LAZY (not at import) so this module still imports on a
+# machine with no `xcrun` — scripts/tests/ runs on ubuntu in CI.
+SIM_FALLBACK_UDID = "DF4A2A27-9888-429D-A749-2E157A049A37"
+
+_UDID_RE = re.compile(r"[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}")
+# CLAUDE.md documents iPhone 16 Pro as the destination; accept newer iPhones
+# too rather than fail on a machine that has moved on.
+_IPHONE_RE = re.compile(r"iPhone (?:1[6-9]|2[0-9])")
+
+
+def simctl_available_devices() -> str:
+    """Raw `xcrun simctl list devices available` output, or "" if unobtainable.
+
+    Returns "" rather than raising so the caller reports "no usable simulator"
+    once, instead of this failing differently on a host with no Xcode.
+    """
+    try:
+        return subprocess.run(
+            ["xcrun", "simctl", "list", "devices", "available"],
+            capture_output=True, text=True, timeout=60,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def resolve_sim_id(want: str | None, available: str) -> str | None:
+    """The UDID to build against, or None when nothing usable exists.
+
+    `want` wins only if it is actually present in `available` — that check is
+    the whole point, since a stale UDID is indistinguishable from a good one
+    until xcodebuild fails in a way that blames the diff.
+    """
+    if want and want in available:
+        return want
+    for line in available.splitlines():
+        if _IPHONE_RE.search(line):
+            found = _UDID_RE.search(line)
+            if found:
+                return found.group(0)
+    return None
+
+
+_RESOLVED_SIM_ID: str | None = None
+
+
+def require_sim_id() -> str:
+    """resolve_sim_id() or exit 2, naming the simulator as the cause."""
+    global _RESOLVED_SIM_ID
+    if _RESOLVED_SIM_ID is not None:
+        return _RESOLVED_SIM_ID
+    want = os.environ.get("HARNESS_SESSION_SIM_UDID") or SIM_FALLBACK_UDID
+    resolved = resolve_sim_id(want, simctl_available_devices())
+    if resolved is None:
+        sys.stderr.write(
+            "FATAL: no usable iOS simulator found — NOTHING WAS MEASURED.\n"
+            f"  HARNESS_SESSION_SIM_UDID={os.environ.get('HARNESS_SESSION_SIM_UDID', '<unset>')}\n"
+            f"  fallback {SIM_FALLBACK_UDID} is not present on this host,\n"
+            "  and no available iPhone simulator matched.\n\n"
+            "This is 'could not run', NOT 'mutants survived'. Create a simulator\n"
+            "(Xcode > Window > Devices and Simulators), or run under an allocator\n"
+            "that exports HARNESS_SESSION_SIM_UDID.\n"
+        )
+        raise SystemExit(2)
+    if resolved != os.environ.get("HARNESS_SESSION_SIM_UDID"):
+        sys.stderr.write(
+            f"note: using simulator {resolved} "
+            "(HARNESS_SESSION_SIM_UDID unset or unavailable)\n"
+        )
+    _RESOLVED_SIM_ID = resolved
+    return resolved
 DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".forgeos", "mutation-cache")
 # Per-mutant incremental cache lives in a subdir so it never collides with the
 # whole-file cache files (which sit directly in DEFAULT_CACHE_DIR).
@@ -422,7 +500,7 @@ def build_xcodebuild_command(test_class_paths: list[str],
         "xcodebuild",
         "-project", PROJECT,
         "-scheme", SCHEME,
-        "-destination", f"platform=iOS Simulator,id={SIM_ID}",
+        "-destination", f"platform=iOS Simulator,id={require_sim_id()}",
         "test",
     ] + derived_data_args + fast_flags + coverage_args + only_testing_args
 
