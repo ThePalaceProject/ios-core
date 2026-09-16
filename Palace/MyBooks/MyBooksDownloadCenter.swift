@@ -1411,10 +1411,6 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
 
 extension MyBooksDownloadCenter {
 
-    func redownloadLCPContentFile(for book: TPPBook) {
-        localContentService.redownloadLCPContentFile(for: book)
-    }
-
     func deleteLocalContent(for identifier: String, account: String? = nil) {
         localContentService.deleteLocalContent(for: identifier, account: account)
     }
@@ -1603,6 +1599,23 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         await taskIdentifierToBook.remove(task.taskIdentifier)
         await downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
         await downloadCoordinator.registerCompletion(identifier: book.identifier)
+
+        // PP-5135: a streaming LCP audiobook finishes this path with ONLY its
+        // `.lcpl` license on disk and the book marked downloaded, so the shelf
+        // says "Downloaded" while the device holds no audio and the book cannot
+        // be opened offline at all.
+        //
+        // Placed HERE, after `bookIdentifierToDownloadInfo.remove` above, and not
+        // in `LCPFulfillmentHandler` where it reads more naturally. The fetch runs
+        // through `redownloadLCPContentFile`, whose duplicate-suppression guard
+        // asks `downloadCenterHasTransfer` — which is `downloadInfo(for:) != nil`.
+        // Triggering during fulfillment means that entry is still live (it is
+        // cleared ~100 ms later, by the cleanup just above), so the fetch would
+        // hit "already transferring — skipping duplicate" and silently do
+        // nothing. An earlier revision of this fix did exactly that and was inert
+        // for every fresh borrow; two reviewers caught it by reading the guard
+        // rather than the call. Do not move this earlier.
+        await startLCPContentFetchIfNeeded(for: book, account: accountsManager.currentAccountId ?? "")
         // Reliability WS-A: download reached a terminal outcome — drop the
         // durable record and reset the transient-transfer retry counter.
         await stateManager.finishTerminalBookkeeping(for: book.identifier, keepRecord: dispatchResult.followUpTaskInFlight)

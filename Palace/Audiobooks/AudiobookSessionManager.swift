@@ -2374,100 +2374,6 @@ public final class AudiobookSessionManager: ObservableObject {
         return isExpiredEntitlementSignal(error)
     }
 
-    /// PP-4542: decides whether a `.playbackFailed` should trigger ONE silent
-    /// auto-reopen before surfacing the "Audiobook Unavailable" alert. Pure so
-    /// the per-session bound is unit-pinned without driving the auth-gated open
-    /// flow. Distributor-agnostic on purpose: the regression (Readium 3.9.0
-    /// rangeOutOfBounds on a not-yet-materialized LCP package) is a cold-load
-    /// race that any first-open can hit, and a reopen demonstrably recovers it.
-    /// - `hasEverStartedPlayback == false`: only a COLD-load failure (playback
-    ///   never started this session) is a candidate; a mid-playback failure is a
-    ///   different surface and must NOT silently reopen.
-    /// - `hasCurrentBook`: there must be a book to reopen.
-    /// - `alreadyAttempted == false`: bounded to one reopen per book per session
-    ///   so a genuinely persistent failure reaches the alert instead of looping.
-    ///
-    /// Lives OUTSIDE `#if FEATURE_OVERDRIVE` (unlike the sibling OverDrive
-    /// helpers): the cold-load auto-recovery call site (`stopPlayback` error
-    /// path) is unconditional, so gating this behind FEATURE_OVERDRIVE broke the
-    /// `Palace-noDRM` target build (`type 'Self' has no member ...`). It is a
-    /// pure LCP/first-open helper with no OverDrive dependency.
-    static func shouldAutoReopenOnColdLoadFailure(
-        hasEverStartedPlayback: Bool,
-        hasCurrentBook: Bool,
-        alreadyAttempted: Bool
-    ) -> Bool {
-        !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
-    }
-
-    /// True once the LCP audiobook's full content package is on disk. The `.lcpa`
-    /// is moved into place atomically on download completion
-    /// (BackgroundDownloadHandler.replaceBook), so file existence == content
-    /// complete — the same signal `LCPAdapter.prepareLCPSource` uses to prefer
-    /// the reliable local path over streaming.
-    static func audiobookContentIsLocal(_ bookId: String) -> Bool {
-        guard let url = AppContainer.production().downloadCenter.fileUrl(for: bookId) else { return false }
-        return FileManager.default.fileExists(atPath: url.path)
-    }
-
-    /// Awaits a freshly-borrowed audiobook's content download landing on disk by
-    /// polling existence of the local package. Bounded so a stalled/failed
-    /// download can't hold the loading state forever; on timeout the caller
-    /// surfaces the unavailable alert.
-    ///
-    /// 323-Cause-1: this is a *wait*, and the wait is now preceded by an
-    /// explicit `lcpContentDownloadTrigger(book)` in `gateOnLCPContentDownload`
-    /// — because an LCP audiobook that flipped to `.downloadSuccessful` on
-    /// license-only may have NO content download in flight (content downloads
-    /// separately and can permanently fail), so a poll with nothing running
-    /// would spin the whole window then dead-end. The trigger makes the file
-    /// actually arrive; this awaits it.
-    /// - parameter onProgress: optional per-poll sink for the in-flight
-    ///   download fraction (0…1), read from the download center. Lets the caller
-    ///   drive a determinate "Downloading…" bar in the loading shell during the
-    ///   wait instead of showing a static skeleton (fix/audiobook-first-open-hang).
-    ///   MainActor-isolated to match the presenter it typically feeds.
-    static func awaitAudiobookContentLocal(
-        _ bookId: String,
-        timeout: TimeInterval = 180,
-        pollInterval: TimeInterval = 0.5,
-        onProgress: (@MainActor @Sendable (Float) -> Void)? = nil
-    ) async -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if audiobookContentIsLocal(bookId) { return true }
-            if let onProgress {
-                let fraction = Float(AppContainer.production().downloadCenter.downloadProgress(for: bookId))
-                await onProgress(fraction)
-            }
-            try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
-        }
-        return audiobookContentIsLocal(bookId)
-    }
-
-    /// PP-4542 / 323-Cause-1: pure predicate for the upfront LCP content gate.
-    /// An LCP audiobook that is openable but whose content package isn't on
-    /// disk must TRIGGER a content download and await it — it must NOT stream
-    /// (broken under Readium 3.9.0) and must NOT merely poll for a file that
-    /// may never land. Cold-load recovery re-opens skip the gate entirely
-    /// (content is already local by then). Pure so a flipped conditional is
-    /// caught by mutation testing.
-    static func shouldTriggerContentDownloadBeforeOpen(
-        isColdLoadRecovery: Bool,
-        canOpenLCPBook: Bool,
-        contentIsLocal: Bool,
-        streamingEnabled: Bool
-    ) -> Bool {
-        // PP-4957: when streaming is ON, an LCP audiobook is playable on its
-        // license alone — never force a content download before opening; let the
-        // player stream via the swift-toolkit #579 fork. When OFF, the original
-        // download-first gate stands: trigger iff the book is openable but its
-        // `.lcpa` content is not yet on disk, and this is not a cold-load re-open
-        // (whose content is already local).
-        if streamingEnabled { return false }
-        return !isColdLoadRecovery && canOpenLCPBook && !contentIsLocal
-    }
-
     /// PP-4542 / 323-Cause-1: the upfront LCP content gate. If the audiobook is
     /// openable but its `.lcpa` content package isn't on disk, TRIGGER the
     /// content download (via the idempotent self-heal seam) and await it
@@ -2501,6 +2407,43 @@ public final class AudiobookSessionManager: ObservableObject {
             contentIsLocal: contentIsLocal,
             streamingEnabled: lcpStreamingEnabledProvider()
         ) else {
+            // PP-5135: not blocking is not the same as not fetching. With
+            // streaming ON this is the common path for a book whose `.lcpa` never
+            // arrived, and returning here without a trigger is exactly how such a
+            // book stayed content-less for the life of the loan — playable only
+            // while online, despite being shelved as Downloaded. Fire the
+            // idempotent fetch and proceed immediately; the patron streams now and
+            // the archive lands behind them, so the NEXT open works offline.
+            if Self.shouldFetchContentBeforeOpen(
+                isColdLoadRecovery: isColdLoadRecovery,
+                canOpenLCPBook: canOpenLCPBook,
+                contentIsLocal: contentIsLocal
+            ) {
+                // The Wi-Fi preference is checked HERE and not inside the gate
+                // predicate on purpose: whether the audio BELONGS on the device is
+                // a different question from whether right now is an acceptable
+                // moment to spend the patron's data fetching it. The first is
+                // permanent, the second is a property of this instant.
+                //
+                // This book is `.downloadSuccessful`, so `networkValidationError`
+                // returned nil and the open proceeds either way — without this
+                // check, opening on cellular would start a multi-hundred-megabyte
+                // transfer against a `downloadOnlyOnWiFi` setting the patron
+                // actually set. 3.2.x refused that transfer at
+                // `DownloadStartReducer.reduceRegular` (.failWifi); dropping it
+                // would be a regression, not parity.
+                let reachability = reachabilityProvider()
+                if LocalBookContentService.backgroundFetchAllowed(
+                    isConnectedToNetwork: reachability.isConnectedToNetwork(),
+                    isOnWiFi: reachability.isOnWiFi,
+                    downloadOnlyOnWiFi: settings.downloadOnlyOnWiFi
+                ) {
+                    Log.info(#file, "PP-5135: LCP content missing and streaming is ON — fetching the .lcpa in the background so the book works offline, without blocking this open")
+                    lcpContentDownloadTrigger(book)
+                } else {
+                    Log.info(#file, "PP-5135: LCP content missing, but a background fetch is not allowed right now (offline, or cellular with download-only-on-WiFi set) — opening anyway; the fetch retries on a later open")
+                }
+            }
             return .proceed
         }
 
@@ -2723,8 +2666,40 @@ public final class AudiobookSessionManager: ObservableObject {
         do {
             details = try await account.awaitReady()
         } catch {
-            Log.warn(#file, "isUserAuthenticated: awaitReady failed — surfacing as notAuthenticated: \(error)")
-            return false
+            // PP-5135: readiness could not be resolved — almost always because the
+            // device is OFFLINE and the `authentication_document` fetch cannot
+            // complete. Fall back to the stored credentials instead of failing
+            // closed.
+            //
+            // This gate used to `return false` here, which surfaced as
+            // `.notAuthenticated` — "Please sign in to your library account to
+            // play this audiobook" — for a patron who IS signed in, holding a
+            // book already downloaded to the device. Reported from the field on
+            // build 505: airplane mode, cold launch, tap Listen, sign-in error;
+            // relaunch on wifi and the same book plays.
+            //
+            // The distinction the old code lost: `awaitReady()` resolves the
+            // AUTH DOCUMENT, which answers "does this library require auth, and
+            // how". It is not the credential store and cannot tell us whether the
+            // patron is signed in. `hasCredentials()` reads the keychain, needs no
+            // network, and is the question actually being asked here. Offline is
+            // precisely the case downloading exists for, so a network-dependent
+            // gate must not be the thing that blocks local playback.
+            //
+            // Still conservative: with no stored credentials this returns false
+            // exactly as before, so a genuinely signed-out patron is unaffected.
+            // Decision extracted to `offlineAuthFallback` so the whole
+            // (error x credentials) table can be enumerated as a pure function.
+            // The wiring THROUGH this catch is covered too, by seeding a fixture
+            // account via `AccountsManager._seedAccountForTesting` so
+            // `currentAccount` resolves — see the wiring tests in
+            // `AudiobookPositionRestoreTests`. The test this replaced never
+            // reached this branch at all: it asserted false and got it from the
+            // nil-account guard, so it would have passed with the catch deleted.
+            let hasCredentials = accountsManager.userAccount(for: account.uuid).hasCredentials()
+            let authed = Self.offlineAuthFallback(error: error, hasStoredCredentials: hasCredentials)
+            Log.warn(#file, "isUserAuthenticated: awaitReady failed (\(error)) — falling back to stored credentials: hasCredentials=\(hasCredentials) authed=\(authed)")
+            return authed
         }
 
         guard let defaultAuth = details.defaultAuth else {
