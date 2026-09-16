@@ -89,7 +89,15 @@ extension TPPBookLocation {
             return nil
         }
 
-        let hrefString = dict[TPPBookLocation.hrefKey] as? String ?? ""
+        // PP-5138: the bytes reaching here are the flat Palace dialect when they
+        // come from the local registry, but the Readium `Locator` dialect when
+        // they come from the annotation server — that is what Palace POSTs.
+        // Reading only the flat keys made every server-sourced position resolve
+        // to nil progression and position 1, so "Move" landed the patron at the
+        // top of the chapter instead of where they left off.
+        let fields = EPUBPositionDialect(dictionary: dict)
+
+        let hrefString = fields.href ?? ""
         guard
             let url = AnyURL(string: hrefString),
             let publicationLink = publication.linkWithHREF(url),
@@ -100,15 +108,18 @@ extension TPPBookLocation {
             return nil
         }
 
-        let title = dict[TPPBookLocation.titleKey] as? String ?? ""
-        let position = dict[TPPBookLocation.positionKey] as? Int ?? 1
+        let title = fields.title ?? ""
+        // `?? 1` is the long-standing fallback for a payload with no position
+        // at all; it is deliberately not `0`, which Readium reads as "before
+        // the first page".
+        let position = fields.position ?? 1
 
         let locations = Locator.Locations(
             fragments: [],
-            progression: dict[TPPBookLocation.chapterProgressKey] as? Double,
-            totalProgression: dict[TPPBookLocation.bookProgressKey] as? Double,
+            progression: fields.progression,
+            totalProgression: fields.totalProgression,
             position: position,
-            otherLocations: JSONValue(dict[TPPBookLocation.cssSelector]).map { [TPPBookLocation.cssSelector: $0] } ?? [:]
+            otherLocations: JSONValue(fields.cssSelector).map { [TPPBookLocation.cssSelector: $0] } ?? [:]
         )
 
         return Locator(

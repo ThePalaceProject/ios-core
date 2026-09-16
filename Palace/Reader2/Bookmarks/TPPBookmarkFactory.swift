@@ -151,10 +151,18 @@ class TPPBookmarkFactory {
             return nil
         }
 
-        let href = selectorValueJSON["href"] as? String ?? ""
-        let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
-        let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float ?? Float((selectorValueJSON["progressWithinChapter"] as? Double) ?? 0.0)
-        let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0)
+        // PP-5138: a reading-progress annotation arrives in the Readium
+        // `Locator` dialect (that is what Palace POSTs), a bookmark in the flat
+        // Palace dialect. Reading only the flat keys left every server-sourced
+        // reading position with href "" and both progressions 0.0.
+        let fields = EPUBPositionDialect(dictionary: selectorValueJSON)
+
+        let href = fields.href ?? ""
+        let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? fields.title
+        let progressWithinChapter = Float(fields.progression ?? 0.0)
+        let progressWithinBook = Float(fields.totalProgression
+            ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double
+            ?? 0.0)
         let readingOrderItem = selectorValueJSON["readingOrderItem"] as? String
         let readingOrderItemOffsetMilliseconds = selectorValueJSON["readingOrderItemOffsetMilliseconds"] as? Float
 

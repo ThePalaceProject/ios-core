@@ -88,6 +88,49 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
         }
     }
 
+    // MARK: - Conflict resolution
+
+    /// Whether the server's last-read position should be offered to the
+    /// patron, given what this device already knows.
+    ///
+    /// Pure and dependency-free so the rule can be exercised directly. It used
+    /// to be inline, which left it reachable only through a network fetch and
+    /// a UIKit alert — so the suite grew a hand-written copy of the rule
+    /// beside it, and 23 green tests were asserting against the copy while the
+    /// shipped rule was wrong (PP-5138).
+    ///
+    /// Returns `false` — no prompt — when either:
+    ///   1. The server's position came from this same device and we already
+    ///      hold a local position. The server can tell us nothing new.
+    ///   2. The server and this device are on the same page.
+    ///
+    /// - Parameters:
+    ///   - serverDevice: Device identifier stamped on the server's position.
+    ///   - serverLocationString: The server's serialized position.
+    ///   - localLocationString: This device's serialized position, if any.
+    ///   - drmDeviceID: This device's identifier.
+    static func shouldPresentServerPosition(serverDevice: String?,
+                                            serverLocationString: String,
+                                            localLocationString: String?,
+                                            drmDeviceID: String?) -> Bool {
+        if serverDevice == drmDeviceID && localLocationString != nil {
+            return false
+        }
+
+        // PP-5138: this used to compare the two strings byte-for-byte. The
+        // local registry holds the flat Palace dialect while the server holds
+        // the Readium `Locator` dialect Palace POSTs, so the comparison could
+        // never be true — the patron was prompted to sync even when both
+        // devices sat on the identical page, and the prompt never settled.
+        // `samePosition` compares the parsed positions instead.
+        if let localLocationString,
+           EPUBPositionDialect.samePosition(localLocationString, serverLocationString) {
+            return false
+        }
+
+        return true
+    }
+
     // MARK: - Private methods
 
     private func syncReadPosition(for book: TPPBook, drmDeviceID: String?, publication: Publication) async -> Locator? {
@@ -110,13 +153,10 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
         let deviceID = snapshot.device
         let serverLocationString = String(data: snapshot.payload, encoding: .utf8) ?? ""
 
-        // Pass through returning nil (meaning the server doesn't have a
-        // last read location worth restoring) if:
-        // 1 - The most recent page on the server comes from the same device and there is no localLocation, or
-        // 2 - The server and the client have the same page marked
-        if (deviceID == drmDeviceID && localLocation != nil)
-            || localLocation?.locationString == serverLocationString {
-
+        guard Self.shouldPresentServerPosition(serverDevice: deviceID,
+                                               serverLocationString: serverLocationString,
+                                               localLocationString: localLocation?.locationString,
+                                               drmDeviceID: drmDeviceID) else {
             // Server location does not differ from or should take no precedence
             // over the local position.
             return nil

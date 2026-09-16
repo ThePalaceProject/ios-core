@@ -54,31 +54,77 @@ final class EPUBPositionWireFormatTests: XCTestCase {
         return location.locationString
     }
 
-    // MARK: - Consequence 1: the "same page" short-circuit can never fire
+    // MARK: - Consequence 1: the patron is prompted to sync with themselves
 
-    /// `syncReadPosition` suppresses the prompt when
-    /// `localLocation?.locationString == serverLocationString`. Both strings
-    /// describe the SAME position here — the reader has not moved since the
-    /// last post — so the comparison must be true, or the patron is prompted
-    /// to sync with themselves on every single open.
-    func testSamePosition_LocalRegistryStringEqualsPostedSelectorValue() throws {
+    /// The two dialects are NOT the same bytes, and deliberately so — the
+    /// write side keeps posting Readium `Locator` JSON until it is unified
+    /// with Android. This test pins that divergence so the read-side
+    /// reconciliation below is understood as load-bearing rather than
+    /// belt-and-braces: delete it and the byte comparison silently returns.
+    func testWireFormats_LocalAndPostedAreDifferentDialects() throws {
         let publication = Self.makeTestPublication()
         let locator = Self.midChapterLocator()
 
         let posted = try postedSelectorValue(for: locator)
         let local = try localLocationString(for: locator, publication: publication)
 
-        XCTAssertEqual(
+        XCTAssertNotEqual(
             local, posted,
+            "If these ever become byte-identical the write side has been unified; revisit the read-side reconciliation in EPUBPositionDialect"
+        )
+    }
+
+    /// The reported bug. Device A posted this position; device B holds the
+    /// identical position in the registry's dialect. Both devices are on the
+    /// same page, so no sync prompt is warranted — the patron must not be
+    /// asked to sync with themselves on every open.
+    func testSamePage_InTwoDialects_DoesNotPromptToSync() throws {
+        let publication = Self.makeTestPublication()
+        let locator = Self.midChapterLocator()
+
+        let posted = try postedSelectorValue(for: locator)
+        let local = try localLocationString(for: locator, publication: publication)
+
+        XCTAssertFalse(
+            TPPLastReadPositionSynchronizer.shouldPresentServerPosition(
+                serverDevice: "device-A",
+                serverLocationString: posted,
+                localLocationString: local,
+                drmDeviceID: "device-B"
+            ),
             """
-            The position written to the local registry and the position POSTed \
-            to the annotation server must be the same bytes. They are not, so \
-            `TPPLastReadPositionSynchronizer.syncReadPosition`'s \
-            `localLocation?.locationString == serverLocationString` \
-            short-circuit is unreachable and the sync prompt fires on every open.
+            Both devices are on the identical page, so the sync prompt must be \
+            suppressed. Comparing the two dialects as raw strings can never be \
+            true, which is why the prompt never settled.
             local:  \(local)
             posted: \(posted)
             """
+        )
+    }
+
+    /// The other side of the same rule: a genuine cross-device difference must
+    /// still prompt. Without this, a fix that suppresses everything would pass.
+    func testDifferentPage_OnAnotherDevice_StillPromptsToSync() throws {
+        let publication = Self.makeTestPublication()
+        let local = try localLocationString(for: Self.midChapterLocator(),
+                                            publication: publication)
+        let postedElsewhere = try postedSelectorValue(for: Locator(
+            href: AnyURL(string: "/chapter1.xhtml")!,
+            mediaType: .xhtml,
+            title: "Chapter One",
+            locations: Locator.Locations(progression: 0.9,
+                                         totalProgression: 0.55,
+                                         position: 190)
+        ))
+
+        XCTAssertTrue(
+            TPPLastReadPositionSynchronizer.shouldPresentServerPosition(
+                serverDevice: "device-A",
+                serverLocationString: postedElsewhere,
+                localLocationString: local,
+                drmDeviceID: "device-B"
+            ),
+            "A position from another device on a different page must still be offered"
         )
     }
 

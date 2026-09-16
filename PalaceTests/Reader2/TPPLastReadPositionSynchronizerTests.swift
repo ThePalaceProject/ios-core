@@ -116,21 +116,16 @@ struct SyncDecisionHelper {
             return false
         }
 
-        let deviceID = bookmark.device ?? ""
-        let serverLocationString = bookmark.location
-
-        // 1. Same device with existing local position - server takes no precedence
-        if deviceID == drmDeviceID && localLocation != nil {
-            return false
-        }
-
-        // 2. Server and client have the same position - no sync needed
-        if localLocation?.locationString == serverLocationString {
-            return false
-        }
-
-        // Server position differs and should be presented to user
-        return true
+        // PP-5138: this used to be a hand-written copy of the production rule,
+        // annotated "mirrors the logic in syncReadPosition". It did not — and
+        // could not fail when production drifted, because the copy was the only
+        // thing under test. Every case below now drives the shipped rule.
+        return TPPLastReadPositionSynchronizer.shouldPresentServerPosition(
+            serverDevice: bookmark.device ?? "",
+            serverLocationString: bookmark.location,
+            localLocationString: localLocation?.locationString,
+            drmDeviceID: drmDeviceID
+        )
     }
 }
 
