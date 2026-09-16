@@ -14,8 +14,8 @@ extension TPPBookLocation {
         let dict: [String: Any] = [
             TPPBookLocation.hrefKey: locator.href.string,
             TPPBookLocation.typeKey: type,
-            TPPBookLocation.chapterProgressKey: locator.locations.progression ?? 0.0,
-            TPPBookLocation.bookProgressKey: locator.locations.totalProgression ?? 0.0,
+            TPPBookLocation.chapterProgressKey: TPPBookLocation.unitInterval(locator.locations.progression),
+            TPPBookLocation.bookProgressKey: TPPBookLocation.unitInterval(locator.locations.totalProgression),
             TPPBookLocation.titleKey: locator.title ?? "",
             TPPBookLocation.positionKey: locator.locations.position ?? 0,
             TPPBookLocation.cssSelector: locator.locations.otherLocations[TPPBookLocation.cssSelector]?.string ?? ""
@@ -67,6 +67,21 @@ extension TPPBookLocation {
         }
 
         self.init(locationString: jsonString, renderer: renderer)
+    }
+
+    /// Clamps a progression to the 0.0…1.0 the bookmark spec requires, mapping
+    /// a missing value to 0.0.
+    ///
+    /// The spec's schema declares `minimum: 0.0` / `maximum: 1.0`, and Android
+    /// enforces it with a constructor `check` that THROWS on a value outside
+    /// the range. That throw escapes the per-annotation catch and is swallowed
+    /// by a blanket handler that returns an empty list — so a single
+    /// out-of-range progression from this client silently empties the patron's
+    /// entire bookmark set on their Android device. Clamping here costs
+    /// nothing: Readium already reports progressions in range, so this only
+    /// ever fires on a value that would have been rejected anyway.
+    private static func unitInterval(_ value: Double?) -> Double {
+        min(max(value ?? 0.0, 0.0), 1.0)
     }
 
     /// Serializes a location dictionary to a JSON string. Replaces Readium's

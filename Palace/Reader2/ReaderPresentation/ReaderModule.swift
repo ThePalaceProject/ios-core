@@ -99,7 +99,13 @@ final class ReaderModule: ReaderModuleAPI, @unchecked Sendable {
             return
         }
 
-        let drmDeviceID = userAccount.deviceID
+        // PP-5138: must be the SAME identity `TPPAnnotations.postReadingPosition`
+        // stamps on the annotation, or the "this position is already mine"
+        // check compares two different namespaces and never matches. Reading
+        // `userAccount.deviceID` here meant that on a library without Adobe DRM
+        // the local side was nil while the server side was not, so the patron
+        // was asked to sync with their own device on every open.
+        let drmDeviceID = AnnotationDevice.currentID()
         progressSynchronizer.sync(for: publication,
                                   book: book,
                                   drmDeviceID: drmDeviceID) { [weak self] in

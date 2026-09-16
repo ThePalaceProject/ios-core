@@ -70,7 +70,8 @@ class TPPLastReadPositionPoster {
         let location = TPPBookLocation(locator: locator, type: "LocatorHrefProgression", publication: publication)
         bookRegistryProvider.setLocation(location, forIdentifier: book.identifier)
 
-        guard let snapshot = makeSnapshot(from: locator) else { return }
+        // PP-5138: post the SAME bytes we just stored. See `makeSnapshot`.
+        guard let snapshot = makeSnapshot(from: location) else { return }
         pendingWriteTasks.append(Task { [positionWriter] in
             _ = try? await positionWriter.save(snapshot)
         })
@@ -137,16 +138,33 @@ class TPPLastReadPositionPoster {
         return false
     }
 
-    /// Serializes the Readium `Locator` into the wire-shaped DTO consumed
-    /// by `PositionWriter`. EPUB's payload is the Readium-locator JSON;
-    /// it round-trips through `TPPAnnotations.postReadingPosition`'s
-    /// existing `selectorValue` parameter.
-    private func makeSnapshot(from locator: Locator) -> PositionSnapshot? {
-        guard let selectorValue = try? locator.jsonString() else { return nil }
+    /// Serializes the position into the wire-shaped DTO consumed by
+    /// `PositionWriter`, which hands the payload to
+    /// `TPPAnnotations.postReadingPosition` as the annotation's
+    /// `selector.value`.
+    ///
+    /// The payload is the `TPPBookLocation` string — a `LocatorHrefProgression`
+    /// as defined by `ThePalaceProject/mobile-specs`:
+    ///
+    ///     {"@type":"LocatorHrefProgression","href":…,"progressWithinChapter":…}
+    ///
+    /// PP-5138: this used to post `locator.jsonString()`, the Readium `Locator`
+    /// shape, which carries neither `@type` nor `progressWithinChapter` and so
+    /// matches no variant in the spec's schema. The spec tells a client that
+    /// meets an untyped locator to read it as `LocatorLegacyCFI`, and Android
+    /// does exactly that and then discards the result for EPUBs — so every
+    /// reading position iOS wrote was dropped on the other platform. Posting
+    /// the bytes we already store locally makes the two sides agree and makes
+    /// the annotation readable by Android. `position`, `progressWithinBook`,
+    /// `title` and `cssSelector` ride along; the schema sets no
+    /// `additionalProperties: false`, and Android reads only the two keys it
+    /// needs and ignores the rest.
+    private func makeSnapshot(from location: TPPBookLocation?) -> PositionSnapshot? {
+        guard let location else { return nil }
         return PositionSnapshot(
             bookID: book.identifier,
             format: .epubLocator,
-            payload: Data(selectorValue.utf8),
+            payload: Data(location.locationString.utf8),
             timestamp: Date(),
             device: deviceID
         )

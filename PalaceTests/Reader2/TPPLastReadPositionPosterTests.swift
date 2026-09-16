@@ -185,7 +185,60 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         XCTAssertEqual(snapshot.format, .epubLocator)
         let payloadString = String(data: snapshot.payload, encoding: .utf8) ?? ""
         XCTAssertTrue(payloadString.contains("/chapter1.xhtml"),
-                      "Payload must carry the Readium locator JSON; got \(payloadString)")
+                      "Payload must carry the locator JSON; got \(payloadString)")
+    }
+
+    /// PP-5138: the payload handed to the writer becomes the annotation's
+    /// `selector.value` verbatim, so it must be a spec `LocatorHrefProgression`.
+    /// It used to be `locator.jsonString()` — the Readium shape, which carries
+    /// neither `@type` nor `progressWithinChapter`, and which the Android
+    /// client parses as a legacy CFI locator and then discards for EPUBs.
+    func testStoreReadPosition_postedPayloadIsASpecLocatorHrefProgression() async throws {
+        let locator = createLocator(
+            href: "/chapter1.xhtml",
+            progression: 0.5,
+            totalProgression: 0.25
+        )
+
+        poster.storeReadPosition(locator: locator)
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
+
+        let saved = await spyWriter.savedSnapshots
+        let snapshot = try XCTUnwrap(saved.first)
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: snapshot.payload) as? [String: Any],
+            "the posted payload must be a JSON object"
+        )
+
+        XCTAssertEqual(json["@type"] as? String, "LocatorHrefProgression",
+                       "an untyped locator is read as LocatorLegacyCFI and dropped by the Android EPUB reader")
+        XCTAssertEqual(json["href"] as? String, "/chapter1.xhtml")
+        XCTAssertEqual(json["progressWithinChapter"] as? Double, 0.5,
+                       "progressWithinChapter is required by the spec schema")
+        XCTAssertNil(json["locations"],
+                     "`locations` is the Readium shape and must not reach the wire")
+    }
+
+    /// The bytes posted to the server and the bytes written to the local
+    /// registry must be the same position. They were two different dialects,
+    /// which is what made the sync prompt unable to settle.
+    func testStoreReadPosition_postedPayloadMatchesLocalRegistryBytes() async throws {
+        let locator = createLocator(
+            href: "/chapter1.xhtml",
+            progression: 0.5,
+            totalProgression: 0.25
+        )
+
+        poster.storeReadPosition(locator: locator)
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
+
+        let saved = await spyWriter.savedSnapshots
+        let snapshot = try XCTUnwrap(saved.first)
+        let posted = String(data: snapshot.payload, encoding: .utf8)
+        let stored = bookRegistryMock.location(forIdentifier: testBook.identifier)?.locationString
+
+        XCTAssertEqual(posted, stored,
+                       "the position posted to the server must be the position stored locally")
     }
 
     func testStoreReadPosition_writerThrows_doesNotCrash_localStateUnaffected() async throws {

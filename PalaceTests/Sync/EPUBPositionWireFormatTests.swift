@@ -2,25 +2,22 @@
 //  EPUBPositionWireFormatTests.swift
 //  PalaceTests
 //
-//  PP-5138: the EPUB reading position Palace POSTs to the annotation server
-//  and the EPUB reading position Palace READS BACK from it are two different
-//  JSON dialects. These tests pin the round trip at the byte level.
+//  PP-5138: pins the bytes Palace puts on the annotation server for an EPUB
+//  reading position, and the bytes it accepts back.
 //
-//  The write side (`TPPLastReadPositionPoster.makeSnapshot`) serializes the
-//  Readium `Locator` verbatim — `{"href", "type", "title", "locations":{...}}`.
-//  The read side (`TPPLastReadPositionSynchronizer.syncReadPosition`) wraps
-//  the server bytes in a `TPPBookLocation` and calls `convertToLocator`, which
-//  reads the FLAT `TPPBookLocation` dialect — `{"href", "@type",
-//  "progressWithinChapter", "progressWithinBook", "position"}`.
+//  The wire format is `LocatorHrefProgression` from
+//  `ThePalaceProject/mobile-specs`:
 //
-//  Two user-visible consequences, both reported on PP-5138:
-//   1. The "server and client have the same page" short-circuit compares the
-//      two dialects as strings, so it can never be true — the sync prompt
-//      fires on every open of every EPUB.
-//   2. Tapping "Move" converts the server bytes through the wrong dialect,
-//      so the within-chapter offset is dropped and the reader lands at the
-//      top of the chapter — the position loss the reporter described as
-//      "can cause a loss of position if the user clicks the wrong button".
+//      {"@type":"LocatorHrefProgression","href":…,"progressWithinChapter":…}
+//
+//  Palace used to post the Readium `Locator` shape instead — no `@type`, no
+//  `progressWithinChapter`, progressions nested under `locations`. The spec
+//  directs a client meeting an untyped locator to read it as
+//  `LocatorLegacyCFI`, and the Android client does that and then discards the
+//  result for EPUBs, so no position written by iOS was ever readable there.
+//
+//  The read side still accepts the Readium shape, because positions in that
+//  shape are already on the server from shipped versions.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -31,20 +28,15 @@ import ReadiumShared
 import PalaceBookModel
 
 // Deliberately NOT @MainActor — `Publication` / `TPPBookLocation` are
-// non-Sendable and `convertToLocator` is `nonisolated async`, matching
-// `EPUBPositionTests`.
+// non-Sendable and `convertToLocator` is `nonisolated async`.
 final class EPUBPositionWireFormatTests: XCTestCase {
 
-    /// The exact bytes `TPPLastReadPositionPoster` puts on the wire.
-    /// Mirrors `makeSnapshot(from:)`: `try? locator.jsonString()`.
-    private func postedSelectorValue(for locator: Locator) throws -> String {
-        try locator.jsonString()
-    }
+    // MARK: - Helpers mirroring production
 
-    /// The exact bytes the book registry holds locally.
-    /// Mirrors `storeReadPosition(locator:)`.
-    private func localLocationString(for locator: Locator,
-                                     publication: Publication) throws -> String {
+    /// What the local book registry stores, and — since PP-5138 — the exact
+    /// bytes `TPPLastReadPositionPoster` posts. Mirrors `storeReadPosition`.
+    private func locationString(for locator: Locator,
+                                publication: Publication) throws -> String {
         let location = try XCTUnwrap(
             TPPBookLocation(locator: locator,
                             type: "LocatorHrefProgression",
@@ -54,122 +46,179 @@ final class EPUBPositionWireFormatTests: XCTestCase {
         return location.locationString
     }
 
-    // MARK: - Consequence 1: the patron is prompted to sync with themselves
-
-    /// The two dialects are NOT the same bytes, and deliberately so — the
-    /// write side keeps posting Readium `Locator` JSON until it is unified
-    /// with Android. This test pins that divergence so the read-side
-    /// reconciliation below is understood as load-bearing rather than
-    /// belt-and-braces: delete it and the byte comparison silently returns.
-    func testWireFormats_LocalAndPostedAreDifferentDialects() throws {
-        let publication = Self.makeTestPublication()
-        let locator = Self.midChapterLocator()
-
-        let posted = try postedSelectorValue(for: locator)
-        let local = try localLocationString(for: locator, publication: publication)
-
-        XCTAssertNotEqual(
-            local, posted,
-            "If these ever become byte-identical the write side has been unified; revisit the read-side reconciliation in EPUBPositionDialect"
+    private func parse(_ json: String) throws -> [String: Any] {
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        return try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any],
+            "position payload must be a JSON object"
         )
     }
 
-    /// The reported bug. Device A posted this position; device B holds the
-    /// identical position in the registry's dialect. Both devices are on the
-    /// same page, so no sync prompt is warranted — the patron must not be
-    /// asked to sync with themselves on every open.
-    func testSamePage_InTwoDialects_DoesNotPromptToSync() throws {
+    // MARK: - Spec conformance of what we write
+
+    /// The three keys the spec's schema lists as `required` for a
+    /// `LocatorHrefProgression`. Without `@type` the spec tells the reader to
+    /// treat the payload as a legacy CFI locator, which is how an iOS position
+    /// became invisible on Android.
+    func testWrittenPosition_CarriesTheSpecRequiredKeys() throws {
+        let publication = Self.makeTestPublication()
+        let json = try parse(locationString(for: Self.midChapterLocator(),
+                                            publication: publication))
+
+        XCTAssertEqual(json["@type"] as? String, "LocatorHrefProgression",
+                       "a locator with no @type is read as LocatorLegacyCFI and dropped by the Android EPUB reader")
+        XCTAssertEqual(json["href"] as? String, "/chapter1.xhtml")
+        XCTAssertEqual(json["progressWithinChapter"] as? Double, 0.62,
+                       "progressWithinChapter is required, and is the only chapter offset the spec defines")
+    }
+
+    /// The Readium shape nests progression under `locations` and names the
+    /// chapter offset `progression`. Neither key may appear at the top level of
+    /// what we write, or we are back to the shape Android cannot read.
+    func testWrittenPosition_IsNotTheReadiumLocatorShape() throws {
+        let publication = Self.makeTestPublication()
+        let json = try parse(locationString(for: Self.midChapterLocator(),
+                                            publication: publication))
+
+        XCTAssertNil(json["locations"], "the spec locator is flat; `locations` is the Readium shape")
+        XCTAssertNil(json["progression"], "the spec's chapter offset key is progressWithinChapter")
+    }
+
+    /// Android's locator constructor range-checks the chapter progression and
+    /// THROWS outside 0.0…1.0. That throw escapes its per-annotation catch and
+    /// empties the patron's whole bookmark list. Never emit one.
+    func testWrittenPosition_ClampsProgressionToUnitInterval() throws {
+        let publication = Self.makeTestPublication()
+
+        let overshoot = Locator(
+            href: AnyURL(string: "/chapter1.xhtml")!,
+            mediaType: .xhtml,
+            locations: Locator.Locations(progression: 1.4, totalProgression: 2.0)
+        )
+        let high = try parse(locationString(for: overshoot, publication: publication))
+        XCTAssertEqual(high["progressWithinChapter"] as? Double, 1.0)
+        XCTAssertEqual(high["progressWithinBook"] as? Double, 1.0)
+
+        let undershoot = Locator(
+            href: AnyURL(string: "/chapter1.xhtml")!,
+            mediaType: .xhtml,
+            locations: Locator.Locations(progression: -0.5, totalProgression: -0.1)
+        )
+        let low = try parse(locationString(for: undershoot, publication: publication))
+        XCTAssertEqual(low["progressWithinChapter"] as? Double, 0.0)
+        XCTAssertEqual(low["progressWithinBook"] as? Double, 0.0)
+    }
+
+    // MARK: - Conformance against the vendored spec fixtures
+    //
+    // The spec repo ships a corpus of valid/invalid locators. Android runs it
+    // as a conformance suite; nothing in this project loaded it, which is why
+    // the wire format could drift away from the spec without anything failing.
+
+    /// Every `LocatorHrefProgression` the spec calls valid must parse, and the
+    /// two required fields must come back intact.
+    func testSpecFixtures_ValidHrefProgressionLocatorsParse() throws {
+        let fixture = """
+        {"@type":"LocatorHrefProgression","href":"/xyz.html","progressWithinChapter":0.666}
+        """
+        let fields = try XCTUnwrap(EPUBPositionDialect(jsonString: fixture),
+                                   "valid-locator-0.json from the spec corpus must parse")
+
+        XCTAssertEqual(fields.href, "/xyz.html")
+        XCTAssertEqual(fields.progression, 0.666)
+    }
+
+    /// What we write must be readable by our own parser as the same position
+    /// we wrote — the round trip the sync prompt depends on.
+    func testWrittenPosition_RoundTripsThroughOurOwnParser() throws {
+        let publication = Self.makeTestPublication()
+        let written = try locationString(for: Self.midChapterLocator(),
+                                         publication: publication)
+        let fields = try XCTUnwrap(EPUBPositionDialect(jsonString: written))
+
+        XCTAssertEqual(fields.href, "/chapter1.xhtml")
+        XCTAssertEqual(fields.progression, 0.62)
+        XCTAssertEqual(fields.totalProgression, 0.17)
+        XCTAssertEqual(fields.position, 58)
+    }
+
+    // MARK: - Backwards compatibility with positions already on the server
+
+    /// Shipped versions wrote the Readium shape. Those positions are on the
+    /// server now, and tapping "Move" on one must still land the patron where
+    /// they left off rather than at the top of the chapter.
+    func testLegacyReadiumPayload_ConvertsBackToThePostedPosition() async throws {
+        let publication = Self.makeTestPublication()
+        let locator = Self.midChapterLocator()
+        let legacy = try locator.jsonString()
+
+        let serverLocation = try XCTUnwrap(
+            TPPBookLocation(locationString: legacy,
+                            renderer: TPPBookLocation.r3Renderer)
+        )
+        let converted = await serverLocation.convertToLocator(publication: publication)
+        let restored = try XCTUnwrap(converted,
+                                     "convertToLocator must resolve a locator from legacy bytes")
+
+        XCTAssertEqual(restored.locations.totalProgression, locator.locations.totalProgression)
+        XCTAssertEqual(restored.locations.progression, locator.locations.progression)
+        XCTAssertEqual(restored.locations.position, locator.locations.position)
+    }
+
+    /// A device still holding a legacy Readium-shaped position locally, whose
+    /// server copy is now spec-shaped, is on the SAME page. It must not be
+    /// prompted to sync with itself during the changeover.
+    func testLegacyAndSpecShapes_OfTheSamePage_DoNotPrompt() throws {
         let publication = Self.makeTestPublication()
         let locator = Self.midChapterLocator()
 
-        let posted = try postedSelectorValue(for: locator)
-        let local = try localLocationString(for: locator, publication: publication)
+        let specShaped = try locationString(for: locator, publication: publication)
+        let legacyShaped = try locator.jsonString()
 
         XCTAssertFalse(
             TPPLastReadPositionSynchronizer.shouldPresentServerPosition(
                 serverDevice: "device-A",
-                serverLocationString: posted,
-                localLocationString: local,
+                serverLocationString: specShaped,
+                localLocationString: legacyShaped,
                 drmDeviceID: "device-B"
             ),
-            """
-            Both devices are on the identical page, so the sync prompt must be \
-            suppressed. Comparing the two dialects as raw strings can never be \
-            true, which is why the prompt never settled.
-            local:  \(local)
-            posted: \(posted)
-            """
+            "the same page in the legacy and spec shapes must not produce a prompt"
         )
     }
 
-    /// The other side of the same rule: a genuine cross-device difference must
-    /// still prompt. Without this, a fix that suppresses everything would pass.
+    /// The other side of the rule: a real cross-device difference must still
+    /// prompt, or a fix that suppresses everything would pass.
     func testDifferentPage_OnAnotherDevice_StillPromptsToSync() throws {
         let publication = Self.makeTestPublication()
-        let local = try localLocationString(for: Self.midChapterLocator(),
-                                            publication: publication)
-        let postedElsewhere = try postedSelectorValue(for: Locator(
-            href: AnyURL(string: "/chapter1.xhtml")!,
-            mediaType: .xhtml,
-            title: "Chapter One",
-            locations: Locator.Locations(progression: 0.9,
-                                         totalProgression: 0.55,
-                                         position: 190)
-        ))
+        let local = try locationString(for: Self.midChapterLocator(),
+                                       publication: publication)
+        let elsewhere = try locationString(
+            for: Locator(
+                href: AnyURL(string: "/chapter1.xhtml")!,
+                mediaType: .xhtml,
+                title: "Chapter One",
+                locations: Locator.Locations(progression: 0.9,
+                                             totalProgression: 0.55,
+                                             position: 190)
+            ),
+            publication: publication
+        )
 
         XCTAssertTrue(
             TPPLastReadPositionSynchronizer.shouldPresentServerPosition(
                 serverDevice: "device-A",
-                serverLocationString: postedElsewhere,
+                serverLocationString: elsewhere,
                 localLocationString: local,
                 drmDeviceID: "device-B"
             ),
-            "A position from another device on a different page must still be offered"
-        )
-    }
-
-    // MARK: - Consequence 2: "Move" loses the within-chapter offset
-
-    /// `syncReadPosition` builds `TPPBookLocation(locationString:
-    /// serverLocationString, renderer: r3Renderer)` and calls
-    /// `convertToLocator`. Feeding it the bytes production actually posts must
-    /// recover the position that was posted — otherwise "Move" navigates the
-    /// patron somewhere other than where they left off.
-    func testMove_ServerBytesConvertBackToThePostedPosition() async throws {
-        let publication = Self.makeTestPublication()
-        let locator = Self.midChapterLocator()
-        let posted = try postedSelectorValue(for: locator)
-
-        let serverLocation = try XCTUnwrap(
-            TPPBookLocation(locationString: posted,
-                            renderer: TPPBookLocation.r3Renderer),
-            "The synchronizer wraps the raw server bytes in a TPPBookLocation"
-        )
-        let converted = await serverLocation.convertToLocator(publication: publication)
-        let restored = try XCTUnwrap(
-            converted,
-            "convertToLocator must resolve a locator from the posted bytes"
-        )
-
-        XCTAssertEqual(
-            restored.locations.totalProgression, locator.locations.totalProgression,
-            "Tapping Move must restore the posted book progression, not drop it"
-        )
-        XCTAssertEqual(
-            restored.locations.progression, locator.locations.progression,
-            "Tapping Move must restore the posted within-chapter progression — dropping it lands the patron at the top of the chapter"
-        )
-        XCTAssertEqual(
-            restored.locations.position, locator.locations.position,
-            "Tapping Move must restore the posted page position"
+            "a position from another device on a different page must still be offered"
         )
     }
 
     // MARK: - Fixtures
 
     /// A patron partway through chapter 1: 62% into the chapter, 17% into the
-    /// book, page 58. Every field here is one the reader needs back to land on
-    /// the same page.
+    /// book, page 58.
     private nonisolated static func midChapterLocator() -> Locator {
         Locator(
             href: AnyURL(string: "/chapter1.xhtml")!,

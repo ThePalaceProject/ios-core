@@ -81,3 +81,59 @@ either dialect.
 - PalaceTests/Sync/EPUBPositionWireFormatTests.swift
 - PalaceTests/Reader/EPUBPositionDialectTests.swift
 - Palace.xcodeproj/project.pbxproj
+
+---
+
+## Amendment, 2026-09-16 — write side now in scope
+
+The original plan deferred the write side "for unification with the Android
+client later". Investigating that unification showed there is nothing to
+negotiate: the format is already specified, and this client is the one
+diverging from it.
+
+`ThePalaceProject/mobile-specs` (current; the vendored `mobile-bookmark-spec`
+submodule is its archived predecessor, pinned at that repo's first commit and
+loaded by no test) defines the EPUB reading position as `LocatorHrefProgression`
+— a FLAT object requiring `@type`, `href`, `progressWithinChapter`. Android
+emits exactly that, parses only that, vendors the spec as a submodule, and runs
+its fixture corpus as a conformance suite.
+
+Palace posts the Readium `Locator` shape, which has no `@type`. The spec directs
+a client meeting an untyped locator to read it as `LocatorLegacyCFI`; Android's
+`SerializedLocators.parseLocator` does that, and `Reader2Bookmarks` then returns
+null for a CFI locator on an EPUB. Every EPUB reading position iOS has written
+is silently discarded on Android.
+
+The local registry format is already spec-conformant, so the fix is to post the
+bytes we already store.
+
+## Additional claims
+
+- migrates `TPPLastReadPositionPoster.makeSnapshot` from `locator.jsonString()`
+  to the stored `TPPBookLocation.locationString`
+- adds `TPPBookLocation.unitInterval` clamping both progressions to 0.0…1.0
+- migrates `TPPAnnotations.postReadingPosition`'s device stamp from
+  `currentUserAccount.deviceID ?? ""` to `AnnotationDevice.currentID()`
+- migrates the two reading-position `drmDeviceID` call sites (`ReaderModule`,
+  `ReaderService`) to `AnnotationDevice.currentID()`
+- adds `"null"` as `AnnotationDevice.currentID()`'s fallback for an empty
+  device identifier, matching the spec and the Android client
+
+## Additional anti-claims
+
+- does NOT change the bookmark (`oa#bookmarking`) locator shape — explicit
+  bookmarks already serialize through `TPPReadiumBookmark` in the flat dialect
+- does NOT change `TPPBaseReaderViewController`'s `drmDeviceID`, which feeds
+  `TPPReaderBookmarksBusinessLogic`, not the position synchronizer
+- does NOT repoint the `mobile-bookmark-spec` submodule at `mobile-specs`, and
+  does NOT wire its fixture corpus into the suite — both are recommended and
+  neither is done here
+- does NOT change the audiobook or PDF position paths
+
+## Additional files in scope
+
+- Palace/Reader2/BusinessLogic/TPPLastReadPositionPoster.swift
+- Palace/Reader2/Bookmarks/TPPAnnotations.swift
+- Palace/Reader2/ReaderPresentation/ReaderModule.swift
+- Palace/AppInfrastructure/ReaderService.swift
+- PalaceTests/Reader2/TPPLastReadPositionPosterTests.swift
