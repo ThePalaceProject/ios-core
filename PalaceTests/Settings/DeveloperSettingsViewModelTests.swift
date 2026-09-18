@@ -108,4 +108,36 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
             testDefaults.object(forKey: RemoteFeatureFlags.appRatingForceEligibleLocalOverrideKey) as? Bool, true,
             "Force Rating Prompt Eligible must persist to its local-override key")
     }
+
+    // PP-2677: side loading shipped in 3.3.0 with NO writer for its local
+    // override outside tests, so the Settings section it gates was unreachable
+    // in any build. These pin the toggle that makes it reachable.
+
+    func testSideLoadingToggle_writesThroughToLocalOverrideKey() {
+        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        vm.sideLoadingEnabled = true
+        XCTAssertEqual(
+            testDefaults.object(forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey) as? Bool, true,
+            "Enabling Side Loading must persist to its local-override key")
+        vm.sideLoadingEnabled = false
+        XCTAssertEqual(
+            testDefaults.object(forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey) as? Bool, false,
+            "Disabling it must persist false — QA must be able to turn the lane back OFF")
+    }
+
+    /// The write-through is only useful if the key it writes is the one
+    /// `isSideLoadingEnabled` reads. Asserting the toggle alone would pass even
+    /// if the VM wrote to a key nothing consults — the original defect's shape.
+    func testSideLoadingToggle_isTheKeyTheFlagReaderConsults() {
+        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let flags = RemoteFeatureFlags(defaults: testDefaults)
+
+        vm.sideLoadingEnabled = true
+        XCTAssertTrue(flags.isSideLoadingEnabled,
+                      "Toggling ON must make isSideLoadingEnabled report true — the override outranks the remote flag")
+
+        vm.sideLoadingEnabled = false
+        XCTAssertFalse(flags.isSideLoadingEnabled,
+                       "Toggling OFF must win over a remote-config true, not merely fall through to it")
+    }
 }
