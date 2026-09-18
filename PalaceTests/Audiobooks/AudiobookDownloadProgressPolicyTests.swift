@@ -9,14 +9,83 @@
 //  transport controls. Device recording, build 505: it read 37% then 62% AFTER
 //  the archive had been stored, while the book was playing.
 //
-//  Two inputs, four cells, all four asserted. The space is finite, so it is
-//  enumerated rather than sampled.
+//  That fix went too far. It hid the bar on `hasStartedPlayback` alone, and
+//  `isDownloading` cannot tell LOCAL DECRYPTION from the NETWORK FETCH of the
+//  `.lcpa` itself. With streaming on, tapping Listen plays immediately while a
+//  0.7-1 GB archive is still transferring — so the bar vanished on the one
+//  transfer whose outcome the patron actually depends on. Measured on Moes Max
+//  (build 507): 'Dungeon Crawler Carl' read `download-successful` in the
+//  registry with NO archive on disk, and would not play in airplane mode.
+//
+//  The rule, stated as the patron experiences it: if playback would FAIL in
+//  airplane mode because the archive is still coming down, show the bar.
+//
+//  Three inputs, eight cells, all eight asserted.
 //
 
 import XCTest
 @testable import Palace
 
 final class AudiobookDownloadProgressPolicyTests: XCTestCase {
+
+    // MARK: - The archive fetch (shows regardless of playback)
+
+    /// The defect this policy now exists to prevent. Streaming means audio
+    /// starts before the archive lands, so `hasStartedPlayback` is TRUE while
+    /// the only transfer that decides offline availability is still running.
+    func testFetchingArchive_showsTheBar_evenWhilePlaying() {
+        XCTAssertTrue(
+            AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
+                isDownloading: true,
+                hasStartedPlayback: true,
+                isFetchingArchive: true
+            ),
+            "the .lcpa is still transferring — playback would fail in airplane mode, so the bar must show")
+    }
+
+    func testFetchingArchive_showsTheBar_whenToolkitReportsNoDownload() {
+        XCTAssertTrue(
+            AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
+                isDownloading: false,
+                hasStartedPlayback: true,
+                isFetchingArchive: true
+            ),
+            "the archive fetch is a Palace-side transfer the toolkit flag does not see — it alone must summon the bar")
+    }
+
+    func testFetchingArchive_showsTheBar_beforePlaybackToo() {
+        XCTAssertTrue(
+            AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
+                isDownloading: false,
+                hasStartedPlayback: false,
+                isFetchingArchive: true
+            ),
+            "an archive fetch before playback is the plainest wait there is")
+        XCTAssertTrue(
+            AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
+                isDownloading: true,
+                hasStartedPlayback: false,
+                isFetchingArchive: true
+            ),
+            "both signals active before playback still shows the bar")
+    }
+
+    // MARK: - Local decryption after playback (the 264676c7d fix, PRESERVED)
+
+    /// The original regression must stay fixed: with the archive already on
+    /// disk, `isDownloading` describes track decryption the streaming player
+    /// does not wait for. That is the 37%/62%-while-playing bar.
+    func testDecryptionAfterPlaybackStarted_stillHidesTheBar() {
+        XCTAssertFalse(
+            AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
+                isDownloading: true,
+                hasStartedPlayback: true,
+                isFetchingArchive: false
+            ),
+            "archive is local; this is decryption the patron is not blocked on — the bar would tell them to wait for nothing")
+    }
+
+    // MARK: - The wait window (unchanged)
 
     // MARK: - The wait window (the one cell that shows the bar)
 
@@ -26,7 +95,8 @@ final class AudiobookDownloadProgressPolicyTests: XCTestCase {
         XCTAssertTrue(
             AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
                 isDownloading: true,
-                hasStartedPlayback: false
+                hasStartedPlayback: false,
+                isFetchingArchive: false
             ),
             "before audio starts the patron is genuinely waiting — the bar is the only signal they have"
         )
@@ -40,7 +110,8 @@ final class AudiobookDownloadProgressPolicyTests: XCTestCase {
         XCTAssertFalse(
             AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
                 isDownloading: true,
-                hasStartedPlayback: true
+                hasStartedPlayback: true,
+                isFetchingArchive: false
             ),
             "once audio has started the transfer is background plumbing — a bar beside working transport controls tells the patron to wait for nothing"
         )
@@ -52,7 +123,8 @@ final class AudiobookDownloadProgressPolicyTests: XCTestCase {
         XCTAssertFalse(
             AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
                 isDownloading: false,
-                hasStartedPlayback: false
+                hasStartedPlayback: false,
+                isFetchingArchive: false
             )
         )
     }
@@ -61,7 +133,8 @@ final class AudiobookDownloadProgressPolicyTests: XCTestCase {
         XCTAssertFalse(
             AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
                 isDownloading: false,
-                hasStartedPlayback: true
+                hasStartedPlayback: true,
+                isFetchingArchive: false
             ),
             "the steady state of a playing book — no transfer, no bar"
         )

@@ -33,10 +33,28 @@ enum AudiobookDownloadProgressPolicy {
     /// Before playback begins the bar is RIGHT and is kept: that is the window
     /// where the patron is genuinely waiting and a silent screen is what the
     /// original toolkit bar existed to prevent.
+    ///
+    /// `isFetchingArchive` is the correction to the above. `isDownloading`
+    /// cannot tell local decryption from the NETWORK FETCH of the `.lcpa`, and
+    /// latching on `hasStartedPlayback` alone therefore hid the bar on the one
+    /// transfer whose outcome the patron depends on: with streaming ON, audio
+    /// starts within a second while a 0.7–1 GB archive is still coming down.
+    /// Measured on Moes Max (build 507) — 'Dungeon Crawler Carl' sat at
+    /// `download-successful` in the registry with NO archive on disk, and would
+    /// not play in airplane mode. Nothing on screen had said so, because the bar
+    /// disappeared the moment playback began.
+    ///
+    /// The rule, in the patron's terms: **if playback would fail in airplane
+    /// mode because the archive is still transferring, show the bar.** An
+    /// archive fetch therefore outranks `hasStartedPlayback`, while local
+    /// decryption behind a playing book still does not — which keeps the
+    /// 37%/62%-while-playing bar removed.
     static func shouldShowPlayerDownloadBar(
         isDownloading: Bool,
-        hasStartedPlayback: Bool
+        hasStartedPlayback: Bool,
+        isFetchingArchive: Bool
     ) -> Bool {
-        isDownloading && !hasStartedPlayback
+        if isFetchingArchive { return true }
+        return isDownloading && !hasStartedPlayback
     }
 }

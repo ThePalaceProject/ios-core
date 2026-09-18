@@ -745,7 +745,8 @@ struct AudiobookMorphingPlayerView: View {
         // `AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar`.
         if AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
             isDownloading: presenter.isDownloading,
-            hasStartedPlayback: presenter.hasStartedPlayback
+            hasStartedPlayback: presenter.hasStartedPlayback,
+            isFetchingArchive: presenter.isFetchingArchive
         ) {
             VStack(spacing: 6) {
                 HStack(spacing: 8) {

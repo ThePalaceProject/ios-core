@@ -133,6 +133,19 @@ class AudiobookSessionPresenter: ObservableObject {
     /// played" is the durable fact. See `AudiobookDownloadProgressPolicy`.
     @Published private(set) var hasStartedPlayback: Bool = false
 
+    /// Whether the `.lcpa` ARCHIVE for the current book is still coming down
+    /// over the network — distinct from `isDownloading`, which the toolkit also
+    /// raises for local track decryption out of an archive already on disk.
+    ///
+    /// The player's bar needs the distinction: with LCP streaming on, audio
+    /// starts within a second while a 0.7–1 GB archive is still transferring, so
+    /// `isDownloading && !hasStartedPlayback` hid the bar on precisely the
+    /// transfer that decides whether the book plays in airplane mode. Sourced
+    /// from the same download-centre signal the half-sheet already consumes
+    /// (`lcpContentDownloadPublisher`), so both surfaces agree on what "still
+    /// downloading" means. Reset by `clearActiveSession()`.
+    @Published private(set) var isFetchingArchive: Bool = false
+
     /// Latest transient toast (bookmark-added / playback error), mirrored from
     /// the toolkit playback model's `$toastMessage` (empty string normalized to
     /// `nil`). Reset to nil on `clearActiveSession()`.
@@ -190,10 +203,51 @@ class AudiobookSessionPresenter: ObservableObject {
 
     // MARK: - Init
 
-    init(sessionManager: AudiobookSessionManaging) {
+    /// - Parameters:
+    ///   - archiveTransferPublisher: emits `(bookIdentifier, isActive)` as the
+    ///     `.lcpa` network fetch starts and stops. Optional so the CarPlay and
+    ///     test construction sites keep working unchanged; when nil the player
+    ///     simply never learns about archive fetches, which is the pre-existing
+    ///     behaviour rather than a new failure mode.
+    ///   - isArchiveTransferActive: seed for a presenter created MID-transfer.
+    ///     Opening a book already downloading is the common path — the measured
+    ///     archives all run past three minutes — and without the seed the bar
+    ///     stays hidden until the next publisher edge, which may never come.
+    init(
+        sessionManager: AudiobookSessionManaging,
+        archiveTransferPublisher: PassthroughSubject<(String, Bool), Never>? = nil,
+        isArchiveTransferActive: ((String) -> Bool)? = nil
+    ) {
         self.sessionManager = sessionManager
+        self.archiveTransferPublisher = archiveTransferPublisher
+        self.isArchiveTransferActive = isArchiveTransferActive
         subscribeToSessionState()
         subscribeToAppLifecycle()
+        subscribeToArchiveTransfers()
+    }
+
+    private let archiveTransferPublisher: PassthroughSubject<(String, Bool), Never>?
+    private let isArchiveTransferActive: ((String) -> Bool)?
+
+    /// Mirrors the archive fetch for whichever book is currently bound.
+    /// Filtered on `currentBook` at DELIVERY time rather than captured at
+    /// subscribe time: the presenter outlives individual sessions, so a
+    /// subscription pinned to one identifier would report a stale book's
+    /// transfer onto the next one.
+    private func subscribeToArchiveTransfers() {
+        archiveTransferPublisher?
+            .receive(on: RunLoop.main)
+            .sink { [weak self] update in
+                guard let self, update.0 == self.currentBook?.identifier else { return }
+                self.isFetchingArchive = update.1
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Seeds `isFetchingArchive` for a book bound mid-transfer. Called when a
+    /// session binds, because the publisher only speaks on edges.
+    func seedArchiveTransferState(for identifier: String) {
+        isFetchingArchive = isArchiveTransferActive?(identifier) ?? false
     }
 
     // MARK: - Public API (open for spying)
@@ -335,6 +389,7 @@ class AudiobookSessionPresenter: ObservableObject {
         progress.chapterProgress = 0
         overallDownloadProgress = 0
         isDownloading = false
+        isFetchingArchive = false
         hasStartedPlayback = false
         toastMessage = nil
         playbackModelCancellables.removeAll()
@@ -353,6 +408,7 @@ class AudiobookSessionPresenter: ObservableObject {
     /// `pushSessionToPresenter`).
     func adoptBook(_ book: TPPBook) {
         self.currentBook = book
+        seedArchiveTransferState(for: book.identifier)
     }
 
     /// Adopts the toolkit playback model for the current session. Called

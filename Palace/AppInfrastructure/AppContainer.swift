@@ -340,7 +340,16 @@ struct AppContainer: @unchecked Sendable {
     var audiobookSessionPresenter: AudiobookSessionPresenter {
         if let override = _audiobookSessionPresenterOverride { return override }
         if let cached = AppContainer._audiobookSessionPresenter { return cached }
-        let presenter = AudiobookSessionPresenter(sessionManager: self.audiobookSession)
+        let presenter = AudiobookSessionPresenter(
+            sessionManager: self.audiobookSession,
+            // The player's download bar must distinguish the `.lcpa` network
+            // fetch from local track decryption; the download centre is the
+            // only thing that knows. Same signal the half-sheet consumes.
+            archiveTransferPublisher: self.downloadCenter.lcpContentDownloadPublisher,
+            isArchiveTransferActive: { [weak downloadCenter = self.downloadCenter] identifier in
+                downloadCenter?.progressReporter.isLCPContentTransferActive(for: identifier) ?? false
+            }
+        )
         AppContainer._audiobookSessionPresenter = presenter
         return presenter
     }
