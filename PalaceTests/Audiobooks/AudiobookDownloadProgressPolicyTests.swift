@@ -75,6 +75,12 @@ final class AudiobookDownloadProgressPolicyTests: XCTestCase {
     /// The original regression must stay fixed: with the archive already on
     /// disk, `isDownloading` describes track decryption the streaming player
     /// does not wait for. That is the 37%/62%-while-playing bar.
+    /// NOTE: this is the same (T,T,F) cell as
+    /// `testDownloadingAfterPlaybackStarted_hidesTheBar` below. Kept as a
+    /// separate, differently-named assertion because it pins a DIFFERENT
+    /// contract on the same input: that narrowing the rule for archive fetches
+    /// did not reopen the decryption bar 264676c7d removed. Review flagged the
+    /// duplication; it is deliberate and now says so.
     func testDecryptionAfterPlaybackStarted_stillHidesTheBar() {
         XCTAssertFalse(
             AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
@@ -84,8 +90,6 @@ final class AudiobookDownloadProgressPolicyTests: XCTestCase {
             ),
             "archive is local; this is decryption the patron is not blocked on — the bar would tell them to wait for nothing")
     }
-
-    // MARK: - The wait window (unchanged)
 
     // MARK: - The wait window (the one cell that shows the bar)
 

@@ -748,6 +748,14 @@ struct AudiobookMorphingPlayerView: View {
             hasStartedPlayback: presenter.hasStartedPlayback,
             isFetchingArchive: presenter.isFetchingArchive
         ) {
+            // The number must describe the SAME transfer the bar was summoned
+            // for. `overallDownloadProgress` is mirrored only from the toolkit
+            // playback model (per-track decryption); during an archive fetch no
+            // track download is running, so it reads ~0 and the bar would sit
+            // frozen for minutes. `archiveProgress` is the `.lcpa` fetch's own
+            // number, non-nil exactly when that fetch is what is running.
+            let barProgress = presenter.archiveProgress.map(Float.init)
+                ?? presenter.overallDownloadProgress
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill")
@@ -757,7 +765,7 @@ struct AudiobookMorphingPlayerView: View {
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.primary.opacity(0.15)).frame(height: 4)
                             Capsule().fill(Color.accentColor)
-                                .frame(width: max(4, geo.size.width * CGFloat(presenter.overallDownloadProgress)), height: 4)
+                                .frame(width: max(4, geo.size.width * CGFloat(barProgress)), height: 4)
                                 .animation(.easeInOut(duration: 0.3), value: presenter.overallDownloadProgress)
                         }
                         .frame(maxHeight: .infinity)

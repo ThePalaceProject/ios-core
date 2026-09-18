@@ -345,7 +345,8 @@ struct AppContainer: @unchecked Sendable {
             // The player's download bar must distinguish the `.lcpa` network
             // fetch from local track decryption; the download centre is the
             // only thing that knows. Same signal the half-sheet consumes.
-            archiveTransferPublisher: self.downloadCenter.lcpContentDownloadPublisher,
+            archiveTransferPublisher: self.downloadCenter.lcpContentDownloadPublisher.eraseToAnyPublisher(),
+            archiveProgressPublisher: self.downloadCenter.progressReporter.downloadProgressPublisher.eraseToAnyPublisher(),
             isArchiveTransferActive: { [weak downloadCenter = self.downloadCenter] identifier in
                 downloadCenter?.progressReporter.isLCPContentTransferActive(for: identifier) ?? false
             }

@@ -997,4 +997,149 @@ final class AudiobookSessionPresenterTests: XCTestCase {
                        "the latch is per-session — the next book must be able to show its loading progress")
     }
 
+
+    // MARK: - Archive fetch (`archiveProgress`) — the producer of the bar's third input
+    //
+    // The policy table in AudiobookDownloadProgressPolicyTests covers the pure
+    // rule. These cover the code that decides whether its input is ever true
+    // for the RIGHT book — the half three reviewers blocked on, and the same
+    // "a pure rule was covered while the code computing its input was not"
+    // shape 264676c7d names in its own retro.
+
+    /// Helper mirroring the production wiring: edges + progress + seed.
+    @MainActor
+    private func makeArchivePresenter(
+        activeIdentifiers: Set<String> = []
+    ) -> (AudiobookSessionPresenter,
+          PassthroughSubject<(String, Bool), Never>,
+          PassthroughSubject<(String, Double), Never>) {
+        let edges = PassthroughSubject<(String, Bool), Never>()
+        let progress = PassthroughSubject<(String, Double), Never>()
+        let presenter = AudiobookSessionPresenter(
+            sessionManager: SpyShimSession(),
+            archiveTransferPublisher: edges.eraseToAnyPublisher(),
+            archiveProgressPublisher: progress.eraseToAnyPublisher(),
+            isArchiveTransferActive: { activeIdentifiers.contains($0) }
+        )
+        return (presenter, edges, progress)
+    }
+
+    @MainActor
+    func testArchiveTransferForCurrentBook_raisesTheBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        XCTAssertFalse(presenter.isFetchingArchive, "precondition: no transfer")
+
+        edges.send((book.identifier, true))
+        await drainMainQueueAsync()
+
+        XCTAssertTrue(presenter.isFetchingArchive,
+                      "an archive fetch for the bound book must raise the bar — this is the signal the player had no access to")
+    }
+
+    @MainActor
+    func testArchiveTransferForADifferentBook_isIgnored() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let other = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter()
+        presenter.adoptBook(book)
+
+        edges.send((other.identifier, true))
+        await drainMainQueueAsync()
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "another book's transfer must not raise this book's bar — the filter is at DELIVERY time because the presenter outlives sessions")
+    }
+
+    @MainActor
+    func testFallingEdge_clearsTheBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter()
+        presenter.adoptBook(book)
+
+        edges.send((book.identifier, true))
+        await drainMainQueueAsync()
+        XCTAssertTrue(presenter.isFetchingArchive, "precondition")
+
+        edges.send((book.identifier, false))
+        await drainMainQueueAsync()
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "the falling edge is the ONLY thing that lowers the bar — without it the bar never clears and reads as a permanent hang")
+    }
+
+    @MainActor
+    func testBoundMidTransfer_seedsTheBarImmediately() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, _, _) = makeArchivePresenter(activeIdentifiers: [book.identifier])
+
+        presenter.adoptBook(book)
+
+        XCTAssertTrue(presenter.isFetchingArchive,
+                      "opening a book mid-transfer is the COMMON path — the measured archives all run past three minutes and the publisher only speaks on edges, so without the seed the bar never appears")
+    }
+
+    @MainActor
+    func testBoundWithNoTransfer_doesNotSeedTheBarOn() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, _, _) = makeArchivePresenter(activeIdentifiers: [])
+
+        presenter.adoptBook(book)
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "a seed that defaulted ON would put the bar on every book — the inverse of the defect and just as wrong")
+    }
+
+    @MainActor
+    func testClearActiveSession_resetsTheArchiveBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await drainMainQueueAsync()
+        XCTAssertTrue(presenter.isFetchingArchive, "precondition")
+
+        presenter.clearActiveSession()
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "a stale bar must not leak into the next session")
+        XCTAssertNil(presenter.archiveProgress,
+                     "and its number must go with it")
+    }
+
+    /// The bar must carry the ARCHIVE's number, not the toolkit's per-track
+    /// figure. Review caught the first cut summoning the bar off a flag while
+    /// the view still rendered `overallDownloadProgress`, which during an
+    /// archive fetch reads ~0 — a bar frozen at 0% for minutes.
+    @MainActor
+    func testArchiveProgress_tracksTheArchiveTransfer() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await drainMainQueueAsync()
+
+        progress.send((book.identifier, 0.42))
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.42, accuracy: 0.001,
+                       "the bar's number must be the archive fetch's own progress")
+    }
+
+    /// Progress alone must not summon the bar: the same publisher carries
+    /// ordinary (non-LCP) download progress, and raising the archive bar on it
+    /// would put the player bar back on transfers this policy keeps quiet.
+    @MainActor
+    func testProgressWithoutAnActiveTransfer_doesNotRaiseTheBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, _, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+
+        progress.send((book.identifier, 0.5))
+        await drainMainQueueAsync()
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "a progress tick is not evidence that an ARCHIVE fetch is running")
+    }
 }

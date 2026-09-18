@@ -133,18 +133,28 @@ class AudiobookSessionPresenter: ObservableObject {
     /// played" is the durable fact. See `AudiobookDownloadProgressPolicy`.
     @Published private(set) var hasStartedPlayback: Bool = false
 
-    /// Whether the `.lcpa` ARCHIVE for the current book is still coming down
-    /// over the network — distinct from `isDownloading`, which the toolkit also
-    /// raises for local track decryption out of an archive already on disk.
+    /// Progress (0…1) of the `.lcpa` ARCHIVE fetch for the current book, or
+    /// `nil` when no archive fetch is running.
     ///
-    /// The player's bar needs the distinction: with LCP streaming on, audio
-    /// starts within a second while a 0.7–1 GB archive is still transferring, so
-    /// `isDownloading && !hasStartedPlayback` hid the bar on precisely the
-    /// transfer that decides whether the book plays in airplane mode. Sourced
-    /// from the same download-centre signal the half-sheet already consumes
-    /// (`lcpContentDownloadPublisher`), so both surfaces agree on what "still
-    /// downloading" means. Reset by `clearActiveSession()`.
-    @Published private(set) var isFetchingArchive: Bool = false
+    /// ONE optional rather than a `Bool` beside a `Double`, so "the bar is up
+    /// but has no number" is unrepresentable. Review caught exactly that: the
+    /// first cut summoned the bar off a flag while the view still rendered
+    /// `overallDownloadProgress`, which is mirrored ONLY from the toolkit
+    /// playback model. Post-bind the toolkit knows nothing about this network
+    /// fetch, so the bar would have sat frozen at 0% for a 0.7–1 GB transfer —
+    /// the same defect family (progress UI describing the wrong thing) as the
+    /// one being fixed.
+    ///
+    /// Distinct from `isDownloading`, which the toolkit also raises for local
+    /// track decryption out of an archive already on disk. Sourced from the
+    /// download centre signals the half-sheet already consumes, so both
+    /// surfaces agree on what "still downloading" means. Reset by
+    /// `clearActiveSession()`.
+    @Published private(set) var archiveProgress: Double?
+
+    /// Whether the `.lcpa` archive is still coming down. Derived, never stored
+    /// separately — see `archiveProgress`.
+    var isFetchingArchive: Bool { archiveProgress != nil }
 
     /// Latest transient toast (bookmark-added / playback error), mirrored from
     /// the toolkit playback model's `$toastMessage` (empty string normalized to
@@ -205,28 +215,34 @@ class AudiobookSessionPresenter: ObservableObject {
 
     /// - Parameters:
     ///   - archiveTransferPublisher: emits `(bookIdentifier, isActive)` as the
-    ///     `.lcpa` network fetch starts and stops. Optional so the CarPlay and
-    ///     test construction sites keep working unchanged; when nil the player
+    ///     `.lcpa` network fetch starts and stops. Optional so the ~40 test
+    ///     construction sites keep working unchanged; when nil the player
     ///     simply never learns about archive fetches, which is the pre-existing
-    ///     behaviour rather than a new failure mode.
+    ///     behaviour rather than a new failure mode. (An earlier revision also
+    ///     claimed a CarPlay construction site. There is none — the CarPlay
+    ///     bridge resolves the container's already-wired presenter. Corrected
+    ///     in review rather than left overclaimed.)
     ///   - isArchiveTransferActive: seed for a presenter created MID-transfer.
     ///     Opening a book already downloading is the common path — the measured
     ///     archives all run past three minutes — and without the seed the bar
     ///     stays hidden until the next publisher edge, which may never come.
     init(
         sessionManager: AudiobookSessionManaging,
-        archiveTransferPublisher: PassthroughSubject<(String, Bool), Never>? = nil,
+        archiveTransferPublisher: AnyPublisher<(String, Bool), Never>? = nil,
+        archiveProgressPublisher: AnyPublisher<(String, Double), Never>? = nil,
         isArchiveTransferActive: ((String) -> Bool)? = nil
     ) {
         self.sessionManager = sessionManager
         self.archiveTransferPublisher = archiveTransferPublisher
+        self.archiveProgressPublisher = archiveProgressPublisher
         self.isArchiveTransferActive = isArchiveTransferActive
         subscribeToSessionState()
         subscribeToAppLifecycle()
         subscribeToArchiveTransfers()
     }
 
-    private let archiveTransferPublisher: PassthroughSubject<(String, Bool), Never>?
+    private let archiveTransferPublisher: AnyPublisher<(String, Bool), Never>?
+    private let archiveProgressPublisher: AnyPublisher<(String, Double), Never>?
     private let isArchiveTransferActive: ((String) -> Bool)?
 
     /// Mirrors the archive fetch for whichever book is currently bound.
@@ -239,15 +255,31 @@ class AudiobookSessionPresenter: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] update in
                 guard let self, update.0 == self.currentBook?.identifier else { return }
-                self.isFetchingArchive = update.1
+                // Rising edge keeps any progress already seen; falling edge is
+                // the ONLY thing that clears the bar.
+                self.archiveProgress = update.1 ? (self.archiveProgress ?? 0) : nil
+            }
+            .store(in: &cancellables)
+
+        archiveProgressPublisher?
+            .receive(on: RunLoop.main)
+            .sink { [weak self] update in
+                guard let self, update.0 == self.currentBook?.identifier else { return }
+                // Progress alone must NOT summon the bar: the same publisher
+                // carries ordinary (non-LCP) download progress, and raising the
+                // archive bar on it would put the player bar back on transfers
+                // this policy exists to keep quiet. Only an active transfer,
+                // or the seed, opens that door.
+                guard self.archiveProgress != nil else { return }
+                self.archiveProgress = max(0, min(1, update.1))
             }
             .store(in: &cancellables)
     }
 
     /// Seeds `isFetchingArchive` for a book bound mid-transfer. Called when a
     /// session binds, because the publisher only speaks on edges.
-    func seedArchiveTransferState(for identifier: String) {
-        isFetchingArchive = isArchiveTransferActive?(identifier) ?? false
+    private func seedArchiveTransferState(for identifier: String) {
+        archiveProgress = (isArchiveTransferActive?(identifier) ?? false) ? 0 : nil
     }
 
     // MARK: - Public API (open for spying)
@@ -389,7 +421,7 @@ class AudiobookSessionPresenter: ObservableObject {
         progress.chapterProgress = 0
         overallDownloadProgress = 0
         isDownloading = false
-        isFetchingArchive = false
+        archiveProgress = nil
         hasStartedPlayback = false
         toastMessage = nil
         playbackModelCancellables.removeAll()
