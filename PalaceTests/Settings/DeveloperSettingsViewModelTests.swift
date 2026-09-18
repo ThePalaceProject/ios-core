@@ -60,10 +60,10 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        // Constructing the VM spins up the real settings/accounts graph via
-        // `.production()`, which can round-trip TPPKeychain — skip on CI hosts
-        // where SecItem returns -34018, same gate the sibling VM tests use. The
-        // feature-flag write-through is exercised where these DO run (local,
+        // `makeViewModel()` builds against a TEST container, not `.production()`,
+        // but `AccountsManager` can still round-trip TPPKeychain — skip on CI
+        // hosts where SecItem returns -34018, same gate the sibling VM tests use.
+        // The feature-flag write-through is exercised where these DO run (local,
         // where mutation is measured).
         try KeychainAvailability.skipIfUnavailable()
         suiteName = "test.DeveloperSettings.\(ProcessInfo.processInfo.globallyUniqueString)"
@@ -75,11 +75,38 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Builds the VM against a TEST container, never `AppContainer.production()`.
+    ///
+    /// The init defaults four dependencies to `.production()` and `featureFlags`
+    /// to `.shared`. Taking those defaults constructs a real `AccountsManager`,
+    /// which starts the background `loadCatalogs` Task whenever
+    /// `deferInitialLoadCatalogsForTesting` is false — and
+    /// `AppContainerResetTests` sets it to false on purpose to exercise the
+    /// un-deferred path. Full-suite, that background fetch raced this class and
+    /// hung `AppContainerResetTests` for the full 120s timeout (CI run
+    /// 35355866267). `makeTestAppContainer()` pins the flag before building the
+    /// manager, so this class no longer contributes that race.
+    ///
+    /// Seeding from a test-scoped `RemoteFeatureFlags` also stops the `@Published`
+    /// mirrors being initialised from `UserDefaults.standard` while the assertions
+    /// read `testDefaults` — the write and the read now address one store.
+    private func makeViewModel() -> DeveloperSettingsViewModel {
+        let container = makeTestAppContainer()
+        return DeveloperSettingsViewModel(
+            settings: container.settings,
+            accountsManager: container.accountsManager,
+            bookRegistry: container.bookRegistry,
+            debugSettings: container.debugSettings,
+            featureFlags: RemoteFeatureFlags(defaults: testDefaults),
+            overrideDefaults: testDefaults
+        )
+    }
+
     // Each feature-flag toggle must WRITE THROUGH to the RemoteFeatureFlags
     // local-override key in the injected store — the exact key the app reads.
 
     func testTriageBotToggle_writesThroughToLocalOverrideKey() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         let start = testDefaults.object(forKey: RemoteFeatureFlags.triageBotLocalOverrideKey) as? Bool
         vm.triageBotEnabled = !(vm.triageBotEnabled)
         XCTAssertEqual(
@@ -90,7 +117,7 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     }
 
     func testInAppPlaybackNavToggle_writesThroughToLocalOverrideKey() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         vm.inAppPlaybackNavEnabled = true
         XCTAssertEqual(
             testDefaults.object(forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey) as? Bool, true,
@@ -102,7 +129,7 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     }
 
     func testAppRatingForceEligibleToggle_writesThroughToLocalOverrideKey() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         vm.appRatingForceEligible = true
         XCTAssertEqual(
             testDefaults.object(forKey: RemoteFeatureFlags.appRatingForceEligibleLocalOverrideKey) as? Bool, true,
@@ -114,7 +141,7 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     // in any build. These pin the toggle that makes it reachable.
 
     func testSideLoadingToggle_writesThroughToLocalOverrideKey() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         vm.sideLoadingEnabled = true
         XCTAssertEqual(
             testDefaults.object(forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey) as? Bool, true,
@@ -129,7 +156,7 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     /// `isSideLoadingEnabled` reads. Asserting the toggle alone would pass even
     /// if the VM wrote to a key nothing consults — the original defect's shape.
     func testSideLoadingToggle_isTheKeyTheFlagReaderConsults() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         let flags = RemoteFeatureFlags(defaults: testDefaults)
 
         vm.sideLoadingEnabled = true
