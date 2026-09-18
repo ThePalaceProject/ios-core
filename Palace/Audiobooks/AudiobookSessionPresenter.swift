@@ -122,6 +122,17 @@ class AudiobookSessionPresenter: ObservableObject {
     /// download-bar visibility. Reset to false on `clearActiveSession()`.
     @Published private(set) var isDownloading: Bool = false
 
+    /// Whether audio has begun at least once for THIS session. Latched — it
+    /// never returns to false while the session lives — and reset only by
+    /// `clearActiveSession()`.
+    ///
+    /// Exists because the live `isPlaying` is the wrong question for the
+    /// download bar: it drops on every pause, so gating on it would re-summon a
+    /// progress bar on a book the patron has been listening to for twenty
+    /// minutes, which reads as though pausing broke something. "Has this ever
+    /// played" is the durable fact. See `AudiobookDownloadProgressPolicy`.
+    @Published private(set) var hasStartedPlayback: Bool = false
+
     /// Latest transient toast (bookmark-added / playback error), mirrored from
     /// the toolkit playback model's `$toastMessage` (empty string normalized to
     /// `nil`). Reset to nil on `clearActiveSession()`.
@@ -216,6 +227,24 @@ class AudiobookSessionPresenter: ObservableObject {
     /// placeholder rather than a stale cover from a prior session — though the
     /// manager's pre-open `stopPlayback` has already cleared it.
     func presentLoadingShell(for book: TPPBook, coverImage: UIImage?) {
+        // Clear the playback latch here — UNCONDITIONALLY, at the session
+        // boundary — mirroring the manager's own unconditional reset of
+        // `hasEverStartedPlayback` when an open begins.
+        //
+        // An earlier revision reset it in `adoptBook` on identifier change, and
+        // that never fired for the case it was written for: a same-book re-open
+        // takes `stopPlayback(dismissPhoneUI: !isSameBook)`, which skips
+        // `clearActiveSession()`, so `currentBook` survives and the identifier
+        // compares EQUAL. The latch then persisted into the new session and
+        // suppressed the content-wait bar in exactly the window
+        // `showDownloadProgress` exists for — the "reads as hung" symptom that
+        // fix/audiobook-first-open-hang fixed. Two reviewers caught it, and the
+        // test written to prove the fix had pinned the broken behaviour.
+        //
+        // This is the right seam because it marks a new OPEN. A bare
+        // `adoptBook` (cover refresh mid-session) still leaves a live latch
+        // alone, which is the property the identifier guard was reaching for.
+        hasStartedPlayback = false
         adoptBook(book)
         adoptCoverImage(coverImage)
         presentOnFirstOpen()
@@ -306,6 +335,7 @@ class AudiobookSessionPresenter: ObservableObject {
         progress.chapterProgress = 0
         overallDownloadProgress = 0
         isDownloading = false
+        hasStartedPlayback = false
         toastMessage = nil
         playbackModelCancellables.removeAll()
     }
@@ -423,6 +453,9 @@ class AudiobookSessionPresenter: ObservableObject {
                 let playing: Bool
                 if case .playing = state { playing = true } else { playing = false }
                 if self.isPlaying != playing { self.isPlaying = playing }
+                // Latch on the rising edge only; never cleared here, so a pause
+                // or a track boundary cannot take it back down.
+                if playing && !self.hasStartedPlayback { self.hasStartedPlayback = true }
             }
             .store(in: &cancellables)
     }

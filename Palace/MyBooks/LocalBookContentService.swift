@@ -71,6 +71,15 @@ class LocalBookContentService {
     /// starvation flakes.
     private let monotonicClock: () -> UInt64
 
+    /// Resolves the library the app is currently pointed at. Injectable because
+    /// the LIBRARY-SWITCH arm of the write guard is otherwise unreachable from a
+    /// test: `currentAccountId` is backed by `UserDefaults`, and driving it for
+    /// real would mean writing to the standard suite from a test. A mutation
+    /// survivor proved this wiring needed its own coverage — the pure rule was
+    /// tested while the code computing its input was not, which is the same
+    /// shape of hole as the leak this guard exists to close.
+    private let currentAccountIdProvider: () -> String?
+
     /// Progress/activity sink for the LCP content re-download. Assigned by
     /// `MyBooksDownloadCenter` after `init` because the reporter is created
     /// later in that initializer than this service is (mirrors the existing
@@ -146,6 +155,89 @@ class LocalBookContentService {
         return true
     }
 
+    /// Whether a COMPLETED `.lcpa` fetch may still be written to disk for this
+    /// book — i.e. whether the patron still holds it.
+    ///
+    /// This closes a confirmed data-retention leak, not a hypothetical one.
+    /// The fetch is fire-and-forget by construction: `LCPContentFulfilling`
+    /// returns `Void` and its task handle is discarded, so a Return cannot
+    /// cancel an in-flight transfer (`BookRegistrySync` documents the same
+    /// thing — "cancel would report success while the transfer kept running").
+    /// The return cleanup therefore deletes the content and the download lands
+    /// AFTERWARDS and re-creates it.
+    ///
+    /// Measured on device (Moes Max, build 505), matched by SHA-256 of the book
+    /// identifier against the on-disk filename: two returned loans left
+    /// `.lcpa` archives of 0.48 GB and 1.07 GB in Application Support, and
+    /// NEITHER book was still present in the registry. 1.55 GB of DRM-protected
+    /// audio for books the patron had given back.
+    ///
+    /// Guarding the WRITE rather than adding cancellation is deliberate: it
+    /// closes every way a loan can end — return, expiry — at one point, instead
+    /// of racing each separately, and needs no cancellation machinery the
+    /// fulfiller cannot support.
+    ///
+    /// KNOWN BOUND, corrected in review rather than left overclaimed. This is
+    /// NOT the only writer. `LCPFulfillmentHandler` reaches
+    /// `BackgroundDownloadHandler.replaceBook`, a second `.lcpa` producer with
+    /// the same fire-and-forget shape and no such guard — reachable with LCP
+    /// streaming OFF, and always for LCP PDF/EPUB. So this NARROWS the orphan
+    /// window on the streaming path; it does not close it everywhere. An
+    /// earlier revision of this comment claimed "the single point where content
+    /// comes into existence", which was false.
+    ///
+    /// A library switch is deliberately NOT closed here — see
+    /// `accountUnchanged` below. The registry cannot answer for another
+    /// library, and guessing costs the patron a gigabyte.
+    ///
+    /// Exhaustive with no `default:` — the F-011 class-of-bug guard. A new
+    /// `TPPBookState` must be classified deliberately rather than defaulting
+    /// into "write the file".
+    static func mayStoreFetchedContent(
+        registryState: TPPBookState,
+        accountUnchanged: Bool
+    ) -> Bool {
+        // A LIBRARY SWITCH IS NOT A LOAN ENDING, and the registry cannot tell
+        // the difference. `bookRegistry.state(for:)` is scoped to the CURRENT
+        // account, so once the patron switches libraries it answers for a
+        // different library and reports `.unregistered` for a book account A
+        // still holds. Deleting on that answer destroys up to a gigabyte of
+        // content the patron is entitled to, recoverable only by switching back
+        // and waiting for `load()` reconciliation.
+        //
+        // When the account has moved we cannot judge the loan, so we WRITE. The
+        // destination is already account-pinned (`fileUrl(for:)`, which resolves the account internally), so
+        // the archive lands in the right library's directory either way, and
+        // this is exactly the pre-guard behaviour — it declines to close that
+        // sliver rather than closing it destructively. Retention is
+        // recoverable; deletion is not.
+        // KNOWN RESIDUAL, named rather than fixed: account identity cannot
+        // distinguish "same library, registry not yet reconciled" from "same
+        // library, book returned". A switch away and back mid-transfer, or a
+        // completion landing during `load()` after a switch back, reads
+        // `accountUnchanged == true` while the registry still answers
+        // `.unregistered`, and the fetch is discarded. Bounded and
+        // NON-destructive — the decline arm removes only the fulfiller's temp
+        // file, never `destURL` — so the cost is a wasted re-download, not lost
+        // content, and a later open re-arms the fetch.
+        guard accountUnchanged else { return true }
+
+        switch registryState {
+        // The loan is live and content belongs on the device.
+        case .downloadNeeded, .downloading, .downloadSuccessful, .used,
+             .downloadFailed, .SAMLStarted:
+            return true
+        // `.unregistered` is a returned or never-held book — this is the leak.
+        // `.returning` is the same loan a moment earlier: the cleanup is already
+        // in flight, so writing here re-creates exactly what it is deleting.
+        case .unregistered, .returning:
+            return false
+        // A hold is not a loan, and an unsupported book has nothing to play.
+        case .holding, .unsupported:
+            return false
+        }
+    }
+
     private static func monotonicNow() -> UInt64 {
         DispatchTime.now().uptimeNanoseconds
     }
@@ -158,10 +250,14 @@ class LocalBookContentService {
         lcpContentFulfiller: LCPContentFulfilling? = nil,
         inflightIdleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
         downloadCenterHasTransfer: ((String) -> Bool)? = nil,
-        monotonicClock: (() -> UInt64)? = nil
+        monotonicClock: (() -> UInt64)? = nil,
+        currentAccountIdProvider: (() -> String?)? = nil
     ) {
         self.inflightIdleTimeout = inflightIdleTimeout
         self.monotonicClock = monotonicClock ?? LocalBookContentService.monotonicNow
+        self.currentAccountIdProvider = currentAccountIdProvider ?? { [weak accountsManager] in
+            accountsManager?.currentAccountId
+        }
         self.downloadCenterHasTransfer = downloadCenterHasTransfer
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
@@ -392,6 +488,10 @@ class LocalBookContentService {
         }
 
         let identifier = book.identifier
+        // Captured BEFORE the transfer starts so the completion can tell a
+        // returned loan (registry says gone, same library) apart from a library
+        // switch (registry is simply answering for someone else).
+        let accountAtFetchStart = currentAccountIdProvider()
 
         // Skip if the download center is already transferring this book. Its
         // fulfillment-handler transfer is invisible to the claim map below, so
@@ -441,6 +541,28 @@ class LocalBookContentService {
             }
             guard let localUrl else {
                 Log.error(#file, "📥 [LCP RE-DOWNLOAD] ❌ No local URL returned for '\(book.title)'")
+                return
+            }
+
+            // The patron may have returned the book while this multi-gigabyte
+            // transfer was in flight. Nothing cancelled it — nothing CAN — so
+            // this is the last point at which the content can be stopped from
+            // reaching disk. A `self` that has gone away answers `.unregistered`
+            // rather than defaulting to a write, because a service torn down
+            // mid-transfer cannot vouch for the loan either, so it takes the
+            // NON-DESTRUCTIVE arm below and the archive is written.
+            let currentState = self?.bookRegistry.state(for: identifier) ?? .unregistered
+            // Compared against the account captured BEFORE the transfer began.
+            // A `self` that has gone away cannot report an account either, so it
+            // answers "changed" and the write proceeds — the non-destructive arm.
+            let accountNow = self?.currentAccountIdProvider()
+            let accountUnchanged = (self != nil) && (accountNow == accountAtFetchStart)
+            guard LocalBookContentService.mayStoreFetchedContent(
+                registryState: currentState,
+                accountUnchanged: accountUnchanged
+            ) else {
+                try? fileManager.removeItem(at: localUrl)
+                Log.info(#file, "📥 [LCP RE-DOWNLOAD] '\(book.title)' is no longer held (state: \(currentState)) — discarding the fetched .lcpa instead of writing it to disk")
                 return
             }
 

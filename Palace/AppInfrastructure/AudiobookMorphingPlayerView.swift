@@ -738,7 +738,15 @@ struct AudiobookMorphingPlayerView: View {
 
     @ViewBuilder
     private var downloadBar: some View {
-        if presenter.isDownloading {
+        // Gated on the PURE policy rather than `presenter.isDownloading` alone:
+        // for LCP that flag stays true through track decryption, which the
+        // streaming player does not wait for, so the bar used to sit beside
+        // working transport controls describing background plumbing. See
+        // `AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar`.
+        if AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
+            isDownloading: presenter.isDownloading,
+            hasStartedPlayback: presenter.hasStartedPlayback
+        ) {
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill")

@@ -70,6 +70,7 @@ final class BookDetailViewModel: ObservableObject {
     /// `bookState == .downloading` cue cannot cover.
     @Published var isDownloadingLCPContent: Bool = false
 
+
     /// Error alert to present via SwiftUI `.alert`, ensuring it shows
     /// on top of the half sheet instead of being swallowed by UIKit.
     @Published var downloadErrorAlert: AlertModel?
