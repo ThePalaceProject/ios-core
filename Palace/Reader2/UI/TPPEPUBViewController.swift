@@ -304,17 +304,96 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     private func announceCurrentPosition() {
         let locator = navigator.currentLocation
         Task { @MainActor in
-            var pageLabel: String?
-            if let locator {
-                pageLabel = await self.pageListBusinessLogic.currentPageLabel(for: locator)
-            }
             let report = TPPReaderPositionReport.announcement(
-                section: locator?.title,
-                pageLabel: pageLabel,
+                section: await self.currentSection(for: locator),
+                pageLabel: await self.currentPrintPageLabel(),
                 totalProgression: locator?.locations.totalProgression
             )
-            UIAccessibility.post(notification: .announcement, argument: report)
+            self.speak(report)
         }
+    }
+
+    /// Post the report so VoiceOver actually says it.
+    ///
+    /// A plain-`String` `.announcement` is DISCARDED when VoiceOver is already
+    /// speaking, and after activating a control it always is — it is busy
+    /// announcing the control. On device that surfaced as the report being
+    /// replaced by whatever VoiceOver was saying. Queuing makes it wait its turn.
+    private func speak(_ report: String) {
+        let queued = NSAttributedString(
+            string: report,
+            attributes: [.accessibilitySpeechQueueAnnouncement: true]
+        )
+        UIAccessibility.post(notification: .announcement, argument: queued)
+    }
+
+    /// The section the patron is in, derived from the nearest preceding
+    /// table-of-contents entry (AC), NOT from `locator.title`.
+    ///
+    /// `Locator.title` is populated only when the locator came from a nav link,
+    /// so it is nil for anyone who simply read their way here — which is everyone
+    /// this feature is for.
+    private func currentSection(for locator: Locator?) async -> String? {
+        guard let locator else { return nil }
+        guard let toc = try? await publication.tableOfContents().get() else {
+            return locator.title
+        }
+
+        let readingOrder = publication.readingOrder
+        func index(of href: AnyURL) -> Int? {
+            readingOrder.firstIndex { $0.url().removingFragment().isEquivalentTo(href) }
+        }
+        guard let currentIndex = index(of: locator.href.removingFragment()) else {
+            return locator.title
+        }
+
+        var entries: [TPPReaderSectionResolver.Entry] = []
+        // `Link` is ambiguous here — Palace defines one too.
+        func flatten(_ links: [ReadiumShared.Link]) {
+            for link in links {
+                let url = link.url()
+                if let resourceIndex = index(of: url.removingFragment()) {
+                    entries.append(
+                        TPPReaderSectionResolver.Entry(
+                            title: link.title ?? "",
+                            resourceIndex: resourceIndex,
+                            // A fragment means the entry starts partway into the
+                            // resource, but the nav doc does not say where; the
+                            // ordering below only needs it to sort after the
+                            // resource-level entry.
+                            progression: url.fragment == nil ? nil : 0.0
+                        )
+                    )
+                }
+                flatten(link.children)
+            }
+        }
+        flatten(toc)
+
+        return TPPReaderSectionResolver.section(
+            in: entries,
+            resourceIndex: currentIndex,
+            progression: locator.locations.progression ?? 0.0
+        ) ?? locator.title
+    }
+
+    /// The print page the patron is on, read from the rendered chapter's
+    /// page-break markers.
+    ///
+    /// NOT from `publication.pageList` + `locate()`: that locator never carries
+    /// `totalProgression`, so the old comparison had nothing to match and the
+    /// page component never appeared for any title at any position.
+    private func currentPrintPageLabel() async -> String? {
+        let js = TPPReaderPageBreakLocator.nearestPrecedingJavaScript(
+            scrolled: preferences.scroll ?? false
+        )
+        let result = await epubNavigator.evaluateJavaScript(js)
+        return TPPReaderPageBreakLocator.parse(try? result.get())
+    }
+
+    /// Carry the toolbar button (`TPPBaseReaderViewController`) to the report.
+    override func announceReadingPosition() {
+        announceCurrentPosition()
     }
 
     /// Annotate inline EPUB footnote elements (`doc-noteref` / `doc-footnote` /

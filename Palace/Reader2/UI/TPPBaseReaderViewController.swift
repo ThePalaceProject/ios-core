@@ -812,8 +812,32 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         let forwardButton = makeItem(.fastForward, label: DisplayStrings.nextChapter, action: #selector(goForward))
         let backButton = makeItem(.rewind, label: DisplayStrings.previousChapter, action: #selector(goBackward))
 
+        // "Where am I?" position report (DAISY nav-310, PP-4527). This toolbar is
+        // the ONLY entry point VoiceOver can reach while the patron is reading.
+        //
+        // It shipped first as a custom ACTION and then as a custom ROTOR, both on
+        // Readium's container view; neither is reachable. VoiceOver focus during
+        // reading lives in the WKWebView's web-content AX tree, where WebKit
+        // supplies the rotor and native `accessibilityCustomRotors` from ancestor
+        // views are not merged in. Measured on device 2026-09-18 against three
+        // separate carriers — the container, the WKWebView itself, and the
+        // paginated scroll view — none of which ever surfaced; a button in this
+        // toolbar fired every time. Do not "simplify" this back to a rotor.
+        //
+        // This toolbar is shown only while VoiceOver is running, so the control
+        // stays invisible to sighted patrons as the AC requires.
+        let whereAmIButton = UIBarButtonItem(
+            title: DisplayStrings.whereAmI,
+            style: .plain,
+            target: self,
+            action: #selector(announceReadingPosition)
+        )
+        whereAmIButton.accessibilityLabel = DisplayStrings.whereAmI
+
         toolbar.items = [
             backButton,
+            makeItem(.flexibleSpace),
+            whereAmIButton,
             makeItem(.flexibleSpace),
             forwardButton
         ]
@@ -823,6 +847,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }()
 
     private var isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
+
+    /// Speak the patron's current reading position without moving focus or the
+    /// reading position (PP-4527). A no-op in the base reader; the EPUB
+    /// controller overrides it, since the position report is built from the
+    /// EPUB navigator's locator, table of contents and rendered page-breaks.
+    @objc func announceReadingPosition() {}
 
     @objc func voiceOverStatusDidChange() {
         let isRunning = UIAccessibility.isVoiceOverRunning
