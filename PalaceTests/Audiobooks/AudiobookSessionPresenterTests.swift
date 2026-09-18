@@ -815,4 +815,186 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertFalse(presenter.isDownloading,
                        "clearActiveSession must clear the pre-bind isDownloading flag")
     }
+
+    // MARK: - hasStartedPlayback (latched; gates the player download bar)
+    //
+    // The player's download bar is gated on this rather than the live
+    // `isPlaying`, because for LCP the toolkit reports "downloading" through
+    // track decryption that streaming playback never waits for. See
+    // `AudiobookDownloadProgressPolicy`.
+
+    // NOTE: a `testHasStartedPlayback_isFalseOnAFreshPresenter` case was removed
+    // here. It asserted a default with no action taken, which CLAUDE.md bans
+    // outright — it could only fail if the property's initialiser changed. The
+    // states that matter are driven below: a non-playing event must NOT latch,
+    // `.playing` must, a pause must not clear it, and teardown must.
+    /// PRE: session emits `.playing`.
+    /// EXPECTED: the latch rises.
+    /// Mutates: deleting the latch assignment fails this.
+    func testHasStartedPlayback_latchesTrueOnFirstPlayingState() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+
+        XCTAssertTrue(presenter.hasStartedPlayback,
+                      "the first .playing must latch — this is what retires the download bar for the session")
+    }
+
+    /// The cell none of the others reach: a NON-playing state arriving FIRST.
+    ///
+    /// Added because mutation found it. Flipping the latch's `&&` to `||`
+    /// survived the whole suite — and that mutant is a real defect, not a
+    /// curiosity: with `||`, `playing == false` plus a not-yet-set latch raises
+    /// the latch, so the very first `.loading` would retire the download bar
+    /// BEFORE playback started. That is precisely the window the bar still
+    /// exists for, so the player would go silent-and-blank exactly when the
+    /// patron is waiting.
+    ///
+    /// The four tests around this one all send `.playing` first, so every one
+    /// of them passes under the mutant. Enumerating the event that comes before
+    /// playback is what distinguishes a latch from an unconditional set.
+    func testHasStartedPlayback_doesNotLatchOnALoadingStateBeforePlaybackBegins() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.loading(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "loading is not playing — latching here retires the download bar during the very wait it exists to explain")
+    }
+
+    /// Same cell, the other non-playing event, so the rule is pinned as "only
+    /// `.playing` latches" rather than "`.loading` happens not to".
+    func testHasStartedPlayback_doesNotLatchOnIdleBeforePlaybackBegins() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.idle)
+        spinRunLoopForPublisherDelivery()
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "only a real .playing may raise the latch")
+    }
+
+    /// The reason the flag is latched rather than mirrored. A pause drops
+    /// `isPlaying`; if the bar were gated on that, pausing a book the patron had
+    /// been listening to for twenty minutes would pop a download bar onto it.
+    /// Mutates: clearing the latch on a non-playing state fails this and not the
+    /// test above, which is what distinguishes "latched" from "mirrored".
+    func testHasStartedPlayback_survivesAPauseAfterPlaying() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+        spySession.playbackStatePublisher.send(.idle)
+        spinRunLoopForPublisherDelivery()
+
+        XCTAssertFalse(presenter.isPlaying,
+                       "precondition: the pause must actually have dropped isPlaying, or this asserts nothing")
+        XCTAssertTrue(presenter.hasStartedPlayback,
+                      "a pause must not take the latch back down — otherwise pausing re-summons the download bar")
+    }
+
+    /// SAME-BOOK RE-OPEN — the case that was actually broken.
+    ///
+    /// `stopPlayback(dismissPhoneUI: !isSameBook)` skips `clearActiveSession()`
+    /// when the book is unchanged, so `currentBook` survives into the next open.
+    /// An earlier fix reset the latch in `adoptBook` on IDENTIFIER CHANGE, which
+    /// therefore never fired here — and the test written to prove it asserted
+    /// the different-book case under a "same-book" heading, so it passed while
+    /// the bug stood. Both reviewers caught that independently.
+    ///
+    /// `presentLoadingShell` is the session boundary and resets unconditionally.
+    func testHasStartedPlayback_resetsOnAReOpenOfTheSAMEBook() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let book = TPPBookMocker.mockBook(title: "Same Book", authors: "Author")
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: book.identifier))
+        spinRunLoopForPublisherDelivery()
+        XCTAssertTrue(presenter.hasStartedPlayback, "precondition: the latch must be up")
+
+        // Re-open the SAME book. No teardown runs on this path.
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "a re-open of the same book is a new session — a surviving latch silences its loading wait")
+    }
+
+    /// SEAM INVARIANT, not a currently-reachable path. Review traced every
+    /// production caller and found none passes `startPlaying: false`, so today
+    /// `adoptBook` is never reached without `presentLoadingShell`. That is a
+    /// property of the callers, not of the code — a future CarPlay or prefetch
+    /// caller passing `false` would silently resurrect the stale latch.
+    ///
+    /// Pinned here so the resurrection fails a test rather than shipping: any
+    /// path that adopts a book for a NEW session must leave the latch down.
+    func testHasStartedPlayback_isDownAfterAdoptingAFreshBookWithoutTheShell() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let first = TPPBookMocker.mockBook(title: "Seam First", authors: "Author")
+        presenter.presentLoadingShell(for: first, coverImage: nil)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: first.identifier))
+        spinRunLoopForPublisherDelivery()
+        XCTAssertTrue(presenter.hasStartedPlayback, "precondition: the latch must be up")
+
+        // Tear the session down the way a close does, then adopt a new book
+        // WITHOUT the shell — the shape a `startPlaying: false` open would take.
+        presenter.clearActiveSession()
+        let second = TPPBookMocker.mockBook(title: "Seam Second", authors: "Author")
+        presenter.adoptBook(second)
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "a new session must start with the bar permitted, whichever seam opened it")
+    }
+
+    /// A different book re-opened through the same seam must reset too.
+    func testHasStartedPlayback_resetsOnAReOpenOfADifferentBook() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let first = TPPBookMocker.mockBook(title: "First Book", authors: "Author")
+        presenter.presentLoadingShell(for: first, coverImage: nil)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: first.identifier))
+        spinRunLoopForPublisherDelivery()
+
+        let second = TPPBookMocker.mockBook(title: "Second Book", authors: "Author")
+        XCTAssertNotEqual(first.identifier, second.identifier, "precondition: distinct identifiers")
+        presenter.presentLoadingShell(for: second, coverImage: nil)
+
+        XCTAssertFalse(presenter.hasStartedPlayback)
+    }
+
+    /// The property the identifier guard was reaching for, kept: a bare
+    /// `adoptBook` mid-session (cover refresh) must NOT drop a live latch, or
+    /// the download bar returns underneath playing audio.
+    func testHasStartedPlayback_survivesABareAdoptBookMidSession() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let book = TPPBookMocker.mockBook(title: "Mid Session", authors: "Author")
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: book.identifier))
+        spinRunLoopForPublisherDelivery()
+
+        presenter.adoptBook(book)
+
+        XCTAssertTrue(presenter.hasStartedPlayback,
+                      "a bare re-adopt is not a new session — dropping the latch here puts the bar back under playing audio")
+    }
+
+    /// The latch is session-scoped: the NEXT book opens with the bar permitted
+    /// again. Without this reset a second audiobook would never show progress
+    /// while it genuinely was loading.
+    func testHasStartedPlayback_resetsOnClearActiveSession() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+        XCTAssertTrue(presenter.hasStartedPlayback, "precondition: the latch must be up before teardown")
+
+        presenter.clearActiveSession()
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "the latch is per-session — the next book must be able to show its loading progress")
+    }
+
 }

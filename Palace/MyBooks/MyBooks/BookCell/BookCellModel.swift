@@ -105,6 +105,17 @@ class BookCellModel: ObservableObject {
     /// progress for the whole transfer.
     @Published var isDownloadingLCPContent: Bool = false
 
+    /// Whether the `.lcpa` must land before this book can be opened — LCP
+    /// streaming OFF, so the background fetch IS the patron's wait.
+    ///
+    /// This model presents the SAME half-sheet as `BookDetailViewModel`
+    /// (`NormalBookCell` → `HalfSheetView(viewModel: model)`), so it must answer
+    /// for itself. An earlier revision let it inherit a `false` protocol
+    /// default, which turned a required multi-gigabyte wait into a blank sheet
+    /// on the My Books route. Reads the download centre's existing provider
+    /// rather than `.shared`, so a test can drive both flag states.
+    var contentRequiredBeforePlayback: Bool { !downloadCenter.lcpStreamingEnabledProvider() }
+
     /// Progress samples observed from `downloadProgressPublisher`. Needed
     /// because the LCP content re-download is not registered in the download
     /// center's `downloadInfo`, so the computed `downloadProgress` below has no
