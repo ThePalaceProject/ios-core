@@ -1032,7 +1032,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertFalse(presenter.isFetchingArchive, "precondition: no transfer")
 
         edges.send((book.identifier, true))
-        await drainMainQueueAsync()
+        await awaitConditionAsync { presenter.isFetchingArchive }
 
         XCTAssertTrue(presenter.isFetchingArchive,
                       "an archive fetch for the bound book must raise the bar — this is the signal the player had no access to")
@@ -1059,11 +1059,11 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         presenter.adoptBook(book)
 
         edges.send((book.identifier, true))
-        await drainMainQueueAsync()
+        await awaitConditionAsync { presenter.isFetchingArchive }
         XCTAssertTrue(presenter.isFetchingArchive, "precondition")
 
         edges.send((book.identifier, false))
-        await drainMainQueueAsync()
+        await awaitConditionAsync { !presenter.isFetchingArchive }
 
         XCTAssertFalse(presenter.isFetchingArchive,
                        "the falling edge is the ONLY thing that lowers the bar — without it the bar never clears and reads as a permanent hang")
@@ -1088,7 +1088,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         presenter.adoptBook(book)
 
         XCTAssertFalse(presenter.isFetchingArchive,
-                       "a seed that defaulted ON would put the bar on every book — the inverse of the defect and just as wrong")
+                       "the seed must report the query's answer, not assume one — a seed stuck ON would put the bar on every book")
     }
 
     @MainActor
@@ -1097,7 +1097,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         let (presenter, edges, _) = makeArchivePresenter()
         presenter.adoptBook(book)
         edges.send((book.identifier, true))
-        await drainMainQueueAsync()
+        await awaitConditionAsync { presenter.isFetchingArchive }
         XCTAssertTrue(presenter.isFetchingArchive, "precondition")
 
         presenter.clearActiveSession()
@@ -1121,7 +1121,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         await drainMainQueueAsync()
 
         progress.send((book.identifier, 0.42))
-        await drainMainQueueAsync()
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0 }
 
         XCTAssertEqual(presenter.archiveProgress ?? -1, 0.42, accuracy: 0.001,
                        "the bar's number must be the archive fetch's own progress")
@@ -1141,5 +1141,71 @@ final class AudiobookSessionPresenterTests: XCTestCase {
 
         XCTAssertFalse(presenter.isFetchingArchive,
                        "a progress tick is not evidence that an ARCHIVE fetch is running")
+    }
+
+    /// THE TWIN GUARD. `testArchiveTransferForADifferentBook_isIgnored` covers
+    /// the EDGES sink; this covers the PROGRESS sink, written in the same
+    /// function from the same template and previously untested. Deleting its
+    /// `update.0 == currentBook?.identifier` check survived all eight tests.
+    ///
+    /// `downloadProgressPublisher` is app-wide and Palace downloads
+    /// concurrently, so without the guard an unrelated book's progress writes
+    /// into the bound book's archive bar — the exact defect family this whole
+    /// change exists to fix.
+    @MainActor
+    func testArchiveProgressForADifferentBook_isIgnored() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let other = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+
+        progress.send((other.identifier, 0.9))
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0, accuracy: 0.001,
+                       "another book's progress must not drive this book's bar")
+    }
+
+    /// The clamp is the only thing keeping the capsule inside its track — the
+    /// view multiplies this by the available width.
+    @MainActor
+    func testArchiveProgress_isClampedToUnitRange() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+
+        progress.send((book.identifier, 4.2))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0 }
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 1.0, accuracy: 0.001,
+                       "over-unit progress must clamp to 1 or the bar overruns its track")
+
+        progress.send((book.identifier, -1))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 1) < 1 }
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0, accuracy: 0.001,
+                       "negative progress must clamp to 0")
+    }
+
+    /// Pins the rising edge's documented promise to keep any progress already
+    /// seen. `adoptBook` seeds twice per open, so a repeated rising edge must
+    /// not snap a climbing bar back to 0%.
+    @MainActor
+    func testRepeatedRisingEdge_keepsProgressAlreadySeen() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+        progress.send((book.identifier, 0.6))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.5 }
+
+        edges.send((book.identifier, true))
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.6, accuracy: 0.001,
+                       "a second rising edge must not reset a bar that already climbed")
     }
 }

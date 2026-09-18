@@ -223,6 +223,9 @@ class AudiobookSessionPresenter: ObservableObject {
     ///     bridge resolves the container's already-wired presenter. Corrected
     ///     in review rather than left overclaimed.)
     ///   - isArchiveTransferActive: seed for a presenter created MID-transfer.
+    ///     Total rather than optional — an inert `{ _ in false }` default says
+    ///     the same thing as nil while removing the `?? false` branch review
+    ///     found surviving mutation.
     ///     Opening a book already downloading is the common path — the measured
     ///     archives all run past three minutes — and without the seed the bar
     ///     stays hidden until the next publisher edge, which may never come.
@@ -230,7 +233,7 @@ class AudiobookSessionPresenter: ObservableObject {
         sessionManager: AudiobookSessionManaging,
         archiveTransferPublisher: AnyPublisher<(String, Bool), Never>? = nil,
         archiveProgressPublisher: AnyPublisher<(String, Double), Never>? = nil,
-        isArchiveTransferActive: ((String) -> Bool)? = nil
+        isArchiveTransferActive: @escaping (String) -> Bool = { _ in false }
     ) {
         self.sessionManager = sessionManager
         self.archiveTransferPublisher = archiveTransferPublisher
@@ -243,7 +246,7 @@ class AudiobookSessionPresenter: ObservableObject {
 
     private let archiveTransferPublisher: AnyPublisher<(String, Bool), Never>?
     private let archiveProgressPublisher: AnyPublisher<(String, Double), Never>?
-    private let isArchiveTransferActive: ((String) -> Bool)?
+    private let isArchiveTransferActive: (String) -> Bool
 
     /// Mirrors the archive fetch for whichever book is currently bound.
     /// Filtered on `currentBook` at DELIVERY time rather than captured at
@@ -257,7 +260,15 @@ class AudiobookSessionPresenter: ObservableObject {
                 guard let self, update.0 == self.currentBook?.identifier else { return }
                 // Rising edge keeps any progress already seen; falling edge is
                 // the ONLY thing that clears the bar.
-                self.archiveProgress = update.1 ? (self.archiveProgress ?? 0) : nil
+                if update.1 {
+                    self.archiveProgress = self.archiveProgress ?? 0
+                } else {
+                    // A falling edge can be stale — enqueued before a seed that
+                    // found the transfer live. The synchronous query is
+                    // authoritative, so let it veto the clear.
+                    let stillActive = self.isArchiveTransferActive(update.0)
+                    self.archiveProgress = stillActive ? (self.archiveProgress ?? 0) : nil
+                }
             }
             .store(in: &cancellables)
 
@@ -279,7 +290,10 @@ class AudiobookSessionPresenter: ObservableObject {
     /// Seeds `isFetchingArchive` for a book bound mid-transfer. Called when a
     /// session binds, because the publisher only speaks on edges.
     private func seedArchiveTransferState(for identifier: String) {
-        archiveProgress = (isArchiveTransferActive?(identifier) ?? false) ? 0 : nil
+        // `?? 0` not `= 0`: `adoptBook` seeds TWICE per open, and a bar that
+        // already climbed during the pre-bind wait must not snap back to 0%.
+        // Mirrors the rising edge, which preserves for the same reason.
+        archiveProgress = isArchiveTransferActive(identifier) ? (archiveProgress ?? 0) : nil
     }
 
     // MARK: - Public API (open for spying)

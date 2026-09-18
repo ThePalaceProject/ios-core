@@ -766,12 +766,12 @@ struct AudiobookMorphingPlayerView: View {
                             Capsule().fill(Color.primary.opacity(0.15)).frame(height: 4)
                             Capsule().fill(Color.accentColor)
                                 .frame(width: max(4, geo.size.width * CGFloat(barProgress)), height: 4)
-                                .animation(.easeInOut(duration: 0.3), value: presenter.overallDownloadProgress)
+                                .animation(.easeInOut(duration: 0.3), value: barProgress)
                         }
                         .frame(maxHeight: .infinity)
                     }
                     .frame(height: 4)
-                    Text("\(Int(presenter.overallDownloadProgress * 100))%")
+                    Text("\(Int(barProgress * 100))%")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                         .frame(width: 34, alignment: .trailing)
@@ -783,7 +783,7 @@ struct AudiobookMorphingPlayerView: View {
             }
             .transition(.opacity)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(Strings.Generic.audiobookDownloading), \(Int(presenter.overallDownloadProgress * 100))%")
+            .accessibilityLabel("\(Strings.Generic.audiobookDownloading), \(Int(barProgress * 100))%")
         }
     }
 
