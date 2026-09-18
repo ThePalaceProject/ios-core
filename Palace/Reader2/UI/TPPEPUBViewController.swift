@@ -220,6 +220,13 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             // rotor — always available to VoiceOver readers. Block-by-block
             // navigation (PP-4533, reading-810) as a second rotor, gated on the
             // customRotorActionsEnabled preference (default on).
+            // "Where am I?" position report (PP-4527, DAISY nav-310) as a custom
+            // rotor. Kept as-is: selecting a rotor announces only its name and a
+            // subsequent swipe fires the report, which is how rotors work, not a
+            // defect. It is however unreachable while simply reading — VoiceOver
+            // is focused on web content there, where WebKit owns the rotor list —
+            // so it cannot be the only entry point. The toolbar button in
+            // TPPBaseReaderViewController is the one a patron can actually find.
             var rotors: [UIAccessibilityCustomRotor] = [makeWhereAmIRotor()]
             if Self.customRotorActionsEnabled {
                 rotors.append(makeBlockRotor())
@@ -281,12 +288,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         )
     }
 
+
     /// A VoiceOver custom rotor that announces the current reading position
-    /// without moving focus (PP-4527, DAISY nav-310). Selecting the "Where am I?"
-    /// rotor and swiping reports the position via `announceCurrentPosition()`. A
-    /// rotor is used (not a custom action) because a custom action on the
-    /// WKWebView-hosting container is unreachable while VoiceOver focuses web
-    /// content, whereas container rotors ARE reachable.
+    /// without moving focus (PP-4527, DAISY nav-310). Selecting the rotor names
+    /// it; swiping then reports the position via `announceCurrentPosition()`.
     private func makeWhereAmIRotor() -> UIAccessibilityCustomRotor {
         UIAccessibilityCustomRotor(
             name: Strings.TPPBaseReaderViewController.whereAmI
@@ -320,6 +325,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     /// announcing the control. On device that surfaced as the report being
     /// replaced by whatever VoiceOver was saying. Queuing makes it wait its turn.
     private func speak(_ report: String) {
+        // Device passes are the only way to verify this end to end, and VoiceOver
+        // speech is not capturable. Log what was composed so a run produces
+        // readable evidence rather than a recollection of what was heard.
+        Log.info(#file, "PP-4527 position report: \(report)")
         let queued = NSAttributedString(
             string: report,
             attributes: [.accessibilitySpeechQueueAnnouncement: true]
@@ -384,17 +393,25 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     /// `totalProgression`, so the old comparison had nothing to match and the
     /// page component never appeared for any title at any position.
     private func currentPrintPageLabel() async -> String? {
-        let js = TPPReaderPageBreakLocator.nearestPrecedingJavaScript(
-            scrolled: preferences.scroll ?? false
-        )
+        let scrolled = preferences.scroll ?? false
+        let js = TPPReaderPageBreakLocator.collectCandidatesJavaScript()
         let result = await epubNavigator.evaluateJavaScript(js)
-        return TPPReaderPageBreakLocator.parse(try? result.get())
+        let candidates = TPPReaderPageBreakLocator.parseCandidates(try? result.get())
+        // The web view reports positions in viewport coordinates, so the extent
+        // to compare against is the navigator view's own bound on that axis.
+        let bounds = navigator.view.bounds
+        return TPPReaderPageBreakLocator.nearestPreceding(
+            in: candidates,
+            scrolled: scrolled,
+            viewportExtent: scrolled ? bounds.height : bounds.width
+        )
     }
 
     /// Carry the toolbar button (`TPPBaseReaderViewController`) to the report.
     override func announceReadingPosition() {
         announceCurrentPosition()
     }
+
 
     /// Annotate inline EPUB footnote elements (`doc-noteref` / `doc-footnote` /
     /// `doc-backlink`) in the rendered WKWebView with VoiceOver `aria-label`s so a
