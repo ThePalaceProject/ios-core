@@ -284,15 +284,41 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// condition-based rollout) — and roll it back — without shipping a
     /// build. The registered Remote Config default is `false`.
     ///
-    /// Override precedence:
-    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins so QA
-    ///      can force either player regardless of the production rollout.
-    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `false`).
+    /// Override precedence — **Firebase wins; the local override can only
+    /// ENABLE.** The local toggle is an opt-IN for previewing ahead of the
+    /// rollout, never an opt-out of it.
+    ///
+    /// It used to be the reverse (override wins outright), which made the
+    /// rollout unverifiable on the devices that verify it. The dev toggle
+    /// writes `true`/`false` and nothing anywhere removes the key, so a device
+    /// that ever switched it off was pinned off permanently — Firebase could
+    /// never reach it again, and that reads from the inside exactly like "the
+    /// remote flag isn't working". Production patrons were never affected (the
+    /// Feature Flags section is hidden when `showEngineeringTools` is false, so
+    /// nothing writes the key on an App Store build), but TestFlight and dev
+    /// devices are precisely the ones validating a staged rollout.
+    ///
+    /// The decision itself is `resolveRemoteWinsOptIn`, kept pure because a
+    /// unit test cannot make `FirebaseManager.shared` return `true` — the
+    /// remote-ON rows are only assertable through that seam.
     var isInAppPlaybackNavEnabled: Bool {
-        if let override = defaults.object(forKey: Self.inAppPlaybackNavLocalOverrideKey) as? Bool {
-            return override
-        }
-        return isFeatureEnabled(.inAppPlaybackNavEnabled)
+        Self.resolveRemoteWinsOptIn(
+            remote: isFeatureEnabled(.inAppPlaybackNavEnabled),
+            localOverride: defaults.object(forKey: Self.inAppPlaybackNavLocalOverrideKey) as? Bool
+        )
+    }
+
+    /// Pure precedence decision for the Firebase-gated rollout flags: Firebase
+    /// ON wins outright, otherwise a local override of `true` enables. A local
+    /// `false` can never disable a remote `true`.
+    ///
+    /// Deliberately NOT applied to every override. `lcpAudiobookStreaming` is
+    /// already `true` at 100% in production, so QA would lose the only way to
+    /// exercise the non-streaming path; `appRatingForceEligible` is a forcing
+    /// switch rather than a rollout gate. Those keep override-wins.
+    static func resolveRemoteWinsOptIn(remote: Bool, localOverride: Bool?) -> Bool {
+        if remote { return true }
+        return localOverride ?? false
     }
 
     /// UserDefaults override for the continuation cards, independent of the
@@ -306,14 +332,16 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// **Default OFF — Firebase-gated.** The cards are hidden until Firebase
     /// Remote Config sets `continuation_cards_enabled = true` (global or staged).
     ///
-    /// Override precedence (mirrors `isInAppPlaybackNavEnabled`):
-    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins.
-    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `false`).
+    /// Override precedence (mirrors `isInAppPlaybackNavEnabled`): **Firebase
+    /// wins; the local override can only ENABLE.** Same rollout family, so it
+    /// takes the same rule — pinning one half of the feature off while the
+    /// other half follows the rollout is how a device ends up reporting a
+    /// half-broken rollout that is actually fine.
     var isContinuationCardsEnabled: Bool {
-        if let override = defaults.object(forKey: Self.continuationCardsLocalOverrideKey) as? Bool {
-            return override
-        }
-        return isFeatureEnabled(.continuationCardsEnabled)
+        Self.resolveRemoteWinsOptIn(
+            remote: isFeatureEnabled(.continuationCardsEnabled),
+            localOverride: defaults.object(forKey: Self.continuationCardsLocalOverrideKey) as? Bool
+        )
     }
 
     /// UserDefaults override that lets QA / a developer force side loading on
