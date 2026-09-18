@@ -167,10 +167,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         return epub
     }
 
-    /// Print page-list mapping for the "Where am I?" position report (PP-4527).
-    /// Reuses the same layer as the nav-110 page navigation UI.
-    private lazy var pageListBusinessLogic = TPPReaderPageListBusinessLogic(publication: publication)
-
     override func willMove(toParent parent: UIViewController?) {
         super.willMove(toParent: parent)
         navigationController?.navigationBar.barStyle = .default
@@ -216,12 +212,18 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             navigator.view.accessibilityLabel = nil
             navigator.view.accessibilityCustomActions = nil
 
-            // "Where am I?" position report (PP-4527, DAISY nav-310) as a custom
-            // rotor — always available to VoiceOver readers. Block-by-block
-            // navigation (PP-4533, reading-810) as a second rotor, gated on the
-            // customRotorActionsEnabled preference (default on).
-            var rotors: [UIAccessibilityCustomRotor] = [makeWhereAmIRotor()]
+            // "Where am I?" is reached by MAGIC TAP, not a rotor. A container
+            // rotor is not listed while VoiceOver is focused on web content —
+            // measured on device across three native carriers — so it only ever
+            // appeared after an unrelated text selection, and a rotor is a
+            // navigation CATEGORY rather than a command anyway: selecting it just
+            // speaks its own name, which is indistinguishable from the feature
+            // answering. That ambiguity is what made this read as working in June.
+            var rotors: [UIAccessibilityCustomRotor] = []
             if Self.customRotorActionsEnabled {
+                // PP-4533 block navigation keeps its rotor — stepping BY block is
+                // what a rotor is for. Its reachability has the same defect and is
+                // tracked on that ticket.
                 rotors.append(makeBlockRotor())
             }
             navigator.view.accessibilityCustomRotors = rotors
@@ -281,21 +283,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         )
     }
 
-    /// A VoiceOver custom rotor that announces the current reading position
-    /// without moving focus (PP-4527, DAISY nav-310). Selecting the "Where am I?"
-    /// rotor and swiping reports the position via `announceCurrentPosition()`. A
-    /// rotor is used (not a custom action) because a custom action on the
-    /// WKWebView-hosting container is unreachable while VoiceOver focuses web
-    /// content, whereas container rotors ARE reachable.
-    private func makeWhereAmIRotor() -> UIAccessibilityCustomRotor {
-        UIAccessibilityCustomRotor(
-            name: Strings.TPPBaseReaderViewController.whereAmI
-        ) { [weak self] _ in
-            self?.announceCurrentPosition()
-            // One-shot trigger: the announcement is the payload; focus unchanged.
-            return nil
-        }
-    }
+
 
     /// Build the position report from the current location and speak it via a
     /// VoiceOver announcement. Reports section + print page + percentage when
@@ -304,18 +292,141 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     private func announceCurrentPosition() {
         let locator = navigator.currentLocation
         Task { @MainActor in
-            var pageLabel: String?
-            if let locator {
-                pageLabel = await self.pageListBusinessLogic.currentPageLabel(for: locator)
-            }
             let report = TPPReaderPositionReport.announcement(
-                section: locator?.title,
-                pageLabel: pageLabel,
+                section: await self.currentSection(for: locator),
+                pageLabel: await self.currentPrintPageLabel(),
                 totalProgression: locator?.locations.totalProgression
             )
-            UIAccessibility.post(notification: .announcement, argument: report)
+            self.speak(report)
         }
     }
+
+    /// Post the report so VoiceOver actually says it.
+    ///
+    /// A plain-`String` `.announcement` is DISCARDED when VoiceOver is already
+    /// speaking, and after activating a control it always is — it is busy
+    /// announcing the control. On device that surfaced as the report being
+    /// replaced by whatever VoiceOver was saying. Queuing makes it wait its turn.
+    private func speak(_ report: String) {
+        // Device passes are the only way to verify this end to end, and VoiceOver
+        // speech is not capturable. Log what was composed so a run produces
+        // readable evidence rather than a recollection of what was heard.
+        Log.info(#file, "PP-4527 position report: \(report)")
+        // HIGH priority, not "queue". Queuing makes the report wait behind
+        // whatever VoiceOver is already saying — and after activating a button it
+        // is always mid-sentence announcing that button, so the report was
+        // composed correctly and never heard (measured on device: the log showed
+        // "Chapter 3 …, Page 97, 43% read" while the patron heard only
+        // "Where am I?"). A patron who deliberately asked where they are should
+        // get the answer immediately, interrupting the control's own label.
+        let announcement = NSAttributedString(
+            string: report,
+            attributes: [.accessibilitySpeechAnnouncementPriority: UIAccessibilityPriority.high]
+        )
+        UIAccessibility.post(notification: .announcement, argument: announcement)
+    }
+
+    /// The section the patron is in, derived from the nearest preceding
+    /// table-of-contents entry (AC), NOT from `locator.title`.
+    ///
+    /// `Locator.title` is populated only when the locator came from a nav link,
+    /// so it is nil for anyone who simply read their way here — which is everyone
+    /// this feature is for.
+    private func currentSection(for locator: Locator?) async -> String? {
+        guard let locator else { return nil }
+        guard let toc = try? await publication.tableOfContents().get() else {
+            return locator.title
+        }
+
+        let readingOrder = publication.readingOrder
+        func index(of href: AnyURL) -> Int? {
+            readingOrder.firstIndex { $0.url().removingFragment().isEquivalentTo(href) }
+        }
+        guard let currentIndex = index(of: locator.href.removingFragment()) else {
+            return locator.title
+        }
+
+        var entries: [TPPReaderSectionResolver.Entry] = []
+        // `Link` is ambiguous here — Palace defines one too.
+        func flatten(_ links: [ReadiumShared.Link]) {
+            for link in links {
+                let url = link.url()
+                if let resourceIndex = index(of: url.removingFragment()) {
+                    entries.append(
+                        TPPReaderSectionResolver.Entry(
+                            title: link.title ?? "",
+                            resourceIndex: resourceIndex,
+                            // A fragment means the entry starts partway into the
+                            // resource, but the nav doc does not say where; the
+                            // ordering below only needs it to sort after the
+                            // resource-level entry.
+                            progression: url.fragment == nil ? nil : 0.0
+                        )
+                    )
+                }
+                flatten(link.children)
+            }
+        }
+        flatten(toc)
+
+        return TPPReaderSectionResolver.section(
+            in: entries,
+            resourceIndex: currentIndex,
+            progression: locator.locations.progression ?? 0.0
+        ) ?? locator.title
+    }
+
+    /// The print page the patron is on, read from the rendered chapter's
+    /// page-break markers.
+    ///
+    /// NOT from `publication.pageList` + `locate()`: that locator never carries
+    /// `totalProgression`, so the old comparison had nothing to match and the
+    /// page component never appeared for any title at any position.
+    private func currentPrintPageLabel() async -> String? {
+        let bounds = navigator.view.bounds
+        let js = TPPReaderPageBreakLocator.collectCandidatesJavaScript()
+        let result = await epubNavigator.evaluateJavaScript(js)
+        // The axis comes from the document itself. `preferences.scroll` reported
+        // false while the markers were spread vertically over 39,000pt, so it
+        // does not describe the layout the rects are measured in.
+        let collection = TPPReaderPageBreakLocator.parseCollection(try? result.get())
+        let candidates = collection.candidates
+        let scrolled = !collection.horizontal
+        // The web view reports positions in viewport coordinates, so the extent
+        // to compare against is the navigator view's own bound on that axis.
+        // No page-list fallback. One was tried and removed: resolving to the
+        // RESOURCE can only ever name a chapter's first page, so it reported
+        // "Page 151" at the top of chapter 4 and "Page 63" anywhere in chapter 3
+        // — confidently wrong rather than merely coarse, and a patron who cites a
+        // page they are not on is worse off than one told no page at all. The AC
+        // allows the component to be absent: "the absence of a page number does
+        // not error".
+        return TPPReaderPageBreakLocator.nearestPreceding(
+            in: candidates,
+            scrolled: scrolled,
+            viewportExtent: scrolled ? bounds.height : bounds.width
+        )
+    }
+
+
+
+    /// Two-finger double-tap anywhere in the reader reports the position.
+    ///
+    /// This is the mechanism the story actually asks for: "exposed only to
+    /// VoiceOver users ... it is not a visible control", with "any visible,
+    /// non-screen-reader UI" out of scope. A magic tap is a GESTURE, so nothing
+    /// is added to the interface at all.
+    ///
+    /// It is also the only thing that reaches a reading patron. VoiceOver routes
+    /// magic tap to the app wherever focus is, INCLUDING inside the WKWebView's
+    /// web-content AX tree — the boundary that makes both a container custom
+    /// action (#1098) and a container custom rotor (#1109) unreachable while
+    /// reading. Measured on device 2026-09-18 across three native carriers.
+    override func accessibilityPerformMagicTap() -> Bool {
+        announceCurrentPosition()
+        return true
+    }
+
 
     /// Annotate inline EPUB footnote elements (`doc-noteref` / `doc-footnote` /
     /// `doc-backlink`) in the rendered WKWebView with VoiceOver `aria-label`s so a
