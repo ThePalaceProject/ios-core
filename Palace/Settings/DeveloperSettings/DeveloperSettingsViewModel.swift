@@ -123,6 +123,15 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { overrideDefaults.set(chapterScrubberEnabled, forKey: RemoteFeatureFlags.chapterScrubberLocalOverrideKey) }
     }
 
+    /// PP-2677: test-only side loading. The remote flag `side_loading_enabled`
+    /// defaults to false and is GLOBAL (it does not opt into the per-device
+    /// override), so flipping it in Firebase would expose a test affordance to
+    /// every patron. This local override is the intended QA switch — it shipped
+    /// in 3.3.0 with no writer outside tests, leaving the feature unreachable.
+    @Published var sideLoadingEnabled: Bool {
+        didSet { overrideDefaults.set(sideLoadingEnabled, forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey) }
+    }
+
     // MARK: - Library Registry Debugging
 
     /// Bare host, or a full https:// URL. Mirrors
@@ -195,6 +204,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         self.lcpAudiobookStreamingEnabled = featureFlags.isLCPAudiobookStreamingEnabled
         self.appRatingForceEligible = featureFlags.isAppRatingForceEligible
         self.chapterScrubberEnabled = featureFlags.isChapterScrubberEnabled
+        self.sideLoadingEnabled = featureFlags.isSideLoadingEnabled
 
         self.customRegistryInput = settings.customLibraryRegistryServer ?? ""
 
