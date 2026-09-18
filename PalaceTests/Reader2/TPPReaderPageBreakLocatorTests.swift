@@ -166,12 +166,14 @@ final class TPPReaderPageBreakLocatorTests: XCTestCase {
             getBoundingClientRect: function() { return { left: left, top: top }; }
           };
         }
-        var document = { body: { getElementsByTagName: function(_) { return ELEMENTS; } } };
+        var document = { body: { getElementsByTagName: function(_) { return ELEMENTS; } },
+                         documentElement: { scrollWidth: 100 } };
+        var window = { innerWidth: 400 };
         """.replacingOccurrences(of: "ELEMENTS", with: elementsJS)
 
         context.evaluateScript(prelude)
         let result = context.evaluateScript(TPPReaderPageBreakLocator.collectCandidatesJavaScript())
-        return TPPReaderPageBreakLocator.parseCandidates(result?.toString())
+        return TPPReaderPageBreakLocator.parseCollection(result?.toString()).candidates
     }
 
     func testCollectorJS_findsMarkersByEPUBTypeAndByARIARole() {
@@ -221,7 +223,7 @@ final class TPPReaderPageBreakLocatorTests: XCTestCase {
     func testParseCandidates_decodesLabelAndPosition() {
         let json = #"[{"label":"42","left":-120.5,"top":8.0}]"#
         XCTAssertEqual(
-            TPPReaderPageBreakLocator.parseCandidates(json),
+            TPPReaderPageBreakLocator.parseCollection(#"{"horizontal":false,"marks":"# + json + "}").candidates,
             [Candidate(label: "42", left: -120.5, top: 8.0)]
         )
     }
@@ -231,22 +233,22 @@ final class TPPReaderPageBreakLocatorTests: XCTestCase {
         // it would let an unlabelled marker mask a real one behind it.
         let json = #"[{"label":"  ","left":-10,"top":0},{"label":"7","left":-5,"top":0}]"#
         XCTAssertEqual(
-            TPPReaderPageBreakLocator.parseCandidates(json),
+            TPPReaderPageBreakLocator.parseCollection(#"{"horizontal":false,"marks":"# + json + "}").candidates,
             [Candidate(label: "7", left: -5, top: 0)]
         )
     }
 
     func testParseCandidates_ofMalformedJSON_isEmpty() {
-        XCTAssertEqual(TPPReaderPageBreakLocator.parseCandidates("not json"), [])
+        XCTAssertEqual(TPPReaderPageBreakLocator.parseCollection("not json").candidates, [])
     }
 
     func testParseCandidates_ofNil_isEmpty() {
-        XCTAssertEqual(TPPReaderPageBreakLocator.parseCandidates(nil), [])
+        XCTAssertEqual(TPPReaderPageBreakLocator.parseCollection(nil).candidates, [])
     }
 
     func testParseCandidates_ofNSNull_isEmpty() {
         // evaluateJavaScript returns Any?; a JS null arrives as NSNull.
-        XCTAssertEqual(TPPReaderPageBreakLocator.parseCandidates(NSNull()), [])
+        XCTAssertEqual(TPPReaderPageBreakLocator.parseCollection(NSNull()).candidates, [])
     }
 
     // MARK: - Label normalisation
@@ -271,6 +273,61 @@ final class TPPReaderPageBreakLocatorTests: XCTestCase {
 
     func testNormalize_ofNonString_isNil() {
         XCTAssertNil(TPPReaderPageBreakLocator.normalize(NSNull()))
+    }
+
+    // MARK: - Labels come from the id (found on device)
+
+    func testCollectorJS_fallsBackToTheIdWhenNothingElseCarriesTheLabel() {
+        // Measured on device: EVERY marker in a real Big Ten EPUB came back with
+        // label "" — they are empty elements with no title, no aria-label and no
+        // text, and the page number lives in the id. Without this link every
+        // candidate is dropped as blank and the page component silently vanishes,
+        // which is exactly what happened.
+        let candidates = runCollector(elementsJS: """
+        [ el({'epub:type':'pagebreak','id':'p63'}, -100, 0, ''),
+          el({'epub:type':'pagebreak','id':'page_64'}, -50, 0, '') ]
+        """)
+        XCTAssertEqual(candidates.map(\.label), ["63", "64"])
+    }
+
+    func testNormalize_stripsIdStylePagePrefixes() {
+        XCTAssertEqual(TPPReaderPageBreakLocator.normalize("p63"), "63")
+        XCTAssertEqual(TPPReaderPageBreakLocator.normalize("page_64"), "64")
+        XCTAssertEqual(TPPReaderPageBreakLocator.normalize("pg-65"), "65")
+        XCTAssertEqual(TPPReaderPageBreakLocator.normalize("page ix"), "ix")
+    }
+
+    func testNormalize_doesNotStripAPrefixFromANonPageLabel() {
+        // "prologue" starts with p but is not a page prefix; only strip when a
+        // number or roman numeral follows.
+        XCTAssertEqual(TPPReaderPageBreakLocator.normalize("prologue"), "prologue")
+    }
+
+    // MARK: - Layout axis comes from the document (found on device)
+
+    func testCollectorJS_reportsHorizontalFromTheDocument() {
+        // Measured on device: `preferences.scroll` said false while markers were
+        // spread over 39,000pt of TOP and ~60pt of LEFT. Two chapters of the SAME
+        // book reported different layouts, so no fixed value can be right — the
+        // document has to be asked.
+        guard let context = JSContext() else { return XCTFail("no JSContext") }
+        context.evaluateScript("""
+        function el(attrs, left, top, text) {
+          return { attrs: attrs, textContent: text,
+                   getAttribute: function(n) { return (n in this.attrs) ? this.attrs[n] : null; },
+                   getBoundingClientRect: function() { return { left: left, top: top }; } };
+        }
+        var document = { body: { getElementsByTagName: function(_) { return []; } },
+                         documentElement: { scrollWidth: 2000 } };
+        var window = { innerWidth: 400 };
+        """)
+        let result = context.evaluateScript(TPPReaderPageBreakLocator.collectCandidatesJavaScript())
+        XCTAssertTrue(TPPReaderPageBreakLocator.parseCollection(result?.toString()).horizontal)
+    }
+
+    func testParseCollection_defaultsToVerticalWhenTheFlagIsAbsent() {
+        let json = #"{"marks":[]}"#
+        XCTAssertFalse(TPPReaderPageBreakLocator.parseCollection(json).horizontal)
     }
 
     // MARK: - The JavaScript contract

@@ -51,13 +51,27 @@ enum TPPReaderPageBreakLocator {
           var out = [];
           for (var i = 0; i < all.length; i++) {
             var el = all[i];
-            var type = (el.getAttribute('epub:type') && '') + ' ' + (el.getAttribute('role') || '');
+            var type = (el.getAttribute('epub:type') || '') + ' ' + (el.getAttribute('role') || '');
             if (type.toLowerCase().indexOf('pagebreak') === -1) { continue; }
             var rect = el.getBoundingClientRect();
-            var label = el.getAttribute('title') || el.getAttribute('aria-label') || el.textContent || '';
+            // Page-break markers are usually EMPTY elements with no title, no
+            // aria-label and no text — measured on device: every label came back
+            // "". The number then lives in the id (id="page63"). Without this
+            // link in the chain every candidate is dropped as blank.
+            var label = el.getAttribute('title')
+                     || el.getAttribute('aria-label')
+                     || el.textContent
+                     || el.getAttribute('id')
+                     || '';
             out.push({ label: label, left: rect.left, top: rect.top });
           }
-          return JSON.stringify(out);
+          // The layout axis comes from the DOM, not from a preference. Measured
+          // on device: with `scroll` reported false, the markers were spread over
+          // 39,000pt of TOP and barely 60pt of LEFT — i.e. vertical. Comparing
+          // the axis a preference claims rather than the one the document uses
+          // picks a position at random.
+          var horizontal = document.documentElement.scrollWidth > window.innerWidth + 1;
+          return JSON.stringify({ horizontal: horizontal, marks: out });
         })();
         """
     }
@@ -65,14 +79,29 @@ enum TPPReaderPageBreakLocator {
     /// Decode what `evaluateJavaScript` handed back. Anything malformed yields no
     /// candidates rather than throwing — a book with no page-list is normal, and
     /// the AC requires the absence of a page number not to error.
-    static func parseCandidates(_ value: Any?) -> [Candidate] {
+    /// Decoded collector output: the markers plus the layout axis the document
+    /// actually uses.
+    struct Collection: Equatable {
+        let horizontal: Bool
+        let candidates: [Candidate]
+    }
+
+    static func parseCollection(_ value: Any?) -> Collection {
         guard
             let json = value as? String,
             let data = json.data(using: .utf8),
-            let raw = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            return []
+            return Collection(horizontal: false, candidates: [])
         }
+        return Collection(
+            horizontal: root["horizontal"] as? Bool ?? false,
+            candidates: parseCandidates(root["marks"])
+        )
+    }
+
+    static func parseCandidates(_ value: Any?) -> [Candidate] {
+        guard let raw = value as? [[String: Any]] else { return [] }
 
         return raw.compactMap { item in
             guard
@@ -121,7 +150,10 @@ enum TPPReaderPageBreakLocator {
         // Some EPUBs author the marker text as "Page 42"; the announcement
         // composer adds its own "Page " prefix, so keeping it would speak
         // "Page Page 42".
-        if let range = label.range(of: "^[Pp]age\\s+", options: .regularExpression) {
+        // Handles both an authored "Page 42" title and an id-derived "page42",
+        // "page_42", "pg-42". The label itself (42, or roman ix) is what remains.
+        if let range = label.range(of: "^(?i)p(?:age|g)?[\\s_\\-]*(?=[0-9ivxlcdmIVXLCDM])",
+                                   options: .regularExpression) {
             label = String(label[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
