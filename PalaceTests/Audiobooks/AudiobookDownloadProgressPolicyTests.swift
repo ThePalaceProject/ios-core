@@ -151,4 +151,32 @@ final class AudiobookDownloadProgressPolicyTests: XCTestCase {
     // where it can actually fail: `AudiobookSessionPresenterTests` drives a real
     // `.playing` then `.idle` and asserts the latch survives.
 
+
+    // MARK: - Which number the bar shows
+
+    /// The archive-wins rule, previously inline in the SwiftUI body and so
+    /// unassertable. Its failure mode is the defect this policy exists to fix.
+    func testBarProgress_prefersTheArchiveNumberWhenAnArchiveIsTransferring() {
+        XCTAssertEqual(
+            AudiobookDownloadProgressPolicy.barProgress(archiveProgress: 0.6, overallDownloadProgress: 0.0),
+            0.6, accuracy: 0.001,
+            "with the archive transferring the bar must show the ARCHIVE's number — the toolkit's reads ~0 during that window, which is the frozen bar")
+    }
+
+    func testBarProgress_fallsBackToTheToolkitNumberWhenNoArchiveIsTransferring() {
+        XCTAssertEqual(
+            AudiobookDownloadProgressPolicy.barProgress(archiveProgress: nil, overallDownloadProgress: 0.42),
+            0.42, accuracy: 0.001,
+            "with no archive fetch the toolkit's decryption progress is the only number there is")
+    }
+
+    /// Zero is a REAL archive progress, not an absent one — the seed sets it.
+    /// Coalescing on value rather than on nil would show the toolkit's number
+    /// at the exact moment an archive fetch begins.
+    func testBarProgress_treatsZeroArchiveProgressAsPresent() {
+        XCTAssertEqual(
+            AudiobookDownloadProgressPolicy.barProgress(archiveProgress: 0, overallDownloadProgress: 0.9),
+            0, accuracy: 0.001,
+            "a just-seeded archive fetch reads 0 and must not borrow the toolkit's unrelated number")
+    }
 }

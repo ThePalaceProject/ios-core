@@ -754,8 +754,10 @@ struct AudiobookMorphingPlayerView: View {
             // track download is running, so it reads ~0 and the bar would sit
             // frozen for minutes. `archiveProgress` is the `.lcpa` fetch's own
             // number, non-nil exactly when that fetch is what is running.
-            let barProgress = presenter.archiveProgress.map(Float.init)
-                ?? presenter.overallDownloadProgress
+            let barProgress = AudiobookDownloadProgressPolicy.barProgress(
+                archiveProgress: presenter.archiveProgress,
+                overallDownloadProgress: presenter.overallDownloadProgress
+            )
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill")

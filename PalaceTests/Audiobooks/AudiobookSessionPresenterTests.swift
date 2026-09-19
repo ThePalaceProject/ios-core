@@ -1226,33 +1226,49 @@ final class AudiobookSessionPresenterTests: XCTestCase {
             activeIdentifiers: [book.identifier]
         )
         presenter.adoptBook(book)
+        // No `await` on `isFetchingArchive` here: the seed already made it true,
+        // so that wait would return without suspending and deliver nothing —
+        // the defect this test was rewritten to remove. The `> 0.3` wait below
+        // is false-before/true-after and carries the delivery.
         edges.send((book.identifier, true))
-        await awaitConditionAsync { presenter.isFetchingArchive }
         progress.send((book.identifier, 0.4))
         await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.3 }
+
+        // Record every emission from here on. Asserting only the FINAL value
+        // cannot see a bar that blanked to 0 and was refilled by the 0.55 tick:
+        // review found `stillActive ? 0 : nil` surviving for exactly that
+        // reason. The veto must neither clear NOR reset, so assert on what the
+        // bar actually published.
+        var emissions: [Double?] = []
+        let recorder = presenter.$archiveProgress.sink { emissions.append($0) }
+        defer { recorder.cancel() }
 
         // The transfer is STILL registered, so this edge is stale.
         edges.send((book.identifier, false))
 
-        // DELIVERY BARRIER, and it must be a predicate that is FALSE BEFORE and
-        // TRUE AFTER or it proves nothing. `awaitConditionAsync` checks before
-        // suspending and returns with no actor hop if already satisfied — so an
-        // earlier version that awaited `isFetchingArchive` (already true from
-        // the seed) never let the `.receive(on: RunLoop.main)` edge land at all,
-        // and the test passed with the veto reverted. Review caught it; a
-        // mutation re-run confirmed the survivor.
+        // DELIVERY BARRIER: a plain main-queue drain, on purpose.
         //
-        // A progress tick to a NEW value is false-before/true-after. Under the
-        // mutant the falling edge has nil'd the bar, so the progress sink's
-        // `guard archiveProgress != nil` early-returns, this wait times out and
-        // XCTFails by name — which is the kill.
-        progress.send((book.identifier, 0.55))
-        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.5 }
+        // An earlier revision awaited `isFetchingArchive`, which the seed had
+        // already made true — `awaitConditionAsync` checks before suspending,
+        // so it returned without turning the runloop, NEITHER edge was
+        // delivered, and this test passed with the veto reverted. Review caught
+        // it and a mutation re-run confirmed the survivor.
+        //
+        // The replacement is the drain this test used originally. It is proven
+        // to deliver in this harness (the rising-edge mutant dies through a
+        // test that uses it), it stays on ONE publisher, and it therefore
+        // carries none of the cross-publisher ordering premise a progress-tick
+        // barrier would need.
+        await drainMainQueueAsync()
 
         XCTAssertTrue(presenter.isFetchingArchive,
                       "a stale falling edge must not clear a bar the authoritative query still reports as live")
-        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.55, accuracy: 0.001,
-                       "and the vetoed bar must go on tracking the transfer")
+        XCTAssertFalse(emissions.contains(where: { $0 == nil }),
+                       "the vetoed clear must never publish nil — that is the bar disappearing")
+        XCTAssertFalse(emissions.contains(where: { $0 == 0 }),
+                       "nor reset to 0 — that blanks a 40% bar on every stale edge, which a final-value assertion cannot see because a later tick refills it")
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.4, accuracy: 0.001,
+                       "and the vetoed bar keeps the progress it had")
     }
 
     /// THE SEED'S PRESERVE ARM. `testRepeatedRisingEdge_keepsProgressAlreadySeen`
@@ -1271,8 +1287,9 @@ final class AudiobookSessionPresenterTests: XCTestCase {
             activeIdentifiers: [book.identifier]
         )
         presenter.adoptBook(book)
+        // Same reason as above: the seed already made `isFetchingArchive` true,
+        // so awaiting it would deliver nothing. The `> 0.5` wait carries it.
         edges.send((book.identifier, true))
-        await awaitConditionAsync { presenter.isFetchingArchive }
         progress.send((book.identifier, 0.6))
         await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.5 }
 

@@ -57,4 +57,20 @@ enum AudiobookDownloadProgressPolicy {
         if isFetchingArchive { return true }
         return isDownloading && !hasStartedPlayback
     }
+
+    /// Which number the bar shows: the ARCHIVE's when an archive fetch is what
+    /// is running, otherwise the toolkit's.
+    ///
+    /// Extracted rather than left inline in the SwiftUI body because it IS the
+    /// user-visible payload of this policy, and its failure mode is the defect
+    /// this file exists to fix: `overallDownloadProgress` is mirrored only from
+    /// the toolkit playback model, so during a `.lcpa` fetch no track download
+    /// is running and it reads ~0 — a bar frozen near 0% for minutes. Inline in
+    /// a `@ViewBuilder` it could not be asserted at all.
+    static func barProgress(
+        archiveProgress: Double?,
+        overallDownloadProgress: Float
+    ) -> Float {
+        archiveProgress.map(Float.init) ?? overallDownloadProgress
+    }
 }
