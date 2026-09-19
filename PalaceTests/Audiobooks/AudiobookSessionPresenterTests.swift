@@ -1233,17 +1233,26 @@ final class AudiobookSessionPresenterTests: XCTestCase {
 
         // The transfer is STILL registered, so this edge is stale.
         edges.send((book.identifier, false))
-        // FIFO barrier: a second edge on the SAME publisher reaches the SAME
-        // sink after the first, so awaiting its effect PROVES the falling edge
-        // was delivered. A single drain against a `.receive(on: RunLoop.main)`
-        // sink could pass vacuously by simply not delivering it.
-        edges.send((book.identifier, true))
-        await awaitConditionAsync { presenter.isFetchingArchive }
+
+        // DELIVERY BARRIER, and it must be a predicate that is FALSE BEFORE and
+        // TRUE AFTER or it proves nothing. `awaitConditionAsync` checks before
+        // suspending and returns with no actor hop if already satisfied — so an
+        // earlier version that awaited `isFetchingArchive` (already true from
+        // the seed) never let the `.receive(on: RunLoop.main)` edge land at all,
+        // and the test passed with the veto reverted. Review caught it; a
+        // mutation re-run confirmed the survivor.
+        //
+        // A progress tick to a NEW value is false-before/true-after. Under the
+        // mutant the falling edge has nil'd the bar, so the progress sink's
+        // `guard archiveProgress != nil` early-returns, this wait times out and
+        // XCTFails by name — which is the kill.
+        progress.send((book.identifier, 0.55))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.5 }
 
         XCTAssertTrue(presenter.isFetchingArchive,
                       "a stale falling edge must not clear a bar the authoritative query still reports as live")
-        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.4, accuracy: 0.001,
-                       "and the vetoed clear must not discard the progress already shown")
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.55, accuracy: 0.001,
+                       "and the vetoed bar must go on tracking the transfer")
     }
 
     /// THE SEED'S PRESERVE ARM. `testRepeatedRisingEdge_keepsProgressAlreadySeen`
