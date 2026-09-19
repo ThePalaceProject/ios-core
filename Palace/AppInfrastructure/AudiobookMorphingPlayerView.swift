@@ -745,8 +745,19 @@ struct AudiobookMorphingPlayerView: View {
         // `AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar`.
         if AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
             isDownloading: presenter.isDownloading,
-            hasStartedPlayback: presenter.hasStartedPlayback
+            hasStartedPlayback: presenter.hasStartedPlayback,
+            isFetchingArchive: presenter.isFetchingArchive
         ) {
+            // The number must describe the SAME transfer the bar was summoned
+            // for. `overallDownloadProgress` is mirrored only from the toolkit
+            // playback model (per-track decryption); during an archive fetch no
+            // track download is running, so it reads ~0 and the bar would sit
+            // frozen for minutes. `archiveProgress` is the `.lcpa` fetch's own
+            // number, non-nil exactly when that fetch is what is running.
+            let barProgress = AudiobookDownloadProgressPolicy.barProgress(
+                archiveProgress: presenter.archiveProgress,
+                overallDownloadProgress: presenter.overallDownloadProgress
+            )
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill")
@@ -756,13 +767,13 @@ struct AudiobookMorphingPlayerView: View {
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.primary.opacity(0.15)).frame(height: 4)
                             Capsule().fill(Color.accentColor)
-                                .frame(width: max(4, geo.size.width * CGFloat(presenter.overallDownloadProgress)), height: 4)
-                                .animation(.easeInOut(duration: 0.3), value: presenter.overallDownloadProgress)
+                                .frame(width: max(4, geo.size.width * CGFloat(barProgress)), height: 4)
+                                .animation(.easeInOut(duration: 0.3), value: barProgress)
                         }
                         .frame(maxHeight: .infinity)
                     }
                     .frame(height: 4)
-                    Text("\(Int(presenter.overallDownloadProgress * 100))%")
+                    Text("\(Int(barProgress * 100))%")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                         .frame(width: 34, alignment: .trailing)
@@ -774,7 +785,7 @@ struct AudiobookMorphingPlayerView: View {
             }
             .transition(.opacity)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(Strings.Generic.audiobookDownloading), \(Int(presenter.overallDownloadProgress * 100))%")
+            .accessibilityLabel("\(Strings.Generic.audiobookDownloading), \(Int(barProgress * 100))%")
         }
     }
 
