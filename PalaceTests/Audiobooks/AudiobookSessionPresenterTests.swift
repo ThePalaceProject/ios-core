@@ -1208,4 +1208,87 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertEqual(presenter.archiveProgress ?? -1, 0.6, accuracy: 0.001,
                        "a second rising edge must not reset a bar that already climbed")
     }
+
+    /// THE VETO'S PROTECTIVE BRANCH. `testFallingEdge_clearsTheBar` runs with
+    /// an EMPTY active set, so the query answers false and only the CLEARING
+    /// half of the falling edge executes. Reverting the veto to an
+    /// unconditional `archiveProgress = nil` left the whole suite green —
+    /// the hardening was indistinguishable from its own absence, which is the
+    /// same shape review blocked this branch for twice.
+    ///
+    /// A falling edge can be stale: enqueued on the main hop before a seed or
+    /// a restart found the transfer live again. The synchronous query is
+    /// authoritative, so it vetoes the clear and the bar stays up.
+    @MainActor
+    func testStaleFallingEdge_isVetoedByTheAuthoritativeQuery() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter(
+            activeIdentifiers: [book.identifier]
+        )
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+        progress.send((book.identifier, 0.4))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.3 }
+
+        // The transfer is STILL registered, so this edge is stale.
+        edges.send((book.identifier, false))
+        // FIFO barrier: a second edge on the SAME publisher reaches the SAME
+        // sink after the first, so awaiting its effect PROVES the falling edge
+        // was delivered. A single drain against a `.receive(on: RunLoop.main)`
+        // sink could pass vacuously by simply not delivering it.
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+
+        XCTAssertTrue(presenter.isFetchingArchive,
+                      "a stale falling edge must not clear a bar the authoritative query still reports as live")
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.4, accuracy: 0.001,
+                       "and the vetoed clear must not discard the progress already shown")
+    }
+
+    /// THE SEED'S PRESERVE ARM. `testRepeatedRisingEdge_keepsProgressAlreadySeen`
+    /// pins the SINK's `?? 0`; this pins the SEED's, and the seed is the one
+    /// whose failure mode is on the common path: `presentLoadingShell` and
+    /// `AudiobookSessionManager` both reach `adoptBook`, so a book seeds TWICE
+    /// per open with the progress sink climbing in between. A seed of `= 0`
+    /// snaps a 60% bar back to 0% every time.
+    ///
+    /// Review found `? 0 : nil` surviving the whole suite — the twin was
+    /// pinned, the one that matters was not.
+    @MainActor
+    func testSecondSeed_keepsProgressAlreadyClimbed() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter(
+            activeIdentifiers: [book.identifier]
+        )
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+        progress.send((book.identifier, 0.6))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.5 }
+
+        // The second seed of the same open.
+        presenter.adoptBook(book)
+
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.6, accuracy: 0.001,
+                       "the second seed of an open must not snap a climbing bar back to 0%")
+    }
+
+    /// THE SEED'S CLEAR ARM. Matters on a same-book re-open, which by the
+    /// presenter's own contract skips `clearActiveSession()` — so the seed is
+    /// the only thing that can retire a bar left over from the previous open.
+    @MainActor
+    func testSeedWithNoActiveTransfer_clearsAStaleBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter(activeIdentifiers: [])
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+
+        // Re-open with nothing transferring: the seed must retire the bar.
+        presenter.adoptBook(book)
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "a seed that only ever sets and never clears leaves a finished transfer's bar up forever")
+    }
 }

@@ -171,7 +171,9 @@ direction and was found in review.
   archive-transfer edge + progress publishers and the seed query into
   `AudiobookSessionPresenter`. Added after blast-radius review noted this is
   precisely where the change's blast radius lives and it was absent here.
-- `Palace.xcodeproj/project.pbxproj` — new files wired into both targets
+- `Palace.xcodeproj/project.pbxproj` — CURRENT_PROJECT_VERSION only (507→508,
+  all four configurations). The earlier "new files wired into both targets" was
+  drift: this branch adds no files.
 
 ## Verification plan
 
