@@ -52,6 +52,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 /// Documented carrier for a non-Sendable `() -> Void` handed to the write critical
 /// section in `performWrite`. `@unchecked Sendable` invariant: the wrapped closure is
@@ -66,6 +67,13 @@ private struct VoidWorkBox: @unchecked Sendable {
 /// `@unchecked Sendable` invariant as `VoidWorkBox`: invoked exactly once, on the
 /// write lock, never concurrently. The mutate-then-rebuild-index contract is
 /// unchanged.
+/// Documented carrier for the non-Sendable `[Account]` handed to `replaceBucket`'s
+/// write critical section. Same `@unchecked Sendable` invariant as the boxes above:
+/// read exactly once, under the `accountSetsLock` write lock, never concurrently.
+private struct AccountsReplacementBox: @unchecked Sendable {
+    let accounts: [Account]
+}
+
 private struct AccountSetsMutationBox: @unchecked Sendable {
     let mutate: (inout [String: [Account]]) -> Void
 }
@@ -222,6 +230,52 @@ final class AccountRegistryStore: @unchecked Sendable {
         accountSetsLock.write {
             box.mutate(&self.accountSets)
             self.accountByUUID = AccountRegistryStore.buildAccountIndex(self.accountSets)
+        }
+    }
+
+    /// INV-2 (PP-5191). Replace `hash`'s bucket, refusing a write that would LOSE
+    /// libraries. Returns whether it applied.
+    ///
+    /// > A write that removes no uuids the resident bucket holds is always applied.
+    /// > A write that removes uuids is applied only against positively-asserted
+    /// > completeness (`metadata.numberOfItems != nil && count == numberOfItems`).
+    ///
+    /// The rule is about **information loss**, not about a PARTIAL/COMPLETE label.
+    /// An earlier revision refused any partial write over a complete bucket and so
+    /// refused this changeset's own fix: the bundled snapshot is 1142 rows declaring
+    /// 1142 (COMPLETE) while the merged page-1 superset is 1242 rows declaring the
+    /// network's 1457 (PARTIAL). That would have rejected the superset, kept 1142 in
+    /// memory, self-healed a launch later, and shipped green while doing nothing.
+    ///
+    /// `count >=` is NOT an acceptable proxy for "removes nothing": equal counts can
+    /// still drop uuids under churn. The resident set is read from `accountSets[hash]`
+    /// and NOT from `accountByUUID`, which flattens every bucket and would compare
+    /// against other hashes' libraries.
+    ///
+    /// Scope of the guarantee: the resident bucket is empty on the FIRST write of any
+    /// launch, so this cannot fire then — it guards in-session transitions. The
+    /// across-launch guarantee is that callers never write a lossy feed to disk.
+    ///
+    /// Lock composition: ONE `accountSetsLock.write`, doing read → decide → mutate →
+    /// rebuild-index inside a single critical section. It must never call `mutate`
+    /// (recursive `wrlock` on a non-recursive pthread lock = deadlock on the launch
+    /// thread) nor pair `performRead` with a later `mutate` (TOCTOU against the owned
+    /// crawl tasks).
+    func replaceBucket(hash: String, accounts: [Account], isCompleteFeed: Bool) -> Bool {
+        let box = AccountsReplacementBox(accounts: accounts)
+        return accountSetsLock.write {
+            let resident = self.accountSets[hash] ?? []
+            if !resident.isEmpty && !isCompleteFeed {
+                let incoming = Set(box.accounts.map(\.uuid))
+                let removed = resident.filter { !incoming.contains($0.uuid) }
+                if !removed.isEmpty {
+                    Log.error(#file, "INV-2: refusing a lossy registry write for hash \(hash) — resident \(resident.count), incoming \(box.accounts.count), would drop \(removed.count) librar\(removed.count == 1 ? "y" : "ies") and the feed is not positively complete")
+                    return false
+                }
+            }
+            self.accountSets[hash] = box.accounts
+            self.accountByUUID = AccountRegistryStore.buildAccountIndex(self.accountSets)
+            return true
         }
     }
 

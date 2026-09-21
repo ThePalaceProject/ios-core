@@ -97,6 +97,16 @@ final class AccountRegistryLoader: @unchecked Sendable {
     /// thread + invocation count without a `#if DEBUG` seam.
     var snapshotResourceResolver: BundleResourceResolving = Bundle.main
 
+    /// Fetcher the registry crawls run on. Production binds `URLSessionCrawlerFetcher`;
+    /// tests inject a stub so the first-page fast path can be driven at its real call
+    /// site. PP-5191 — before this seam existed the only way to test that path was to
+    /// test the pure helper and grep the call site, which is not the same thing.
+    ///
+    /// `@unchecked Sendable` invariant (see the file header): the production conformer
+    /// is a stateless struct over `URLSession.shared`; test doubles are confined to a
+    /// single suite and are not shared across crawls.
+    var crawlerFetcher: CrawlerNetworkFetching = URLSessionCrawlerFetcher()
+
     // MARK: - Owned load state
 
     // Per-catalog in-flight tracking:
@@ -323,7 +333,16 @@ final class AccountRegistryLoader: @unchecked Sendable {
             let accounts = feed.catalogs.map {
                 Account(publication: $0, imageCache: imageCache)
             }
-            registryStore.mutate { $0[hash] = accounts }
+            // INV-2 (PP-5191): the launch preload is the SECOND whole-bucket
+            // replacement, and a guard that lives only in the network path is a
+            // patch on one caller rather than an invariant. The on-disk bytes can
+            // legitimately be partial (that is the state a short crawl leaves), so
+            // completeness is read from the bytes rather than assumed.
+            // POSITIVE completeness, not `!feedIsPartial` — the two differ exactly on a
+            // feed carrying no `numberOfItems`, and only positive completeness may
+            // license deleting libraries. See `feedIsPositivelyComplete`.
+            let isComplete = LibraryCatalogMerger.feedIsPositivelyComplete(feed)
+            _ = registryStore.replaceBucket(hash: hash, accounts: accounts, isCompleteFeed: isComplete)
             for account in accounts {
                 if case .notLoaded = accountStateStore.state(for: account.uuid) {
                     account._setState(.basicInfoLoaded)
@@ -533,15 +552,48 @@ final class AccountRegistryLoader: @unchecked Sendable {
             guard let self = self else { return }
             Log.debug(#file, "Fetching catalogs via first-page fast path for hash \(hash)")
 
-            let crawler = LibraryRegistryCrawler(fetcher: URLSessionCrawlerFetcher(), hash: hash)
+            let crawler = LibraryRegistryCrawler(fetcher: self.crawlerFetcher, hash: hash)
 
             let firstPageResult = await crawler.crawlFirstPage(baseURL: targetUrl)
             if Task.isCancelled { return }
 
             switch firstPageResult {
             case .success(let firstPageData, let firstPage):
-                self.registryCache.writeCatalogData(firstPageData, hash: hash)
-                self.loadAccountSetsAndAuthDoc(fromCatalogData: firstPageData, key: hash) { success in
+                // PP-5191. This used to write `firstPageData` VERBATIM — to disk and
+                // over the whole in-memory bucket — which discarded every library not
+                // on page 1 (100 of ~1457, ordered by `modified`). The bundled
+                // snapshot written moments earlier by `loadCatalogs` path 3 was the
+                // usual casualty: 1142 libraries down to 100.
+                //
+                // Overlay it onto what we already hold instead, and let INV-2 decide.
+                let existingData = self.registryCache.readCatalogData(hash: hash)
+                let displayData = Self.mergePartialPage(firstPageData, into: existingData) ?? firstPageData
+                let displayFeed = try? OPDS2CatalogsFeed.fromData(displayData)
+                let displayIsPartial = displayFeed.map { LibraryCatalogMerger.feedIsPartial($0) } ?? true
+
+                self.loadAccountSetsAndAuthDoc(
+                    fromCatalogData: displayData,
+                    key: hash,
+                    didApplyBucketWrite: { [weak self] applied in
+                        guard let self else { return }
+                        // S-1 (PP-5191): the cache write is GATED on the bucket write.
+                        // It used to run unconditionally and FIRST, so a refused write
+                        // protected memory for one session while the short bytes sat on
+                        // disk — and the next launch hydrated them into an empty bucket
+                        // and accepted them unopposed. The invariant was exactly one
+                        // session deep. Disk and bucket must agree or it is decorative.
+                        guard applied else { return }
+                        self.registryCache.writeCatalogData(displayData, hash: hash)
+                        // B-6: only a still-short registry needs the 7-day interval
+                        // overridden. Once the merge is complete, forcing a full crawl
+                        // on every cold launch would defeat the interval for every
+                        // less-than-daily user.
+                        if displayIsPartial {
+                            LibraryRegistryCrawler(fetcher: self.crawlerFetcher, hash: hash)
+                                .requireFullCrawlOnNextRun()
+                        }
+                    }
+                ) { success in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
@@ -557,18 +609,36 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 self.spawnOwnedCrawlTask(priority: .utility, detached: false) { [weak self] in
                     guard let self = self else { return }
 
+                    // Merge onto what we ACTUALLY hold, not onto page 1. Using
+                    // `firstPage.catalogs` as the base discards the merge performed 20
+                    // lines above: the cache holds bundled ∪ page-1 by now, and a walk
+                    // that ends short would otherwise write back only what it saw.
+                    let paginationBase = (self.registryCache.readCatalogData(hash: hash))
+                        .flatMap { try? OPDS2CatalogsFeed.fromData($0) }?.catalogs
+                        ?? firstPage.catalogs
+
                     let remainingResult = await crawlerBox.crawler.crawlRemainingPages(
                         firstPage: firstPage,
                         baseURL: targetUrl,
-                        existingPublications: firstPage.catalogs,
+                        existingPublications: paginationBase,
                         feedMetadata: firstPage.metadata
                     )
 
                     if case .success(let fullData) = remainingResult {
                         let fullCount = (try? OPDS2CatalogsFeed.fromData(fullData))?.catalogs.count ?? -1
                         Log.info(#file, "Background pagination complete: \(fullCount) total libraries cached")
-                        self.registryCache.writeCatalogData(fullData, hash: hash)
-                        self.loadAccountSetsAndAuthDoc(fromCatalogData: fullData, key: hash) { _ in
+                        // Same gating as the first-page write: INV-2 decides, and the
+                        // disk only follows where the bucket went. Completeness is
+                        // DERIVED from these bytes, so a crawl that ended short of its
+                        // declared total cannot delete the libraries it never saw.
+                        self.loadAccountSetsAndAuthDoc(
+                            fromCatalogData: fullData,
+                            key: hash,
+                            didApplyBucketWrite: { [weak self] applied in
+                                guard applied, let self else { return }
+                                self.registryCache.writeCatalogData(fullData, hash: hash)
+                            }
+                        ) { _ in
                             NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                         }
                     }
@@ -592,8 +662,17 @@ final class AccountRegistryLoader: @unchecked Sendable {
             do {
                 let (data, _) = try await self.networkExecutorProvider().GET(targetUrl, useTokenIfAvailable: false)
                 if Task.isCancelled { return }
-                self.registryCache.writeCatalogData(data, hash: hash)
-                self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
+                // INV-2 decides; the disk only follows where the bucket went. Ungated,
+                // a refusal protects memory for one session while the rejected bytes sit
+                // on disk for the next launch to hydrate unopposed.
+                self.loadAccountSetsAndAuthDoc(
+                    fromCatalogData: data,
+                    key: hash,
+                    didApplyBucketWrite: { [weak self] applied in
+                        guard applied, let self else { return }
+                        self.registryCache.writeCatalogData(data, hash: hash)
+                    }
+                ) { success in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
@@ -635,7 +714,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 existingMetadata = nil
             }
 
-            let crawler = LibraryRegistryCrawler(fetcher: URLSessionCrawlerFetcher(), hash: hash)
+            let crawler = LibraryRegistryCrawler(fetcher: self.crawlerFetcher, hash: hash)
             let result = await crawler.crawl(
                 baseURL: targetUrl,
                 existingPublications: existingPubs,
@@ -646,8 +725,17 @@ final class AccountRegistryLoader: @unchecked Sendable {
             case .success(let data):
                 let pubCount = (try? OPDS2CatalogsFeed.fromData(data))?.catalogs.count ?? -1
                 Log.info(#file, "Background crawl successful for hash \(hash), \(pubCount) libraries in result, dataSize=\(data.count)")
-                self.registryCache.writeCatalogData(data, hash: hash)
-                self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { [weak self] _ in
+                // INV-2 decides; the disk only follows where the bucket went. Ungated,
+                // a refusal protects memory for one session while the rejected bytes sit
+                // on disk for the next launch to hydrate unopposed.
+                self.loadAccountSetsAndAuthDoc(
+                    fromCatalogData: data,
+                    key: hash,
+                    didApplyBucketWrite: { [weak self] applied in
+                        guard applied, let self else { return }
+                        self.registryCache.writeCatalogData(data, hash: hash)
+                    }
+                ) { [weak self] _ in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self?.triggerCatalogPreload()
                 }
@@ -671,8 +759,17 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 let (data, _) = try await self.networkExecutorProvider().GET(targetUrl, useTokenIfAvailable: false)
                 if Task.isCancelled { return }
                 Log.info(#file, "Fallback direct refresh successful for hash \(hash)")
-                self.registryCache.writeCatalogData(data, hash: hash)
-                self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
+                // INV-2 decides; the disk only follows where the bucket went. Ungated,
+                // a refusal protects memory for one session while the rejected bytes sit
+                // on disk for the next launch to hydrate unopposed.
+                self.loadAccountSetsAndAuthDoc(
+                    fromCatalogData: data,
+                    key: hash,
+                    didApplyBucketWrite: { [weak self] applied in
+                        guard applied, let self else { return }
+                        self.registryCache.writeCatalogData(data, hash: hash)
+                    }
+                ) { _ in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                 }
             } catch {
@@ -693,11 +790,73 @@ final class AccountRegistryLoader: @unchecked Sendable {
         }
     }
 
+    // MARK: - Partial-page merge (PP-5191)
+
+    /// Overlay a partial crawl page onto the bytes already cached for its hash.
+    ///
+    /// PP-5191. The first-page fast path used to write page 1 verbatim — to disk AND
+    /// over the whole in-memory bucket — clobbering the complete 1142-library bundled
+    /// snapshot that the same `loadCatalogs` call had written moments earlier. Page 1
+    /// is the 100 most-recently-modified of ~1457, so 93% of libraries vanished; a
+    /// patron whose library sat on page 7 was left with an app that could not name it,
+    /// could not show it in Settings, and reported them signed out.
+    ///
+    /// The overlay is `isFullCrawl: false` — page 1 UPDATES the rows it carries and
+    /// removes nothing.
+    ///
+    /// The emitted `numberOfItems` is the NETWORK PAGE's (1457), never the base's.
+    /// That is what keeps the merged result honestly PARTIAL while it is still short
+    /// of the registry, so INV-2 and the crawl-state reset both see the truth. Taking
+    /// it from the bundled base (1142) would have declared a 1242-row feed complete.
+    ///
+    /// Returns nil when either side cannot be parsed; the caller falls back to the raw
+    /// page, which is no worse than the behaviour this replaces.
+    static func mergePartialPage(_ pageData: Data, into existingData: Data?) -> Data? {
+        guard let pageFeed = try? OPDS2CatalogsFeed.fromData(pageData) else { return nil }
+        guard let existingData,
+              let existingFeed = try? OPDS2CatalogsFeed.fromData(existingData),
+              !existingFeed.catalogs.isEmpty else {
+            // Nothing to overlay onto — the page IS what we have.
+            return pageData
+        }
+        let merged = LibraryCatalogMerger.merge(
+            existing: existingFeed.catalogs,
+            updates: pageFeed.catalogs,
+            isFullCrawl: false
+        )
+        let meta = OPDS2CatalogsFeed.Metadata(
+            adobe_vendor_id: pageFeed.metadata.adobe_vendor_id,
+            title: pageFeed.metadata.title,
+            numberOfItems: pageFeed.metadata.numberOfItems
+        )
+        return LibraryCatalogMerger.serializeAsCatalogsFeed(
+            publications: merged.publications,
+            metadata: meta
+        )
+    }
+
     // MARK: - Parsing & notifying
 
+    /// - Parameters:
+    ///   - isCompleteFeed: override for INV-2's "may this write DELETE?" input. **Defaults
+    ///     to `nil`, meaning DERIVE it from `data`** via `feedIsPositivelyComplete`.
+    ///     It used to default to `true`, which silently handed delete authority to every
+    ///     caller that did not pass it — 6 of 8 entry points, including
+    ///     `crawlRemainingPages`' write-back (which clobbered the merged registry with a
+    ///     short crawl seconds after the merge saved it) and the direct-GET fallbacks
+    ///     (whose `/libraries` response carries no `numberOfItems` at all). Deriving
+    ///     from the bytes means a caller cannot forget.
+    ///   - didApplyBucketWrite: fired with whether INV-2 accepted the bucket write.
+    ///     Deliberately SEPARATE from `completion` (PP-5191 R-2): `completion`'s `Bool`
+    ///     means "the feed parsed", and a refused write still parsed and still completes
+    ///     `true` — the registry is loaded, with better data than the incoming write.
+    ///     Overloading one flag with both meanings is the same failure shape this whole
+    ///     changeset is about, and it is the shortcut the next reader will reach for.
     func loadAccountSetsAndAuthDoc(
         fromCatalogData data: Data,
         key hash: String,
+        isCompleteFeed: Bool? = nil,
+        didApplyBucketWrite: ((Bool) -> Void)? = nil,
         completion: @escaping (Bool) -> Void
     ) {
         let completionBox = LoadCompletionBox(handler: completion)
@@ -732,7 +891,29 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 }
             }
 
-            registryStore.mutate { $0[hash] = newAccounts }
+            let applied = registryStore.replaceBucket(
+                hash: hash,
+                accounts: newAccounts,
+                // Derived unless a caller explicitly overrides — see the parameter note.
+                isCompleteFeed: isCompleteFeed ?? LibraryCatalogMerger.feedIsPositivelyComplete(feed)
+            )
+            didApplyBucketWrite?(applied)
+
+            guard applied else {
+                // S-3 (PP-5191): a refusal must refuse COMPLETELY. Running the
+                // state-machine loop, the auth-doc drive and the account-changed
+                // notification for accounts that never entered the bucket would leave
+                // `AccountStateStore` holding `.basicInfoLoaded` for uuids `account(_:)`
+                // cannot resolve — a half-refusal that reads, from every consumer's
+                // side, exactly like a successful load.
+                //
+                // `completion(true)` is correct and deliberate: the feed parsed, and the
+                // registry IS loaded — with the resident data, which INV-2 just
+                // established is strictly better than what arrived.
+                Log.warn(#file, "INV-2 refused the bucket write for hash \(hash) — keeping the resident registry and skipping the state/auth-doc/notification side effects")
+                completionBox.handler(true)
+                return
+            }
 
             for newAccount in newAccounts {
                 if newAccount.authenticationDocument != nil,
