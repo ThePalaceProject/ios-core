@@ -18,7 +18,10 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
-final class RegistryCompletenessTests: XCTestCase {
+// `PalaceWiringTestCase` per `TearDownRequiredLintTests`: everything under
+// PalaceTests/ takes the base so the tearDown cancel + main-hop flush fire, unless
+// explicitly allowlisted with a wall-failure note.
+final class RegistryCompletenessTests: PalaceWiringTestCase {
 
     // MARK: - Fixtures
 

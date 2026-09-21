@@ -28,8 +28,11 @@
 import XCTest
 @testable import Palace
 
-@MainActor
-final class MissingRegistryRowAuthGateTests: XCTestCase {
+// `PalaceWiringTestCase`, not `XCTestCase`: this suite mints an `AccountsManager`,
+// so it needs the base's tearDown cancel + boundary main-hop flush or its background
+// work outlives the test and bleeds into the next one. Enforced by
+// `AccountsManagerIsolationLintTests` and `TearDownRequiredLintTests`.
+final class MissingRegistryRowAuthGateTests: PalaceWiringTestCase {
 
     private var suiteName: String!
     private var defaults: UserDefaults!
@@ -49,7 +52,9 @@ final class MissingRegistryRowAuthGateTests: XCTestCase {
         // The selected library is KNOWN — this is the whole point. Only the
         // registry ROW is missing.
         defaults.set(libraryUUID, forKey: currentAccountIdentifierKey)
-        accountsManager = AccountsManager(defaults: defaults)
+        // `makeFreshAccountsManager` — not a bare `AccountsManager(...)`. It pins the
+        // `loadCatalogs` opt-out and registers the manager for tearDown cancellation.
+        accountsManager = makeFreshAccountsManager(defaults: defaults)
     }
 
     override func tearDownWithError() throws {

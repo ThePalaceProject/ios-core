@@ -23,7 +23,9 @@ import PalaceCatalog
 import PalacePreferences
 @testable import Palace
 
-final class RegistryTruncationRegressionTests: XCTestCase {
+// `PalaceWiringTestCase`: this suite mints `AccountRegistryLoader`s that spawn owned
+// crawl Tasks, so the base's tearDown cancel is what stops them outliving the test.
+final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
 
     private var tempDir: URL!
     private var suiteName: String!
