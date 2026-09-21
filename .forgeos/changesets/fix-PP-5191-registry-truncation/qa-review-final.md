@@ -691,3 +691,122 @@ The one item above. Nothing else in either commit needs to change, and neither c
 touches production behaviour beyond the extraction, which I confirm is behaviour-
 preserving. Re-review on the amended tip — this is ~2 lines, so send it and I will turn
 it around against the new tree.
+
+---
+---
+
+# Round 5 — re-review of tip b10b0f5ea
+
+**Tip:** b10b0f5ea · **Tree:** `4b1eca24674ae0c23641c8676f40890e801c8599`
+**Delta reviewed:** `2b369ab3c..b10b0f5ea` — 3 files (policy helper, CarPlay, truncation tests).
+
+## VERDICT: **APPROVED** (role: qa_test)
+
+`forge-review qa_test approved` — tree `4b1eca24674ae0c23641c8676f40890e801c8599`.
+Governance is OFF in this environment, so this is an agent reviewer verdict recorded in
+the repo, not a signed ledger entry. It binds to the TREE above: recording this marker in
+a commit message does not invalidate it; changing a tracked file does.
+
+## The block is closed, and closed at the right layer
+
+`RegistryTruncationRegressionTests.swift:255-278`. I traced both halves:
+
+- **`_awaitCatalogLoadForTesting()` does join the write-back.** It snapshots
+  `ownedCrawlTasks` — which every `spawnOwnedCrawlTask` registers synchronously
+  (`AccountRegistryLoader.swift:202`) — and grows-until-stable. Round 1 joins the outer
+  and inner tasks; the inner task spawns the pagination task **before** its own body
+  ends, so the pagination task is registered by the time round 2 re-snapshots. The join
+  is deterministic, not probabilistic.
+- **`XCTAssertNotNil(store.account("fresh-2"))` is the right premise.** `fresh-2` exists
+  only on page 2, which only `crawlRemainingPages` fetches, so the assertion is true iff
+  the write-back ran and was applied. It cannot be satisfied by the page-1 merge — which
+  was the whole defect. A future regression in the seam now fails loudly instead of
+  quietly ceasing to guard.
+
+Applying the same seam to test 1 is correct even though its current assertions do not
+need it; the next assertion added there would.
+
+## On the diagnosis correction
+
+Worth acknowledging back: you re-read the source and confirmed the mechanism before
+acting, rather than taking my word for it. That is the right order, and it is what makes
+the corrected comment in the test trustworthy — it now records *wrong join set*, names
+the narrow seam and the `firstRun` subset, and explains why line N cannot be bounded by
+line N+1. Someone hitting this in a year gets the mechanism, not the symptom.
+
+## Q1 follow-up — CarPlay now shares the policy · sound
+
+- `@MainActor public final class AudiobookSessionManager` (`:129-130`) confirms the
+  isolation was being inherited onto the static, so `nonisolated` is **required**, not
+  cosmetic — without it `CarPlayAuthHelper.isAuthenticated` (a nonisolated static async)
+  takes a cross-actor hop to read a pure function. CarPlay can be driven off-main by the
+  head unit, so removing that hop is the safer direction.
+- The body holds no actor state (a log line and a passthrough) and both parameters are
+  `Sendable`, so `nonisolated` is sound rather than a suppression.
+- **Behaviour preserved at both call sites:** same two reads
+  (`currentAccountId`, `currentUserAccount.hasCredentials()` — still not
+  `sharedAccount()`), same passthrough return, same monotonicity.
+- **Coverage improved:** the shared helper is now driven by all four cells of
+  `MissingRegistryRowAuthGateTests` (two audiobook, two CarPlay) through their public
+  entry points. One encoding of the policy, four cells against it — a divergence between
+  the two gates is now unrepresentable rather than merely tested for.
+
+**Observation, not a condition — the CarPlay log line is gone.** Both gates now emit the
+identical `isUserAuthenticated: no registry row for …` message from the same `#file`
+(`AudiobookSessionManager+ContentOpenPolicy.swift`), so a field log can no longer say
+*which* gate fired. 555ba957f's body cited per-gate logging as part of the fix. One
+optional parameter restores it (`callSite: StaticString = #function`, or an explicit
+`"CarPlayAuthHelper"` / `"isUserAuthenticated"` argument) without reintroducing a second
+copy of the decision.
+
+## Mutation — accepted, with the cache question answered carefully
+
+`LibraryRegistryCrawler 2/2` re-measured under `--no-cache` (`'>=' -> '>'` KILLED,
+`'>=' -> '<='` KILLED, baseline PASS) closes my round-4 ask: measured, not asserted.
+Full picture accepted: Store 3/3, Merger 5/5, Crawler 2/2, Loader 0/36 points on changed
+lines (not measurable — the tool has no `??` operator, which is why
+`testDerivedCompleteness_aCallerThatPassesNothing_cannotDelete` exists).
+
+**On filing the cache staleness: get the discriminating command first — do not file yet.**
+I read the tool. The v2 fix looks correct and complete on both caches: `compute_mutant_key`
+(`palace_mutate.py:700-736`) folds `tests_fingerprint` into every per-mutant key, the
+per-mutant cache is gated by the same `cache_disabled` (`:1122`), and an unresolvable
+class disables caching loudly (`:972-977`). So a stale hit after editing the named class's
+file would be a real v2 regression — but the tool also documents a **KNOWN BOUND** at
+`:587-592`: the fingerprint covers *the files declaring the named classes*. Two outcomes,
+and they call for different actions:
+
+- If `--tests` named `CrawlerCompletenessTests` and that file had changed ⇒ the key must
+  have changed ⇒ a hit is a **v2 regression**, and it belongs in wall-failures as the
+  higher-severity sibling of the 0/36 note. A stale `SURVIVED` costs a re-run; a stale
+  `KILLED` is positive evidence for a measurement never taken, which is the
+  "a build failure is not a kill" family this tool exists to prevent.
+- If `--tests` named a class declared in a file that did **not** change ⇒ the cache was
+  correct by its stated bound, and the finding is "the fingerprint follows the declaring
+  file, so a new test in a different class does not invalidate" — a note, not a wall entry.
+
+Cheap discriminator: re-run the same invocation **without** `--no-cache` now. Content is
+committed and unchanged, so a hit is expected and correct; then recompute the key with the
+pre-edit content of the file you changed and see whether it differs. File the wall entry
+only if the key was stable across a real content change — otherwise you would be promoting
+an unreproduced mechanism to canon, which is the failure this changeset already recorded
+once.
+
+The **0/36 note stands on its own** and is worth filing regardless: a mutation gate that
+reports "nothing to mutate" renders as a pass, and that will recur on every `??`-shaped
+guard.
+
+## Final posture at this tip
+
+33 tests, 0 failures, 0 skips, 0 timeouts. No banned pattern. Every production mechanism
+introduced by this changeset now has at least one red-capable test, including the two that
+mutation cannot reach. The guards that could not fail — the S-3 state store, the disk
+test, the clobber test's write-back — are now either red-capable, withdrawn with the
+reason recorded in place, or replaced by a premise that fails loudly.
+
+Standing deferrals, unchanged and accepted: finding 8 (production `crawl_state_<hash>.json`
+residue), contract test 3's F-2 / S-6 cells, round-1 finding 9 (the global
+`.TPPCurrentAccountDidChange` observer), and the round-3 observations (`>=` vs `==` full-crawl
+stamping; "5 of 5 network writes + bundled ungated by construction"; A-5's designed cost).
+
+Ship it.
