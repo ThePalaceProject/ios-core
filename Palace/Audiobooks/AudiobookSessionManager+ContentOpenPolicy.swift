@@ -166,7 +166,11 @@ extension AudiobookSessionManager {
     /// Lives here rather than inline in `AudiobookSessionManager` because that hub is
     /// under the Wave 0 LOC freeze: fixes land by extracting into a collaborator, not by
     /// growing the hub.
-    static func missingRegistryRowAuthFallback(libraryID: String?, hasStoredCredentials: Bool) -> Bool {
+    /// `nonisolated` because both callers are: `CarPlayAuthHelper.isAuthenticated` is a
+    /// nonisolated static, and the enclosing type is `@MainActor`, which would otherwise
+    /// inherit onto this static and make the CarPlay call site a cross-actor hop. The
+    /// body is pure — a log line and a passthrough — so it holds no actor state.
+    nonisolated static func missingRegistryRowAuthFallback(libraryID: String?, hasStoredCredentials: Bool) -> Bool {
         Log.warn(#file, "isUserAuthenticated: no registry row for \(libraryID ?? "nil") — falling back to stored credentials: hasCredentials=\(hasStoredCredentials)")
         return hasStoredCredentials
     }

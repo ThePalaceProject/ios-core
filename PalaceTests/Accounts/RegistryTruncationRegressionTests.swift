@@ -154,18 +154,23 @@ final class RegistryTruncationRegressionTests: XCTestCase {
         let fetcher = ScriptedFetcher(firstPage: page1)   // every later page throws
         let loader = makeLoader(store: store, cache: cache, bundledURL: bundledURL, fetcher: fetcher)
 
-        // Both waits are needed, and dropping the first was a measured mistake:
-        // `loadCatalogs` returns as soon as it SPAWNS its owned crawl task, so
-        // `_awaitAllCrawlTasksForTesting()` can run before that task has registered
-        // and then await nothing. Removing the completion wait made this test fail on
-        // its own premise assertion (`networkWrites.first?.count` was nil).
+        // Two synchronizers, and each covers something the other does not.
         //
-        // The completion is the signal that `loadCatalogs` actually finished; the
-        // Task-join seam below is the deterministic drain of the work it started.
+        // The completion is the PRIMARY one, not a backstop: `loadCatalogs` returns as
+        // soon as it SPAWNS, so any join seam called immediately after can snapshot an
+        // empty task set and return having awaited nothing. Deleting this wait made the
+        // test fail on its own premise (`networkWrites.first?.count` was nil, not 4).
+        //
+        // `_awaitCatalogLoadForTesting()` — NOT `_awaitAllCrawlTasksForTesting()`. The
+        // latter is documented NARROW: it joins only `_trackedFirstRunTasks`, and the
+        // sole `firstRun: true` spawn is the outer path-3 task, which calls the
+        // synchronous `fetchFromNetwork` and returns WITHOUT the inner fetch task or the
+        // pagination task. Using it here left the pagination write-back unsynchronized,
+        // so a run where pagination had not finished would have passed vacuously.
         let done = expectation(description: "loadCatalogs completed")
         loader.loadCatalogs { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 20)  // STARVE-001-OK: backstop only — bounded by the owned crawl tasks drained on the next line
-        await loader._awaitAllCrawlTasksForTesting()
+        await fulfillment(of: [done], timeout: 20)  // STARVE-001-OK: primary synchronizer for a completion invoked inside an owned task, drained on the next line
+        await loader._awaitCatalogLoadForTesting()
 
         // Diagnostic trace — makes a setup failure legible instead of looking
         // like the production defect.
@@ -250,18 +255,26 @@ final class RegistryTruncationRegressionTests: XCTestCase {
         let loader = makeLoader(store: store, cache: cache, bundledURL: bundledURL,
                                 fetcher: SequencedFetcher(pages: [page1, page2], emptyPage: emptyPage))
 
-        // Both waits are needed, and dropping the first was a measured mistake:
-        // `loadCatalogs` returns as soon as it SPAWNS its owned crawl task, so
-        // `_awaitAllCrawlTasksForTesting()` can run before that task has registered
-        // and then await nothing. Removing the completion wait made this test fail on
-        // its own premise assertion (`networkWrites.first?.count` was nil).
+        // Two synchronizers, and each covers something the other does not.
         //
-        // The completion is the signal that `loadCatalogs` actually finished; the
-        // Task-join seam below is the deterministic drain of the work it started.
+        // The completion is the PRIMARY one, not a backstop: `loadCatalogs` returns as
+        // soon as it SPAWNS, so any join seam called immediately after can snapshot an
+        // empty task set and return having awaited nothing. Deleting this wait made the
+        // test fail on its own premise (`networkWrites.first?.count` was nil, not 4).
+        //
+        // `_awaitCatalogLoadForTesting()` — NOT `_awaitAllCrawlTasksForTesting()`. The
+        // latter is documented NARROW: it joins only `_trackedFirstRunTasks`, and the
+        // sole `firstRun: true` spawn is the outer path-3 task, which calls the
+        // synchronous `fetchFromNetwork` and returns WITHOUT the inner fetch task or the
+        // pagination task. Using it here left the pagination write-back unsynchronized,
+        // so a run where pagination had not finished would have passed vacuously.
         let done = expectation(description: "loadCatalogs completed")
         loader.loadCatalogs { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 20)  // STARVE-001-OK: backstop only — bounded by the owned crawl tasks drained on the next line
-        await loader._awaitAllCrawlTasksForTesting()
+        await fulfillment(of: [done], timeout: 20)  // STARVE-001-OK: primary synchronizer for a completion invoked inside an owned task, drained on the next line
+        await loader._awaitCatalogLoadForTesting()
+
+        XCTAssertNotNil(store.account("fresh-2"),
+                        "PREMISE: the pagination write-back must actually have run. Without this, every assertion below is already true from the page-1 merge, and a run where pagination had not finished would pass vacuously — the guard for finding A would stop guarding without turning red.")
 
         XCTAssertNotNil(store.account("patron-library"),
                         "A crawl that ended at 2 of a declared 900 must not delete the libraries it never reached. Before this fix the pagination write-back took the `isCompleteFeed: true` default and removed them seconds after the merge had saved them.")
