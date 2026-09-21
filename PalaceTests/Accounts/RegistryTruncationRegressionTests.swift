@@ -154,9 +154,17 @@ final class RegistryTruncationRegressionTests: XCTestCase {
         let fetcher = ScriptedFetcher(firstPage: page1)   // every later page throws
         let loader = makeLoader(store: store, cache: cache, bundledURL: bundledURL, fetcher: fetcher)
 
+        // Both waits are needed, and dropping the first was a measured mistake:
+        // `loadCatalogs` returns as soon as it SPAWNS its owned crawl task, so
+        // `_awaitAllCrawlTasksForTesting()` can run before that task has registered
+        // and then await nothing. Removing the completion wait made this test fail on
+        // its own premise assertion (`networkWrites.first?.count` was nil).
+        //
+        // The completion is the signal that `loadCatalogs` actually finished; the
+        // Task-join seam below is the deterministic drain of the work it started.
         let done = expectation(description: "loadCatalogs completed")
         loader.loadCatalogs { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 20)
+        await fulfillment(of: [done], timeout: 20)  // STARVE-001-OK: backstop only — bounded by the owned crawl tasks drained on the next line
         await loader._awaitAllCrawlTasksForTesting()
 
         // Diagnostic trace — makes a setup failure legible instead of looking
@@ -242,9 +250,17 @@ final class RegistryTruncationRegressionTests: XCTestCase {
         let loader = makeLoader(store: store, cache: cache, bundledURL: bundledURL,
                                 fetcher: SequencedFetcher(pages: [page1, page2], emptyPage: emptyPage))
 
+        // Both waits are needed, and dropping the first was a measured mistake:
+        // `loadCatalogs` returns as soon as it SPAWNS its owned crawl task, so
+        // `_awaitAllCrawlTasksForTesting()` can run before that task has registered
+        // and then await nothing. Removing the completion wait made this test fail on
+        // its own premise assertion (`networkWrites.first?.count` was nil).
+        //
+        // The completion is the signal that `loadCatalogs` actually finished; the
+        // Task-join seam below is the deterministic drain of the work it started.
         let done = expectation(description: "loadCatalogs completed")
         loader.loadCatalogs { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 20)
+        await fulfillment(of: [done], timeout: 20)  // STARVE-001-OK: backstop only — bounded by the owned crawl tasks drained on the next line
         await loader._awaitAllCrawlTasksForTesting()
 
         XCTAssertNotNil(store.account("patron-library"),
@@ -293,7 +309,12 @@ final class RegistryTruncationRegressionTests: XCTestCase {
             key: hash,
             didApplyBucketWrite: { applied = $0 }
         ) { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 10)
+        // The completion is a DispatchGroup.notify whose only enter/leave is the
+        // injected auth-doc fetch, and this suite injects one that completes
+        // synchronously — a bounded dependency, not fire-and-forget async work, so
+        // there is no Task to join. The marker has to sit ON the matched line
+        // (lint-test-quality.py:194); on a preceding line it is silently ignored.
+        await fulfillment(of: [done], timeout: 10)  // STARVE-001-OK: bounded DispatchGroup.notify, no Task to join
 
         XCTAssertEqual(applied, false,
                        "A caller that passes no completeness must NOT get delete authority by default. With `?? true` this feed — which declares nothing and drops two libraries — would be applied, and the registry would shrink to one on the code path that runs when the network is already misbehaving.")
@@ -352,7 +373,12 @@ final class RegistryTruncationRegressionTests: XCTestCase {
             isCompleteFeed: false,
             didApplyBucketWrite: { appliedSignal = $0 }
         ) { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 10)
+        // The completion is a DispatchGroup.notify whose only enter/leave is the
+        // injected auth-doc fetch, and this suite injects one that completes
+        // synchronously — a bounded dependency, not fire-and-forget async work, so
+        // there is no Task to join. The marker has to sit ON the matched line
+        // (lint-test-quality.py:194); on a preceding line it is silently ignored.
+        await fulfillment(of: [done], timeout: 10)  // STARVE-001-OK: bounded DispatchGroup.notify, no Task to join
 
         XCTAssertEqual(appliedSignal, false,
                        "INV-2 must have refused this write, and must SAY so through `didApplyBucketWrite`. This signal is what the cache-write gate consumes; if it stopped being delivered, the disk and the bucket would silently disagree.")
