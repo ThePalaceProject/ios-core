@@ -21,8 +21,13 @@ end-to-end in the shipping reader.
    open path. Reuses the entire mature reader/file/DRM/LCP stack unchanged.
    Accepted side effect: sideloaded books also appear on the My Books shelf.
 2. **Gating:** a `RemoteFeatureFlags` flag with a dev-menu local override
-   (mirrors `inAppPlaybackNavEnabled`) — Firebase remote default + local override,
-   DEBUG-on. This is the "test mode" in PP-2679.
+   (mirrors `inAppPlaybackNavEnabled`) — Firebase remote default + local override.
+   This is the "test mode" in PP-2679. <!-- audit-verified -->
+   The flag is OFF in every build: the registered Remote Config default is
+   `false` and there is no DEBUG-on fallback, so the Testing-screen toggle is
+   the only way to turn it on without a global Firebase change (it does not
+   opt into the per-device override). An earlier revision of this line claimed
+   "DEBUG-on"; that was never true.
 3. **Content types:** EPUB + PDF + audiobook from the start (infra handles all
    three uniformly via `TPPBookContentType`).
 

@@ -390,7 +390,38 @@ class LocalBookContentService {
     /// Progress and an active/idle edge are reported to
     /// `contentDownloadReporter` so the half-sheet can show a real percentage
     /// for the whole wait instead of nothing.
+    /// The protocol-facing entry point. Keeps its existing contract: resolve the
+    /// destination against whichever library is current at the moment the file
+    /// lands. Every pre-existing caller — the registry reconciler, the audiobook
+    /// open gate — reaches the fetch this way and is unchanged by PP-5146.
     func redownloadLCPContentFile(for book: TPPBook) {
+        redownloadLCPContentFile(for: book, account: nil)
+    }
+
+    /// PP-5146: the same fetch, resolving its library ONCE.
+    ///
+    /// The caller that knows which library a book belongs to says so, and the
+    /// licence lookup and the destination both use that, instead of each
+    /// re-resolving the current library for itself.
+    ///
+    /// Be precise about what this does and does not fix, because the first
+    /// version of this comment overstated it. In production the two reads were
+    /// the SAME read: `MyBooksDownloadCenter` passes
+    /// `accountsManager.currentAccountId`, and `BookFileManager` resolves through
+    /// `AccountsManagerDownloadContextAdapter.currentAccountID`, which returns
+    /// that same property — with only straight-line synchronous code in between.
+    /// So this is not a shipped wrong-directory bug, and no patron is known to
+    /// have hit one. What it removes is the STRUCTURE that permitted one: three
+    /// independent resolutions of a value that must agree, on a path PP-5135
+    /// changed from rarely-run to run-after-every-download.
+    ///
+    /// The `account=nil` an earlier probe recorded was the test double's own
+    /// `accountScope`, not a production divergence. Worth saying plainly: that
+    /// measurement was real, and the conclusion drawn from it was too strong.
+    ///
+    /// `nil` means "resolve live", which is what the protocol entry point above
+    /// passes, so this is additive: no existing behaviour moves.
+    func redownloadLCPContentFile(for book: TPPBook, account: String?) {
         #if LCP
         guard LCPAudiobooks.canOpenBook(book) else { return }
         // PP-5135: this is deliberately NOT gated on the streaming flag.
@@ -409,11 +440,22 @@ class LocalBookContentService {
         // a BACKGROUND transfer nobody blocks on. The guards below already make
         // it safe to call unconditionally: it skips when the `.lcpa` is present,
         // when the download center is transferring, and when a claim is held.
-        guard let licenseURL = lcpLicenseURL(forBookIdentifier: book.identifier) else {
+        guard let licenseURL = lcpLicenseURL(forBookIdentifier: book.identifier, account: account) else {
             Log.warn(#file, "📥 [LCP RE-DOWNLOAD] No license file found for '\(book.title)' — skipping")
             return
         }
-        guard let destURL = bookFileManager.fileUrl(for: book.identifier) else { return }
+        // The pinned account when the caller supplied one, the live account
+        // otherwise — but ALWAYS through the identifier overload, never the
+        // book-based one. That overload is what applies the R6 side-load rule
+        // (`BookFileManager.swift`: a `sideload-` id pins to
+        // `sideloadContentAccountID` regardless of the account passed). An
+        // earlier draft of this fix resolved the pinned branch book-first and
+        // silently took a side-loaded LCP audiobook off its R6 directory, where
+        // the archive would have been written as an orphan. Both branches now
+        // differ only in WHICH account they carry.
+        let resolvedDestination = account.map { bookFileManager.fileUrl(for: book.identifier, account: $0) }
+            ?? bookFileManager.fileUrl(for: book.identifier)
+        guard let destURL = resolvedDestination else { return }
 
         // Skip if .lcpa already exists (another re-download may have completed)
         if fileManager.fileExists(atPath: destURL.path) {
@@ -508,8 +550,15 @@ class LocalBookContentService {
     /// on disk. Used by the LCP re-download path; also exposed on
     /// `BookDetailViewModel.lcpLicenseURL(forBookIdentifier:downloadCenter:)`
     /// via a separate static helper.
-    private func lcpLicenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let bookURL = bookFileManager.fileUrl(for: identifier) else { return nil }
+    /// - parameter account: the pinned library, or `nil` to resolve live. Takes
+    ///   the SAME pin as the destination: pinning only the destination would have
+    ///   the fetch read a licence from one library and write the archive to
+    ///   another. That split was real and was caught by asserting every resolved
+    ///   account in order rather than only the last one.
+    private func lcpLicenseURL(forBookIdentifier identifier: String, account: String?) -> URL? {
+        let resolved = account.map { bookFileManager.fileUrl(for: identifier, account: $0) }
+            ?? bookFileManager.fileUrl(for: identifier)
+        guard let bookURL = resolved else { return nil }
         let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
         return fileManager.fileExists(atPath: licenseURL.path) ? licenseURL : nil
     }

@@ -317,8 +317,8 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     }
 
     /// UserDefaults override that lets QA / a developer force side loading on
-    /// or off without a Firebase round-trip. Settable from
-    /// `TPPDeveloperSettingsTableViewController`. Falls through to the
+    /// or off without a Firebase round-trip. Settable from the Testing screen's
+    /// Feature Flags section (`DeveloperSettingsView`). Falls through to the
     /// DEBUG default / Remote Config flag when nil. Mirrors the
     /// `triageBotLocalOverrideKey` naming pattern.
     static let sideLoadingLocalOverrideKey = "RemoteFeatureFlags.sideLoadingLocalOverride"
