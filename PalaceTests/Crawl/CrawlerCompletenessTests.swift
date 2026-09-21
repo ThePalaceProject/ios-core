@@ -140,6 +140,32 @@ final class CrawlerCompletenessTests: XCTestCase {
         XCTAssertTrue(LibraryCatalogMerger.feedIsPartial(feed))
     }
 
+    /// Kills the surviving `>=` -> `>` mutant at `LibraryRegistryCrawler.swift:430`.
+    /// The existing V-2 test crawls 3 of a declared 900, where the two operators are
+    /// indistinguishable. Only a walk that lands EXACTLY on the declared total tells
+    /// them apart — and that is the common case for a healthy registry, so under `>`
+    /// every complete crawl would be misfiled as short and deletions would never
+    /// reconcile.
+    func testCrawlRemainingPages_reachingExactlyTheDeclaredTotal_isAFullCrawl() async throws {
+        let firstPageRaw = try pageData(ids: ["a", "b"], declaring: 3)
+        var root = try XCTUnwrap(JSONSerialization.jsonObject(with: firstPageRaw) as? [String: Any])
+        root["links"] = [["rel": "next", "href": "https://registry.example.com/libraries/crawlable?offset=2&size=2", "type": "application/opds+json"]]
+        let firstPage = try OPDS2CatalogsFeed.fromData(try JSONSerialization.data(withJSONObject: root))
+
+        // One more library arrives, bringing the walk to exactly the declared 3.
+        let result = await crawler(SinglePageFetcher(data: try pageData(ids: ["c"], declaring: 3))).crawlRemainingPages(
+            firstPage: firstPage,
+            baseURL: URL(string: "https://registry.example.com/libraries")!,
+            existingPublications: [],
+            feedMetadata: nil
+        )
+
+        guard case .success = result else { return XCTFail("expected success, got \(result)") }
+        let state = try crawlState()
+        XCTAssertNotNil(state.lastFullCrawlDate,
+                        "A crawl that reached its declared total IS a full crawl. Under `count > declared` this records nothing, so the 7-day deletion-reconciliation interval would never be satisfied by a healthy crawl.")
+    }
+
     // MARK: - B-6: requireFullCrawlOnNextRun
 
     func testRequireFullCrawlOnNextRun_clearsCompletionMarkers_butKeepsTheDiscoveredFacetURL() throws {

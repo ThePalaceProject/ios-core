@@ -1,3 +1,12 @@
+<!-- FINAL architect verdict (round 6 of 6). Rounds 1-5 were intermediate and are
+     not retained: every finding they raised is folded into fix-contract.md's [rev2]
+     .. [rev6] annotations and into the commit bodies. What they found, in order —
+     verification criteria that were already green on the base ref; `numberOfItems ==
+     nil` read as PARTIAL (would have emptied the registry for 100% of installs on
+     upgrade); an invariant that refused the change's own merged superset; a declared
+     total inherited from cache (deletions could never reconcile); and a disk write
+     ahead of the guard (an invariant one session deep). -->
+
 # Architect post-review — PP-5191 fix-contract **rev 6** (final)
 
 **Branch:** `fix/PP-5191-registry-truncation` · **Base:** `ea61dd998` · 2026-09-21

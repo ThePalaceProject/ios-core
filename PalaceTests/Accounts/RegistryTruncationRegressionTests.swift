@@ -259,6 +259,48 @@ final class RegistryTruncationRegressionTests: XCTestCase {
         }
     }
 
+    /// The `?? feedIsPositivelyComplete(feed)` default in `loadAccountSetsAndAuthDoc`
+    /// is the guard for six of the eight entry points, and a `= true` default hid on
+    /// that line for three revisions before QA caught it.
+    ///
+    /// `palace_mutate` cannot cover it: the loader reports `0/36 mutation points on
+    /// changed lines`, and the tool has no `??` operator, so a
+    /// `?? feedIsPositivelyComplete(feed)` -> `?? true` mutant is not in its set. The
+    /// mutation gate therefore reports "nothing to mutate" for this file — which reads
+    /// exactly like a pass. This test is the only thing standing in for it, so it
+    /// deliberately passes NO `isCompleteFeed` argument: it exercises the default path
+    /// a caller gets by forgetting.
+    func testDerivedCompleteness_aCallerThatPassesNothing_cannotDelete() async throws {
+        let hash = registryHashForCurrentConfiguration()
+        let store = AccountRegistryStore(currentHash: hash)
+        let resident = ["a", "b", "c"].map {
+            Account(publication: OPDS2Publication(links: [], metadata: .init(id: $0, title: $0), images: nil),
+                    imageCache: ImageCache.shared)
+        }
+        XCTAssertTrue(store.replaceBucket(hash: hash, accounts: resident, isCompleteFeed: true))
+
+        let loader = makeLoader(store: store, cache: InMemoryRegistryCache(), bundledURL: nil,
+                                fetcher: ScriptedFetcher(firstPage: Data()))
+
+        // No `numberOfItems` at all — the shape the direct-GET `/libraries` fallback
+        // returns (measured: 1457 catalogs, no declared total). It removes two
+        // libraries, so it may only be applied against POSITIVE completeness.
+        let lossy = try feedData(uuids: ["a"], declaring: nil)
+        var applied: Bool?
+        let done = expectation(description: "load finished")
+        loader.loadAccountSetsAndAuthDoc(
+            fromCatalogData: lossy,
+            key: hash,
+            didApplyBucketWrite: { applied = $0 }
+        ) { _ in done.fulfill() }
+        await fulfillment(of: [done], timeout: 10)
+
+        XCTAssertEqual(applied, false,
+                       "A caller that passes no completeness must NOT get delete authority by default. With `?? true` this feed — which declares nothing and drops two libraries — would be applied, and the registry would shrink to one on the code path that runs when the network is already misbehaving.")
+        XCTAssertEqual(store.accounts(forKey: hash).count, 3)
+        XCTAssertNotNil(store.account("c"))
+    }
+
     // MARK: - S-3: a refusal must refuse COMPLETELY
 
     func testRefusedWrite_leavesNoOrphanStateAndPostsNoAccountChange() async throws {
