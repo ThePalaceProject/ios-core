@@ -88,6 +88,76 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
         }
     }
 
+    // MARK: - Conflict resolution
+    /// Whether `id` names a particular device, as opposed to standing in for
+    /// the absence of one.
+    ///
+    /// Rule 1 below treats an equal device id as proof the server's position
+    /// came from THIS device. That inference only holds for an identifier
+    /// that is unique to a device. Three values are not:
+    ///
+    ///   - `nil` and `""` — no stamp at all, and `nil == nil` is `true`.
+    ///   - `"null"` — the spec's literal fallback for a client with no
+    ///     identifier of this form, which `AnnotationDevice.currentID()`
+    ///     emits (matching Android). It is correct ON THE WIRE and shared BY
+    ///     CONSTRUCTION, so every device without an Adobe or Firebase id
+    ///     reports the same string.
+    ///
+    /// Treating any of them as an identity match suppresses the prompt for a
+    /// patron whose other device genuinely holds a newer position — the
+    /// silent inverse of the over-prompting PP-5138 fixes, and harder to
+    /// notice. Found in review, not in the field.
+    static func identifiesADevice(_ id: String?) -> Bool {
+        guard let id, !id.isEmpty else { return false }
+        return id != "null"
+    }
+
+
+    /// Whether the server's last-read position should be offered to the
+    /// patron, given what this device already knows.
+    ///
+    /// Pure and dependency-free so the rule can be exercised directly. It used
+    /// to be inline, which left it reachable only through a network fetch and
+    /// a UIKit alert — so the suite grew a hand-written copy of the rule
+    /// beside it, and 23 green tests were asserting against the copy while the
+    /// shipped rule was wrong (PP-5138).
+    ///
+    /// Returns `false` — no prompt — when either:
+    ///   1. The server's position came from this same device — by an
+    ///      identifier that actually names a device, see
+    ///      `identifiesADevice` — and we already hold a local position.
+    ///      The server can tell us nothing new.
+    ///   2. The server and this device are on the same page.
+    ///
+    /// - Parameters:
+    ///   - serverDevice: Device identifier stamped on the server's position.
+    ///   - serverLocationString: The server's serialized position.
+    ///   - localLocationString: This device's serialized position, if any.
+    ///   - drmDeviceID: This device's identifier.
+    static func shouldPresentServerPosition(serverDevice: String?,
+                                            serverLocationString: String,
+                                            localLocationString: String?,
+                                            drmDeviceID: String?) -> Bool {
+        if Self.identifiesADevice(serverDevice),
+           serverDevice == drmDeviceID,
+           localLocationString != nil {
+            return false
+        }
+
+        // PP-5138: this used to compare the two strings byte-for-byte. The
+        // local registry holds the flat Palace dialect while the server holds
+        // the Readium `Locator` dialect Palace POSTs, so the comparison could
+        // never be true — the patron was prompted to sync even when both
+        // devices sat on the identical page, and the prompt never settled.
+        // `samePosition` compares the parsed positions instead.
+        if let localLocationString,
+           EPUBPositionDialect.samePosition(localLocationString, serverLocationString) {
+            return false
+        }
+
+        return true
+    }
+
     // MARK: - Private methods
 
     private func syncReadPosition(for book: TPPBook, drmDeviceID: String?, publication: Publication) async -> Locator? {
@@ -110,13 +180,10 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
         let deviceID = snapshot.device
         let serverLocationString = String(data: snapshot.payload, encoding: .utf8) ?? ""
 
-        // Pass through returning nil (meaning the server doesn't have a
-        // last read location worth restoring) if:
-        // 1 - The most recent page on the server comes from the same device and there is no localLocation, or
-        // 2 - The server and the client have the same page marked
-        if (deviceID == drmDeviceID && localLocation != nil)
-            || localLocation?.locationString == serverLocationString {
-
+        guard Self.shouldPresentServerPosition(serverDevice: deviceID,
+                                               serverLocationString: serverLocationString,
+                                               localLocationString: localLocation?.locationString,
+                                               drmDeviceID: drmDeviceID) else {
             // Server location does not differ from or should take no precedence
             // over the local position.
             return nil

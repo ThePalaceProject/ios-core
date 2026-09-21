@@ -1673,6 +1673,68 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
                        "It must stay in the 902 bucket, or re-measuring that bucket after PP-4987 reads a false win")
     }
 
+    // MARK: - PP-5138: the device stamp this branch changed must reach the wire
+
+    /// `TPPAnnotations.postReadingPosition` is the SINGLE POST for four
+    /// callers — EPUB positions, PDF positions, audiobook listening
+    /// positions, and audiobook bookmarks — so the `device:` value it writes
+    /// is this branch's wire-format change for all four. Nothing pinned it:
+    /// the diff-only mutation run covered `TPPLastReadPositionSynchronizer`
+    /// only, so a mutant restoring the old `currentUserAccount.deviceID ?? ""`
+    /// survived here.
+    ///
+    /// Raised by the blast_radius reviewer, who also corrected the reason I
+    /// had recorded for not writing it. I claimed the body was unreachable
+    /// because `URLProtocol` does not expose `httpBody`; that is true of the
+    /// URLProtocol seam and irrelevant here — `RecordingExecutorMock`
+    /// captures the request BEFORE URLSession is involved, which is how
+    /// `testPostAnnotation_RequestShape_…` already reads posted keys.
+    ///
+    /// Asserts the LITERAL expected bytes rather than comparing against
+    /// another `AnnotationDevice.currentID()` call, which would be
+    /// `XCTAssertEqual(x, x)` and would pass against any derivation.
+    func testPostReadingPosition_stampsTheAnnotationDeviceIDOnTheWire() {
+        // `postReadingPosition` is gated by `syncIsPossibleAndPermitted()`;
+        // a blocked gate returns early having done nothing, which is why the
+        // postCallCount assertion below is load-bearing. makeLoggerSpy opens
+        // the gate (signed-in patron, sync-permitting library, annotations
+        // URL) exactly as the neighbouring tests rely on.
+        _ = makeLoggerSpy()
+
+        // The Adobe branch of `currentID()` short-circuits before the
+        // Firebase one, so pin an account with no Adobe id — otherwise this
+        // reads whatever the ambient production account happens to hold.
+        let library = TPPLibraryAccountMock()
+        let user = TPPUserAccountMock()
+        XCTAssertNil(user.deviceID,
+                     "Precondition: no Adobe device id, so currentID() reaches the Firebase branch under test. `deviceID` is get-only on the mock (setDeviceID takes a non-optional), so this asserts the default rather than assigning it.")
+        library.userAccountResolver = { _ in user }
+        AnnotationDevice.accountsManagerOverride = library
+        AnnotationDevice.firebaseDeviceIDOverride = "AAAAAAAA-1111-2222-3333-444444444444"
+
+        mock.postStub = (Data("{}".utf8), httpResponse(200), nil)
+
+        let exp = expectation(description: "post reading position")
+        TPPAnnotations.postReadingPosition(forBook: AnnotationsTestFixtures.testBookID,
+                                           selectorValue: "{\"k\":\"v\"}",
+                                           motivation: .readingProgress) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)  // STARVE-001-OK: SYNCHRONOUS — `RecordingExecutorMock.POST` invokes its completion inline and there is no dispatch hop in postReadingPosition -> postAnnotation -> completionHandler, so the expectation is fulfilled before `wait` is reached.
+
+        XCTAssertEqual(mock.postCallCount, 1,
+                       "Guard against a vacuous pass: the POST must actually have gone out")
+        let req = try! XCTUnwrap(mock.lastPostRequest)
+        let body = try! XCTUnwrap(req.httpBody)
+        let decoded = try! XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+
+        // The stamp is nested inside the annotation `body` object, not at the
+        // document root — see TPPBookmarkSpec.dictionaryForJSONSerialization.
+        let annotationBody = try! XCTUnwrap(decoded["body"] as? [String: Any],
+                                            "the annotation must carry a body object")
+        XCTAssertEqual(annotationBody["http://librarysimplified.org/terms/device"] as? String,
+                       "urn:uuid:AAAAAAAA-1111-2222-3333-444444444444",
+                       "The posted device stamp must be the AnnotationDevice derivation. Restoring the old `currentUserAccount.deviceID ?? \"\"` puts an empty string on the wire for every non-Adobe library, across all four callers of this POST.")
+    }
+
     // MARK: - PP-4987: a queued write must actually BE queued
 
     /// The claim PP-4965's silence rests on. It stops reporting a write once
@@ -1968,5 +2030,45 @@ class AnnotationDeviceIDTests: XCTestCase {
             XCTAssertTrue(id.contains(firebaseID),
                           "Call #\(i): annotation device ID must contain the FirebaseManager deviceID — broken derivation breaks cross-device detection")
         }
+    }
+
+    /// Pins the `"null"` fallback added for PP-5138. Without this, deleting
+    /// the `guard !firebaseDeviceID.isEmpty` line leaves the whole suite
+    /// green — the branch had no coverage at all (found in review).
+    ///
+    /// `"null"` is the spec's literal fallback for a client with no
+    /// identifier of this form, and what the Android client sends, so it is
+    /// correct ON THE WIRE. Emitting `urn:uuid:` with an empty UUID would be
+    /// a malformed URN, which is worse.
+    func testCurrentID_whenFirebaseIDIsEmpty_emitsTheSpecNullSentinel() {
+        AnnotationDevice.firebaseDeviceIDOverride = ""
+
+        XCTAssertEqual(AnnotationDevice.currentID(), "null",
+                       "An empty Firebase device id must fall back to the spec's literal \"null\", not a malformed \"urn:uuid:\" with nothing after the prefix")
+    }
+
+    /// The companion arm: a real Firebase id must be wrapped as a URN, never
+    /// emitted bare. Together with the test above this pins both sides of the
+    /// guard, so neither branch can be deleted silently.
+    func testCurrentID_whenFirebaseIDIsPresent_wrapsItAsAURN() {
+        AnnotationDevice.firebaseDeviceIDOverride = "DEADBEEF-0000-1111-2222-333344445555"
+
+        XCTAssertEqual(AnnotationDevice.currentID(),
+                       "urn:uuid:DEADBEEF-0000-1111-2222-333344445555",
+                       "A present Firebase device id must be wrapped in the urn:uuid: form")
+    }
+
+    /// `"null"` is correct on the wire but is NOT a device identity: every
+    /// client without an Adobe or Firebase id emits the same four characters.
+    /// The sync rule must therefore refuse to treat it as one — see
+    /// `TPPLastReadPositionSynchronizer.identifiesADevice`. Pinned here too
+    /// so the producer and the consumer of this sentinel stay in agreement.
+    func testTheNullSentinelIsNotAcceptedAsADeviceIdentity() {
+        AnnotationDevice.firebaseDeviceIDOverride = ""
+        let emitted = AnnotationDevice.currentID()
+
+        XCTAssertEqual(emitted, "null")
+        XCTAssertFalse(TPPLastReadPositionSynchronizer.identifiesADevice(emitted),
+                       "What currentID() emits when it cannot identify the device must not count as a device identity in the sync rule")
     }
 }

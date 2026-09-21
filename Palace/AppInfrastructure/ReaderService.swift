@@ -782,7 +782,9 @@ final class ReaderService {
         // Samples don't need sync since they have no persisted position.
         if !forSample {
             let synchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
-            let deviceID = AppContainer.production().accountsManager.currentUserAccount.deviceID
+            // PP-5138: same identity the annotation is stamped with — see the
+            // note in `ReaderModule`.
+            let deviceID = AnnotationDevice.currentID()
             await synchronizer.sync(for: publication, book: book, drmDeviceID: deviceID)
         }
 

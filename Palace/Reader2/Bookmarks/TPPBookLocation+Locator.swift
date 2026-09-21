@@ -14,8 +14,8 @@ extension TPPBookLocation {
         let dict: [String: Any] = [
             TPPBookLocation.hrefKey: locator.href.string,
             TPPBookLocation.typeKey: type,
-            TPPBookLocation.chapterProgressKey: locator.locations.progression ?? 0.0,
-            TPPBookLocation.bookProgressKey: locator.locations.totalProgression ?? 0.0,
+            TPPBookLocation.chapterProgressKey: TPPBookLocation.unitInterval(locator.locations.progression),
+            TPPBookLocation.bookProgressKey: TPPBookLocation.unitInterval(locator.locations.totalProgression),
             TPPBookLocation.titleKey: locator.title ?? "",
             TPPBookLocation.positionKey: locator.locations.position ?? 0,
             TPPBookLocation.cssSelector: locator.locations.otherLocations[TPPBookLocation.cssSelector]?.string ?? ""
@@ -69,6 +69,21 @@ extension TPPBookLocation {
         self.init(locationString: jsonString, renderer: renderer)
     }
 
+    /// Clamps a progression to the 0.0…1.0 the bookmark spec requires, mapping
+    /// a missing value to 0.0.
+    ///
+    /// The spec's schema declares `minimum: 0.0` / `maximum: 1.0`, and Android
+    /// enforces it with a constructor `check` that THROWS on a value outside
+    /// the range. That throw escapes the per-annotation catch and is swallowed
+    /// by a blanket handler that returns an empty list — so a single
+    /// out-of-range progression from this client silently empties the patron's
+    /// entire bookmark set on their Android device. Clamping here costs
+    /// nothing: Readium already reports progressions in range, so this only
+    /// ever fires on a value that would have been rejected anyway.
+    private static func unitInterval(_ value: Double?) -> Double {
+        min(max(value ?? 0.0, 0.0), 1.0)
+    }
+
     /// Serializes a location dictionary to a JSON string. Replaces Readium's
     /// `serializeJSONString` free function, removed in the 3.9.0 JSONValue
     /// migration. The payload is a plain Foundation `[String: Any]`, so
@@ -89,7 +104,15 @@ extension TPPBookLocation {
             return nil
         }
 
-        let hrefString = dict[TPPBookLocation.hrefKey] as? String ?? ""
+        // PP-5138: the bytes reaching here are the flat Palace dialect when they
+        // come from the local registry, but the Readium `Locator` dialect when
+        // they come from the annotation server — that is what Palace POSTs.
+        // Reading only the flat keys made every server-sourced position resolve
+        // to nil progression and position 1, so "Move" landed the patron at the
+        // top of the chapter instead of where they left off.
+        let fields = EPUBPositionDialect(dictionary: dict)
+
+        let hrefString = fields.href ?? ""
         guard
             let url = AnyURL(string: hrefString),
             let publicationLink = publication.linkWithHREF(url),
@@ -100,15 +123,18 @@ extension TPPBookLocation {
             return nil
         }
 
-        let title = dict[TPPBookLocation.titleKey] as? String ?? ""
-        let position = dict[TPPBookLocation.positionKey] as? Int ?? 1
+        let title = fields.title ?? ""
+        // `?? 1` is the long-standing fallback for a payload with no position
+        // at all; it is deliberately not `0`, which Readium reads as "before
+        // the first page".
+        let position = fields.position ?? 1
 
         let locations = Locator.Locations(
             fragments: [],
-            progression: dict[TPPBookLocation.chapterProgressKey] as? Double,
-            totalProgression: dict[TPPBookLocation.bookProgressKey] as? Double,
+            progression: fields.progression,
+            totalProgression: fields.totalProgression,
             position: position,
-            otherLocations: JSONValue(dict[TPPBookLocation.cssSelector]).map { [TPPBookLocation.cssSelector: $0] } ?? [:]
+            otherLocations: JSONValue(fields.cssSelector).map { [TPPBookLocation.cssSelector: $0] } ?? [:]
         )
 
         return Locator(

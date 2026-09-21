@@ -38,6 +38,11 @@ enum AnnotationDevice {
             return adobeID
         }
         let firebaseDeviceID = firebaseDeviceIDOverride ?? FirebaseManager.shared.deviceID
+        // The spec's fallback for a client with no identifier of this form is
+        // the literal four-character string "null" — which is also what the
+        // Android client sends. An empty `urn:uuid:` prefix would be worse
+        // than either, so guard it rather than emit a malformed URN.
+        guard !firebaseDeviceID.isEmpty else { return "null" }
         return "urn:uuid:\(firebaseDeviceID)"
     }
 }
@@ -293,9 +298,21 @@ protocol AnnotationsManager {
             return
         }
 
-        // Format bookmark for submission to server according to spec
+        // Format bookmark for submission to server according to spec.
+        //
+        // PP-5138: the device was `currentUserAccount.deviceID ?? ""` — the
+        // Adobe activation ID, which is nil on a library that does not use
+        // Adobe DRM, leaving an empty string on the wire. The spec asks for a
+        // UUID URN, or the literal string "null" when the client has none;
+        // "" is neither. It also broke this client's own cross-device
+        // detection: the synchronizer compared that "" against a nil local
+        // device ID, never matched, and so could not tell the patron's own
+        // device from another one. `AnnotationDevice.currentID()` was added to
+        // supply exactly this value and was computed into
+        // `PositionSnapshot.device`, but `EPUBPositionAdapter.post` drops that
+        // field, so it never reached the wire.
         let bookmark = TPPBookmarkSpec(time: NSDate(),
-                                       device: Self.currentAccountsManager.currentUserAccount.deviceID ?? "",
+                                       device: AnnotationDevice.currentID(),
                                        motivation: motivation,
                                        bookID: bookID,
                                        selectorValue: selectorValue)
