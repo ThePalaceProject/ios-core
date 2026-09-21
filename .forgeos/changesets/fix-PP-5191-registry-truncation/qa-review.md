@@ -437,3 +437,106 @@ findings 2 and 4 were — both of which held. A diff-only run over the loader sh
 **A** (with A2 folded in, if you take the two-line option). **B** at minimum as a comment
 correction. C, D, E at your discretion. Re-review on the amended tip — this verdict binds
 to 8f4576a59.
+
+---
+---
+
+# Round 3 — re-review of tip ddb8bef0e
+
+**Tip:** ddb8bef0e (555ba957f gates · 9018fc57c registry · ddb8bef0e bump)
+**Tree:** `d8551b7f1b7d7c3bb9bfab81a3fecb68b1692f96` · **Base:** `origin/release/3.3.0` @ bbf5a5b00
+
+## VERDICT: **APPROVED** (role: qa_test)
+
+`forge-review qa_test approved` — tree `d8551b7f1b7d7c3bb9bfab81a3fecb68b1692f96`.
+Governance is OFF in this environment, so this is an agent reviewer verdict recorded in
+the repo, **not** a signed ledger entry. It binds to the TREE above: embedding this text
+in a commit message is fine and does not invalidate it, but any change to a tracked file
+does — re-review then.
+
+Round-2 findings A, A2 and B are closed, and closed the right way. A was fixed at the
+mechanism rather than at the one call site I named, which is the better repair: deriving
+`isCompleteFeed` inside `loadAccountSetsAndAuthDoc` (`:855`, `:897`) means the guard
+cannot be forgotten by a future caller, and it closes A2 by construction instead of by
+comment. I re-walked all eight entry points against the derived value and found no
+regression — the two that could be surprised (`:502` legacy cache, `:526` bundled) are
+both reached only with an empty resident bucket, which is INV-2's always-accept cell.
+
+The clobber test is the part I scrutinised hardest, per your request. **Your v1 diagnosis
+is correct and the v2 fix is right**: a throw inside `fetchPagesParallel` propagates out
+of `withThrowingTaskGroup` and returns `.failure`, so the write-back branch never runs —
+the defect needs the crawl to *succeed short*, which is the server-under-reports
+condition vector 2 exists for. Exhaustion returning a valid empty page is the faithful
+model. I also confirmed the test is deterministic despite eight parallel fetches: the
+index is claimed under a lock and the result is a union, so page ordering cannot change
+the outcome.
+
+I verified your red-capability claim independently by tracing each single-defence revert:
+
+| reverted alone | what happens | test |
+|---|---|---|
+| derived completeness → `?? true` | merge base is still the cache ⇒ union of 5 ⇒ removes nothing ⇒ applied | passes |
+| pagination base → `firstPage.catalogs` | write-back is 2 rows over a resident 4 ⇒ INV-2 refuses | passes |
+| `isFullCrawl: reachedDeclaredTotal` → `true` | merge returns updates only ⇒ 2 rows ⇒ INV-2 refuses | passes |
+| all three | 4 failures | **red** |
+
+So the characterisation in your commit body is accurate: it is a system-level regression
+guard, not a pin on any single mechanism. Stating that rather than claiming a per-mechanism
+red-proof is the correct disclosure, and it is why this is an approval.
+
+## Recorded, not conditions
+
+**1. One surviving mutant on a changed line — the derivation itself.**
+`AccountRegistryLoader.swift:897`: mutating `isCompleteFeed ?? feedIsPositivelyComplete(feed)`
+back to `isCompleteFeed ?? true` kills nothing. The S-3 test passes `isCompleteFeed: false`
+explicitly, and the clobber test survives via either of the other two defences. That line
+is now the guard for six entry points, and a `= true` default hid in plain sight for three
+revisions — it deserves its own red-capable pin.
+
+Ten lines, reusing the S-3 harness: call `loadAccountSetsAndAuthDoc` with **no**
+`isCompleteFeed` argument, feeding a lossy feed with **no** `numberOfItems` (the measured
+`/libraries` shape) over a resident bucket, and assert `didApplyBucketWrite(false)`. That
+is also the only test that would make A2's direct-GET claim true behaviourally rather
+than by construction. Worth adding before the develop forward-port if not now.
+
+**2. `lastFullCrawlDate` can be stamped for a write INV-2 refuses.**
+`reachedDeclaredTotal` is `count >= declared` (`LibraryRegistryCrawler.swift:428`) while
+positive completeness is `count == declared`. A registry that GAINS a library mid-crawl
+yields count 1460 against a declared 1457: full-crawl mode (so the write removes the
+stale bundled rows), not positively complete (so INV-2 refuses) — and the crawler has
+already stamped `lastFullCrawlDate`, which suppresses the next full crawl for 7 days.
+Not harmful (the resident registry is the superset and nothing is lost), but it is a
+crawl-state-says-done / bucket-says-refused divergence. You already own the primitive for
+it: call `requireFullCrawlOnNextRun()` on a refused write. Observation, not a defect.
+
+**3. Wording: "6 of 6" is "5 of 5 + 1 by construction".**
+`AccountRegistryLoader.swift:526` — the bundled bootstrap write — is still unconditional
+and still precedes its bucket write. That is correct (path 3 requires an empty bucket, so
+it always applies), but this changeset's own canon is about claims that overstate what is
+covered. Say "every network write is gated; the bundled bootstrap write is ungated by
+construction" and the sentence survives someone checking it.
+
+**4. A-5's designed cost, worth naming once in the contract.** Because `/libraries`
+carries no `numberOfItems`, the direct-GET fallbacks can now never delete — so a bundled
+snapshot containing a since-removed library will be preserved over the live response on
+that path, for the session. Strictly better than the failure it replaces, self-corrects
+on the next crawlable crawl, and observable via `replaceBucket`'s `Log.error`. Architect-
+approved behaviour; I raise it only so it is not rediscovered as a bug.
+
+**5. Standing deferrals, unchanged and accepted:** finding 8 (production
+`crawl_state_<prod-hash>.json` residue — now written by three tests rather than two),
+contract test 3's F-2 / S-6 cells, and round-1 finding 9 (the global
+`.TPPCurrentAccountDidChange` observer).
+
+## Still unmeasured
+
+Mutation for `AccountRegistryLoader`, `LibraryCatalogMerger` and `LibraryRegistryCrawler`.
+Stopping those runs to keep the worktree clean for git operations was the right call —
+this repo has canon on exactly that (`reviewer-mutation-runs-corrupt-the-authors-worktree`).
+Run them after the push; recorded prediction: the diff-only survivor set should be
+`:897` (item 1 above) and the pagination-base line, both explained here. A survivor
+anywhere else is new information and worth a look before the develop forward-port.
+
+Test posture at this tip: 31 tests, 0 failures, 0 skips, 0 timeouts; no banned pattern;
+every new production mechanism has at least one red-capable test except the derivation
+line named in item 1. That is a shippable posture for a release-branch fix.
