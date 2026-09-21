@@ -162,8 +162,25 @@ final class BookmarkSpecConformanceTests: XCTestCase {
         return []
     }
 
-    /// The serialized position this client produces, via the same call
-    /// `TPPLastReadPositionPoster` makes.
+    /// A serialized position in this client's flat dialect.
+    ///
+    /// NOTE ON WHAT THIS DOES AND DOES NOT PIN. An earlier version of this
+    /// comment claimed it went "via the same call `TPPLastReadPositionPoster`
+    /// makes". It does not: the poster uses
+    /// `TPPBookLocation(locator:type:publication:)`, which emits 7 keys and
+    /// clamps via `unitInterval`; this uses `TPPBookLocation(href:…)`, which
+    /// emits 10 (`time`, `part`, `chapter` besides) and does not clamp.
+    /// Raised in review — the file whose job is catching silent spec drift
+    /// should not misdescribe its own producer.
+    ///
+    /// The production POST path IS pinned, by
+    /// `EPUBPositionWireFormatTests` and
+    /// `TPPLastReadPositionPosterTests.testStoreReadPosition_postedPayloadIsASpecLocatorHrefProgression`,
+    /// both of which drive `storeReadPosition` and read the spy payload.
+    /// What THIS helper pins is narrower and still worth having: that the
+    /// flat dialect's key names and value types satisfy the shared
+    /// `mobile-specs` schema. The extra keys are permitted because the
+    /// `LocatorHrefProgression` variant sets no `additionalProperties: false`.
     private static func ourSerializedPosition() throws -> [String: Any] {
         let location = try XCTUnwrap(
             TPPBookLocation(href: "/xyz.html",

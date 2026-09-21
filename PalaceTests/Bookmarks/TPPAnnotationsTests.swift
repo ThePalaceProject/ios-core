@@ -1969,4 +1969,44 @@ class AnnotationDeviceIDTests: XCTestCase {
                           "Call #\(i): annotation device ID must contain the FirebaseManager deviceID — broken derivation breaks cross-device detection")
         }
     }
+
+    /// Pins the `"null"` fallback added for PP-5138. Without this, deleting
+    /// the `guard !firebaseDeviceID.isEmpty` line leaves the whole suite
+    /// green — the branch had no coverage at all (found in review).
+    ///
+    /// `"null"` is the spec's literal fallback for a client with no
+    /// identifier of this form, and what the Android client sends, so it is
+    /// correct ON THE WIRE. Emitting `urn:uuid:` with an empty UUID would be
+    /// a malformed URN, which is worse.
+    func testCurrentID_whenFirebaseIDIsEmpty_emitsTheSpecNullSentinel() {
+        AnnotationDevice.firebaseDeviceIDOverride = ""
+
+        XCTAssertEqual(AnnotationDevice.currentID(), "null",
+                       "An empty Firebase device id must fall back to the spec's literal \"null\", not a malformed \"urn:uuid:\" with nothing after the prefix")
+    }
+
+    /// The companion arm: a real Firebase id must be wrapped as a URN, never
+    /// emitted bare. Together with the test above this pins both sides of the
+    /// guard, so neither branch can be deleted silently.
+    func testCurrentID_whenFirebaseIDIsPresent_wrapsItAsAURN() {
+        AnnotationDevice.firebaseDeviceIDOverride = "DEADBEEF-0000-1111-2222-333344445555"
+
+        XCTAssertEqual(AnnotationDevice.currentID(),
+                       "urn:uuid:DEADBEEF-0000-1111-2222-333344445555",
+                       "A present Firebase device id must be wrapped in the urn:uuid: form")
+    }
+
+    /// `"null"` is correct on the wire but is NOT a device identity: every
+    /// client without an Adobe or Firebase id emits the same four characters.
+    /// The sync rule must therefore refuse to treat it as one — see
+    /// `TPPLastReadPositionSynchronizer.identifiesADevice`. Pinned here too
+    /// so the producer and the consumer of this sentinel stay in agreement.
+    func testTheNullSentinelIsNotAcceptedAsADeviceIdentity() {
+        AnnotationDevice.firebaseDeviceIDOverride = ""
+        let emitted = AnnotationDevice.currentID()
+
+        XCTAssertEqual(emitted, "null")
+        XCTAssertFalse(TPPLastReadPositionSynchronizer.identifiesADevice(emitted),
+                       "What currentID() emits when it cannot identify the device must not count as a device identity in the sync rule")
+    }
 }

@@ -69,7 +69,10 @@ either dialect.
 - does NOT change the device-stamp arm (`EPUBPositionAdapter.post` dropping
   `PositionSnapshot.device`; `TPPAnnotations.postReadingPosition` re-deriving
   it as `currentUserAccount.deviceID ?? ""`). Also write-side, also deferred.
-- does NOT change the audiobook or PDF position paths.
+- ~~does NOT change the audiobook or PDF position paths.~~ **RETRACTED —
+  see the 2026-09-21 amendment below.** The `device:` stamp is written by
+  `TPPAnnotations.postReadingPosition`, which is shared by four callers,
+  two of them audiobook paths.
 - does NOT change public surface of `TPPBookLocation` or `TPPReadiumBookmark`.
 
 ## Files in scope
@@ -144,7 +147,8 @@ bytes we already store.
 - does NOT repoint the `mobile-bookmark-spec` submodule at `mobile-specs`, and
   does NOT wire its fixture corpus into the suite — both are recommended and
   neither is done here
-- does NOT change the audiobook or PDF position paths
+- ~~does NOT change the audiobook or PDF position paths~~ **RETRACTED — see
+  the 2026-09-21 amendment below**
 
 ### Files added to scope by this amendment (see the consolidated list above)
 
@@ -184,3 +188,53 @@ Verified the suite catches the real defect by reintroducing it in
 - .claude/skills/swarm/SKILL.md
 - docs/SystemRequirements.md
 - docs/architecture/triage-bot-shared-architecture-proposal.md
+
+---
+
+## Amendment, 2026-09-21 — the audiobook/PDF anti-claim was false
+
+Raised by the blast_radius reviewer, and it is correct: the anti-claim "does
+NOT change the audiobook or PDF position paths" does not hold.
+
+`TPPAnnotations.postReadingPosition` (`Palace/Reader2/Bookmarks/TPPAnnotations.swift`)
+is the single POST used by **four** callers, not one:
+
+1. EPUB reading positions — the subject of this ticket
+2. PDF positions (`TPPPDFDocumentMetadata` -> `EPUBPositionAdapter.post`)
+3. Audiobook **listening** positions (`postListeningPosition`)
+4. Audiobook **bookmarks** (`postAudiobookBookmark`, motivation `.bookmark`)
+
+Changing the `device:` argument there changes the wire bytes for all four on
+any non-Adobe library. The original anti-claim was written against the
+read-side scope and was not revisited when the 2026-09-16 amendment brought
+the write side in. That is the scope-drift the anti-claims exist to catch,
+and it took a reviewer rather than the gate to catch it.
+
+**Behavioural reach is contained** — traced, not assumed:
+
+- `AudioBookmark` has no `device` field, and `isSimilar` compares positional
+  fields only, so audiobook dedup cannot observe the stamp.
+- `AudiobookBookmarkBusinessLogic` and `TPPPDFDocumentMetadata` already called
+  `AnnotationDevice.currentID()` themselves, so this **aligns** those paths
+  with the EPUB one rather than splitting them.
+
+So the correct disposition is this amendment plus coverage, not a code change.
+
+### Follow-up from the same review round
+
+- `TPPLastReadPositionSynchronizer.identifiesADevice` was added so a
+  non-identifying stamp (`nil`, `""`, or the spec's shared `"null"`) can never
+  satisfy the same-device rule. Two devices both reporting one of those used
+  to look like the same device, which SUPPRESSED the prompt — the silent
+  inverse of the over-prompting this ticket fixes. Covered by
+  `TPPLastReadPositionSynchronizer_NonIdentifyingDeviceTests` (all three
+  variants confirmed RED before the fix).
+- `AnnotationDevice.currentID()`'s `"null"` fallback now has coverage on both
+  arms; deleting the guard fails two named tests (verified by mutation).
+
+### Still NOT in scope
+
+- explicit EPUB bookmarks still post `userAccount.deviceID` via
+  `TPPBaseReaderViewController` -> `TPPBookmarkFactory`, so they can still put
+  `""` on the wire on a non-Adobe library. Pre-existing, unchanged here.
+- `TPPReadiumBookmark` bookmark writes remain unclamped by `unitInterval`.

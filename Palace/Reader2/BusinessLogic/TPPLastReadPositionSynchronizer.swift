@@ -89,6 +89,29 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
     }
 
     // MARK: - Conflict resolution
+    /// Whether `id` names a particular device, as opposed to standing in for
+    /// the absence of one.
+    ///
+    /// Rule 1 below treats an equal device id as proof the server's position
+    /// came from THIS device. That inference only holds for an identifier
+    /// that is unique to a device. Three values are not:
+    ///
+    ///   - `nil` and `""` — no stamp at all, and `nil == nil` is `true`.
+    ///   - `"null"` — the spec's literal fallback for a client with no
+    ///     identifier of this form, which `AnnotationDevice.currentID()`
+    ///     emits (matching Android). It is correct ON THE WIRE and shared BY
+    ///     CONSTRUCTION, so every device without an Adobe or Firebase id
+    ///     reports the same string.
+    ///
+    /// Treating any of them as an identity match suppresses the prompt for a
+    /// patron whose other device genuinely holds a newer position — the
+    /// silent inverse of the over-prompting PP-5138 fixes, and harder to
+    /// notice. Found in review, not in the field.
+    static func identifiesADevice(_ id: String?) -> Bool {
+        guard let id, !id.isEmpty else { return false }
+        return id != "null"
+    }
+
 
     /// Whether the server's last-read position should be offered to the
     /// patron, given what this device already knows.
@@ -100,8 +123,10 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
     /// shipped rule was wrong (PP-5138).
     ///
     /// Returns `false` — no prompt — when either:
-    ///   1. The server's position came from this same device and we already
-    ///      hold a local position. The server can tell us nothing new.
+    ///   1. The server's position came from this same device — by an
+    ///      identifier that actually names a device, see
+    ///      `identifiesADevice` — and we already hold a local position.
+    ///      The server can tell us nothing new.
     ///   2. The server and this device are on the same page.
     ///
     /// - Parameters:
@@ -113,7 +138,9 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
                                             serverLocationString: String,
                                             localLocationString: String?,
                                             drmDeviceID: String?) -> Bool {
-        if serverDevice == drmDeviceID && localLocationString != nil {
+        if Self.identifiesADevice(serverDevice),
+           serverDevice == drmDeviceID,
+           localLocationString != nil {
             return false
         }
 

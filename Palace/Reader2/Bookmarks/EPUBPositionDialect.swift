@@ -5,19 +5,27 @@
 //  A reading position or bookmark can reach Palace as either of two JSON
 //  dialects, and both are live on the annotation server today:
 //
-//    Readium `Locator` — what `TPPLastReadPositionPoster` POSTs:
+//    Readium `Locator` — what Palace POSTed before PP-5138, and what is
+//    still stored server-side for every position written by a shipped
+//    client:
 //      {"href":…,"type":…,"title":…,
 //       "locations":{"progression":…,"totalProgression":…,"position":…}}
 //
-//    Flat Palace — what the local book registry stores, what
-//    `TPPReadiumBookmark` writes, and what older clients POSTed:
+//    Flat Palace / `mobile-specs` `LocatorHrefProgression` — what the local
+//    book registry stores, what `TPPReadiumBookmark` writes, what older
+//    clients POSTed, and what Palace POSTs as of PP-5138:
 //      {"href":…,"@type":…,"progressWithinChapter":…,
 //       "progressWithinBook":…,"position":…,"cssSelector":…}
 //
-//  This type reads either one. It is the READ side only: nothing here
-//  changes what Palace writes. Deliberate, per PP-5138 — the write side is
-//  a wire format shared with the Android client and the circulation
-//  manager, and unifying it is a separate, coordinated piece of work.
+//  This type reads either one, which is what makes the write-side change
+//  safe: positions already stored in the Readium dialect keep resolving.
+//
+//  NOTE: an earlier revision of this comment said the change was "the READ
+//  side only". That stopped being true in commit 595d6b354, which brought
+//  the write side into scope — see the 2026-09-16 amendment in
+//  `.forgeos/intent/pp5138-epub-position-read-dialect.md`. Palace now emits
+//  the flat shape `ThePalaceProject/mobile-specs` specifies and Android
+//  already parses.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
