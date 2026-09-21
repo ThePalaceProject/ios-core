@@ -638,10 +638,19 @@ final class TPPLastReadPositionSynchronizerTests: XCTestCase {
 
     /// INVERTED 2026-09-21 (PP-5138 review). This used to assert `false`, on
     /// the comment "Same device (both empty) with local position = no sync
-    /// needed". That was an assumption, not an observation, and PP-5138 is
-    /// the report that it is false in the field: an empty stamp does not name
-    /// a device, so two DIFFERENT devices both reporting "" were read as one
-    /// and the patron was silently never offered the other's position.
+    /// needed". That is an assumption, not an observation: an empty stamp
+    /// does not name a device, so two DIFFERENT devices both reporting ""
+    /// were read as one and the patron would be silently never offered the
+    /// other's position.
+    ///
+    /// PRECISION ON THE EVIDENCE (corrected after review): the FIELD report
+    /// behind PP-5138 is the dialect mismatch, not this collision. Both
+    /// production call sites pass `AnnotationDevice.currentID()`, which is
+    /// non-optional and never "", and the `"null"` arm needs
+    /// `FirebaseManager.deviceID` empty when it is a generated-if-absent
+    /// UUID — so these arms are currently unreachable in production. This is
+    /// defence-in-depth against a wrong inference, found in review, and the
+    /// comment previously claimed field evidence it does not have.
     ///
     /// Positions differ here, so rule 2 cannot suppress — this isolates rule 1.
     func testSyncDecision_WhenServerBookmarkHasEmptyDevice_AndLocalDeviceEmpty_Prompts() {
