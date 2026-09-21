@@ -2659,7 +2659,27 @@ public final class AudiobookSessionManager: ObservableObject {
     // branch below) through this seam — see AudiobookPositionRestoreTests.
     func isUserAuthenticated() async -> Bool {
         guard let account = accountsManager.currentAccount else {
-            return false
+            // PP-5191: a nil `currentAccount` means the library REGISTRY has no
+            // row for the selected library — not that the patron is signed out.
+            // `currentAccountId` is still set and the credentials are still in
+            // the keychain; HelpSpot 19030 reads "It shows that I am logged in"
+            // while this gate refused a book the patron had just borrowed.
+            //
+            // Same distinction PP-5135 drew one arm below: the registry answers
+            // "which library is this, and how does it authenticate"; it cannot
+            // answer "is this patron signed in". `hasCredentials()` can, needs
+            // no network, and is the question actually being asked here.
+            //
+            // `currentUserAccount` (not `sharedAccount()`) because it resolves
+            // through `currentAccountId` and carries the
+            // `lastKnownCurrentUserAccount` ride-out for the transient nil
+            // window during a library switch.
+            //
+            // Monotonic: with no stored credentials this still returns false, so
+            // a genuinely signed-out patron is unaffected.
+            let hasCredentials = accountsManager.currentUserAccount.hasCredentials()
+            Log.warn(#file, "isUserAuthenticated: no registry row for \(accountsManager.currentAccountId ?? "nil") — falling back to stored credentials: hasCredentials=\(hasCredentials)")
+            return hasCredentials
         }
 
         let details: AccountDetails

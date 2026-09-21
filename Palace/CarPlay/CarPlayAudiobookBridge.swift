@@ -59,7 +59,13 @@ enum CarPlayAuthHelper {
     /// single-timeout policy, no additional withTimeout wrapping here.
     static func isAuthenticated(accountsManager: AccountsManager = AppContainer.production().accountsManager) async -> Bool {
         guard let account = accountsManager.currentAccount else {
-            return false
+            // PP-5191: sibling of the AudiobookSessionManager gate — see the note
+            // there. A missing registry row is not a signed-out patron, and
+            // CarPlay cannot present a sign-in UI, so failing closed here strands
+            // a signed-in patron on the head unit with no route to recovery.
+            let hasCredentials = accountsManager.currentUserAccount.hasCredentials()
+            Log.warn(#file, "CarPlayAuthHelper.isAuthenticated: no registry row for \(accountsManager.currentAccountId ?? "nil") — falling back to stored credentials: hasCredentials=\(hasCredentials)")
+            return hasCredentials
         }
 
         let details: AccountDetails
