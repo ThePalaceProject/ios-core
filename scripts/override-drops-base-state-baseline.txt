@@ -1,0 +1,16 @@
+# Pre-existing findings amnestied when check-override-drops-base-state.py landed
+# (PP-5205, 2026-09-22). Keyed `<Class>.<method>:<property>` — never a line number,
+# so an unrelated edit above them does not churn this file.
+#
+# The gate fails on anything NOT listed here, AND on a listed entry that stops
+# firing. So the amnesty can neither grow silently nor go stale.
+#
+# Both entries are the same shape and both are real questions, not noise:
+# `OpenAccessPlayer` maintains `lastKnownPosition` in these methods and reads it as
+# the fallback in `currentTrackPosition`, so an LCP queue rebuild can leave it
+# naming a track the queue no longer holds. Deliberately NOT fixed in the PP-5205
+# changeset: it is pre-existing, it is on the DRM playback path, and that branch
+# lands on a release candidate already under QA test. Investigating it needs its own
+# ticket and its own device pass.
+LCPStreamingPlayer.buildPlayerQueue:lastKnownPosition
+LCPStreamingPlayer.rebuildPlayerQueueAndNavigate:lastKnownPosition

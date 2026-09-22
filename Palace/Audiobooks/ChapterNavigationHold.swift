@@ -34,10 +34,19 @@ final class ChapterNavigationHold {
     /// How long an explicit selection holds the label against reactive updates for
     /// other tracks. Matches the toolkit playback model's own navigation timeout so
     /// the two layers cannot disagree about when a seek is considered abandoned.
-    static let timeoutSeconds: TimeInterval = 3.0
+    static let defaultTimeoutSeconds: TimeInterval = 3.0
+
+    /// Injected so a test can assert the bound FIRES without sleeping for the
+    /// production duration. A three-second sleep on a suite that runs three
+    /// iterations is measuring the machine as much as the code.
+    private let timeoutSeconds: TimeInterval
 
     private var targetTrackKey: String?
     private var timeout: DispatchWorkItem?
+
+    init(timeoutSeconds: TimeInterval = ChapterNavigationHold.defaultTimeoutSeconds) {
+        self.timeoutSeconds = timeoutSeconds
+    }
 
     /// Records an explicit selection and returns the chapter to publish now, or
     /// `nil` when the label already names it (re-tapping the playing chapter must
@@ -134,6 +143,6 @@ final class ChapterNavigationHold {
             self?.timeout = nil
         }
         timeout = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.timeoutSeconds, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: work)
     }
 }

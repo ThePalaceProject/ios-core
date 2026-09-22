@@ -433,6 +433,11 @@ class AudiobookSessionPresenter: ObservableObject {
         progress.chapterOffset = 0
         progress.chapterTimeLeft = 0
         progress.chapterProgress = 0
+        // PP-5205: the NAME belongs to the same set as the offsets above. Its
+        // predecessor was nilled by `AudiobookSessionManager` at teardown, so this
+        // list never had to carry it; moving the source without moving the reset
+        // would have shown book A's chapter beside book B's zeroed timecodes.
+        progress.chapterTitle = ""
         overallDownloadProgress = 0
         isDownloading = false
         archiveProgress = nil

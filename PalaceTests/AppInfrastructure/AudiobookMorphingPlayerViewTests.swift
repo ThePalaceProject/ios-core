@@ -495,7 +495,12 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// Every state is covered by the arming rule — a state added later without a
     /// decision here silently inherits `false` and takes its failure path with it.
     func testArmingSet_coversEveryState() {
-        let all: [V.LoadingOverlayState] = [.hidden, .downloading, .loadError, .skeleton, .awaitingReload]
+        // `allCases`, NOT a hand-written array. The previous version listed the five
+        // states by hand, so a sixth added later would have been absent from both the
+        // list and the expectation and this test would have kept passing — the exact
+        // silent inheritance its own name warns about.
+        let all = V.LoadingOverlayState.allCases
+        XCTAssertEqual(all.count, 5, "a state was added or removed — decide its arming membership deliberately")
         let arming = all.filter(V.stateArmsLoadTimeout)
         XCTAssertEqual(Set(arming), Set([.skeleton, .downloading, .awaitingReload]),
                        "arming set changed — confirm the new membership is deliberate, because this is the rule that keeps `.loadError` reachable")

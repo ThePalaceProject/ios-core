@@ -804,6 +804,31 @@ else
   record "playback_ui_latch" "skip" "check-playback-ui-latch.py not found"
 fi
 
+# 3b1b. Override-drops-base-state — an override that replaces a base method
+# wholesale must not silently drop the live state that method maintained. Whole-tree
+# and BASELINED: the two pre-existing findings are amnestied by key, and the gate
+# fails both on anything new and on a baselined entry that stops firing.
+# See `scripts/check-override-drops-base-state.py` (PP-5205).
+echo "--- Override drops base state ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "override_base_state" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-override-drops-base-state.py ]; then
+  OB_OUT=$(python3 scripts/check-override-drops-base-state.py 2>&1)
+  OB_RC=$?
+  if [ "$OB_RC" -ne 0 ]; then
+    OB_FIRST=$(printf '%s\n' "$OB_OUT" | grep -m1 -E '^  [A-Za-z]' || true)
+    [ -n "$OB_FIRST" ] || OB_FIRST=$(printf '%s\n' "$OB_OUT" | sed -n '1p')
+    record "override_base_state" "fail" "$OB_FIRST"
+  elif printf '%s\n' "$OB_OUT" | grep -q "SKIP"; then
+    # NOT a pass: the toolkit submodule is not checked out, so nothing was scanned.
+    record "override_base_state" "skip" "scan roots absent (toolkit submodule not checked out) - nothing was scanned"
+  else
+    record "override_base_state" "pass" "$(printf '%s\n' "$OB_OUT" | grep -o '([0-9]* baselined, [0-9]* new)' | sed -n '1p')"
+  fi
+else
+  record "override_base_state" "skip" "check-override-drops-base-state.py not found"
+fi
+
 # 3b2. Doc-hygiene — only commit docs that explain the code's what/why, never
 # process/generated artifacts (swarm transcripts/contracts, generated IR).
 # Diff-based. See `scripts/check-doc-hygiene.sh`.

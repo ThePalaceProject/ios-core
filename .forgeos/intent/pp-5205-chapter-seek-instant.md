@@ -130,8 +130,12 @@ DERIVED from `git diff origin/release/3.3.0...HEAD --name-only` plus
   teardown releases it. **Net CODE LOC: zero** — see "God-class freeze" below
 - `Palace/Audiobooks/ChapterNavigationHold.swift` — NEW: the hold's mechanism
   (target key + bound), extracted so the hub does not grow
-- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `6d6b545`
-  (ThePalaceProject/ios-audiobooktoolkit#225)
+- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `548c258`
+  (ThePalaceProject/ios-audiobooktoolkit#225 and #226). Branched from the SHA
+  `release/3.3.0` already pins, so the bump carries ONLY PP-5205 — toolkit `main`
+  additionally holds #223 (readium pin by tag) and #224 (player localisation),
+  neither of which is in this release candidate and neither of which this bump
+  pulls in
 - `PalaceTests/AppInfrastructure/AudiobookMorphingPlayerViewTests.swift` — overlay
   table + timeout-arming tests
 - `PalaceTests/Audiobook/AudiobookPositionPolicyTests.swift` — the decision table
@@ -194,7 +198,8 @@ makes the decision. The hub now measures **1557, exactly at baseline**.
 - `ChapterNavigationHoldTests` — the mechanism, including the bound (a real
   `timeoutSeconds + 0.4` wait: a bound asserted by reading a constant is not a
   bound) and supersession by a second tap.
-- `PalaceAudiobookToolkitTests/AudiobookPlaybackModelTests` — 14/14.
+- `PalaceAudiobookToolkitTests/AudiobookPlaybackModelTests` — 15/15, and
+  `LCPStreamingPlayerAsyncContractTests` 8/8 (23 together).
 - Mutation, `--no-cache`, baseline PASS on both runs:
   `Palace/Audiobooks/ChapterNavigationHold.swift` — 3 points, **3 killed, 0
   errored**. All three are the return arms of `shouldPublish`, so `.ignore`,
@@ -204,6 +209,13 @@ makes the decision. The hub now measures **1557, exactly at baseline**.
   `AudiobookSessionManager.swift` — **0 points discovered** (0/111 on changed
   lines), recorded as a gap rather than folded into a rate. See the anti-claims
   for what these rates do and do not describe.
+- **The two defects an independent review caught, both mine, both post-dating the
+  figures above:** (1) arming the load timeout from `.onChange` alone, which never
+  fires for the state a view is BORN with, leaving `.loadError` unreachable on a
+  cold open — the exact failure `.awaitingReload` exists to prevent, reintroduced
+  one layer up; (2) `clearActiveSession()` not resetting the new `chapterTitle`,
+  so book A's chapter would show beside book B's zeroed timecodes. Neither was
+  visible to 36 green tests, because both are wiring and the tested rules are pure.
 - **Red was possible, proven twice.** Forcing the toolkit's
   `positionUpdateIsForNavigationTarget` to return `true` unconditionally fails the
   pure case AND the wiring test, the latter reporting the production symptom

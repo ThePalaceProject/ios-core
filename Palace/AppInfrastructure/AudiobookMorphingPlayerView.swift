@@ -86,8 +86,10 @@ struct AudiobookMorphingPlayerView: View {
     /// Loading-timeout state: on expiry we flip to the error+retry overlay
     /// (mirrors toolkit `loadingTimedOut`).
     ///
-    /// The timer is armed by `armLoadTimeout()`, called from the `.onAppear` of the
-    /// states that represent "player not usable yet" — NOT by any hook on `isLoaded`.
+    /// The timer is armed by `applyLoadTimeoutArming(for:)`, from BOTH the `.onAppear`
+    /// and the `.onChange` of `loadingOverlayCurrentState` — the states that represent
+    /// "player not usable yet" arm it, the rest cancel it. NOT by any hook on
+    /// `isLoaded`.
     /// This comment previously claimed "while `!isLoaded`, a 30s timer arms", which no
     /// code implements: there is no `.onChange(of:)`/`.task`/`.onReceive` on `isLoaded`
     /// anywhere in this file. That prose is what sent PP-5205's first analysis down the
@@ -813,7 +815,7 @@ struct AudiobookMorphingPlayerView: View {
     /// mutation-testable function (`loadingOverlayState`) instead of a tangle of
     /// view-side `if`s — matching the `nonisolated static` predicate pattern used
     /// across the audiobook session code.
-    enum LoadingOverlayState: Equatable {
+    enum LoadingOverlayState: Equatable, CaseIterable {
         /// Player is loaded — no overlay.
         case hidden
         /// Content is still downloading (the pre-bind PP-4542 `.lcpa` wait, or a
@@ -869,7 +871,7 @@ struct AudiobookMorphingPlayerView: View {
     /// documents one layer down and already avoids.
     ///
     /// `.awaitingReload` rather than `.hidden` is load-bearing. `loadingTimedOut` is
-    /// armed only from the `.onAppear` of a not-usable state, so returning `.hidden`
+    /// armed only while the overlay state is a not-usable one, so returning `.hidden`
     /// would render `EmptyView`, never arm the timer, and make `.loadError`
     /// UNREACHABLE for the rest of the session — a dead player behind working-looking
     /// chrome, with no error and no Retry. The latch suppresses the takeover; it must
@@ -1065,13 +1067,31 @@ struct AudiobookMorphingPlayerView: View {
 
     private var loadingOverlay: some View {
         loadingOverlayContent
-            .onChange(of: loadingOverlayCurrentState) { newState in
-                if Self.stateArmsLoadTimeout(newState) {
-                    armLoadTimeout()
-                } else {
-                    cancelLoadTimeout()
-                }
-            }
+            // BOTH hooks, and the pair is the fix. `.onChange` does not fire for the
+            // value a view is BORN with, and a cold open is born in `.skeleton` —
+            // `isLoaded` is false while `manager == nil`, nothing is downloading,
+            // nothing has played. With arming on `.onChange` alone a player that
+            // stalls on first open never armed the timer at all, so `.loadError`
+            // was unreachable for the whole session: a dead player behind
+            // working-looking chrome, no error, no Retry. Which is verbatim the
+            // failure `.awaitingReload` exists to prevent, reintroduced one layer up
+            // by the refactor that centralised arming.
+            //
+            // It shipped past 36 green tests because `stateArmsLoadTimeout` is a pure
+            // function tested in isolation and nothing tested the WIRING. The state
+            // it would have been asked about was correct; it was never asked.
+            .onAppear { applyLoadTimeoutArming(for: loadingOverlayCurrentState) }
+            .onChange(of: loadingOverlayCurrentState) { applyLoadTimeoutArming(for: $0) }
+    }
+
+    /// The single arming decision, so the birth hook and the transition hook cannot
+    /// drift apart — the way they did when only one of them existed.
+    private func applyLoadTimeoutArming(for state: LoadingOverlayState) {
+        if Self.stateArmsLoadTimeout(state) {
+            armLoadTimeout()
+        } else {
+            cancelLoadTimeout()
+        }
     }
 
     /// Determinate "Downloading…" state shown while the `.lcpa` content is still

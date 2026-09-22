@@ -8,6 +8,7 @@
 #   check-shared-read-count.sh            (whole-tree, baseline)
 #   check-completion-isolation.py         (diff-scoped, file paths)
 #   check-playback-ui-latch.py            (whole-tree, optional root arg)
+#   check-override-drops-base-state.py    (whole-tree, baselined, optional root arg)
 #
 # WHY THIS TEST EXISTS. All four shipped with baselines and pytests and were
 # invoked by NOTHING — a 2026-08-20 audit found them reachable from no hook, no
@@ -41,7 +42,8 @@ for d in check-appcontainer-locator-count.sh \
          check-godclass-loc-freeze.sh \
          check-shared-read-count.sh \
          check-completion-isolation.py \
-         check-playback-ui-latch.py; do
+         check-playback-ui-latch.py \
+         check-override-drops-base-state.py; do
   grep -qF "$d" "$VERIFY" || fail "$d is not referenced by verify-pr.sh (orphaned again)"
   pass "$d is wired"
 done
@@ -49,7 +51,7 @@ done
 # The record() keys must exist too — a detector can be mentioned in a comment
 # while its block is unreachable. Ratchet detectors trip on comment mentions
 # (memory `ratchet-detectors-count-comment-mentions`), so assert the real keys.
-for key in '"decomposition_ratchets"' '"completion_isolation"' '"playback_ui_latch"'; do
+for key in '"decomposition_ratchets"' '"completion_isolation"' '"playback_ui_latch"' '"override_base_state"'; do
   grep -qF "record $key" "$VERIFY" || fail "no record() call for $key in verify-pr.sh"
   pass "record() key $key present"
 done
@@ -180,6 +182,72 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 3e. override-drops-base-state is WHOLE-TREE with an optional root and a keyed
+#     BASELINE. Three assertions, because this one has a third failure mode the
+#     others do not: a baselined entry that stops firing must fail, or the amnesty
+#     becomes a permanent exemption list nobody re-reads.
+# ---------------------------------------------------------------------------
+echo "3e. override-drops-base-state — no-argument run, violation, and stale baseline"
+OB="$REPO_ROOT/scripts/check-override-drops-base-state.py"
+[ -f "$OB" ] || fail "check-override-drops-base-state.py missing"
+
+if ( cd "$REPO_ROOT" && python3 "$OB" >/dev/null 2>&1 ); then
+  pass "no-argument run exits 0 on the current tree"
+else
+  fail "check-override-drops-base-state.py exits non-zero on the current tree with the interface verify-pr.sh uses — it would block every PR."
+fi
+
+OBROOT="$TMPDIR/obroot"
+mkdir -p "$OBROOT/ios-audiobooktoolkit/PalaceAudiobookToolkit/Player" "$OBROOT/scripts"
+cp "$OB" "$OBROOT/scripts/"
+cat > "$OBROOT/ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/BasePlayer.swift" <<'EOF'
+class BasePlayer {
+  var queuedTrackPosition: TrackPosition?
+
+  var currentTrackPosition: TrackPosition? {
+    if let queued = queuedTrackPosition { return queued }
+    return nil
+  }
+
+  func playCallback(at position: TrackPosition) {
+    queuedTrackPosition = position
+  }
+}
+EOF
+cat > "$OBROOT/ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/SubPlayer.swift" <<'EOF'
+class SubPlayer: BasePlayer {
+  override func playCallback(at position: TrackPosition) {
+    doSomethingElse()
+  }
+}
+EOF
+
+OB_RC=0
+python3 "$OBROOT/scripts/$(basename "$OB")" "$OBROOT" >/dev/null 2>&1 || OB_RC=$?
+if [ "$OB_RC" -eq 1 ]; then
+  pass "an override that drops live base state exits non-zero"
+else
+  fail "an override that drops live base state exited $OB_RC, not 1 — the detector is wired but toothless"
+fi
+
+# Baseline the finding, then FIX it: the entry is now stale and must fail.
+printf '%s\n' "SubPlayer.playCallback:queuedTrackPosition" > "$OBROOT/scripts/override-drops-base-state-baseline.txt"
+cat > "$OBROOT/ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/SubPlayer.swift" <<'EOF'
+class SubPlayer: BasePlayer {
+  override func playCallback(at position: TrackPosition) {
+    queuedTrackPosition = position
+  }
+}
+EOF
+OB_RC=0
+python3 "$OBROOT/scripts/$(basename "$OB")" "$OBROOT" >/dev/null 2>&1 || OB_RC=$?
+if [ "$OB_RC" -eq 1 ]; then
+  pass "a baselined finding that stops firing exits non-zero (the amnesty cannot go stale)"
+else
+  fail "a resolved baseline entry exited $OB_RC, not 1 — the baseline can rot into a permanent exemption"
+fi
+
+# ---------------------------------------------------------------------------
 # 4. verify-pr.sh still parses.
 # ---------------------------------------------------------------------------
 # NOTE: the aggregation's BEHAVIOUR is asserted in
@@ -216,4 +284,4 @@ else
 fi
 
 echo
-echo "PASS: all five detectors are wired, both directions behave, and --base is parsed."
+echo "PASS: all six detectors are wired, both directions behave, and --base is parsed."
