@@ -63,8 +63,11 @@ enum ManagedLibraryDebugOverride {
     enum WriteOutcome: Equatable {
         /// The raw text parsed to neither an identifier nor an https catalog URL.
         case rejected(reason: String)
-        /// Written, and the value the preconfigurator will now see.
-        case written(ManagedLibraryPreconfiguration)
+        /// Written, and the value the preconfigurator will now see. `warnings`
+        /// carries anything that was dropped on the way — a list shortened in
+        /// silence is how a device ends up missing a library with nothing to
+        /// show for it.
+        case written(ManagedLibraryPreconfiguration, warnings: [String])
         /// A real MDM already supplied a configuration; we did not overwrite it.
         case refusedExternal
     }
@@ -82,28 +85,49 @@ enum ManagedLibraryDebugOverride {
             return .refusedExternal
         }
 
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        let entries = splitEntries(raw)
+        guard let first = entries.first else {
             return .rejected(reason: "Enter a registry identifier or an https catalog URL.")
         }
 
-        let key = trimmed.lowercased().hasPrefix("http")
+        let selectorKey = first.lowercased().hasPrefix("http")
             ? ManagedAppConfiguration.Key.libraryCatalogURL
             : ManagedAppConfiguration.Key.libraryId
-        let payload: [String: Any] = [key: trimmed]
+        var payload: [String: Any] = [selectorKey: first]
+        let rest = Array(entries.dropFirst())
+        if !rest.isEmpty {
+            payload[ManagedAppConfiguration.Key.additionalLibraryIds] = rest
+        }
 
-        guard let parsed = ManagedAppConfiguration.libraryPreconfiguration(managedDictionary: payload) else {
+        let parse = ManagedAppConfiguration.parse(managedDictionary: payload)
+        guard let parsed = parse.configuration else {
+            // Prefer the parser's own warning: it names which value it could not
+            // use, which matters once more than one was supplied.
             return .rejected(
-                reason: key == ManagedAppConfiguration.Key.libraryId
-                    ? "Not a UUID. An MDM payload would reject this too."
-                    : "Not an https URL. An MDM payload would reject this too."
+                reason: parse.warnings.first
+                    ?? (selectorKey == ManagedAppConfiguration.Key.libraryId
+                        ? "Not a UUID. An MDM payload would reject this too."
+                        : "Not an https URL. An MDM payload would reject this too.")
             )
         }
 
         defaults.set(payload, forKey: ManagedAppConfiguration.userDefaultsKey)
         defaults.set(true, forKey: debugAuthoredMarkerKey)
         Log.info(#file, "Debug-authored managed configuration written: \(parsed.fingerprint)")
-        return .written(parsed)
+        return .written(parsed, warnings: parse.warnings)
+    }
+
+    /// Splits typed input into entries on commas, newlines or spaces.
+    ///
+    /// The FIRST entry is the library to select and the rest are added, which
+    /// mirrors the payload shape exactly: `defaultLibraryId` plus
+    /// `additionalLibraryIds`. Order carries meaning here — unlike in the MDM
+    /// payload, where the two roles get their own keys — because a single text
+    /// field has nowhere else to put it, and the row's own label says so.
+    static func splitEntries(_ raw: String) -> [String] {
+        raw.split(whereSeparator: { $0 == "," || $0.isNewline || $0 == " " })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     /// Removes a debug-authored configuration. Leaves an externally supplied one

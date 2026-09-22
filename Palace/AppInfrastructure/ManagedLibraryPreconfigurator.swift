@@ -145,6 +145,29 @@ final class ManagedLibraryPreconfigurator {
         }
     }
 
+    /// Resolves the add-without-selecting list, keeping what the registry knows
+    /// and reporting the rest.
+    ///
+    /// Partial failure is tolerated HERE and nowhere else: an extra library the
+    /// registry has not heard of should not stop the device being pointed at
+    /// the right catalog. A missing SELECTED library is different — see
+    /// `applyIfNeeded`.
+    static func resolveAdditional(
+        configuration: ManagedLibraryPreconfiguration,
+        registry: any ManagedLibraryRegistryReading
+    ) -> (resolved: [Account], missing: [String]) {
+        var resolved: [Account] = []
+        var missing: [String] = []
+        for uuid in configuration.additionalLibraryIds {
+            if let account = registry.managedLibraryAccount(uuid: uuid) {
+                resolved.append(account)
+            } else {
+                missing.append(uuid)
+            }
+        }
+        return (resolved, missing)
+    }
+
     /// What `applyIfNeeded()` WOULD conclude, without applying anything.
     ///
     /// Exists for the Testing screen's read-out. It must be separate from
@@ -180,7 +203,12 @@ final class ManagedLibraryPreconfigurator {
     /// catalog load.
     @discardableResult
     func applyIfNeeded() -> ManagedLibraryDecision {
-        let configuration = ManagedAppConfiguration.libraryPreconfiguration(defaults: defaults)
+        let parse = ManagedAppConfiguration.parse(defaults: defaults)
+        for warning in parse.warnings {
+            Log.warn(#file, "Managed configuration: \(warning)")
+        }
+
+        let configuration = parse.configuration
         var resolved: Account?
         let decision = Self.decide(
             configuration: configuration,
@@ -197,15 +225,24 @@ final class ManagedLibraryPreconfigurator {
         case .noConfiguration, .alreadyApplied, .registryNotLoaded:
             return decision
         case .unresolved:
+            // Only the SELECTED library reaches here. Additional libraries that
+            // do not resolve are reported but do not block the selection —
+            // being pointed at the right catalog matters more than carrying a
+            // complete list.
             Log.warn(
                 #file,
-                "Managed configuration names a library that is not in the loaded registry "
-                + "(\(configuration?.fingerprint ?? "-")) — leaving library selection to the user."
+                "Managed configuration names a library to select that is not in the loaded "
+                + "registry (\(configuration?.fingerprint ?? "-")) — leaving library selection "
+                + "to the user."
             )
             return decision
         case .apply:
             guard let account = resolved, let configuration else { return .unresolved }
-            apply(account, fingerprint: configuration.fingerprint)
+            let extra = Self.resolveAdditional(configuration: configuration, registry: registry)
+            for uuid in extra.missing {
+                Log.warn(#file, "Managed configuration: additional library not in registry: \(uuid)")
+            }
+            apply(account, alongside: extra.resolved, fingerprint: configuration.fingerprint)
             return decision
         }
     }
@@ -216,10 +253,17 @@ final class ManagedLibraryPreconfigurator {
     /// The fingerprint is written LAST and only after the library is actually
     /// current: a crash partway through must leave the device unconfigured and
     /// retryable, never marked done with nothing selected.
-    private func apply(_ account: Account, fingerprint: String) {
+    ///
+    /// `alongside` libraries are ADDED in the same single list write and never
+    /// selected, so the call order the contract pins is unchanged no matter how
+    /// many libraries the payload carries.
+    private func apply(_ account: Account, alongside extras: [Account], fingerprint: String) {
         var ids = dependencies.addedLibraryIds()
-        if !ids.contains(account.uuid) {
-            ids.append(account.uuid)
+        let before = ids
+        for uuid in [account.uuid] + extras.map(\.uuid) where !ids.contains(uuid) {
+            ids.append(uuid)
+        }
+        if ids != before {
             dependencies.setAddedLibraryIds(ids)
         }
         if let catalogUrl = account.catalogUrl, let url = URL(string: catalogUrl) {
@@ -229,7 +273,11 @@ final class ManagedLibraryPreconfigurator {
         dependencies.loadAuthenticationDocument(account)
         dependencies.announceLibraryChanged()
         defaults.set(fingerprint, forKey: Self.appliedFingerprintKey)
-        Log.info(#file, "Applied managed library configuration: \(account.name) (\(account.uuid))")
+        Log.info(
+            #file,
+            "Applied managed library configuration: selected \(account.name) (\(account.uuid))"
+            + (extras.isEmpty ? "" : ", added \(extras.count) more")
+        )
     }
 }
 

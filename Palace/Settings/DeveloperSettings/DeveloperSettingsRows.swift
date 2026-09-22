@@ -262,7 +262,7 @@ struct DevManagedLibraryRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(spacing: 0) {
-                TextField("urn:uuid:… or https://…", text: $input)
+                TextField("urn:uuid:… — first is selected, rest are added", text: $input)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                     .font(.system(.body, design: .monospaced))

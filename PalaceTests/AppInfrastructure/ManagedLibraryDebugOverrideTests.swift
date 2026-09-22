@@ -95,9 +95,12 @@ final class ManagedLibraryDebugOverrideTests: XCTestCase {
             raw: "  681710A7-D1C2-4649-A29D-4FBD08E8861E ",
             defaults: defaults
         )
-        XCTAssertEqual(outcome, .written(
-            ManagedLibraryPreconfiguration(libraryId: lowerId, catalogURL: nil)
-        ))
+        guard case .written(let parsed, let warnings) = outcome else {
+            return XCTFail("expected a write, got \(outcome)")
+        }
+        XCTAssertEqual(parsed,
+                       ManagedLibraryPreconfiguration(libraryId: lowerId, catalogURL: nil))
+        XCTAssertEqual(warnings, [], "a clean single value warns about nothing")
     }
 
     // MARK: - It rejects what an MDM payload would reject

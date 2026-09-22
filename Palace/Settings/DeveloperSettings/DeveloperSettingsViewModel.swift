@@ -353,12 +353,16 @@ final class DeveloperSettingsViewModel: ObservableObject {
                 title: "This device is really managed",
                 message: "A configuration is already present from an MDM. Refusing to overwrite it.",
                 from: presenter)
-        case .written:
+        case .written(_, let warnings):
             let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
             refreshManagedLibraryStatus()
-            presentAlert(title: "Configuration applied",
-                         message: ManagedLibraryDebugOverride.describe(decision),
-                         from: presenter)
+            let detail = ManagedLibraryDebugOverride.describe(decision)
+            presentAlert(
+                title: "Configuration applied",
+                message: warnings.isEmpty
+                    ? detail
+                    : detail + "\n\nDropped:\n" + warnings.joined(separator: "\n"),
+                from: presenter)
         }
     }
 

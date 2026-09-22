@@ -19,27 +19,60 @@ import Foundation
 
 /// The library pre-selection an MDM asked for, in canonical form.
 ///
-/// Either field may be nil, but a configuration with BOTH nil does not exist —
-/// `ManagedAppConfiguration.libraryPreconfiguration` returns nil instead, so
-/// callers never have to distinguish "empty configuration" from "no
-/// configuration".
+/// A configuration ALWAYS names a library to select — `libraryId` or
+/// `catalogURL`. `additionalLibraryIds` are added to the user's library list
+/// without changing which one is current; a payload carrying only those is
+/// incomplete and parses to nil, so callers never have to distinguish "empty
+/// configuration" from "no configuration".
 struct ManagedLibraryPreconfiguration: Equatable {
-    /// Registry identifier in the canonical `urn:uuid:<lowercase>` form that
-    /// `Account.uuid` uses. Nil when the MDM supplied no identifier, or
-    /// supplied one that is not a UUID.
+    /// Registry identifier of the library to SELECT, in the canonical
+    /// `urn:uuid:<lowercase>` form that `Account.uuid` uses. Nil when the MDM
+    /// supplied no identifier, or supplied one that is not a UUID.
     let libraryId: String?
 
-    /// Catalog root URL as supplied, parsed. Nil when the MDM supplied none,
-    /// or supplied something that is not an `https` URL.
+    /// Catalog root URL of the library to SELECT, as supplied and parsed. Nil
+    /// when the MDM supplied none, or supplied something that is not an `https`
+    /// URL.
     let catalogURL: URL?
+
+    /// Further libraries to ADD without selecting, canonicalized and
+    /// de-duplicated, in the order the administrator listed them.
+    ///
+    /// Deliberately a separate key from `libraryId` rather than "a list whose
+    /// first entry wins": positional meaning in a hand-typed plist is a trap,
+    /// where swapping two lines silently changes which catalog a student lands
+    /// in. Each key has one job.
+    let additionalLibraryIds: [String]
+
+    init(libraryId: String?, catalogURL: URL?, additionalLibraryIds: [String] = []) {
+        self.libraryId = libraryId
+        self.catalogURL = catalogURL
+        self.additionalLibraryIds = additionalLibraryIds
+    }
 
     /// Stable identity of this configuration VALUE, used for the apply-once
     /// bookkeeping. Two pushes with the same meaning fingerprint identically;
-    /// changing either field changes the fingerprint, which is what lets an
-    /// administrator re-point a device that has already been configured.
+    /// changing ANY field changes the fingerprint, which is what lets an
+    /// administrator re-point a device that has already been configured — and
+    /// what makes adding a library to the list re-apply rather than sit inert.
     var fingerprint: String {
         "id=\(libraryId ?? "")|url=\(catalogURL?.absoluteString ?? "")"
+            + "|add=\(additionalLibraryIds.joined(separator: ","))"
     }
+}
+
+/// What a parse made of the payload: the usable configuration, plus anything
+/// the administrator wrote that could not be used.
+///
+/// The warnings exist because the failure they describe is otherwise silent. An
+/// array under `defaultLibraryId` does not throw and does not configure — it
+/// reads as an absent key, so a payload that looks right to whoever typed it
+/// does nothing at all and says nothing about why.
+struct ManagedLibraryParse: Equatable {
+    let configuration: ManagedLibraryPreconfiguration?
+    let warnings: [String]
+
+    static let none = ManagedLibraryParse(configuration: nil, warnings: [])
 }
 
 /// Reader for Apple Managed App Configuration.
@@ -61,6 +94,10 @@ enum ManagedAppConfiguration {
         /// Catalog root URL of the library to pre-select. Used when no
         /// identifier is supplied, and as a cross-check when one is.
         static let libraryCatalogURL = "defaultLibraryCatalogUrl"
+        /// Further registry identifiers to ADD without selecting. An array of
+        /// strings; a single string is accepted too, since an administrator
+        /// adding one extra library will reasonably write one.
+        static let additionalLibraryIds = "additionalLibraryIds"
     }
 
     /// Reads and normalizes the library pre-selection, if any.
@@ -69,16 +106,125 @@ enum ManagedAppConfiguration {
     /// with neither key, or when both supplied values were unusable — all of
     /// which mean the same thing to a caller: nothing to apply.
     static func libraryPreconfiguration(defaults: UserDefaults) -> ManagedLibraryPreconfiguration? {
-        guard let managed = defaults.dictionary(forKey: userDefaultsKey) else { return nil }
-        return libraryPreconfiguration(managedDictionary: managed)
+        parse(defaults: defaults).configuration
+    }
+
+    /// Full parse from `UserDefaults`, including unusable values.
+    static func parse(defaults: UserDefaults) -> ManagedLibraryParse {
+        guard let managed = defaults.dictionary(forKey: userDefaultsKey) else { return .none }
+        return parse(managedDictionary: managed)
     }
 
     /// Pure form of `libraryPreconfiguration(defaults:)`.
     static func libraryPreconfiguration(managedDictionary: [String: Any]) -> ManagedLibraryPreconfiguration? {
-        let id = (managedDictionary[Key.libraryId] as? String).flatMap(canonicalLibraryId)
-        let url = (managedDictionary[Key.libraryCatalogURL] as? String).flatMap(normalizedCatalogURL)
-        guard id != nil || url != nil else { return nil }
-        return ManagedLibraryPreconfiguration(libraryId: id, catalogURL: url)
+        parse(managedDictionary: managedDictionary).configuration
+    }
+
+    /// Full parse, including what could not be used.
+    static func parse(managedDictionary: [String: Any]) -> ManagedLibraryParse {
+        var warnings: [String] = []
+
+        let id = canonicalSelector(
+            managedDictionary[Key.libraryId], key: Key.libraryId, warnings: &warnings
+        )
+        let url = normalizedSelectorURL(
+            managedDictionary[Key.libraryCatalogURL], key: Key.libraryCatalogURL, warnings: &warnings
+        )
+        var additional = canonicalAdditionalIds(
+            managedDictionary[Key.additionalLibraryIds], warnings: &warnings
+        )
+
+        // The selected library is already accounted for; listing it again in
+        // the additions is harmless and common, so absorb it rather than
+        // reporting it.
+        if let id { additional.removeAll { $0 == id } }
+
+        guard id != nil || url != nil else {
+            if !additional.isEmpty {
+                warnings.append(
+                    "'\(Key.additionalLibraryIds)' names libraries to add but no library to select — "
+                    + "add '\(Key.libraryId)'. Nothing was configured."
+                )
+            }
+            return ManagedLibraryParse(configuration: nil, warnings: warnings)
+        }
+
+        return ManagedLibraryParse(
+            configuration: ManagedLibraryPreconfiguration(
+                libraryId: id, catalogURL: url, additionalLibraryIds: additional
+            ),
+            warnings: warnings
+        )
+    }
+
+    /// Reads a selector identifier, reporting a present-but-unusable value
+    /// rather than letting it read as an absent key.
+    private static func canonicalSelector(
+        _ raw: Any?, key: String, warnings: inout [String]
+    ) -> String? {
+        guard let raw else { return nil }
+        guard let text = raw as? String else {
+            warnings.append(
+                "'\(key)' must be a single string. Several libraries go in "
+                + "'\(Key.additionalLibraryIds)'."
+            )
+            return nil
+        }
+        guard let canonical = canonicalLibraryId(text) else {
+            warnings.append("'\(key)' is not a UUID: \(text)")
+            return nil
+        }
+        return canonical
+    }
+
+    /// Reads the catalog-URL selector, reporting unusable values.
+    private static func normalizedSelectorURL(
+        _ raw: Any?, key: String, warnings: inout [String]
+    ) -> URL? {
+        guard let raw else { return nil }
+        guard let text = raw as? String else {
+            warnings.append("'\(key)' must be a single string.")
+            return nil
+        }
+        guard let url = normalizedCatalogURL(text) else {
+            warnings.append("'\(key)' is not an https URL: \(text)")
+            return nil
+        }
+        return url
+    }
+
+    /// Reads the add-without-selecting list. Accepts an array of strings, or a
+    /// lone string, and reports every entry it had to drop — a silently
+    /// shortened list is how a device ends up missing one division's library
+    /// with nothing to show for it.
+    private static func canonicalAdditionalIds(
+        _ raw: Any?, warnings: inout [String]
+    ) -> [String] {
+        guard let raw else { return [] }
+
+        let entries: [String]
+        switch raw {
+        case let list as [String]:
+            entries = list
+        case let single as String:
+            entries = [single]
+        default:
+            warnings.append(
+                "'\(Key.additionalLibraryIds)' must be an array of strings."
+            )
+            return []
+        }
+
+        var seen = Set<String>()
+        var result: [String] = []
+        for entry in entries {
+            guard let canonical = canonicalLibraryId(entry) else {
+                warnings.append("'\(Key.additionalLibraryIds)' entry is not a UUID: \(entry)")
+                continue
+            }
+            if seen.insert(canonical).inserted { result.append(canonical) }
+        }
+        return result
     }
 
     /// Normalizes an administrator-typed registry identifier to the
