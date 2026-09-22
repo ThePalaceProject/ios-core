@@ -24,7 +24,11 @@ and the audiobook area checklist, whose §7 traps 9-11 this changeset adds.
   target item ever started rather than on `isLoaded`, because that branch sets
   `isLoaded = true` deliberately and an `isLoaded`-keyed guard could never fire
   there. Without it a failed rebuild was indistinguishable from a successful one:
-  no alert, no Retry, host open lock never released (#228). A seek to a track still being STREAMED keeps
+  no alert, no Retry, host open lock never released (#228). The backstop judges
+  the rebuild by what it PRODUCED — a target item that is current and
+  `readyToPlay` — not by whether audio is coming out: nothing cancels that work
+  item on pause, so a started-keyed backstop would have errored a book the patron
+  had merely paused (#229). A seek to a track still being STREAMED keeps
   the previous behaviour exactly, mute included.
 - A load timeout armed by an earlier streaming seek cannot fire over a
   subsequent local seek and surface "Audiobook Unavailable" on a book playing
@@ -134,8 +138,8 @@ DERIVED from `git diff origin/release/3.3.0...HEAD --name-only` plus
   teardown releases it. **Net CODE LOC: zero** — see "God-class freeze" below
 - `Palace/Audiobooks/ChapterNavigationHold.swift` — NEW: the hold's mechanism
   (target key + bound), extracted so the hub does not grow
-- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `3871680`
-  (ThePalaceProject/ios-audiobooktoolkit#225, #226, #227 and #228). Branched from the SHA
+- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `707b33b`
+  (ThePalaceProject/ios-audiobooktoolkit#225 through #229). Branched from the SHA
   `release/3.3.0` already pins, so the bump carries ONLY PP-5205 — toolkit `main`
   additionally holds #223 (readium pin by tag) and #224 (player localisation),
   neither of which is in this release candidate and neither of which this bump
