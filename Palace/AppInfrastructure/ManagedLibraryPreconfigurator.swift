@@ -145,6 +145,36 @@ final class ManagedLibraryPreconfigurator {
         }
     }
 
+    /// What `applyIfNeeded()` WOULD conclude, without applying anything.
+    ///
+    /// Exists for the Testing screen's read-out. It must be separate from
+    /// `applyIfNeeded()` rather than a flag on it, because a diagnostic that
+    /// selects a library as a side effect of being read is not a diagnostic.
+    func inspect() -> ManagedLibraryDecision {
+        let configuration = ManagedAppConfiguration.libraryPreconfiguration(defaults: defaults)
+        return Self.decide(
+            configuration: configuration,
+            lastAppliedFingerprint: defaults.string(forKey: Self.appliedFingerprintKey),
+            registryHasLoaded: registry.registryHasLoaded,
+            resolvedUUID: {
+                guard let configuration else { return nil }
+                return Self.resolve(configuration: configuration, registry: registry)?.uuid
+            }
+        )
+    }
+
+    /// The configuration currently in `UserDefaults`, parsed — nil when the app
+    /// is unmanaged or the payload names no usable library.
+    var currentConfiguration: ManagedLibraryPreconfiguration? {
+        ManagedAppConfiguration.libraryPreconfiguration(defaults: defaults)
+    }
+
+    /// The fingerprint of the configuration already applied on this install, if
+    /// any. Surfaced so the Testing screen can explain an `.alreadyApplied`.
+    var appliedFingerprint: String? {
+        defaults.string(forKey: Self.appliedFingerprintKey)
+    }
+
     /// Applies the configuration if there is one to apply, and reports what it
     /// concluded. Safe to call repeatedly — every launch, and again after each
     /// catalog load.
