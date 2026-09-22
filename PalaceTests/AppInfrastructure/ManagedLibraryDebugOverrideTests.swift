@@ -104,8 +104,14 @@ final class ManagedLibraryDebugOverrideTests: XCTestCase {
 
     func testWrite_RejectsANonUUIDRatherThanStoringSomethingUnresolvable() {
         let outcome = ManagedLibraryDebugOverride.write(raw: "North Shore Lower", defaults: defaults)
-        guard case .rejected = outcome else { return XCTFail("expected rejection, got \(outcome)") }
+        guard case .rejected(let reason) = outcome else {
+            return XCTFail("expected rejection, got \(outcome)")
+        }
         XCTAssertNil(defaults.dictionary(forKey: ManagedAppConfiguration.userDefaultsKey))
+        // The reason must describe what the tester actually typed. Telling
+        // someone who mistyped a UUID that it is "not an https URL" sends them
+        // looking for a problem they do not have.
+        XCTAssertTrue(reason.localizedCaseInsensitiveContains("UUID"), "got: \(reason)")
     }
 
     func testWrite_RejectsCleartextHTTP() {
@@ -113,8 +119,11 @@ final class ManagedLibraryDebugOverrideTests: XCTestCase {
             raw: "http://il.thepalaceproject.org/00351977/",
             defaults: defaults
         )
-        guard case .rejected = outcome else { return XCTFail("expected rejection, got \(outcome)") }
+        guard case .rejected(let reason) = outcome else {
+            return XCTFail("expected rejection, got \(outcome)")
+        }
         XCTAssertNil(defaults.dictionary(forKey: ManagedAppConfiguration.userDefaultsKey))
+        XCTAssertTrue(reason.localizedCaseInsensitiveContains("https"), "got: \(reason)")
     }
 
     func testWrite_RejectsEmptyInput() {
