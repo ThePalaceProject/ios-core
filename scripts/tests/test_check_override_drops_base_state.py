@@ -194,6 +194,115 @@ def test_baselined_finding_does_not_fail_but_a_new_one_does(tmp_path):
     assert "1 baselined, 0 new" in out
 
 
+def test_a_baselined_finding_does_not_mask_a_second_new_one(tmp_path):
+    # The test above asserts only the amnesty half. Its name promised both
+    # directions and a reviewer caught that it delivered one: a baseline that
+    # swallowed every finding once it held ANY entry would have passed it.
+    files = {
+        "BasePlayer.swift": BASE,
+        "LCPPlayer.swift": """\
+            class LCPPlayer: BasePlayer {
+              override func playCallback(at position: TrackPosition) {
+                doSomethingElse()
+              }
+            }
+            """,
+        "OtherSub.swift": """\
+            class OtherSub: BasePlayer {
+              override func playCallback(at position: TrackPosition) {
+                doSomethingElseEntirely()
+              }
+            }
+            """,
+    }
+    rc, out = run(tmp_path, files, baseline="LCPPlayer.playCallback:queuedTrackPosition\n")
+    assert rc == 1, out
+    assert "OtherSub.playCallback" in out
+    assert "LCPPlayer.playCallback" not in out, "the baselined finding must not be re-reported"
+
+
+def test_super_call_inside_a_comment_does_not_exempt(tmp_path):
+    # Comments are stripped before every other textual test but were NOT stripped
+    # before the exemption search — an escape hatch nobody wrote, inside the
+    # detector built to stop a silent pass.
+    rc, out = run(tmp_path, {
+        "BasePlayer.swift": BASE,
+        "LCPPlayer.swift": """\
+            class LCPPlayer: BasePlayer {
+              override func playCallback(at position: TrackPosition) {
+                // unlike super.playCallback(at:), this one rebuilds the queue
+                doSomethingElse()
+              }
+            }
+            """,
+    })
+    assert rc == 1, out
+
+
+def test_same_name_overloads_are_keyed_separately(tmp_path):
+    # `funcs` keyed on (class, name) collapsed overloads to whichever came last in
+    # the file, so an override could be compared against the WRONG base body and
+    # silently pass. OpenAccessPlayer really does have two `play` definitions.
+    rc, out = run(tmp_path, {
+        "BasePlayer.swift": """\
+            class BasePlayer {
+              var queuedTrackPosition: TrackPosition?
+
+              var currentTrackPosition: TrackPosition? {
+                if let queued = queuedTrackPosition { return queued }
+                return nil
+              }
+
+              func play() {
+                doNothingWithState()
+              }
+
+              func play(at position: TrackPosition) {
+                queuedTrackPosition = position
+              }
+            }
+            """,
+        "LCPPlayer.swift": """\
+            class LCPPlayer: BasePlayer {
+              override func play(at position: TrackPosition) {
+                doSomethingElse()
+              }
+            }
+            """,
+    })
+    assert rc == 1, out
+    assert "queuedTrackPosition" in out
+
+
+def test_stored_property_with_an_initialiser_is_visible(tmp_path):
+    # `var isLoaded: Bool = false` was invisible to the first regex, so a whole
+    # category of live state went unchecked.
+    rc, out = run(tmp_path, {
+        "BasePlayer.swift": """\
+            class BasePlayer {
+              var isLoaded: Bool = false
+
+              func report() -> Bool {
+                return isLoaded
+              }
+
+              func playCallback(at position: TrackPosition) {
+                isLoaded = true
+              }
+            }
+            """,
+        "LCPPlayer.swift": """\
+            class LCPPlayer: BasePlayer {
+              override func playCallback(at position: TrackPosition) {
+                doSomethingElse()
+              }
+            }
+            """,
+    })
+    assert rc == 1, out
+    assert "isLoaded" in out
+
+
 def test_a_baselined_finding_that_stops_firing_fails(tmp_path):
     # The amnesty must not go stale. A fixed entry left in the file is an exemption
     # nobody is watching.

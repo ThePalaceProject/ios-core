@@ -110,12 +110,30 @@ set without a matching clear satisfies "assigned somewhere". It answers *was thi
 state considered*, never *was it handled correctly*. It is also line-based, not an
 AST: an override that maintains the property through a helper reads as a miss.
 
-**Its own first version could not fail.** `CLASS_RE` required an inheritance
-clause, so a base declared `class Foo {` was invisible and every subclass of it
-was skipped — for want of a base the detector reported a clean run. A fixture
-caught it; the real tree could not have, because the real base happens to inherit.
-That is this repository's "a gate that cannot fail reports a pass", inside the
-gate written to stop a different instance of it.
+**Five silent-pass vectors, all found by fixtures or review, none by the tree.**
+`CLASS_RE` required an inheritance clause, so a base declared `class Foo {` was
+invisible and every subclass was skipped. `STORED_PROP_RE` refused any declaration
+with an initialiser, so `var isLoaded: Bool = false` and its whole category went
+unchecked. Comments were stripped before every textual test EXCEPT the `super.`
+exemption, so `// unlike super.playCallback(...)` in a doc comment exempted the
+method — an escape hatch nobody wrote. `funcs` was keyed `(class, name)`, so
+overloads collapsed and an override could be compared against the wrong base body
+(`OpenAccessPlayer` really does have two `play` definitions). And counting a
+property's own declaration as a "read" made every stored property look live.
+
+The real tree could not have surfaced any of them: it exercises exactly one shape.
+That is this repository's "a gate that cannot fail reports a pass", five times,
+inside the gate written to stop one instance of it. Each now has a fixture.
+
+**One baselined entry, not two.** The first draft baselined
+`buildPlayerQueue:lastKnownPosition` as well, asserting both were real. An
+architect review showed it was wrong in substance — the base assigns
+first-track-at-0.0, a reset to book start, and the LCP override NOT doing that
+preserves a restored position — and, worse, that baselining it would have
+PERMANENTLY REQUIRED the omission, because a baselined entry that stops firing
+fails the gate. An anti-rot control pointed at a false positive inverts into a
+lock. It now carries an inline `// no-override-state:` with the reason beside the
+code.
 
 **False-positive escape hatch:** `// no-override-state: <reason>` on the
 `override func` line itself. Line-adjacent deliberately — a marker on a preceding

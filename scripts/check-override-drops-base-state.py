@@ -3,7 +3,10 @@
 check-override-drops-base-state.py — an override that replaces a base method
 wholesale must not silently drop the STATE that method maintained.
 
-Catches the PP-5205 wall-failure class, which fired TWICE in one changeset.
+Catches the FIRST of the two PP-5205 omissions: an override that never touches the
+property at all. It does NOT catch the second — a set without a matching clear —
+because "assigned somewhere" is satisfied by the set alone. See LIMIT below; the
+area checklist's trap 13 is the guard for that half.
 
 `OpenAccessPlayer.playCallback(at:completion:)` both SETS `queuedTrackPosition`
 (so `currentTrackPosition` can report where a seek is going) and CLEARS it when the
@@ -57,8 +60,54 @@ DEFAULT_ROOTS = ("ios-audiobooktoolkit/PalaceAudiobookToolkit/Player",)
 # the thing it was checking. Found by a fixture, not by the tree, where the real
 # base happens to inherit.
 CLASS_RE = re.compile(r"^\s*(?:public\s+|internal\s+|final\s+|open\s+)*class\s+(\w+)\s*(?::\s*([\w\s,]+?)\s*)?\{")
-FUNC_RE = re.compile(r"^(\s*)((?:@\w+\s+)*(?:public\s+|internal\s+|private\s+|fileprivate\s+|open\s+|final\s+|override\s+|discardableResult\s+)*)func\s+(\w+)\s*[\(<]")
-STORED_PROP_RE = re.compile(r"^\s*(?:public\s+|internal\s+|private\s+|fileprivate\s+|open\s+)*(?:var)\s+(\w+)\s*:\s*[^={]+$")
+FUNC_RE = re.compile(r"^(\s*)((?:@\w+\s+)*(?:public\s+|internal\s+|private\s+|fileprivate\s+|open\s+|final\s+|override\s+|discardableResult\s+)*)func\s+(\w+)\s*(?P<tail>[\(<].*)$")
+
+# Comments are stripped before EVERY textual test, including the `super.` exemption.
+# They were not, at first: `// super.playCallback(...)` in a doc comment exempted the
+# method — an escape hatch nobody wrote, in the detector built to stop a silent pass.
+def strip_comment(line: str) -> str:
+    return line.split("//", 1)[0]
+
+
+def param_arity(tail: str) -> int:
+    """Number of top-level parameters, so `play()` and `play(at:completion:)` are
+    different keys. Overloads collapsing to whichever came last in the file meant a
+    future `override func play` would be compared against the wrong base body and
+    silently pass — `OpenAccessPlayer` already has two `play` definitions."""
+    start = tail.find("(")
+    if start < 0:
+        return -1
+    depth = 0
+    inner = ""
+    for ch in tail[start:]:
+        if ch in "([<":
+            depth += 1
+            if depth == 1:
+                continue
+        elif ch in ")]>":
+            depth -= 1
+            if depth == 0:
+                break
+        if depth >= 1:
+            inner += ch
+    inner = inner.strip()
+    if not inner:
+        return 0
+    depth = 0
+    count = 1
+    for ch in inner:
+        if ch in "([<":
+            depth += 1
+        elif ch in ")]>":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            count += 1
+    return count
+# `= <initialiser>` is allowed; `{` (a computed property or an observer) is not.
+# The first version required the line to END after the type, so every
+# `var isLoaded: Bool = false` was invisible — a whole category of live state the
+# detector silently did not check.
+STORED_PROP_RE = re.compile(r"^\s*(?:public\s+|internal\s+|private\s+|fileprivate\s+|open\s+)*var\s+(\w+)\s*:\s*[^={]+(?:=[^{]*)?$")
 ESCAPE = re.compile(r"//\s*no-override-state\s*:")
 
 BASELINE_NAME = "override-drops-base-state-baseline.txt"
@@ -124,6 +173,7 @@ def parse_file(path: pathlib.Path):
         if not m:
             continue
         modifiers, fname = m.group(2), m.group(3)
+        arity = param_arity(m.group("tail"))
         owner = ""
         for cname, cfirst, clast in class_spans:
             if cfirst <= i <= clast:
@@ -131,7 +181,7 @@ def parse_file(path: pathlib.Path):
         if not owner:
             continue
         first, last = body_range(lines, i)
-        funcs[(owner, fname)] = ("override" in modifiers, first, last, i)
+        funcs[(owner, fname, arity)] = ("override" in modifiers, first, last, i)
     return lines, classes, funcs, class_spans
 
 
@@ -149,7 +199,8 @@ def assigned_in(lines: list[str], first: int, last: int, names: set[str]) -> set
     for i in range(first, last + 1):
         code = lines[i].split("//", 1)[0]
         for n in names:
-            if re.search(r"(?:^|[^\w.])(?:self\?\.|self\.)?" + re.escape(n) + r"\s*=(?!=)", code):
+            if re.search(r"(?:^|[^\w.])(?:self\?\.|self\.)?" + re.escape(n)
+                         + r"\s*(?:[-+*/%|&^]|<<|>>)?=(?!=)", code):
                 out.add(n)
     return out
 
@@ -159,7 +210,13 @@ def read_outside(lines: list[str], span: tuple[int, int], skip: tuple[int, int],
     for i in range(span[0], span[1] + 1):
         if skip[0] <= i <= skip[1]:
             continue
-        code = lines[i].split("//", 1)[0]
+        code = strip_comment(lines[i])
+        # A property's own DECLARATION is not a read of it. Counting it as one made
+        # every stored property "live", which surfaced the moment declarations with
+        # an initialiser became visible at all: a write-only field was reported as
+        # state the override had dropped.
+        if STORED_PROP_RE.match(code):
+            continue
         for n in names:
             # a READ: the name appears not immediately followed by `=`
             for m in re.finditer(r"(?:^|[^\w.])(?:self\?\.|self\.)?" + re.escape(n) + r"\b", code):
@@ -193,7 +250,7 @@ def main(argv: list[str]) -> int:
     violations: list[tuple[pathlib.Path, int, str, str, str]] = []
 
     for f, (lines, classes, funcs, spans) in parsed.items():
-        for (owner, fname), (is_override, first, last, header) in funcs.items():
+        for (owner, fname, arity), (is_override, first, last, header) in funcs.items():
             if not is_override:
                 continue
             if ESCAPE.search(lines[header]):
@@ -203,14 +260,14 @@ def main(argv: list[str]) -> int:
             # the tree and would be tuned away rather than fixed. The class this
             # detector exists for is the override that replaces the method WHOLESALE.
             if re.search(r"\bsuper\." + re.escape(fname) + r"\s*[\(<]",
-                         "\n".join(lines[first:last + 1])):
+                         "\n".join(strip_comment(l) for l in lines[first:last + 1])):
                 continue
             base = classes.get(owner, "")
             if not base or base not in where:
                 continue
             bfile, bspan = where[base]
             blines, bclasses, bfuncs, bspans = parsed[bfile]
-            bkey = (base, fname)
+            bkey = (base, fname, arity)
             if bkey not in bfuncs:
                 continue
             _, bfirst, blast, _ = bfuncs[bkey]

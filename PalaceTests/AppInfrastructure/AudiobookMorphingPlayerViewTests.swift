@@ -494,6 +494,43 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
 
     /// Every state is covered by the arming rule — a state added later without a
     /// decision here silently inherits `false` and takes its failure path with it.
+    /// PP-5205 round 3. `loadingTimedOut` is a LATCH, and nothing cleared it when the
+    /// player recovered on its own — only arming and Retry did. A stall that fired the
+    /// 30s timer and then came good left it true, and the mid-session arm reads it
+    /// BEFORE `isDownloading` (unlike the pre-playback arm, where a healthy download
+    /// masks it), so the next cross-track seek painted a full-screen error over a
+    /// working player.
+    ///
+    /// Exactly one state may clear it. `.loadError` must NOT, or the error flickers
+    /// off the instant it appears; the arming states must not, because they already
+    /// reset it on arm; `.hidden` is the only one that means the player is usable
+    /// again.
+    func testTimeoutLatchIsClearedByExactlyOneState() {
+        let clearing = V.LoadingOverlayState.allCases.filter(V.stateClearsTimeoutLatch)
+        XCTAssertEqual(clearing, [.hidden],
+                       "only reaching `.hidden` — i.e. the player became usable — may drop a fired timeout latch")
+    }
+
+    func testTimeoutLatch_isNotClearedByTheErrorStateItself() {
+        // Separated from the table above so the failure message names the consequence:
+        // clearing here would make the error unreadable, one frame long.
+        XCTAssertFalse(V.stateClearsTimeoutLatch(.loadError),
+                       "clearing the latch on `.loadError` would flicker the error off the frame it appeared")
+    }
+
+    /// The defect this closes, stated as the state machine sees it: a stale latch plus
+    /// a mid-session seek is an error screen over a healthy player.
+    func testLoadingOverlayState_staleLatchMidSession_wouldPaintErrorOverAWorkingPlayer() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true,
+                                  hasStartedPlayback: true, forceSkeletons: false),
+            .loadError,
+            "premise: mid-session, a true latch goes straight to the error — which is why the latch must be cleared on recovery"
+        )
+        XCTAssertTrue(V.stateClearsTimeoutLatch(.hidden),
+                      "and recovery is `.hidden`, so that is where the latch has to be dropped")
+    }
+
     func testArmingSet_coversEveryState() {
         // `allCases`, NOT a hand-written array. The previous version listed the five
         // states by hand, so a sixth added later would have been absent from both the

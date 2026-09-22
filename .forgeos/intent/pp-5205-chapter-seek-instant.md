@@ -130,8 +130,8 @@ DERIVED from `git diff origin/release/3.3.0...HEAD --name-only` plus
   teardown releases it. **Net CODE LOC: zero** — see "God-class freeze" below
 - `Palace/Audiobooks/ChapterNavigationHold.swift` — NEW: the hold's mechanism
   (target key + bound), extracted so the hub does not grow
-- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `548c258`
-  (ThePalaceProject/ios-audiobooktoolkit#225 and #226). Branched from the SHA
+- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `5a452cc`
+  (ThePalaceProject/ios-audiobooktoolkit#225, #226 and #227). Branched from the SHA
   `release/3.3.0` already pins, so the bump carries ONLY PP-5205 — toolkit `main`
   additionally holds #223 (readium pin by tag) and #224 (player localisation),
   neither of which is in this release candidate and neither of which this bump

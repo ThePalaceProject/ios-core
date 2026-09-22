@@ -1091,7 +1091,30 @@ struct AudiobookMorphingPlayerView: View {
             armLoadTimeout()
         } else {
             cancelLoadTimeout()
+            if Self.stateClearsTimeoutLatch(state) { loadingTimedOut = false }
         }
+    }
+
+    /// Whether reaching `state` means the previous failure is OVER, so the latched
+    /// `loadingTimedOut` must not survive into the next seek.
+    ///
+    /// `loadingTimedOut` is a latch: armed-false, set true by the 30s timer, and
+    /// otherwise cleared only by Retry. Nothing cleared it when the player RECOVERED
+    /// on its own. A stall that fired the timer and then came good left the flag
+    /// true, and because the mid-session arm reads it BEFORE `isDownloading` — unlike
+    /// the pre-playback arm, where a healthy download masks it — the very next
+    /// cross-track seek painted a full-screen error over a player that was working.
+    ///
+    /// `.hidden` only. Clearing inside `cancelLoadTimeout` would also clear on the
+    /// transition INTO `.loadError`, which would flicker the error off the instant it
+    /// appeared; `.hidden` is the one state that means `isLoaded`, i.e. the player is
+    /// usable again and the failure it latched is genuinely over.
+    ///
+    /// Note for anyone extending the 16-cell `loadingOverlayState` table: the latch's
+    /// PERSISTENCE is a fifth dimension that table does not carry, which is why this
+    /// is a separate rule with its own assertions rather than another cell.
+    nonisolated static func stateClearsTimeoutLatch(_ state: LoadingOverlayState) -> Bool {
+        state == .hidden
     }
 
     /// Determinate "Downloading…" state shown while the `.lcpa` content is still

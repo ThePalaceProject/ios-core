@@ -5,12 +5,21 @@
 # The gate fails on anything NOT listed here, AND on a listed entry that stops
 # firing. So the amnesty can neither grow silently nor go stale.
 #
-# Both entries are the same shape and both are real questions, not noise:
-# `OpenAccessPlayer` maintains `lastKnownPosition` in these methods and reads it as
-# the fallback in `currentTrackPosition`, so an LCP queue rebuild can leave it
-# naming a track the queue no longer holds. Deliberately NOT fixed in the PP-5205
-# changeset: it is pre-existing, it is on the DRM playback path, and that branch
-# lands on a release candidate already under QA test. Investigating it needs its own
-# ticket and its own device pass.
-LCPStreamingPlayer.buildPlayerQueue:lastKnownPosition
+# ONE entry, not two. The first draft listed `buildPlayerQueue:lastKnownPosition`
+# alongside this and asserted both were "real questions" — an architect review
+# showed that was wrong in substance and, worse, that baselining it would have
+# PERMANENTLY REQUIRED the omission, since a baselined entry that stops firing
+# fails the gate. The base's `buildPlayerQueue` assigns first-track-at-0.0
+# (`OpenAccessPlayer.swift:587`), a reset to book start; the LCP override not doing
+# that PRESERVES a restored position and is more correct. It carries an inline
+# `// no-override-state:` instead, where the reason lives next to the code.
+#
+# What remains is a real defect, deferred rather than denied. The base records the
+# navigation TARGET in `lastKnownPosition` before `resetPlayerQueue()`, so during
+# the LCP rebuild window `currentTrackPosition` falls through to the stale old
+# position — and that value reaches `savedPosition` (`OpenAccessPlayer.swift:1187`).
+# Same family as the same-track freeze fixed in ios-audiobooktoolkit#226. NOT opened
+# here: it is pre-existing, it is on the DRM playback path, and this branch lands on
+# a release candidate already under QA test. It needs its own ticket and its own
+# device pass.
 LCPStreamingPlayer.rebuildPlayerQueueAndNavigate:lastKnownPosition
