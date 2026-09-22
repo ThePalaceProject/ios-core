@@ -141,6 +141,13 @@ public final class AudiobookSessionManager: ObservableObject {
 
     // MARK: - Internal State
 
+    /// PP-5205. `currentChapter` is a cache whose only writer used to be
+    /// `handlePositionUpdate` — so a chapter tap changed nothing until the seek
+    /// produced a position, and a seek pauses the player, which is the absence of
+    /// exactly that stream. The mechanism lives in the collaborator; the decisions
+    /// live in `ChapterNavigationPolicy`.
+    private let chapterNavigationHold = ChapterNavigationHold()
+
     private(set) var audiobook: Audiobook?
     private(set) var manager: AudiobookManager? {
         didSet {
@@ -1055,6 +1062,18 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         let chapter = currentChapters[index]
+
+        // PP-5205: publish the chosen chapter NOW rather than waiting for the seek
+        // to produce a position. `ChapterChangeDetector` is deliberately NOT
+        // consulted here — it suppresses same-track/different-title pairs so an
+        // anthology does not emit a crossing mid-track, which is right for a
+        // REACTIVE update and wrong for this one: the patron tapped a different
+        // row and the label must say so.
+        if let selected = chapterNavigationHold.beginSelection(of: chapter, replacing: currentChapter) {
+            currentChapter = selected
+            chapterUpdatePublisher.send((chapters: currentChapters, current: currentChapter))
+        }
+
         // Route through the toolkit's sync wrapper (playAtPosition) so the
         // non-Sendable Player / TrackPosition never cross an isolation boundary
         // under the app's strict-concurrency (archive) build. Fire-and-forget.
@@ -1275,6 +1294,7 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         managerCancellables.removeAll()
+        chapterNavigationHold.release()
 
         manager?.pause()
         manager?.unload()
@@ -3029,17 +3049,11 @@ public final class AudiobookSessionManager: ObservableObject {
         // anthology audiobooks whose adjacent same-track chapters share a
         // title. The new policy keys on track-key change only; same-key /
         // different-title pairs do NOT count as a chapter crossing.
-        if let mgr = manager, let newChapter = mgr.currentChapter {
-            if ChapterChangeDetector.didChange(
-                oldKey: currentChapter?.position.track.key,
-                oldTitle: currentChapter?.title,
-                newKey: newChapter.position.track.key,
-                newTitle: newChapter.title
-            ) {
-                currentChapter = newChapter
-                chapterUpdatePublisher.send((chapters: currentChapters, current: currentChapter))
-                Log.debug(#file, "Chapter changed to: '\(newChapter.title)'")
-            }
+        if let newChapter = chapterNavigationHold.chapterToPublish(
+            from: manager?.currentChapter, replacing: currentChapter
+        ) {
+            currentChapter = newChapter
+            chapterUpdatePublisher.send((chapters: currentChapters, current: currentChapter))
         }
 
         // Update Now Playing (debounced in coordinator)

@@ -659,16 +659,28 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     ///
     /// Mutates: dropping any of the three `progress.chapter* = 0` lines from
     /// `clearActiveSession()` leaves that field non-zero and fails here.
+    ///
+    /// PP-5205 adds a FOURTH member to that family, `chapterTitle`, and it is asserted
+    /// here rather than in a test of its own for a specific reason: its predecessor
+    /// (`AudiobookSessionManager.currentChapter`) was nilled at teardown by the session
+    /// manager, so this reset list never had to carry the chapter NAME. Moving the
+    /// source without moving the reset showed book A's chapter beside book B's zeroed
+    /// timecodes. A field that joins this family must join this assertion.
     func testClearActiveSession_resetsChapterProgressFields() {
         let presenter = AudiobookSessionPresenter(sessionManager: spySession)
         presenter.progress.chapterOffset = 42
         presenter.progress.chapterTimeLeft = 30
         presenter.progress.chapterProgress = 0.5
+        presenter.progress.chapterTitle = "Chapter 42"
         XCTAssertEqual(presenter.progress.chapterOffset, 42, "PRECONDITION: chapterOffset seeded")
         XCTAssertEqual(presenter.progress.chapterTimeLeft, 30, "PRECONDITION: chapterTimeLeft seeded")
         XCTAssertEqual(presenter.progress.chapterProgress, 0.5, accuracy: 0.0001, "PRECONDITION: chapterProgress seeded")
+        XCTAssertEqual(presenter.progress.chapterTitle, "Chapter 42", "PRECONDITION: chapterTitle seeded")
 
         presenter.clearActiveSession()
+
+        XCTAssertEqual(presenter.progress.chapterTitle, "",
+                       "clearActiveSession must reset chapterTitle so the next book does not open showing the PRIOR book's chapter name beside its own zeroed timecodes")
 
         XCTAssertEqual(presenter.progress.chapterOffset, 0,
                        "clearActiveSession must reset chapterOffset to 0 so the next session's chapter time-elapsed label doesn't show the prior book's offset")

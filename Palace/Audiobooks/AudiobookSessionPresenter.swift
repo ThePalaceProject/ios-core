@@ -433,6 +433,11 @@ class AudiobookSessionPresenter: ObservableObject {
         progress.chapterOffset = 0
         progress.chapterTimeLeft = 0
         progress.chapterProgress = 0
+        // PP-5205: the NAME belongs to the same set as the offsets above. Its
+        // predecessor was nilled by `AudiobookSessionManager` at teardown, so this
+        // list never had to carry it; moving the source without moving the reset
+        // would have shown book A's chapter beside book B's zeroed timecodes.
+        progress.chapterTitle = ""
         overallDownloadProgress = 0
         isDownloading = false
         archiveProgress = nil
@@ -629,6 +634,8 @@ class AudiobookSessionPresenter: ObservableObject {
                 if let model = model {
                     self.progress.chapterOffset = model.chapterPlayheadOffset
                     self.progress.chapterTimeLeft = model.chapterTimeLeft
+                    // Same tick as the offsets, by construction — see `chapterTitle`.
+                    self.progress.chapterTitle = model.currentChapterTitle
                     // CHAPTER-relative scrubber progress. The toolkit slider is
                     // chapter-scoped: seekWithSlider seeks chapterStart + value *
                     // chapterDuration. `playbackProgress` above is BOOK-relative
@@ -748,6 +755,16 @@ final class AudiobookPlaybackProgress: ObservableObject {
     /// model's `chapterPlayheadOffset` / `chapterTimeLeft` on each position tick.
     @Published var chapterOffset: TimeInterval = 0
     @Published var chapterTimeLeft: TimeInterval = 0
+
+    /// The chapter NAME, mirrored from the toolkit model on the SAME tick as the
+    /// offsets above — deliberately, and this is the whole point of it living here.
+    ///
+    /// The player used to render the name from `AudiobookSessionManager.currentChapter`,
+    /// a cache written only from position events, while the timecodes beside it were
+    /// computed live. One fact, two readers, two latencies: choosing a chapter left
+    /// the name a seek behind the times printed next to it (PP-5205). Sharing a
+    /// writer is what makes that disagreement unrepresentable, rather than fixed.
+    @Published var chapterTitle: String = ""
 
     /// CHAPTER-relative scrubber progress (0…1 within the current chapter),
     /// mirrors the toolkit's `AudiobookPlaybackModel.playbackProgress`
