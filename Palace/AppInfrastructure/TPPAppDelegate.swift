@@ -35,6 +35,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     private var firstRunFlowObserver: NSObjectProtocol?
     private var hasPresentedFirstRunFlow = false
 
+    /// PP-5070 — when the first pre-configuration attempt of a launch began.
+    /// Bounds the wait for a managed install's configured library to appear in
+    /// the registry (see `ManagedLibraryPreconfigurator.registryWaitLimit`).
+    private var managedPreconfigurationStart: Date?
+
+    /// One deadline check per launch, not one per deferred attempt.
+    private var hasScheduledManagedPreconfigurationDeadline = false
+
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
@@ -626,6 +634,42 @@ extension TPPAppDelegate {
             firstRunFlowObserver = nil
         }
 
+        // PP-5070 — a managed install can be told which library to use before
+        // the student ever sees this picker. Attempted here rather than earlier
+        // in launch because resolving an identifier needs the registry, and we
+        // are past the deferred-load state by this line. Runs BEFORE the
+        // `needsAccount` guard so an MDM that changes its configuration after
+        // install can re-point a device that already has a library.
+        //
+        // Constructed here rather than held on `AppContainer`: the
+        // preconfigurator carries no state of its own (the applied fingerprint
+        // lives in `UserDefaults`), and building it inside AppContainer's own
+        // init would re-enter `AppContainer.production()`'s lock.
+        let preconfigurator = ManagedLibraryPreconfigurator.production()
+        let decision = preconfigurator.applyIfNeeded()
+        let start = managedPreconfigurationStart ?? Date()
+        managedPreconfigurationStart = start
+
+        switch ManagedLibraryPreconfigurator.launchStep(
+            for: decision,
+            elapsed: Date().timeIntervalSince(start)
+        ) {
+        case .libraryApplied:
+            hasPresentedFirstRunFlow = true
+            return
+        case .waitForRegistry:
+            // The configured library is not in the registry the app has loaded
+            // so far — on a cold first launch that is the build-time bundled
+            // snapshot, which does not contain it. Wait for the network crawl
+            // to supersede it rather than showing the picker this feature
+            // exists to remove. `hasPresentedFirstRunFlow` stays false, so the
+            // re-registered observer re-enters this method.
+            deferFirstRunFlowUntilRegistryChanges()
+            return
+        case .presentPicker:
+            break
+        }
+
         // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
         let needsAccount = (accountsManager.currentAccountId == nil)
         guard needsAccount else { return }
@@ -660,6 +704,33 @@ extension TPPAppDelegate {
         // the guard.
         hasPresentedFirstRunFlow = true
         top.present(nav, animated: true)
+    }
+
+    /// Re-arms the `.TPPCatalogDidLoad` observer so `presentFirstRunFlowIfNeeded`
+    /// runs again when the registry changes, and schedules one deadline check so
+    /// a device whose network never delivers a further load still reaches the
+    /// picker instead of sitting on an empty catalog forever.
+    private func deferFirstRunFlowUntilRegistryChanges() {
+        if let token = firstRunFlowObserver {
+            NotificationCenter.default.removeObserver(token)
+            firstRunFlowObserver = nil
+        }
+        firstRunFlowObserver = NotificationCenter.default.addObserver(
+            forName: .TPPCatalogDidLoad,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.presentFirstRunFlowIfNeeded()
+            }
+        }
+
+        guard !hasScheduledManagedPreconfigurationDeadline else { return }
+        hasScheduledManagedPreconfigurationDeadline = true
+        let delay = ManagedLibraryPreconfigurator.registryWaitLimit + 0.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.presentFirstRunFlowIfNeeded()
+        }
     }
 
     private func switchToCatalogTab() {
