@@ -70,6 +70,14 @@ and the audiobook area checklist, whose §7 traps 9-11 this changeset adds.
   test: `hasLocalFiles()` vs the consumer's `assetFileStatus()`; playback state vs
   queue state; queue contents vs whether navigation landed. Reverted, filed as
   PP-5213, recorded as a wall entry and as checklist traps 14-15.
+- **`applyLoadTimeoutArming(for:)` is reached by NO test.** It is private on the
+  View and driven only by `.onAppear` / `.onChange`, so deleting
+  `loadingTimedOut = false` from its `.cancelAndClearLatch` arm is still a green
+  mutant. The RULE it calls (`loadTimeoutAction(for:)`) is total and table-tested
+  over all five states; the CALL SITE needs a ViewInspector-class harness this repo
+  does not have. Recorded here rather than only in a commit stanza, because the
+  compensating control is a device cell and a reader needs both in one place:
+  streaming seek → local seek → pause 35s, expecting no "Audiobook Unavailable".
 - **The producer was mis-identified TWICE, and both wrong fixes are still in the
   diff because both are real.** First the toolkit's `AudiobookPlaybackModel` hold
   — armed by `selectedLocation`, which the toolkit's own TOC view uses. Then
@@ -146,8 +154,8 @@ DERIVED from `git diff origin/release/3.3.0...HEAD --name-only` plus
   teardown releases it. **Net CODE LOC: zero** — see "God-class freeze" below
 - `Palace/Audiobooks/ChapterNavigationHold.swift` — NEW: the hold's mechanism
   (target key + bound), extracted so the hub does not grow
-- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `1828d10`
-  (ThePalaceProject/ios-audiobooktoolkit#225 through #230). Branched from the SHA
+- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `d5a993b`
+  (ThePalaceProject/ios-audiobooktoolkit#225 through #231). Branched from the SHA
   `release/3.3.0` already pins, so the bump carries ONLY PP-5205 — toolkit `main`
   additionally holds #223 (readium pin by tag) and #224 (player localisation),
   neither of which is in this release candidate and neither of which this bump
