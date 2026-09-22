@@ -103,9 +103,6 @@ struct AudiobookMorphingPlayerView: View {
     /// (`:214`), with the comment "rapid re-presentations stack multiple timers".
     @State private var loadTimeoutWorkItem: DispatchWorkItem?
 
-    /// PP-5205: the delayed inline spinner and its own held work item.
-    @State private var showInlineSpinner = false
-    @State private var inlineSpinnerWorkItem: DispatchWorkItem?
 
     /// Transient toast (bookmark-added / playback error), mirroring the toolkit's
     /// `bookmarkAddedToastView` + `showToast` delay behavior.
@@ -832,11 +829,18 @@ struct AudiobookMorphingPlayerView: View {
         /// whether content is downloading (or the toolkit is buffering a
         /// locally-present book). Also the QA `forceSkeletons` inspection state.
         case skeleton
-        /// PP-5205: mid-session, the player is momentarily not loaded — a cross-track
-        /// seek, or iOS evicting the AVPlayer buffer on backgrounding. Render the
-        /// PLAYER with its transport controls live and no full-screen takeover, and
-        /// still arm the load timer so a genuine stall reaches `.loadError`.
-        case inlineIndicator
+        /// PP-5205: mid-session the player is momentarily not loaded — a cross-track
+        /// seek, or iOS evicting the AVPlayer buffer on backgrounding. Draw NOTHING:
+        /// the player underneath keeps its transport controls live. The load timer is
+        /// still armed, so a genuine stall reaches `.loadError`.
+        ///
+        /// No spinner, deliberately. One was tried on-device and read as unexplained
+        /// chrome beside working controls — it cannot say what it is waiting for, and
+        /// for a downloaded book the honest answer ("re-queueing this track from
+        /// streaming to local") is not something to put in front of a patron. If the
+        /// wait is long enough to need explaining, that is the toolkit's lazy requeue
+        /// to fix, not a spinner to add.
+        case awaitingReload
     }
 
     /// Pure decision for which loading presentation to show. Kept free of view
@@ -864,7 +868,7 @@ struct AudiobookMorphingPlayerView: View {
     /// the same mistake `AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar`
     /// documents one layer down and already avoids.
     ///
-    /// `.inlineIndicator` rather than `.hidden` is load-bearing. `loadingTimedOut` is
+    /// `.awaitingReload` rather than `.hidden` is load-bearing. `loadingTimedOut` is
     /// armed only from the `.onAppear` of a not-usable state, so returning `.hidden`
     /// would render `EmptyView`, never arm the timer, and make `.loadError`
     /// UNREACHABLE for the rest of the session — a dead player behind working-looking
@@ -888,7 +892,7 @@ struct AudiobookMorphingPlayerView: View {
         // the 30s error. `testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout`
         // caught it.
         if hasStartedPlayback {
-            return loadingTimedOut ? .loadError : .inlineIndicator
+            return loadingTimedOut ? .loadError : .awaitingReload
         }
 
         // PRE-PLAYBACK — unchanged. The patron is genuinely blocked here, and a
@@ -901,10 +905,10 @@ struct AudiobookMorphingPlayerView: View {
     /// Which states arm the load-error timer: the ones meaning "the player is not
     /// usable yet". Pure so the table can assert it — an arming rule that lives only
     /// inside a `.onChange` closure cannot be enumerated, and the cell that matters
-    /// (`.inlineIndicator` DOES arm) is the one that closes PP-5205's F1 hole.
+    /// (`.awaitingReload` DOES arm) is the one that closes PP-5205's F1 hole.
     nonisolated static func stateArmsLoadTimeout(_ state: LoadingOverlayState) -> Bool {
         switch state {
-        case .skeleton, .downloading, .inlineIndicator: return true
+        case .skeleton, .downloading, .awaitingReload: return true
         case .hidden, .loadError: return false
         }
     }
@@ -912,11 +916,11 @@ struct AudiobookMorphingPlayerView: View {
     /// Arms the 30s load-error timer, cancelling any prior one.
     ///
     /// Single arming site for every "player not usable yet" state, so `.skeleton` and
-    /// `.inlineIndicator` cannot drift apart — the drift being that one of them stops
+    /// `.awaitingReload` cannot drift apart — the drift being that one of them stops
     /// arming and `.loadError` silently becomes unreachable from that state.
     ///
     /// PP-5205 (F13): the prior timer is CANCELLED. This was a bare `asyncAfter` with
-    /// no handle, so each re-entry stacked another live timer; with `.inlineIndicator`
+    /// no handle, so each re-entry stacked another live timer; with `.awaitingReload`
     /// arming on every mid-session track change, stacking would have become the
     /// dominant behaviour rather than an edge case.
     ///
@@ -939,15 +943,6 @@ struct AudiobookMorphingPlayerView: View {
         loadTimeoutWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: work)
 
-        // Delayed spinner: a normal cross-track seek completes in 1-3s, and an
-        // immediate spinner on that flow is a new visible behaviour on exactly the
-        // journey the report is about. Held + cancelled on the same pattern as the
-        // timer above, so it cannot stack either.
-        showInlineSpinner = false
-        inlineSpinnerWorkItem?.cancel()
-        let spinner = DispatchWorkItem { showInlineSpinner = true }
-        inlineSpinnerWorkItem = spinner
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: spinner)
     }
 
     /// Cancels both timers. Called when the state leaves the arming set — notably on
@@ -956,30 +951,6 @@ struct AudiobookMorphingPlayerView: View {
     private func cancelLoadTimeout() {
         loadTimeoutWorkItem?.cancel()
         loadTimeoutWorkItem = nil
-        inlineSpinnerWorkItem?.cancel()
-        inlineSpinnerWorkItem = nil
-        showInlineSpinner = false
-    }
-
-    /// PP-5205: a small non-blocking affordance drawn OVER the live player, never
-    /// instead of it. Empty until the seek has visibly dragged.
-    @ViewBuilder
-    private var inlineReloadIndicator: some View {
-        if showInlineSpinner {
-            VStack {
-                Spacer()
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(.white)
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.bottom, 24)
-                    .accessibilityLabel(Strings.Generic.audiobookDownloading)
-            }
-            .transition(.opacity)
-        } else {
-            EmptyView()
-        }
     }
 
     /// Whether the 30s load-error timer, once fired, should actually surface the
@@ -1029,7 +1000,7 @@ struct AudiobookMorphingPlayerView: View {
     /// Arming is a property of WHICH STATE we are in, not of which branch happened to
     /// draw — which is what the `loadingTimedOut` doc comment always claimed. Per-case
     /// `.onAppear` would duplicate reset + arm + cancel across `.skeleton` and
-    /// `.inlineIndicator` and re-open "which branch cancelled it, and did disappear
+    /// `.awaitingReload` and re-open "which branch cancelled it, and did disappear
     /// precede appear".
     ///
     /// Keyed on the ENUM rather than `!isLoaded`: the enum already folds in
@@ -1084,12 +1055,11 @@ struct AudiobookMorphingPlayerView: View {
             .accessibilityElement(children: .contain)
             case .skeleton:
             playerLoadingSkeleton
-            case .inlineIndicator:
-            // PP-5205: the player underneath stays on screen with its transport
-            // controls live. The spinner is DELAYED (see `showInlineSpinner`) so a
-            // normal 1-3s seek shows nothing at all — which is the behaviour the
-            // report asks for — while a seek that drags still says something.
-            inlineReloadIndicator
+            case .awaitingReload:
+            // PP-5205: draw nothing. The player underneath stays on screen with its
+            // transport controls live, which is the whole point. A spinner was tried
+            // on-device and read as unexplained chrome beside working controls.
+            EmptyView()
         }
     }
 

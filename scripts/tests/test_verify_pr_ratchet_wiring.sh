@@ -7,6 +7,7 @@
 #   check-godclass-loc-freeze.sh          (whole-tree, baseline)
 #   check-shared-read-count.sh            (whole-tree, baseline)
 #   check-completion-isolation.py         (diff-scoped, file paths)
+#   check-playback-ui-latch.py            (whole-tree, optional root arg)
 #
 # WHY THIS TEST EXISTS. All four shipped with baselines and pytests and were
 # invoked by NOTHING — a 2026-08-20 audit found them reachable from no hook, no
@@ -39,7 +40,8 @@ echo "1. detectors referenced by verify-pr.sh"
 for d in check-appcontainer-locator-count.sh \
          check-godclass-loc-freeze.sh \
          check-shared-read-count.sh \
-         check-completion-isolation.py; do
+         check-completion-isolation.py \
+         check-playback-ui-latch.py; do
   grep -qF "$d" "$VERIFY" || fail "$d is not referenced by verify-pr.sh (orphaned again)"
   pass "$d is wired"
 done
@@ -47,7 +49,7 @@ done
 # The record() keys must exist too — a detector can be mentioned in a comment
 # while its block is unreachable. Ratchet detectors trip on comment mentions
 # (memory `ratchet-detectors-count-comment-mentions`), so assert the real keys.
-for key in '"decomposition_ratchets"' '"completion_isolation"'; do
+for key in '"decomposition_ratchets"' '"completion_isolation"' '"playback_ui_latch"'; do
   grep -qF "record $key" "$VERIFY" || fail "no record() call for $key in verify-pr.sh"
   pass "record() key $key present"
 done
@@ -138,6 +140,46 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 3d. playback-ui-latch is WHOLE-TREE and takes an optional ROOT, not file paths.
+#     verify-pr.sh calls it with no arguments, so the clean assertion below uses
+#     exactly that form — a detector that silently required a `--diff` it never
+#     receives would look wired and catch nothing.
+# ---------------------------------------------------------------------------
+echo "3d. playback-ui-latch — no-argument whole-tree interface, both directions"
+PL="$REPO_ROOT/scripts/check-playback-ui-latch.py"
+[ -f "$PL" ] || fail "check-playback-ui-latch.py missing"
+
+if ( cd "$REPO_ROOT" && python3 "$PL" >/dev/null 2>&1 ); then
+  pass "no-argument run exits 0 on the current tree"
+else
+  fail "check-playback-ui-latch.py exits non-zero on the current tree with the interface verify-pr.sh uses — it would block every PR."
+fi
+
+# A violating predicate under a throwaway root: a blocking UI state derived from
+# a live readiness signal with no hasStartedPlayback latch (PP-5205).
+mkdir -p "$TMPDIR/root/Palace/Fake"
+cat > "$TMPDIR/root/Palace/Fake/Overlay.swift" <<'EOF'
+import Foundation
+
+enum FakeOverlayState { case hidden, spinner }
+
+enum FakeOverlayPolicy {
+    static func overlayState(
+        isLoaded: Bool,
+        isDownloading: Bool
+    ) -> FakeOverlayState {
+        isLoaded ? .hidden : .spinner
+    }
+}
+EOF
+
+if python3 "$PL" "$TMPDIR/root" >/dev/null 2>&1; then
+  fail "an unlatched blocking overlay predicate was NOT flagged — the detector is wired but toothless"
+else
+  pass "unlatched blocking overlay predicate exits non-zero"
+fi
+
+# ---------------------------------------------------------------------------
 # 4. verify-pr.sh still parses.
 # ---------------------------------------------------------------------------
 # NOTE: the aggregation's BEHAVIOUR is asserted in
@@ -152,5 +194,26 @@ echo "4. verify-pr.sh syntax"
 bash -n "$VERIFY" || fail "verify-pr.sh does not parse"
 pass "bash -n clean"
 
+# ---------------------------------------------------------------------------
+# 5. `--base <ref>` is PARSED, not swallowed by the catch-all.
+#
+#    The arg loop ends in `*) shift ;;`, so an unrecognised flag is silently
+#    dropped — a caller who passes `--base` at a branch off a release line would
+#    get the develop-based diff anyway, and every diff-scoped gate would judge
+#    the wrong range while reporting a clean run. The unresolvable-ref arm exits
+#    2 before any build, which is what makes this assertable cheaply: if the flag
+#    were being dropped, the run would proceed instead of exiting 2.
+# ---------------------------------------------------------------------------
+echo "5. --base is parsed"
+# `set -e` is on: a bare failing subshell aborts this script before the status
+# can be read, which looked exactly like the assertion passing.
+BASE_RC=0
+( cd "$REPO_ROOT" && bash "$VERIFY" --base definitely-not-a-ref >/dev/null 2>&1 ) || BASE_RC=$?
+if [ "$BASE_RC" -eq 2 ]; then
+  pass "--base with an unresolvable ref exits 2 (flag reached the parser)"
+else
+  fail "--base with an unresolvable ref exited $BASE_RC, not 2 — the flag is being swallowed by the catch-all arm, so a release-branch PR would silently be diffed against develop."
+fi
+
 echo
-echo "PASS: all four detectors are wired, and both the clean and violating paths behave."
+echo "PASS: all five detectors are wired, both directions behave, and --base is parsed."

@@ -148,6 +148,7 @@ while [[ $# -gt 0 ]]; do
     --mutation-only) MUTATION_ONLY=true; QUICK=false; shift ;;
     --mutation-min-kill-rate) MUTATION_MIN_KILL_RATE="$2"; shift 2 ;;
     --mutation-whole-file) MUTATION_WHOLE_FILE=true; shift ;;
+    --base) BASE_OVERRIDE="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -170,7 +171,18 @@ detect_base_branch() {
   echo "HEAD~10"
 }
 
-BASE=$(detect_base_branch)
+# `--base <ref>` overrides the detected base. Needed because `detect_base_branch`
+# answers "which integration branch does this repo have", not "which one is this
+# branch off". A PR onto `release/X.Y.Z` diffed against `origin/develop` picks up
+# every commit the release branch carries: PP-5205 read as 51 changed production
+# files across four unrelated tickets, and every diff-scoped gate below
+# (intent, signing, doc-hygiene, superpartner, blast-radius) judged that diff
+# instead of the branch's own. The default is unchanged; this is opt-in.
+BASE=${BASE_OVERRIDE:-$(detect_base_branch)}
+if ! git rev-parse --verify "$BASE" &>/dev/null; then
+  echo "verify-pr: --base '$BASE' is not a resolvable ref" >&2
+  exit 2
+fi
 XCODEBUILD_BIN="${XCODEBUILD_BIN:-$(command -v xcodebuild)}"
 
 # Re-run the named test classes at the merge-base, in a throwaway worktree, and
@@ -769,6 +781,27 @@ elif [ -f scripts/check-no-committed-signing.sh ]; then
   fi
 else
   record "committed_signing" "skip" "check-no-committed-signing.sh not found"
+fi
+
+# 3b1a. Playback-UI latch — a BLOCKING audiobook UI state must not be derived from
+# a live readiness signal (isLoaded / isBuffering / isDownloading / isPlaying)
+# without the `hasStartedPlayback` session-phase latch. Whole-tree, NOT diff-based:
+# the class is a missing parameter, so a predicate goes wrong when a CALLER starts
+# passing a live signal, in a commit that need not touch the predicate's file.
+# See `scripts/check-playback-ui-latch.py` (PP-5205).
+echo "--- Playback-UI latch ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "playback_ui_latch" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-playback-ui-latch.py ]; then
+  PL_OUT=$(python3 scripts/check-playback-ui-latch.py 2>&1)
+  PL_RC=$?
+  if [ "$PL_RC" -eq 0 ]; then
+    record "playback_ui_latch" "pass" "No unlatched blocking playback UI predicate"
+  else
+    record "playback_ui_latch" "fail" "$(echo "$PL_OUT" | grep -m1 -E '^  .*\.swift:' || echo "$PL_OUT" | head -1)"
+  fi
+else
+  record "playback_ui_latch" "skip" "check-playback-ui-latch.py not found"
 fi
 
 # 3b2. Doc-hygiene — only commit docs that explain the code's what/why, never

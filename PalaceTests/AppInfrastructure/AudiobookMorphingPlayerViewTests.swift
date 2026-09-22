@@ -389,7 +389,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     func testMidSessionTrackChange_doesNotTakeOverTheScreen() {
         XCTAssertEqual(
             state(loaded: false, downloading: true, timedOut: false, started: true),
-            .inlineIndicator,
+            .awaitingReload,
             "A chapter seek on a book already playing must leave the player on screen. `.downloading` here is PP-5205: the patron sees a Downloading panel and hears the audio stop on a book they were listening to."
         )
     }
@@ -452,7 +452,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                         let got = state(loaded: loaded, downloading: downloading, timedOut: timedOut, started: started)
                         let want: Overlay
                         if loaded { want = .hidden }
-                        else if started { want = timedOut ? .loadError : .inlineIndicator }
+                        else if started { want = timedOut ? .loadError : .awaitingReload }
                         else if downloading { want = .downloading }
                         else if timedOut { want = .loadError }
                         else { want = .skeleton }
@@ -481,9 +481,9 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
 
     /// The arming rule is what closes F1, so it is asserted rather than left inside a
     /// `.onChange` closure where nothing could reach it.
-    func testArmingSet_inlineIndicatorArmsTheTimer() {
-        XCTAssertTrue(V.stateArmsLoadTimeout(.inlineIndicator),
-                      "F1: if `.inlineIndicator` stops arming, `.loadError` becomes unreachable for the rest of the session and a dead player shows the patron nothing.")
+    func testArmingSet_awaitingReloadArmsTheTimer() {
+        XCTAssertTrue(V.stateArmsLoadTimeout(.awaitingReload),
+                      "F1: if `.awaitingReload` stops arming, `.loadError` becomes unreachable for the rest of the session and a dead player shows the patron nothing.")
         XCTAssertTrue(V.stateArmsLoadTimeout(.skeleton))
         XCTAssertTrue(V.stateArmsLoadTimeout(.downloading))
         XCTAssertFalse(V.stateArmsLoadTimeout(.hidden),
@@ -495,9 +495,9 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// Every state is covered by the arming rule — a state added later without a
     /// decision here silently inherits `false` and takes its failure path with it.
     func testArmingSet_coversEveryState() {
-        let all: [V.LoadingOverlayState] = [.hidden, .downloading, .loadError, .skeleton, .inlineIndicator]
+        let all: [V.LoadingOverlayState] = [.hidden, .downloading, .loadError, .skeleton, .awaitingReload]
         let arming = all.filter(V.stateArmsLoadTimeout)
-        XCTAssertEqual(Set(arming), Set([.skeleton, .downloading, .inlineIndicator]),
+        XCTAssertEqual(Set(arming), Set([.skeleton, .downloading, .awaitingReload]),
                        "arming set changed — confirm the new membership is deliberate, because this is the rule that keeps `.loadError` reachable")
     }
 
