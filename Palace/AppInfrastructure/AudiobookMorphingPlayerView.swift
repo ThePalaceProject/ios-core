@@ -83,9 +83,29 @@ struct AudiobookMorphingPlayerView: View {
     /// matchedGeometry morph, not this appear animation.
     @State private var hasAppeared = false
 
-    /// Loading-timeout state: while `!isLoaded`, a 30s timer arms; on expiry we
-    /// flip to the error+retry overlay (mirrors toolkit `loadingTimedOut`).
+    /// Loading-timeout state: on expiry we flip to the error+retry overlay
+    /// (mirrors toolkit `loadingTimedOut`).
+    ///
+    /// The timer is armed by `armLoadTimeout()`, called from the `.onAppear` of the
+    /// states that represent "player not usable yet" — NOT by any hook on `isLoaded`.
+    /// This comment previously claimed "while `!isLoaded`, a 30s timer arms", which no
+    /// code implements: there is no `.onChange(of:)`/`.task`/`.onReceive` on `isLoaded`
+    /// anywhere in this file. That prose is what sent PP-5205's first analysis down the
+    /// wrong path, so it is corrected rather than deleted.
     @State private var loadingTimedOut = false
+
+    /// PP-5205 (F13): the 30s timer, held so a re-arm can CANCEL the prior one.
+    ///
+    /// It used to be a bare `DispatchQueue.main.asyncAfter` with no handle, so every
+    /// re-entry stacked another live timer — the "repeats every time" in the report.
+    /// The toolkit fixed this identical bug one layer down and is the model here:
+    /// `LCPStreamingPlayer` holds `loadTimeoutWorkItem` and cancels it on re-arm
+    /// (`:214`), with the comment "rapid re-presentations stack multiple timers".
+    @State private var loadTimeoutWorkItem: DispatchWorkItem?
+
+    /// PP-5205: the delayed inline spinner and its own held work item.
+    @State private var showInlineSpinner = false
+    @State private var inlineSpinnerWorkItem: DispatchWorkItem?
 
     /// Transient toast (bookmark-added / playback error), mirroring the toolkit's
     /// `bookmarkAddedToastView` + `showToast` delay behavior.
@@ -812,6 +832,11 @@ struct AudiobookMorphingPlayerView: View {
         /// whether content is downloading (or the toolkit is buffering a
         /// locally-present book). Also the QA `forceSkeletons` inspection state.
         case skeleton
+        /// PP-5205: mid-session, the player is momentarily not loaded — a cross-track
+        /// seek, or iOS evicting the AVPlayer buffer on backgrounding. Render the
+        /// PLAYER with its transport controls live and no full-screen takeover, and
+        /// still arm the load timer so a genuine stall reaches `.loadError`.
+        case inlineIndicator
     }
 
     /// Pure decision for which loading presentation to show. Kept free of view
@@ -824,17 +849,137 @@ struct AudiobookMorphingPlayerView: View {
     /// determinate downloading state (BEFORE the load-error check, so a slow
     /// download never trips the 30s error); a timed-out non-downloading load
     /// shows the error; everything else is the transient skeleton.
+    /// PP-5205: `hasStartedPlayback` has NO default. A `= false` would let the call
+    /// site compile unchanged and silently preserve the defect.
+    ///
+    /// Once playback has begun in this session, `isLoaded == false` means "changing
+    /// tracks" or "buffer evicted", NOT "no player yet" —
+    /// `LCPStreamingPlayer.play(at:)` drops it on every cross-track seek (`:204`,
+    /// "Only show loading state for heavy operations"), and
+    /// `AudiobookSessionPresenter:601` records iOS doing the same on backgrounding.
+    /// Taking over the screen there replaced a playing book with a Downloading
+    /// panel and read as though the audio had broken.
+    ///
+    /// Latched, not live: `isPlaying` would re-summon the takeover on every pause —
+    /// the same mistake `AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar`
+    /// documents one layer down and already avoids.
+    ///
+    /// `.inlineIndicator` rather than `.hidden` is load-bearing. `loadingTimedOut` is
+    /// armed only from the `.onAppear` of a not-usable state, so returning `.hidden`
+    /// would render `EmptyView`, never arm the timer, and make `.loadError`
+    /// UNREACHABLE for the rest of the session — a dead player behind working-looking
+    /// chrome, with no error and no Retry. The latch suppresses the takeover; it must
+    /// never suppress the failure path.
     nonisolated static func loadingOverlayState(
         isLoaded: Bool,
         isDownloading: Bool,
         loadingTimedOut: Bool,
+        hasStartedPlayback: Bool,
         forceSkeletons: Bool
     ) -> LoadingOverlayState {
         if forceSkeletons { return .skeleton }
         guard !isLoaded else { return .hidden }
+
+        // MID-SESSION. Never take over the screen — but a genuine stall must still
+        // reach the error, or the latch would hide the failure as well as the
+        // takeover. Kept as its own branch rather than a reordering: an earlier
+        // revision moved the timeout check above `isDownloading` globally and broke
+        // the pre-playback rule that a healthy multi-minute download must not trip
+        // the 30s error. `testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout`
+        // caught it.
+        if hasStartedPlayback {
+            return loadingTimedOut ? .loadError : .inlineIndicator
+        }
+
+        // PRE-PLAYBACK — unchanged. The patron is genuinely blocked here, and a
+        // download in flight is healthy progress that outranks the timeout.
         if isDownloading { return .downloading }
         if loadingTimedOut { return .loadError }
         return .skeleton
+    }
+
+    /// Which states arm the load-error timer: the ones meaning "the player is not
+    /// usable yet". Pure so the table can assert it — an arming rule that lives only
+    /// inside a `.onChange` closure cannot be enumerated, and the cell that matters
+    /// (`.inlineIndicator` DOES arm) is the one that closes PP-5205's F1 hole.
+    nonisolated static func stateArmsLoadTimeout(_ state: LoadingOverlayState) -> Bool {
+        switch state {
+        case .skeleton, .downloading, .inlineIndicator: return true
+        case .hidden, .loadError: return false
+        }
+    }
+
+    /// Arms the 30s load-error timer, cancelling any prior one.
+    ///
+    /// Single arming site for every "player not usable yet" state, so `.skeleton` and
+    /// `.inlineIndicator` cannot drift apart — the drift being that one of them stops
+    /// arming and `.loadError` silently becomes unreachable from that state.
+    ///
+    /// PP-5205 (F13): the prior timer is CANCELLED. This was a bare `asyncAfter` with
+    /// no handle, so each re-entry stacked another live timer; with `.inlineIndicator`
+    /// arming on every mid-session track change, stacking would have become the
+    /// dominant behaviour rather than an edge case.
+    ///
+    /// The fire-time predicate re-reads live state on purpose: a seek that completes
+    /// normally in 1-3s leaves `isLoaded == true`, so `shouldSurfaceLoadTimeout`
+    /// returns false and no error is shown. The timer is a backstop for a genuine
+    /// stall, not a deadline on the seek.
+    @MainActor
+    private func armLoadTimeout() {
+        loadingTimedOut = false
+        loadTimeoutWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            if Self.shouldSurfaceLoadTimeout(
+                isLoaded: audiobookSession.isLoaded,
+                isDownloading: presenter.isDownloading
+            ) {
+                loadingTimedOut = true
+            }
+        }
+        loadTimeoutWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: work)
+
+        // Delayed spinner: a normal cross-track seek completes in 1-3s, and an
+        // immediate spinner on that flow is a new visible behaviour on exactly the
+        // journey the report is about. Held + cancelled on the same pattern as the
+        // timer above, so it cannot stack either.
+        showInlineSpinner = false
+        inlineSpinnerWorkItem?.cancel()
+        let spinner = DispatchWorkItem { showInlineSpinner = true }
+        inlineSpinnerWorkItem = spinner
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: spinner)
+    }
+
+    /// Cancels both timers. Called when the state leaves the arming set — notably on
+    /// reaching `.hidden`, i.e. the seek completed, which is the common case.
+    @MainActor
+    private func cancelLoadTimeout() {
+        loadTimeoutWorkItem?.cancel()
+        loadTimeoutWorkItem = nil
+        inlineSpinnerWorkItem?.cancel()
+        inlineSpinnerWorkItem = nil
+        showInlineSpinner = false
+    }
+
+    /// PP-5205: a small non-blocking affordance drawn OVER the live player, never
+    /// instead of it. Empty until the seek has visibly dragged.
+    @ViewBuilder
+    private var inlineReloadIndicator: some View {
+        if showInlineSpinner {
+            VStack {
+                Spacer()
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .tint(.white)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, 24)
+                    .accessibilityLabel(Strings.Generic.audiobookDownloading)
+            }
+            .transition(.opacity)
+        } else {
+            EmptyView()
+        }
     }
 
     /// Whether the 30s load-error timer, once fired, should actually surface the
@@ -878,59 +1023,85 @@ struct AudiobookMorphingPlayerView: View {
         isBound ? sessionRate : fallback
     }
 
-    @ViewBuilder
-    private var loadingOverlay: some View {
-        switch Self.loadingOverlayState(
+    /// PP-5205 (A1): the state is bound ONCE and arming is keyed on it via
+    /// `.onChange`, not scattered through the case bodies.
+    ///
+    /// Arming is a property of WHICH STATE we are in, not of which branch happened to
+    /// draw — which is what the `loadingTimedOut` doc comment always claimed. Per-case
+    /// `.onAppear` would duplicate reset + arm + cancel across `.skeleton` and
+    /// `.inlineIndicator` and re-open "which branch cancelled it, and did disappear
+    /// precede appear".
+    ///
+    /// Keyed on the ENUM rather than `!isLoaded`: the enum already folds in
+    /// `forceSkeletons` and a fired timeout, so `.downloading` stays suppressed without
+    /// re-deriving the guard.
+    ///
+    /// Caveat, recorded so it is not "fixed" later: `isLoaded` is NOT `@Published`
+    /// (`AudiobookSessionManager:1176` — the view re-reads it on `isPlaying`/position
+    /// ticks), so arm/cancel lands on the next render tick rather than the instant of
+    /// the flip. That is acceptable ONLY because the fire-time predicate re-reads live
+    /// state and self-disarms; publishing `isLoaded` to "fix" the latency would change
+    /// behaviour this design depends on.
+    private var loadingOverlayCurrentState: LoadingOverlayState {
+        Self.loadingOverlayState(
             isLoaded: audiobookSession.isLoaded,
             isDownloading: presenter.isDownloading,
             loadingTimedOut: loadingTimedOut,
+            hasStartedPlayback: presenter.hasStartedPlayback,
             forceSkeletons: DebugSettings.forceSkeletons
-        ) {
+        )
+    }
+
+    @ViewBuilder
+    private var loadingOverlayContent: some View {
+        switch loadingOverlayCurrentState {
         case .hidden:
             EmptyView()
         case .downloading:
             playerDownloadingOverlay
         case .loadError:
             ZStack {
-                Color.black.opacity(0.5).ignoresSafeArea()
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40)).foregroundStyle(.yellow)
-                    Text(Strings.Generic.audiobookLoadErrorTitle)
-                        .foregroundStyle(.white).font(.headline)
-                    Text(Strings.Generic.audiobookLoadErrorMessage)
-                        .foregroundStyle(.white).multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                    Button {
-                        loadingTimedOut = false
-                        audiobookSession.play()
-                    } label: {
-                        Text(Strings.Generic.audiobookRetry)
-                            .fontWeight(.semibold).foregroundStyle(.black)
-                            .padding(.horizontal, 32).padding(.vertical, 10)
-                            .background(Color.white).cornerRadius(8)
-                    }
+            Color.black.opacity(0.5).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 40)).foregroundStyle(.yellow)
+                Text(Strings.Generic.audiobookLoadErrorTitle)
+                    .foregroundStyle(.white).font(.headline)
+                Text(Strings.Generic.audiobookLoadErrorMessage)
+                    .foregroundStyle(.white).multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                Button {
+                    loadingTimedOut = false
+                    audiobookSession.play()
+                } label: {
+                    Text(Strings.Generic.audiobookRetry)
+                        .fontWeight(.semibold).foregroundStyle(.black)
+                        .padding(.horizontal, 32).padding(.vertical, 10)
+                        .background(Color.white).cornerRadius(8)
                 }
             }
+            }
             .accessibilityElement(children: .contain)
-        case .skeleton:
+            case .skeleton:
             playerLoadingSkeleton
-                .onAppear {
-                    // Arm the 30s timeout; reset on (re)appear (mirrors toolkit).
-                    // Suppressed while a download is in flight (see
-                    // `shouldSurfaceLoadTimeout`) so a healthy multi-minute
-                    // content download can't false-trip the load-error overlay.
-                    loadingTimedOut = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-                        if Self.shouldSurfaceLoadTimeout(
-                            isLoaded: audiobookSession.isLoaded,
-                            isDownloading: presenter.isDownloading
-                        ) {
-                            loadingTimedOut = true
-                        }
-                    }
-                }
+            case .inlineIndicator:
+            // PP-5205: the player underneath stays on screen with its transport
+            // controls live. The spinner is DELAYED (see `showInlineSpinner`) so a
+            // normal 1-3s seek shows nothing at all — which is the behaviour the
+            // report asks for — while a seek that drags still says something.
+            inlineReloadIndicator
         }
+    }
+
+    private var loadingOverlay: some View {
+        loadingOverlayContent
+            .onChange(of: loadingOverlayCurrentState) { newState in
+                if Self.stateArmsLoadTimeout(newState) {
+                    armLoadTimeout()
+                } else {
+                    cancelLoadTimeout()
+                }
+            }
     }
 
     /// Determinate "Downloading…" state shown while the `.lcpa` content is still
