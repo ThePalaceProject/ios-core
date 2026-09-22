@@ -531,6 +531,25 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                       "and recovery is `.hidden`, so that is where the latch has to be dropped")
     }
 
+    /// The combination, as one table. The two predicates above are now derived from
+    /// this, so they cannot disagree with it — and a sixth state is a compile error
+    /// in `loadTimeoutAction`, not a silently-inherited default.
+    func testLoadTimeoutAction_fullTable() {
+        let expected: [V.LoadingOverlayState: V.LoadTimeoutAction] = [
+            .skeleton: .arm,
+            .downloading: .arm,
+            .awaitingReload: .arm,
+            .hidden: .cancelAndClearLatch,
+            .loadError: .cancel,
+        ]
+        XCTAssertEqual(expected.count, V.LoadingOverlayState.allCases.count,
+                       "a state was added — give it a row here deliberately")
+        for state in V.LoadingOverlayState.allCases {
+            XCTAssertEqual(V.loadTimeoutAction(for: state), expected[state],
+                           "wrong timer action for \(state)")
+        }
+    }
+
     func testArmingSet_coversEveryState() {
         // `allCases`, NOT a hand-written array. The previous version listed the five
         // states by hand, so a sixth added later would have been absent from both the

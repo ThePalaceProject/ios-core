@@ -18,9 +18,13 @@ and the audiobook area checklist, whose §7 traps 9-11 this changeset adds.
   "Downloading…" state. The overlay's decision now takes `hasStartedPlayback`, so
   a live readiness signal going false MID-SESSION is distinguishable from the
   pre-playback window.
-- A seek to a chapter whose audio is already on disk does not mute the player,
-  does not publish `isLoaded = false`, and arms no load timeout — there is
-  nothing for the patron to wait on. A seek to a track still being STREAMED keeps
+- A seek to a chapter whose audio is already on disk does not mute the player and
+  does not publish `isLoaded = false` — there is nothing for the patron to wait on.
+  It still arms a BACKSTOP when the queue needs rebuilding, keyed on whether the
+  target item ever started rather than on `isLoaded`, because that branch sets
+  `isLoaded = true` deliberately and an `isLoaded`-keyed guard could never fire
+  there. Without it a failed rebuild was indistinguishable from a successful one:
+  no alert, no Retry, host open lock never released (#228). A seek to a track still being STREAMED keeps
   the previous behaviour exactly, mute included.
 - A load timeout armed by an earlier streaming seek cannot fire over a
   subsequent local seek and surface "Audiobook Unavailable" on a book playing
@@ -130,8 +134,8 @@ DERIVED from `git diff origin/release/3.3.0...HEAD --name-only` plus
   teardown releases it. **Net CODE LOC: zero** — see "God-class freeze" below
 - `Palace/Audiobooks/ChapterNavigationHold.swift` — NEW: the hold's mechanism
   (target key + bound), extracted so the hub does not grow
-- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `5a452cc`
-  (ThePalaceProject/ios-audiobooktoolkit#225, #226 and #227). Branched from the SHA
+- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `3871680`
+  (ThePalaceProject/ios-audiobooktoolkit#225, #226, #227 and #228). Branched from the SHA
   `release/3.3.0` already pins, so the bump carries ONLY PP-5205 — toolkit `main`
   additionally holds #223 (readium pin by tag) and #224 (player localisation),
   neither of which is in this release candidate and neither of which this bump

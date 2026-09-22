@@ -909,10 +909,7 @@ struct AudiobookMorphingPlayerView: View {
     /// inside a `.onChange` closure cannot be enumerated, and the cell that matters
     /// (`.awaitingReload` DOES arm) is the one that closes PP-5205's F1 hole.
     nonisolated static func stateArmsLoadTimeout(_ state: LoadingOverlayState) -> Bool {
-        switch state {
-        case .skeleton, .downloading, .awaitingReload: return true
-        case .hidden, .loadError: return false
-        }
+        loadTimeoutAction(for: state) == .arm
     }
 
     /// Arms the 30s load-error timer, cancelling any prior one.
@@ -1087,11 +1084,40 @@ struct AudiobookMorphingPlayerView: View {
     /// The single arming decision, so the birth hook and the transition hook cannot
     /// drift apart — the way they did when only one of them existed.
     private func applyLoadTimeoutArming(for state: LoadingOverlayState) {
-        if Self.stateArmsLoadTimeout(state) {
+        switch Self.loadTimeoutAction(for: state) {
+        case .arm:
             armLoadTimeout()
-        } else {
+        case .cancel:
             cancelLoadTimeout()
-            if Self.stateClearsTimeoutLatch(state) { loadingTimedOut = false }
+        case .cancelAndClearLatch:
+            cancelLoadTimeout()
+            loadingTimedOut = false
+        }
+    }
+
+    /// What reaching `state` must do to the load-error timer and its latch.
+    ///
+    /// One TOTAL function rather than two predicates consulted in sequence. The
+    /// sequence version had a real hole: a reviewer pointed out that deleting the
+    /// latch-clearing line left every test green, because each predicate was asserted
+    /// in isolation and nothing asserted how they COMBINE. A `switch` over this makes
+    /// the combination exhaustive at compile time, and a sixth state a build error
+    /// rather than a silently-inherited default — which is trap 12's shape appearing
+    /// inside trap 12's own fix.
+    enum LoadTimeoutAction: Equatable { case arm, cancel, cancelAndClearLatch }
+
+    nonisolated static func loadTimeoutAction(for state: LoadingOverlayState) -> LoadTimeoutAction {
+        switch state {
+        // Not usable yet: arm. `armLoadTimeout` resets the latch itself.
+        case .skeleton, .downloading, .awaitingReload:
+            return .arm
+        // The player became usable, so a latched failure is genuinely over.
+        case .hidden:
+            return .cancelAndClearLatch
+        // Cancel, but KEEP the latch — clearing here would flicker the error off the
+        // frame it appeared on.
+        case .loadError:
+            return .cancel
         }
     }
 
@@ -1114,7 +1140,7 @@ struct AudiobookMorphingPlayerView: View {
     /// PERSISTENCE is a fifth dimension that table does not carry, which is why this
     /// is a separate rule with its own assertions rather than another cell.
     nonisolated static func stateClearsTimeoutLatch(_ state: LoadingOverlayState) -> Bool {
-        state == .hidden
+        loadTimeoutAction(for: state) == .cancelAndClearLatch
     }
 
     /// Determinate "Downloading…" state shown while the `.lcpa` content is still
