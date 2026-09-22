@@ -24,11 +24,11 @@ and the audiobook area checklist, whose §7 traps 9-11 this changeset adds.
   target item ever started rather than on `isLoaded`, because that branch sets
   `isLoaded = true` deliberately and an `isLoaded`-keyed guard could never fire
   there. Without it a failed rebuild was indistinguishable from a successful one:
-  no alert, no Retry, host open lock never released (#228). The backstop judges
-  the rebuild by what it PRODUCED — a target item that is current and
-  `readyToPlay` — not by whether audio is coming out: nothing cancels that work
-  item on pause, so a started-keyed backstop would have errored a book the patron
-  had merely paused (#229). A seek to a track still being STREAMED keeps
+  no alert, no Retry, host open lock never released. A guard for that was written
+  three times (#228, #229) and was wrong three times — see the anti-claim below —
+  and was REVERTED in #230 rather than attempted a fourth time on a release
+  candidate. The gap is real, is a regression from THIS ticket, and is filed as
+  PP-5213 with the full trace. A seek to a track still being STREAMED keeps
   the previous behaviour exactly, mute included.
 - A load timeout armed by an earlier streaming seek cannot fire over a
   subsequent local seek and surface "Audiobook Unavailable" on a book playing
@@ -62,6 +62,14 @@ and the audiobook area checklist, whose §7 traps 9-11 this changeset adds.
   `decryptedUrls` land. The requeue is made silent and fast, not eliminated; the
   right fix is a larger change to the download-completion path and is named in
   the toolkit PR's "Not done".
+- **The local-seek failure gap is NOT fixed, and that is the owner's decision
+  after five review rounds.** `#225`'s locality gate skips the 30s failure timer on
+  a local seek; `needsRebuild` is decided by the same expression, so a rebuild
+  still happens and its seek-failure path publishes `.started`. A failed rebuild is
+  therefore silent. Three keyings, all wrong, all caught by review and none by a
+  test: `hasLocalFiles()` vs the consumer's `assetFileStatus()`; playback state vs
+  queue state; queue contents vs whether navigation landed. Reverted, filed as
+  PP-5213, recorded as a wall entry and as checklist traps 14-15.
 - **The producer was mis-identified TWICE, and both wrong fixes are still in the
   diff because both are real.** First the toolkit's `AudiobookPlaybackModel` hold
   — armed by `selectedLocation`, which the toolkit's own TOC view uses. Then
@@ -138,8 +146,8 @@ DERIVED from `git diff origin/release/3.3.0...HEAD --name-only` plus
   teardown releases it. **Net CODE LOC: zero** — see "God-class freeze" below
 - `Palace/Audiobooks/ChapterNavigationHold.swift` — NEW: the hold's mechanism
   (target key + bound), extracted so the hub does not grow
-- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `707b33b`
-  (ThePalaceProject/ios-audiobooktoolkit#225 through #229). Branched from the SHA
+- `ios-audiobooktoolkit` — submodule pointer, `ca0f4ca` → `1828d10`
+  (ThePalaceProject/ios-audiobooktoolkit#225 through #230). Branched from the SHA
   `release/3.3.0` already pins, so the bump carries ONLY PP-5205 — toolkit `main`
   additionally holds #223 (readium pin by tag) and #224 (player localisation),
   neither of which is in this release candidate and neither of which this bump
