@@ -23,7 +23,9 @@ import PalaceCatalog
 import PalacePreferences
 @testable import Palace
 
-final class RegistryTruncationRegressionTests: XCTestCase {
+// `PalaceWiringTestCase`: this suite mints `AccountRegistryLoader`s that spawn owned
+// crawl Tasks, so the base's tearDown cancel is what stops them outliving the test.
+final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
 
     private var tempDir: URL!
     private var suiteName: String!
@@ -154,10 +156,23 @@ final class RegistryTruncationRegressionTests: XCTestCase {
         let fetcher = ScriptedFetcher(firstPage: page1)   // every later page throws
         let loader = makeLoader(store: store, cache: cache, bundledURL: bundledURL, fetcher: fetcher)
 
+        // Two synchronizers, and each covers something the other does not.
+        //
+        // The completion is the PRIMARY one, not a backstop: `loadCatalogs` returns as
+        // soon as it SPAWNS, so any join seam called immediately after can snapshot an
+        // empty task set and return having awaited nothing. Deleting this wait made the
+        // test fail on its own premise (`networkWrites.first?.count` was nil, not 4).
+        //
+        // `_awaitCatalogLoadForTesting()` — NOT `_awaitAllCrawlTasksForTesting()`. The
+        // latter is documented NARROW: it joins only `_trackedFirstRunTasks`, and the
+        // sole `firstRun: true` spawn is the outer path-3 task, which calls the
+        // synchronous `fetchFromNetwork` and returns WITHOUT the inner fetch task or the
+        // pagination task. Using it here left the pagination write-back unsynchronized,
+        // so a run where pagination had not finished would have passed vacuously.
         let done = expectation(description: "loadCatalogs completed")
         loader.loadCatalogs { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 20)
-        await loader._awaitAllCrawlTasksForTesting()
+        await fulfillment(of: [done], timeout: 20)  // STARVE-001-OK: primary synchronizer for a completion invoked inside an owned task, drained on the next line
+        await loader._awaitCatalogLoadForTesting()
 
         // Diagnostic trace — makes a setup failure legible instead of looking
         // like the production defect.
@@ -242,10 +257,26 @@ final class RegistryTruncationRegressionTests: XCTestCase {
         let loader = makeLoader(store: store, cache: cache, bundledURL: bundledURL,
                                 fetcher: SequencedFetcher(pages: [page1, page2], emptyPage: emptyPage))
 
+        // Two synchronizers, and each covers something the other does not.
+        //
+        // The completion is the PRIMARY one, not a backstop: `loadCatalogs` returns as
+        // soon as it SPAWNS, so any join seam called immediately after can snapshot an
+        // empty task set and return having awaited nothing. Deleting this wait made the
+        // test fail on its own premise (`networkWrites.first?.count` was nil, not 4).
+        //
+        // `_awaitCatalogLoadForTesting()` — NOT `_awaitAllCrawlTasksForTesting()`. The
+        // latter is documented NARROW: it joins only `_trackedFirstRunTasks`, and the
+        // sole `firstRun: true` spawn is the outer path-3 task, which calls the
+        // synchronous `fetchFromNetwork` and returns WITHOUT the inner fetch task or the
+        // pagination task. Using it here left the pagination write-back unsynchronized,
+        // so a run where pagination had not finished would have passed vacuously.
         let done = expectation(description: "loadCatalogs completed")
         loader.loadCatalogs { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 20)
-        await loader._awaitAllCrawlTasksForTesting()
+        await fulfillment(of: [done], timeout: 20)  // STARVE-001-OK: primary synchronizer for a completion invoked inside an owned task, drained on the next line
+        await loader._awaitCatalogLoadForTesting()
+
+        XCTAssertNotNil(store.account("fresh-2"),
+                        "PREMISE: the pagination write-back must actually have run. Without this, every assertion below is already true from the page-1 merge, and a run where pagination had not finished would pass vacuously — the guard for finding A would stop guarding without turning red.")
 
         XCTAssertNotNil(store.account("patron-library"),
                         "A crawl that ended at 2 of a declared 900 must not delete the libraries it never reached. Before this fix the pagination write-back took the `isCompleteFeed: true` default and removed them seconds after the merge had saved them.")
@@ -293,7 +324,12 @@ final class RegistryTruncationRegressionTests: XCTestCase {
             key: hash,
             didApplyBucketWrite: { applied = $0 }
         ) { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 10)
+        // The completion is a DispatchGroup.notify whose only enter/leave is the
+        // injected auth-doc fetch, and this suite injects one that completes
+        // synchronously — a bounded dependency, not fire-and-forget async work, so
+        // there is no Task to join. The marker has to sit ON the matched line
+        // (lint-test-quality.py:194); on a preceding line it is silently ignored.
+        await fulfillment(of: [done], timeout: 10)  // STARVE-001-OK: bounded DispatchGroup.notify, no Task to join
 
         XCTAssertEqual(applied, false,
                        "A caller that passes no completeness must NOT get delete authority by default. With `?? true` this feed — which declares nothing and drops two libraries — would be applied, and the registry would shrink to one on the code path that runs when the network is already misbehaving.")
@@ -352,7 +388,12 @@ final class RegistryTruncationRegressionTests: XCTestCase {
             isCompleteFeed: false,
             didApplyBucketWrite: { appliedSignal = $0 }
         ) { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 10)
+        // The completion is a DispatchGroup.notify whose only enter/leave is the
+        // injected auth-doc fetch, and this suite injects one that completes
+        // synchronously — a bounded dependency, not fire-and-forget async work, so
+        // there is no Task to join. The marker has to sit ON the matched line
+        // (lint-test-quality.py:194); on a preceding line it is silently ignored.
+        await fulfillment(of: [done], timeout: 10)  // STARVE-001-OK: bounded DispatchGroup.notify, no Task to join
 
         XCTAssertEqual(appliedSignal, false,
                        "INV-2 must have refused this write, and must SAY so through `didApplyBucketWrite`. This signal is what the cache-write gate consumes; if it stopped being delivered, the disk and the bucket would silently disagree.")

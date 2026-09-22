@@ -540,3 +540,273 @@ anywhere else is new information and worth a look before the develop forward-por
 Test posture at this tip: 31 tests, 0 failures, 0 skips, 0 timeouts; no banned pattern;
 every new production mechanism has at least one red-capable test except the derivation
 line named in item 1. That is a shippable posture for a release-branch fix.
+
+---
+---
+
+# Round 4 — follow-up review (cbf0e2a62 + 2b369ab3c)
+
+**Tip:** 2b369ab3c · reviewed both commits, since cbf0e2a62 changes the test suite too.
+
+## VERDICT: **BLOCKED** on one item · everything you asked about is confirmed
+
+Your three questions all check out, including the one you invited me to refute. But
+answering question 3 precisely surfaced a defect in the clobber test that you did not
+ask about, and it is the silent kind.
+
+## Q1 — the extraction: **behaviour-preserving, confirmed**
+
+- **Inputs identical.** `libraryID: accountsManager.currentAccountId`,
+  `hasStoredCredentials: accountsManager.currentUserAccount.hasCredentials()` — the same
+  two reads, in the same form, as the code I approved at ddb8bef0e.
+- **Credential source preserved.** `currentUserAccount`, **not**
+  `TPPUserAccount.sharedAccount()`, so the `lastKnownCurrentUserAccount` ride-out over
+  the library-switch nil window is intact. This was a named constraint in the contract
+  (§4) and it survives the move.
+- **Monotonicity preserved.** The helper returns `hasStoredCredentials` verbatim, so no
+  credentials still means `false`, and the change can still only flip `false → true` for
+  a patron who already has credentials.
+- **Coverage unchanged.** `MissingRegistryRowAuthGateTests` drives
+  `isUserAuthenticated()` end to end, so the extracted function is exercised through the
+  public entry point by the same four cells. The extraction creates no orphan.
+
+Two non-functional deltas, neither affecting the verdict, both worth knowing:
+
+1. **Argument evaluation order flipped.** Before: credentials read, then id read. Now
+   Swift evaluates left-to-right, so the id is read first. Only the log string can
+   differ (and only during a library switch); the returned value cannot.
+2. **`#file` now resolves to `AudiobookSessionManager+ContentOpenPolicy.swift`.** The
+   PP-5191 warning line moves file prefix. The commit body for 555ba957f cited that log
+   as part of the fix ("each logs the unresolved library id"), so anyone grepping field
+   logs for it should be told the new prefix.
+
+**Follow-up (not a condition):** `CarPlayAudiobookBridge.swift:61-69` still holds an
+inline copy of the same decision with its own log line. It is unchanged from what I
+approved, so it is not a regression — but there are now two encodings of one policy, and
+the extracted one is the named home. Point CarPlay at
+`AudiobookSessionManager.missingRegistryRowAuthFallback` (it is `static` and reachable)
+or they will drift. Minor: the helper logs, so unlike its sibling `offlineAuthFallback`
+it is not pure — a table-driven test of it would emit log noise.
+
+I did **not** evaluate the LOC-freeze metric itself (the file is 3121 physical lines
+against a claimed 1557 baseline, so the gate counts something narrower). That is not a
+test-quality gate and I take your exit-0 at face value.
+
+## Q2 — the two `loadAccountSetsAndAuthDoc` waits: **honest, and conservative**
+
+Stronger than your justification. Both annotated sites are **refusal** tests, and the
+refusal path calls `completionBox.handler(true)` **synchronously** — the expectation is
+already fulfilled before `fulfillment` is reached. Even if a mutant flipped them to the
+applied path, `currentAccountProvider: { nil }` makes both `accountExistenceChanged` and
+`currentAccountMissingDetails` false, so no `group.enter()` ever runs and `notify` fires
+immediately. There is nothing to starve. Annotation accepted.
+
+## Q3 — the two `loadCatalogs` waits: **restoration correct, annotation is a rationalisation**
+
+You asked me to say so if it was, so: it is, on two counts.
+
+1. Line N cannot be bounded by line N+1. If the completion never fires, the wait times
+   out regardless of what the next line would have drained.
+2. **The next line does not drain the work under test at all.**
+   `_awaitAllCrawlTasksForTesting()` (`AccountRegistryLoader.swift:240-244`) is the
+   *narrow* seam — it joins `_trackedFirstRunTasks` only, and the sole `firstRun: true`
+   spawn is the outer path-3 task (`:530`). That task calls `fetchFromNetwork`, which is
+   **synchronous**: it spawns the `.userInitiated` inner task (`:552`) and returns. So
+   the outer task completes without the inner one, and the seam joins a task that is
+   already done.
+
+So your measurement was right and the mechanism is stronger than you stated: this is not
+a registration race, it is **the wrong join set**. That distinction matters because the
+remedy you were considering — a registration-aware seam — would not have fixed it. The
+expectation is not a backstop; for the page-1 write it is the **only** synchronizer.
+Keep both waits. Reword the annotation to what is true: *"the only synchronizer for the
+page-1 write — the narrow seam below joins the first-run task, not the fetch task;
+bounded by stubbed work with no network and no sleep."*
+
+Is the wait itself a CI starvation risk? Low and self-announcing: a 20s budget over a few
+stubbed JSON decodes, and a timeout renders as a **failure**, never a silent pass. That
+is the right shape for a fixed deadline and I would not restructure it for this fix.
+
+## BLOCKING — the clobber test can pass without running the code it guards
+
+`PalaceTests/Accounts/RegistryTruncationRegressionTests.swift:250-268`.
+
+Its assertions concern the **pagination write-back** — a third task, spawned at `:612`
+with `detached: false` and **no** `firstRun`. By the fact established in Q3, neither
+synchronizer covers it:
+
+- `done` fulfills on the **page-1** completion, which fires while the pagination task is
+  still being spawned;
+- `_awaitAllCrawlTasksForTesting()` joins only the outer first-run task.
+
+And every assertion — `patron-library`, `bundled-a`, `bundled-b` present — is **already
+true from the page-1 merge**. So a run in which the pagination task has not yet finished
+**passes vacuously**. Your "revert all three defences ⇒ 4 failures" measurement proves
+the pagination won the race on your machine; it does not make the ordering guaranteed.
+Under parallel-clone CI load — the exact condition STARVE-001 exists to warn about — it
+can lose, and the primary guard for round-2 finding A stops guarding **without turning
+red**.
+
+This is the changeset's own canon shape once more, now in the test: absence renders as
+the good outcome.
+
+**Remedy — two lines, both from what already exists:**
+
+1. `await loader._awaitCatalogLoadForTesting()` — the grows-until-stable quiescence seam
+   (`:216-227`), which re-snapshots `ownedCrawlTasks` until no fresh task appears and so
+   joins the inner fetch **and** pagination tasks. Its doc comment describes exactly this
+   job. (Worth using in the other `loadCatalogs` test too; test 1 does not currently
+   depend on it, but the next assertion added there would.)
+2. A premise assertion that the write-back actually ran:
+   `XCTAssertNotNil(store.account("fresh-2"))` is true only if the pagination write was
+   applied — it converts a future vacuous pass into a failure, and it is a meaningful
+   assertion in its own right (the crawl's own findings must still be merged in).
+
+## cbf0e2a62 — reviewed unasked, both tests **accepted and red-capable**
+
+- `testDerivedCompleteness_aCallerThatPassesNothing_cannotDelete` — traced: no argument
+  ⇒ derived ⇒ nil total ⇒ not positively complete ⇒ drops `b`/`c` ⇒ refused. Under
+  `?? true` it applies and the test fails. This is exactly the pin I recorded in round 3,
+  and using the direct-GET feed shape makes A2 true behaviourally rather than by
+  construction. It also puts `registryHashForCurrentConfiguration()` back to work, which
+  closes round-3 item C.
+- `testCrawlRemainingPages_reachingExactlyTheDeclaredTotal_isAFullCrawl` — traced:
+  offsets `[2]` (size 2, firstOffset 2, total 3) ⇒ 3 collected ⇒ `3 >= 3` stamps;
+  under `>` it does not and the test fails. Kills the measured survivor, and it completes
+  the V-2 table with the healthy cell.
+- **`0/36 mutation points on changed lines` reading as a pass is a real finding** and
+  belongs in the wall-failures canon beside the existing entry — it is the same shape
+  (a gate reporting success because it had nothing to measure), and it will recur on
+  every `??`-shaped guard.
+- My three review rounds survive the artifact collapse intact (`qa-review-final.md`,
+  headings at lines 1, 264, 444). No comment on dropping the five architect rounds —
+  not my lane.
+- One caution: `LibraryRegistryCrawler 1/2 killed` should be **re-measured** to 2/2 now
+  that the test exists, not asserted from the fix. Same for the loader file if the tool
+  ever grows a `??` operator.
+
+## To unblock
+
+The one item above. Nothing else in either commit needs to change, and neither commit
+touches production behaviour beyond the extraction, which I confirm is behaviour-
+preserving. Re-review on the amended tip — this is ~2 lines, so send it and I will turn
+it around against the new tree.
+
+---
+---
+
+# Round 5 — re-review of tip b10b0f5ea
+
+**Tip:** b10b0f5ea · **Tree:** `4b1eca24674ae0c23641c8676f40890e801c8599`
+**Delta reviewed:** `2b369ab3c..b10b0f5ea` — 3 files (policy helper, CarPlay, truncation tests).
+
+## VERDICT: **APPROVED** (role: qa_test)
+
+`forge-review qa_test approved` — tree `4b1eca24674ae0c23641c8676f40890e801c8599`.
+Governance is OFF in this environment, so this is an agent reviewer verdict recorded in
+the repo, not a signed ledger entry. It binds to the TREE above: recording this marker in
+a commit message does not invalidate it; changing a tracked file does.
+
+## The block is closed, and closed at the right layer
+
+`RegistryTruncationRegressionTests.swift:255-278`. I traced both halves:
+
+- **`_awaitCatalogLoadForTesting()` does join the write-back.** It snapshots
+  `ownedCrawlTasks` — which every `spawnOwnedCrawlTask` registers synchronously
+  (`AccountRegistryLoader.swift:202`) — and grows-until-stable. Round 1 joins the outer
+  and inner tasks; the inner task spawns the pagination task **before** its own body
+  ends, so the pagination task is registered by the time round 2 re-snapshots. The join
+  is deterministic, not probabilistic.
+- **`XCTAssertNotNil(store.account("fresh-2"))` is the right premise.** `fresh-2` exists
+  only on page 2, which only `crawlRemainingPages` fetches, so the assertion is true iff
+  the write-back ran and was applied. It cannot be satisfied by the page-1 merge — which
+  was the whole defect. A future regression in the seam now fails loudly instead of
+  quietly ceasing to guard.
+
+Applying the same seam to test 1 is correct even though its current assertions do not
+need it; the next assertion added there would.
+
+## On the diagnosis correction
+
+Worth acknowledging back: you re-read the source and confirmed the mechanism before
+acting, rather than taking my word for it. That is the right order, and it is what makes
+the corrected comment in the test trustworthy — it now records *wrong join set*, names
+the narrow seam and the `firstRun` subset, and explains why line N cannot be bounded by
+line N+1. Someone hitting this in a year gets the mechanism, not the symptom.
+
+## Q1 follow-up — CarPlay now shares the policy · sound
+
+- `@MainActor public final class AudiobookSessionManager` (`:129-130`) confirms the
+  isolation was being inherited onto the static, so `nonisolated` is **required**, not
+  cosmetic — without it `CarPlayAuthHelper.isAuthenticated` (a nonisolated static async)
+  takes a cross-actor hop to read a pure function. CarPlay can be driven off-main by the
+  head unit, so removing that hop is the safer direction.
+- The body holds no actor state (a log line and a passthrough) and both parameters are
+  `Sendable`, so `nonisolated` is sound rather than a suppression.
+- **Behaviour preserved at both call sites:** same two reads
+  (`currentAccountId`, `currentUserAccount.hasCredentials()` — still not
+  `sharedAccount()`), same passthrough return, same monotonicity.
+- **Coverage improved:** the shared helper is now driven by all four cells of
+  `MissingRegistryRowAuthGateTests` (two audiobook, two CarPlay) through their public
+  entry points. One encoding of the policy, four cells against it — a divergence between
+  the two gates is now unrepresentable rather than merely tested for.
+
+**Observation, not a condition — the CarPlay log line is gone.** Both gates now emit the
+identical `isUserAuthenticated: no registry row for …` message from the same `#file`
+(`AudiobookSessionManager+ContentOpenPolicy.swift`), so a field log can no longer say
+*which* gate fired. 555ba957f's body cited per-gate logging as part of the fix. One
+optional parameter restores it (`callSite: StaticString = #function`, or an explicit
+`"CarPlayAuthHelper"` / `"isUserAuthenticated"` argument) without reintroducing a second
+copy of the decision.
+
+## Mutation — accepted, with the cache question answered carefully
+
+`LibraryRegistryCrawler 2/2` re-measured under `--no-cache` (`'>=' -> '>'` KILLED,
+`'>=' -> '<='` KILLED, baseline PASS) closes my round-4 ask: measured, not asserted.
+Full picture accepted: Store 3/3, Merger 5/5, Crawler 2/2, Loader 0/36 points on changed
+lines (not measurable — the tool has no `??` operator, which is why
+`testDerivedCompleteness_aCallerThatPassesNothing_cannotDelete` exists).
+
+**On filing the cache staleness: get the discriminating command first — do not file yet.**
+I read the tool. The v2 fix looks correct and complete on both caches: `compute_mutant_key`
+(`palace_mutate.py:700-736`) folds `tests_fingerprint` into every per-mutant key, the
+per-mutant cache is gated by the same `cache_disabled` (`:1122`), and an unresolvable
+class disables caching loudly (`:972-977`). So a stale hit after editing the named class's
+file would be a real v2 regression — but the tool also documents a **KNOWN BOUND** at
+`:587-592`: the fingerprint covers *the files declaring the named classes*. Two outcomes,
+and they call for different actions:
+
+- If `--tests` named `CrawlerCompletenessTests` and that file had changed ⇒ the key must
+  have changed ⇒ a hit is a **v2 regression**, and it belongs in wall-failures as the
+  higher-severity sibling of the 0/36 note. A stale `SURVIVED` costs a re-run; a stale
+  `KILLED` is positive evidence for a measurement never taken, which is the
+  "a build failure is not a kill" family this tool exists to prevent.
+- If `--tests` named a class declared in a file that did **not** change ⇒ the cache was
+  correct by its stated bound, and the finding is "the fingerprint follows the declaring
+  file, so a new test in a different class does not invalidate" — a note, not a wall entry.
+
+Cheap discriminator: re-run the same invocation **without** `--no-cache` now. Content is
+committed and unchanged, so a hit is expected and correct; then recompute the key with the
+pre-edit content of the file you changed and see whether it differs. File the wall entry
+only if the key was stable across a real content change — otherwise you would be promoting
+an unreproduced mechanism to canon, which is the failure this changeset already recorded
+once.
+
+The **0/36 note stands on its own** and is worth filing regardless: a mutation gate that
+reports "nothing to mutate" renders as a pass, and that will recur on every `??`-shaped
+guard.
+
+## Final posture at this tip
+
+33 tests, 0 failures, 0 skips, 0 timeouts. No banned pattern. Every production mechanism
+introduced by this changeset now has at least one red-capable test, including the two that
+mutation cannot reach. The guards that could not fail — the S-3 state store, the disk
+test, the clobber test's write-back — are now either red-capable, withdrawn with the
+reason recorded in place, or replaced by a premise that fails loudly.
+
+Standing deferrals, unchanged and accepted: finding 8 (production `crawl_state_<hash>.json`
+residue), contract test 3's F-2 / S-6 cells, round-1 finding 9 (the global
+`.TPPCurrentAccountDidChange` observer), and the round-3 observations (`>=` vs `==` full-crawl
+stamping; "5 of 5 network writes + bundled ungated by construction"; A-5's designed cost).
+
+Ship it.
