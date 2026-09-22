@@ -101,13 +101,14 @@ enum ManagedLibraryDebugOverride {
 
         let parse = ManagedAppConfiguration.parse(managedDictionary: payload)
         guard let parsed = parse.configuration else {
-            // Prefer the parser's own warning: it names which value it could not
-            // use, which matters once more than one was supplied.
+            // The parser's own warning names the value it could not use, which
+            // matters once more than one was supplied. It is always present on
+            // this path — a selector is always written above, so a nil
+            // configuration always came with a warning about it — so the string
+            // below is a defensive default, not a second message to maintain.
             return .rejected(
                 reason: parse.warnings.first
-                    ?? (selectorKey == ManagedAppConfiguration.Key.libraryId
-                        ? "Not a UUID. An MDM payload would reject this too."
-                        : "Not an https URL. An MDM payload would reject this too.")
+                    ?? "Not a registry identifier or https catalog URL. An MDM payload would reject this too."
             )
         }
 

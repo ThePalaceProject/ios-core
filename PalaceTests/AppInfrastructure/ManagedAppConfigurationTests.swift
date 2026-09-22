@@ -83,25 +83,25 @@ final class ManagedAppConfigurationTests: XCTestCase {
 
     // MARK: - Catalog URL matching
 
-    func testCatalogURLMatch_IgnoresATrailingSlashDifference() {
-        let configured = ManagedAppConfiguration.normalizedCatalogURL("https://il.thepalaceproject.org/00351977")!
+    func testCatalogURLMatch_IgnoresATrailingSlashDifference() throws {
+        let configured = try XCTUnwrap(ManagedAppConfiguration.normalizedCatalogURL("https://il.thepalaceproject.org/00351977"))
         XCTAssertTrue(
             ManagedAppConfiguration.catalogURL("https://il.thepalaceproject.org/00351977/", matches: configured)
         )
     }
 
-    func testCatalogURLMatch_IgnoresHostCase() {
-        let configured = ManagedAppConfiguration.normalizedCatalogURL("https://IL.ThePalaceProject.ORG/00351977/")!
+    func testCatalogURLMatch_IgnoresHostCase() throws {
+        let configured = try XCTUnwrap(ManagedAppConfiguration.normalizedCatalogURL("https://IL.ThePalaceProject.ORG/00351977/"))
         XCTAssertTrue(
             ManagedAppConfiguration.catalogURL("https://il.thepalaceproject.org/00351977/", matches: configured)
         )
     }
 
-    func testCatalogURLMatch_DistinguishesSiblingDivisionsOnTheSameHost() {
+    func testCatalogURLMatch_DistinguishesSiblingDivisionsOnTheSameHost() throws {
         // The three divisions differ only in the last path component
         // (00351977 / 00351977b / 00351977c). A matcher that compared host
         // alone would put every student in the Lower School.
-        let configured = ManagedAppConfiguration.normalizedCatalogURL("https://il.thepalaceproject.org/00351977/")!
+        let configured = try XCTUnwrap(ManagedAppConfiguration.normalizedCatalogURL("https://il.thepalaceproject.org/00351977/"))
         XCTAssertFalse(
             ManagedAppConfiguration.catalogURL("https://il.thepalaceproject.org/00351977b/", matches: configured)
         )
@@ -110,15 +110,15 @@ final class ManagedAppConfigurationTests: XCTestCase {
         )
     }
 
-    func testCatalogURLMatch_RejectsADifferentHostWithTheSamePath() {
-        let configured = ManagedAppConfiguration.normalizedCatalogURL("https://il.thepalaceproject.org/00351977/")!
+    func testCatalogURLMatch_RejectsADifferentHostWithTheSamePath() throws {
+        let configured = try XCTUnwrap(ManagedAppConfiguration.normalizedCatalogURL("https://il.thepalaceproject.org/00351977/"))
         XCTAssertFalse(
             ManagedAppConfiguration.catalogURL("https://evil.example.com/00351977/", matches: configured)
         )
     }
 
-    func testCatalogURLMatch_WhenRegistryEntryHasNoCatalogURL_DoesNotMatch() {
-        let configured = ManagedAppConfiguration.normalizedCatalogURL("https://il.thepalaceproject.org/00351977/")!
+    func testCatalogURLMatch_WhenRegistryEntryHasNoCatalogURL_DoesNotMatch() throws {
+        let configured = try XCTUnwrap(ManagedAppConfiguration.normalizedCatalogURL("https://il.thepalaceproject.org/00351977/"))
         XCTAssertFalse(ManagedAppConfiguration.catalogURL(nil, matches: configured))
     }
 
