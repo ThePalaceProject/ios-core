@@ -530,7 +530,7 @@ struct AudiobookMorphingPlayerView: View {
             // edges; the title (subheadline) defines the row height as before, and
             // its horizontal padding keeps it clear of the times.
             ZStack {
-                Text(audiobookSession.currentChapter?.title ?? presenter.currentBook?.title ?? "")
+                Text(chapterDisplayTitle)
                     .font(.subheadline).fontWeight(.semibold)
                     .lineLimit(1).truncationMode(.tail)
                     .padding(.horizontal, 64)
@@ -1522,6 +1522,31 @@ struct AudiobookMorphingPlayerView: View {
     /// seek scrubber so its thumb position matches `seekWithSlider`'s chapter scale.
     private var chapterProgressClamped: Double {
         progress.chapterProgress.isFinite ? min(max(progress.chapterProgress, 0), 1) : 0
+    }
+
+    /// The chapter name shown between the two timecodes.
+    ///
+    /// Reads `progress`, the SAME observed object the timecodes read, so the three
+    /// cannot disagree about which chapter is being shown and cannot repaint on
+    /// different ticks. It used to read `audiobookSession.currentChapter` — a cache
+    /// on an object this view does not even observe (`audiobookSession` is a plain
+    /// `let`), written only from position events. Choosing a chapter therefore left
+    /// the name a seek behind the times beside it, and repainted only when something
+    /// ELSE published — which during a seek, with the player paused and the position
+    /// stream silent, is nothing (PP-5205).
+    private var chapterDisplayTitle: String {
+        Self.chapterDisplayTitle(
+            chapterTitle: progress.chapterTitle,
+            bookTitle: presenter.currentBook?.title
+        )
+    }
+
+    /// The fallback rule, pulled out so it can fail a test. Before a playback model
+    /// has published anything there is no chapter name, and a blank row reads as a
+    /// broken player rather than as a player that is still loading — so the book's
+    /// own title stands in until the first tick.
+    nonisolated static func chapterDisplayTitle(chapterTitle: String, bookTitle: String?) -> String {
+        chapterTitle.isEmpty ? (bookTitle ?? "") : chapterTitle
     }
 
     /// Chapter-relative elapsed timecode (seconds from the start of the current

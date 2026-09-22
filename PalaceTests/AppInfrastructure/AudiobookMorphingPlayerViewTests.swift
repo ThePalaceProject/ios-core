@@ -502,3 +502,44 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     }
 
 }
+
+// MARK: - PP-5205 — the chapter name and the timecodes share one observed source
+
+/// The name between the two chapter timecodes now reads `progress.chapterTitle`,
+/// the same observed object the timecodes read, so the three cannot disagree about
+/// which chapter is displayed and cannot repaint on different ticks. It previously
+/// read `AudiobookSessionManager.currentChapter` — a cache on an object this view
+/// does not observe (`audiobookSession` is a plain `let`), written only from
+/// position events, which during a seek have stopped.
+///
+/// Only the FALLBACK is a decision, and it is the one that can regress: inverting
+/// it pins the book's title over every chapter name for the whole session.
+@MainActor
+final class AudiobookMorphingPlayerChapterTitleTests: XCTestCase {
+
+    func testChapterDisplayTitle_prefersTheChapterName() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.chapterDisplayTitle(
+                chapterTitle: "Chapter 42", bookTitle: "The Eye of the Bedlam Bride"
+            ),
+            "Chapter 42"
+        )
+    }
+
+    func testChapterDisplayTitle_beforeTheFirstTick_showsTheBookTitle() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.chapterDisplayTitle(
+                chapterTitle: "", bookTitle: "The Eye of the Bedlam Bride"
+            ),
+            "The Eye of the Bedlam Bride",
+            "a blank row reads as a broken player, not as one still loading"
+        )
+    }
+
+    func testChapterDisplayTitle_withNeither_isEmptyRatherThanPlaceholder() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.chapterDisplayTitle(chapterTitle: "", bookTitle: nil),
+            ""
+        )
+    }
+}
