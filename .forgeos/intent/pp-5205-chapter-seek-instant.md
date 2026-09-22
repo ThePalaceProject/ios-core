@@ -27,10 +27,13 @@ and the audiobook area checklist, whose §7 traps 9-11 this changeset adds.
   from disk.
 - While an LCP seek is in flight, `currentTrackPosition` reports the chapter the
   patron is GOING to, as `OpenAccessPlayer` has always done on its own seek path.
-- **The chapter LABEL moves on the tap, not on the seek.**
-  `AudiobookSessionManager.currentChapter` is a cache whose only writer was
-  `handlePositionUpdate`; `skipToChapter(at:)` now publishes the chosen chapter
-  immediately.
+- **The chapter LABEL moves on the tap, not on the seek, on BOTH surfaces.**
+  On the phone the name now reads `progress.chapterTitle`, mirrored from the
+  toolkit model on the SAME tick as `chapterOffset` and `chapterTimeLeft` —
+  `selectedLocation.didSet` writes `currentLocation` synchronously and
+  `currentChapterTitle` derives from it, so the name is right before a seek is
+  issued. On CarPlay, whose taps route through `skipToChapter(at:)`, that method
+  publishes the chosen chapter immediately.
 - An update naming the track being LEFT cannot move the label while an explicit
   selection is in flight. The hold is keyed on track identity, so a seek that
   outlasts any timer is not dragged backwards.
@@ -51,6 +54,25 @@ and the audiobook area checklist, whose §7 traps 9-11 this changeset adds.
   `decryptedUrls` land. The requeue is made silent and fast, not eliminated; the
   right fix is a larger change to the download-completion path and is named in
   the toolkit PR's "Not done".
+- **The producer was mis-identified TWICE, and both wrong fixes are still in the
+  diff because both are real.** First the toolkit's `AudiobookPlaybackModel` hold
+  — armed by `selectedLocation`, which the toolkit's own TOC view uses. Then
+  `AudiobookSessionManager.skipToChapter(at:)` — a call-site census, run AFTER
+  writing that fix rather than before, found its only callers are
+  `CarPlayAudiobookBridge:187` and `CarPlayTemplateManager:597`. The phone
+  presents the TOOLKIT's `AudiobookNavigationView`
+  (`AudiobookMorphingPlayerView:299`), so neither reached the reported screen.
+  Only the third change — the label's source — fixes what was reported.
+- `AudiobookSessionPresenter`'s one-line mirror
+  (`progress.chapterTitle = model.currentChapterTitle`) is **NOT covered by a
+  test**. The existing presenter suite states an `AudiobookPlaybackModel` cannot
+  be constructed from PalaceTests; that claim has not been re-verified here, and
+  the toolkit's own tests DO construct one from `alice_manifest`. Recorded as a
+  known gap, not as an impossibility.
+- `audiobookSession` remains a plain `let` on `AudiobookMorphingPlayerView`, so
+  the view still does not observe it. Nothing else on it is rendered there today,
+  but the next value read from it inherits the same defect and nothing in the
+  type system says so.
 - The toolkit's `AudiobookPlaybackModel` fix is NOT what fixes the reported
   symptom in Palace. Palace renders its own `AudiobookMorphingPlayerView`, whose
   chapter label reads `audiobookSession.currentChapter`. The model's hold is
@@ -90,7 +112,15 @@ DERIVED from `git diff origin/release/3.3.0...HEAD --name-only` plus
   (both app targets) and `ChapterNavigationHoldTests.swift` (PalaceTests)
 - `Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift` — BEHAVIOUR:
   `loadingOverlayState` takes `hasStartedPlayback` and branches on phase;
-  `stateArmsLoadTimeout` decides arming; the 30s timer gains a cancellable handle
+  `stateArmsLoadTimeout` decides arming; the 30s timer gains a cancellable
+  handle; the chapter name reads `progress.chapterTitle` instead of
+  `audiobookSession.currentChapter`, with the fallback extracted as
+  `chapterDisplayTitle(chapterTitle:bookTitle:)`
+- `Palace/Audiobooks/AudiobookSessionPresenter.swift` — BEHAVIOUR:
+  `AudiobookPlaybackProgress` gains `@Published var chapterTitle`, set from
+  `model.currentChapterTitle` in the SAME `model.$currentLocation` sink that
+  already sets `chapterOffset` / `chapterTimeLeft`. Sharing the writer is the
+  point: it makes name-vs-times disagreement unrepresentable rather than fixed
 - `Palace/Audiobooks/AudiobookPositionPolicy.swift` — BEHAVIOUR: adds
   `ChapterNavigationPolicy` (the two decisions). Also gains a toolkit import for
   ONE pure String static, documented in-file as the deliberate exception to the
