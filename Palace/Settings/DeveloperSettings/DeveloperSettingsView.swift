@@ -85,6 +85,12 @@ struct DeveloperSettingsView: View {
                 onForget: { present { viewModel.forgetManagedLibraryFingerprint(from: $0) } },
                 onClear: { present { viewModel.clearManagedLibraryConfiguration(from: $0) } }
             )
+            NavigationLink {
+                ManagedLibraryTestingInfoView()
+            } label: {
+                Text("How this works")
+                    .palaceFont(.body)
+            }
         }
     }
 
