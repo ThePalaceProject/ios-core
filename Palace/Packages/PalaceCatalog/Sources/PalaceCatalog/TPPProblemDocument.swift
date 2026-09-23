@@ -83,6 +83,15 @@ import PalaceLogging
     /// Whether to display a title with this problem's `detail`. Defaults to
     /// `true` when the server sent no `show_title`, so documents that predate
     /// the extension keep displaying a title as they always have.
+    // PUBLIC_INTENT: the sentinel half of this type's title contract, read by
+    // `TPPSignInBusinessLogic.userFacingSignInError` in the main target, so it must
+    // be as visible as `shouldShowTitle` itself.
+    /// The title value meaning "render no title at all". Deliberately distinct from
+    /// `nil`, which means "the server supplied none" and lets the display layer
+    /// substitute its own ("Login Failed") — precisely the framing that
+    /// `show_title: false` exists to suppress.
+    public static let suppressedTitle = ""
+
     // PUBLIC_INTENT: the accessor consumers are meant to use instead of `showTitle`, so it
     // must be at least as visible as the member it wraps. `TPPSignInBusinessLogic`
     // .userFacingSignInError reads it from the main target.

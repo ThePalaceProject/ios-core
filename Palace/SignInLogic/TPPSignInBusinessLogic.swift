@@ -667,7 +667,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
             // us to drop. Empty rather than nil: nil means "the server gave us
             // no title" and the display layer substitutes its own
             // ("Login Failed"), which is exactly what suppression must avoid.
-            return (problemDocument.shouldShowTitle ? problemDocument.title : "", problemDocument.detail)
+            return (problemDocument.shouldShowTitle ? problemDocument.title : TPPProblemDocument.suppressedTitle, problemDocument.detail)
         }
         if isNetworkConnectivityError(error) {
             return (Strings.Error.networkUnavailableErrorTitle,
