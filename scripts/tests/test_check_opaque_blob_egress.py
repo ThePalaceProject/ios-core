@@ -1,9 +1,7 @@
 """Tests for check-opaque-blob-egress.py.
 
-prior-art-checked: this is the pytest neighbour every detector in `scripts/`
-already has (see `scripts/tests/test_check_*.py`), required by CLAUDE.md rule 4.
-The harness matches offered — memory writes, project-config loading, the
-code-hygiene autofixers — are unrelated to testing a repo detector.
+The pytest neighbour every detector in `scripts/` has (see
+`scripts/tests/test_check_*.py`), required by CLAUDE.md rule 4.
 
 The clean-diff arm matters as much as the violation arm. A detector that only
 ever sees a violation in its tests can reject the interface it is actually

@@ -3,12 +3,11 @@
 check-opaque-blob-egress.py — flag a whole opaque payload being interpolated
 into something that leaves the device.
 
-prior-art-checked: no existing detector covers data egress. The nearest by name
-are `check-pre-ga-crash-triage.py` (triages crash signatures before GA),
+No existing detector in `scripts/` covers data egress. The nearest by name are
+`check-pre-ga-crash-triage.py` (triages crash signatures before GA),
 `check-foreign-host-401-scoping.py` (auth dispatch scoping) and
 `check-discipline-nudge.py` (commit advisories); none reads what is being SENT.
-`harness capabilities` offers glyphs, memory and freshness reporting, which
-record priors rather than inspect a diff. This is a new predicate.
+This is a new predicate.
 
 ## The defect this catches
 
