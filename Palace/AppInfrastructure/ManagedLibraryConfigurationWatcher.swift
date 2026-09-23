@@ -95,12 +95,15 @@ final class ManagedLibraryConfigurationWatcher {
         lastSeenFingerprint = fingerprint
 
         guard fingerprint != nil else {
-            // The MDM removed the configuration. Deliberately NOT undone: the
-            // library is the student's now, and silently removing a library
-            // someone may be mid-book in would be a worse surprise than leaving
-            // it. Apple removes the app and its data outright when management
-            // ends, so the "clean up after us" case is already handled by the
-            // system rather than by us.
+            // The configuration was removed while the app is still managed —
+            // an administrator clearing the value, not management ending. We
+            // deliberately do NOT undo the selection: the library is the
+            // student's now, and silently deselecting one they may be mid-book
+            // in is a worse surprise than leaving it.
+            //
+            // The other case, management ending altogether, never reaches here:
+            // Apple removes the managed app and its whole data container, so
+            // there is nothing left to undo and no code of ours to run.
             Log.info(#file, "Managed configuration was removed; leaving the current library alone.")
             return
         }

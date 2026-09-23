@@ -53,6 +53,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// on an unmanaged install.
     private var managedLibraryWatcher: ManagedLibraryConfigurationWatcher?
 
+    /// PP-5070 — armed ONLY when the picker was shown while a managed
+    /// configuration was still pending, so a registry that arrives after the
+    /// wait expired can still be honoured. Unmanaged installs never arm it.
+    private var managedRegistryRetryObserver: NSObjectProtocol?
+
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
@@ -678,7 +683,18 @@ extension TPPAppDelegate {
             deferFirstRunFlowUntilRegistryChanges()
             return
         case .presentPicker:
-            break
+            // If a configuration is still pending at this point, the wait
+            // expired before the registry arrived — not a reason to abandon it.
+            // The deadline exists so a student is not left staring at a blank
+            // screen; it is NOT a decision that the configuration is wrong. A
+            // school network with a cart of devices on it in the morning is
+            // exactly the case that outlasts any timeout we could pick, so the
+            // picker goes up AND the app keeps trying.
+            if case .unresolved = decision {
+                retryManagedPreconfigurationWhenRegistryChanges()
+            } else if case .registryNotLoaded = decision {
+                retryManagedPreconfigurationWhenRegistryChanges()
+            }
         }
 
         // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
@@ -704,6 +720,10 @@ extension TPPAppDelegate {
 
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
             nav?.dismiss(animated: true)
+            // The patron has chosen. Stop trying to apply a pending managed
+            // configuration over the top of their choice.
+            self?.disarmManagedRegistryRetry()
+            self?.presentedFirstRunPicker = nil
             // Allow a future cold launch with no account to present again,
             // but on the current launch we're done.
             self?.hasPresentedFirstRunFlow = true
@@ -716,6 +736,38 @@ extension TPPAppDelegate {
         hasPresentedFirstRunFlow = true
         presentedFirstRunPicker = nav
         top.present(nav, animated: true)
+    }
+
+    /// PP-5070 — keeps trying to honour a pending configuration after the
+    /// picker has already been presented.
+    ///
+    /// Armed only when a configuration was pending as the picker went up, so an
+    /// unmanaged install never registers this observer at all. Disarms itself
+    /// the moment it succeeds.
+    private func retryManagedPreconfigurationWhenRegistryChanges() {
+        guard managedRegistryRetryObserver == nil else { return }
+        managedRegistryRetryObserver = NotificationCenter.default.addObserver(
+            forName: .TPPCatalogDidLoad,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
+                guard case .apply = decision else { return }
+                self.disarmManagedRegistryRetry()
+                guard let picker = self.presentedFirstRunPicker else { return }
+                self.presentedFirstRunPicker = nil
+                picker.dismiss(animated: true)
+            }
+        }
+    }
+
+    private func disarmManagedRegistryRetry() {
+        if let token = managedRegistryRetryObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        managedRegistryRetryObserver = nil
     }
 
     /// PP-5070 — starts watching for a managed configuration that arrives after
