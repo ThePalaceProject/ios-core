@@ -43,6 +43,17 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// period rather than inheriting the old one's elapsed time.
     private var managedWaitClock = ManagedLibraryWaitClock()
 
+    /// Whether MDM library pre-selection is on.
+    ///
+    /// Computed, not stored: the flag is remote and can go off mid-session, and
+    /// the watcher's callback depends on seeing that. One locator read behind a
+    /// name, rather than four `AppContainer.production()` calls scattered
+    /// through the launch path — the composition root is the right place for a
+    /// service lookup, and one of them is enough.
+    private var managedLibraryConfigurationEnabled: Bool {
+        AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled
+    }
+
     /// One deadline check per launch, not one per deferred attempt.
     private var hasScheduledManagedPreconfigurationDeadline = false
 
@@ -658,7 +669,7 @@ extension TPPAppDelegate {
     /// not loaded yet, so the pure decision sees a single consistent shape.
     private func managedLibraryLaunchStep(accountsHaveLoaded: Bool) -> ManagedLibraryLaunchStep {
         guard accountsHaveLoaded else { return .presentPicker }
-        guard AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled else {
+        guard managedLibraryConfigurationEnabled else {
             return .presentPicker
         }
 
@@ -770,7 +781,7 @@ extension TPPAppDelegate {
     /// the moment it succeeds.
     private func retryManagedPreconfigurationWhenRegistryChanges() {
         guard managedRegistryRetryObserver == nil else { return }
-        guard AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled else {
+        guard managedLibraryConfigurationEnabled else {
             return
         }
         managedRegistryRetryObserver = NotificationCenter.default.addObserver(
@@ -810,7 +821,7 @@ extension TPPAppDelegate {
         guard managedLibraryWatcher == nil else { return }
         // Flag OFF means no observer is registered at all, rather than one that
         // wakes and decides to do nothing.
-        guard AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled else {
+        guard managedLibraryConfigurationEnabled else {
             return
         }
         let watcher = ManagedLibraryConfigurationWatcher(
@@ -824,7 +835,7 @@ extension TPPAppDelegate {
             // flag is remote, so it can go off mid-session — and an observer
             // that keeps acting after the feature was turned off is the kind
             // of switch that does not switch anything.
-            guard AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled else {
+            guard managedLibraryConfigurationEnabled else {
                 return
             }
             // A configuration arriving late can be just as wrong as one present
