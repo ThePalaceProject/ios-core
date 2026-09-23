@@ -38,7 +38,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// PP-5070 — when the first pre-configuration attempt of a launch began.
     /// Bounds the wait for a managed install's configured library to appear in
     /// the registry (see `ManagedLibraryPreconfigurator.registryWaitLimit`).
-    private var managedPreconfigurationStart: Date?
+    /// Keyed to the configuration, not to the launch: an MDM can change the
+    /// value while the app is starting, and the new one must get its own grace
+    /// period rather than inheriting the old one's elapsed time.
+    private var managedWaitClock = ManagedLibraryWaitClock()
 
     /// One deadline check per launch, not one per deferred attempt.
     private var hasScheduledManagedPreconfigurationDeadline = false
@@ -660,10 +663,9 @@ extension TPPAppDelegate {
         }
 
         let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
-        let start = managedPreconfigurationStart ?? Date()
-        managedPreconfigurationStart = start
-
-        let elapsed = Date().timeIntervalSince(start)
+        let elapsed = managedWaitClock.elapsed(
+            for: ManagedAppConfiguration.configurationIdentity(defaults: .standard)
+        )
         let step = ManagedLibraryPreconfigurator.launchStep(for: decision, elapsed: elapsed)
 
         // PP-5221 — tell ourselves when a school's configuration is wrong,
@@ -818,6 +820,25 @@ extension TPPAppDelegate {
         managedLibraryWatcher = watcher
         watcher.start { [weak self] decision in
             guard let self else { return }
+            // Re-checked here, not only when the observer was installed. The
+            // flag is remote, so it can go off mid-session — and an observer
+            // that keeps acting after the feature was turned off is the kind
+            // of switch that does not switch anything.
+            guard AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled else {
+                return
+            }
+            // A configuration arriving late can be just as wrong as one present
+            // at launch. Without this the launch path is the only place that
+            // reports, so a school that pushed a typo after the app was already
+            // open would hear nothing back.
+            ManagedLibraryDiagnostics.reportIfNeeded(
+                decision: decision,
+                waitHasExpired: self.managedWaitClock.elapsed(
+                    for: ManagedAppConfiguration.configurationIdentity(defaults: .standard)
+                ) >= ManagedLibraryPreconfigurator.registryWaitLimit,
+                defaults: .standard,
+                reporter: ManagedLibraryCrashlyticsReporter()
+            )
             switch ManagedLibraryPreconfigurator.watchAction(for: decision) {
             case .dismissPicker:
                 self.hasPresentedFirstRunFlow = true

@@ -45,9 +45,13 @@ final class ManagedLibraryConfigurationWatcher {
     private let notificationCenter: NotificationCenter
     private let preconfigurator: ManagedLibraryPreconfigurator
 
-    /// Fingerprint of the configuration last seen, so an unrelated defaults
-    /// write costs one dictionary read and a string compare.
-    private var lastSeenFingerprint: String?
+    /// Identity of the payload last seen, so an unrelated defaults write costs
+    /// one dictionary read and a string compare.
+    ///
+    /// Seeded at init from the SAME function `reevaluate` uses. Seeding it from
+    /// a different notion of identity would make the first evaluation of every
+    /// watcher a spurious change.
+    private var lastSeenIdentity: String?
 
     private var token: NSObjectProtocol?
 
@@ -59,7 +63,7 @@ final class ManagedLibraryConfigurationWatcher {
         self.defaults = defaults
         self.preconfigurator = preconfigurator
         self.notificationCenter = notificationCenter
-        self.lastSeenFingerprint = preconfigurator.currentConfiguration?.fingerprint
+        self.lastSeenIdentity = ManagedAppConfiguration.configurationIdentity(defaults: defaults)
     }
 
     deinit {
@@ -92,11 +96,20 @@ final class ManagedLibraryConfigurationWatcher {
     /// The filter, then the apply. Exposed for tests so the decision can be
     /// driven without posting notifications.
     func reevaluate(onDecision: (ManagedLibraryDecision) -> Void) {
-        let fingerprint = preconfigurator.currentConfiguration?.fingerprint
-        guard fingerprint != lastSeenFingerprint else { return }
-        lastSeenFingerprint = fingerprint
+        // The identity of the PAYLOAD, not of the parsed configuration.
+        //
+        // Parsed was wrong in a way that hid the most likely fault: a payload
+        // too malformed to parse has no parsed fingerprint, so every malformed
+        // payload looked alike. An administrator fixing a typo to a different
+        // typo changed nothing we could see, and their second attempt was
+        // dropped without ever reaching diagnostics. The same blindness swallowed
+        // a change to an unusable extra library while the selected one held
+        // still.
+        let identity = ManagedAppConfiguration.configurationIdentity(defaults: defaults)
+        guard identity != lastSeenIdentity else { return }
+        lastSeenIdentity = identity
 
-        guard fingerprint != nil else {
+        guard identity != nil else {
             // The configuration was removed while the app is still managed —
             // an administrator clearing the value, not management ending. We
             // deliberately do NOT undo the selection: the library is the

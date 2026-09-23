@@ -40,12 +40,17 @@ final class ManagedLibraryDiagnosticsTests: XCTestCase {
         fingerprint: String? = nil,
         lastReported: String? = nil
     ) -> ManagedLibraryDiagnostic? {
+        // The helper passes the same value as both the reportable library and
+        // the comparison identity, because these tests are about the DECISION.
+        // That the two must not be the same value in production is the subject
+        // of ManagedLibraryReviewFixesTests.
         ManagedLibraryDiagnostics.diagnostic(
             for: decision,
             warnings: warnings,
             waitHasExpired: waitHasExpired,
-            fingerprint: fingerprint ?? valueA,
-            lastReportedFingerprint: lastReported
+            configuredValue: fingerprint ?? valueA,
+            identity: fingerprint ?? valueA,
+            lastReportedIdentity: lastReported
         )
     }
 
@@ -116,7 +121,7 @@ final class ManagedLibraryDiagnosticsTests: XCTestCase {
         XCTAssertNil(
             ManagedLibraryDiagnostics.diagnostic(
                 for: .unresolved, warnings: [], waitHasExpired: true,
-                fingerprint: nil, lastReportedFingerprint: nil
+                configuredValue: nil, identity: nil, lastReportedIdentity: nil
             )
         )
     }
@@ -150,7 +155,7 @@ final class ManagedLibraryDiagnosticsTests: XCTestCase {
         XCTAssertNil(
             ManagedLibraryDiagnostics.diagnostic(
                 for: .noConfiguration, warnings: [], waitHasExpired: true,
-                fingerprint: nil, lastReportedFingerprint: nil
+                configuredValue: nil, identity: nil, lastReportedIdentity: nil
             )
         )
     }
@@ -161,7 +166,7 @@ final class ManagedLibraryDiagnosticsTests: XCTestCase {
         XCTAssertNil(
             ManagedLibraryDiagnostics.diagnostic(
                 for: .noConfiguration, warnings: [], waitHasExpired: true,
-                fingerprint: nil, lastReportedFingerprint: valueA
+                configuredValue: nil, identity: nil, lastReportedIdentity: valueA
             )
         )
     }
@@ -215,7 +220,7 @@ final class ManagedLibraryDiagnosticsTests: XCTestCase {
         func launch(waitHasExpired: Bool) -> ManagedLibraryDiagnostic? {
             let d = ManagedLibraryDiagnostics.diagnostic(
                 for: .unresolved, warnings: [], waitHasExpired: waitHasExpired,
-                fingerprint: valueA, lastReportedFingerprint: lastReported
+                configuredValue: valueA, identity: valueA, lastReportedIdentity: lastReported
             )
             if d != nil { lastReported = valueA }   // the contract: persist only on a report
             return d
@@ -236,7 +241,7 @@ final class ManagedLibraryDiagnosticsTests: XCTestCase {
             let d = ManagedLibraryDiagnostics.diagnostic(
                 for: .apply(uuid: "urn:uuid:681710a7-d1c2-4649-a29d-4fbd08e8861e"),
                 warnings: [], waitHasExpired: true,
-                fingerprint: valueA, lastReportedFingerprint: lastReported
+                configuredValue: valueA, identity: valueA, lastReportedIdentity: lastReported
             )
             if d != nil { lastReported = valueA }
             XCTAssertNil(d)

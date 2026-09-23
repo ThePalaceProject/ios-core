@@ -161,7 +161,7 @@ final class ManagedLibraryDiagnosticReportingTests: XCTestCase {
             "aaa": "leading"
         ]
         let digests = Set((0..<25).map { _ in
-            ManagedAppConfiguration.rawFingerprint(managedDictionary: payload) ?? "nil"
+            ManagedAppConfiguration.configurationIdentity(managedDictionary: payload) ?? "nil"
         })
 
         XCTAssertEqual(digests.count, 1, "digest is not stable: \(digests)")
@@ -175,11 +175,11 @@ final class ManagedLibraryDiagnosticReportingTests: XCTestCase {
             ["defaultLibraryCatalogUrl": "https://example.org/catalog"],
             ["defaultLibraryId": goodId, "defaultLibraryCatalogUrl": "https://example.org/catalog"]
         ]
-        let baseDigest = ManagedAppConfiguration.rawFingerprint(managedDictionary: base)
+        let baseDigest = ManagedAppConfiguration.configurationIdentity(managedDictionary: base)
 
         for variant in variants {
             XCTAssertNotEqual(
-                ManagedAppConfiguration.rawFingerprint(managedDictionary: variant),
+                ManagedAppConfiguration.configurationIdentity(managedDictionary: variant),
                 baseDigest,
                 "a changed payload must read as new: \(variant)"
             )
@@ -189,16 +189,16 @@ final class ManagedLibraryDiagnosticReportingTests: XCTestCase {
     func testAnEmptyOrAbsentPayload_HasNoDigest() {
         // An MDM that pushed an empty dictionary and an unmanaged device are
         // the same thing to us: nothing configured, nothing to have reported.
-        XCTAssertNil(ManagedAppConfiguration.rawFingerprint(managedDictionary: [:]))
-        XCTAssertNil(ManagedAppConfiguration.rawFingerprint(defaults: defaults))
+        XCTAssertNil(ManagedAppConfiguration.configurationIdentity(managedDictionary: [:]))
+        XCTAssertNil(ManagedAppConfiguration.configurationIdentity(defaults: defaults))
     }
 
     func testTheDigestCoversValuesTheParserDiscards() {
         // The parsed fingerprint cannot distinguish these — both parse to
         // nothing. The raw digest must, or two different typos deduplicate
         // against each other and the second one is never heard.
-        let first = ManagedAppConfiguration.rawFingerprint(managedDictionary: ["defaultLibraryId": "typo-one"])
-        let second = ManagedAppConfiguration.rawFingerprint(managedDictionary: ["defaultLibraryId": "typo-two"])
+        let first = ManagedAppConfiguration.configurationIdentity(managedDictionary: ["defaultLibraryId": "typo-one"])
+        let second = ManagedAppConfiguration.configurationIdentity(managedDictionary: ["defaultLibraryId": "typo-two"])
 
         XCTAssertNil(ManagedAppConfiguration.libraryPreconfiguration(managedDictionary: ["defaultLibraryId": "typo-one"]))
         XCTAssertNil(ManagedAppConfiguration.libraryPreconfiguration(managedDictionary: ["defaultLibraryId": "typo-two"]))

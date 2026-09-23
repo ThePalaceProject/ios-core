@@ -53,9 +53,16 @@ struct ManagedLibraryDiagnostic: Equatable {
     }
 
     let kind: Kind
-    /// Human-readable detail. Carries configuration keys and library
-    /// identifiers only: both are values an administrator typed from a document
-    /// we wrote, and neither identifies a person.
+    /// Human-readable detail, and the only field that leaves the device.
+    ///
+    /// It may carry our own configuration keys and the values an administrator
+    /// typed under them, because those come from a document we wrote. It may
+    /// NOT carry the managed payload itself: that dictionary belongs to the
+    /// school's MDM and may hold unrelated settings today and sensitive ones
+    /// tomorrow. An earlier version of this file embedded the whole payload
+    /// here while this very comment claimed it did not — which is why the
+    /// reportable value and the comparison value are now separate parameters
+    /// with separate names, rather than one value and a promise.
     let detail: String
 
     var summary: String {
@@ -82,16 +89,24 @@ enum ManagedLibraryDiagnostics {
     ///     Before it is, an unresolved configuration is normal and not news.
     ///   - fingerprint: the current configuration value, or nil if none.
     ///   - lastReportedFingerprint: the value last reported from this device.
+    /// - Parameters:
+    ///   - configuredValue: the library identifier or catalog URL the
+    ///     administrator asked for. Reportable: it is a value typed under one
+    ///     of OUR keys, from a document we wrote.
+    ///   - identity: an opaque digest of the whole managed payload, used only
+    ///     to tell one configuration from another. NOT reportable, and never
+    ///     placed in `detail` — see `ManagedAppConfiguration.configurationIdentity`.
     static func diagnostic(
         for decision: ManagedLibraryDecision,
         warnings: [String],
         waitHasExpired: Bool,
-        fingerprint: String?,
-        lastReportedFingerprint: String?
+        configuredValue: String?,
+        identity: String?,
+        lastReportedIdentity: String?
     ) -> ManagedLibraryDiagnostic? {
-        // Already told someone about this exact value. Saying it again every
-        // launch is how a signal becomes noise.
-        guard fingerprint != lastReportedFingerprint else { return nil }
+        // Already told someone about this exact configuration. Saying it again
+        // every launch is how a signal becomes noise.
+        guard identity != lastReportedIdentity else { return nil }
 
         // A malformed payload is reportable immediately: no amount of waiting
         // turns a typo into a library.
@@ -107,12 +122,15 @@ enum ManagedLibraryDiagnostics {
             // Two conditions, both load-bearing. The wait, because before it
             // expires this is the ordinary cold-launch state and not a fault.
             // And a value to name, because a report that cannot say WHICH
-            // configuration failed is not actionable by the administrator it
-            // is written for — better silent than unhelpful.
-            guard waitHasExpired, let fingerprint else { return nil }
+            // library failed is not actionable by the administrator it is
+            // written for — better silent than unhelpful.
+            //
+            // The value named is the one the administrator asked for, not the
+            // payload it arrived in.
+            guard waitHasExpired, let configuredValue else { return nil }
             return ManagedLibraryDiagnostic(
                 kind: .libraryNotFound,
-                detail: "configuration \(fingerprint) resolved to no library in the loaded registry"
+                detail: "configured library \(configuredValue) is not in the loaded registry"
             )
         case .noConfiguration, .alreadyApplied, .registryNotLoaded, .apply:
             // Nothing wrong, still working, or it worked.
@@ -135,7 +153,7 @@ extension ManagedLibraryDiagnostics {
     ///
     /// The record is keyed on the RAW payload, not the parsed configuration,
     /// so a payload too malformed to parse still reports exactly once. See
-    /// `ManagedAppConfiguration.rawFingerprint(managedDictionary:)`.
+    /// `ManagedAppConfiguration.configurationIdentity(managedDictionary:)`.
     @discardableResult
     static func reportIfNeeded(
         decision: ManagedLibraryDecision,
@@ -144,18 +162,24 @@ extension ManagedLibraryDiagnostics {
         reporter: any ManagedLibraryDiagnosticReporting
     ) -> ManagedLibraryDiagnostic? {
         let parse = ManagedAppConfiguration.parse(defaults: defaults)
-        let fingerprint = ManagedAppConfiguration.rawFingerprint(defaults: defaults)
+        let identity = ManagedAppConfiguration.configurationIdentity(defaults: defaults)
+        // Reportable by construction: whatever the administrator put under our
+        // own keys, never the payload that carried it.
+        let configuredValue = parse.configuration.flatMap {
+            $0.libraryId ?? $0.catalogURL?.absoluteString
+        }
 
         guard let diagnostic = diagnostic(
             for: decision,
             warnings: parse.warnings,
             waitHasExpired: waitHasExpired,
-            fingerprint: fingerprint,
-            lastReportedFingerprint: defaults.string(forKey: lastReportedFingerprintKey)
+            configuredValue: configuredValue,
+            identity: identity,
+            lastReportedIdentity: defaults.string(forKey: lastReportedFingerprintKey)
         ) else { return nil }
 
         reporter.report(diagnostic)
-        defaults.set(fingerprint, forKey: lastReportedFingerprintKey)
+        defaults.set(identity, forKey: lastReportedFingerprintKey)
         return diagnostic
     }
 }

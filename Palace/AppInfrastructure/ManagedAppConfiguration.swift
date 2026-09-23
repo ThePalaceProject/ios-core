@@ -16,6 +16,7 @@
 //
 
 import Foundation
+import CryptoKit
 
 /// The library pre-selection an MDM asked for, in canonical form.
 ///
@@ -137,32 +138,45 @@ enum ManagedAppConfiguration {
             .filter { !$0.isEmpty }
     }
 
-    /// A stable digest of what the administrator actually wrote, INCLUDING the
-    /// values the parser could not use.
+    /// A stable, NON-REVERSIBLE identity for what the administrator wrote,
+    /// covering the whole managed payload including keys we do not understand.
     ///
-    /// `ManagedLibraryPreconfiguration.fingerprint` cannot serve this purpose,
-    /// and the difference is the whole reason this exists. That one digests the
-    /// PARSED configuration, so a payload that parses to nothing usable — the
-    /// single most likely real-world fault, a mistyped identifier — has no
-    /// fingerprint at all. Keying "we already reported this" on nil would
-    /// re-report the same typo on every launch forever, which is precisely the
-    /// runaway that record exists to prevent, hitting precisely the case it was
-    /// written for.
+    /// ## This is for comparing, never for reporting
     ///
-    /// Keys are sorted because `[String: Any]` has no order, and an unordered
-    /// digest would change between launches on its own.
-    static func rawFingerprint(managedDictionary: [String: Any]) -> String? {
+    /// The distinction is the whole point, and getting it wrong is not
+    /// hypothetical — an earlier version of this returned the payload itself,
+    /// and the diagnostics path embedded that in a Crashlytics report. The
+    /// managed dictionary belongs to the school's MDM, not to us: it may carry
+    /// unrelated settings today and sensitive ones tomorrow, and neither is
+    /// ours to send anywhere.
+    ///
+    /// So the content never leaves this function. What comes out is a digest:
+    /// enough to answer "is this the same configuration as last time?" and
+    /// useless for anything else. A caller that wants something a human can
+    /// read must build it from `ManagedLibraryPreconfiguration`, whose values
+    /// are ours by construction.
+    ///
+    /// Covers every key rather than only ours, because the question it answers
+    /// is "did the administrator change anything?" — and a change under a key
+    /// we do not parse today is still a change, still worth re-evaluating, and
+    /// still worth reporting separately from the previous attempt.
+    ///
+    /// Keys are sorted before hashing because `[String: Any]` has no order, and
+    /// an unordered digest would change between launches on its own.
+    static func configurationIdentity(managedDictionary: [String: Any]) -> String? {
         guard !managedDictionary.isEmpty else { return nil }
-        return managedDictionary.keys.sorted()
+        let canonical = managedDictionary.keys.sorted()
             .map { "\($0)=\(String(describing: managedDictionary[$0] ?? ""))" }
             .joined(separator: "|")
+        let digest = SHA256.hash(data: Data(canonical.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined().prefix(16).description
     }
 
-    /// `rawFingerprint(managedDictionary:)` read from `UserDefaults`. Nil when
-    /// the app is unmanaged — there is nothing to have reported.
-    static func rawFingerprint(defaults: UserDefaults) -> String? {
+    /// `configurationIdentity(managedDictionary:)` read from `UserDefaults`.
+    /// Nil when the app is unmanaged — there is nothing to compare.
+    static func configurationIdentity(defaults: UserDefaults) -> String? {
         guard let managed = defaults.dictionary(forKey: userDefaultsKey) else { return nil }
-        return rawFingerprint(managedDictionary: managed)
+        return configurationIdentity(managedDictionary: managed)
     }
 
     /// Pure form of `libraryPreconfiguration(defaults:)`.
