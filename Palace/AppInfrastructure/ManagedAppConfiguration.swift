@@ -115,6 +115,34 @@ enum ManagedAppConfiguration {
         return parse(managedDictionary: managed)
     }
 
+    /// A stable digest of what the administrator actually wrote, INCLUDING the
+    /// values the parser could not use.
+    ///
+    /// `ManagedLibraryPreconfiguration.fingerprint` cannot serve this purpose,
+    /// and the difference is the whole reason this exists. That one digests the
+    /// PARSED configuration, so a payload that parses to nothing usable — the
+    /// single most likely real-world fault, a mistyped identifier — has no
+    /// fingerprint at all. Keying "we already reported this" on nil would
+    /// re-report the same typo on every launch forever, which is precisely the
+    /// runaway that record exists to prevent, hitting precisely the case it was
+    /// written for.
+    ///
+    /// Keys are sorted because `[String: Any]` has no order, and an unordered
+    /// digest would change between launches on its own.
+    static func rawFingerprint(managedDictionary: [String: Any]) -> String? {
+        guard !managedDictionary.isEmpty else { return nil }
+        return managedDictionary.keys.sorted()
+            .map { "\($0)=\(String(describing: managedDictionary[$0] ?? ""))" }
+            .joined(separator: "|")
+    }
+
+    /// `rawFingerprint(managedDictionary:)` read from `UserDefaults`. Nil when
+    /// the app is unmanaged — there is nothing to have reported.
+    static func rawFingerprint(defaults: UserDefaults) -> String? {
+        guard let managed = defaults.dictionary(forKey: userDefaultsKey) else { return nil }
+        return rawFingerprint(managedDictionary: managed)
+    }
+
     /// Pure form of `libraryPreconfiguration(defaults:)`.
     static func libraryPreconfiguration(managedDictionary: [String: Any]) -> ManagedLibraryPreconfiguration? {
         parse(managedDictionary: managedDictionary).configuration

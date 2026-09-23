@@ -663,9 +663,22 @@ extension TPPAppDelegate {
         let start = managedPreconfigurationStart ?? Date()
         managedPreconfigurationStart = start
 
-        let step = ManagedLibraryPreconfigurator.launchStep(
-            for: decision,
-            elapsed: Date().timeIntervalSince(start)
+        let elapsed = Date().timeIntervalSince(start)
+        let step = ManagedLibraryPreconfigurator.launchStep(for: decision, elapsed: elapsed)
+
+        // PP-5221 — tell ourselves when a school's configuration is wrong,
+        // because otherwise the only signal is a ticket saying "we set it up
+        // and nothing happened". Bounded twice over: silent until the registry
+        // wait has expired, since before that an unresolved library is the
+        // ordinary cold-launch state, and at most once per configuration value,
+        // so one misconfigured device does not file a report a day forever.
+        // Inside the feature-flag guard above, so an unmanaged install reports
+        // nothing and pays nothing.
+        ManagedLibraryDiagnostics.reportIfNeeded(
+            decision: decision,
+            waitHasExpired: elapsed >= ManagedLibraryPreconfigurator.registryWaitLimit,
+            defaults: .standard,
+            reporter: ManagedLibraryCrashlyticsReporter()
         )
         // The wait expired with a configuration still pending: show the picker
         // but keep trying, because a school network in the morning outlasts any

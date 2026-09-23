@@ -121,6 +121,45 @@ enum ManagedLibraryDiagnostics {
     }
 }
 
+extension ManagedLibraryDiagnostics {
+
+    /// Reports a configuration problem at most once per configuration VALUE,
+    /// and records that it did.
+    ///
+    /// This is a function rather than two lines at the call site because of the
+    /// order: the record is written ONLY when something was actually reported.
+    /// Writing it on every evaluation would mark a value as already-spoken-for
+    /// during the pre-expiry window where the answer is deliberately nil, and
+    /// the fault would then never be reported at all — a silent failure of the
+    /// whole mechanism, on the launch where it matters most.
+    ///
+    /// The record is keyed on the RAW payload, not the parsed configuration,
+    /// so a payload too malformed to parse still reports exactly once. See
+    /// `ManagedAppConfiguration.rawFingerprint(managedDictionary:)`.
+    @discardableResult
+    static func reportIfNeeded(
+        decision: ManagedLibraryDecision,
+        waitHasExpired: Bool,
+        defaults: UserDefaults,
+        reporter: any ManagedLibraryDiagnosticReporting
+    ) -> ManagedLibraryDiagnostic? {
+        let parse = ManagedAppConfiguration.parse(defaults: defaults)
+        let fingerprint = ManagedAppConfiguration.rawFingerprint(defaults: defaults)
+
+        guard let diagnostic = diagnostic(
+            for: decision,
+            warnings: parse.warnings,
+            waitHasExpired: waitHasExpired,
+            fingerprint: fingerprint,
+            lastReportedFingerprint: defaults.string(forKey: lastReportedFingerprintKey)
+        ) else { return nil }
+
+        reporter.report(diagnostic)
+        defaults.set(fingerprint, forKey: lastReportedFingerprintKey)
+        return diagnostic
+    }
+}
+
 /// Where a diagnostic goes. A protocol so the decision can be tested without
 /// reaching Crashlytics.
 protocol ManagedLibraryDiagnosticReporting {
