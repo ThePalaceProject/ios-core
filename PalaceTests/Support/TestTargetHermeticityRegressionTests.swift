@@ -118,6 +118,28 @@ final class TestTargetHermeticityRegressionTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
         let delivered = expectation(description: "registry-change notification delivered")
+        // The observer below is registered with `object: nil`, so it receives
+        // `.TPPBookRegistryDidChange` from ANY poster in the process — another
+        // suite's registry, a background AccountsManager load, the real
+        // registry. A second delivery therefore over-fulfills this expectation,
+        // and `assertForOverFulfill` defaults to true, so XCTest raises
+        // `NSInternalInconsistencyException` and takes the whole test HOST down
+        // — which then reports as an unrelated test "exceeding its execution
+        // time allowance" while the tally still reads 0 failures.
+        //
+        // Scoping the observer to a sender is NOT an option: every poster of this
+        // notification passes `object: nil` (TPPBookRegistryMock.addBook,
+        // BookRegistryStore, BookRegistrySync), so an `object:`-filtered observer
+        // would never fire at all.
+        //
+        // `deliveredOnMain` below already guards against multiple deliveries
+        // (`if current == nil`), so tolerating them here matches the intent that
+        // was already expressed; what this test asserts is that a delivery
+        // happens and that the FIRST one is on the main queue, not that exactly
+        // one ever arrives. Observed in CI run 35885402298 — and note it does NOT
+        // reproduce in isolation, because no foreign poster exists in a run of
+        // this class alone. Only a full-suite run exercises it.
+        delivered.assertForOverFulfill = false
         let deliveredOnMain = LockIsolated<Bool?>(nil)
         let observer = NotificationCenter.default.addObserver(
             forName: .TPPBookRegistryDidChange,
