@@ -1,21 +1,6 @@
 {
-  "_comment": "Pre-existing dangling doc references, tolerated so the gate could land. Nothing new may be added. Fix an entry and delete its line \u2014 the gate fails on baseline entries that now resolve, so this cannot go stale.",
+  "_comment": "Pre-existing dangling doc references, tolerated so the gate could land. Nothing new may be added. Fix an entry and delete its line — the gate fails on baseline entries that now resolve, so this cannot go stale.",
   "known_dangling": [
-    {
-      "doc": ".claude/skills/intent/SKILL.md",
-      "kind": "source",
-      "target": "Palace/SignInLogic/OAuthCallbackHandler.swift"
-    },
-    {
-      "doc": ".claude/skills/intent/SKILL.md",
-      "kind": "source",
-      "target": "PalaceTests/SignInLogic/OAuthCallbackHandlerTests.swift"
-    },
-    {
-      "doc": ".claude/skills/swarm/SKILL.md",
-      "kind": "workflow",
-      "target": "SWARM_ID/manifest.yaml"
-    },
     {
       "doc": "docs/SystemRequirements.md",
       "kind": "script",
