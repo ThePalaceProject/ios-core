@@ -1,6 +1,6 @@
 ---
 name: rigorous-fix
-description: Architect + SoD-review rigor for single-module critical-path changes that don't warrant a full /swarm but DO warrant more than bare /clean-code. Use when touching auth, sign-in, borrow, return, download, DRM fulfillment, audiobook playback, persistence migrations, or any code where a regression would hit users — regardless of LOC count. Invoke via "/rigorous-fix <task>" or when the user says "rigorous fix for X", "do this with SoD review", "critical path change to Y". For multi-module work, use /swarm. For non-critical bug fixes <50 LOC, /clean-code is sufficient.
+description: Architect + SoD-review rigor for single-module critical-path changes that don't warrant a full /swarm but DO warrant more than bare /clean-code. Use when touching auth, sign-in, borrow, return, download, DRM fulfillment, audiobook playback, persistence migrations, or any code where a regression would hit users — regardless of LOC count. Invoke via "/rigorous-fix <task>" or when the user says "rigorous fix for X", "do this with SoD review", "critical path change to Y". For multi-module work, use /swarm. For non-critical bug fixes <50 LOC, /clean-code is sufficient. COST: this skill spawns 4-9 subagents (1 architect-reviewer + 3 SoD reviewers, +3 more per BLOCK round, plus optional recon) and can consume a large fraction of a session. Say so before starting, and prefer /clean-code when the change does not actually touch a critical path.
 tools: Agent, Bash, Read, Write, Edit, Grep, Glob, mcp__forgeos__forge_propose_changeset, mcp__forgeos__forge_submit_evidence, mcp__forgeos__forge_check_gates, mcp__forgeos__forge_promote_gate, mcp__forgeos__forge_get_context
 # doc-lifecycle metadata (added by Module B sweep)
 type: evolving
@@ -178,11 +178,43 @@ If any check fails, fix it BEFORE invoking /forge-review. Don't ask the reviewer
 - **Tier 2 — Explore subagent.** When the class needs *reading* (semantic disambiguation: which `Timer.publish(every:)` calls should invalidate during backgrounding vs which shouldn't). Cost: ~10 minutes / one subagent invocation. Output: `file:line` list with brief rationale per finding.
 - **Tier 3 — dedicated detector script at `scripts/check-<wall-id>.py`.** Runs in `scripts/verify-pr.sh` + pre-commit. **THIS IS THE PERMANENT WALL.** The one-time wipe catches *current* instances; the detector catches *future* ones. Without Tier 3 the class can recur next month.
 
+**The admission test — run this BEFORE step 5, and stop if it fails.**
+
+A detector is production tooling. It runs on every commit for every contributor,
+forever, and a false positive blocks the whole team. It has to earn that, and
+"the bug class is real" is not enough on its own — every bug class is real.
+
+Land a detector only when at least one holds:
+
+1. **The tree has ≥1 real instance.** Something is actually broken right now.
+2. **A near-miss reached review or production.** The mistake was made by someone,
+   even if caught — a shipped defect, a reverted commit, a blocking review
+   finding.
+3. **The human explicitly asked for the wall**, knowing the cost.
+
+If NONE holds — in particular when the scan returns **zero survivors** — do not
+write the detector. Write the wall-failure entry, file a Jira ticket describing
+the class and the proposed check, and STOP. The knowledge is preserved; the
+610-line commit-blocking artifact is not built on speculation.
+
+Incident (PP-5234, 2026-09-23): Phase 3.5 fired during PR #1462 on a class with
+**zero instances in the codebase**, and produced ~610 lines of commit-blocking
+tooling whose own review found a false positive that would have stopped every
+developer from committing. It burned most of a teammate's session before anyone
+noticed what the phase was doing. The class was genuine and nasty — a
+`snake_case` CodingKey under `.convertFromSnakeCase` silently matches nothing —
+and the ticket still captures it. What was wrong was building the wall
+unprompted, not the idea of the wall.
+
+**Ask before authoring tooling.** If the detector plus its tests and fixtures
+will exceed ~150 lines, say what you are about to build and what it will cost,
+and get a yes. Do not discover the budget by spending it.
+
 **Discipline guardrails (NON-NEGOTIABLE):**
 
 - **Scope-deferral protocol applies.** If the class scan returns >5 survivors and fixing all of them would push this PR past 600 LOC, STOP with the BLOCKED + scope-reduction proposal per CLAUDE.md. Do not silently ship "we fixed 3 of 8 sites and the PR title is `fix(<thing>)` while the issue remains in 5 sites." Tier 3 still lands in this PR — the detector catches the deferred sites at the next commit they touch.
-- **Triage budget.** Small class (≤3 survivors, ≤50 LOC fix): instant fix, no follow-up ticket. Big class (>3 survivors or >50 LOC fix): scope-defer, file a Jira follow-up *and* land the detector. The detector + the deferred-follow-up ticket together IS the wall — neither alone is sufficient.
-- **The detector script catches future instances; the wipe only catches current ones.** When the choice is "spend the budget on the wipe vs the detector," **prefer the detector**.
+- **Triage budget.** Small class (≤3 survivors, ≤50 LOC fix): instant fix, no follow-up ticket. Big class (>3 survivors or >50 LOC fix): scope-defer, file a Jira follow-up *and* land the detector. The detector + the deferred-follow-up ticket together IS the wall — neither alone is sufficient, *when the admission test passes*. When it does not, the ticket alone is the correct and complete output.
+- **The detector script catches future instances; the wipe only catches current ones.** When the choice is "spend the budget on the wipe vs the detector," **prefer the detector** — but only once the admission test above has passed. With zero survivors there is nothing to wipe AND nothing yet to justify the detector, and this line is not a mandate to build one anyway.
 
 **Output of Phase 3.5 (committed at PR time):**
 - `scripts/check-<wall-id>.py` + `scripts/test_check_<wall-id>.py`
