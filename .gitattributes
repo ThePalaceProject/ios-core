@@ -1,1 +1,21 @@
-*.pbxproj text merge=union
+# A pbxproj is a KEYED DICTIONARY, and `merge=union` is only safe for append-only
+# files. Union never conflicts — it emits BOTH sides' lines — so a merge where the
+# two branches disagree produces a file with duplicate keys, and Xcode's parser
+# silently keeps the last one.
+#
+# Measured on the 3.3.0 -> main reconciliation (2026-09-23): the merged project
+# carried `CURRENT_PROJECT_VERSION = 510` AND `= 500`, and `MARKETING_VERSION`
+# 3.3.0 AND 3.2.4. That release would have shipped as 3.2.4 build 500 with no
+# conflict, no warning, and a diff that reads correctly. It was caught by eye.
+#
+# The same mechanism restores file references deleted on one side, which is where
+# the dangling `BookRegistrySync.swift` reference in that merge came from — the
+# file having been moved into an extracted package.
+#
+# Control, the same merge run both ways: with union the file does NOT conflict and
+# carries both versions; without it the file conflicts with 22 markers. The
+# conflict is the CORRECT outcome — which build number ships is a human decision.
+#
+# Resolve membership conflicts with `scripts/pbxproj_add_swift.rb`, which is
+# idempotent and writes all six entries per file.
+*.pbxproj text
