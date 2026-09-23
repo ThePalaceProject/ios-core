@@ -338,6 +338,106 @@ final class ManagedLibraryMultipleTests: XCTestCase {
         XCTAssertNil(dict?["additionalLibraryIds"])
     }
 
+    // MARK: - What a real MDM admin form actually sends
+    //
+    // `additionalLibraryIds` is documented as an array, and a plist-paste UI
+    // sends one. A form with a single text box does not: it sends whatever the
+    // administrator typed, as one string. Before this, that string failed the
+    // UUID check and every extra library was dropped — a school that configured
+    // three divisions would have got one, with the other two visible only in a
+    // warning nobody had asked for.
+    //
+    // The separators match the Testing screen's, so what an engineer types to
+    // reproduce a report is parsed the same way as what the school sent.
+
+    func testACommaSeparatedString_IsReadAsSeveralLibraries() {
+        let parsed = ManagedAppConfiguration.libraryPreconfiguration(managedDictionary: [
+            "defaultLibraryId": lower,
+            "additionalLibraryIds": "\(middle),\(upper)"
+        ])
+
+        XCTAssertEqual(parsed?.additionalLibraryIds, [middle, upper])
+    }
+
+    func testTheSeparatorsAnAdministratorActuallyTypes() {
+        // Commas with spaces after them, and a list pasted one per line, are
+        // both what a person produces in a text box.
+        for raw in ["\(middle), \(upper)",
+                    "\(middle) \(upper)",
+                    "\(middle)\n\(upper)",
+                    "  \(middle) ,\n \(upper)  "] {
+            let parsed = ManagedAppConfiguration.libraryPreconfiguration(managedDictionary: [
+                "defaultLibraryId": lower,
+                "additionalLibraryIds": raw
+            ])
+            XCTAssertEqual(parsed?.additionalLibraryIds, [middle, upper],
+                           "failed for input: \(raw.debugDescription)")
+        }
+    }
+
+    func testASingleIdentifierAsAString_StillWorks() {
+        // The shape that already worked. Splitting must not break it.
+        let parsed = ManagedAppConfiguration.libraryPreconfiguration(managedDictionary: [
+            "defaultLibraryId": lower,
+            "additionalLibraryIds": middle
+        ])
+
+        XCTAssertEqual(parsed?.additionalLibraryIds, [middle])
+    }
+
+    func testAnArrayIsStillTheExpectedShape() {
+        // The documented form, and what a plist-paste UI sends. Unchanged.
+        let parsed = ManagedAppConfiguration.libraryPreconfiguration(managedDictionary: [
+            "defaultLibraryId": lower,
+            "additionalLibraryIds": [middle, upper]
+        ])
+
+        XCTAssertEqual(parsed?.additionalLibraryIds, [middle, upper])
+    }
+
+    func testSplittingDoesNotTurnOneBadValueIntoSilence() {
+        // Forgiving about separators must not become forgiving about content.
+        // A typo still has to be reported, or we have traded a visible failure
+        // for an invisible one.
+        var warnings: [String] = []
+        let parse = ManagedAppConfiguration.parse(managedDictionary: [
+            "defaultLibraryId": lower,
+            "additionalLibraryIds": "\(middle), nonsense"
+        ])
+        warnings = parse.warnings
+
+        XCTAssertEqual(parse.configuration?.additionalLibraryIds, [middle],
+                       "the good one is kept")
+        XCTAssertTrue(warnings.contains { $0.contains("nonsense") },
+                      "the bad one is reported: \(warnings)")
+    }
+
+    func testABlankAdditionalField_IsNotAFault() {
+        // Behaviour change worth pinning: an empty value used to reach the UUID
+        // check and produce a warning about an identifier that was never typed.
+        // A blank field means "I did not configure any extra libraries", which
+        // is not something to report.
+        let parse = ManagedAppConfiguration.parse(managedDictionary: [
+            "defaultLibraryId": lower,
+            "additionalLibraryIds": "   "
+        ])
+
+        XCTAssertEqual(parse.configuration?.additionalLibraryIds, [])
+        XCTAssertTrue(parse.warnings.isEmpty, "a blank field is not a fault: \(parse.warnings)")
+    }
+
+    func testTheSelectedLibraryIsNeverSplit() {
+        // `defaultLibraryId` is singular. Splitting it would mean quietly
+        // picking one of two libraries an administrator named, which is worse
+        // than refusing — so this stays strict and warns.
+        let parse = ManagedAppConfiguration.parse(managedDictionary: [
+            "defaultLibraryId": "\(lower),\(middle)"
+        ])
+
+        XCTAssertNil(parse.configuration?.libraryId)
+        XCTAssertFalse(parse.warnings.isEmpty, "a two-value selection must be reported")
+    }
+
     func testDebugWrite_SurfacesADroppedEntryRatherThanShorteningInSilence() {
         let outcome = ManagedLibraryDebugOverride.write(
             raw: "\(lower), nonsense", defaults: defaults

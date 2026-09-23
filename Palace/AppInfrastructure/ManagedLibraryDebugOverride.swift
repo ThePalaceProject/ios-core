@@ -125,10 +125,12 @@ enum ManagedLibraryDebugOverride {
     /// `additionalLibraryIds`. Order carries meaning here — unlike in the MDM
     /// payload, where the two roles get their own keys — because a single text
     /// field has nowhere else to put it, and the row's own label says so.
+    /// Delegates to `ManagedAppConfiguration.splitEntries`, which the parser now
+    /// uses for a string-valued `additionalLibraryIds`. One splitter rather than
+    /// two, so what an engineer types here cannot be read differently from what
+    /// a school's MDM sent.
     static func splitEntries(_ raw: String) -> [String] {
-        raw.split(whereSeparator: { $0 == "," || $0.isNewline || $0 == " " })
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        ManagedAppConfiguration.splitEntries(raw)
     }
 
     /// Removes a debug-authored configuration. Leaves an externally supplied one

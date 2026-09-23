@@ -115,6 +115,28 @@ enum ManagedAppConfiguration {
         return parse(managedDictionary: managed)
     }
 
+    /// Splits an administrator's typed list into entries on commas, newlines or
+    /// spaces.
+    ///
+    /// Deliberately generous about separators and not at all generous about
+    /// content: a value that is not a UUID after splitting is still dropped and
+    /// still reported. Trading a visible failure for an invisible one would be
+    /// the wrong direction, and the point here is only that "a, b" and "a\nb"
+    /// are things people type into a single text box.
+    ///
+    /// Applied to `additionalLibraryIds` and never to `defaultLibraryId`, which
+    /// is singular: splitting that one would mean quietly picking one of two
+    /// libraries an administrator named, which is worse than refusing.
+    ///
+    /// The Testing screen splits typed input the same way through this function,
+    /// so an engineer reproducing a school's report parses it as the school
+    /// sent it.
+    static func splitEntries(_ raw: String) -> [String] {
+        raw.split(whereSeparator: { $0 == "," || $0.isNewline || $0 == " " })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
     /// A stable digest of what the administrator actually wrote, INCLUDING the
     /// values the parser could not use.
     ///
@@ -235,7 +257,14 @@ enum ManagedAppConfiguration {
         case let list as [String]:
             entries = list
         case let single as String:
-            entries = [single]
+            // A single string is not necessarily a single library. An MDM whose
+            // admin UI takes a plist sends an array, as documented — but one
+            // with a plain text box sends whatever the administrator typed, as
+            // one string. Treating that as one identifier failed the UUID check
+            // and dropped EVERY extra library: a school that configured three
+            // divisions would have got one, with the rest visible only in a
+            // warning nobody had asked to read.
+            entries = splitEntries(single)
         default:
             warnings.append(
                 "'\(Key.additionalLibraryIds)' must be an array of strings."
