@@ -493,7 +493,18 @@ struct AudiobookMorphingPlayerView: View {
             .frame(width: 140, height: 28)
             .contentShape(Rectangle())
             .gesture(minimizeDrag)
-            .accessibilityHidden(true)
+            // Minimizing is a DRAG, which VoiceOver and Switch Control cannot
+            // perform. While this was `.accessibilityHidden(true)` those
+            // patrons had exactly one exit from the full player — the ✕, which
+            // calls `closePlayer()` and ends the session — so "keep listening
+            // while I browse" was unreachable for them, not just undiscovered.
+            // The mini-bar already exposes the opposite direction
+            // (`expandPlayerHint`); this completes the other half of the morph.
+            .accessibilityElement()
+            .accessibilityLabel(Strings.Generic.minimizePlayer)
+            .accessibilityHint(Strings.Generic.minimizePlayerHint)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { presenter.minimize() }
     }
 
     /// Scrubbable seek bar built on the ported `PalaceSeekSliderView`. The
