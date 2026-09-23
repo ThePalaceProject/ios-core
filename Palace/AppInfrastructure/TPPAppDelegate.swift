@@ -610,105 +610,106 @@ func shouldSkipStaticDestructorsOnExit(isiOSAppOnMac: Bool) -> Bool {
 // MARK: - First Run Flow
 extension TPPAppDelegate {
     private func presentFirstRunFlowIfNeeded() {
-        // PP-4329: idempotency — once we've presented the picker this
-        // launch, any further .TPPCatalogDidLoad posts (the main catalog
-        // load triggers up to 8 of them in worst-case fallback paths)
-        // must NOT re-present. Without this guard, a fresh install on
-        // iOS 26.4.2 stacked 4 TPPAccountList modals.
-        guard !hasPresentedFirstRunFlow else { return }
-
         let accountsManager = AppContainer.production().accountsManager
-        // Defer until accounts have loaded to avoid false negatives on currentAccount
-        if !accountsManager.accountsHaveLoaded {
-            // PP-4329: remove the previous deferred observer (if any)
-            // before adding a new one — otherwise observers accumulate
-            // every time this method re-enters itself.
-            if let token = firstRunFlowObserver {
-                NotificationCenter.default.removeObserver(token)
-                firstRunFlowObserver = nil
-            }
-            firstRunFlowObserver = NotificationCenter.default.addObserver(
-                forName: .TPPCatalogDidLoad,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                // Registered with `queue: .main`; `assumeIsolated` to call the
-                // `@MainActor` `presentFirstRunFlowIfNeeded()` without a re-hop.
-                MainActor.assumeIsolated {
-                    self?.presentFirstRunFlowIfNeeded()
-                }
-            }
-            accountsManager.loadCatalogs(completion: nil)
+
+        // PP-5220: the decision itself is `FirstRunFlowDecision.step`, a pure
+        // function with its own tests. Everything below is the machinery that
+        // carries state in and acts on the answer — deliberately kept free of
+        // decisions of its own, because this method cannot be reached from a
+        // test and anything decided here is decided untested.
+        //
+        // The managed step is evaluated first because it is the only input that
+        // requires work (reading the configuration and resolving it), and the
+        // pure function takes its RESULT rather than the means of getting it.
+        let managedStep = managedLibraryLaunchStep(accountsHaveLoaded: accountsManager.accountsHaveLoaded)
+
+        switch FirstRunFlowDecision.step(
+            hasPresented: hasPresentedFirstRunFlow,
+            catalogHasLoaded: accountsManager.accountsHaveLoaded,
+            managedStep: managedStep,
+            hasCurrentAccount: accountsManager.currentAccountId != nil
+        ) {
+        case .alreadyHandled:
+            return
+        case .waitForCatalog:
+            deferFirstRunFlowUntilCatalogLoads(accountsManager: accountsManager)
+            return
+        case .librarySelected:
+            hasPresentedFirstRunFlow = true
+            return
+        case .waitForManagedLibrary:
+            deferFirstRunFlowUntilRegistryChanges()
+            return
+        case .nothingToDo:
+            clearFirstRunFlowObserver()
+            return
+        case .presentPicker:
+            clearFirstRunFlowObserver()
+            presentLibraryPicker(accountsManager: accountsManager)
             return
         }
+    }
 
-        // We're past the deferred-load state; remove the observer so the
-        // remaining 7 possible .TPPCatalogDidLoad posts from the same
-        // load cycle don't re-fire this method.
+    /// Evaluates the managed-configuration arm, including its bounded wait.
+    /// Returns `.presentPicker` (meaning "nothing to say") when the catalog has
+    /// not loaded yet, so the pure decision sees a single consistent shape.
+    private func managedLibraryLaunchStep(accountsHaveLoaded: Bool) -> ManagedLibraryLaunchStep {
+        guard accountsHaveLoaded else { return .presentPicker }
+        guard AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled else {
+            return .presentPicker
+        }
+
+        let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
+        let start = managedPreconfigurationStart ?? Date()
+        managedPreconfigurationStart = start
+
+        let step = ManagedLibraryPreconfigurator.launchStep(
+            for: decision,
+            elapsed: Date().timeIntervalSince(start)
+        )
+        // The wait expired with a configuration still pending: show the picker
+        // but keep trying, because a school network in the morning outlasts any
+        // timeout worth setting.
+        if step == .presentPicker, decision == .unresolved || decision == .registryNotLoaded {
+            retryManagedPreconfigurationWhenRegistryChanges()
+        }
+        return step
+    }
+
+    private func clearFirstRunFlowObserver() {
         if let token = firstRunFlowObserver {
             NotificationCenter.default.removeObserver(token)
             firstRunFlowObserver = nil
         }
+    }
 
-        // PP-5070 — a managed install can be told which library to use before
-        // the student ever sees this picker. Attempted here rather than earlier
-        // in launch because resolving an identifier needs the registry, and we
-        // are past the deferred-load state by this line. Runs BEFORE the
-        // `needsAccount` guard so an MDM that changes its configuration after
-        // install can re-point a device that already has a library.
-        //
-        // Constructed here rather than held on `AppContainer`: the
-        // preconfigurator carries no state of its own (the applied fingerprint
-        // lives in `UserDefaults`), and building it inside AppContainer's own
-        // init would re-enter `AppContainer.production()`'s lock.
-        // PP-5070 is behind a flag, default OFF. A device with no managed
-        // configuration behaves identically either way, so this does not
-        // protect unmanaged patrons from the feature's EFFECTS — it protects
-        // them from its TIMING, because the feature changes the first-run path
-        // that every new install takes, and that path has not yet been
-        // exercised on a real cold launch.
-        let preconfigurator = ManagedLibraryPreconfigurator.production()
-        let decision = AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled
-            ? preconfigurator.applyIfNeeded()
-            : .noConfiguration
-        let start = managedPreconfigurationStart ?? Date()
-        managedPreconfigurationStart = start
+    /// The pre-existing wait for the library list, unchanged in behaviour.
+    private func deferFirstRunFlowUntilCatalogLoads(accountsManager: AccountsManager) {
+        legacyDeferFirstRunFlow(accountsManager: accountsManager)
+    }
 
-        switch ManagedLibraryPreconfigurator.launchStep(
-            for: decision,
-            elapsed: Date().timeIntervalSince(start)
-        ) {
-        case .libraryApplied:
-            hasPresentedFirstRunFlow = true
-            return
-        case .waitForRegistry:
-            // The configured library is not in the registry the app has loaded
-            // so far — on a cold first launch that is the build-time bundled
-            // snapshot, which does not contain it. Wait for the network crawl
-            // to supersede it rather than showing the picker this feature
-            // exists to remove. `hasPresentedFirstRunFlow` stays false, so the
-            // re-registered observer re-enters this method.
-            deferFirstRunFlowUntilRegistryChanges()
-            return
-        case .presentPicker:
-            // If a configuration is still pending at this point, the wait
-            // expired before the registry arrived — not a reason to abandon it.
-            // The deadline exists so a student is not left staring at a blank
-            // screen; it is NOT a decision that the configuration is wrong. A
-            // school network with a cart of devices on it in the morning is
-            // exactly the case that outlasts any timeout we could pick, so the
-            // picker goes up AND the app keeps trying.
-            if case .unresolved = decision {
-                retryManagedPreconfigurationWhenRegistryChanges()
-            } else if case .registryNotLoaded = decision {
-                retryManagedPreconfigurationWhenRegistryChanges()
+    private func legacyDeferFirstRunFlow(accountsManager: AccountsManager) {
+        // PP-4329: remove the previous deferred observer (if any) before adding
+        // a new one — otherwise observers accumulate every time this method
+        // re-enters itself, which is how a fresh install on iOS 26.4.2 ended up
+        // with four stacked TPPAccountList modals.
+        clearFirstRunFlowObserver()
+        firstRunFlowObserver = NotificationCenter.default.addObserver(
+            forName: .TPPCatalogDidLoad,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Registered with `queue: .main`; `assumeIsolated` to call the
+            // `@MainActor` `presentFirstRunFlowIfNeeded()` without a re-hop.
+            MainActor.assumeIsolated {
+                self?.presentFirstRunFlowIfNeeded()
             }
         }
+        accountsManager.loadCatalogs(completion: nil)
+    }
 
-        // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
-        let needsAccount = (accountsManager.currentAccountId == nil)
-        guard needsAccount else { return }
-
+    /// Presents the library picker. Reached only when the decision says so.
+    private func presentLibraryPicker(accountsManager: AccountsManager) {
         guard let top = topViewController() else { return }
 
         var nav: UINavigationController!
