@@ -1,0 +1,27 @@
+# Waivers for ci/release-sync-status-guard-to-main (PR #1506).
+#
+# This PR is NOT a release or hotfix promotion. It ports one CI workflow file
+# (.github/workflows/jira-release-sync.yml) from develop to main, because
+# release.yml calls that workflow from main's ref and main never received the
+# not-started guard added by #1468. It ships no app code: the diff is two
+# workflow files, one test script, and this waiver.
+#
+# The nine entries below are crash/critical-path fixes that live on develop and
+# are held for the next release. That is the owner's standing decision, made on
+# 2026-09-23 for this exact set: "3.3.0 is already out the door, we will get
+# those in the next reelase." They reach main with release/3.4.0, cut from
+# develop, and the main<->develop backfill is in flight separately.
+#
+# Waiving them here records the exclusion for THIS branch only — the waiver file
+# is keyed to the head branch name, so it cannot suppress the gate on any
+# release/X.Y.Z or hotfix/X.Y.Z promotion.
+
+e7cb3fb2a   held for 3.4.0 — EPUB edge-tap paging + blank Library line (#1457)
+8694fa746   held for 3.4.0 — OIDC presentation anchor could not host a sheet (#1459)
+3ac01dcc0   held for 3.4.0 — expired token sent to /patrons/me/ (#1453)
+a6ae8e2ef   held for 3.4.0 — Adobe licensor refresh before activation (PP-3649, PP-5118) (#1465)
+54212bf4f   held for 3.4.0 — purge decrypted chapters when a loan ends outside the app (PP-5127) (#1471)
+5958e9235   held for 3.4.0 — downloaded LCP audiobook had no audio (PP-5135)
+850643b41   held for 3.4.0 — extract the LCP open-policy cluster (PP-5135)
+d31f2212a   held for 3.4.0 — resolve the background .lcpa fetch's library once (PP-5145)
+14b195b02   held for 3.4.0 — player minimize non-drag path for assistive tech
