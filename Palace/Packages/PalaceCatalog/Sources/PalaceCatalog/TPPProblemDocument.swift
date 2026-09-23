@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 /**
  Represents a Problem Document, outlined in https://tools.ietf.org/html/rfc7807
@@ -73,14 +74,93 @@ import Foundation
     ///
     /// `nil` when the server did not send the member, which is the common
     /// case; prefer `shouldShowTitle` over reading this directly.
+    // PUBLIC_INTENT: contracted SPM API. `TPPProblemDocument` is PalaceCatalog's public
+    // RFC 7807 model; every other member is already `public` and main-target consumers
+    // (sign-in, borrow, download) read them directly. An `internal` member here would be
+    // invisible to them.
     public let showTitle: Bool?
 
     /// Whether to display a title with this problem's `detail`. Defaults to
     /// `true` when the server sent no `show_title`, so documents that predate
     /// the extension keep displaying a title as they always have.
+    // PUBLIC_INTENT: the accessor consumers are meant to use instead of `showTitle`, so it
+    // must be at least as visible as the member it wraps. `TPPSignInBusinessLogic`
+    // .userFacingSignInError reads it from the main target.
     public var shouldShowTitle: Bool {
         showTitle ?? true
     }
+
+    // MARK: - Decoding
+
+    // Declared explicitly so `showTitle` can be decoded LENIENTLY while the five
+    // RFC 7807 members keep the strict behavior synthesized `Codable` gave them.
+    //
+    // The raw values are CAMELCASE ON PURPOSE. `fromData` sets
+    // `.convertFromSnakeCase`, which rewrites the incoming JSON key `show_title`
+    // to `showTitle` BEFORE it is matched against these cases. A case spelled
+    // `showTitle = "show_title"` would therefore match NOTHING — the flag would be
+    // silently unreadable even for a perfectly well-formed `{"show_title": false}`,
+    // with no throw to reveal it. Measured; see the tests in `ProblemDocumentTests`.
+    private enum CodingKeys: String, CodingKey {
+        case type, title, status, detail, instance, showTitle
+    }
+
+    /// Decodes the five RFC 7807 members strictly and `show_title` leniently.
+    ///
+    /// Synthesized `Codable` generates `decodeIfPresent` per member, which returns
+    /// `nil` only for an ABSENT or `null` value — a present-but-wrong-typed value
+    /// throws `typeMismatch` and aborts the WHOLE decode. That is why declaring
+    /// `showTitle` at all was a hazard: before it existed, `show_title` was an
+    /// unknown key and was ignored whatever its type; after, a server sending
+    /// `"show_title": "false"` or `0` would cost us the entire document.
+    ///
+    /// On the sign-in path that is not a cosmetic loss. `TPPNetworkResponder`
+    /// parses with the strict `fromData`, and its `catch` arm returns an `NSError`
+    /// carrying no problem document — so `userFacingSignInError` receives `nil`,
+    /// skips the branch that honors `show_title`, and falls through to "invalid
+    /// credentials". A patron blocked by a library policy would be told their
+    /// password is wrong, and the library's `detail` would never render.
+    ///
+    /// So the flag is allowed to fail, and the document is not: an unreadable
+    /// `show_title` degrades to "the server sent no flag", which `shouldShowTitle`
+    /// already treats as "show the title" — the pre-extension behavior.
+    // PUBLIC_INTENT: `Decodable` conformance is already public on this type, so
+    // `init(from:)` is public API whether written by hand or synthesized — declaring it
+    // explicitly widens nothing. Swift additionally requires the witness to be at least as
+    // visible as the conformance, so `internal` would not compile.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.type     = try container.decodeIfPresent(String.self, forKey: .type)
+        self.title    = try container.decodeIfPresent(String.self, forKey: .title)
+        self.status   = try container.decodeIfPresent(Int.self,    forKey: .status)
+        self.detail   = try container.decodeIfPresent(String.self, forKey: .detail)
+        self.instance = try container.decodeIfPresent(String.self, forKey: .instance)
+
+        // `do`/`catch`, NOT `try?`: `try?` collapses absent, `null` and threw into a
+        // single `nil`, and we need to tell "the server sent nothing" (routine, and
+        // silent) from "the server sent something we could not read" (a
+        // misconfiguration worth a line in the log).
+        //
+        // `container.contains(.showTitle)` is NOT a substitute — it is `true` for an
+        // explicit `null`, so gating the warning on it would fire on
+        // `{"show_title": null}`, which is a legitimate body. This `catch` is entered
+        // for a type mismatch and nothing else.
+        do {
+            self.showTitle = try container.decodeIfPresent(Bool.self, forKey: .showTitle)
+        } catch {
+            Log.warn(#file, "Problem document sent `show_title` as a non-boolean; ignoring the flag and showing the title. Decoding error: \(error)")
+            self.showTitle = nil
+        }
+
+        super.init()
+    }
+
+    // No custom `encode(to:)` — deliberately. The synthesized encoder against these
+    // camelCase keys already round-trips through `init(from:)` with a PLAIN
+    // `JSONDecoder`. A hand-written encoder emitting `show_title` would BREAK that,
+    // because `init(from:)` keys on the post-strategy camelCase name: the flag would
+    // survive a `.convertFromSnakeCase` decoder and be silently lost by every other
+    // one. Both round trips are pinned in `ProblemDocumentTests`.
 
     private init(_ dict: [String: Any]) {
         self.type = dict[TPPProblemDocument.typeKey] as? String
