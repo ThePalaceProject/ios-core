@@ -287,6 +287,18 @@ struct Strings {
             comment: "Confirms the stop-playback dialog: stops playback and dismisses the mini-player"
         )
         // Accessibility - Audiobook full player (parity with toolkit AudiobookPlayerView)
+        // The full player's pull-down-to-minimize is a drag gesture, which
+        // VoiceOver and Switch Control cannot perform. These two give that
+        // gesture an activatable equivalent — the mirror of `expandPlayerHint`,
+        // which already covers the opposite direction from the mini-player.
+        static let minimizePlayer = NSLocalizedString(
+            "Minimize player",
+            comment: "VoiceOver: Grab handle at the top of the full audiobook player. Collapses the player to the mini-bar WITHOUT stopping playback."
+        )
+        static let minimizePlayerHint = NSLocalizedString(
+            "Keeps playing and returns you to the app",
+            comment: "VoiceOver hint for the audiobook minimize control, distinguishing it from Close, which stops playback"
+        )
         static let bookCover = NSLocalizedString("Book cover", comment: "VoiceOver: Accessibility label for the audiobook cover art")
         static let audiobookLoading = NSLocalizedString("Loading…", comment: "Shown over the audiobook player while the track buffers")
         static let audiobookLoadErrorTitle = NSLocalizedString("A problem has occurred.", comment: "Title shown when the audiobook fails to load within the timeout")

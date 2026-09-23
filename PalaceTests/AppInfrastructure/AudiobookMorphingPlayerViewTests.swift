@@ -369,4 +369,92 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
             "0 min remaining"
         )
     }
+
+    // MARK: - Minimize must be reachable without a drag gesture
+
+    /// Pull-down-to-minimize is a `DragGesture`. VoiceOver and Switch Control
+    /// cannot perform one, and the grabber was `.accessibilityHidden(true)` —
+    /// so for those patrons the ONLY exit from the full player was the ✕, which
+    /// calls `closePlayer()` and ends the session. "Keep listening while I
+    /// browse" was not merely hard to discover for them; it was unreachable.
+    /// The mini-player already carries the opposite direction
+    /// (`expandPlayerHint`), so only this half of the morph was missing.
+    ///
+    /// SwiftUI's accessibility tree is not materialized in a unit-test process
+    /// without VoiceOver running, so this guards the modifiers at the source
+    /// level — the same sentinel pattern (and the same stated reason) as
+    /// `CatalogLaneRowViewAccessibilityTests.testSwimlaneTitle_sourceDeclaresHeaderAccessibilityTrait`.
+    func testGrabber_exposesAnActivatableMinimizeToAssistiveTech() throws {
+        let grabber = try Self.declarationBody("private var grabber: some View")
+
+        XCTAssertFalse(
+            grabber.contains(".accessibilityHidden(true)"),
+            "The grabber is hidden from assistive tech, so pull-down-to-minimize has no non-drag equivalent and ✕ (which stops playback) becomes the only exit."
+        )
+        XCTAssertTrue(
+            grabber.contains("Strings.Generic.minimizePlayer"),
+            "The grabber must carry the localized minimize label, or VoiceOver announces an unlabeled element."
+        )
+        XCTAssertTrue(
+            grabber.contains(".accessibilityAction"),
+            "The grabber must expose an activation action calling minimize(); the drag gesture alone is unreachable for VoiceOver and Switch Control."
+        )
+        XCTAssertTrue(
+            grabber.contains(".isButton"),
+            "Without .isButton VoiceOver announces the grabber as static text and never offers the double-tap."
+        )
+    }
+
+    /// Minimize and Close must stay distinguishable by voice alone: one keeps
+    /// the audiobook playing, the other ends the session. Identical labels would
+    /// make the destructive choice indistinguishable from the safe one.
+    func testMinimizeAndCloseLabels_areNotInterchangeable() {
+        XCTAssertNotEqual(
+            Strings.Generic.minimizePlayer, Strings.Generic.close,
+            "Minimize keeps playback alive and Close stops it — VoiceOver users must be able to tell them apart."
+        )
+        XCTAssertFalse(
+            Strings.Generic.minimizePlayerHint.isEmpty,
+            "The minimize hint is what tells a patron playback survives; an empty hint drops that guarantee."
+        )
+    }
+
+    // MARK: - Source-sentinel helper
+
+    /// Returns the body text of a declaration in `AudiobookMorphingPlayerView.swift`,
+    /// from its signature to the closing brace at member indentation, with
+    /// whole-line `//` comments removed.
+    ///
+    /// Stripping comments is not cosmetic. The first version of this helper
+    /// returned the raw slice, and the assertion for "no `.accessibilityHidden(true)`"
+    /// then matched the comment that EXPLAINS why the modifier was removed —
+    /// the guard was reading prose and calling it code. Trailing comments on a
+    /// code line are deliberately left alone, since truncating at `//` would
+    /// also cut string literals such as `https://`.
+    ///
+    /// Both lookups `XCTUnwrap`, so a rename or restructure fails this test
+    /// loudly rather than silently scanning an empty string and passing — an
+    /// inert guard reports the same green as a satisfied one.
+    private static func declarationBody(_ signature: String) throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()        // AppInfrastructure
+            .deletingLastPathComponent()        // PalaceTests
+            .deletingLastPathComponent()        // repo root
+            .appendingPathComponent("Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+
+        let start = try XCTUnwrap(
+            source.range(of: signature),
+            "`\(signature)` no longer exists in AudiobookMorphingPlayerView.swift — re-point this guard at the renamed declaration; until then it checks nothing."
+        ).upperBound
+        let end = try XCTUnwrap(
+            source.range(of: "\n    }", range: start ..< source.endIndex),
+            "Could not find the closing brace of `\(signature)`."
+        ).lowerBound
+
+        return String(source[start ..< end])
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+    }
 }
