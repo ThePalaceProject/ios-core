@@ -1,0 +1,74 @@
+[
+  {
+    "args" : {
+      "bookId" : "RET-COORD-OK"
+    },
+    "method" : "announce.returnStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-OK",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-OK",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-OK"
+    },
+    "method" : "announce.returnStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-OK",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-OK",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "account" : "nil",
+      "bookId" : "RET-COORD-OK"
+    },
+    "method" : "localContent.deleteLocalContent"
+  },
+  {
+    "args" : {
+      "force" : "true"
+    },
+    "method" : "delegate.purgeAllAudiobookCaches"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-OK",
+      "state" : "unregistered"
+    },
+    "method" : "registry.setState"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-OK"
+    },
+    "method" : "registry.removeBook"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-OK"
+    },
+    "method" : "announce.returnSucceeded"
+  }
+]

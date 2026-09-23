@@ -13,6 +13,8 @@ import SafariServices
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceNetwork
+import PalaceBookModel
+import PalaceBookRegistry
 
 enum BookCellState {
     case normal(BookButtonState)
@@ -102,6 +104,17 @@ class BookCellModel: ObservableObject {
     /// model backs. Without it the half-sheet reached from a shelf cell showed no
     /// progress for the whole transfer.
     @Published var isDownloadingLCPContent: Bool = false
+
+    /// Whether the `.lcpa` must land before this book can be opened — LCP
+    /// streaming OFF, so the background fetch IS the patron's wait.
+    ///
+    /// This model presents the SAME half-sheet as `BookDetailViewModel`
+    /// (`NormalBookCell` → `HalfSheetView(viewModel: model)`), so it must answer
+    /// for itself. An earlier revision let it inherit a `false` protocol
+    /// default, which turned a required multi-gigabyte wait into a blank sheet
+    /// on the My Books route. Reads the download centre's existing provider
+    /// rather than `.shared`, so a test can drive both flag states.
+    var contentRequiredBeforePlayback: Bool { !downloadCenter.lcpStreamingEnabledProvider() }
 
     /// Progress samples observed from `downloadProgressPublisher`. Needed
     /// because the LCP content re-download is not registered in the download
@@ -196,6 +209,7 @@ class BookCellModel: ObservableObject {
         loadBookCoverImage()
         bindRegistryState()
         bindReachability()
+        bindProcessingState()
         setupStableButtonState()
         #if LCP
         prefetchLCPStreamingIfPossible()
@@ -388,6 +402,42 @@ class BookCellModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// Latch for the ONE download-state revert that is provably a transient
+    /// re-read and never a real transition (fix/audiobook-first-open-flicker):
+    /// once a book has surfaced `.downloadSuccessful` (Listen), a subsequent
+    /// `.downloading` re-read is the LCP early-ready artifact (audio still
+    /// fetching after the license landed) — hold Listen instead of bouncing to
+    /// Cancel. Safe because a REAL re-download never goes
+    /// `.downloadSuccessful → .downloading` directly — eviction/re-fulfill route
+    /// through `.downloadNeeded` first (`DiskBudgetManager` LRU sets
+    /// `.downloadNeeded`; SAML login-cancel sets `.downloadNeeded`). Every other
+    /// state — incl. that real `.downloadNeeded` drop and any cancel/return/fail —
+    /// drops the latch and passes through, so the label always reflects a genuine
+    /// change (no stranded Listen on evicted content).
+    ///
+    /// Deliberately NARROW: the optimistic-`.downloading`↔`.downloadNeeded`
+    /// (#2) and throttle-forward-flip (#1) flickers are timing artifacts that a
+    /// state-only latch cannot separate from a real cancel — deferred (see
+    /// contract "Not done").
+    private var listenLatched = false
+
+    /// Holds Listen against a transient post-success `.downloading` re-read;
+    /// passes every other state through and drops the latch. Applied in the
+    /// button pipeline (`setupStableButtonState`) only — NOT in the shared
+    /// `computeButtonState`, so `validateStateConsistency()` / init stay pure.
+    private func clampListenAgainstTransientDownloading(_ state: TPPBookState) -> TPPBookState {
+        switch state {
+        case .downloadSuccessful:
+            listenLatched = true
+            return state
+        case .downloading where listenLatched:
+            return .downloadSuccessful
+        default:
+            listenLatched = false
+            return state
+        }
+    }
+
     private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, override: TPPBookState?) -> BookButtonState {
         return Self.computeButtonState(book: book, registryState: registryState, isManagingHold: isManagingHold, override: override, bookRegistry: bookRegistry)
     }
@@ -417,7 +467,12 @@ class BookCellModel: ObservableObject {
     private func setupStableButtonState() {
         Publishers.CombineLatest4($book, $registryState, $isManagingHold, $localBookStateOverride)
             .map { [weak self] book, state, isManaging, override in
-                self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging, override: override) ?? .unsupported
+                guard let self else { return .unsupported }
+                // Hold Listen against a transient post-success `.downloading`
+                // re-read (fix/audiobook-first-open-flicker); the clamp lives here
+                // (pipeline) so init / validateStateConsistency stay side-effect-free.
+                let clamped = self.clampListenAgainstTransientDownloading(state)
+                return Self.computeButtonState(book: book, registryState: clamped, isManagingHold: isManaging, override: override, bookRegistry: self.bookRegistry)
             }
             .removeDuplicates()
             // Use throttle instead of debounce - throttle emits immediately on first value,
@@ -426,13 +481,53 @@ class BookCellModel: ObservableObject {
             .assign(to: &$stableButtonState)
     }
 
-    /// react to mid-flight network drops. The pre-flight check on
-    /// Download/Reserve handles the cold-offline tap; this subscription
-    /// handles the case where reachability drops AFTER the user already
-    /// kicked off a borrow/download (so isLoading is true and the spinner
-    /// would otherwise sit there for ~60s waiting on URLSession's timeout).
-    /// `dropFirst()` skips the CurrentValueSubject's replay so we only act
-    /// on actual transitions.
+    /// Clears the spinner when the registry says this book is no longer being
+    /// processed.
+    ///
+    /// The cell raises `isLoading` itself on tap, but only a handful of
+    /// specific completion paths ever lowered it — so any borrow that failed
+    /// without one of those firing left the spinner up for the lifetime of the
+    /// cell. `bindReachability` above is the same defect patched for exactly
+    /// one cause (a mid-flight network drop); this is the general case.
+    ///
+    /// Observed 2026-09-09: an Adobe activation failure surfaced its alert, and
+    /// dismissing the alert left the list cell spinning, because the failure
+    /// path clears the REGISTRY's processing flag and nothing connected that to
+    /// the cell. The store has always broadcast this notification; nobody
+    /// listened.
+    private func bindProcessingState() {
+        // App-side symbols deliberately, not the package's internal ones: the
+        // registry keeps a separate declaration with the same runtime string
+        // to avoid a cross-module ambiguity. Same notification, same keys —
+        // this mirrors what BookDetailViewModel already does.
+        NotificationCenter.default.publisher(for: NSNotification.TPPBookProcessingDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] notification in
+                guard let self else { return }
+                guard let info = notification.userInfo,
+                      let bookID = info[TPPNotificationKeys.bookProcessingBookIDKey] as? String,
+                      bookID == self.currentBookIdentifier,
+                      let processing = info[TPPNotificationKeys.bookProcessingValueKey] as? Bool
+                else { return }
+
+                // Only ever LOWER the spinner from here. Raising it on the
+                // registry's say-so would fight the cell's own tap handling,
+                // which sets isLoading before any registry write happens.
+                if !processing, self.isLoading {
+                    self.isLoading = false
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Lowers the spinner when connectivity drops mid-flight.
+    ///
+    /// The pre-flight check on Download/Reserve handles the cold-offline tap;
+    /// this subscription handles the case where reachability drops AFTER the
+    /// user already kicked off a borrow/download (so `isLoading` is true and the
+    /// spinner would otherwise sit there for ~60s waiting on URLSession's
+    /// timeout). `dropFirst()` skips the CurrentValueSubject's replay so we only
+    /// act on actual transitions.
     private func bindReachability() {
         reachability.connectivityPublisher
             .dropFirst()
@@ -640,26 +735,16 @@ extension BookCellModel {
             readerService.openEPUB(book)
             self.isLoading = false
         case .pdf:
-            #if LCP
-            if LCPPDFs.hasLCPAcquisition(book) {
-                // LCP PDFs go through the Readium publication opener which
-                // is async + heavy (LCP key derivation + asset retrieval).
-                // Hold isLoading until the route is pushed so the cell
-                // spinner stays visible while the user waits.
-                readerService.openPDF(book) { [weak self] in
-                    self?.isLoading = false
-                }
-                return
+            // Single PDF seam: `ReaderService.openPDF` gates LCP vs plain
+            // internally (see `ReaderService.pdfOpenRoute`) so every caller —
+            // this cell, BookDetail, and the Continue-reading card — routes
+            // identically. Hold the cell spinner until the open dispatches:
+            // the completion fires synchronously for a plain PDFKit open and
+            // after the async publication open for LCP (key derivation + asset
+            // retrieval), keeping the spinner visible while the user waits.
+            readerService.openPDF(book) { [weak self] in
+                self?.isLoading = false
             }
-            #endif
-            guard let url = downloadCenter.fileUrl(for: book.identifier) else { self.isLoading = false; return }
-            let metadata = TPPPDFDocumentMetadata(with: book)
-            let document = TPPPDFDocument(url: url)
-            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
-                coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
-                coordinator.push(.pdf(BookRoute(id: book.identifier)))
-            }
-            self.isLoading = false
         case .audiobook:
             openAudiobookFromCell()
         case .streamingHTML:
@@ -670,6 +755,10 @@ extension BookCellModel {
             if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                 coordinator.store(book: book)
                 coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+            } else {
+                // PP-5022 — never drop the tap on the floor. A Read button that
+                // does nothing is indistinguishable from a broken app.
+                ReaderService.presentUnreachableReaderAlert(for: book, source: "BookCellModel.streamingHTML")
             }
             self.isLoading = false
         default:
@@ -727,9 +816,14 @@ extension BookCellModel {
         self.isLoading = true
         let identifier = self.book.identifier
         downloadCenter.returnBook(withIdentifier: identifier) { [weak self] in
-            self?.isLoading = false
-            self?.isManagingHold = false
-            self?.showHalfSheet = false
+            // returnBook's completion is `@Sendable` (Swift 6 targeted, #1149), so it
+            // runs in a nonisolated context; hop to the main actor to mutate this
+            // @MainActor model's published UI state.
+            Task { @MainActor in
+                self?.isLoading = false
+                self?.isManagingHold = false
+                self?.showHalfSheet = false
+            }
         }
     }
 
@@ -758,7 +852,7 @@ extension BookCellModel {
         if case .canHold = state.buttonState {
             NotificationService.requestAuthorization()
         }
-        downloadCenter.startDownload(for: book)
+        downloadCenter.startDownload(for: book, withRequest: nil)
     }
 
     func didSelectReserve() {

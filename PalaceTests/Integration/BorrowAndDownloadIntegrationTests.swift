@@ -31,6 +31,8 @@ import XCTest
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {

@@ -89,7 +89,7 @@ extension TPPSignInBusinessLogic {
             let clientToken = drm.clientToken else {
 
             let drm = profileDoc.drm?.first
-            Log.info(#file, "\nLicensor: \(drm?.licensor ?? ["N/A": "N/A"])")
+            Log.info(#file, "No licensor token: \(AdobeClientToken.redacted(drm?.clientToken))")
 
             TPPErrorLogger.logError(withCode: .noLicensorToken,
                                     summary: "SignIn: no licensor token in user profile doc",
@@ -100,16 +100,24 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        Log.info(#file, "\nLicensor: \(drm.licensor)")
+        Log.info(#file, "Licensor received at sign-in: \(AdobeClientToken.redacted(clientToken))")
         userAccount.setLicensor(drm.licensor)
 
-        var licensorItems = clientToken.replacingOccurrences(of: "\n", with: "").components(separatedBy: "|")
-        let tokenPassword = licensorItems.last
-        licensorItems.removeLast()
-        let tokenUsername = (licensorItems as NSArray).componentsJoined(by: "|")
+        // Shared with the sign-out and reset paths. The inline split this
+        // replaces could not fail: a token with no separator yielded an empty
+        // username and the whole token as the password, and Adobe was asked to
+        // authorize with it.
+        guard let parts = AdobeClientToken.split(clientToken) else {
+            TPPErrorLogger.logError(withCode: .noLicensorToken,
+                                    summary: "SignIn: malformed licensor client token",
+                                    metadata: loggingContext)
+            finalizeSignIn(forDRMAuthorization: false,
+                           errorMessage: "No credentials were received to authorize access to books with DRM.")
+            return
+        }
 
-        drmAuthorize(username: tokenUsername,
-                     password: tokenPassword,
+        drmAuthorize(username: parts.username,
+                     password: parts.password,
                      loggingContext: loggingContext)
     }
 
@@ -129,48 +137,59 @@ extension TPPSignInBusinessLogic {
 
         Log.info(#file, """
       ***DRM Auth/Activation Attempt***
-      Token username: \(username)
-      Token password: \(password ?? "N/A")
+      Token: \(AdobeClientToken.redacted([username, password ?? ""].joined(separator: "|")))
       VendorID: \(vendor ?? "N/A")
       """)
+
+        // Box the non-Sendable loggingContext in the (@MainActor) enclosing
+        // scope so the @Sendable authorize-completion captures the Sendable box,
+        // not the raw [String: Any].
+        let contextBox = DRMLoggingContextBox(loggingContext: loggingContext)
 
         drmAuthorizer?
             .authorize(withVendorID: vendor,
                        username: username,
                        password: password) { success, error, deviceID, userID in
 
-                // make sure to cancel the previously scheduled selector
-                // from the same thread it was scheduled on
-                TPPMainThreadRun.asyncIfNeeded { [weak self] in
-                    if let self = self {
-                        NSObject.cancelPreviousPerformRequests(withTarget: self)
-                    }
-                }
+                // Swift 6: the @objc DRM protocol completion is @Sendable
+                // (NYPLADEPT's ObjC block imports @Sendable) and fires from the
+                // Adobe activation thread. All work below touches @MainActor
+                // state (userAccount / libraryAccount / finalizeSignIn), so hop
+                // to the main actor once, carrying the non-Sendable error +
+                // loggingContext in a documented box. Behavior preserved: the
+                // cancel -> set-IDs -> finalize order is unchanged and now runs
+                // as one main-actor unit. This is ordering-neutral, not a fix:
+                // the off-main callback path already serialized these steps via
+                // main-queue FIFO (and finalizeSignIn does not read the IDs).
+                let box = DRMAuthCompletionBox(error: error, loggingContext: contextBox.loggingContext)
+                Task { @MainActor in
 
-                Log.info(#file, """
-                    Activation success: \(success)
-                    Error: \(error?.localizedDescription ?? "N/A")
-                    DeviceID: \(deviceID ?? "N/A")
-                    UserID: \(userID ?? "N/A")
-                    ***DRM Auth/Activation completion***
-                    """)
+                    // cancel the previously scheduled unexpected-delay selector
+                    NSObject.cancelPreviousPerformRequests(withTarget: self)
 
-                var success = success
+                    Log.info(#file, """
+                        Activation success: \(success)
+                        Error: \(box.error?.localizedDescription ?? "N/A")
+                        DeviceID: \(deviceID ?? "N/A")
+                        UserID: \(userID ?? "N/A")
+                        ***DRM Auth/Activation completion***
+                        """)
 
-                if success, let userID = userID, let deviceID = deviceID {
-                    TPPMainThreadRun.asyncIfNeeded {
+                    var success = success
+
+                    if success, let userID = userID, let deviceID = deviceID {
                         self.userAccount.setUserID(userID)
                         self.userAccount.setDeviceID(deviceID)
+                    } else {
+                        success = false
+                        TPPErrorLogger.logLocalAuthFailed(error: box.error as NSError?,
+                                                          library: self.libraryAccount,
+                                                          metadata: box.loggingContext)
                     }
-                } else {
-                    success = false
-                    TPPErrorLogger.logLocalAuthFailed(error: error as NSError?,
-                                                      library: self.libraryAccount,
-                                                      metadata: loggingContext)
-                }
 
-                self.finalizeSignIn(forDRMAuthorization: success,
-                                    error: error as NSError?)
+                    self.finalizeSignIn(forDRMAuthorization: success,
+                                        error: box.error as NSError?)
+                }
             }
 
         // Skip the 25-second timeout timer in test environments to prevent
@@ -184,22 +203,27 @@ extension TPPSignInBusinessLogic {
     }
 
     @objc func dismissAfterUnexpectedDRMDelay(_ arg: Any) {
+        // `UIAlertController`/`UIAlertAction` + `TPPAlertUtils` are
+        // `@MainActor`-isolated; `asyncIfNeeded` already guarantees main-thread
+        // execution, so assert the isolation for the `complete`-mode checker.
         TPPMainThreadRun.asyncIfNeeded {
-            let title = Strings.Error.signInErrorTitle
-            let message = Strings.Error.signInErrorDescription
+            MainActor.assumeIsolated {
+                let title = Strings.Error.signInErrorTitle
+                let message = Strings.Error.signInErrorDescription
 
-            let alert = UIAlertController(title: title, message: message,
-                                          preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: Strings.Generic.ok,
-                                          style: .default) { [weak self] _ in
-                self?.uiDelegate?.dismiss(animated: true,
-                                          completion: nil)
-            })
+                let alert = UIAlertController(title: title, message: message,
+                                              preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.Generic.ok,
+                                              style: .default) { [weak self] _ in
+                    self?.uiDelegate?.dismiss(animated: true,
+                                              completion: nil)
+                })
 
-            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
-                                                         viewController: nil,
-                                                         animated: true,
-                                                         completion: nil)
+                TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
+                                                             viewController: nil,
+                                                             animated: true,
+                                                             completion: nil)
+            }
         }
     }
 
@@ -209,10 +233,16 @@ extension TPPSignInBusinessLogic {
                                            withDevice: userAccount.deviceID) {
 
             if userAccount.hasBarcodeAndPIN() && !isValidatingCredentials {
-                if let usernameTextField = uiDelegate?.usernameTextField,
-                   let PINTextField = uiDelegate?.PINTextField {
-                    usernameTextField.text = userAccount.barcode
-                    PINTextField.text = userAccount.PIN
+                // `UITextField.text` is `@MainActor`-isolated; this `@objc`
+                // DRM entry point runs on the main actor. Assert the isolation
+                // for the `complete`-mode checker without changing the sync
+                // signature.
+                MainActor.assumeIsolated {
+                    if let usernameTextField = uiDelegate?.usernameTextField,
+                       let PINTextField = uiDelegate?.PINTextField {
+                        usernameTextField.text = userAccount.barcode
+                        PINTextField.text = userAccount.PIN
+                    }
                 }
 
                 logIn()
@@ -222,3 +252,19 @@ extension TPPSignInBusinessLogic {
 }
 
 #endif
+
+/// Carrier for the non-Sendable `error` / `loggingContext` handed to the
+/// `@Sendable` DRM-authorization completion and hopped once onto the main
+/// actor. `@unchecked Sendable`: both fields are read-only after construction
+/// and consumed on the main actor exactly once.
+private struct DRMAuthCompletionBox: @unchecked Sendable {
+    let error: Error?
+    let loggingContext: [String: Any]
+}
+
+/// Carrier for the non-Sendable `loggingContext` captured by the `@Sendable`
+/// DRM-authorization completion. Built in the enclosing `@MainActor` scope;
+/// read-only after construction.
+private struct DRMLoggingContextBox: @unchecked Sendable {
+    let loggingContext: [String: Any]
+}

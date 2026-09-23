@@ -34,6 +34,14 @@ actor AppLaunchTracker {
     private var signpostID: OSSignpostID?
     private let performanceMonitor: PerformanceMonitor
 
+    /// Retained handle to the fire-and-forget metrics-reporting task spawned when
+    /// `.catalogLoaded` is recorded. Retaining it lets tests deterministically JOIN
+    /// the report (see `awaitPendingMetricsReport()`) instead of sleeping on a
+    /// wall-clock deadline — which starves under CI sim-clone oversubscription.
+    /// Production behavior is unchanged: the same task still runs detached from the
+    /// caller; we only keep its handle.
+    private var metricsReportTask: Task<Void, Never>?
+
     // MARK: - Init
 
     init(performanceMonitor: PerformanceMonitor = .shared) {
@@ -62,10 +70,21 @@ actor AppLaunchTracker {
 
         // When catalog is loaded, report the full launch timing
         if milestone == .catalogLoaded {
-            Task {
+            metricsReportTask = Task {
                 await reportLaunchMetrics()
             }
         }
+    }
+
+    /// Await completion of the in-flight launch-metrics report, if any.
+    ///
+    /// Test-only join point: after `recordMilestone(.catalogLoaded)`, production
+    /// spawns a detached task to write metrics into the `PerformanceMonitor`. Tests
+    /// call this to await that exact task rather than sleeping a fixed duration and
+    /// hoping it finished (which flakes under oversubscription). No-op if nothing is
+    /// in flight; does not alter production behavior.
+    func awaitPendingMetricsReport() async {
+        await metricsReportTask?.value
     }
 
     /// Mark this as a warm launch (app was in background).

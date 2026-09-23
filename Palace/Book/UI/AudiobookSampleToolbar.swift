@@ -8,6 +8,8 @@
 
 import SwiftUI
 import PalaceUIKit
+import PalaceBookModel
+import PalaceBookRegistry
 
 struct AudiobookSampleToolbar: View {
     typealias Images = ImageProviders.AudiobookSampleToolbar
@@ -146,13 +148,12 @@ struct AudiobookSampleToolbar: View {
             .progressViewStyle(CircularProgressViewStyle())
             .scaleEffect(1.25)
             .transition(.opacity)
-            .animation(UIAccessibility.isReduceMotionEnabled ? .none : .default, value: true)
     }
 }
 
 @objc class AudiobookSampleToolbarWrapper: NSObject {
 
-    @objc static func create(book: TPPBook) -> UIViewController {
+    @MainActor @objc static func create(book: TPPBook) -> UIViewController {
         let toolbar = AudiobookSampleToolbar(book: book)
         let hostingController = UIHostingController(rootView: toolbar)
         return hostingController

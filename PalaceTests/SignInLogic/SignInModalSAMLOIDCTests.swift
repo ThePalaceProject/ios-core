@@ -1,5 +1,6 @@
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 /// Verifies that the SignInModalPresenter guards (SQ-005, SQ-007)
 /// do NOT interfere with SAML and OIDC authentication flows.
@@ -8,6 +9,7 @@ import XCTest
 /// for SAML/OIDC so the sign-in modal is presented when needed.
 /// The handleBorrowAuthErrorIfNeeded guard must allow re-auth for
 /// genuinely expired SAML/OIDC sessions on unborrowed books.
+@MainActor
 final class SignInModalSAMLOIDCTests: XCTestCase {
 
     // MARK: - needsAuth correctness for all auth types

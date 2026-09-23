@@ -20,6 +20,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TPPPreferredAuthSelectionTests: XCTestCase {
 
     private var libraryAccountMock: TPPLibraryAccountMock!

@@ -62,6 +62,7 @@ import UIKit
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -71,26 +72,26 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
 
     /// Mutable clock — drives the stale-while-revalidate logic deterministically.
-    private var testNow: Date = Date(timeIntervalSince1970: 1_700_000_000)
+    private let testNow = LockIsolated<Date>(Date(timeIntervalSince1970: 1_700_000_000))
 
     /// Mutable account ID — drives the cache-isolation logic deterministically.
     /// Each test that switches accounts mutates this between calls.
-    private var testAccountID: String? = nil
+    private let testAccountID = LockIsolated<String?>(nil)
 
     override func setUp() {
         super.setUp()
         api = CatalogAPIMock()
-        testAccountID = nil
+        testAccountID.value = nil
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
         // for the `lastAppLaunchKey` heuristic — no `.standard` writes.
         // The suite is dropped by `SingletonResetRegistry` when the test
         // finishes.
-        defaults = testUserDefaults()
+        defaults = Self.testUserDefaults()
     }
 
     override func tearDown() {
         api = nil
-        testAccountID = nil
+        testAccountID.value = nil
         defaults = nil
         super.tearDown()
     }
@@ -99,33 +100,23 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
     private func makeRepository(seedLastLaunchToNow: Bool = true) -> CatalogRepository {
         if seedLastLaunchToNow {
-            defaults.set(testNow, forKey: Self.lastAppLaunchKey)
+            defaults.set(testNow.value, forKey: Self.lastAppLaunchKey)
         }
         return CatalogRepository(
             api: api,
-            accountID: { [weak self] in self?.testAccountID },
-            now: { [weak self] in
-                self?.testNow ?? Date(timeIntervalSince1970: 0)
-            },
+            accountID: { [testAccountID] in testAccountID.value },
+            now: { [testNow] in testNow.value },
             defaults: defaults
         )
     }
 
-    /// Poll an async predicate until it holds or the timeout elapses.
-    private func awaitCondition(
-        timeout: TimeInterval = 2.0,
-        pollInterval: TimeInterval = 0.01,
-        _ predicate: () async -> Bool,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if await predicate() { return }
-            try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
-        }
-        XCTFail("Condition not satisfied within \(timeout)s", file: file, line: line)
-    }
+    // NOTE: the former `awaitCondition(timeout:)` wall-clock poll helper was
+    // removed — every site that used it now joins the actual background-refresh
+    // Task (`_awaitBackgroundRefreshForTesting` / `_awaitAllBackgroundRefreshes-
+    // ForTesting`) or asserts directly (the memory-warning handler evicts
+    // synchronously under `NotificationCenter.post`). Fixed-deadline polls
+    // starve under CI sim-clone oversubscription; joining the work unit is
+    // deterministic.
 
     // MARK: - 1. Concurrent stale reads ACROSS DIFFERENT URLs
 
@@ -150,10 +141,14 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 3)
 
         // Move into stale-but-usable window.
-        testNow = testNow.addingTimeInterval(1_800) // 30 minutes
+        testNow.value = testNow.value.addingTimeInterval(1_800) // 30 minutes
         api.stubbedFeeds[urlA] = CatalogAPIMock.makeMockFeed(title: "A-refreshed")
         api.stubbedFeeds[urlB] = CatalogAPIMock.makeMockFeed(title: "B-refreshed")
         api.stubbedFeeds[urlC] = CatalogAPIMock.makeMockFeed(title: "C-refreshed")
+
+        // Arm multi-refresh tracking BEFORE the concurrent stale reads so all
+        // three detached `.utility` refreshes are retained and joinable.
+        sut._trackRefreshTasksForTesting()
 
         async let a = sut.loadTopLevelCatalog(at: urlA)
         async let b = sut.loadTopLevelCatalog(at: urlB)
@@ -166,19 +161,13 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         XCTAssertEqual(resC?.title, "C-original")
 
         // After background refreshes land, each URL's cache reflects ITS OWN
-        // refresh — no cross-talk.
-        //
-        // 30s timeout: predicate body is fully sync so overload resolution
-        // picks the global sync `awaitCondition` (default 5s), not the
-        // local async helper (default 2s). Three concurrent background
-        // refreshes hopping through the repository's cacheQueue exceed 5s
-        // under CI runner contention. Matches the #989/#996 lineage —
-        // restore 30s headroom; still fails loud on a true regression.
-        await awaitCondition(timeout: 30) {
-            sut.cachedFeed(for: urlA)?.title == "A-refreshed" &&
-            sut.cachedFeed(for: urlB)?.title == "B-refreshed" &&
-            sut.cachedFeed(for: urlC)?.title == "C-refreshed"
-        }
+        // refresh — no cross-talk. Join the ACTUAL refresh work units instead
+        // of polling a wall-clock deadline: three `.utility` detached tasks
+        // starve past any fixed poll under sim-clone oversubscription (the
+        // #989/#996 CI-load lineage). Awaiting the retained handles blocks
+        // exactly until all three refreshes finish, no matter how starved the
+        // cooperative pool is.
+        await sut._awaitAllBackgroundRefreshesForTesting()
         XCTAssertEqual(sut.cachedFeed(for: urlA)?.title, "A-refreshed")
         XCTAssertEqual(sut.cachedFeed(for: urlB)?.title, "B-refreshed")
         XCTAssertEqual(sut.cachedFeed(for: urlC)?.title, "C-refreshed")
@@ -197,19 +186,16 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         _ = try await sut.loadTopLevelCatalog(at: urlB)
 
         // Make A stale; leave B fresh.
-        testNow = testNow.addingTimeInterval(1_800)
+        testNow.value = testNow.value.addingTimeInterval(1_800)
         api.stubbedFeeds[urlA] = CatalogAPIMock.makeMockFeed(title: "A-new")
         // Trigger A's background refresh.
         _ = try await sut.loadTopLevelCatalog(at: urlA)
 
-        // Wait for A's refresh to land.
-        // 30s timeout — see neighbor test for the global-vs-local
-        // overload-resolution explanation + #989/#996 CI-load lineage.
-        // CI repro of this test exceeded the global 5s default at 8.65s
-        // on macos-26 runners; 30s headroom restores stability.
-        await awaitCondition(timeout: 30) {
-            sut.cachedFeed(for: urlA)?.title == "A-new"
-        }
+        // Wait for A's refresh to land by joining the actual refresh Task —
+        // deterministic under CI oversubscription where a wall-clock poll of a
+        // `.utility` detached task starves (the #989/#996 lineage). Only one
+        // stale read was fired, so the single-handle seam is sufficient.
+        await sut._awaitBackgroundRefreshForTesting()
 
         // B must still hold its original value — A's refresh must NOT have
         // touched B's cache entry.
@@ -298,17 +284,28 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
         // Simulate memory pressure. The repository subscribes to this
         // notification and drops its in-memory feed map.
-        NotificationCenter.default.post(
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
-
-        // The eviction is dispatched onto cacheQueue, so poll for it.
-        // 30s timeout — same global-overload + CI-load lineage as the
-        // sibling tests in this file.
-        await awaitCondition(timeout: 30) {
-            sut.cachedFeed(for: url) == nil
+        //
+        // Post on the main thread: UIKit ALWAYS delivers this notification on
+        // main in production, and posting `object: nil` is a process-wide
+        // broadcast that also wakes every UIKit-auto-subscribed UIViewController
+        // (including any leaked by a sibling test). Off the main thread those
+        // handlers mutate the layout engine off-main → NSInternalInconsistency-
+        // Exception. The main-hop restores production semantics and makes this
+        // test robust to suite-wide observer leaks.
+        //
+        // `NotificationCenter.post` delivers to the `@objc handleMemoryWarning`
+        // observer SYNCHRONOUSLY, and the handler evicts the in-memory cache
+        // synchronously under the cache lock (no queue hop, no detached Task).
+        // So the eviction is already complete when `post` returns — a
+        // wall-clock poll would only add sim-clone-starvation flake for no
+        // determinism gain. Assert directly.
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: UIApplication.didReceiveMemoryWarningNotification,
+                object: nil
+            )
         }
+
         XCTAssertNil(sut.cachedFeed(for: url),
                      "Gap 3 FIX: in-memory cache must be cleared after memory warning")
 
@@ -353,17 +350,23 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         _ = try await sut.fetchSearchEntryPoints(from: url)
         let baselineEntryPointFetches = api.fetchSearchEntryPointsCalls.count
 
-        // Memory warning fires.
-        NotificationCenter.default.post(
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        // Memory warning fires. Post on main: see the sibling test above —
+        // UIKit delivers this on main in production, and an off-main `object: nil`
+        // broadcast wakes leaked UIViewController observers that then touch the
+        // layout engine off-main (NSInternalInconsistencyException).
+        //
+        // Delivery + eviction are synchronous under `post` (see the sibling
+        // test's note), so both caches are cleared by the time `post` returns.
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: UIApplication.didReceiveMemoryWarningNotification,
+                object: nil
+            )
+        }
 
-        // Both caches must be cleared. Sanity-poll on the feed cache
-        // because the eviction is dispatched on cacheQueue.
-        // 30s timeout — same global-overload + CI-load lineage as the
-        // sibling tests in this file.
-        await awaitCondition(timeout: 30) { sut.cachedFeed(for: url) == nil }
+        // The in-memory feed cache is cleared synchronously by the handler.
+        XCTAssertNil(sut.cachedFeed(for: url),
+                     "Memory warning must clear the in-memory feed cache")
 
         // After eviction, the next entry-point read MUST go to the network.
         _ = try await sut.fetchSearchEntryPoints(from: url)
@@ -387,7 +390,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         let url = URL(string: "https://example.com/per-library")!
 
         // Library A's response.
-        testAccountID = "library-a-uuid"
+        testAccountID.value = "library-a-uuid"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Library-A-Feed")
         let sut = makeRepository()
         let a = try await sut.loadTopLevelCatalog(at: url)
@@ -395,7 +398,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 1)
 
         // SWITCH LIBRARY: same repository instance, same URL, different account.
-        testAccountID = "library-b-uuid"
+        testAccountID.value = "library-b-uuid"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Library-B-Feed")
         let b = try await sut.loadTopLevelCatalog(at: url)
 
@@ -405,7 +408,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
                        "Different account => cache miss => network fetch")
 
         // Switch back to library A — its cache must still be intact.
-        testAccountID = "library-a-uuid"
+        testAccountID.value = "library-a-uuid"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Library-A-Feed-NEW")
         let aAgain = try await sut.loadTopLevelCatalog(at: url)
         XCTAssertEqual(aAgain?.title, "Library-A-Feed",
@@ -422,12 +425,12 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         let url = URL(string: "https://example.com/shared-path")!
 
         // Cache under both accounts.
-        testAccountID = "lib-A"
+        testAccountID.value = "lib-A"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "A")
         let sut = makeRepository()
         _ = try await sut.loadTopLevelCatalog(at: url)
 
-        testAccountID = "lib-B"
+        testAccountID.value = "lib-B"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "B")
         _ = try await sut.loadTopLevelCatalog(at: url)
         XCTAssertEqual(api.fetchFeedCallCount, 2)
@@ -440,7 +443,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
                      "After invalidate while account=B, B's slot must be empty")
 
         // Switch back to library A — its slot must still be live.
-        testAccountID = "lib-A"
+        testAccountID.value = "lib-A"
         XCTAssertEqual(sut.cachedFeed(for: url)?.title, "A",
                        "Invalidate scoped to B must NOT clear A's slot at the same URL")
     }
@@ -454,7 +457,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
     /// underlying auth-layer churn.
     func testCacheKey_SameAccount_RepeatedReads_ShareOneCacheEntry() async throws {
         let url = URL(string: "https://example.com/same-account")!
-        testAccountID = "stable-library-uuid"
+        testAccountID.value = "stable-library-uuid"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Stable")
         let sut = makeRepository()
 

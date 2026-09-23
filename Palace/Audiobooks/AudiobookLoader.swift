@@ -20,6 +20,7 @@
 import Foundation
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Errors produced by AudiobookLoader during audiobook preparation.
 enum AudiobookLoadError: Error {
@@ -224,15 +225,25 @@ final class AudiobookLoader {
         // Structured-concurrency poll (Task.sleep, not recursive GCD) to keep
         // the audiobook open path off GCD per adr_a265ec76, mirroring the
         // sibling poll in AudiobookSessionManager.awaitAudiobookContentLocal.
+        //
+        // The `completion` closure is the caller's non-`@Sendable` callback
+        // (it captures the loader's own `completion`), but the poll runs in a
+        // `@Sendable` `Task`. Wrap it in a carrier box (precedent:
+        // `SendableDecryptCompletion` in LCPAudiobooks) so the completion can
+        // cross into the Task WITHOUT forcing `@Sendable` onto this signature —
+        // which would ripple to the single call site inside
+        // `refreshTokenIfNeeded`. The box fires the wrapped closure exactly
+        // once (success XOR timeout), so the invariant holds.
+        let completionBox = TokenReadyCompletionBox(completion)
         Task {
             let deadline = Date().addingTimeInterval(timeout)
             while true {
                 if !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired {
-                    completion(true)
+                    completionBox.fire(true)
                     return
                 }
                 if Date() >= deadline {
-                    completion(false)
+                    completionBox.fire(false)
                     return
                 }
                 try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
@@ -312,9 +323,12 @@ final class AudiobookLoader {
     }
 
     // F-004 EXC_BREAKPOINT (Crashlytics, 3.0.0, distributor=Overdrive,
-    // decryptor=nil, bearerToken present) enters here. Mockability seam
-    // captured in `PalaceTests/Audiobooks/AudiobookLoaderFinalizeBuildTests`.
-    private func finalizeBuild(
+    // decryptor=nil, bearerToken present) enters here. `internal` (not
+    // `private`) so `AudiobookLoaderFinalizeBuildTests` can drive the decode →
+    // factory → guard chain directly: the zero-track guard below (PP-4768)
+    // returns BEFORE the AppContainer.production() reads further down, so the
+    // failure path is exercisable without touching singletons.
+    func finalizeBuild(
         book: TPPBook,
         jsonData: Data,
         decryptor: DRMDecryptor?,
@@ -350,6 +364,24 @@ final class AudiobookLoader {
             return
         }
 
+        // PP-4768 (F-004 residual): the OverDrive / open-access decode exemption
+        // (Manifest.swift, PP-4631) lets a manifest with no metadata and no
+        // readingOrder/spine pass decode when it carries a non-empty
+        // `contentlinks` — the tracks are expected to come from those links. But
+        // `Audiobook.init?` never fails on empty tracks, so if none of the
+        // content links resolve to a playable track (e.g. an unusable href in a
+        // malformed distributor response), the factory returns a NON-nil but
+        // TRACKLESS audiobook. Building a manager from it lets the toolkit player
+        // later trap on unguarded `[0]` track subscripts (EXC_BREAKPOINT,
+        // Crashlytics-attributed to finalizeBuild). Reject it here via the
+        // existing `.factoryFailed` path → "Failed to create audio player.
+        // Please try again." (the PP-3707 retry dialog); no new error case.
+        guard !audiobook.tableOfContents.allTracks.isEmpty else {
+            Log.error(#file, "  ❌ Factory produced a zero-track audiobook — rejecting to avoid a trackless player")
+            completion(.failure(.factoryFailed(manifestType: manifest.metadata?.type)))
+            return
+        }
+
         Log.debug(#file, "  ✅ Audiobook created successfully by factory")
 
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
@@ -372,6 +404,12 @@ final class AudiobookLoader {
             networkService: networkService,
             playbackTrackerDelegate: timeTracker
         )
+
+        // PP-4712: apply the patron's global skip-interval choices to this
+        // manager so subsequently opened audiobooks pick up the current setting.
+        let skipSettings = AudiobookSkipIntervalSettings()
+        manager.skipForwardInterval = skipSettings.forwardTimeInterval
+        manager.skipBackInterval = skipSettings.backTimeInterval
 
         let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
         manager.bookmarkDelegate = bookmarkLogic
@@ -501,5 +539,25 @@ final class AudiobookLoader {
         ))
 
         return chain
+    }
+}
+
+/// `Sendable` carrier for `awaitTokenReady`'s non-`@Sendable` completion so it
+/// can cross into the poll `Task` without forcing `@Sendable` onto the
+/// `awaitTokenReady` signature (which would ripple to its call site).
+///
+/// - Sendable invariant: `fire(_:)` forwards to the wrapped closure. The poll
+///   loop calls it exactly once (token-ready XOR timeout) from a single Task,
+///   never concurrently. The wrapped closure is otherwise opaque, hence
+///   `@unchecked`. Mirrors `SendableDecryptCompletion` in `LCPAudiobooks`.
+private struct TokenReadyCompletionBox: @unchecked Sendable {
+    private let completion: (Bool) -> Void
+
+    init(_ completion: @escaping (Bool) -> Void) {
+        self.completion = completion
+    }
+
+    func fire(_ becameValid: Bool) {
+        completion(becameValid)
     }
 }

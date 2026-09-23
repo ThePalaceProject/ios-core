@@ -20,6 +20,7 @@
 
 import SwiftUI
 import PalaceUIKit
+import PalaceBookModel
 
 struct ReadiumPDFLoadingView: View {
     let book: TPPBook

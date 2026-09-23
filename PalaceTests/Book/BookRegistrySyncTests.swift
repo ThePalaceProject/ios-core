@@ -10,39 +10,50 @@
 //
 
 import XCTest
+import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+@testable import PalaceBookRegistry
 
 final class BookRegistrySyncTests: PalaceWiringTestCase {
-
     private var store: BookRegistryStore!
     private var syncManager: BookRegistrySync!
     private var accountsManager: AccountsManager!
     private var tempDirectory: URL!
     private var appContainer: AppContainer!
-    private var scheduler: SpyRedownloadScheduler!
+    private var scheduler: SpyRegistryDownloadService!
     /// Collapses production's account-switch grace period so tests assert the
     /// DECISION instead of sleeping through it.
     private static let testDelay: TimeInterval = 0.05
+
+    /// Builds the dependency bundle with the download seam decorated by `spy`, so a
+    /// test can force the in-flight answer and observe scheduling while every disk
+    /// probe still hits the real download center.
+    private func makeDependencies(
+        container: AppContainer,
+        spy: SpyRegistryDownloadService
+    ) -> RegistryExternalDependencies {
+        RegistryExternalDependencies(
+            downloadService: { spy },
+            loansFeedFetcher: { container.opdsFeedService },
+            sideloadedIdentifiers: { [] },
+            registryDirectory: { TPPBookContentMetadataFilesHelper.directory(for: $0) },
+            onAvailabilityChange: { NotificationService.compareAvailability(cachedRecord: $0, andNewBook: $1) }
+        )
+    }
 
     override func setUp() {
         super.setUp()
         store = BookRegistryStore()
         appContainer = makeTestAppContainer()
         accountsManager = appContainer.accountsManager
-        scheduler = SpyRedownloadScheduler()
         let container = appContainer!
-        let spy = scheduler!
+        scheduler = SpyRegistryDownloadService(wrapping: container.downloadCenter)
         syncManager = BookRegistrySync(
             store: store,
-            accountsManager: container.accountsManager,
-            downloadCenterProvider: { container.downloadCenter },
-            opdsFeedServiceProvider: { container.opdsFeedService },
-            redownloadSchedulerProvider: { spy },
-            // PP-4957: pin the flag — the production default reads
-            // `RemoteFeatureFlags.shared`, whose Firebase value is TRUE at 100%,
-            // so an unpinned suite measures a remote config, not this code.
-            lcpStreamingEnabledProvider: { false },
+            accountScope: AccountsManagerAccountScopeAdapter(accountsManager: container.accountsManager),
+            dependencies: makeDependencies(container: container, spy: scheduler!),
             contentRedownloadDelay: Self.testDelay,
             orphanRedownloadDelay: Self.testDelay
         )
@@ -110,24 +121,22 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
     // MARK: - Reset
 
-    func test_reset_clearsSyncUrlAndStore() {
-        // Add a book to the store
+    func test_reset_clearsSyncUrlAndStore() async {
+        // CONVERTED: addBook completion+wait replaced with the S1 seam join.
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
         XCTAssertEqual(store.allBooks.count, 1)
 
         syncManager.syncUrl = URL(string: "https://example.com/loans")
         syncManager.reset("test-account")
+        // reset() calls store.removeAll(), which is itself a barrier write —
+        // join the seam again so the read below observes the post-reset state.
+        await store._awaitPendingWritesForTesting()
 
-        // Allow barrier to complete
-        drainMainQueue()
-            XCTAssertNil(self.syncManager.syncUrl)
-            XCTAssertTrue(self.store.allBooks.isEmpty)
+        XCTAssertNil(syncManager.syncUrl)
+        XCTAssertTrue(store.allBooks.isEmpty)
     }
 
     // MARK: - Loading Account Guard
@@ -176,13 +185,11 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
     // MARK: - Store Snapshot Round-Trip
 
-    func test_registrySnapshot_producesSerializableData() {
+    func test_registrySnapshot_producesSerializableData() async {
+        // CONVERTED: addBook completion+wait replaced with the S1 seam join.
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
         let snapshot = store.registrySnapshot()
         XCTAssertEqual(snapshot.count, 1)
@@ -214,7 +221,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         syncManager.load(account: account) { state in
             if state == .loaded { done.fulfill() }
         }
-        wait(for: [done], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
 
         XCTAssertEqual(
             store.state(for: book.identifier), .downloadFailed,
@@ -246,7 +254,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         syncManager.load(account: account) { state in
             if state == .loaded { done.fulfill() }
         }
-        wait(for: [done], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
 
         XCTAssertEqual(
             store.state(for: book.identifier), .downloadSuccessful,
@@ -261,27 +270,23 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     /// with the wrong auth context. Tests that assert scheduling therefore need
     /// the loaded account to BE the current one, via an isolated UserDefaults
     /// suite rather than writing to `.standard`.
-    private func makeSchedulingSyncManager(currentAccount account: String, lcpStreamingEnabled: Bool = false)
-        -> (BookRegistrySync, SpyRedownloadScheduler, BookRegistryStore) {
-        let suite = UserDefaults(suiteName: "brs-sched-\(UUID().uuidString)")!
-        suite.set(account, forKey: currentAccountIdentifierKey)
-        // The sanctioned seam, NOT a bare `AccountsManager(defaults:)`. A bare
-        // construction spawns a background `loadCatalogs` that outlives the test,
-        // retains Combine sinks and writes the bundled-catalog snapshot into the
-        // shared Application Support directory — the next test in the bundle
-        // inherits it. `makeFreshAccountsManager` pins the defer flag and registers
-        // the manager for cancellation on tearDown.
-        let manager = makeFreshAccountsManager(defaults: suite)
-        let spy = SpyRedownloadScheduler()
+    private func makeSchedulingSyncManager(currentAccount account: String)
+        -> (BookRegistrySync, SpyRegistryDownloadService, BookRegistryStore) {
+        // Upstream 3.2.3 satisfied this guard by pointing a fresh AccountsManager at
+        // an isolated UserDefaults suite, because it compared the RAW
+        // `currentAccountId` string. develop's seam exposes `currentAccountID` as
+        // `currentAccount?.uuid` — a RESOLVED `Account` — so writing the defaults key
+        // is no longer sufficient: with no Account object for that uuid the guard
+        // reads nil, silently skips both schedules, and the test times out (which is
+        // exactly how it first failed here). Stating "this account is current"
+        // directly through the seam is both simpler and what the test means.
         let localStore = BookRegistryStore()
         let container = appContainer!
+        let spy = SpyRegistryDownloadService(wrapping: container.downloadCenter)
         let sync = BookRegistrySync(
             store: localStore,
-            accountsManager: manager,
-            downloadCenterProvider: { container.downloadCenter },
-            opdsFeedServiceProvider: { container.opdsFeedService },
-            redownloadSchedulerProvider: { spy },
-            lcpStreamingEnabledProvider: { lcpStreamingEnabled },
+            accountScope: FixedAccountScope(accountID: account),
+            dependencies: makeDependencies(container: container, spy: spy),
             contentRedownloadDelay: Self.testDelay,
             orphanRedownloadDelay: Self.testDelay
         )
@@ -291,7 +296,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     /// Kills the mutant "load() computes `schedulesContentRedownload` and never
     /// acts on it". A license with no `.lcpa` is the exact 3.2.3 defect: the
     /// patron holds a book that cannot play, and only this scheduling recovers it.
-    func test_load_licenseWithoutContent_schedulesTheContentRedownload() throws {
+    func test_load_licenseWithoutContent_schedulesTheContentRedownload() async throws {
         let account = "brs-test-\(UUID().uuidString)"
         let (sync, spy, localStore) = makeSchedulingSyncManager(currentAccount: account)
         let url = try XCTUnwrap(sync.registryUrl(for: account))
@@ -308,76 +313,93 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         try Data("{}".utf8).write(to: licenseURL)
         defer { try? FileManager.default.removeItem(at: licenseURL) }
 
-        let scheduled = expectation(description: "content re-download scheduled")
-        spy.onLCPContentRedownload = { if $0.identifier == book.identifier { scheduled.fulfill() } }
-
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
-        wait(for: [done], timeout: 10.0)
-        wait(for: [scheduled], timeout: 20.0)
+        // invokes unconditionally on every path — a bounded callback, not a polled side
+        // effect. The deadline is a safety net, never the synchronization mechanism.
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
+
+        // The re-download is DELAYED and fire-and-forget, so waiting on a deadline for it
+        // is the STARVE-001 shape. Join the scheduled Task deterministically instead.
+        await sync._awaitScheduledRedownloadsForTesting()
+
+        XCTAssertEqual(spy.lcpContentRedownloads.map(\.identifier), [book.identifier],
+                       "a license with no .lcpa must schedule exactly one content re-download")
 
         XCTAssertEqual(localStore.state(for: book.identifier), .downloadNeeded,
                        "a license alone is not a playable book")
     }
 
-    /// PP-4957 strand regression. The mirror of the test above, with streaming ON.
+    /// The ORDERING invariant behind the board flake, asserted deterministically.
     ///
-    /// When streaming is enabled an LCP audiobook IS playable on its `.lcpl`
-    /// alone, so the license-only state must NOT be treated as "content
-    /// missing". Without the flag-aware branch in `contentPresence`, `load()`
-    /// downgrades the book to `.downloadNeeded` on every launch and schedules a
-    /// re-download that `LocalBookContentService`'s streaming guard then
-    /// suppresses — the book is stranded permanently and Listen never returns.
+    /// `_awaitScheduledRedownloadsForTesting()` snapshots the task list, so it
+    /// can only join work that is already registered. Registration therefore has
+    /// to happen BEFORE `setState(.loaded)` — the signal every caller and every
+    /// test treats as "load is done". It did not: scheduling ran after both
+    /// announcements, so a join arriving in that window returned instantly and
+    /// the assertion ran before anything was scheduled.
     ///
-    /// Both SoD reviewers blocked the 3.2.4 back-port for exactly this, because
-    /// the port carried the streaming provider without this consumer. Firebase
-    /// has the flag TRUE at 100%, so it is the shipping path, not a dormant one.
-    func test_load_licenseWithoutContent_whenStreamingEnabled_staysPlayable() throws {
-        let account = "brs-stream-\(UUID().uuidString)"
-        let (sync, spy, localStore) = makeSchedulingSyncManager(currentAccount: account,
-                                                                lcpStreamingEnabled: true)
+    /// That produced a flake which failed ALTERNATELY between
+    /// `test_load_contentMissingEntirely_…` and `test_load_licenseWithoutContent_…`,
+    /// reproduced in isolation (so it was never the cross-class pollution it
+    /// resembled), and only under machine load — which makes the flake itself
+    /// useless as a regression test. This asserts the property instead: read the
+    /// registration count from inside the `.loaded` callback, where a
+    /// zero means the race is back.
+    func test_load_registersScheduledRedownloads_beforeAnnouncingLoaded() async throws {
+        let account = "brs-test-\(UUID().uuidString)"
+        let (sync, _, _) = makeSchedulingSyncManager(currentAccount: account)
         let url = try XCTUnwrap(sync.registryUrl(for: account))
         defer { cleanupAccount(url) }
 
-        let book = makeLCPAudiobook(identifier: "lcp-stream-\(UUID().uuidString)")
+        let book = makeBook(identifier: "orphan-\(UUID().uuidString)")
         let record = TPPBookRegistryRecord(book: book, state: .downloadSuccessful)
         try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
 
-        let licenseURL = try XCTUnwrap(appContainer.downloadCenter.fileUrl(for: book, account: account))
-            .deletingPathExtension().appendingPathExtension("lcpl")
-        try FileManager.default.createDirectory(at: licenseURL.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try Data("{}".utf8).write(to: licenseURL)
-        defer { try? FileManager.default.removeItem(at: licenseURL) }
-
-        // A redownload here is the DEFECT, so its absence is the assertion.
-        var scheduledRedownload = false
-        spy.onLCPContentRedownload = { if $0.identifier == book.identifier { scheduledRedownload = true } }
-
+        let countAtLoaded = LockIsolatedCount()
+        let countAtCompletion = LockIsolatedCount()
         let done = expectation(description: "loaded")
-        sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
-        wait(for: [done], timeout: 10.0)
+        sync.load(
+            account: account,
+            setState: { state in
+                if state == .loaded {
+                    // Sampled AT the announcement, not after it — the whole point.
+                    countAtLoaded.set(sync._scheduledRedownloadCountForTesting())
+                }
+            },
+            completion: {
+                // Sampled at the OTHER "load is done" signal too. Guarding only
+                // `.loaded` would let someone hoist `completion?()` above
+                // registration — passing this test while breaking every caller
+                // that chains `sync()` off completion and then asks what was
+                // scheduled.
+                countAtCompletion.set(sync._scheduledRedownloadCountForTesting())
+                done.fulfill()
+            }
+        )
+        // Bounded wait, not a deadline poll: `done` is fulfilled by load()'s own
+        // setState callback, which load invokes unconditionally on every path.
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
+        await sync._awaitScheduledRedownloadsForTesting()
 
-        // Scheduling is `main.asyncAfter(+testDelay)`, so asserting straight off
-        // `load`'s completion measures nothing — the schedule has not had a turn
-        // to fire yet and its absence is guaranteed rather than earned. Same trap
-        // as the one measured at the in-flight test below; same barrier. The
-        // main queue orders by deadline, so a later deadline is a real one.
-        let settled = expectation(description: "a redownload would have fired by now")
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.testDelay * 4) { settled.fulfill() }
-        wait(for: [settled], timeout: 5.0)
+        XCTAssertEqual(countAtLoaded.value, 1,
+                       "the orphan re-download must be REGISTERED before .loaded is announced — otherwise a caller that observes .loaded and joins the scheduled work is told nothing was scheduled")
+        XCTAssertEqual(countAtCompletion.value, 1,
+                       "…and before completion fires, which is the signal callers chaining sync() actually wait on")
+    }
 
-        XCTAssertEqual(localStore.state(for: book.identifier), .downloadSuccessful,
-                       "with streaming ON a license IS a playable book — downgrading it to "
-                       + ".downloadNeeded strands it permanently, because the re-download that "
-                       + "would heal it is suppressed by the streaming guard")
-        XCTAssertFalse(scheduledRedownload,
-                       "streaming must not re-fetch the .lcpa it deliberately did not download")
+    /// Minimal thread-safe box; the callback may arrive off the test's thread.
+    private final class LockIsolatedCount: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value = -1
+        var value: Int { lock.withLock { _value } }
+        func set(_ v: Int) { lock.withLock { _value = v } }
     }
 
     /// Kills the mutant "load() drops the orphan-redownload block". Content gone
     /// from disk with no license is a different recovery path from the one above.
-    func test_load_contentMissingEntirely_schedulesTheOrphanRedownload() throws {
+    func test_load_contentMissingEntirely_schedulesTheOrphanRedownload() async throws {
         let account = "brs-test-\(UUID().uuidString)"
         let (sync, spy, _) = makeSchedulingSyncManager(currentAccount: account)
         let url = try XCTUnwrap(sync.registryUrl(for: account))
@@ -387,13 +409,16 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         let record = TPPBookRegistryRecord(book: book, state: .downloadSuccessful)
         try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
 
-        let scheduled = expectation(description: "orphan re-download scheduled")
-        spy.onOrphanRedownload = { if $0.identifier == book.identifier { scheduled.fulfill() } }
-
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
-        wait(for: [done], timeout: 10.0)
-        wait(for: [scheduled], timeout: 20.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
+
+        // Delayed fire-and-forget schedule — join it rather than racing a deadline.
+        await sync._awaitScheduledRedownloadsForTesting()
+
+        XCTAssertEqual(spy.orphanRedownloads.map(\.identifier), [book.identifier],
+                       "content gone from disk must schedule exactly one orphan re-download")
     }
 
     /// Kills the mutant "load() ignores `isDownloadInFlight`". `load()` is not
@@ -406,13 +431,15 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         let localStore = BookRegistryStore()
         let container = appContainer!
-        let sync = StubInFlightSync(
+        let spy = SpyRegistryDownloadService(wrapping: container.downloadCenter)
+        spy.inFlightIdentifiers = [book.identifier]
+        let sync = BookRegistrySync(
             store: localStore,
-            accountsManager: container.accountsManager,
-            downloadCenterProvider: { container.downloadCenter },
-            opdsFeedServiceProvider: { container.opdsFeedService }
+            accountScope: AccountsManagerAccountScopeAdapter(accountsManager: container.accountsManager),
+            dependencies: makeDependencies(container: container, spy: spy),
+            contentRedownloadDelay: Self.testDelay,
+            orphanRedownloadDelay: Self.testDelay
         )
-        sync.inFlightIdentifiers = [book.identifier]
 
         let url = try XCTUnwrap(sync.registryUrl(for: account))
         defer { cleanupAccount(url) }
@@ -421,7 +448,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
-        wait(for: [done], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
 
         XCTAssertEqual(
             localStore.state(for: book.identifier), .downloading,
@@ -440,7 +468,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     /// `downloadInfo` cannot see the fulfillment (it lives on Readium's own
     /// URLSession), so the transfer registry is the only thing standing between a
     /// patron and a doubled download.
-    func test_load_licenseWithoutContent_whileFulfillmentIsRunning_schedulesNothing() throws {
+    func test_load_licenseWithoutContent_whileFulfillmentIsRunning_schedulesNothing() async throws {
         let account = "brs-test-\(UUID().uuidString)"
         let (sync, spy, localStore) = makeSchedulingSyncManager(currentAccount: account)
         let url = try XCTUnwrap(sync.registryUrl(for: account))
@@ -467,19 +495,20 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
-        wait(for: [done], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
 
-        // Barrier by DEADLINE, not by queue position. GCD does not FIFO-order a
-        // plain `async` behind an already-pending `asyncAfter`, so the previous
-        // `DispatchQueue.main.async` here ran ~50ms BEFORE the schedules it was
-        // meant to outlive — leaving both "no duplicate was scheduled" assertions
-        // vacuous on this branch's headline defect. Measured: mutating the
-        // in-flight arm to schedule anyway failed 0 assertions.
+        // A negative assertion needs a real barrier: the schedules must have had their
+        // chance to fire before "nothing was scheduled" means anything. An earlier
+        // revision used a plain `DispatchQueue.main.async`, which GCD does NOT order
+        // behind an already-pending `asyncAfter` — it ran ~50ms early and left both
+        // assertions vacuous on this branch's headline defect (measured: mutating the
+        // in-flight arm to schedule anyway failed 0 assertions).
         //
-        // It does order by deadline, so a later deadline is a real barrier.
-        let settled = expectation(description: "schedules would have fired")
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.testDelay * 4) { settled.fulfill() }
-        wait(for: [settled], timeout: 5.0)
+        // Joining the tracked Tasks is a stronger barrier than any deadline: it awaits
+        // the scheduled work itself, so if the in-flight guard wrongly scheduled a
+        // re-download this cannot pass by finishing early. No wall clock involved.
+        await sync._awaitScheduledRedownloadsForTesting()
 
         XCTAssertTrue(
             spy.lcpContentRedownloads.isEmpty,
@@ -492,7 +521,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
     // MARK: - Multiple Books with Various States
 
-    func test_storeSnapshotWithMultipleStates() {
+    func test_storeSnapshotWithMultipleStates() async {
         let books: [(String, TPPBookState)] = [
             ("b1", .downloadNeeded),
             ("b2", .downloadSuccessful),
@@ -501,30 +530,29 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
             ("b5", .used),
         ]
 
-        let addDone = expectation(description: "all added")
-        addDone.expectedFulfillmentCount = books.count
-
+        // CONVERTED: per-add expectedFulfillmentCount expectation+wait replaced
+        // with the S1 seam join — all 5 barrier writes are FIFO on the same
+        // syncQueue, so a single trailing join drains them all.
         for (id, state) in books {
             let book = makeBook(identifier: id, title: "Book \(id)")
-            store.addBook(book, state: state) { _ in addDone.fulfill() }
+            store.addBook(book, state: state)
         }
-        wait(for: [addDone], timeout: 3.0)
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            XCTAssertEqual(self.store.allBooks.count, 5)
-            XCTAssertEqual(self.store.heldBooks.count, 1)
-            // myBooks: downloadNeeded, downloadFailed, downloadSuccessful, used = 4
-            XCTAssertEqual(self.store.myBooks.count, 4)
+        XCTAssertEqual(store.allBooks.count, 5)
+        XCTAssertEqual(store.heldBooks.count, 1)
+        // myBooks: downloadNeeded, downloadFailed, downloadSuccessful, used = 4
+        XCTAssertEqual(store.myBooks.count, 4)
 
-            for (id, expectedState) in books {
-                XCTAssertEqual(self.store.state(for: id), expectedState,
-                               "Expected \(expectedState) for book \(id)")
-            }
+        for (id, expectedState) in books {
+            XCTAssertEqual(store.state(for: id), expectedState,
+                           "Expected \(expectedState) for book \(id)")
+        }
     }
 
     // MARK: - Validate Downloaded Content
 
-    func test_validateDownloadedContent_marksDownloadNeededWhenFileMissing() {
+    func test_validateDownloadedContent_marksDownloadNeededWhenFileMissing() async {
         // This test relies on the fact that no actual book file exists for our fake book,
         // so downloadSuccessful books should be marked as downloadNeeded.
         // However, validateDownloadedContent requires the test accountsManager to have a
@@ -532,11 +560,9 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         // mechanism instead.
 
         let book = makeBook(identifier: "validated-book")
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadSuccessful) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        // CONVERTED: addBook completion+wait replaced with the S1 seam join.
+        store.addBook(book, state: .downloadSuccessful)
+        await store._awaitPendingWritesForTesting()
 
         // Directly simulate what validateDownloadedContent does using mutateRegistrySync
         store.mutateRegistrySync { registry in
@@ -696,20 +722,19 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         XCTAssertNil(syncManager.syncUrl)
     }
 
-    // 3.2.3 introduced two on-disk SIDECARS next to `registry.json`: the
-    // last-good `.bak` written before every good save, and `.corrupt-<ts>`
-    // quarantine copies. `reset(account:)` — the sign-out / force-reset /
-    // "delete server data" path — deleted only the PRIMARY, so a signed-out
-    // patron's entire shelf (titles, ids, reading positions) stayed readable on
-    // disk in the `.bak` indefinitely. It also keeps
-    // `RegistryFileRecovery.onDiskHasRecords` true after sign-out, and leaves
-    // the corrupt-primary recovery path able to restore the PREVIOUS patron's
-    // books into the next patron's session at the same library (same account
-    // UUID → same registry path).
-    //
-    // Verified live on 3.2.3 (489): after sign-out + relaunch, `registry.json`
-    // was gone but `registry.json.bak` still held all 9 of the signed-out
-    // patron's records.
+    /// The registry has two on-disk SIDECARS next to `registry.json`: the
+    /// last-good `.bak` written before every good save, and `.corrupt-<ts>`
+    /// quarantine copies. `reset(_:)` — the sign-out / force-reset / "delete
+    /// server data" path — deleted only the PRIMARY, so a signed-out patron's
+    /// entire shelf (titles, identifiers, reading positions) stayed readable on
+    /// disk indefinitely. It also kept `RegistryFileRecovery.onDiskHasRecords`
+    /// true after sign-out, and left the corrupt-primary recovery path able to
+    /// restore the PREVIOUS patron's books into the next patron's session at
+    /// the same library (same account UUID → same registry path).
+    ///
+    /// Verified live on the 3.2.3 hotfix line: after sign-out + relaunch,
+    /// `registry.json` was gone but `registry.json.bak` still held all 9 of the
+    /// signed-out patron's records. Ported here from build 490.
     func test_reset_removesBackupAndQuarantineSidecars() throws {
         let (account, url) = makeIsolatedAccount()
         defer { cleanupAccount(url) }
@@ -979,11 +1004,199 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
                      "syncUrl must never be captured when the credentials gate defers the sync")
     }
 
+    // MARK: - sync: feed-fetch branches (P5 — OPDSFeedFetching seam)
+    //
+    // Before P5, `opdsFeedServiceProvider` returned the concrete `OPDSFeedService`
+    // actor, so the three branches below the credentials gate were untestable
+    // (no way to force a fetch failure or return a fixture feed). Widening the
+    // provider to `() -> OPDSFeedFetching` lets these tests inject a fake fetcher
+    // and drive:
+    //   1. the feed-fetch FAILURE branch (setState(.loaded) + error document)
+    //   2. the `.synced` success path (setState(.synced), syncUrl cleared)
+    //   3. the awaitReady() catch/carrier branch (aborts BEFORE any fetch)
+    // All three sit AFTER the keychain-backed credentials gate, so they seed real
+    // stored credentials on the production user-account instance sync() consults
+    // — hence the keychain-availability guard (environment-capability, not a
+    // host-sign-in dodge).
+
+    /// AccountDetails whose auth document HAS an `http://opds-spec.org/shelf`
+    /// link, so `details.loansUrl != nil` — the shape that lets sync() proceed
+    /// past the loansUrl guard into the feed fetch.
+    private func makeLoansUrlDetails(
+        uuid: String,
+        loansHref: String = "https://loans.example.com/shelf"
+    ) -> AccountDetails {
+        let json: [String: Any] = [
+            "id": "urn:uuid:\(uuid)",
+            "title": "Library With Shelf Link",
+            "links": [["rel": "http://opds-spec.org/shelf", "href": loansHref]],
+            "authentication": [[
+                "type": "http://opds-spec.org/auth/basic",
+                "inputs": ["login": ["keyboard": "Default"],
+                           "password": ["keyboard": "Default"]],
+                "labels": ["login": "Login", "password": "Password"]
+            ]],
+            "features": ["enabled": [], "disabled": []]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        return AccountDetails(authenticationDocument: doc, uuid: uuid)
+    }
+
+    /// A minimal, well-formed OPDS acquisition feed with zero entries — the
+    /// "all loans reconciled, nothing to add/remove" shape used to drive the
+    /// `.synced` success path without a heavy fixture.
+    private func makeEmptyLoansFeed() -> TPPOPDSFeed {
+        let xmlString = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <id>urn:uuid:p5-empty-loans</id>
+          <title>Loans</title>
+          <updated>2026-01-01T00:00:00Z</updated>
+        </feed>
+        """
+        let xml = TPPXML.xml(withData: Data(xmlString.utf8))!
+        return TPPOPDSFeed(xml: xml)!
+    }
+
+    /// Builds a BookRegistrySync sharing this test's `store` + `accountsManager`
+    /// (so the seeded fixture account is visible to sync()) but with the OPDS
+    /// feed provider swapped for `feedFetcher`.
+    private func makeSyncManager(feedFetcher: OPDSFeedFetching) -> BookRegistrySync {
+        // Use the test AppContainer's downloadCenter (the AppContainer.production()
+        // lint whitelists makeTestAppContainer over a raw production() reference —
+        // the download path is inert wiring here; only the feed provider is exercised).
+        let appContainer = makeTestAppContainer()
+        return BookRegistrySync(
+            store: store,
+            accountsManager: accountsManager,
+            downloadCenterProvider: { appContainer.downloadCenter },
+            opdsFeedServiceProvider: { feedFetcher }
+        )
+    }
+
+    /// Shared arrange for the two post-awaitReady tests: seed a credentialed
+    /// fixture whose details expose a loansUrl. Returns the uuid plus a cleanup
+    /// closure the caller must defer.
+    private func seedCredentialedLoansAccount() throws -> (uuid: String, cleanup: () -> Void) {
+        try KeychainAvailability.skipIfUnavailable()
+        let (uuid, seedCleanup) = seedFixtureCurrentAccount()
+
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
+        prodUserAccount.setAuthToken("p5-token", barcode: "bc", pin: "1234",
+                                     expirationDate: Date().addingTimeInterval(3600))
+        XCTAssertTrue(prodUserAccount.hasCredentials(),
+                      "Precondition: fixture must have credentials so sync() reaches the feed fetch")
+
+        accountsManager.currentAccount?._setState(.detailsLoaded(makeLoansUrlDetails(uuid: uuid)))
+
+        return (uuid, {
+            prodUserAccount.removeAll()
+            seedCleanup()
+        })
+    }
+
+    func test_sync_whenFeedFetchFails_revertsToLoadedAndForwardsErrorDocument() throws {
+        let (_, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+
+        let fetcher = StubOPDSFeedFetcher()
+        fetcher.stubbedError = NSError(domain: "P5.feedFetch", code: 503,
+                                       userInfo: ["p5.marker": "boom"])
+        let sut = makeSyncManager(feedFetcher: fetcher)
+
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
+        let exp = expectation(description: "feed fetch failure resolved")
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { errorDoc, newBooks in
+            completionArgs = (errorDoc, newBooks)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 3.0)
+
+        XCTAssertEqual(fetcher.resetCacheCalls, [true],
+                       "loans sync must request a cache-reset fetch (resetCache: true) through the widened seam — got \(fetcher.resetCacheCalls)")
+        XCTAssertEqual(received.last, .loaded,
+                       "a feed-fetch failure must revert state to .loaded, not leave it stuck .syncing — got \(received)")
+        XCTAssertEqual(completionArgs?.errorDoc?["p5.marker"] as? String, "boom",
+                       "the thrown NSError.userInfo must be forwarded to completion as the error document")
+        XCTAssertEqual(completionArgs?.newBooks, false,
+                       "a failed fetch fetched no loans → newBooks must be false")
+        XCTAssertNil(sut.syncUrl,
+                     "syncUrl must be cleared after a failed feed fetch")
+    }
+
+    func test_sync_whenFeedFetchSucceeds_resolvesToSyncedAndClearsSyncUrl() throws {
+        let (_, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+
+        let fetcher = StubOPDSFeedFetcher()
+        fetcher.stubbedFeed = makeEmptyLoansFeed()
+        let sut = makeSyncManager(feedFetcher: fetcher)
+
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
+        let exp = expectation(description: "feed fetch succeeded")
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { errorDoc, newBooks in
+            completionArgs = (errorDoc, newBooks)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 3.0)
+
+        XCTAssertEqual(fetcher.resetCacheCalls, [true],
+                       "successful loans sync must also request a cache-reset fetch")
+        XCTAssertEqual(received.last, .synced,
+                       "a successful feed fetch must land the registry in .synced — got \(received)")
+        XCTAssertNil(completionArgs?.errorDoc,
+                     "a successful sync is not an error — errorDocument must be nil")
+        XCTAssertEqual(completionArgs?.newBooks, false,
+                       "an empty loans feed against an empty registry made no changes → newBooks false")
+        XCTAssertNil(sut.syncUrl,
+                     "syncUrl must be cleared once the synced reconciliation completes")
+    }
+
+    func test_sync_whenAwaitReadyFails_revertsToLoadedWithoutFetching() throws {
+        try KeychainAvailability.skipIfUnavailable()
+        let (uuid, seedCleanup) = seedFixtureCurrentAccount()
+        defer { seedCleanup() }
+
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
+        prodUserAccount.setAuthToken("p5-token", barcode: "bc", pin: "1234",
+                                     expirationDate: Date().addingTimeInterval(3600))
+        defer { prodUserAccount.removeAll() }
+
+        // Terminal FAILED load state → awaitReady() throws on its fast path,
+        // BEFORE sync() ever reaches the feed fetch.
+        accountsManager.currentAccount?._setState(
+            .detailsFailed(.authDocumentFetchFailed(underlyingDescription: "p5 injected")))
+
+        let fetcher = StubOPDSFeedFetcher()
+        let sut = makeSyncManager(feedFetcher: fetcher)
+
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
+        let exp = expectation(description: "awaitReady failure resolved")
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { errorDoc, newBooks in
+            completionArgs = (errorDoc, newBooks)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 3.0)
+
+        XCTAssertTrue(fetcher.resetCacheCalls.isEmpty,
+                      "awaitReady() failure must abort BEFORE the feed fetch — the fetcher must never be called")
+        XCTAssertEqual(received.last, .loaded,
+                       "an awaitReady failure reverts to .loaded so BookRegistrySync's own retry policy re-drives — got \(received)")
+        XCTAssertNil(completionArgs?.errorDoc,
+                     "the awaitReady catch resolves with a nil error document (distinct from the loans-fetch error path)")
+        XCTAssertEqual(completionArgs?.newBooks, false)
+        XCTAssertNil(sut.syncUrl,
+                     "syncUrl must be cleared (never left set) when awaitReady aborts the sync")
+    }
+
     // MARK: - Reliability WS-B: registry resilience (INV-1, quarantine, backup, schema)
     //
-    // Ported from #1212 ("Bulletproof Ownership") onto 3.2.3. These drive the
-    // real load/save disk pipeline on an isolated per-test account so
-    // registryUrl maps to a temp directory we own. They exercise the
+    // These drive the real load/save disk pipeline on an isolated per-test
+    // account so registryUrl maps to a temp directory we own. They exercise the
     // corrupt-file quarantine branch, `.bak` recovery, the empty-over-backup save
     // refusal (INV-1), and schema versioning/migration.
 
@@ -1011,14 +1224,30 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         try! data.write(to: url)
     }
 
-    /// Spins the run loop until `predicate()` is true or `timeout` elapses. Lets
-    /// `DispatchQueue.main.async` completion blocks (e.g. the save notification)
-    /// run while we wait on the background disk write.
-    private func waitUntil(timeout: TimeInterval = 3.0, _ predicate: () -> Bool) {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !predicate() && Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
-        }
+    /// Runs `action` (a `syncManager.save(...)` that writes on the background
+    /// `diskWriteQueue`) and JOINS its completion by waiting for the
+    /// `.TPPBookRegistryDidChange` notification the save posts on the main
+    /// queue *after* the `write(to:)` lands — rather than polling `fileExists`
+    /// against a wall-clock deadline. The observer is registered before
+    /// `action` runs (and the post can't be serviced until this synchronous
+    /// body yields into `wait(for:)`), so the save's post is captured
+    /// deterministically. This is the success-path join: on the refused-save
+    /// path no notification fires, which is exactly why the absence assertions
+    /// still use `settle()` (there is no positive edge to await).
+    ///
+    /// Replaces the old `waitUntil { fileExists }` RunLoop poll: under CI
+    /// oversubscription the `RunLoop.current.run(until:)` spin could exhaust
+    /// the fixed deadline before the thread was scheduled to service the
+    /// background write, silently asserting against a not-yet-written file.
+    private func awaitRegistrySaved(timeout: TimeInterval = 5.0, _ action: () -> Void) {
+        let saved = expectation(description: "registry disk write posted TPPBookRegistryDidChange")
+        saved.assertForOverFulfill = false
+        let token = NotificationCenter.default.addObserver(
+            forName: .TPPBookRegistryDidChange, object: nil, queue: .main
+        ) { _ in saved.fulfill() }
+        defer { NotificationCenter.default.removeObserver(token) }
+        action()
+        wait(for: [saved], timeout: timeout)
     }
 
     /// Fixed run-loop settle for asserting the ABSENCE of an effect (a refused
@@ -1051,6 +1280,11 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         XCTAssertTrue(store.allBooks.isEmpty, "precondition: empty in-memory shelf")
 
         // Act: a NON-authoritative save of the empty shelf.
+        // UNJOINABLE: this save is REFUSED by INV-1 (empty + non-authoritative +
+        // rebuild window) so the diskWriteQueue closure returns early WITHOUT
+        // writing or posting `.TPPBookRegistryDidChange`. There is no positive
+        // edge to join — we assert the ABSENCE of a clobber, so a bounded
+        // `settle()` (fixed run-loop drain) is the correct primitive here.
         syncManager.save(for: account)
         settle()
 
@@ -1073,8 +1307,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         XCTAssertTrue(store.allBooks.isEmpty)
 
         // An authoritative sync result may legitimately persist an empty shelf.
-        syncManager.save(for: account, serverAuthoritative: true)
-        waitUntil { FileManager.default.fileExists(atPath: url.path) }
+        awaitRegistrySaved { syncManager.save(for: account, serverAuthoritative: true) }
 
         guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
             return XCTFail("an authoritative empty save must persist a valid (empty) registry.json")
@@ -1096,8 +1329,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         wait(for: [added], timeout: 2.0)
         drainMainQueue()
 
-        syncManager.save(for: account)   // non-authoritative, but non-empty
-        waitUntil { FileManager.default.fileExists(atPath: url.path) }
+        // non-authoritative, but non-empty
+        awaitRegistrySaved { syncManager.save(for: account) }
 
         guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
             return XCTFail("a non-empty save must always persist a valid registry")
@@ -1109,126 +1342,6 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         // `.bak` sidecar — this is the recovery source a later corrupt load reads.
         XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
                       "a non-empty save must write the last-good .bak backup")
-    }
-
-    // MARK: INV-1 (broadened, HelpSpot #18414) — non-authoritative empty over a
-    // non-empty PRIMARY is refused even with NO rebuild flag; zero-book patron
-    // is un-trapped via the authoritative sync path instead.
-    //
-    // D1 shipped a corrupt-only guard: it refused an empty non-authoritative
-    // save only while `needsRebuildFromServer` was set (i.e. a `.bak` existed
-    // from a corrupt load). D2 broadens it to cover the confirmed data-loss
-    // wedge where the shelf was NEVER corrupted (no `.bak`, flag unset) but
-    // registry sync wedged on a dropped auth-doc fetch, leaving an empty
-    // in-memory shelf poised to clobber a healthy primary. These two tests flip
-    // the D1 assertion for that precondition (non-authoritative empty over a
-    // non-empty primary now REFUSED), and the third proves the genuine
-    // zero-book patron is NOT trapped because the authoritative loans-feed sync
-    // still persists empty.
-
-    func testEmptySave_nonAuthoritative_overNonEmptyPrimary_isRefused_evenWithoutRebuildFlag() {
-        // The exact HelpSpot #18414 data-loss path: a healthy non-empty primary
-        // on disk, NO rebuild flag (never corrupted), an empty in-memory shelf
-        // (registry sync wedged / never populated), and an incidental
-        // non-authoritative save. That save must be REFUSED so the patron's
-        // books survive — this is the wedge D1's corrupt-only guard missed.
-        let (account, url) = makeIsolatedAccount()
-        defer { cleanupAccount(url) }
-
-        writeRegistryPayload(records: snapshotWithOneBook(id: "kept-primary"),
-                             schemaVersion: 1, to: url)
-        XCTAssertTrue(RegistryFileRecovery.primaryHasRecords(for: url),
-                      "precondition: a non-empty primary registry.json exists")
-        XCTAssertFalse(syncManager.needsRebuildFromServer,
-                       "precondition: NOT in a rebuild window (clean load, no corruption)")
-        XCTAssertTrue(store.allBooks.isEmpty, "precondition: empty in-memory shelf (wedge)")
-
-        // Act: a plain (non-authoritative) empty save.
-        syncManager.save(for: account)
-        settle()
-
-        // Assert: the healthy primary survived — the empty snapshot was refused.
-        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
-            return XCTFail("INV-1(broadened): the non-empty primary must NOT be overwritten/erased by a non-authoritative empty save")
-        }
-        XCTAssertEqual(recs.count, 1,
-                       "INV-1(broadened): a non-authoritative empty save must NOT clobber a non-empty primary even without a rebuild flag — this is the #18414 data-loss guard")
-    }
-
-    func testSaveSyncEmpty_overNonEmptyPrimary_isRefused_evenWithoutRebuildFlag() {
-        // Same broadened invariant for the SYNCHRONOUS teardown path
-        // (bookmark/location persistence on scene disconnect): a bookmark-flush
-        // must never erase a healthy primary while the in-memory shelf is
-        // transiently empty, flag or no flag.
-        let (account, url) = makeIsolatedAccount()
-        defer { cleanupAccount(url) }
-
-        writeRegistryPayload(records: snapshotWithOneBook(id: "sync-kept-primary"),
-                             schemaVersion: 1, to: url)
-        XCTAssertTrue(RegistryFileRecovery.primaryHasRecords(for: url))
-        XCTAssertFalse(syncManager.needsRebuildFromServer)
-        XCTAssertTrue(store.allBooks.isEmpty)
-
-        syncManager.saveSync(for: account)   // synchronous — no run loop needed
-
-        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
-            return XCTFail("INV-1(broadened): saveSync must not erase a non-empty primary with an empty snapshot")
-        }
-        XCTAssertEqual(recs.count, 1,
-                       "saveSync of an empty shelf must be refused over a non-empty primary even with no rebuild flag")
-    }
-
-    func testEmptySave_withServerAuthority_overNonEmptyPrimary_persists_zeroBookPatronNotTrapped() {
-        // The don't-over-block guarantee: a GENUINE zero-book patron (server's
-        // loans feed came back empty) persists an empty shelf via the
-        // AUTHORITATIVE sync save — even over a previously non-empty primary.
-        // This is how a patron who returned their last book is NOT trapped with
-        // a stale non-empty file: the authoritative reconciliation clears it.
-        let (account, url) = makeIsolatedAccount()
-        defer { cleanupAccount(url) }
-
-        writeRegistryPayload(records: snapshotWithOneBook(id: "returned-then-synced"),
-                             schemaVersion: 1, to: url)
-        XCTAssertTrue(RegistryFileRecovery.primaryHasRecords(for: url),
-                      "precondition: a non-empty primary exists (the book before the loans-feed reconciliation)")
-        XCTAssertTrue(store.allBooks.isEmpty, "precondition: reconciled in-memory shelf is empty")
-
-        // Act: the authoritative loans-feed reconciliation persists the empty shelf.
-        syncManager.save(for: account, serverAuthoritative: true)
-        waitUntil {
-            if case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) {
-                return recs.isEmpty
-            }
-            return false
-        }
-
-        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
-            return XCTFail("an authoritative empty save must persist a valid (empty) registry.json even over a non-empty primary")
-        }
-        XCTAssertTrue(recs.isEmpty,
-                      "a genuine zero-book patron is NOT trapped: the authoritative sync persists the empty shelf over the stale non-empty primary")
-    }
-
-    func testSaveSyncEmpty_duringRebuildWindow_isRefused() {
-        // saveSync is always non-authoritative teardown persistence — an empty
-        // snapshot during the rebuild window must be refused so a bookmark-flush
-        // on scene disconnect cannot erase the shelf before an authoritative sync.
-        let (account, url) = makeIsolatedAccount()
-        defer { cleanupAccount(url) }
-
-        let goodRecords = snapshotWithOneBook(id: "sync-kept")
-        writeRegistryPayload(records: goodRecords, schemaVersion: 1,
-                             to: RegistryFileRecovery.backupURL(for: url))
-        syncManager.needsRebuildFromServer = true
-        XCTAssertTrue(store.allBooks.isEmpty)
-
-        syncManager.saveSync(for: account)
-
-        XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
-                      "INV-1: saveSync of an empty shelf during rebuild must NOT clobber the non-empty backup")
-        if case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) {
-            XCTFail("INV-1: saveSync must not persist a valid-empty primary during rebuild (found \(recs.count) records)")
-        }
     }
 
     // MARK: Corrupt-load quarantine + backup recovery
@@ -1277,8 +1390,9 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     }
 
     func testCorruptLoad_thenNonAuthoritativeEmptySave_isRefused_untilServerSync() {
-        // End-to-end INV-1: corrupt load with a recoverable backup restores the
-        // shelf; the last-good backup remains intact.
+        // End-to-end INV-1: corrupt load flags rebuild; a subsequent empty
+        // non-authoritative save must be refused so nothing erases the shelf
+        // before an authoritative sync runs.
         let (account, url) = makeIsolatedAccount()
         defer { cleanupAccount(url) }
 
@@ -1308,8 +1422,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         wait(for: [added], timeout: 2.0)
         drainMainQueue()
 
-        syncManager.save(for: account)
-        waitUntil { FileManager.default.fileExists(atPath: url.path) }
+        awaitRegistrySaved { syncManager.save(for: account) }
 
         let version = RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url))
         XCTAssertEqual(version, RegistryFileRecovery.currentSchemaVersion,
@@ -1334,10 +1447,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         XCTAssertFalse(syncManager.needsRebuildFromServer, "a valid legacy file is not a corrupt/rebuild case")
 
         // Saving migrates it on disk to the versioned shape.
-        syncManager.save(for: account)
-        waitUntil {
-            RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)) != nil
-        }
+        awaitRegistrySaved { syncManager.save(for: account) }
         XCTAssertEqual(RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)),
                        RegistryFileRecovery.currentSchemaVersion,
                        "the next save must migrate the unversioned file to the current schema version")
@@ -1372,33 +1482,161 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     }
 }
 
-/// Observes what `load()` scheduled. See `RegistryRedownloadScheduling` — the
-/// real methods live in extensions on `MyBooksDownloadCenter` and cannot be
-/// overridden, which is why the seam exists.
-final class SpyRedownloadScheduler: RegistryRedownloadScheduling {
-    var lcpContentRedownloads: [TPPBook] = []
-    var orphanRedownloads: [TPPBook] = []
-    var onLCPContentRedownload: ((TPPBook) -> Void)?
-    var onOrphanRedownload: ((TPPBook) -> Void)?
+/// Reports one fixed library as current, with credentials present.
+///
+/// `load()`'s two re-download schedules are guarded on
+/// `currentAccountID == loadedAccount` — they must not start a transfer under the
+/// wrong auth context. Tests asserting scheduling therefore need the loaded account
+/// to BE the current one, which this states directly instead of standing up an
+/// `AccountsManager` whose `currentAccount` would have to resolve a real `Account`.
+final class FixedAccountScope: AccountScopeProviding, @unchecked Sendable {
+    let accountID: String
+    init(accountID: String) { self.accountID = accountID }
 
-    func scheduleLCPContentRedownload(for book: TPPBook) {
-        lcpContentRedownloads.append(book)
-        onLCPContentRedownload?(book)
+    var currentAccountID: String? { accountID }
+
+    var accountDidChangePublisher: AnyPublisher<Void, Never> {
+        Empty<Void, Never>(completeImmediately: false).eraseToAnyPublisher()
     }
 
-    func scheduleOrphanRedownload(for book: TPPBook) {
-        orphanRedownloads.append(book)
-        onOrphanRedownload?(book)
+    /// True so `sync()` clears its no-credentials gate. `load()` does not consult
+    /// this, but the same scope is reused for sync-path coverage.
+    func hasCredentials(forAccount accountID: String) -> Bool { true }
+
+    func loansURL(forAccount accountID: String, readinessTimeout: TimeInterval) async throws -> URL? {
+        nil
     }
 }
 
-/// Forces the in-flight answer without standing up a real transfer.
-/// `isDownloadInFlight` reads `downloadCenter.downloadInfo(forBookIdentifier:)`,
-/// which only a live `URLSession` task populates.
-final class StubInFlightSync: BookRegistrySync {
-    var inFlightIdentifiers: Set<String> = []
+/// Decorates the REAL download service so reconciliation still probes actual
+/// files on disk, while making the two things a unit test cannot stand up
+/// controllable: what is in flight, and what got scheduled.
+///
+/// Replaces the upstream 3.2.3 pair `SpyRedownloadScheduler` +
+/// `StubInFlightSync`. Neither ports to develop: the scheduling calls already go
+/// through the injectable `RegistryDownloadServicing` seam (so a second
+/// `RegistryRedownloadScheduling` protocol would be a redundant abstraction), and
+/// `BookRegistrySync` is `final` here, so the subclass-override stub cannot
+/// compile. Decorating the seam covers both needs without weakening either.
+///
+/// `@unchecked Sendable` invariant: every mutable property is read and written
+/// only under `lock`.
+final class SpyRegistryDownloadService: RegistryDownloadServicing, @unchecked Sendable {
+    private let wrapped: any RegistryDownloadServicing
+    private let lock = NSLock()
+    private var _lcpContentRedownloads: [TPPBook] = []
+    private var _orphanRedownloads: [TPPBook] = []
+    private var _inFlightIdentifiers: Set<String> = []
+    private var _onLCPContentRedownload: ((TPPBook) -> Void)?
+    private var _onOrphanRedownload: ((TPPBook) -> Void)?
 
-    override func isDownloadInFlight(for book: TPPBook) -> Bool {
-        inFlightIdentifiers.contains(book.identifier)
+    init(wrapping wrapped: any RegistryDownloadServicing) {
+        self.wrapped = wrapped
+    }
+
+    // MARK: Controls
+
+    /// Books reconciliation should believe are mid-transfer. Forced because the real
+    /// answer needs a live `URLSession` task (or an in-flight Readium fulfillment).
+    var inFlightIdentifiers: Set<String> {
+        get { lock.lock(); defer { lock.unlock() }; return _inFlightIdentifiers }
+        set { lock.lock(); defer { lock.unlock() }; _inFlightIdentifiers = newValue }
+    }
+
+    var onLCPContentRedownload: ((TPPBook) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _onLCPContentRedownload }
+        set { lock.lock(); defer { lock.unlock() }; _onLCPContentRedownload = newValue }
+    }
+
+    var onOrphanRedownload: ((TPPBook) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _onOrphanRedownload }
+        set { lock.lock(); defer { lock.unlock() }; _onOrphanRedownload = newValue }
+    }
+
+    // MARK: Observations
+
+    var lcpContentRedownloads: [TPPBook] {
+        lock.lock(); defer { lock.unlock() }; return _lcpContentRedownloads
+    }
+
+    var orphanRedownloads: [TPPBook] {
+        lock.lock(); defer { lock.unlock() }; return _orphanRedownloads
+    }
+
+    // MARK: RegistryDownloadServicing
+
+    func redownloadLCPContentFile(for book: TPPBook) {
+        lock.lock(); _lcpContentRedownloads.append(book); let hook = _onLCPContentRedownload; lock.unlock()
+        hook?(book)
+    }
+
+    func startDownload(for book: TPPBook) {
+        lock.lock(); _orphanRedownloads.append(book); let hook = _onOrphanRedownload; lock.unlock()
+        hook?(book)
+    }
+
+    /// Forced OR real. `inFlightIdentifiers` covers tests that cannot stand up a
+    /// transfer at all; delegating as well keeps the tests that DO signal through
+    /// the real progress reporter (`sendLCPContentDownloadActive`) honest — that is
+    /// the path the doubled-download defect actually travelled.
+    func isDownloadInFlight(for book: TPPBook) -> Bool {
+        lock.lock()
+        let forced = _inFlightIdentifiers.contains(book.identifier)
+        lock.unlock()
+        return forced || wrapped.isDownloadInFlight(for: book)
+    }
+
+    // Real disk probes — the reconciliation tests write actual content/license
+    // files and must see the production answer, not a canned one.
+    func fileUrl(for book: TPPBook, account: String?) -> URL? {
+        wrapped.fileUrl(for: book, account: account)
+    }
+
+    func deleteLocalContent(forBook book: TPPBook, account: String?) {
+        wrapped.deleteLocalContent(forBook: book, account: account)
+    }
+
+    func contentFileSatisfied(for book: TPPBook, account: String) -> Bool {
+        wrapped.contentFileSatisfied(for: book, account: account)
+    }
+
+    func lcpContentFileMissing(for book: TPPBook, account: String) -> Bool {
+        wrapped.lcpContentFileMissing(for: book, account: account)
+    }
+
+    func contentPresence(for book: TPPBook, account: String) -> RegistryContentPresence {
+        wrapped.contentPresence(for: book, account: account)
+    }
+}
+
+// MARK: - P5 test fake
+
+/// Lock-backed fake `OPDSFeedFetching` for the feed-fetch-branch tests.
+/// `@unchecked Sendable` invariant: the only concurrently-touched mutable state
+/// (`_resetCacheCalls`) is guarded by `lock`; `stubbedError` / `stubbedFeed` are
+/// set once on the test thread before the SUT runs and only read on the fetch
+/// path thereafter.
+private final class StubOPDSFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _resetCacheCalls: [Bool] = []
+    var stubbedError: Error?
+    var stubbedFeed: TPPOPDSFeed?
+
+    /// The `resetCache` argument observed on each `fetchFeed` call, in order.
+    var resetCacheCalls: [Bool] {
+        lock.lock(); defer { lock.unlock() }
+        return _resetCacheCalls
+    }
+
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
+        try await fetchFeed(from: url, resetCache: false)
+    }
+
+    func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
+        lock.withLock { _resetCacheCalls.append(resetCache) }
+        if let stubbedError { throw stubbedError }
+        if let stubbedFeed { return stubbedFeed }
+        throw NSError(domain: "StubOPDSFeedFetcher", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "no stub configured"])
     }
 }

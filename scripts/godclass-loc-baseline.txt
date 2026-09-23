@@ -1,0 +1,175 @@
+# God-class LOC freeze baseline — Wave 0 ratchet.
+# Consumed by scripts/check-godclass-loc-freeze.sh.
+# Format: <code-loc> <repo-relative-path>. A file may NOT exceed its count.
+# When a file SHRINKS, the script prints the new number; ratchet this DOWN by hand.
+# Captured 2026-07-23. See docs/architecture/god-class-decomposition-plan.md §3a.
+#
+# ┌── 2026-07-31: COUNTING CHANGED to CODE LINES, all numbers recomputed ──────────┐
+# │ The detector now counts non-blank, non-comment-only lines (see the script      │
+# │ header), retiring the "Wave 0 debt" flagged in the Wave 1a note below. The      │
+# │ per-wave narrative in this file was written against the OLD physical `wc -l`    │
+# │ counts and is preserved as the campaign's decision ledger — but the six NUMBERS │
+# │ at the bottom are now CODE lines and are NOT comparable to the deltas below.    │
+# │ For the physical-line history, see this file's git log. The freeze still only   │
+# │ tightens by hand; a doc-comment or blank-line edit no longer moves the number.  │
+# └────────────────────────────────────────────────────────────────────────────────┘
+# Wave 1a (+1 on 4 files): each gained a single `import PalacePreferences` line when
+# TPPSettings moved to the leaf package — a decomposition import that REDUCES coupling,
+# not accretion. Re-baselined by exactly the import delta. (Follow-up: make the ratchet
+# count logic lines, not raw wc -l, so decomposition imports don't trip it — Wave 0 debt.)
+# Wave 2a (+1 on 4 files): AudiobookSessionManager, MyBooksDownloadCenter,
+# BookDetailViewModel, BorrowOperation each gained a single `import PalaceBookModel`
+# line when TPPBook + book-model value types moved to the PalaceBookModel leaf package.
+# Verified import-only (git diff = one `+import` line each). AccountsManager and
+# TPPSignInBusinessLogic reference no 2a-moved type, so they are UNCHANGED here (they
+# gain the import in Wave 2b when TPPBookRegistry moves).
+# Wave 2b: TPPBookRegistry moved to the PalaceBookRegistry leaf package.
+#   +1 on 5 files (AudiobookSessionManager, AccountsManager, MyBooksDownloadCenter,
+#     BookDetailViewModel, BorrowOperation): each gained a single
+#     `import PalaceBookRegistry` line (git diff = one `+import` line each; the
+#     BookDetailViewModel diff also carries a 1:1 call-site signature adaptation
+#     `startDownload(for:)` → `startDownload(for:withRequest:)`, net LOC-neutral).
+#   +5 on TPPSignInBusinessLogic: the `TPPBookRegistrySyncing` protocol was de-objc'd
+#     (`@objc protocol … : NSObjectProtocol` → plain `protocol …`) as Wave 2b prep,
+#     replacing one declaration line with a 5-line explanatory comment + the plain
+#     declaration. Verified extraction-mechanical: no logic added (git diff = comment
+#     + protocol-keyword change only).
+# Wave 3 S1 (+11 on AccountsManager, 2321 -> 2332): the account-switch borrow-reauth
+#   circuit-breaker reset was INVERTED behind the injected `BorrowReauthResetting` seam
+#   (new `private let borrowReauthResetter` + its init param + a 3-line doc). This is the
+#   decomposition inversion itself, not reliability accretion — the residual growth is a
+#   stored dependency + minimal docs (the rationale lives in the new, unfrozen
+#   BorrowReauthResetting.swift). Nets strongly NEGATIVE at the 3a package move, when the
+#   MyBooksDownloadCenter static call site and its cluster leave the hub. Re-baselined by
+#   the exact delta; the freeze still catches any further unrelated growth.
+# 3.2.1 / 3.2.2 / 3.2.3 hotfix forward-port (main -> develop, PR #1348). Four hubs grew
+#   because that is exactly where hotfix code lives — the hubs are the seams the fixes had
+#   to land on, and this code has ALREADY SHIPPED to patrons on `main`. Re-baselining is the
+#   intended escape hatch for a forward-port: the alternative is either re-engineering
+#   shipped, patron-verified fixes inside a merge PR (high risk, unreviewable) or blocking
+#   the forward-port entirely. The freeze still catches any further unrelated growth, and
+#   these hubs are the campaign's Wave 3/4/5 extraction targets — the debt is tracked, not
+#   forgiven.
+#     AudiobookSessionManager  2764 -> 3093 (+329): #18414 borrow-hang + audiobook 3.2.0
+#       regression cluster (LCP content-download gate, bearer-token re-fulfill, position
+#       restore) — the largest single contributor.
+#     AccountsManager          2332 -> 2384  (+52): auth-doc single-flight reclaim.
+#     MyBooksDownloadCenter    2170 -> 2180  (+10): OverDrive re-fulfill on expired URL.
+#     TPPSignInBusinessLogic   1124 -> 1207  (+83): the `boundedCompletion` auth-doc GET
+#       timeout seam (#18414) + its supporting state.
+#   NOT forward-ported code (+54, 1207 -> 1261) — called out separately so this
+#   re-baseline does not launder new accretion: fixing the `boundedCompletion` Swift 6
+#   `@MainActor` SIGTRAP (the merge-introduced crash that blocked this PR) added a
+#   main-actor delivery hop plus two small `@unchecked Sendable` carrier types
+#   (`TPPBoundedCompletionSink`, `TPPWorkItemBox`), plus returning the timeout work item
+#   so tests can join the losing racer deterministically (STARVE-001). FOLLOW-UP (not in this PR — a merge
+#   must not also carry a decomposition move): `boundedCompletion` + `TPPOnceGuard` + both
+#   carriers are a self-contained, network-free, sign-in-agnostic primitive (~90 LOC) and
+#   should be EXTRACTED to its own file, which nets this hub back BELOW 1207.
+# Wave 3 S3 (AccountsManager de-locatoring): 2384 -> 2383. The account-switch cleanup
+#   seams were inverted behind the injected `AccountSwitchDependencies` bundle; the
+#   net is slightly NEGATIVE (the extracted nav-pop closure + deleted inline reaches
+#   outweigh the stored dependency + its docs). Re-baselined by the exact delta.
+# Wave 3 / 3a-5 (-40 on AccountsManager, 955 -> 915): per-account credential resolution
+#   (the per-library TPPUserAccount cache + lock, the currentUserAccount ride-out over the
+#   account-switch nil window, and the fresh-install placeholder) EXTRACTED to the injected
+#   AccountCredentialResolver (a final class, not an actor). The hub keeps the @objc
+#   TPPUserAccountResolving facades. Preserves F-034 (single-lock-span cache) + F-016 (ride-out)
+#   verbatim. Fifth of the 3a splits. Re-baselined DOWN.
+# Wave 3 / 3a-4 (-954 on AccountsManager, 1910 -> 956): the catalog LOAD orchestration
+#   (loadCatalogs stale-while-revalidate pipeline, the first-page/paginate network crawl +
+#   direct-GET fallbacks, CP-D1 preload + slim-snapshot hydrate/carve/write, the owned
+#   background-crawl task registry + its test-boundary drain choreography, and the
+#   loading-completion handler dedupe) EXTRACTED to the injected `AccountRegistryLoader`
+#   (a `final class`, not an actor). The hub keeps thin facades (loadCatalogs,
+#   loadAccountSetsAndAuthDoc, preloadAccountsFromDiskCacheSync, the drain/join seams) +
+#   static shims (carveSlimFeed). `_explicitCancelCalled` + the live-instance registry STAY
+#   on the hub; the hub cancel/drain facades set the flag before delegating. Largest of the
+#   3a splits (~950 LOC). Re-baselined DOWN.
+# Wave 3 / 3a-3 (-172 on AccountsManager, 2082 -> 1910): the per-account auth-document
+#   fetch + state-machine wiring (the single-flight `inflightAuthDocFetches` map + lock,
+#   `authDocInflightTimeout`, `fetchAuthDocumentWithStateMachine`, `fetchCompletionMayWriteTerminal`,
+#   `driveCurrentAccountAuthDocIfNeeded` with the `.detailsEvicted` disambiguation + the
+#   forward-compat exhaustiveness block, and the DEBUG single-flight seeds) EXTRACTED to the
+#   injected `AuthDocumentLoader` (a `final class`, not an actor — drive is called
+#   synchronously from the currentAccount setter). The hub keeps thin forwarders + a
+#   `static let authDocInflightTimeout` alias. Third of the 3a collaborator splits;
+#   strongly NEGATIVE. Re-baselined DOWN.
+# Wave 3 / 3a-2 (-91 on AccountsManager, 2173 -> 2082): the account-registry STATE +
+#   thread-safe access (the current-hash, `accountSets`, the lockstep `accountByUUID`
+#   index, the slim fallback, the concurrent `accountSetsLock` sync-read/barrier-write
+#   primitives, and the two barrier carriers) EXTRACTED to the injected
+#   `AccountRegistryStore` (a `final class`, not an actor — `account(_:)` is a
+#   synchronous `@objc` requirement and the drain path depends on sync `.sync` reads).
+#   The hub keeps thin forwarding facades (`account`/`accounts`/`accountsHaveLoaded`/a
+#   `buildAccountIndex` static shim). Second of the 3a collaborator splits; strongly
+#   NEGATIVE. Re-baselined DOWN.
+# Wave 3 / 3a-1 (-210 on AccountsManager, 2383 -> 2173): the on-disk catalog cache
+#   concern (the `CatalogCacheMetadata` value type + the FileManager read/write/
+#   staleness/clear bodies) was EXTRACTED to the injected `AccountRegistryCaching`
+#   collaborator in the new, unfrozen `AccountRegistryCache.swift`. The hub keeps only
+#   the retyped `registryCache.*` call sites + a one-line pointer. This is the first of
+#   the 3a in-target collaborator splits; strongly NEGATIVE, exactly as god-class
+#   decomposition intends. Re-baselined DOWN to the new `wc -l`.
+# Wave 3 S2b (+4 on MyBooksDownloadCenter, 2180 -> 2184): the account-SCOPE reads
+#   (current-account-id + auth-surface hosts) were INVERTED onto the injected
+#   `DownloadAccountScopeProviding` seam. The residual growth is EXACTLY 4 irreducible
+#   seam-code lines: the stored `accountScope` property + its optional init param + the
+#   pre-`super.init()` `resolvedAccountScope` local + the `self.accountScope = …`
+#   assignment. All verbose rationale was EXTRACTED to the new, unfrozen
+#   MyBooksDownloadCenter+AccountScope.swift; the hub keeps only terse one-line pointers
+#   (the two pointer lines are offset by tightening a pre-existing comment, so the +4 is
+#   pure code, not doc accretion). Mirrors the S1 injected-seam precedent above. Nets
+#   NEGATIVE at the 3a/3b package move, when the MBDC cluster leaves the hub for
+#   PalaceDownloads and the account-scope wiring goes with it. Re-baselined by the exact
+#   delta; the freeze still catches any further unrelated growth.
+# Code-line counts (2026-07-31 recount). Physical `wc -l` at this same tree was:
+#   AudiobookSessionManager 3093, AccountsManager 915, MyBooksDownloadCenter 2184,
+#   BookDetailViewModel 1378, TPPSignInBusinessLogic 1261, BorrowOperation 968.
+# 3.2.3 build-492 forward-port (+12 MyBooksDownloadCenter, +15 BookDetailViewModel).
+#   Carrying PR #1362 from main into develop: the duplicate-LCP-archive-download guard, the
+#   half-sheet progress cue, and the stop-offering-Listen-before-audio-exists fix. This code
+#   ALREADY SHIPS to patrons on main; refusing it here would mean 3.3.0 regressing behavior
+#   the 3.2.x hotfix line already fixed, which the freeze was never meant to do.
+#   Both deltas are code, not doc accretion — measured with the code-line counter, and the
+#   third frozen file the raw diff appeared to grow (AudiobookSessionManager, +2 physical)
+#   is +0 here because that growth was entirely comments.
+#   Why not extracted instead: MBDC's +12 is post-init wiring of the progress reporter into
+#   the three collaborators MBDC itself OWNS (localContentService, startCoordinator,
+#   cancellationHandler) plus the publisher property and two closures — a wiring type would
+#   relocate the same lines and add an indirection. BookDetailViewModel's +15 is its own
+#   `@Published isDownloadingLCPContent`, the seed-from-registry read, and the Combine
+#   subscription — view-model state belongs in the view model. Extracting either would also
+#   make develop's LCP code structurally DIVERGE from main's, which is what makes the next
+#   hotfix port hard; this port exists precisely to stop that divergence.
+#   Nets negative at the 3b package move, when the MBDC cluster leaves the hub for
+#   PalaceDownloads. Re-baselined by the exact delta; the freeze still catches any further
+#   unrelated growth.
+# PP-4895 (-1 on MyBooksDownloadCenter, 1257 -> 1256): the URLSession auth-challenge
+#   callback moved to the SDK's async spelling, and the shape adaptation both challenge
+#   sites needed now lives once on TPPBasicAuth.response(to:) instead of twice inline.
+# PP-4896 (-6 on MyBooksDownloadCenter, 1256 -> 1250): deleted the vestigial
+#   bookIdentifierOfBookToRemove scratch state — the property, its three `= nil`
+#   assignments, the account-match guard that only cleared it, and the doc bullet
+#   describing it. Its reader died in 2020 (b34820563) with the UIAlertViewDelegate
+#   confirm-delete flow, whose writer already had no callers. Pure removal, no
+#   behavior change.
+# PP-4997 (-1 on MyBooksDownloadCenter, 1250 -> 1249): the PP-4997 reconcile fix
+#   needed each live task's URL as well as its identifier, which grew the hub by 7.
+#   Rather than re-baseline upward, LiveDownloadTaskBox moved to
+#   DownloadTaskPersistence.swift — where reconciliation already lives — and took a
+#   `capture(_:)` method with it, collapsing the extraction loop at the call site.
+#   Net -1 on the hub. The ratchet asked for extraction instead of growth and got it.
+# PP-5135 (ratchet DOWN: AudiobookSessionManager 1579 -> 1557, MyBooksDownloadCenter
+#   1249 -> 1246): the offline-LCP fix needed ~44 lines in two frozen hubs, so the
+#   open-time policy cluster moved out instead - AudiobookSessionManager+ContentOpenPolicy
+#   .swift (pure statics, kept as an extension so no call site or test changed) and
+#   MyBooksDownloadCenter+LCPContentFetch.swift. Both hubs end BELOW where they started.
+#   BorrowOperation also reads 521 against its 575 here; that shrink is pre-existing on
+#   this branch and is left for whoever owns it to ratchet deliberately.
+1557 Palace/Audiobooks/AudiobookSessionManager.swift
+374 Palace/Accounts/Library/AccountsManager.swift
+1246 Palace/MyBooks/MyBooksDownloadCenter.swift
+981 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+638 Palace/SignInLogic/TPPSignInBusinessLogic.swift
+575 Palace/MyBooks/BorrowOperation.swift

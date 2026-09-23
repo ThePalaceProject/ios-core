@@ -11,6 +11,7 @@ import CoreGraphics
 import XCTest
 @testable import Palace
 
+@MainActor
 final class StreamingReaderProgressStoreTests: XCTestCase {
 
     private var suiteName: String!

@@ -10,7 +10,9 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class BookButtonTypeTests: XCTestCase {
 
     // SRS: BookButtonType all cases have raw values
@@ -143,6 +145,7 @@ final class BookButtonTypeTests: XCTestCase {
 
 // MARK: - ButtonStyleType Tests
 
+@MainActor
 final class ButtonStyleTypeTests: XCTestCase {
 
     // SRS: ButtonStyleType all cases exist
@@ -167,6 +170,7 @@ final class ButtonStyleTypeTests: XCTestCase {
 
 // MARK: - BookButtonState Tests
 
+@MainActor
 final class BookButtonStateTests: XCTestCase {
 
     // SRS: BookButtonState all cases exist

@@ -10,7 +10,13 @@ import Foundation
 import CoreLocation
 import SafariServices
 
-extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
+// `@preconcurrency`: `CLLocationManagerDelegate` is a nonisolated system
+// protocol; `TPPSignInBusinessLogic` is `@MainActor`. CoreLocation delivers
+// `locationManagerDidChangeAuthorization` on the thread the manager was created
+// on (main here — the manager is configured in `continueRegularCardCreation` on
+// main), so the isolated witness is runtime-correct. `@preconcurrency` accepts
+// the `@MainActor` witness against the nonisolated requirement.
+extension TPPSignInBusinessLogic: @preconcurrency CLLocationManagerDelegate {
     @objc
     func startRegularCardCreation(completion: @escaping (UINavigationController?, Error?) -> Void) {
         // Bucket A migration: card creation is user-initiated (Sign Up button
@@ -28,9 +34,20 @@ extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
             completion(nil, error)
             return
         }
+        // SHARED-TYPE DEPENDENCY (flagged in handoff): closing the
+        // `complete`-mode "passing closure as a 'sending' parameter" warning on
+        // this `Task` requires either `Account` (owned by the Accounts module)
+        // to become `Sendable`, or `TPPSignInBusinessLogic` to become
+        // `@MainActor` (out of scope for an isolation-only pass). The `Task`
+        // body necessarily captures non-Sendable `self`, `account`, and
+        // `completion`; making it `@MainActor` does not help because a
+        // `@MainActor` Task closure is itself `@Sendable` and still cannot
+        // capture the non-Sendable `self` from this nonisolated `@objc` method.
+        // Left as-is (behavior correct, main-thread hop preserved) pending the
+        // shared-type decision.
         Task {
             let details = try? await account.awaitReady()
-            await MainActor.run {
+            TPPMainThreadRun.asyncIfNeeded {
                 self.continueRegularCardCreation(with: details, completion: completion)
             }
         }
@@ -97,8 +114,19 @@ extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
 
         let title = Strings.TPPSigninBusinessLogic.ecard
         let msg = Strings.TPPSigninBusinessLogic.ecardErrorMessage
-        let webVC = RemoteHTMLViewController(URL: url, title: title, failureMessage: msg)
-        completion(UINavigationController(rootViewController: webVC), nil)
+        // `RemoteHTMLViewController` and `UINavigationController` inits are
+        // `@MainActor`-isolated. `createCard` is only ever reached on the main
+        // thread (via `continueRegularCardCreation`, itself invoked either from
+        // the `TPPMainThreadRun.asyncIfNeeded` hop in `startRegularCardCreation`
+        // or from the main-thread `CLLocationManagerDelegate` callback), so the
+        // main-actor precondition provably holds here. `assumeIsolated` asserts
+        // that fact for the `complete`-mode checker without changing behavior or
+        // deferring the work (the completion must fire synchronously so the
+        // caller's navigation flow is unchanged).
+        MainActor.assumeIsolated {
+            let webVC = RemoteHTMLViewController(URL: url, title: title, failureMessage: msg)
+            completion(UINavigationController(rootViewController: webVC), nil)
+        }
     }
 
     // Adds latitude and longitude parameters to the URL.

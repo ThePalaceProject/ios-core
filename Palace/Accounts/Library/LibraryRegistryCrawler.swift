@@ -31,6 +31,15 @@ struct URLSessionCrawlerFetcher: CrawlerNetworkFetching {
     }
 }
 
+/// Documented carrier for the non-Sendable `CrawlerNetworkFetching`
+/// existential so it can be captured into `withThrowingTaskGroup` child
+/// tasks. `@unchecked Sendable` invariant: the production fetcher
+/// (`URLSessionCrawlerFetcher`) is a stateless struct over `URLSession.shared`;
+/// concurrent `fetchData` calls are safe.
+private struct CrawlerFetcherBox: @unchecked Sendable {
+    let fetcher: CrawlerNetworkFetching
+}
+
 // Note: HTTPURLResponse.cacheControlMaxAge is defined in Palace/Network/TPPCaching.swift
 
 // MARK: - Delegate
@@ -51,7 +60,24 @@ protocol LibraryRegistryCrawlerDelegate: AnyObject {
 ///
 /// **Full crawl**: Paginates through all pages. When complete (no
 /// `rel="next"` link), libraries not present in the crawl are deleted.
-final class LibraryRegistryCrawler {
+/// `@unchecked Sendable`: exists so a `@MainActor` caller (production
+/// `AccountsManager` crawl `Task`, and the `@MainActor` XCTest cases) can
+/// `await crawler.crawl(...)` without sending a non-`Sendable` value across the
+/// actor boundary. Every stored member is safe to reference across concurrency
+/// domains:
+/// - `fetcher` is the non-`Sendable` `CrawlerNetworkFetching` existential, but
+///   its production conformer (`URLSessionCrawlerFetcher`) is a stateless struct
+///   over `URLSession.shared`, and it is already carried into the parallel
+///   task-group children via the documented `CrawlerFetcherBox` — so concurrent
+///   `fetchData` is already assumed safe by this type.
+/// - `hash` / `stateDirectory` / `currentAppVersion` are immutable `Sendable`
+///   `let`s.
+/// - `nowProvider` is now `@Sendable` (below).
+/// - `delegate` is a `weak var`, but it is only ever WRITTEN from the main
+///   thread (production never sets it; tests set it synchronously before
+///   `crawl` on the `@MainActor`) and only READ during a single crawl. No two
+///   crawls share an instance and no concurrent write races the read.
+final class LibraryRegistryCrawler: @unchecked Sendable {
 
     enum CrawlResult {
         case success(Data)   // Merged OPDS2CatalogsFeed JSON
@@ -72,7 +98,7 @@ final class LibraryRegistryCrawler {
     private let hash: String
     private let stateDirectory: URL
     private let currentAppVersion: String?
-    private let nowProvider: () -> Date
+    private let nowProvider: @Sendable () -> Date
 
     weak var delegate: LibraryRegistryCrawlerDelegate?
 
@@ -81,7 +107,7 @@ final class LibraryRegistryCrawler {
         hash: String,
         stateDirectory: URL? = nil,
         currentAppVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.fetcher = fetcher
         self.hash = hash
@@ -120,6 +146,13 @@ final class LibraryRegistryCrawler {
             // Fetch first page — registry uses OPDS2CatalogsFeed format
             // (items under "catalogs" key, not "publications")
             let (firstPageData, firstResponse) = try await fetcher.fetchData(from: startURL)
+            // Cooperative cancellation: if this crawl's Task was cancelled while
+            // the fetch was in flight, short-circuit to a CancellationError-mapped
+            // .failure now instead of continuing to paginate. Only ever true under
+            // the DEBUG/XCTest test-boundary drain (`cancelBackgroundWork()`);
+            // production runs on a GCD queue with no surrounding Task, so
+            // `Task.isCancelled` is always false and this never throws.
+            try Task.checkCancellation()
             let firstPage = try OPDS2CatalogsFeed.fromData(firstPageData)
 
             // Extract server cache policy for future TTL tuning
@@ -158,6 +191,10 @@ final class LibraryRegistryCrawler {
             var reachedEnd = false
 
             while true {
+                // Cooperative cancellation checkpoint at the top of every page
+                // iteration so a cancelled crawl stops promptly rather than
+                // walking to end-of-feed. Test-only in effect (see note above).
+                try Task.checkCancellation()
                 pageCount += 1
                 let catalogs = currentPage.catalogs
                 rawCatalogs.append(contentsOf: catalogs)
@@ -209,6 +246,7 @@ final class LibraryRegistryCrawler {
                 }
 
                 let (nextData, _) = try await fetcher.fetchData(from: nextURL)
+                try Task.checkCancellation()
                 currentPage = try OPDS2CatalogsFeed.fromData(nextData)
             }
 
@@ -236,9 +274,17 @@ final class LibraryRegistryCrawler {
             )
 
             // Serialize
-            let meta = feedMetadata ?? OPDS2CatalogsFeed.Metadata(
-                adobe_vendor_id: nil,
-                title: "Palace Library Registry"
+            // PP-5191 RULE: `numberOfItems` is NEVER carried forward from cache — it
+            // always comes from the response just fetched. `feedMetadata` here is the
+            // CACHED feed's metadata, so inheriting it would republish a stale total.
+            // On the deletion-reconcile path that is fatal in the quiet direction: a
+            // genuine 1457 -> 1400 shrink would emit count 1400 against a declared
+            // 1457, read as PARTIAL, and be refused by INV-2 forever — deletions never
+            // reconciling, and rendering as "there were no deletions".
+            let meta = OPDS2CatalogsFeed.Metadata(
+                adobe_vendor_id: feedMetadata?.adobe_vendor_id,
+                title: feedMetadata?.title ?? "Palace Library Registry",
+                numberOfItems: firstPage.metadata.numberOfItems
             )
             guard let serialized = LibraryCatalogMerger.serializeAsCatalogsFeed(
                 publications: mergeResult.publications,
@@ -289,9 +335,13 @@ final class LibraryRegistryCrawler {
             saveCrawlState(state)
 
             // Serialize first page as a partial catalog for immediate display
+            // PP-5191: carry the declared total so a page-1 feed is identifiable as
+            // PARTIAL once it reaches disk. Dropping it here is what made a 100-row
+            // page and a 1457-row crawl indistinguishable to every later reader.
             let meta = OPDS2CatalogsFeed.Metadata(
                 adobe_vendor_id: page.metadata.adobe_vendor_id,
-                title: page.metadata.title
+                title: page.metadata.title,
+                numberOfItems: page.metadata.numberOfItems
             )
             guard let serialized = LibraryCatalogMerger.serializeAsCatalogsFeed(
                 publications: page.catalogs,
@@ -326,7 +376,13 @@ final class LibraryRegistryCrawler {
             state.lastCrawlAppVersion = currentAppVersion
             saveCrawlState(state)
 
-            let meta = feedMetadata ?? OPDS2CatalogsFeed.Metadata(adobe_vendor_id: nil, title: "Palace Library Registry")
+            // PP-5191 RULE: declared total from the freshly-fetched first page, never
+            // from the cached `feedMetadata`.
+            let meta = OPDS2CatalogsFeed.Metadata(
+                adobe_vendor_id: feedMetadata?.adobe_vendor_id,
+                title: feedMetadata?.title ?? "Palace Library Registry",
+                numberOfItems: firstPage.metadata.numberOfItems
+            )
             guard let serialized = LibraryCatalogMerger.serializeAsCatalogsFeed(
                 publications: firstPage.catalogs,
                 metadata: meta
@@ -352,21 +408,41 @@ final class LibraryRegistryCrawler {
                 // Fall back to sequential pagination
                 var currentNextURL: URL? = nextURL
                 while let url = currentNextURL {
+                    // Cooperative cancellation at the top of each pagination step
+                    // and immediately after the fetch — same DEBUG/XCTest-only
+                    // effect as the crawl() checkpoints above.
+                    try Task.checkCancellation()
                     let (data, _) = try await fetcher.fetchData(from: url)
+                    try Task.checkCancellation()
                     let page = try OPDS2CatalogsFeed.fromData(data)
                     allPublications.append(contentsOf: page.catalogs)
                     currentNextURL = page.nextPageURL
                 }
             }
 
+            // PP-5191 shrink vector 2. Page offsets are derived from the server's
+            // declared `numberOfItems`. If the server UNDER-reports it, too few
+            // offsets are computed, no child task throws, and this would merge with
+            // `isFullCrawl: true` and stamp `lastFullCrawlDate` — publishing a short
+            // list as an authoritative full crawl, under a "pagination complete" log.
+            // A crawl that did not reach its own declared total is not a full crawl.
+            let declaredTotal = firstPage.metadata.numberOfItems
+            let reachedDeclaredTotal = declaredTotal.map { allPublications.count >= $0 } ?? true
+
             // Merge with existing
             let mergeResult = LibraryCatalogMerger.merge(
                 existing: existingPublications,
                 updates: allPublications,
-                isFullCrawl: true
+                isFullCrawl: reachedDeclaredTotal
             )
 
-            let meta = feedMetadata ?? OPDS2CatalogsFeed.Metadata(adobe_vendor_id: nil, title: "Palace Library Registry")
+            // PP-5191 RULE: declared total from the freshly-fetched first page, never
+            // from the cached `feedMetadata`.
+            let meta = OPDS2CatalogsFeed.Metadata(
+                adobe_vendor_id: feedMetadata?.adobe_vendor_id,
+                title: feedMetadata?.title ?? "Palace Library Registry",
+                numberOfItems: firstPage.metadata.numberOfItems
+            )
             guard let serialized = LibraryCatalogMerger.serializeAsCatalogsFeed(
                 publications: mergeResult.publications,
                 metadata: meta
@@ -376,7 +452,11 @@ final class LibraryRegistryCrawler {
 
             let completedAt = nowProvider()
             state.lastSuccessfulCrawlDate = completedAt
-            state.lastFullCrawlDate = completedAt
+            if reachedDeclaredTotal {
+                state.lastFullCrawlDate = completedAt
+            } else {
+                Log.error(#file, "Pagination ended short of the declared total (\(allPublications.count) of \(declaredTotal.map(String.init) ?? "unknown")) — NOT recording a full crawl, so deletion reconciliation stays pending")
+            }
             state.lastCrawlAppVersion = currentAppVersion
             saveCrawlState(state)
 
@@ -419,12 +499,19 @@ final class LibraryRegistryCrawler {
         let maxConcurrent = 4
         var allResults = [(offset: Int, catalogs: [OPDS2Publication])]()
 
+        // Carry the non-Sendable `CrawlerNetworkFetching` existential into the
+        // task-group child tasks via a documented box (the protocol is not
+        // marked `Sendable` because its test mocks are stateful classes). The
+        // production conformer (`URLSessionCrawlerFetcher`) is a stateless
+        // struct over `URLSession.shared`, safe to use concurrently.
+        let fetcherBox = CrawlerFetcherBox(fetcher: fetcher)
         for chunk in offsets.chunked(into: maxConcurrent) {
             let chunkResults = try await withThrowingTaskGroup(
                 of: (Int, [OPDS2Publication]).self
             ) { group in
                 for pageOffset in chunk {
-                    group.addTask { [fetcher] in
+                    group.addTask { [fetcherBox] in
+                        let fetcher = fetcherBox.fetcher
                         var pageComponents = components
                         pageComponents.queryItems = (pageComponents.queryItems ?? []).map { item in
                             if item.name == "offset" {
@@ -496,6 +583,31 @@ final class LibraryRegistryCrawler {
 
     private var stateFileURL: URL {
         stateDirectory.appendingPathComponent("crawl_state_\(hash).json")
+    }
+
+    /// PP-5191. Clear the completed-crawl markers so the NEXT `crawl()` takes the
+    /// FULL branch rather than the incremental one.
+    ///
+    /// Called after a partial page is merged into the cache. Without it the merge
+    /// trades one bug for another: the cache becomes `bundled ∪ page1`, and an
+    /// incremental refresh PRESERVES what it finds, so build-time bundled rows
+    /// (libraries since deleted, catalog URLs since changed) would be promoted into
+    /// the live cache and survive up to the 7-day full-crawl interval. Before this
+    /// change those rows were clobbered within ~260ms, so the staleness is new and
+    /// belongs to the fix.
+    ///
+    /// `orderModifiedFacetURL` is deliberately PRESERVED — it is a discovered
+    /// capability of the feed, not a record of work done, and re-discovering it costs
+    /// a round trip. Only the two "we have completed a crawl" timestamps are cleared.
+    ///
+    /// Best-effort: `saveCrawlState` swallows its write error, so a failure here
+    /// renders as "no full crawl needed". Accepted — it fails open to today's
+    /// behaviour rather than to a worse state.
+    func requireFullCrawlOnNextRun() {
+        var state = loadCrawlState()
+        state.lastSuccessfulCrawlDate = nil
+        state.lastFullCrawlDate = nil
+        saveCrawlState(state)
     }
 
     private func loadCrawlState() -> CrawlState {

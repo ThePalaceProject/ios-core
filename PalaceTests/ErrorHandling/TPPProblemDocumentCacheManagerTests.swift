@@ -9,6 +9,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TPPProblemDocumentCacheManagerTests: XCTestCase {
 
     private var cacheManager: TPPProblemDocumentCacheManager!

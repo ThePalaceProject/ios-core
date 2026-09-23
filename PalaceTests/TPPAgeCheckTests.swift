@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class TPPAgeCheckTests: XCTestCase {
 
     // Classes/mocks needed for testing

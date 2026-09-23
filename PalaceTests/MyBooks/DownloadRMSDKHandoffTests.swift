@@ -25,9 +25,12 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 #if FEATURE_DRM_CONNECTOR
 
+@MainActor
 final class DownloadRMSDKHandoffTests: XCTestCase {
 
     private var registry: TPPBookRegistryMock!
@@ -384,6 +387,7 @@ private final class RMSDKHandoffSpy: AdobeDRMHandlerDelegate {
 // target in this repo IS compiled with the flag, so production runs the
 // real suite. This branch exists so the file still compiles under a
 // noDRM build flavour.
+@MainActor
 final class DownloadRMSDKHandoffTests: XCTestCase {
 
     func testRMSDKHandoff_featureDRMConnectorDisabled_skipsSuite() {

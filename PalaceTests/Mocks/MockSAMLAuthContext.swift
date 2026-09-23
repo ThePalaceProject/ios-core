@@ -10,6 +10,10 @@ import Foundation
 import PalaceAuth
 @testable import Palace
 
+// `@MainActor`: `SAMLAuthContext` (PalaceAuth) becomes a `@MainActor` protocol
+// as part of the `TPPSignInBusinessLogic: @MainActor` conversion (see RIPPLES.md),
+// so its conformers — including this test mock — inherit the isolation.
+@MainActor
 class MockSAMLAuthContext: SAMLAuthContext {
     /// Test convenience: tests set the full IDP object via `selectedIDP`;
     /// the protocol-required `selectedIDPURL` is computed from it.

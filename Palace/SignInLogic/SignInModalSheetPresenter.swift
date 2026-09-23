@@ -131,10 +131,18 @@ final class SignInModalSheetPresenter: NSObject, SignInModalSheetPresenting, Obs
     /// they guarantee one UIKit presentation per logical flow.
     private var inFlight: Bool = false
 
+    /// - Note: `driver` has no default argument on purpose. `productionDriver`
+    ///   is a `@MainActor`-isolated static, and a default-argument expression is
+    ///   evaluated in a nonisolated context — which trips the `targeted`
+    ///   strict-concurrency diagnostic ("main actor-isolated static property
+    ///   'productionDriver' referenced from nonisolated context"). Production
+    ///   callers reach this through `convenience init(appContainer:)` (which
+    ///   supplies `productionDriver` from a `@MainActor` context); tests always
+    ///   inject an explicit driver. No caller relied on the default.
     init(appContainer: AppContainer,
          currentAccountIDProvider: @escaping () -> String?,
          needsAuthProvider: @escaping (String) -> Bool,
-         driver: @escaping SignInModalPresentationDriver = SignInModalSheetPresenter.productionDriver) {
+         driver: @escaping SignInModalPresentationDriver) {
         self.appContainer = appContainer
         self.currentAccountIDProvider = currentAccountIDProvider
         self.needsAuthProvider = needsAuthProvider

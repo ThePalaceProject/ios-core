@@ -7,7 +7,11 @@ extension URLSession {
     /// `static let` form left a permanently bound session whose private
     /// delegate queue accumulated callbacks across tests and produced the
     /// `libdispatch` use-after-free described in the header comment below.
-    private static var _sharedStubbedSession: URLSession = URLSession._buildStubbedSession()
+    private static let _sharedStubbedSessionBox = LockIsolated<URLSession>(URLSession._buildStubbedSession())
+    private static var _sharedStubbedSession: URLSession {
+        get { _sharedStubbedSessionBox.value }
+        set { _sharedStubbedSessionBox.value = newValue }
+    }
 
     private static func _buildStubbedSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral

@@ -10,6 +10,7 @@ import Foundation
 import SwiftUI
 
 class TPPSettingsViewController: NSObject {
+    @MainActor
     @objc static func makeSwiftUIView(dismissHandler: @escaping (() -> Void)) -> UIViewController {
         let controller = UIHostingController(rootView: TPPSettingsView())
         controller.title = Strings.Settings.settings

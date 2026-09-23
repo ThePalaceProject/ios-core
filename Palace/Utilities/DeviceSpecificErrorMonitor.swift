@@ -11,6 +11,7 @@ import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
 import PalaceLogging
+import PalaceBookModel
 
 /// Protocol seam for tests. Production call sites continue to use
 /// `DeviceSpecificErrorMonitor.shared`.
@@ -29,7 +30,12 @@ protocol DeviceSpecificErrorMonitoring {
 ///
 /// NOTE: This class delegates all Firebase RemoteConfig access to FirebaseManager
 /// to prevent race conditions that cause the "recursive_mutex lock failed" crash.
-final class DeviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring {
+// `@unchecked Sendable`: the only mutable stored state (`isInitialized`) is
+// guarded by `lock` (NSLock); `firebaseManagerProvider` is an immutable `let`
+// resolved once and Firebase access is delegated to the thread-safe
+// FirebaseManager facade. Safe to share the `.shared` singleton across
+// isolation domains.
+final class DeviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring, @unchecked Sendable {
     static let shared = DeviceSpecificErrorMonitor()
 
     private var isInitialized = false
@@ -64,12 +70,17 @@ final class DeviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring {
     /// Initializes the error monitor by fetching remote config.
     /// This should only be called once during app startup.
     func initialize() async {
-        lock.lock()
-        let alreadyInitialized = isInitialized
-        if !alreadyInitialized {
-            isInitialized = true
+        // Swift 6: NSLock.lock()/unlock() are unavailable from async contexts.
+        // Use the async-safe scoped `withLock` — the guarded region is the
+        // check-and-set of `isInitialized`; the returned Bool carries the prior
+        // value out so the once-only guard below runs outside the lock.
+        let alreadyInitialized = lock.withLock { () -> Bool in
+            let wasInitialized = isInitialized
+            if !wasInitialized {
+                isInitialized = true
+            }
+            return wasInitialized
         }
-        lock.unlock()
 
         guard !alreadyInitialized else { return }
 

@@ -10,6 +10,7 @@
 import SwiftUI
 import UIKit
 import PalaceNetwork
+import PalaceBookModel
 
 /// SwiftUI wrapper around `StreamingReaderViewController`. The book and
 /// store are captured at init; the wrapper presents the VC inside a

@@ -1,6 +1,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPConfigurationTests: XCTestCase {
 
   // MARK: - Color Methods
@@ -117,13 +118,13 @@ final class TPPConfigurationTests: XCTestCase {
 
   // MARK: - Navigation Bar Appearance
 
-  func test_defaultAppearance_returnsConfiguredAppearance() {
+  @MainActor func test_defaultAppearance_returnsConfiguredAppearance() {
     let appearance = TPPConfiguration.defaultAppearance()
     XCTAssertNotNil(appearance, "defaultAppearance should return a non-nil appearance")
     XCTAssertNotNil(appearance.backgroundColor, "defaultAppearance should have a background color")
   }
 
-  func test_appearanceWithBackgroundColor_usesProvidedColor() {
+  @MainActor func test_appearanceWithBackgroundColor_usesProvidedColor() {
     let testColor = UIColor.red
     let appearance = TPPConfiguration.appearance(withBackgroundColor: testColor)
     XCTAssertNotNil(appearance)

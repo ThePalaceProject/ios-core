@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class OPDSFeedServiceTests: XCTestCase {
 
     // MARK: - Cancellation Tests (no network calls)
@@ -46,6 +47,7 @@ final class OPDSFeedServiceTests: XCTestCase {
 
 // MARK: - Palace Error Tests
 
+@MainActor
 final class PalaceErrorTests: XCTestCase {
 
     func testPalaceError_parsing_opdsFeedInvalid() {

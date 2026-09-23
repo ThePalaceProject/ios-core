@@ -15,9 +15,15 @@ import Foundation
 /// instead of sending them to Crashlytics.
 ///
 /// Because `TPPErrorLogger` uses class (static) methods, this protocol uses
-/// instance methods. The `AppContainer` holds a concrete instance conforming
-/// to this protocol. The default implementation (`DefaultErrorLogger`) simply
-/// forwards to the existing static methods on `TPPErrorLogger`.
+/// instance methods. The default implementation (`DefaultErrorLogger`) simply
+/// forwards to those static methods.
+///
+/// Note this is NOT held by `AppContainer` — that was the original intent and
+/// the doc said so, but no such wiring was ever added (verified: zero
+/// `ErrorLogging` references there). Consumers today are static-class APIs
+/// that cannot take constructor injection, so each holds its own shared
+/// instance behind a test seam; see `TPPAnnotations.errorLoggerOverride`. If a
+/// container-held instance is ever added, prefer it and retire the seams.
 protocol ErrorLogging: AnyObject {
 
     /// Reports an error with an optional originating error and metadata.
@@ -38,7 +44,12 @@ protocol ErrorLogging: AnyObject {
 // MARK: - Default Implementation
 
 /// Default implementation that forwards to `TPPErrorLogger`'s static methods.
-final class DefaultErrorLogger: ErrorLogging {
+///
+/// `Sendable` because it holds no state — every method forwards straight to a
+/// static. That lets callers hold a single shared instance instead of either
+/// allocating one per report or reaching for `nonisolated(unsafe)`; the
+/// compiler checks the claim rather than us asserting it.
+final class DefaultErrorLogger: ErrorLogging, Sendable {
 
     func logError(_ error: Error?, summary: String, metadata: [String: Any]?) {
         TPPErrorLogger.logError(error, summary: summary, metadata: metadata)

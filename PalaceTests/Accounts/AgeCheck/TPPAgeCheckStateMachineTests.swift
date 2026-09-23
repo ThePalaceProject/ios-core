@@ -19,6 +19,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPAgeCheckStateMachineTests: XCTestCase {
 
     private var ageCheckChoiceStorageMock: TPPAgeCheckChoiceStorageMock!

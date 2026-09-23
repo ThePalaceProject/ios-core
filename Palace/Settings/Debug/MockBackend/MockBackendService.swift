@@ -14,6 +14,7 @@ import Foundation
 import Combine
 import PalaceLogging
 
+@MainActor
 final class MockBackendService: ObservableObject {
 
     static let shared = MockBackendService()

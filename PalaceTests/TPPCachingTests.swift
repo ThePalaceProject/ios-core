@@ -9,7 +9,9 @@
 import XCTest
 import PalaceNetwork
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 class TPPCachingTests: XCTestCase {
     var libraryCallResponse: HTTPURLResponse!
     var sufficientHeadersResponse: HTTPURLResponse!

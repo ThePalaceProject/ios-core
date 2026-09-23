@@ -44,7 +44,7 @@ class DPLAAudiobooks {
     /// - Parameter error: Error object
     ///
     /// `completion` either returns `keyData` value or an `error`.  `validThrough` date is optional even when `keyData` is not nil.
-    static func drmKey(completion: @escaping (_ keyData: Data?, _ validThrough: Date?, _ error: Error?) -> Void) {
+    static func drmKey(completion: @escaping @Sendable (_ keyData: Data?, _ validThrough: Date?, _ error: Error?) -> Void) {
         let task = URLSession.shared.dataTask(with: DPLAAudiobooks.certificateUrl) { (data, response, error) in
             // In case of an error
             if let error = error {

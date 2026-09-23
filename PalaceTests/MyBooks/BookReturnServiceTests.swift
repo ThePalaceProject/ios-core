@@ -25,6 +25,8 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+@testable import PalaceBookRegistry
+import PalaceBookModel
 
 @MainActor
 final class BookReturnServiceTests: XCTestCase {
@@ -62,7 +64,8 @@ final class BookReturnServiceTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauthenticator,
             userRetryTracker: retryTracker,
-            userAccountProvider: { [unowned self] in self.userAccount }
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
         )
         #else
         service = BookReturnService(
@@ -73,7 +76,8 @@ final class BookReturnServiceTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauthenticator,
             userRetryTracker: retryTracker,
-            userAccountProvider: { [unowned self] in self.userAccount }
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
         )
         #endif
 
@@ -182,9 +186,12 @@ final class BookReturnServiceTests: XCTestCase {
         registry.addBook(book, location: nil, state: .downloadSuccessful,
                          fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let exp = expectation(description: "completion")
-        svc.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        // Join the service's own completion — `returnBook` always calls it, so
+        // there is nothing to bound. A fixed deadline here starves under
+        // parallel CI sim clones (STARVE-001).
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            svc.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         XCTAssertEqual(recorder.recorded, [book.identifier],
                        "returnBook must cancel the pending remote position write for the returned book exactly once")
@@ -220,9 +227,9 @@ final class BookReturnServiceTests: XCTestCase {
             remotePositionWriteCanceller: { id in recorder.record(id) }
         )
         #endif
-        let exp = expectation(description: "completion")
-        svc.returnBook(withIdentifier: "missing-id") { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 1.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            svc.returnBook(withIdentifier: "missing-id") { continuation.resume() }
+        }
 
         XCTAssertEqual(recorder.recorded, [],
                        "No book in registry → nothing to cancel; the seam must run only after the book is resolved")
@@ -415,19 +422,23 @@ final class BookReturnServiceTests: XCTestCase {
         let exp = expectation(description: "completion")
         service.returnBook(withIdentifier: bookWithRevoke.identifier) { exp.fulfill() }
 
-        // The Task is launched synchronously from returnBook → insert
-        // happens before this assertion runs in test-method context.
-        // The MainActor hops inside the Task have not yet yielded back
-        // here, so the count must be ≥ 1 right now.
-        await awaitConditionAsync(timeout: 2.0) {
-            self.service.inFlightTaskCount >= 1
-        }
+        // The retention insert (`inFlightLock … inFlightTasks[id] = task`)
+        // runs SYNCHRONOUSLY inside returnBook on this @MainActor test
+        // before it returns; the tracked Task body runs on the cooperative
+        // pool and cannot auto-remove until we yield the main actor. So the
+        // count is deterministically ≥ 1 right now — assert directly instead
+        // of polling a wall-clock deadline that starves under CI
+        // oversubscription. Capture the tracked Tasks here so we can JOIN
+        // them below rather than poll the count back to zero.
+        let tracked = service.inFlightTasksSnapshotForTesting()
+        XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
+                       "returnBook must synchronously retain its revokeURL cleanup Task")
 
         await fulfillment(of: [exp], timeout: 3.0)
 
-        await awaitConditionAsync(timeout: 2.0) {
-            self.service.inFlightTaskCount == 0
-        }
+        // Auto-removal is the last step of the tracked Task body; awaiting
+        // each Task's value joins that removal deterministically — no poll.
+        for task in tracked { _ = await task.value }
         XCTAssertEqual(service.inFlightTaskCount, 0,
                        "After completion, Tasks must auto-remove from the retention set")
     }
@@ -449,9 +460,9 @@ final class BookReturnServiceTests: XCTestCase {
 
         service.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
 
-        await awaitConditionAsync(timeout: 2.0) {
-            self.service.inFlightTaskCount >= 1
-        }
+        // Retention insert is synchronous inside returnBook (see the
+        // drains-on-completion test above); the blocked OPDS fetch keeps the
+        // Task parked, so the count is deterministically ≥ 1 right now.
         let inFlightBeforeCancel = service.inFlightTaskCount
         XCTAssertGreaterThanOrEqual(inFlightBeforeCancel, 1,
                                     "Sanity: Task must be retained while OPDS fetch is pending")
@@ -466,30 +477,33 @@ final class BookReturnServiceTests: XCTestCase {
         await blocker.unblock(throwing: NSError(domain: "test", code: -1))
     }
 
-    /// Service deinit eventually fires once every in-flight Task has
-    /// drained — at which point the `[weak self]` capture in each
-    /// tracked Task body short-circuits any remaining work, so no
-    /// `bookRegistry` / `localContentService` writes happen after the
-    /// service is gone. This test proves the deinit hook fires (via
-    /// the static counter) after the Tasks finish, and that the
-    /// `[weak self]` short-circuit is honored.
+    /// Dropping the last strong reference deallocs the service, and the
+    /// generic-error cleanup path performs no registry mutation.
     ///
-    /// Regression covered: a future refactor that drops `[weak self]`
-    /// from a tracked Task body — or removes the `inFlightTasks`
-    /// retention entirely — would let post-deinit work fire against a
-    /// dangling pointer. The post-deinit invariant we assert here
-    /// (`registry.book(...) == nil` even after cancellation) only holds
-    /// if the cleanup path was either driven to completion OR fully
-    /// short-circuited via the weak-self guard.
-    func testReturnService_inFlightTasks_shortCircuitAfterServiceDeinits() async throws {
+    /// What this test does NOT prove, and cannot through this seam: the
+    /// `[weak self]` short-circuit in the tracked Task bodies. Every body
+    /// does `guard let self` BEFORE its first `await` — the `guard let self,
+    /// let revokeURL` opening the `returnBook` tracked body
+    /// (`BookReturnService.swift:356`) against its
+    /// `await opdsFeedService.fetchFeed` (`:366`) — so once a body has
+    /// started it holds `self` strongly
+    /// across every suspension and the service cannot dealloc mid-flight.
+    /// That is precisely what the retention note in `BookReturnService.deinit`
+    /// (`:204-221`) records. Parking a Task and then
+    /// releasing the service does not reach the guard; the guard only fires
+    /// for a body that has not started yet, which no seam here can arrange
+    /// deterministically. **Deleting `[weak self]` from a tracked body would
+    /// not fail this test.** The reachable half of that contract is the
+    /// cancellation seam, covered by
+    /// `testReturnService_cancelAllInFlightTasks_cancelsRetainedTask`.
+    func testReturnService_lastReferenceDropped_deallocsAndLeavesRegistryUntouched() async throws {
         let localRegistry = TPPBookRegistryMock()
         let localFeedFetcher = StubOPDSFeedFetcher()
-        // Use a fast-cancellation stub instead of the blocking one so
-        // the Tasks actually finish and free the service for deinit.
-        // The stub throws a sentinel error → service routes to
-        // handleRevokeError → generic-error branch → announceReturnFailed.
-        // No registry mutation in the generic branch, so we can assert
-        // the registry is untouched by post-deinit work.
+        // Fast-failing stub rather than the blocking one: a tracked body that
+        // has started pins `self` (see the docstring), so running the Tasks to
+        // completion is the only state in which the service can dealloc.
+        // The sentinel error routes to handleRevokeError -> generic-error
+        // branch, which performs no registry mutation.
         localFeedFetcher.stubbedError = NSError(domain: "test", code: 500,
                                                  userInfo: [NSLocalizedDescriptionKey: "stop"])
         let localAnnouncementService = SpyAnnouncementService()
@@ -502,51 +516,111 @@ final class BookReturnServiceTests: XCTestCase {
         localRegistry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
                               fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let countBefore = BookReturnServiceTestHook.deinitCountSync
+        // Held as an explicit optional so the release happens at a statement
+        // this test executes (`svc = nil`) rather than at a scope exit.
+        var svc: BookReturnService?
+        #if FEATURE_DRM_CONNECTOR
+        svc = BookReturnService(
+            bookRegistry: localRegistry,
+            localContentService: localContentService,
+            opdsFeedService: localFeedFetcher,
+            downloadAnnouncementService: localAnnouncementService,
+            bookmarkDeletionLog: .shared,
+            reauthenticator: localReauth,
+            userRetryTracker: .shared,
+            userAccountProvider: { localAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
+        )
+        #else
+        svc = BookReturnService(
+            bookRegistry: localRegistry,
+            localContentService: localContentService,
+            opdsFeedService: localFeedFetcher,
+            downloadAnnouncementService: localAnnouncementService,
+            bookmarkDeletionLog: .shared,
+            reauthenticator: localReauth,
+            userRetryTracker: .shared,
+            userAccountProvider: { localAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
+        )
+        #endif
 
-        await {
-            #if FEATURE_DRM_CONNECTOR
-            let svc = BookReturnService(
-                bookRegistry: localRegistry,
-                localContentService: localContentService,
-                opdsFeedService: localFeedFetcher,
-                downloadAnnouncementService: localAnnouncementService,
-                bookmarkDeletionLog: .shared,
-                reauthenticator: localReauth,
-                userRetryTracker: .shared,
-                userAccountProvider: { localAccount }
-            )
-            #else
-            let svc = BookReturnService(
-                bookRegistry: localRegistry,
-                localContentService: localContentService,
-                opdsFeedService: localFeedFetcher,
-                downloadAnnouncementService: localAnnouncementService,
-                bookmarkDeletionLog: .shared,
-                reauthenticator: localReauth,
-                userRetryTracker: .shared,
-                userAccountProvider: { localAccount }
-            )
-            #endif
-            svc.delegate = localDelegate
-            svc.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
-            // Wait for the in-flight count to climb (proves retention),
-            // then for it to drain back (proves auto-removal).
-            while svc.inFlightTaskCount == 0 {
-                try? await Task.sleep(nanoseconds: 10_000_000)
+        // Exact identity, not a process-global counter: `deinitCountSync` is
+        // shared across the whole suite and a `>` check is satisfied by ANY
+        // other BookReturnService dealloc racing in the same window.
+        weak var weakSvc = svc
+
+        // The strong binding lives only inside this closure. Keeping it in
+        // scope at function level would itself retain the service and defeat
+        // the release below.
+        try await { () async throws -> Void in
+            let service = try XCTUnwrap(svc, "service must be constructed")
+            service.delegate = localDelegate
+            service.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
+
+            // Retention insert is synchronous inside returnBook, so the count
+            // is already >= 1 (this is what proves retention).
+            XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
+                                        "returnBook must synchronously retain its cleanup Task")
+
+            // Join by re-snapshotting: a tracked body can itself launch a
+            // further tracked Task — the `launchTrackedMainActorTask` hop in
+            // `handleRevokeError`'s `.genericFailureAlert` branch
+            // (BookReturnService.swift:602), which in turn calls
+            // `presentReturnFailureAlert` — which a single snapshot taken up
+            // front would never join. Bounded, and every wait is a real
+            // Task join rather than a wall-clock poll.
+            var rounds = 0
+            while true {
+                let pending = service.inFlightTasksSnapshotForTesting()
+                if pending.isEmpty { break }
+                // Checked BEFORE joining, so it fires only when work REMAINS
+                // after `rounds` completed rounds — a true statement. Checking
+                // after the join instead would throw on a round that had just
+                // drained everything, dropping the success ceiling below the
+                // bound the message names.
+                //
+                // THROW rather than break: a `break` falls through to the
+                // `XCTAssertNil(weakSvc)` below, which then fails too and
+                // reports "something still retains BookReturnService" — the
+                // wrong diagnosis, since a still-running body legitimately
+                // pins `self`. Throwing keeps the failure truthful; XCTest
+                // still records two entries (the XCTFail and the thrown
+                // error), both naming this same cause.
+                if rounds >= 8 {
+                    XCTFail("tracked Tasks still pending after \(rounds) join rounds")
+                    throw TrackedTaskQuiescenceError.didNotQuiesce(rounds: rounds)
+                }
+                for task in pending { _ = await task.value }
+                rounds += 1
             }
-            while svc.inFlightTaskCount > 0 {
-                try? await Task.sleep(nanoseconds: 10_000_000)
-            }
+            XCTAssertEqual(service.inFlightTaskCount, 0,
+                           "Tracked Tasks must auto-remove once their bodies finish")
         }()
 
-        // Service has no in-flight Tasks left → its strong ref is
-        // released at the closing brace → deinit runs.
-        await awaitConditionAsync(timeout: 5.0) {
-            BookReturnServiceTestHook.deinitCountSync > countBefore
-        }
-        XCTAssertGreaterThan(BookReturnServiceTestHook.deinitCountSync, countBefore,
-                             "BookReturnService deinit must fire once all in-flight Tasks have drained")
+        // DROP THE LAST STRONG REFERENCE, and assert SYNCHRONOUSLY.
+        //
+        // This used to poll `awaitConditionAsync(timeout: 5.0)`. The flake was
+        // never ARC being unscheduled — the old release point was deterministic
+        // too. What starved was the poll itself: `awaitConditionAsync` sleeps
+        // via `Task.sleep` between predicate evaluations, and under the shared
+        // scheme's `testExecutionOrdering = "random"` plus cooperative-pool
+        // oversubscription those sleeps are not bounded by the timeout the
+        // caller asked for. Removing the poll removes the starvation surface.
+        //
+        // If this assertion ever fails it is NOT flakiness: something still
+        // holds the service — a retain cycle or an escaped capture.
+        svc = nil
+        XCTAssertNil(weakSvc,
+                     "dropping the last strong reference must dealloc this service instance; "
+                     + "if it did not, something still retains BookReturnService")
+
+        // The generic-error branch performs no registry mutation, so the book
+        // must remain exactly as arranged. `TPPBookRegistryMock.state(for:)`
+        // returns `.unregistered` for a missing book, so this also catches
+        // removal, not just state rewrites.
+        XCTAssertEqual(localRegistry.state(for: bookWithRevoke.identifier), .downloadSuccessful,
+                       "the generic-error cleanup branch must not mutate the registry")
     }
 
     /// Companion to the deinit test: while Tasks are mid-flight, the
@@ -562,9 +636,10 @@ final class BookReturnServiceTests: XCTestCase {
         feedFetcher.blockingBehavior = blocker
 
         service.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
-        await awaitConditionAsync(timeout: 2.0) {
-            self.service.inFlightTaskCount >= 1
-        }
+        // Retention insert is synchronous inside returnBook; the blocked OPDS
+        // fetch parks the Task, so it is retained right now — no poll needed.
+        XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
+                       "returnBook must synchronously retain its cleanup Task")
         let trackedTask = service.inFlightTasksSnapshotForTesting().first!
         XCTAssertFalse(trackedTask.isCancelled,
                        "Sanity: Task is alive (not yet cancelled) before cancelAllInFlightTasks")
@@ -676,29 +751,30 @@ final class BookReturnServiceTests: XCTestCase {
 
     // MARK: - Return-to-empty ghost (#18414 / return-your-last-book) — production seam
     //
-    // Architect Finding 1: D2 broadened the empty-guard so a non-authoritative
-    // empty save is REFUSED over a non-empty on-disk shelf (to stop the #18414
-    // wedge clobbering good data). But that ALSO refused the LEGITIMATE empty
-    // save when a patron returns their ONLY book — the return removal was
-    // non-authoritative, so the empty snapshot was refused, the book stayed on
-    // disk, and it resurrected into My Books on the next launch (and, per the
-    // blast-radius reviewer, its download auto-restarted).
+    // The broadened empty-guard REFUSES a non-authoritative empty save over a
+    // non-empty on-disk shelf, which is what stops a wedged sync from clobbering
+    // good data. On its own it would also refuse the LEGITIMATE empty save when a
+    // patron returns their ONLY book: the removal would be non-authoritative, the
+    // empty snapshot refused, the book left on disk — and it would resurrect into
+    // My Books on the next launch, with its download auto-restarting.
     //
-    // These tests drive the REAL return→persist→reload wiring against a REAL
-    // TPPBookRegistry + BookRegistrySync + on-disk registry.json (NOT the guard
-    // predicate in isolation, and NOT the TPPBookRegistryMock the branch tests
-    // above use). The fix threads `serverAuthoritative: true` from the confirmed
-    // return removal into `BookRegistrySync.save`, so a confirmed return-to-empty
-    // persists an empty registry that survives a cold reload. With the plumbing
-    // reverted (removal left non-authoritative) both tests FAIL: the reloaded
-    // shelf still contains the returned book (the ghost).
+    // These tests drive the REAL return → persist → cold-reload wiring against a
+    // real `TPPBookRegistry` + `BookRegistrySync` + on-disk registry.json — NOT the
+    // guard predicate in isolation, and NOT the `TPPBookRegistryMock` the branch
+    // tests above use (that mock ignores the flag entirely, which is precisely why
+    // the branch tests cannot catch a regression here).
+    //
+    // Recovered from `origin/main:PalaceTests/MyBooks/BookReturnServiceTests.swift`,
+    // where they were the recorded SPEC for this port. Adapted to develop's shapes:
+    // `RegistryFileRecovery` / `BookRegistryStore` / `BookRegistrySync` live in the
+    // `PalaceBookRegistry` package, and the registry is built through its
+    // `AccountScopeProviding` adapter.
 
-    /// Seeds a fresh-UUID fixture as `currentAccount` on the given manager so the
-    /// real registry's mutations resolve to an isolated on-disk registry.json.
-    /// The fresh UUID guarantees the fixture is absent from the PRODUCTION
-    /// accounts manager (which `syncAsync()`'s default arg consults), so the
-    /// post-return sync throws `accountNotFound` immediately instead of awaiting a
-    /// real loans fetch. Returns the UUID + a cleanup closure (defer-call it).
+    /// Seeds a fresh-UUID fixture as `currentAccount` so the real registry's
+    /// mutations resolve to an isolated on-disk registry.json. The fresh UUID
+    /// guarantees the fixture is absent from the PRODUCTION accounts manager (which
+    /// `syncAsync()`'s default arg consults), so the post-return sync throws
+    /// `accountNotFound` immediately instead of awaiting a real loans fetch.
     private func seedFixtureCurrentAccount(on manager: AccountsManager) -> (uuid: String, cleanup: () -> Void) {
         let fixtureId = "brs-ghost-\(UUID().uuidString)"
         let pub = OPDS2Publication(
@@ -712,8 +788,8 @@ final class BookReturnServiceTests: XCTestCase {
         return (fixtureId, cleanup)
     }
 
-    /// Number of records in the on-disk primary registry.json, or nil if the file
-    /// is absent/unreadable. Uses the same classifier the loader uses.
+    /// Records in the on-disk PRIMARY registry.json, or nil if absent/unreadable.
+    /// Uses the same classifier the loader uses.
     private func onDiskRecordCount(at url: URL) -> Int? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         if case .valid(let records) = RegistryFileRecovery.classify(data: data) {
@@ -722,16 +798,14 @@ final class BookReturnServiceTests: XCTestCase {
         return nil
     }
 
-    /// Builds a real BookReturnService wired to the given real registry, reusing
-    /// the file's spy collaborators for the non-persistence dependencies. An
-    /// optional pre-configured feed fetcher drives the revoke error branches
-    /// (parsing-as-success, no-active-loan) against real persistence.
+    /// A real `BookReturnService` wired to a real registry, reusing this file's spy
+    /// collaborators for every non-persistence dependency. The optional feed fetcher
+    /// drives the revoke-error branches against real persistence.
     private func makeServiceBackedByRealRegistry(
         _ realRegistry: TPPBookRegistry,
         feed: StubOPDSFeedFetcher = StubOPDSFeedFetcher()
     ) -> BookReturnService {
         let noCredsAccount = TPPUserAccountMock()  // hasCredentials() == false → sync gate closed
-        #if FEATURE_DRM_CONNECTOR
         let svc = BookReturnService(
             bookRegistry: realRegistry,
             localContentService: SpyLocalContentService(),
@@ -742,41 +816,20 @@ final class BookReturnServiceTests: XCTestCase {
             userRetryTracker: .shared,
             userAccountProvider: { noCredsAccount }
         )
-        #else
-        let svc = BookReturnService(
-            bookRegistry: realRegistry,
-            localContentService: SpyLocalContentService(),
-            opdsFeedService: feed,
-            downloadAnnouncementService: SpyAnnouncementService(),
-            bookmarkDeletionLog: .shared,
-            reauthenticator: TPPReauthenticatorMock(),
-            userRetryTracker: .shared,
-            userAccountProvider: { noCredsAccount }
-        )
-        #endif
         svc.delegate = spyDelegate
         return svc
     }
 
-    /// Shared body for the "confirmed-server-error → removeBook empty → persist
-    /// authoritative empty → no resurrect on reload" real-disk repro. Used by the
-    /// parsing-as-success and no-active-loan paths (they share the removeBook
-    /// mechanism the no-revokeURL path exercises, but reach it via a stubbed
-    /// revoke error). Kills the `serverAuthoritative: true → false` mutant on each
-    /// of those branch sites — the in-memory mock branch tests above cannot,
-    /// because the mock ignores the flag.
+    /// Shared body for "confirmed-server-error → removeBook empty → persist
+    /// authoritative empty → no resurrect on reload". Used by the
+    /// parsing-as-success and no-active-loan paths: they share the `removeBook`
+    /// mechanism the no-revokeURL path exercises but reach it via a stubbed revoke
+    /// error. Kills the `serverAuthoritative: true → false` mutant on each.
     private func assertConfirmedReturnError_persistsEmpty_noResurrect(
         stubbedError: Error,
         file: StaticString = #file,
         line: UInt = #line
     ) async throws {
-        // Isolation-lint seam: a fresh per-test factory container replaces
-        // bare `AccountsManager()` + `AppContainer.production()` reads. The
-        // factory pins `deferInitialLoadCatalogsForTesting = true` before
-        // constructing the manager (no background `loadCatalogs` Task) and
-        // exposes the SAME graph's `downloadCenter` / `opdsFeedService` the
-        // cold-reload `BookRegistrySync` below needs — consistent identity,
-        // no `_cached` mutation. swarm_47883816.
         let appContainer = makeTestAppContainer()
         let manager = appContainer.accountsManager
         defer { manager.cancelBackgroundWork() }
@@ -799,11 +852,14 @@ final class BookReturnServiceTests: XCTestCase {
         let service = makeServiceBackedByRealRegistry(realRegistry, feed: feed)
         let exp = expectation(description: "return completion")
         service.returnBook(withIdentifier: onlyBook.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `exp` is fulfilled by returnBook's own completion handler, which the return state machine invokes on every terminal path.
+        await fulfillment(of: [exp], timeout: 10.0)  // STARVE-001-OK
         await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 0 }
         XCTAssertEqual(onDiskRecordCount(at: registryURL), 0,
-                       "a confirmed server-error return of the last book must persist an EMPTY registry", file: file, line: line)
+                       "a confirmed server-error return of the last book must persist an EMPTY registry",
+                       file: file, line: line)
 
+        // Cold reload through a fresh store+engine — the resurrect check.
         let store2 = BookRegistryStore()
         let sync2 = BookRegistrySync(
             store: store2,
@@ -813,9 +869,11 @@ final class BookReturnServiceTests: XCTestCase {
         )
         let loaded = expectation(description: "cold reload")
         sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
-        await fulfillment(of: [loaded], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `loaded` is fulfilled by load()'s setState callback, invoked unconditionally.
+        await fulfillment(of: [loaded], timeout: 10.0)  // STARVE-001-OK
         XCTAssertTrue(store2.allBooks.isEmpty,
-                      "the returned last book must NOT resurrect on relaunch", file: file, line: line)
+                      "the returned last book must NOT resurrect on relaunch",
+                      file: file, line: line)
     }
 
     /// Parsing-as-success (OverDrive's non-OPDS XML) return of the last book.
@@ -831,137 +889,6 @@ final class BookReturnServiceTests: XCTestCase {
         try await assertConfirmedReturnError_persistsEmpty_noResurrect(
             stubbedError: NSError(domain: "test", code: 404, userInfo: ["problemDocument": problemDoc])
         )
-    }
-
-    /// PRIMARY ghost repro (no-revokeURL return path → removeBook). Returning the
-    /// ONLY book must persist an empty registry that survives a cold reload — the
-    /// book must NOT resurrect, and (empty shelf ⇒ empty orphan list) no
-    /// auto-restart download can be scheduled.
-    func testReturnLastBook_noRevokeURL_persistsEmptyRegistry_bookDoesNotResurrectOnReload() async throws {
-        // Isolation-lint seam: a fresh per-test factory container replaces
-        // bare `AccountsManager()` + `AppContainer.production()` reads. The
-        // factory pins `deferInitialLoadCatalogsForTesting = true` before
-        // constructing the manager (no background `loadCatalogs` Task) and
-        // exposes the SAME graph's `downloadCenter` / `opdsFeedService` the
-        // cold-reload `BookRegistrySync` below needs — consistent identity,
-        // no `_cached` mutation. swarm_47883816.
-        let appContainer = makeTestAppContainer()
-        let manager = appContainer.accountsManager
-        defer { manager.cancelBackgroundWork() }
-        let (uuid, cleanup) = seedFixtureCurrentAccount(on: manager)
-        defer { cleanup() }
-
-        let realRegistry = TPPBookRegistry(
-            accountsManager: manager,
-            imageLoader: ImageLoader(imageCache: MockImageCache())
-        )
-        let registryURL = try XCTUnwrap(realRegistry.registryUrl(for: uuid))
-        defer { try? FileManager.default.removeItem(at: registryURL.deletingLastPathComponent()) }
-
-        // Arrange: the patron's ONLY book, downloaded, persisted to disk.
-        let onlyBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        XCTAssertNil(onlyBook.revokeURL, "precondition: no-revokeURL return path")
-        realRegistry.addBook(onlyBook, state: .downloadSuccessful)
-        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 1 }
-        XCTAssertEqual(onDiskRecordCount(at: registryURL), 1,
-                       "precondition: a non-empty registry.json exists before the return")
-
-        // Act: return the only book through the REAL return service.
-        let service = makeServiceBackedByRealRegistry(realRegistry)
-        let exp = expectation(description: "return completion")
-        service.returnBook(withIdentifier: onlyBook.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 10.0)
-        // Let the authoritative empty save flush to disk.
-        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 0 }
-
-        // Assert (persist): the confirmed return-to-empty persisted an empty
-        // registry — the #18414 guard did NOT refuse it.
-        XCTAssertEqual(onDiskRecordCount(at: registryURL), 0,
-                       "a confirmed return of the last book must persist an EMPTY registry.json (serverAuthoritative), not refuse it")
-
-        // Assert (reload): a cold reload must NOT resurrect the book — and an
-        // empty shelf means the orphan auto-restart loop has nothing to
-        // re-download (blast-radius reviewer's no-redownload requirement).
-        let store2 = BookRegistryStore()
-        let sync2 = BookRegistrySync(
-            store: store2,
-            accountsManager: manager,
-            downloadCenterProvider: { appContainer.downloadCenter },
-            opdsFeedServiceProvider: { appContainer.opdsFeedService }
-        )
-        let loaded = expectation(description: "cold reload")
-        sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
-        await fulfillment(of: [loaded], timeout: 10.0)
-
-        XCTAssertTrue(store2.allBooks.isEmpty,
-                      "the returned last book must NOT resurrect on relaunch — the ghost is fixed")
-        XCTAssertNil(store2.book(forIdentifier: onlyBook.identifier),
-                     "no record for the returned book ⇒ no orphaned download can be auto-restarted")
-    }
-
-    /// Revoke-path (2xx revoke → `updateAndRemoveBook`) return-last-book contract.
-    ///
-    /// Unlike `removeBook` (test above), `store.updateAndRemoveBook` marks the
-    /// record `.unregistered` and KEEPS it — so the revoke path persists a
-    /// (non-empty) `.unregistered` record rather than an empty registry, and the
-    /// #18414 empty-guard is never the mechanism here. `.unregistered` is
-    /// filtered out of `myBooks`, so the returned book must be invisible in My
-    /// Books immediately AND stay invisible across a cold reload — it must never
-    /// resurrect into a visible download state. We thread `serverAuthoritative:
-    /// true` into this call too (a confirmed revoke removal is authoritative);
-    /// this test pins that the confirmed revoke of the LAST book leaves no
-    /// visible book on reload.
-    func testReturnLastBook_revokePath_updateAndRemoveBook_bookNotVisibleAfterReload() async throws {
-        // Isolation-lint seam: a fresh per-test factory container replaces
-        // bare `AccountsManager()` + `AppContainer.production()` reads. The
-        // factory pins `deferInitialLoadCatalogsForTesting = true` before
-        // constructing the manager (no background `loadCatalogs` Task) and
-        // exposes the SAME graph's `downloadCenter` / `opdsFeedService` the
-        // cold-reload `BookRegistrySync` below needs — consistent identity,
-        // no `_cached` mutation. swarm_47883816.
-        let appContainer = makeTestAppContainer()
-        let manager = appContainer.accountsManager
-        defer { manager.cancelBackgroundWork() }
-        let (uuid, cleanup) = seedFixtureCurrentAccount(on: manager)
-        defer { cleanup() }
-
-        let realRegistry = TPPBookRegistry(
-            accountsManager: manager,
-            imageLoader: ImageLoader(imageCache: MockImageCache())
-        )
-        let registryURL = try XCTUnwrap(realRegistry.registryUrl(for: uuid))
-        defer { try? FileManager.default.removeItem(at: registryURL.deletingLastPathComponent()) }
-
-        let onlyBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        realRegistry.addBook(onlyBook, state: .downloadSuccessful)
-        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 1 }
-        XCTAssertEqual(realRegistry.myBooks.count, 1, "precondition: the book is visible in My Books before return")
-
-        // Act: the exact call the confirmed-revoke return branch makes.
-        realRegistry.updateAndRemoveBook(onlyBook, serverAuthoritative: true)
-        await waitForCompletion { realRegistry.myBooks.isEmpty }
-        XCTAssertTrue(realRegistry.myBooks.isEmpty,
-                      "after a confirmed revoke return the book must disappear from My Books (marked .unregistered)")
-        // Force the .unregistered snapshot to flush to disk before the cold
-        // reload (saveSync drains the diskWriteQueue FIFO). Without this the
-        // reload can race the async save and read the pre-return
-        // .downloadSuccessful state — a test artifact, not a production ghost.
-        realRegistry.saveSync()
-
-        // Cold reload: the .unregistered record must NOT resurrect into a visible
-        // My Books state.
-        let store2 = BookRegistryStore()
-        let sync2 = BookRegistrySync(
-            store: store2,
-            accountsManager: manager,
-            downloadCenterProvider: { appContainer.downloadCenter },
-            opdsFeedServiceProvider: { appContainer.opdsFeedService }
-        )
-        let loaded = expectation(description: "cold reload")
-        sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
-        await fulfillment(of: [loaded], timeout: 10.0)
-        XCTAssertTrue(store2.myBooks.isEmpty,
-                      "the revoke-returned last book must NOT resurrect into My Books on relaunch")
     }
 
     // MARK: - Helpers
@@ -1017,6 +944,78 @@ final class BookReturnServiceTests: XCTestCase {
             imageCache: MockImageCache()
         )
     }
+
+    // MARK: - INV-3: offline return enqueues, no local cleanup
+
+    /// A genuine offline (`NSURLError`) revoke failure must NOT dead-end in
+    /// an alert. It enqueues an `OfflineAction(.return, ...)` and — the
+    /// critical part — does NOT delete local content or unregister the book
+    /// until the queued return is later server-confirmed.
+    func testOfflineReturn_enqueues_doesNotDeleteLocalContent() async {
+        let enqueueSpy = EnqueueSpy()
+        let book = makeBookWithRevokeURL()
+        registry.addBook(book, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        let offlineService = BookReturnService(
+            bookRegistry: registry,
+            localContentService: localContent,
+            opdsFeedService: feedFetcher,
+            downloadAnnouncementService: announcementService,
+            bookmarkDeletionLog: bookmarkLog,
+            reauthenticator: reauthenticator,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { action in await enqueueSpy.record(action) }
+        )
+        offlineService.delegate = spyDelegate
+
+        // A real no-connection transport error.
+        feedFetcher.stubbedError = NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet)
+
+        let exp = expectation(description: "completion")
+        offlineService.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 3.0)
+
+        // Enqueued exactly one return for this book.
+        let enqueued = await enqueueSpy.actions
+        XCTAssertEqual(enqueued.count, 1)
+        XCTAssertEqual(enqueued.first?.type, .return)
+        XCTAssertEqual(enqueued.first?.bookID, book.identifier)
+
+        // INV-3: NO local cleanup, NO unregister until server-confirmed.
+        XCTAssertTrue(localContent.deleteForIdentifierCalls.isEmpty,
+            "INV-3: offline return must not delete local content")
+        XCTAssertNotEqual(registry.state(for: book.identifier), .unregistered,
+            "INV-3: offline return must not unregister before server confirmation")
+        XCTAssertNotNil(registry.book(forIdentifier: book.identifier),
+            "INV-3: the book stays in the registry until the queued return succeeds")
+    }
+
+    /// Pins the offline-error classifier used by the INV-3 branch: genuine
+    /// no-connection codes are offline; other NSURLErrors (and non-URL
+    /// errors) are not — so only real offline failures get enqueued.
+    func testIsOfflineNSURLError_classifiesConnectivityCodes() {
+        XCTAssertTrue(BookReturnService.isOfflineNSURLError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)))
+        XCTAssertTrue(BookReturnService.isOfflineNSURLError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost)))
+        XCTAssertTrue(BookReturnService.isOfflineNSURLError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)))
+        // A non-connectivity URL error is NOT offline.
+        XCTAssertFalse(BookReturnService.isOfflineNSURLError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL)))
+        // A non-URL error domain is NOT offline.
+        XCTAssertFalse(BookReturnService.isOfflineNSURLError(
+            NSError(domain: "some.other.domain", code: NSURLErrorNotConnectedToInternet)))
+    }
+}
+
+/// Records enqueued offline actions for the INV-3 test.
+private actor EnqueueSpy {
+    private(set) var actions: [OfflineAction] = []
+    func record(_ action: OfflineAction) { actions.append(action) }
 }
 
 // MARK: - Test fakes
@@ -1112,6 +1111,13 @@ private final class SpyLocalContentService: LocalBookContentService {
     override func deleteLocalContent(forBook book: TPPBook, account: String? = nil) {
         deleteForIdentifierCalls.append(book.identifier)
     }
+}
+
+/// Thrown when the tracked-Task join loop fails to reach quiescence, so the
+/// failure terminates at its real cause instead of falling through into a
+/// later assertion that would misreport it.
+private enum TrackedTaskQuiescenceError: Error {
+    case didNotQuiesce(rounds: Int)
 }
 
 private final class SpyAnnouncementService: DownloadAnnouncementService {

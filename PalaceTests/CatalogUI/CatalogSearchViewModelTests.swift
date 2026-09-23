@@ -13,11 +13,12 @@ import XCTest
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Mock Repository for Search Tests
 
 @MainActor
-final class CatalogRepositoryMock: CatalogRepositoryProtocol {
+final class CatalogRepositoryMock: @preconcurrency CatalogRepositoryProtocol {
 
     // MARK: - Configuration
 
@@ -31,18 +32,43 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
     var fetchSearchEntryPointsError: Error?
     var simulatedDelay: TimeInterval = 0
 
+    /// When true, `loadTopLevelCatalog(at:)` models the real repository's
+    /// stale-while-revalidate cache: a URL is fetched from the "network" only
+    /// on the FIRST load (a cache miss). Subsequent loads of the same URL are
+    /// served from the in-memory cache and do NOT increment the per-URL
+    /// network-fetch counter. `invalidateCache(for:)` evicts the URL so the
+    /// next load re-fetches. Lets the SWR / de-triple-fire tests observe the
+    /// account-switch cache behavior the production repository owns.
+    var simulatesCache = false
+
     // MARK: - Call Tracking
 
     private(set) var loadTopLevelCatalogCallCount = 0
     private(set) var searchCallCount = 0
     private(set) var searchWithDescriptorCallCount = 0
     private(set) var fetchSearchEntryPointsCallCount = 0
+    /// Number of times `invalidateCache(for:)` was called (SWR contract).
+    private(set) var invalidateCacheCallCount = 0
+    /// Last URL passed to `invalidateCache(for:)`.
+    private(set) var lastInvalidatedURL: URL?
     private(set) var lastSearchQuery: String?
     private(set) var lastSearchURL: URL?
     private(set) var lastSearchDescriptorURL: URL?
     private(set) var lastFetchSearchEntryPointsURL: URL?
     private(set) var lastLoadURL: URL?
+    /// Every URL passed to `loadTopLevelCatalog(at:)`, in order.
+    private(set) var loadHistory: [URL] = []
     private(set) var searchHistory: [(query: String, url: URL)] = []
+
+    /// Per-URL count of simulated NETWORK fetches (cache misses). Only tracked
+    /// when `simulatesCache` is true.
+    private(set) var networkFetchCountByURL: [URL: Int] = [:]
+    /// URLs currently warm in the simulated cache.
+    private var liveCacheURLs: Set<URL> = []
+
+    func networkFetchCount(for url: URL) -> Int {
+        networkFetchCountByURL[url] ?? 0
+    }
 
     /// Callback fired after each search — use with XCTestExpectation for deterministic waits
     var onSearchCalled: (() -> Void)?
@@ -52,6 +78,7 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {
         loadTopLevelCatalogCallCount += 1
         lastLoadURL = url
+        loadHistory.append(url)
 
         if simulatedDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
@@ -59,6 +86,12 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
 
         if let error = loadTopLevelCatalogError {
             throw error
+        }
+
+        if simulatesCache, !liveCacheURLs.contains(url) {
+            // Cache miss — count a network fetch and warm the cache.
+            networkFetchCountByURL[url, default: 0] += 1
+            liveCacheURLs.insert(url)
         }
 
         return loadTopLevelCatalogResult
@@ -118,8 +151,16 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         return try await loadTopLevelCatalog(at: url)
     }
 
+    // `CatalogRepositoryProtocol` is a nonisolated `Sendable` protocol. Its
+    // `async` requirements are satisfied by this `@MainActor` mock's async
+    // methods (the caller hops), but the two *synchronous* requirements below
+    // must be `nonisolated` witnesses or the conformance "crosses into main
+    // actor-isolated code" (Swift 6). Both are stateless, so `nonisolated` is
+    // sound and behavior is unchanged.
     func invalidateCache(for url: URL) {
-        // No-op for mock
+        invalidateCacheCallCount += 1
+        lastInvalidatedURL = url
+        liveCacheURLs.remove(url)
     }
 
     func cachedFeed(for url: URL) -> CatalogFeed? { nil }
@@ -136,16 +177,22 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         fetchSearchEntryPointsResult = []
         fetchSearchEntryPointsError = nil
         simulatedDelay = 0
+        simulatesCache = false
         loadTopLevelCatalogCallCount = 0
         searchCallCount = 0
         searchWithDescriptorCallCount = 0
         fetchSearchEntryPointsCallCount = 0
+        invalidateCacheCallCount = 0
+        lastInvalidatedURL = nil
         lastSearchQuery = nil
         lastSearchURL = nil
         lastSearchDescriptorURL = nil
         lastFetchSearchEntryPointsURL = nil
         lastLoadURL = nil
+        loadHistory.removeAll()
         searchHistory.removeAll()
+        networkFetchCountByURL.removeAll()
+        liveCacheURLs.removeAll()
     }
 }
 
@@ -191,6 +238,32 @@ final class CatalogSearchViewModelTests: XCTestCase {
     private class AnnouncementCapture {
         var items: [String] = []
         var onAnnouncement: (() -> Void)?
+    }
+
+    private final class _AnnouncementOneShot { var done = false }
+
+    /// Deterministically await the next announcement `capture` records, driven by
+    /// `trigger`. `TPPAccessibilityAnnouncementCenter` posts via
+    /// `DispatchQueue.main.async`/`asyncAfter` (an internal VoiceOver debounce),
+    /// so the announcement lands a delayed main hop AFTER the search task —
+    /// joining `searchTask` enqueues it but is not sufficient. Resuming on the
+    /// capture's own callback is timing-independent: it fires exactly when the
+    /// announcement lands, so it cannot starve on a fixed 5s deadline under
+    /// parallel-CI sim clones (a real never-fires bug surfaces as the 120s XCTest
+    /// allowance instead). The callback is installed BEFORE `trigger` runs, so the
+    /// signal can't be missed.
+    @MainActor
+    private func awaitNextAnnouncement(_ capture: AnnouncementCapture,
+                                       trigger: () -> Void) async {
+        let oneShot = _AnnouncementOneShot()
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            capture.onAnnouncement = {
+                guard !oneShot.done else { return }
+                oneShot.done = true
+                cont.resume()
+            }
+            trigger()
+        }
     }
 
     /// Creates a `TPPAccessibilityAnnouncementCenter` that records every
@@ -245,35 +318,20 @@ final class CatalogSearchViewModelTests: XCTestCase {
         return TPPBookMocker.mockBook(distributorType: .EpubZip)
     }
 
-    /// Helper: wait for `loadFormatEntryPoints()` to finish by observing `$formatEntries`.
+    /// Helper: wait for `loadFormatEntryPoints()` to finish by JOINING the retained
+    /// entry-point load Task (deterministic) instead of polling `$formatEntries`
+    /// against a wall-clock deadline. The `entryPointLoadTask` assigns
+    /// `formatEntries` before it returns, so awaiting it guarantees the count is
+    /// settled — no clock, no starvation under parallel CI clones.
     private func waitForFormatEntries(on viewModel: CatalogSearchViewModel, count: Int) async {
-        if viewModel.formatEntries.count == count { return }
-        let exp = expectation(description: "formatEntries populated with \(count) entries")
-        var sub: AnyCancellable?
-        sub = viewModel.$formatEntries
-            .dropFirst()
-            .sink { entries in
-                if entries.count == count {
-                    exp.fulfill()
-                    sub?.cancel()
-                }
-            }
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
     }
 
-    /// Helper: wait for `loadFormatEntryPoints()` to finish (any count >= 0).
+    /// Helper: wait for `loadFormatEntryPoints()` to finish (any outcome, including
+    /// an empty result or a thrown error). Joins the retained load Task rather than
+    /// observing the publisher on a timeout — see `waitForFormatEntries` rationale.
     private func waitForFormatEntriesLoaded(on viewModel: CatalogSearchViewModel) async {
-        let exp = expectation(description: "formatEntries loaded")
-        // loadFormatEntryPoints publishes to formatEntries once done.
-        // If the result is empty and the current value is already empty, we use a small yield.
-        var sub: AnyCancellable?
-        sub = viewModel.$formatEntries
-            .dropFirst()
-            .sink { _ in
-                exp.fulfill()
-                sub?.cancel()
-            }
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
     }
 
     // MARK: - Initialization Tests
@@ -299,9 +357,11 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Trigger search with empty query
         viewModel.updateSearchQuery("")
 
-        // We cannot observe something that doesn't happen; yield and wait briefly.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // JOIN the debounce Task: it runs performSearch(), which short-circuits on
+        // the empty-query guard without calling the repository. Awaiting the Task
+        // is strictly stronger than a fixed sleep — it guarantees the debounce
+        // actually executed before we assert the non-call, and never starves.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Repository should not be called for empty query
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Repository search should not be called for empty query")
@@ -313,9 +373,9 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Trigger search with whitespace-only query
         viewModel.updateSearchQuery("   ")
 
-        // We cannot observe something that doesn't happen; yield and wait briefly.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // JOIN the debounce Task: performSearch() trims to empty and short-circuits
+        // without calling the repository. Awaiting guarantees it ran; no clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Repository should not be called (whitespace is trimmed, becomes empty)
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Repository search should not be called for whitespace-only query")
@@ -334,10 +394,10 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Trigger search with empty query
         viewModel.updateSearchQuery("")
 
-        // Empty query restores books synchronously via the debounce path; yield and wait briefly
-        // since no search is called and we cannot observe a non-event.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // JOIN the debounce Task: performSearch() takes the empty-query branch that
+        // restores filteredBooks from allBooks. Awaiting the Task guarantees that
+        // restore ran before we assert — deterministic, no clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Should restore all books
         XCTAssertEqual(viewModel.filteredBooks.count, 2, "Empty query should restore all books")
@@ -346,15 +406,12 @@ final class CatalogSearchViewModelTests: XCTestCase {
     // MARK: - Search With Valid Query Tests
 
     func testSearch_WithValidQuery_CallsRepository() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
 
         // Trigger search with valid query
         viewModel.updateSearchQuery("Harry Potter")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Repository should be called
         XCTAssertEqual(mockRepository.searchCallCount, 1, "Repository search should be called once")
@@ -387,15 +444,12 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testSearch_WithValidQuery_ClearsIsLoadingAfterCompletion() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
 
         // Trigger search
         viewModel.updateSearchQuery("test")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertFalse(viewModel.isLoading, "isLoading should be false after search completes")
     }
@@ -403,9 +457,6 @@ final class CatalogSearchViewModelTests: XCTestCase {
     // MARK: - Search Results Tests
 
     func testSearch_WithResults_UpdatesResults() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
 
         // Configure mock to return a feed
@@ -416,7 +467,7 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Trigger search
         viewModel.updateSearchQuery("test query")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Verify search was called
         XCTAssertEqual(mockRepository.searchCallCount, 1)
@@ -424,9 +475,6 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testSearch_WithNilResult_SetsEmptyResults() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
 
         // Pre-populate with books
@@ -439,7 +487,7 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Trigger search
         viewModel.updateSearchQuery("nonexistent")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Filtered books should be empty
         XCTAssertTrue(viewModel.filteredBooks.isEmpty, "filteredBooks should be empty when search returns nil")
@@ -448,9 +496,6 @@ final class CatalogSearchViewModelTests: XCTestCase {
     // MARK: - Search Error Tests
 
     func testSearch_WithError_SetsErrorMessage() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
 
         // Configure mock to throw error
@@ -459,7 +504,7 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Trigger search
         viewModel.updateSearchQuery("test")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Verify error handling - filteredBooks should be cleared
         XCTAssertTrue(viewModel.filteredBooks.isEmpty, "filteredBooks should be empty on error")
@@ -467,9 +512,6 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testSearch_WithError_ClearsNextPageURL() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
 
         // Set up initial state with next page URL
@@ -481,7 +523,7 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Trigger search
         viewModel.updateSearchQuery("test")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertNil(viewModel.nextPageURL, "nextPageURL should be nil after error")
     }
@@ -489,9 +531,6 @@ final class CatalogSearchViewModelTests: XCTestCase {
     // MARK: - Debouncing Tests
 
     func testSearch_Debounces_MultipleQueries() async {
-        let exp = expectation(description: "search called once after debounce")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel(debounceInterval: 0.1)
 
         // Rapidly fire multiple search queries
@@ -501,7 +540,11 @@ final class CatalogSearchViewModelTests: XCTestCase {
         viewModel.updateSearchQuery("Harr")
         viewModel.updateSearchQuery("Harry")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        // JOIN the surviving debounce→search chain. Each updateSearchQuery
+        // cancels + replaces debounceTask; the seam awaits the latest handle,
+        // and the cancelled predecessors resolve immediately (guard on
+        // Task.isCancelled), so only the final "Harry" search runs to completion.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Should only call repository once with final query
         XCTAssertEqual(mockRepository.searchCallCount, 1, "Repository should only be called once after debounce")
@@ -513,22 +556,23 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // reliable on slow CI machines (Task.sleep can overshoot significantly under load).
         let viewModel = createViewModel(debounceInterval: 1.0)
 
-        let exp = expectation(description: "search called after debounce completes")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         viewModel.updateSearchQuery("test")
 
         // Immediately after triggering — debounce has not fired.
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Should not search immediately")
 
         // 300ms into a 1s debounce window — still should not have fired.
-        // We cannot observe a non-event; use a brief sleep that is well within the debounce window.
+        // We cannot observe a non-event; use a brief sleep that is well within the
+        // debounce window. This sleep asserts a NON-event mid-window; it is NOT a
+        // completion deadline and is bounded far inside the 1s debounce, so parallel
+        // CI clones cannot starve it into a false pass.
         await Task.yield()
         try? await Task.sleep(nanoseconds: 300_000_000)
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Should not search during debounce window")
 
-        // Wait for the search to actually fire
-        await fulfillment(of: [exp], timeout: 5.0)
+        // JOIN the debounce→search chain deterministically (replaces the fixed
+        // fulfillment deadline that starved under parallel CI clones).
+        await viewModel._awaitInFlightWorkForTesting()
         XCTAssertEqual(mockRepository.searchCallCount, 1, "Should search after debounce completes")
     }
 
@@ -540,24 +584,24 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Add delay to mock so first search is still in progress
         mockRepository.simulatedDelay = 0.3
 
-        let exp = expectation(description: "second search called")
-        // We set the callback before the second query, but after the first starts debouncing.
-        // The first search may or may not call it, so we track by query value.
-
         // Start first search
         viewModel.updateSearchQuery("first")
 
-        // Wait for debounce to fire (but search is still in-flight due to simulatedDelay)
+        // Position the first search as in-flight: 100ms is past the 50ms debounce
+        // but well inside the 300ms simulatedDelay, so the first search Task is
+        // mid-await when we fire the second query. This is a positioning sleep to
+        // establish the cancel-in-flight precondition, not a completion deadline.
         await Task.yield()
         try? await Task.sleep(nanoseconds: 100_000_000)
 
-        // Now set callback for the second search
-        mockRepository.onSearchCalled = { exp.fulfill() }
-        // Start second search (should cancel first)
+        // Start second search (should cancel the in-flight first)
         mockRepository.simulatedDelay = 0.05 // Make second search faster
         viewModel.updateSearchQuery("second")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        // JOIN the second search chain deterministically. Replacing debounceTask
+        // cancels the first search (its Task.isCancelled guards make it a no-op),
+        // and the seam awaits the "second" chain to completion — no clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Verify last search query was "second"
         XCTAssertEqual(mockRepository.lastSearchQuery, "second", "Last search should be 'second'")
@@ -568,18 +612,19 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // even on a machine under load.
         let viewModel = createViewModel(debounceInterval: 1.0)
 
-        let exp = expectation(description: "search called for second query")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         viewModel.updateSearchQuery("first")
 
-        // 300ms into the 1s debounce — "first" has not fired yet. Trigger "second".
+        // 300ms into the 1s debounce — "first" has not fired yet. This positioning
+        // sleep is bounded far inside the debounce window (not a completion
+        // deadline). Trigger "second" while "first"'s debounce is still pending.
         await Task.yield()
         try? await Task.sleep(nanoseconds: 300_000_000)
         viewModel.updateSearchQuery("second")
 
-        // Wait for "second" to complete
-        await fulfillment(of: [exp], timeout: 5.0)
+        // JOIN "second"'s debounce→search chain deterministically. The "first"
+        // debounce Task was cancelled by the replacement and never calls the
+        // repository. No clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Only "second" should have been searched (first debounce was cancelled).
         XCTAssertEqual(mockRepository.searchCallCount, 1, "Should only search once")
@@ -646,10 +691,11 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Clear before debounce completes
         viewModel.clearSearch()
 
-        // We cannot observe something that doesn't happen; yield and wait briefly
-        // past the original debounce window.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 300_000_000)
+        // JOIN the (now-cancelled) debounce Task: clearSearch cancelled it, so its
+        // Task.isCancelled guard returns before performSearch() ever calls the
+        // repository. Awaiting the handle deterministically confirms it resolved
+        // without searching — no fixed sleep, no starvation.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Search should not have been called
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Search should be cancelled by clearSearch")
@@ -663,9 +709,10 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Trigger search
         viewModel.updateSearchQuery("test")
 
-        // We cannot observe something that doesn't happen; yield and wait briefly.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // JOIN the debounce Task: performSearch()'s resolveSearchTarget returns nil
+        // for a nil baseURL and short-circuits before any repository call. Awaiting
+        // guarantees that branch executed — deterministic, no clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Repository should not be called when baseURL is nil
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Should not call repository when baseURL is nil")
@@ -682,9 +729,9 @@ final class CatalogSearchViewModelTests: XCTestCase {
         // Trigger search
         viewModel.updateSearchQuery("test")
 
-        // We cannot observe something that doesn't happen; yield and wait briefly.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // JOIN the debounce Task: the nil-target branch of performSearch() clears
+        // nextPageURL before returning. Awaiting guarantees it ran; no clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertNil(viewModel.nextPageURL, "nextPageURL should be cleared when baseURL is nil")
     }
@@ -692,16 +739,13 @@ final class CatalogSearchViewModelTests: XCTestCase {
     // MARK: - Search ID Tests (PP-3605 Regression)
 
     func testSearch_NewSearch_ChangesSearchId() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
         let initialSearchId = viewModel.searchId
 
         // Perform a search
         viewModel.updateSearchQuery("test")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertNotEqual(viewModel.searchId, initialSearchId, "searchId should change for new search")
     }
@@ -710,17 +754,13 @@ final class CatalogSearchViewModelTests: XCTestCase {
         let viewModel = createViewModel()
 
         // First search
-        let exp1 = expectation(description: "first search called")
-        mockRepository.onSearchCalled = { exp1.fulfill() }
         viewModel.updateSearchQuery("first")
-        await fulfillment(of: [exp1], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
         let firstSearchId = viewModel.searchId
 
         // Second search
-        let exp2 = expectation(description: "second search called")
-        mockRepository.onSearchCalled = { exp2.fulfill() }
         viewModel.updateSearchQuery("second")
-        await fulfillment(of: [exp2], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
         let secondSearchId = viewModel.searchId
 
         XCTAssertNotEqual(firstSearchId, secondSearchId, "Different searches should have different searchIds")
@@ -845,40 +885,31 @@ final class CatalogSearchViewModelTests: XCTestCase {
     // MARK: - Edge Case Tests
 
     func testSearch_SpecialCharacters_DoesNotCrash() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
 
         viewModel.updateSearchQuery("Harry's Book & Other Stories (Volume 1)")
 
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Should not crash and query should be stored
         XCTAssertEqual(mockRepository.lastSearchQuery, "Harry's Book & Other Stories (Volume 1)")
     }
 
     func testSearch_UnicodeCharacters_Works() async {
-        let searchCalled = expectation(description: "search called with unicode query")
-        mockRepository.onSearchCalled = { searchCalled.fulfill() }
-
         let viewModel = createViewModel()
         viewModel.updateSearchQuery("日本語の本")
 
-        await fulfillment(of: [searchCalled], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
         XCTAssertEqual(mockRepository.lastSearchQuery, "日本語の本")
     }
 
     func testSearch_VeryLongQuery_Works() async {
-        let searchCalled = expectation(description: "search called with long query")
-        mockRepository.onSearchCalled = { searchCalled.fulfill() }
-
         let viewModel = createViewModel()
         let longQuery = (0..<100).map { _ in "test" }.joined(separator: " ")
 
         viewModel.updateSearchQuery(longQuery)
 
-        await fulfillment(of: [searchCalled], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
         XCTAssertEqual(mockRepository.lastSearchQuery, longQuery)
     }
 
@@ -937,10 +968,8 @@ final class CatalogSearchViewModelTests: XCTestCase {
         viewModel.nextPageURL = nextPageURL
 
         // Perform initial search
-        let exp = expectation(description: "initial search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
         viewModel.updateSearchQuery("sky")
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Capture the searchId after initial search
         let searchIdAfterInitialSearch = viewModel.searchId
@@ -988,10 +1017,8 @@ final class CatalogSearchViewModelTests: XCTestCase {
         let initialSearchId = viewModel.searchId
 
         // Perform a search
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
         viewModel.updateSearchQuery("harry potter")
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         // searchId SHOULD change for a new search
         XCTAssertNotEqual(
@@ -1006,17 +1033,13 @@ final class CatalogSearchViewModelTests: XCTestCase {
         let viewModel = createViewModel()
 
         // First search
-        let exp1 = expectation(description: "first search called")
-        mockRepository.onSearchCalled = { exp1.fulfill() }
         viewModel.updateSearchQuery("sky")
-        await fulfillment(of: [exp1], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
         let firstSearchId = viewModel.searchId
 
         // Second different search
-        let exp2 = expectation(description: "second search called")
-        mockRepository.onSearchCalled = { exp2.fulfill() }
         viewModel.updateSearchQuery("ocean")
-        await fulfillment(of: [exp2], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
         let secondSearchId = viewModel.searchId
 
         // Each search should have a unique searchId
@@ -1077,10 +1100,10 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         viewModel.loadFormatEntryPoints()
 
-        // On error the formatEntries publisher is never reassigned, so we cannot observe it.
-        // Wait briefly for the async task to complete.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // On error the formatEntries publisher is never reassigned, so we JOIN the
+        // retained entry-point load Task (which runs the catch block) instead of
+        // polling. Deterministic — the Task completing IS the signal, no clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertTrue(viewModel.formatEntries.isEmpty)
     }
@@ -1090,9 +1113,10 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         viewModel.loadFormatEntryPoints()
 
-        // We cannot observe something that doesn't happen; yield and wait briefly.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // With a nil baseURL, loadFormatEntryPoints returns before spawning a Task,
+        // so there is nothing to await — the seam resolves immediately. This
+        // replaces the fixed sleep with a deterministic (empty) join.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertEqual(mockRepository.fetchSearchEntryPointsCallCount, 0)
         XCTAssertTrue(viewModel.formatEntries.isEmpty)
@@ -1117,9 +1141,10 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         viewModel.selectFormat(at: 0)
 
-        // We cannot observe something that doesn't happen; yield and wait briefly.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // selectFormat(at: 0) hits the same-index guard and returns synchronously —
+        // it spawns no search work. Join any retained in-flight work (there is none
+        // new) and assert the synchronously-decided state. No clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertEqual(viewModel.selectedFormatIndex, 0)
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Should not trigger search when selecting already-active format")
@@ -1131,27 +1156,17 @@ final class CatalogSearchViewModelTests: XCTestCase {
         viewModel.loadFormatEntryPoints()
         await waitForFormatEntries(on: viewModel, count: 3)
 
-        // First search may use searchDescriptorURL path (format "All" has one cached),
-        // so observe isLoading returning to false instead of onSearchCalled.
-        let exp1 = expectation(description: "first search completes")
-        var sub1: AnyCancellable?
-        sub1 = viewModel.$isLoading
-            .dropFirst()
-            .filter { !$0 }
-            .sink { _ in exp1.fulfill(); sub1?.cancel() }
+        // First search may use the searchDescriptorURL path (format "All" has one
+        // cached), which doesn't call onSearchCalled — but it still runs through the
+        // retained searchTask, so a deterministic JOIN covers every target path.
         viewModel.updateSearchQuery("mystery")
-        await fulfillment(of: [exp1], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
         let callCountAfterFirstSearch = mockRepository.searchCallCount + mockRepository.searchWithDescriptorCallCount
 
-        // Format switch also may use descriptor path, observe isLoading again.
-        let exp2 = expectation(description: "format re-search completes")
-        var sub2: AnyCancellable?
-        sub2 = viewModel.$isLoading
-            .dropFirst()
-            .filter { !$0 }
-            .sink { _ in exp2.fulfill(); sub2?.cancel() }
+        // Format switch calls performSearch() directly (cancels debounce) and
+        // assigns a fresh searchTask; join it deterministically. No clock.
         viewModel.selectFormat(at: 1)
-        await fulfillment(of: [exp2], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertGreaterThan(
             mockRepository.searchCallCount + mockRepository.searchWithDescriptorCallCount,
@@ -1177,28 +1192,16 @@ final class CatalogSearchViewModelTests: XCTestCase {
         viewModel.loadFormatEntryPoints()
         await waitForFormatEntries(on: viewModel, count: 2)
 
-        // First search may use the descriptor path (format "All" has a cached descriptor URL),
-        // so observe isLoading returning to false.
-        let exp1 = expectation(description: "first search completes")
-        var sub1: AnyCancellable?
-        sub1 = viewModel.$isLoading
-            .dropFirst()
-            .filter { !$0 }
-            .sink { _ in exp1.fulfill(); sub1?.cancel() }
+        // First search runs through the retained searchTask regardless of which
+        // target path (base vs descriptor) it takes — JOIN it deterministically.
         viewModel.updateSearchQuery("mystery")
-        await fulfillment(of: [exp1], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
-        // Select eBooks (index 1) — it has a searchDescriptorURL pre-populated.
-        // This triggers search(query:searchDescriptorURL:) which does NOT call onSearchCalled,
-        // so we observe isLoading going back to false instead.
-        let exp2 = expectation(description: "descriptor search completes")
-        var sub2: AnyCancellable?
-        sub2 = viewModel.$isLoading
-            .dropFirst()
-            .filter { !$0 }
-            .sink { _ in exp2.fulfill(); sub2?.cancel() }
+        // Select eBooks (index 1) — it has a searchDescriptorURL pre-populated, so
+        // this drives search(query:searchDescriptorURL:) (which does NOT call
+        // onSearchCalled). The seam joins the fresh searchTask directly. No clock.
         viewModel.selectFormat(at: 1)
-        await fulfillment(of: [exp2], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertEqual(mockRepository.lastSearchDescriptorURL, descriptorURL,
                        "Should use cached search descriptor URL for eBooks format")
@@ -1212,9 +1215,10 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         viewModel.selectFormat(at: 2)
 
-        // We cannot observe something that doesn't happen; yield and wait briefly.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // With an empty query, selectFormat takes the filter-in-place branch and
+        // triggers no search (searchTask stays nil). Join any retained in-flight
+        // work — none is spawned on the search path — and assert. No clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Should not search when query is empty")
         XCTAssertEqual(mockRepository.searchWithDescriptorCallCount, 0)
@@ -1226,10 +1230,8 @@ final class CatalogSearchViewModelTests: XCTestCase {
         viewModel.loadFormatEntryPoints()
         await waitForFormatEntriesLoaded(on: viewModel)
 
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
         viewModel.updateSearchQuery("ocean")
-        await fulfillment(of: [exp], timeout: 5.0)
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertEqual(mockRepository.lastSearchURL, testBaseURL,
                        "Should fall back to default base URL when no format entries")
@@ -1310,14 +1312,11 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         mockRepository.searchResult = nil
 
-        let announcementMade = expectation(description: "no results announced")
-        capture.onAnnouncement = {
-            if capture.items.contains(where: { $0.lowercased().contains("no results") }) {
-                announcementMade.fulfill()
-            }
+        // The announcement posts on a delayed main hop after the search task, so
+        // await the actual announcement event (deterministic — see helper).
+        await awaitNextAnnouncement(capture) {
+            viewModel.updateSearchQuery("nonexistent")
         }
-        viewModel.updateSearchQuery("nonexistent")
-        await fulfillment(of: [announcementMade], timeout: 5.0)
 
         let noResultMsg = capture.items.first(where: { $0.lowercased().contains("no results") })
         XCTAssertNotNil(noResultMsg, "Should announce no results, got: \(capture.items)")
@@ -1331,16 +1330,11 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         mockRepository.searchError = TestError.networkError
 
-        // Wait for the announcement itself, not just the search call —
-        // the view model processes the error asynchronously after the search returns.
-        let announcementMade = expectation(description: "failure announced")
-        capture.onAnnouncement = {
-            if capture.items.contains(where: { $0.lowercased().contains("failed") || $0.lowercased().contains("error") }) {
-                announcementMade.fulfill()
-            }
+        // The failure announcement posts on a delayed main hop after the search
+        // task's catch block, so await the actual announcement event.
+        await awaitNextAnnouncement(capture) {
+            viewModel.updateSearchQuery("test")
         }
-        viewModel.updateSearchQuery("test")
-        await fulfillment(of: [announcementMade], timeout: 5.0)
 
         let failMsg = capture.items.first(where: {
             $0.lowercased().contains("search") && ($0.lowercased().contains("failed") || $0.lowercased().contains("error"))
@@ -1354,26 +1348,21 @@ final class CatalogSearchViewModelTests: XCTestCase {
         let announcer = makeCapturingAnnouncer(capture: capture)
         let viewModel = createViewModel(announcements: announcer)
 
-        // First search returns no results — wait for the announcement, not the search call
+        // First search returns no results. Await the actual announcement event
+        // (posts on a delayed main hop after the search task).
         mockRepository.searchResult = nil
 
-        let firstAnnounced = expectation(description: "first announcement")
-        capture.onAnnouncement = { firstAnnounced.fulfill() }
-        viewModel.updateSearchQuery("first")
-        await fulfillment(of: [firstAnnounced], timeout: 5.0)
+        await awaitNextAnnouncement(capture) {
+            viewModel.updateSearchQuery("first")
+        }
 
         let firstAnnouncements = capture.items.count
         XCTAssertGreaterThan(firstAnnouncements, 0, "Should have at least one announcement")
 
-        // Second search — wait for additional announcement
-        let secondAnnounced = expectation(description: "second announcement")
-        capture.onAnnouncement = {
-            if capture.items.count > firstAnnouncements {
-                secondAnnounced.fulfill()
-            }
+        // Second search — await its announcement event too.
+        await awaitNextAnnouncement(capture) {
+            viewModel.updateSearchQuery("second")
         }
-        viewModel.updateSearchQuery("second")
-        await fulfillment(of: [secondAnnounced], timeout: 5.0)
 
         XCTAssertGreaterThan(capture.items.count, firstAnnouncements,
                              "Should produce a new announcement for the second search")
@@ -1387,9 +1376,10 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         viewModel.updateSearchQuery("")
 
-        // We cannot observe something that doesn't happen; yield and wait briefly.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // JOIN the debounce Task: performSearch() takes the empty-query branch,
+        // which never spawns a searchTask and never announces. Awaiting guarantees
+        // the branch ran before we assert the non-announcement — no clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertTrue(capture.items.isEmpty, "Empty query should not trigger announcements, got: \(capture.items)")
     }
@@ -1400,19 +1390,19 @@ final class CatalogSearchViewModelTests: XCTestCase {
         let announcer = makeCapturingAnnouncer(capture: capture)
         let viewModel = createViewModel(announcements: announcer)
 
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
         viewModel.updateSearchQuery("test")
-        await fulfillment(of: [exp], timeout: 5.0)
+        // Deterministic JOIN on the debounce→search chain (announce side effect
+        // included) instead of an onSearchCalled deadline poll.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // Clear captured announcements before testing clearSearch
         capture.items.removeAll()
 
         viewModel.clearSearch()
 
-        // We cannot observe something that doesn't happen; yield and wait briefly.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // clearSearch cancels all in-flight work and spawns NO announcing task.
+        // Join whatever work remains (there is none) — deterministic, no clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertTrue(capture.items.isEmpty, "Clearing search should not produce announcements, got: \(capture.items)")
     }
@@ -1435,19 +1425,15 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testHasCompletedSearch_BecomesTrue_AfterSearchReturnsEmpty() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
         // Repository returns nil → zero results path
         mockRepository.searchResult = nil
 
         viewModel.updateSearchQuery("zzzzzzzzz")
-        await fulfillment(of: [exp], timeout: 5.0)
-
-        // Allow the deferred isLoading=false / hasCompletedSearch=true assignment to flush.
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // JOIN the searchTask. Its defer block (isLoading=false /
+        // hasCompletedSearch=true) runs INSIDE the task, so awaiting the task value
+        // captures the deferred assignments — no separate flush sleep needed.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertTrue(viewModel.filteredBooks.isEmpty, "Sanity: zero-result search must produce empty filteredBooks")
         XCTAssertFalse(viewModel.isLoading, "Sanity: search must have finished")
@@ -1458,15 +1444,11 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testHasCompletedSearch_ResetByClearSearch() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
         mockRepository.searchResult = nil
         viewModel.updateSearchQuery("zzzzzzzzz")
-        await fulfillment(of: [exp], timeout: 5.0)
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // JOIN the searchTask (its defer sets hasCompletedSearch=true). No clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertTrue(viewModel.hasCompletedSearch, "Precondition: search must have completed")
 
@@ -1479,16 +1461,13 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testHasCompletedSearch_FlipsTrue_OnSearchError() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
         mockRepository.searchError = TestError.networkError
 
         viewModel.updateSearchQuery("zzzzzzzzz")
-        await fulfillment(of: [exp], timeout: 5.0)
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // JOIN the searchTask; its defer sets hasCompletedSearch=true even on the
+        // thrown-error path (defer runs regardless of the catch). No clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         // An errored search has still "completed" from the user's perspective —
         // they typed a query, the spinner stopped, and the grid is empty. The
@@ -1501,16 +1480,13 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testShouldShowNoResultsState_True_WhenSearchCompletedWithZeroResults() async {
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
-
         let viewModel = createViewModel()
         mockRepository.searchResult = nil
 
         viewModel.updateSearchQuery("zzzzzzzzz")
-        await fulfillment(of: [exp], timeout: 5.0)
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // JOIN the searchTask (defer sets isLoading=false + hasCompletedSearch=true,
+        // the two inputs shouldShowNoResultsState reads). No clock.
+        await viewModel._awaitInFlightWorkForTesting()
 
         XCTAssertTrue(
             viewModel.shouldShowNoResultsState,

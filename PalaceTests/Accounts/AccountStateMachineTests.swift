@@ -17,20 +17,19 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountStateMachineTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeAccount() -> Account? {
-        // Rationale: the fresh AccountsManager from makeTestAppContainer() has
-        // deferInitialLoadCatalogsForTesting = true, so its in-memory accounts
-        // have no `details` populated. Several tests here (terminalDetailsLoaded,
-        // multi-awaiter) require `.details` and `_setState(.detailsLoaded(...))`
-        // to succeed, which traps on a fresh manager. Migrating this seam
-        // requires test-side fixture builders for AccountDetails that don't
-        // currently exist. Tracked as residue for a follow-up.
-        return AppContainer.production().accountsManager.accounts().first // MIGRATED-DEFERRED: swarm_5b500284 — fresh AccountsManager lacks details fixtures
-    }
+    // PP-5057: `makeAccount()` used to return
+    // `AppContainer.production().accountsManager.accounts().first` and every
+    // caller guarded `else { XCTSkip("…"); return }` — with no `throw`, so on a
+    // machine with no signed-in library the test reported PASS having asserted
+    // nothing. The follow-up its comment asked for already existed:
+    // `makeAccountWithDetails(uuid:)` builds a details-populated Account from
+    // the bundled auth-doc fixture. Callers now use that, so this class no
+    // longer reads the production singleton at all.
 
     /// Construct a fresh, isolated Account via the production
     /// `Account(publication:imageCache:)` initializer. Used by the PR #1021
@@ -87,9 +86,7 @@ final class AccountStateMachineTests: XCTestCase {
     /// `awaitReady()` returns immediately if the state is already
     /// `.detailsLoaded`. No spurious blocking on fast-path callers.
     func testAwaitReady_terminalDetailsLoaded_returnsImmediately() async throws {
-        guard let account = makeAccount(), let details = account.details else {
-            XCTSkip("No accounts with details available"); return
-        }
+        let (account, details) = try makeAccountWithDetails(uuid: "terminal-loaded-\(UUID().uuidString)")
         account._setState(.detailsLoaded(details))
 
         let start = Date()
@@ -103,9 +100,7 @@ final class AccountStateMachineTests: XCTestCase {
     /// `awaitReady()` throws immediately if the state is already
     /// `.detailsFailed`. Caller decides whether to retry.
     func testAwaitReady_terminalDetailsFailed_throwsImmediately() async {
-        guard let account = makeAccount() else {
-            XCTSkip("No accounts available"); return
-        }
+        let account = makeFreshAccount(uuid: "terminal-failed-\(UUID().uuidString)")
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "HTTP 503")))
 
         do {
@@ -130,9 +125,7 @@ final class AccountStateMachineTests: XCTestCase {
     /// `details?` and silently taken the wrong branch; with the gate, it
     /// must wait for terminal state.
     func testAwaitReady_blocksUntilTransition_thenResolves() async throws {
-        guard let account = makeAccount(), let details = account.details else {
-            XCTSkip("No accounts with details available"); return
-        }
+        let (account, details) = try makeAccountWithDetails(uuid: "blocks-until-transition-\(UUID().uuidString)")
         account._setState(.detailsLoading)
 
         let exp = expectation(description: "awaitReady resolves after transition")
@@ -154,9 +147,7 @@ final class AccountStateMachineTests: XCTestCase {
     /// transition. Single-flight semantics — no thundering herd, no
     /// dropped awaiters.
     func testAwaitReady_multipleConcurrentAwaiters_allResolve() async throws {
-        guard let account = makeAccount(), let details = account.details else {
-            XCTSkip("No accounts with details available"); return
-        }
+        let (account, details) = try makeAccountWithDetails(uuid: "multi-awaiter-\(UUID().uuidString)")
         account._setState(.detailsLoading)
 
         let exp = expectation(description: "all awaiters resolve")
@@ -237,21 +228,21 @@ final class AccountStateMachineTests: XCTestCase {
         let (account, details) = try makeAccountWithDetails(uuid: "resolve-\(UUID().uuidString)")
         account._setState(.detailsLoading)
 
-        let exp = expectation(description: "bounded awaitReady resolves on transition")
-        let start = Date()
-        let awaiterTask = Task {
-            let resolved = try await account.awaitReady(timeout: 5.0)
-            XCTAssertTrue(resolved === details, "must resolve with the loaded details, not time out")
-            exp.fulfill()
-        }
+        let awaiterTask = Task { try await account.awaitReady(timeout: 5.0) }
 
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertFalse(awaiterTask.isCancelled)
         account._setState(.detailsLoaded(details))
 
-        await fulfillment(of: [exp], timeout: 2.0)
-        XCTAssertLessThan(Date().timeIntervalSince(start), 5.0,
-                          "resolve must happen well before the 5s bound")
+        // Join the awaiter Task directly instead of racing a fixed deadline
+        // against it (STARVE-001). This is also STRICTER than the old
+        // `XCTAssertLessThan(elapsed, 5.0)`: if the bound had stolen the win,
+        // `awaitReady` would throw `.readinessTimedOut` and `.value` rethrows
+        // here, so the timing assertion it replaces was redundant — and it was
+        // the one assertion in this test that a starved CI clone could
+        // false-fail.
+        let resolved = try await awaiterTask.value
+        XCTAssertTrue(resolved === details, "must resolve with the loaded details, not time out")
     }
 
     /// The bounded gate honors an ALREADY-terminal failure on the fast path —
@@ -309,9 +300,7 @@ final class AccountStateMachineTests: XCTestCase {
     /// in-flight auth doc fetch shouldn't be cancellable from a UI dismiss
     /// just because one screen went away.
     func testAwaitReady_cancellingOneAwaiter_doesNotAffectOthers() async throws {
-        guard let account = makeAccount(), let details = account.details else {
-            XCTSkip("No accounts with details available"); return
-        }
+        let (account, details) = try makeAccountWithDetails(uuid: "cancel-one-awaiter-\(UUID().uuidString)")
         account._setState(.detailsLoading)
 
         let survivorExp = expectation(description: "survivor resolves after transition")
@@ -342,17 +331,24 @@ final class AccountStateMachineTests: XCTestCase {
     /// transition. Subscribers can observe loading→loaded transitions
     /// for skeleton-UI patterns (Bucket B migrations in the ADR).
     func testStateStream_emitsCurrentThenTransitions() async throws {
-        guard let account = makeAccount(), let details = account.details else {
-            XCTSkip("No accounts with details available"); return
-        }
+        let (account, details) = try makeAccountWithDetails(uuid: "state-stream-\(UUID().uuidString)")
         account._setState(.basicInfoLoaded)
 
         var observed: [String] = []
         let exp = expectation(description: "stream emits 3 distinct states")
         exp.expectedFulfillmentCount = 1
+        // Deterministic subscription barrier: the CurrentValueSubject emits its
+        // current value immediately on subscribe, so the FIRST awaited state
+        // proves the sink is live. Await that instead of sleeping a fixed 30ms
+        // and hoping the subscribe won the race (which starves + drops the
+        // ordering under CI oversubscription).
+        let subscribed = expectation(description: "stream subscription attached")
+        subscribed.assertForOverFulfill = false
 
         let task = Task {
+            var firstSeen = false
             for await state in account.stateStream {
+                if !firstSeen { firstSeen = true; subscribed.fulfill() }
                 switch state {
                 case .notLoaded:          observed.append("notLoaded")
                 case .basicInfoLoaded:    observed.append("basicInfoLoaded")
@@ -365,9 +361,9 @@ final class AccountStateMachineTests: XCTestCase {
             }
         }
 
-        try await Task.sleep(nanoseconds: 30_000_000)
+        // Do not drive a transition until the sink is confirmed live.
+        await fulfillment(of: [subscribed], timeout: 2.0)
         account._setState(.detailsLoading)
-        try await Task.sleep(nanoseconds: 30_000_000)
         account._setState(.detailsLoaded(details))
 
         await fulfillment(of: [exp], timeout: 2.0)

@@ -13,6 +13,7 @@ import XCTest
 
 /// Tests for visual focus indication across the app
 /// AC1: Visible focus indication on iOS
+@MainActor
 final class FocusIndicationTests: XCTestCase {
 
     // MARK: - Test: Focus Ring Visibility

@@ -9,8 +9,68 @@
 //
 
 import XCTest
+import PalacePreferences
 import Combine
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
+
+// MARK: - Publisher-join helper
+
+extension XCTestCase {
+  /// Fulfils an expectation the moment a `@Published` publisher emits a value
+  /// satisfying `predicate`, then returns.
+  ///
+  /// Replaces `awaitCondition { … }` for waits that observe a debounced,
+  /// notification-driven `loadData()` republish (`$books` /
+  /// `$showInstructionsLabel`). `awaitCondition` re-checks the predicate on a
+  /// fixed `Task.sleep` poll interval; under CI oversubscription that poll
+  /// loop competes for the executor and can blow the wall-clock deadline even
+  /// though the debounce has fired. This waits on the *actual* Combine
+  /// emission instead — the scheduler that fires the 300 ms debounce drives
+  /// the sink, so the wait completes exactly when the reload lands with no
+  /// polling. `predicate` also runs on the current (first, pre-emission) value
+  /// so an already-satisfied state resolves immediately.
+  @MainActor
+  func awaitPublished<P: Publisher>(
+    _ publisher: P,
+    timeout: TimeInterval = 5.0,
+    until predicate: @escaping (P.Output) -> Bool
+  ) where P.Failure == Never {
+    let satisfied = expectation(description: "published value satisfied predicate")
+    // `.first(where:)` completes after the first matching emission, so the
+    // sink fires exactly once — no manual re-entrancy guard, no over-fulfil.
+    // Mirrors the proven `$book.filter().first().sink { fulfill() }` idiom in
+    // BookDetailViewModelTests.
+    let cancellable = publisher
+      .first(where: predicate)
+      .sink { _ in satisfied.fulfill() }
+    wait(for: [satisfied], timeout: timeout)
+    cancellable.cancel()
+  }
+
+  /// Async sibling of `awaitPublished` for `@MainActor async` test bodies.
+  ///
+  /// Uses `await fulfillment(of:)` rather than the synchronous `wait(for:)` —
+  /// a sync wait inside an async body blocks the main executor the emission
+  /// needs to run on and deadlocks (same hazard `drainMainQueueAsync`
+  /// documents). Joins the actual Combine emission that satisfies `predicate`,
+  /// so it completes exactly when the observed state lands with no poll loop
+  /// to starve under CI oversubscription.
+  @MainActor
+  func awaitPublishedAsync<P: Publisher>(
+    _ publisher: P,
+    timeout: TimeInterval = 5.0,
+    until predicate: @escaping (P.Output) -> Bool
+  ) async where P.Failure == Never {
+    let satisfied = expectation(description: "published value satisfied predicate (async)")
+    let cancellable = publisher
+      .first(where: predicate)
+      .sink { _ in satisfied.fulfill() }
+    await fulfillment(of: [satisfied], timeout: timeout)
+    cancellable.cancel()
+  }
+}
 
 // MARK: - Shared Helper
 
@@ -32,6 +92,7 @@ private func makeViewModel() -> MyBooksViewModel {
 
 // MARK: - Facet Enum Tests (Real Production Enum)
 
+@MainActor
 final class FacetEnumTests: XCTestCase {
 
     func testFacet_LocalizedStrings_AreNotEmpty() {
@@ -57,6 +118,7 @@ final class FacetEnumTests: XCTestCase {
 
 // MARK: - AlertModel Tests (Real Production Struct)
 
+@MainActor
 final class AlertModelTests: XCTestCase {
 
     func testAlertModel_StoresProvidedValues() {
@@ -445,10 +507,12 @@ final class MyBooksViewModelLoginStateTests: XCTestCase {
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "n1", title: "New Book")]
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
 
-        // Poll the observable state directly — the debounced reload hops the
-        // main queue, so we wait on the published `books` array landing the
-        // newly registered book rather than a fixed-delay sleep.
-        awaitCondition(timeout: 5.0) { viewModel.books.count == 1 }
+        // Join the debounced reload's actual republish rather than polling a
+        // wall-clock deadline: the 300 ms Combine debounce (main-queue
+        // scheduler) fires `loadData()`, which reassigns `books`. We wait on
+        // that `$books` emission so the wait completes exactly when the reload
+        // lands — no poll loop to starve under CI oversubscription.
+        awaitPublished(viewModel.$books) { $0.count == 1 }
 
         // Assert: the viewModel now exposes the new book
         XCTAssertEqual(viewModel.books.count, 1,
@@ -1037,17 +1101,20 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
                        "Book count must remain consistent after registry-change notification")
     }
 
-    /// Tests that ViewModel can receive state change notifications
-    func testStateChangeNotification_IsRegistered() {
+    /// Tests that the ViewModel reacts to a per-book state change through the
+    /// registry's `bookStatePublisher` (migrated off `.TPPBookRegistryStateDidChange`
+    /// in swarm_8ce6f5ae WS3).
+    func testStateChange_ViaBookStatePublisher_IsRegistered() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
         let appContainer = makeTestAppContainer()
         let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
-        NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
+        // Mock's `setState` sends into `bookStateSubject` — the VM's migrated trigger.
+        mock.setState(.downloadSuccessful, for: "some-book")
 
-        // ViewModel must not crash; loading state must be well-defined after notification
-        XCTAssertFalse(viewModel.isLoading, "isLoading must be false after state-change notification with no pending sync")
+        // ViewModel must not crash; loading state must be well-defined afterward.
+        XCTAssertFalse(viewModel.isLoading, "isLoading must be false after a book-state change with no pending sync")
     }
 
     /// Tests that ViewModel can receive sync ended notifications
@@ -1077,7 +1144,9 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "sn1", title: "Post-Sync Book")]
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
-        awaitCondition { viewModel.books.count == 1 }
+        // Join the reload's `$books` republish instead of polling a deadline —
+        // the sync-ended handler hops the main queue then reassigns `books`.
+        awaitPublished(viewModel.$books) { $0.count == 1 }
         XCTAssertEqual(viewModel.books.count, 1,
             "TPPSyncEnded notification must trigger a reload that reflects the new registry contents")
     }
@@ -1647,12 +1716,11 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "st2", title: "New Book")]
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
 
-        // Wait on the production-observable transition rather than a fixed
-        // delay — the debounced loadData publishes the new `books` array on
-        // the main queue and clears `showInstructionsLabel` in the same pass.
-        awaitCondition(timeout: 5.0) {
-            viewModel.books.count == 1 && viewModel.showInstructionsLabel == false
-        }
+        // Join the reload's `$books` republish rather than polling a deadline.
+        // `loadData()` assigns `books` then `showInstructionsLabel` in the same
+        // synchronous pass (books first), so once `$books` emits count == 1 the
+        // label has already been cleared — the compound assert below is safe.
+        awaitPublished(viewModel.$books) { $0.count == 1 }
 
         // Assert: label hidden, book present
         XCTAssertFalse(viewModel.showInstructionsLabel,
@@ -2104,5 +2172,61 @@ final class MyBooksViewModelFacetPublisherTests: XCTestCase {
         // Change back to title
         viewModel.facetViewModel.activeSort = .title
         XCTAssertEqual(viewModel.activeFacetSort, .title)
+    }
+
+    // MARK: - INV-2: offline eviction guard (Reliability WS-C)
+
+    /// The headline invariant. An expired-by-cached-`until` downloaded book
+    /// must NOT be deleted or unregistered while offline — the loans feed
+    /// can't be consulted, so the cached `until` is not authoritative.
+    func testLoadData_offline_doesNotDeleteExpiredLocalContent() {
+        let mock = TPPBookRegistryMock()
+        let past = Date(timeIntervalSinceNow: -100_000)
+        let expired = TPPBookMocker.mockBookWithLimitedAvailability(
+            identifier: "exp-off", until: past, title: "Expired Offline")
+        mock.myBooks = [expired]
+        mock.addBook(expired, state: .downloadSuccessful)
+        let appContainer = makeTestAppContainer()
+
+        // Precondition: the book is genuinely expired by its cached `until`.
+        XCTAssertTrue(expired.isExpired)
+
+        // Constructing the VM offline runs loadData() through the eviction gate.
+        let vm = MyBooksViewModel(
+            bookRegistry: mock,
+            accountsManager: appContainer.accountsManager,
+            settings: TPPSettings(),
+            downloadCenter: appContainer.downloadCenter,
+            isUserAuthorizedForRegistry: { true },
+            isOnline: { false })
+
+        XCTAssertNotEqual(mock.state(for: "exp-off"), .unregistered,
+            "INV-2: an offline expired book must NOT be unregistered")
+        XCTAssertTrue(vm.books.contains { $0.identifier == "exp-off" },
+            "INV-2: an offline expired book stays visible/readable in My Books")
+    }
+
+    /// Contrast: online + well past the grace window, eviction proceeds as
+    /// before (the loan is provably over).
+    func testLoadData_onlinePastGrace_evictsExpiredContent() {
+        let mock = TPPBookRegistryMock()
+        let past = Date(timeIntervalSinceNow: -100_000) // far past the 5-min grace
+        let expired = TPPBookMocker.mockBookWithLimitedAvailability(
+            identifier: "exp-on", until: past, title: "Expired Online")
+        mock.myBooks = [expired]
+        mock.addBook(expired, state: .downloadSuccessful)
+        let appContainer = makeTestAppContainer()
+
+        let vm = MyBooksViewModel(
+            bookRegistry: mock,
+            accountsManager: appContainer.accountsManager,
+            settings: TPPSettings(),
+            downloadCenter: appContainer.downloadCenter,
+            isUserAuthorizedForRegistry: { true },
+            isOnline: { true })
+
+        XCTAssertEqual(mock.state(for: "exp-on"), .unregistered,
+            "online + past grace: the confirmed-expired book is evicted")
+        XCTAssertFalse(vm.books.contains { $0.identifier == "exp-on" })
     }
 }

@@ -10,6 +10,7 @@ import XCTest
 import ReadiumShared
 @testable import Palace
 
+@MainActor
 final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
     // MARK: - Properties
@@ -19,8 +20,10 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
     // MARK: - Setup
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    // async setUp adopts the class's @MainActor isolation so the @MainActor
+    // createTestPublication() result is not returned to a nonisolated context.
+    override func setUp() async throws {
+        try await super.setUp()
 
         // Create a publication with a realistic TOC structure
         publication = createTestPublication()
@@ -69,12 +72,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let tocPublication = createPublicationWithTOC()
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: tocPublication, currentLocation: nil)
 
-        // Poll until tocElements is populated rather than sleeping a fixed amount
-        let loaded = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
-            object: nil
-        )
-        wait(for: [loaded], timeout: 10.0)
+        // JOIN the init-spawned TOC load deterministically instead of polling
+        // a wall-clock deadline (which starves under parallel oversubscription).
+        await tocBusinessLogic.awaitTOCLoad()
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
             return
@@ -120,12 +120,8 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let tocPublication = createPublicationWithTOC()
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: tocPublication, currentLocation: nil)
 
-        // Poll until tocElements is populated
-        let loaded = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
-            object: nil
-        )
-        wait(for: [loaded], timeout: 10.0)
+        // JOIN the init-spawned TOC load deterministically.
+        await tocBusinessLogic.awaitTOCLoad()
 
         let title = tocBusinessLogic.title(for: "/nonexistent.xhtml")
 
@@ -136,12 +132,8 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let tocPublication = createPublicationWithTOC()
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: tocPublication, currentLocation: nil)
 
-        // Poll until tocElements is populated
-        let loaded = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
-            object: nil
-        )
-        wait(for: [loaded], timeout: 10.0)
+        // JOIN the init-spawned TOC load deterministically.
+        await tocBusinessLogic.awaitTOCLoad()
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
             return
@@ -249,7 +241,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
     // MARK: - Helper Methods
 
-    private func createTestPublication() -> Publication {
+    // nonisolated: pure factory; called from the inherited-nonisolated
+    // setUpWithError override (Swift 6 sending error otherwise).
+    private nonisolated func createTestPublication() -> Publication {
         let metadata = Metadata(
             title: "Test Book",
             languages: ["en"]
@@ -325,6 +319,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
 // MARK: - TOC Flatten Logic Tests
 
+@MainActor
 final class TPPReaderTOCFlattenTests: XCTestCase {
 
     func testFlatten_nestedTOC_assignsCorrectLevels() async throws {
@@ -358,12 +353,8 @@ final class TPPReaderTOCFlattenTests: XCTestCase {
         let publication = Publication(manifest: manifest)
         let businessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication, currentLocation: nil)
 
-        // Poll until tocElements is populated
-        let loaded = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in businessLogic.tocElements.count > 0 },
-            object: nil
-        )
-        wait(for: [loaded], timeout: 10.0)
+        // JOIN the init-spawned TOC load deterministically.
+        await businessLogic.awaitTOCLoad()
 
         guard businessLogic.tocElements.count > 0 else { return }
 

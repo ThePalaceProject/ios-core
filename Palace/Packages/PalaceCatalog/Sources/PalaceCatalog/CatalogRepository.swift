@@ -1,10 +1,11 @@
 import Foundation
+import os
 import PalaceLogging
 #if canImport(UIKit)
 import UIKit
 #endif
 
-public protocol CatalogRepositoryProtocol {
+public protocol CatalogRepositoryProtocol: Sendable {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
     func search(query: String, baseURL: URL) async throws -> CatalogFeed?
     func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed?
@@ -18,16 +19,25 @@ public protocol CatalogRepositoryProtocol {
     func cachedFeed(for url: URL) -> CatalogFeed?
 }
 
-public final class CatalogRepository: CatalogRepositoryProtocol {
+public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Sendable {
+    // CONCURRENCY INVARIANT (@unchecked Sendable):
+    // All mutable state lives inside `cache`, an OSAllocatedUnfairLock that
+    // serializes every read and write (the lock replaced the former serial
+    // `catalog.cache.queue` DispatchQueue). No mutable stored property exists
+    // outside that lock. The remaining stored properties are immutable `let`s:
+    // `api` is an internally-thread-safe network client, `now` /
+    // `accountIDProvider` are `@Sendable` closures, and `defaults`
+    // (`UserDefaults`) is documented thread-safe. We retain `@unchecked`
+    // (rather than synthesized `Sendable`) only because the injected
+    // `CatalogAPI` protocol is not yet annotated `Sendable` (owned by a
+    // sibling modernization pass); the lock makes the conformance sound today.
     private let api: CatalogAPI
-    private var memoryCache: [String: CachedFeed] = [:]
-    private let cacheQueue = DispatchQueue(label: "catalog.cache.queue", qos: .userInitiated)
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
 
     /// Test seam: injectable "now" provider so unit tests can drive the
     /// stale-while-revalidate clock deterministically without sleeping.
     /// Production callers use the default (`Date.init`).
-    private let now: () -> Date
+    private let now: @Sendable () -> Date
 
     /// Library/account isolation: cache entries are scoped by the current
     /// account UUID so that, if a single repository instance survives a
@@ -35,7 +45,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// The bearer token itself is deliberately NOT used as the key — it
     /// rotates (refresh / re-auth) while the library identity is stable.
     /// `nil` is treated as the "anonymous / pre-account" scope.
-    private let accountIDProvider: () -> String?
+    private let accountIDProvider: @Sendable () -> String?
 
     /// `UserDefaults` backing store for the `lastAppLaunchKey` heuristic
     /// (drives `needsBackgroundRefresh` and the 7-day URLCache wipe).
@@ -44,13 +54,55 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// leak across tests. There is NO fallback once injected.
     private let defaults: UserDefaults
 
-    /// Dedicated cache for format entry points, keyed by groups-feed URL.
-    /// Pre-warmed by loadTopLevelCatalog so search can display the format picker immediately
-    /// without an extra network round-trip when the user first opens search.
-    private var formatEntriesCache: [String: [SearchFormatEntry]] = [:]
+    /// Lock-guarded mutable cache state. Replaces the former serial
+    /// `cacheQueue` DispatchQueue — every access goes through
+    /// `cache.withLockUnchecked { … }`. `withLockUnchecked` is used (rather
+    /// than `withLock`) because the guarded model types (`CatalogFeed`,
+    /// `SearchFormatEntry`) are not yet `Sendable`; the lock itself provides
+    /// the synchronization that makes that safe.
+    private struct CacheState {
+        var memoryCache: [String: CachedFeed] = [:]
+        /// Dedicated cache for format entry points, keyed by groups-feed URL.
+        /// Pre-warmed by loadTopLevelCatalog so search can display the format
+        /// picker immediately without an extra network round-trip when the
+        /// user first opens search.
+        var formatEntriesCache: [String: [SearchFormatEntry]] = [:]
+        /// Track if we need to refresh stale content in background.
+        var needsBackgroundRefresh = false
+    }
+    private let cache = OSAllocatedUnfairLock(uncheckedState: CacheState())
 
-    /// Track if we need to refresh stale content in background
-    private var needsBackgroundRefresh = false
+    /// Handle on the most recently scheduled background stale-revalidate
+    /// refresh Task. Retained ONLY so tests can `await` its completion
+    /// deterministically (`_awaitBackgroundRefreshForTesting()`), instead of
+    /// polling `cachedFeed(...)` for the write to land — a poll that is
+    /// inherently racy under cooperative-pool oversubscription because the
+    /// refresh is dispatched at `.utility` priority and the pool can defer it
+    /// past any fixed poll deadline (the parallel-sim-clone timeouts in CI
+    /// run 29805821296). Production behavior is UNCHANGED: the refresh still
+    /// runs detached / fire-and-forget; we merely keep a reference to the last
+    /// one so a test can join it. `nil` until the first stale read schedules a
+    /// refresh. Lock-guarded so the write from `loadTopLevelCatalog` and the
+    /// read from the test seam are race-free.
+    private let lastBackgroundRefreshTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
+
+    /// Multi-refresh test join support. When `_trackRefreshTasksForTesting()`
+    /// has armed tracking (test-only), every background stale-revalidate Task
+    /// handle scheduled by `loadTopLevelCatalog` is ALSO appended here — so a
+    /// test that fires N concurrent stale reads across N distinct URLs can join
+    /// ALL of them via `_awaitAllBackgroundRefreshesForTesting()`, not just the
+    /// most-recently-scheduled one that `lastBackgroundRefreshTask` retains.
+    ///
+    /// Production behavior is UNCHANGED: `isTrackingRefreshTasks` defaults to
+    /// `false`, so `allBackgroundRefreshTasks` is never appended to and stays
+    /// empty in production — no retained-Task growth, no extra work on the
+    /// hot path. The append is behind the flag purely so the array cannot
+    /// accumulate handles indefinitely outside of a test.
+    private struct RefreshTrackingState {
+        var isTracking = false
+        var tasks: [Task<Void, Never>] = []
+    }
+    private let refreshTracking = OSAllocatedUnfairLock(initialState: RefreshTrackingState())
 
     private struct CachedFeed {
         let feed: CatalogFeed
@@ -76,7 +128,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup to inject UserDefaults for per-test isolation. Default `.standard` preserves all production callers.
     public init(api: CatalogAPI, defaults: UserDefaults = .standard) {
         self.api = api
-        self.now = Date.init
+        self.now = { Date() }
         self.accountIDProvider = { nil }
         self.defaults = defaults
         self.checkStaleCacheStatus()
@@ -88,9 +140,9 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// the repository sees the *current* account each call — the value
     /// changes when the user switches libraries.
     // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup; same rationale as the no-accountID overload above.
-    public init(api: CatalogAPI, accountID: @escaping () -> String?, defaults: UserDefaults = .standard) {
+    public init(api: CatalogAPI, accountID: @escaping @Sendable () -> String?, defaults: UserDefaults = .standard) {
         self.api = api
-        self.now = Date.init
+        self.now = { Date() }
         self.accountIDProvider = accountID
         self.defaults = defaults
         self.checkStaleCacheStatus()
@@ -102,7 +154,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// is `public` only to be reachable from `PalaceTests` (which imports
     /// `PalaceCatalog` without `@testable`).
     // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup; same rationale. Test-only initializer reachable from PalaceTests without @testable.
-    public init(api: CatalogAPI, now: @escaping () -> Date, defaults: UserDefaults = .standard) {
+    public init(api: CatalogAPI, now: @escaping @Sendable () -> Date, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = now
         self.accountIDProvider = { nil }
@@ -115,7 +167,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// provider. Used by cache-isolation tests to simulate library switches
     /// deterministically.
     // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup; same rationale. Test-only initializer for cache-isolation tests.
-    public init(api: CatalogAPI, accountID: @escaping () -> String?, now: @escaping () -> Date, defaults: UserDefaults = .standard) {
+    public init(api: CatalogAPI, accountID: @escaping @Sendable () -> String?, now: @escaping @Sendable () -> Date, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = now
         self.accountIDProvider = accountID
@@ -154,11 +206,10 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     }
 
     @objc private func handleMemoryWarning() {
-        cacheQueue.async { [weak self] in
-            guard let self else { return }
-            Log.info(#file, "Memory warning received — clearing in-memory catalog cache (disk cache preserved)")
-            self.memoryCache.removeAll()
-            self.formatEntriesCache.removeAll()
+        Log.info(#file, "Memory warning received — clearing in-memory catalog cache (disk cache preserved)")
+        cache.withLockUnchecked { state in
+            state.memoryCache.removeAll()
+            state.formatEntriesCache.removeAll()
         }
     }
 
@@ -172,10 +223,22 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
             Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - clearing HTTP cache")
             // Clear URLCache to prevent stale/corrupted HTTP responses from causing parsing crashes
             // in legacy OPDS code. Our memory cache is preserved for stale-while-revalidate.
+            //
+            // N1 NOTE (swarm_27c181b5): OPDS feeds are actually served from the
+            // network executor's PRIVATE URLCache (see `TPPCaching.makeCache`),
+            // NOT from `URLCache.shared`, so this wipe is effectively a no-op for
+            // feed responses. `CatalogRepository` lives in the PalaceCatalog SPM
+            // package and only holds a `CatalogAPI` whose `NetworkClient` surface
+            // (`send` only) exposes no cache-clear seam, and the package cannot
+            // reach `AppContainer.production().networkExecutor` without an
+            // inverted app-target dependency. Routing this site correctly needs a
+            // `clearCache()` on the `NetworkClient` protocol — deferred rather
+            // than introduce a bad dependency here. The privacy-critical clears
+            // (sign-out / force-reset) already route through the executor.
             URLCache.shared.removeAllCachedResponses()
         }
         if daysSinceLastLaunch >= 1 {
-            needsBackgroundRefresh = true
+            cache.withLockUnchecked { $0.needsBackgroundRefresh = true }
         }
 
         defaults.set(currentDate, forKey: Self.lastAppLaunchKey)
@@ -184,11 +247,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     public func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {
         let cacheKey = cacheKey(for: url)
 
-        let cachedEntry = await withCheckedContinuation { [weak self] continuation in
-            cacheQueue.async {
-                continuation.resume(returning: self?.memoryCache[cacheKey])
-            }
-        }
+        let cachedEntry = cache.withLockUnchecked { $0.memoryCache[cacheKey] }
 
         // STALE-WHILE-REVALIDATE PATTERN:
         // 1. Fresh cache (< 10 min) → return immediately
@@ -202,13 +261,26 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         }
 
         // Stale-while-revalidate: return stale content immediately, refresh in background
+        let needsBackgroundRefresh = cache.withLockUnchecked { $0.needsBackgroundRefresh }
         if let entry = cachedEntry, isStaleButUsable(entry) || needsBackgroundRefresh {
             Log.info(#file, "Returning stale cached catalog feed, refreshing in background: \(url.absoluteString)")
             prewarmFormatEntriesCache(from: entry.feed, cacheKey: cacheKey)
 
-            // Schedule background refresh
-            Task.detached(priority: .utility) { [weak self] in
+            // Schedule background refresh (fire-and-forget in production). The
+            // Task handle is retained in `lastBackgroundRefreshTask` purely so a
+            // test can join it deterministically — see the field's doc comment.
+            // Behavior is identical to a bare `Task.detached { … }`: nothing
+            // production awaits this handle.
+            let refreshTask = Task.detached(priority: .utility) { [weak self] in
                 await self?.refreshFeedInBackground(url: url, cacheKey: cacheKey)
+                return ()
+            }
+            lastBackgroundRefreshTask.withLock { $0 = refreshTask }
+            // Test-only: when tracking is armed, retain EVERY concurrent refresh
+            // handle so a test can join all of them. No-op in production (flag
+            // defaults false — see `refreshTracking`).
+            refreshTracking.withLock { state in
+                if state.isTracking { state.tasks.append(refreshTask) }
             }
 
             return entry.feed
@@ -248,12 +320,8 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         }
 
         // Cache the result
-        await withCheckedContinuation { continuation in
-            cacheQueue.async {
-                self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: self.now())
-                continuation.resume()
-            }
-        }
+        let cachedFeed = CachedFeed(feed: feed, timestamp: now())
+        cache.withLockUnchecked { $0.memoryCache[cacheKey] = cachedFeed }
         prewarmFormatEntriesCache(from: feed, cacheKey: cacheKey)
 
         Task.detached(priority: .background) {
@@ -272,13 +340,9 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
             guard let feed = feed else { return }
 
-            await withCheckedContinuation { continuation in
-                cacheQueue.async {
-                    self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: self.now())
-                    Log.info(#file, "Background refresh completed for: \(url.absoluteString)")
-                    continuation.resume()
-                }
-            }
+            let cachedFeed = CachedFeed(feed: feed, timestamp: now())
+            cache.withLockUnchecked { $0.memoryCache[cacheKey] = cachedFeed }
+            Log.info(#file, "Background refresh completed for: \(url.absoluteString)")
 
             // Preload related facets too
             await preloadRelatedFacets(from: feed)
@@ -295,13 +359,13 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     private func prewarmFormatEntriesCache(from feed: CatalogFeed, cacheKey: String) {
         let entries = DefaultCatalogAPI.extractSearchEntryPoints(from: feed)
         guard !entries.isEmpty else { return }
-        cacheQueue.async { [weak self] in
-            guard let self, self.formatEntriesCache[cacheKey] == nil else { return }
-            self.formatEntriesCache[cacheKey] = entries
+        cache.withLockUnchecked { state in
+            guard state.formatEntriesCache[cacheKey] == nil else { return }
+            state.formatEntriesCache[cacheKey] = entries
         }
     }
 
-    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+    private func withTimeout<T: Sendable>(seconds: TimeInterval, operation: @escaping @Sendable () async throws -> T) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask {
                 try await operation()
@@ -335,11 +399,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
         // Check the dedicated format-entries cache first. Pre-warmed by loadTopLevelCatalog
         // so the search format picker has data without an extra network round-trip.
-        let cached = await withCheckedContinuation { (c: CheckedContinuation<[SearchFormatEntry]?, Never>) in
-            cacheQueue.async { [weak self] in
-                c.resume(returning: self?.formatEntriesCache[cacheKey])
-            }
-        }
+        let cached = cache.withLockUnchecked { $0.formatEntriesCache[cacheKey] }
         if let cached, !cached.isEmpty {
             return cached
         }
@@ -347,9 +407,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         // Cache miss — fetch from network and cache for next time.
         let entries = try await api.fetchSearchEntryPoints(from: url)
         if !entries.isEmpty {
-            cacheQueue.async { [weak self] in
-                self?.formatEntriesCache[cacheKey] = entries
-            }
+            cache.withLockUnchecked { $0.formatEntriesCache[cacheKey] = entries }
         }
         return entries
     }
@@ -360,20 +418,68 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
     public func invalidateCache(for url: URL) {
         let cacheKey = cacheKey(for: url)
-        cacheQueue.async {
-            self.memoryCache[cacheKey] = nil
-        }
+        cache.withLockUnchecked { $0.memoryCache[cacheKey] = nil }
     }
 
     public func cachedFeed(for url: URL) -> CatalogFeed? {
         let cacheKey = cacheKey(for: url)
-        // Synchronous access — safe because cacheQueue is serial and we
-        // only read. DispatchQueue.sync on a serial queue is deadlock-safe
-        // when called from a different queue (MainActor in our case).
-        return cacheQueue.sync {
-            guard let entry = memoryCache[cacheKey], !isTooOld(entry) else { return nil }
+        // Synchronous, read-only lookup under the cache lock. The unfair lock
+        // holds only briefly, so calling this from the MainActor is safe.
+        return cache.withLockUnchecked { state in
+            guard let entry = state.memoryCache[cacheKey], !isTooOld(entry) else { return nil }
             return entry.feed
         }
+    }
+
+    /// TEST SEAM — deterministically await the in-flight stale-revalidate
+    /// background refresh scheduled by the most recent `loadTopLevelCatalog`
+    /// stale read. Returns immediately if none is in flight.
+    ///
+    /// Why this exists: the background refresh is dispatched via
+    /// `Task.detached(priority: .utility)` and production intentionally does
+    /// not await it. A test that needs to assert the post-refresh cache state
+    /// therefore has to wait for that Task to complete — and polling
+    /// `cachedFeed(...)` for the write to land is NON-DETERMINISTIC under
+    /// cooperative-thread-pool oversubscription: with 4 sim clones on a
+    /// 3–4-core CI runner, a `.utility` task can be deferred past any fixed
+    /// poll deadline, so the poll times out even though the code is correct
+    /// (CI run 29805821296 parallel-only timeouts). Awaiting the actual Task
+    /// handle removes the wall-clock/pool dependence entirely — the test
+    /// blocks exactly until the refresh finishes, no matter how starved the
+    /// pool is.
+    ///
+    /// This changes NO production behavior: `loadTopLevelCatalog` still fires
+    /// the refresh detached and returns immediately; this method only reads a
+    /// handle the repository already retains. `public` (not `#if DEBUG`) to be
+    /// reachable from `PalaceTests`, which imports `PalaceCatalog` without
+    /// `@testable` — matching the existing test-only initializers above.
+    public func _awaitBackgroundRefreshForTesting() async {
+        let task = lastBackgroundRefreshTask.withLock { $0 }
+        await task?.value
+    }
+
+    /// TEST SEAM — arm multi-refresh tracking. Call this BEFORE firing the
+    /// concurrent stale reads whose background refreshes you want to join. Once
+    /// armed, every refresh Task scheduled by `loadTopLevelCatalog` is retained
+    /// (see `refreshTracking`) so `_awaitAllBackgroundRefreshesForTesting()` can
+    /// await ALL of them — the single-handle `_awaitBackgroundRefreshForTesting`
+    /// only joins the most recent, which loses N-1 of N concurrent refreshes.
+    ///
+    /// Changes NO production behavior: tracking is opt-in and defaults off, so
+    /// production never appends to (or grows) the tracked-task array.
+    public func _trackRefreshTasksForTesting() {
+        refreshTracking.withLock { $0.isTracking = true }
+    }
+
+    /// TEST SEAM — deterministically await EVERY background stale-revalidate
+    /// refresh scheduled since `_trackRefreshTasksForTesting()` was armed.
+    /// Returns immediately if none are in flight. Same rationale as
+    /// `_awaitBackgroundRefreshForTesting()` (join the actual work unit instead
+    /// of polling a wall-clock deadline that starves under sim-clone
+    /// oversubscription) but for the N-concurrent-URL case.
+    public func _awaitAllBackgroundRefreshesForTesting() async {
+        let tasks = refreshTracking.withLock { $0.tasks }
+        for task in tasks { await task.value }
     }
 
     // MARK: - Background Preloading
@@ -393,21 +499,13 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
                     guard let self else { return }
                     let cacheKey = self.cacheKey(for: url)
 
-                    let isCached = await withCheckedContinuation { continuation in
-                        self.cacheQueue.async {
-                            continuation.resume(returning: self.memoryCache[cacheKey] != nil)
-                        }
-                    }
+                    let isCached = self.cache.withLockUnchecked { $0.memoryCache[cacheKey] != nil }
                     guard !isCached else { return }
 
                     do {
                         if let preloadedFeed = try await self.api.fetchFeed(at: url) {
-                            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-                                self.cacheQueue.async {
-                                    self.memoryCache[cacheKey] = CachedFeed(feed: preloadedFeed, timestamp: self.now())
-                                    c.resume()
-                                }
-                            }
+                            let cachedFeed = CachedFeed(feed: preloadedFeed, timestamp: self.now())
+                            self.cache.withLockUnchecked { $0.memoryCache[cacheKey] = cachedFeed }
                         }
                     } catch {
                         // Silently fail preloading

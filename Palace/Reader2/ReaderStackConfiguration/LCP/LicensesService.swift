@@ -24,7 +24,20 @@ enum TPPLicensesServiceError: Error {
     }
 }
 
-class TPPLicensesService: NSObject {
+// Swift 6 `complete`: `@unchecked Sendable`. The instance is passed as
+// `delegate:` to `URLSession(configuration:delegate:delegateQueue:)`, which
+// requires a `Sendable` delegate under strict concurrency.
+// INVARIANT — no concurrent access to the mutable state:
+//   • `progressHandler`, `completionHandler`, `lcpl`, `link` are written exactly
+//     once, synchronously inside `acquirePublication(...)`, BEFORE `task.resume()`.
+//   • They are read only from the `URLSessionDownloadDelegate` callbacks, which
+//     this class always registers with `delegateQueue: .main`.
+//   • `task.resume()` establishes the happens-before edge, so the single writer
+//     precedes every reader and no read races a write.
+// This is the honest ceiling for a callback-style delegate; a `@MainActor`
+// isolation would instead ripple onto every (test) caller of the synchronous
+// `acquirePublication` entry point.
+class TPPLicensesService: NSObject, @unchecked Sendable {
 
     var progressHandler: ((_ progress: Double) -> Void)?
     var completionHandler: ((_ localUrl: URL?, _ error: Error?) -> Void)?

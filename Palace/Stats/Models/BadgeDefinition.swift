@@ -1,7 +1,7 @@
 import Foundation
 
 /// Defines an unlock criterion for a badge along with its metadata.
-struct BadgeDefinition {
+struct BadgeDefinition: Sendable {
   let id: String
   let name: String
   let descriptionText: String
@@ -11,7 +11,7 @@ struct BadgeDefinition {
 
   /// Evaluates progress toward the badge given the full reading history.
   /// Returns a value from 0.0 to 1.0.
-  let evaluateProgress: (BadgeEvaluationContext) -> Double
+  let evaluateProgress: @Sendable (BadgeEvaluationContext) -> Double
 
   func makeBadge(earnedDate: Date? = nil, progress: Double = 0) -> Badge {
     Badge(

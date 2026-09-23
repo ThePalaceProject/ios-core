@@ -13,7 +13,9 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class TPPBookIsDRMProtectedTests: XCTestCase {
 
     override func tearDown() {

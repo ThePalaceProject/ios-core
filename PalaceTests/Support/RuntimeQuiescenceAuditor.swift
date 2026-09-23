@@ -165,4 +165,43 @@ enum RuntimeQuiescenceAuditor {
             )
         ]
     }
+
+    // MARK: - Observer-leak detector (leaked-observer class — AccountDetailViewModel)
+
+    /// Invariant: a test must not leave NET-NEW `NotificationCenter.default`
+    /// observers behind. A test that adds observers (directly, or via a leaked
+    /// object whose Combine `NotificationCenter.publisher` subscriptions stay
+    /// alive — the AccountDetailViewModel retain-cycle class) leaves them firing
+    /// against later tests; for a VM that does O(n) main-thread work per
+    /// account-change post, that was the suite-hang driver (now fixed at root by
+    /// the credentialsProvider-weak cycle break + the O(1) index, with this gate
+    /// as the structural guard against recurrence).
+    ///
+    /// - Parameter netObserverAdds: post-test minus pre-test observer count for
+    ///   the finishing test (sampled by the caller). Negative/zero ⇒ clean.
+    /// - Returns: a one-element violation when the test left net-new observers.
+    ///
+    /// Pure so the gate's self-test can prove it fires (`netObserverAdds: 1`)
+    /// without staging a real leak. NOTE: the live count is a best-effort
+    /// app-wide `debugDescription` parse, so the caller must treat a `nil`
+    /// sample as "skip" (not a violation) and promotion to a hard XCTFail is
+    /// gated on a zero-false-positive audit (concurrent background observers can
+    /// add noise) — same warn→hard discipline as the pool-responsiveness gate.
+    static func observerLeakViolations(netObserverAdds: Int) -> [Violation] {
+        guard netObserverAdds > 0 else { return [] }
+        return [
+            Violation(
+                invariant: "NotificationCenter.default observers balanced (no net adds)",
+                detail:
+                    "This test left \(netObserverAdds) net-new NotificationCenter."
+                    + "default observer(s) — either it added observers without a "
+                    + "paired remove in tearDown, or it leaked an object (e.g. a "
+                    + "view-model) whose NotificationCenter subscriptions stayed "
+                    + "alive (the AccountDetailViewModel retain-cycle class). Route "
+                    + "observation through an injected NotificationCenter, remove "
+                    + "observers in tearDown, or break the object's retain cycle "
+                    + "(weak back-edge) so it deallocates and cancels its sinks."
+            )
+        ]
+    }
 }

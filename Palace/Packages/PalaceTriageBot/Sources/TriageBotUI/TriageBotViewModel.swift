@@ -24,6 +24,7 @@ public final class TriageBotViewModel: ObservableObject {
     private let ticketGateway: TicketGateway
     private let telemetry: TelemetrySink
     private let fallbackClassifier: FallbackClassifier?
+    private let pendingDraftStore: PendingDraftStore?
 
     public init(
         reducer: ConversationReducer,
@@ -31,6 +32,7 @@ public final class TriageBotViewModel: ObservableObject {
         ticketGateway: TicketGateway,
         telemetry: TelemetrySink,
         fallbackClassifier: FallbackClassifier? = nil,
+        pendingDraftStore: PendingDraftStore? = nil,
         initialState: ConversationState = ConversationState()
     ) {
         self.reducer = reducer
@@ -38,6 +40,7 @@ public final class TriageBotViewModel: ObservableObject {
         self.ticketGateway = ticketGateway
         self.telemetry = telemetry
         self.fallbackClassifier = fallbackClassifier
+        self.pendingDraftStore = pendingDraftStore
         self.state = initialState
     }
 
@@ -62,11 +65,44 @@ public final class TriageBotViewModel: ObservableObject {
                     let receipt = try await ticketGateway.submit(draft)
                     self.send(.ticketSubmitted(receipt))
                 } catch {
-                    self.send(.ticketSubmissionFailed(error.localizedDescription))
+                    // PP-4808: map the thrown error to a structured failure so
+                    // the reducer can tell a user cancel from a real failure.
+                    // Unknown errors fall back to .transport so nothing strands
+                    // the user; the raw description rides along for Copy details.
+                    let failure = (error as? SubmissionFailureConvertible)?.asSubmissionFailure
+                        ?? .transport(detail: error.localizedDescription)
+                    self.send(.ticketSubmissionFailed(failure))
                 }
+            }
+        case .persistPendingDraft(let draft):
+            pendingDraftStore?.save(draft)
+        case .loadPendingDraft:
+            if let draft = pendingDraftStore?.load() {
+                self.send(.restorePendingDraft(draft))
             }
         case .emitTelemetry(let event):
             telemetry.emit(event)
+        case .persistResolutionTrace(let trace):
+            // Route the trace through telemetry rather than a new store. What it
+            // answers — which remedy actually resolved which class of problem —
+            // is only useful in aggregate across the fleet, and telemetry is
+            // already the aggregating channel. A local log would sit on one
+            // device and be read by nobody.
+            //
+            // Parameters stay enumerable (ids, an outcome, a count) so
+            // TelemetryContract's no-free-text rule holds: nothing a patron typed
+            // can ride along.
+            telemetry.emit(.init(
+                name: "triage_resolution_trace",
+                parameters: [
+                    "entry_id": trace.entryId,
+                    "outcome": trace.outcome.rawValue,
+                    "attempts": String(trace.attempts.count),
+                    // Which step ended it — the field the pre-registered re-rank
+                    // rule needs, and the reason this effect exists.
+                    "final_step_id": trace.attempts.last?.stepId ?? "(none)",
+                ]
+            ))
         case .runAIFallback(let userText, let category, let context):
             Task { [fallbackClassifier, knowledgeBase] in
                 guard let fallback = fallbackClassifier else {

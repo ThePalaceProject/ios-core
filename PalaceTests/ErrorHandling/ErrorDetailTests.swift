@@ -8,7 +8,15 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ErrorDetailTests: XCTestCase {
+
+    // Wave 1c: ErrorReportingContext.libraryNameProvider is process-global
+    // registered state; reset it so a set value can't bleed into the next test.
+    override func tearDown() {
+        ErrorReportingContext.libraryNameProvider = nil
+        super.tearDown()
+    }
 
     // MARK: - Factory Method
 
@@ -175,5 +183,19 @@ final class ErrorDetailTests: XCTestCase {
         )
 
         XCTAssertNil(detail.bookInfo, "BookInfo should be nil when identifier is nil")
+    }
+
+    // MARK: - Library Name Provider (Wave 1c cycle-2 inversion)
+
+    func testCapture_usesRegisteredLibraryNameProvider() async {
+        ErrorReportingContext.libraryNameProvider = { "Springfield Public Library" }
+        let detail = await ErrorDetail.capture(title: "E", message: "M")
+        XCTAssertEqual(detail.deviceContext.libraryName, "Springfield Public Library")
+    }
+
+    func testCapture_withoutProvider_fallsBackToNoLibrary() async {
+        ErrorReportingContext.libraryNameProvider = nil
+        let detail = await ErrorDetail.capture(title: "E", message: "M")
+        XCTAssertEqual(detail.deviceContext.libraryName, "No library")
     }
 }

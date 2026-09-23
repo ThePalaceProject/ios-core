@@ -8,24 +8,24 @@
 
 import Foundation
 
-public enum OPDS2LinkRel: String {
+public enum OPDS2LinkRel: String, Sendable {
     case passwordReset = "http://librarysimplified.org/terms/rel/patron-password-reset"
 }
 
-public struct Announcement: Codable {
+public struct Announcement: Codable, Sendable {
     public let id: String
     public let content: String
 }
 
-public struct OPDS2AuthenticationDocument: Codable {
-    public struct Features: Codable {
+public struct OPDS2AuthenticationDocument: Codable, Sendable {
+    public struct Features: Codable, Sendable {
         public let disabled: [String]?
         public let enabled: [String]?
     }
 
-    public struct Authentication: Codable {
-        public struct Inputs: Codable {
-            public struct Input: Codable {
+    public struct Authentication: Codable, Sendable {
+        public struct Inputs: Codable, Sendable {
+            public struct Input: Codable, Sendable {
                 public let barcodeFormat: String?
                 public let maximumLength: UInt?
                 public let keyboard: String // TODO: Use enum instead (or not; it could break if new values are added)
@@ -35,7 +35,7 @@ public struct OPDS2AuthenticationDocument: Codable {
             public let password: Input
         }
 
-        public struct Labels: Codable {
+        public struct Labels: Codable, Sendable {
             public let login: String
             public let password: String
         }

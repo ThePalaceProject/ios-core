@@ -3,6 +3,7 @@ import Foundation
 import UIKit
 import Network
 import OSLog
+import os
 import AVFoundation
 import TriageBotCore
 
@@ -19,17 +20,22 @@ public final class DefaultIosContextProvider: ContextProvider {
         public let libraryUUID: String?
         public let distributor: String?
         public let authType: String?
+        /// Raw library card barcode. Hashed by ContextRedactor before it lands
+        /// in state and omitted from the ticket by default (PP-4807).
+        public let barcode: String?
 
         public init(
             libraryName: String? = nil,
             libraryUUID: String? = nil,
             distributor: String? = nil,
-            authType: String? = nil
+            authType: String? = nil,
+            barcode: String? = nil
         ) {
             self.libraryName = libraryName
             self.libraryUUID = libraryUUID
             self.distributor = distributor
             self.authType = authType
+            self.barcode = barcode
         }
     }
 
@@ -87,7 +93,23 @@ public final class DefaultIosContextProvider: ContextProvider {
             lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
             appUptimeSeconds: Int64(now.timeIntervalSince(Self.processStartTime)),
             buildChannel: detectBuildChannel(),
-            availableMemoryMB: availableMemoryMB()
+            availableMemoryMB: availableMemoryMB(),
+            libraryBarcode: fields.barcode
+        )
+    }
+
+    /// Cheap app/OS/device-only snapshot (PP-4809). Used when the patron turns
+    /// "Include diagnostics" OFF — no log tail, no network probe, no Palace
+    /// account fields, no barcode. Just the basics support always needs.
+    public func minimalSnapshot() -> ContextSnapshot {
+        ContextSnapshot(
+            appVersion: bundleString(forInfoKey: "CFBundleShortVersionString") ?? "unknown",
+            appBuild: bundleString(forInfoKey: kCFBundleVersionKey as String) ?? "unknown",
+            platform: "iOS",
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            deviceModel: deviceModelIdentifier(),
+            capturedAt: Date(),
+            buildChannel: detectBuildChannel()
         )
     }
 
@@ -123,11 +145,22 @@ public final class DefaultIosContextProvider: ContextProvider {
     private func currentNetworkState() async -> String? {
         let monitor = NWPathMonitor()
         let queue = DispatchQueue(label: "TriageBotIOS.NWPathMonitor")
+        // `resumed` is read+mutated by two closures the compiler can't prove are
+        // serialized (the path handler + the timeout block). They do in fact both
+        // run on `queue`, but Swift 6 requires the guard be provably race-free, so
+        // hoist the flag into a lock (playbook: OSAllocatedUnfairLock, never
+        // nonisolated(unsafe)). `claimResume()` returns true exactly once.
+        let resumed = OSAllocatedUnfairLock(initialState: false)
+        let claimResume: @Sendable () -> Bool = {
+            resumed.withLock { alreadyResumed in
+                if alreadyResumed { return false }
+                alreadyResumed = true
+                return true
+            }
+        }
         let value = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            var resumed = false
             monitor.pathUpdateHandler = { path in
-                guard !resumed else { return }
-                resumed = true
+                guard claimResume() else { return }
                 let state: String
                 if path.status == .satisfied {
                     if path.usesInterfaceType(.wifi) { state = "wifi" }
@@ -143,8 +176,7 @@ public final class DefaultIosContextProvider: ContextProvider {
             monitor.start(queue: queue)
             // 250ms hard cap — we don't block snapshot for a flaky path probe
             queue.asyncAfter(deadline: .now() + .milliseconds(250)) {
-                guard !resumed else { return }
-                resumed = true
+                guard claimResume() else { return }
                 monitor.cancel()
                 continuation.resume(returning: nil)
             }
@@ -166,6 +198,10 @@ public final class DefaultIosContextProvider: ContextProvider {
             let predicate = NSPredicate(format: "subsystem == %@", subsystem)
             let entries = try store.getEntries(at: since, matching: predicate)
             var lines: [String] = []
+            // Hoisted out of the per-entry loop (PP-4811): ISO8601DateFormatter
+            // is expensive to allocate and configure, and the log window can be
+            // hundreds of entries. One formatter for the whole tail.
+            let timestampFormatter = ISO8601DateFormatter()
             for entry in entries {
                 if let logEntry = entry as? OSLogEntryLog {
                     let levelTag: String
@@ -175,7 +211,7 @@ public final class DefaultIosContextProvider: ContextProvider {
                     case .debug: levelTag = "[D] "
                     default: levelTag = "[ ] "
                     }
-                    let ts = ISO8601DateFormatter().string(from: logEntry.date)
+                    let ts = timestampFormatter.string(from: logEntry.date)
                     lines.append("\(ts) \(levelTag)\(logEntry.composedMessage)")
                     if lines.count >= logMaxLines { break }
                 }

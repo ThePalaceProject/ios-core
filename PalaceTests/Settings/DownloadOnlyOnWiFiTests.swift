@@ -7,9 +7,11 @@
 //
 
 import XCTest
+import PalacePreferences
 import PalaceNetwork
 @testable import Palace
 
+@MainActor
 final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     private let settingsKey = TPPSettings.downloadOnlyOnWiFiKey
@@ -22,7 +24,7 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        isolatedDefaults = testUserDefaults()
+        isolatedDefaults = Self.testUserDefaults()
         settings = TPPSettings(defaults: isolatedDefaults)
     }
 

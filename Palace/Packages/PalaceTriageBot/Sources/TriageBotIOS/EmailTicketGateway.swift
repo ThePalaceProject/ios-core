@@ -21,7 +21,14 @@ import TriageBotCore
 /// programmatically. That's Apple's contract for MFMailComposeViewController
 /// and the right consent model for support reports.
 @MainActor
-public final class EmailTicketGateway: NSObject, TicketGateway, MFMailComposeViewControllerDelegate {
+public final class EmailTicketGateway: NSObject, TicketGateway, @preconcurrency MFMailComposeViewControllerDelegate {
+    // `@preconcurrency` on the MFMailComposeViewControllerDelegate conformance:
+    // this type is @MainActor, but MessageUI is not Sendable-audited, so its
+    // delegate requirement is non-isolated and a @MainActor method "crosses
+    // into main actor-isolated code" under Swift 6 (build error). MessageUI
+    // delivers `mailComposeController(_:didFinishWith:error:)` on the main
+    // thread by contract, so relaxing the isolation check for this one
+    // conformance is sound and behavior-preserving.
 
     private let supportEmail: String
     private let fallback: TicketGateway?
@@ -158,6 +165,21 @@ public enum EmailGatewayError: Error, LocalizedError {
             return "Cancelled — nothing was sent."
         case .composerFailed:
             return "The mail composer ran into a problem. Try again, or copy the details and email support."
+        }
+    }
+}
+
+// PP-4808: map each gateway error to a structured SubmissionFailure so the
+// reducer can restore the preview on a cancel and offer recovery on a real
+// failure. `.userCancelled` is the only non-failure; everything else is a
+// transport failure whose description rides along for "Copy details".
+extension EmailGatewayError: SubmissionFailureConvertible {
+    public var asSubmissionFailure: SubmissionFailure {
+        switch self {
+        case .userCancelled:
+            return .userCancelled
+        case .mailUnavailable, .noPresenter, .composerFailed:
+            return .transport(detail: errorDescription ?? "\(self)")
         }
     }
 }

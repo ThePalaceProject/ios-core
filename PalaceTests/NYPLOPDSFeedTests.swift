@@ -2,6 +2,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 class TPPOPDSFeedTests: XCTestCase {
 
   var feed: TPPOPDSFeed!

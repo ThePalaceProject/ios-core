@@ -9,7 +9,13 @@
 #if FEATURE_DRM_CONNECTOR
 
 import Foundation
-import ReadiumShared
+// `@preconcurrency`: ReadiumShared's `Resource` protocol requirements
+// (`stream(consume:)`, `properties() -> ReadResult<ResourceProperties>`) are not
+// Sendable-audited, so the `DRMDataResource` actor witnessing them crosses
+// non-Sendable types owned by that module. Downgrading module-origin Sendable
+// diagnostics here is the idiomatic fix until Readium ships a concurrency-audited
+// API; DRMDataResource stays an `actor` — no behavior change.
+@preconcurrency import ReadiumShared
 import ReadiumZIPFoundation
 
 final class AdobeDRMContentProtection: ContentProtection, Loggable {
@@ -98,6 +104,20 @@ private extension AdobeDRMContentProtection {
     }
 }
 
+// Swift 6 `complete`: `@unchecked Sendable`. `AdobeDRMContainer` (Obj-C) is passed
+// into the `DRMDataResource` actor and captured by the `@Sendable` async bridge in
+// the `Container` subscript. Its one hot operation — `decodeData:at:` — is fully
+// serialized in the `.mm` behind `@synchronized(acsdrm_lock)`. The `epubDecodingError`
+// / `displayUntilDate` properties are NOT lock-covered, but they are accessed only
+// during single-threaded publication *open* (service-factory construction), which
+// completes before the lazy `decodeData:at:` decrypt path (invoked during *reading*)
+// ever runs — i.e. sequenced, not concurrent. So sharing the instance across
+// concurrency domains introduces no unsynchronized *concurrent* access. (Follow-up:
+// `acsdrm_lock` is reassigned per-init in the `.mm` — track making it a
+// `dispatch_once` immutable. Non-blocking, pre-existing.) Precedent:
+// `AdobeDRMService` in `AdobeCertificate.swift`.
+extension AdobeDRMContainer: @unchecked Sendable {}
+
 extension AdobeDRMContainer: Container {
 
     public var sourceURL: AbsoluteURL? {
@@ -117,14 +137,18 @@ extension AdobeDRMContainer: Container {
         let path = url.anyURL.string
 
         let data: Data? = {
-            var result: Data?
+            // Swift 6 `complete`: the completion runs on a background queue (a
+            // `@Sendable` closure), so the result is carried out through the
+            // lock-backed `SyncDataBridge` box rather than a captured mutable `var`.
+            // The semaphore still provides the synchronous wait; behavior unchanged.
+            let bridge = SyncDataBridge()
             let semaphore = DispatchSemaphore(value: 0)
             self.retrieveDataSynchronously(for: path) { retrievedData in
-                result = retrievedData
+                bridge.complete(with: retrievedData)
                 semaphore.signal()
             }
             semaphore.wait()
-            return result
+            return bridge.data
         }()
 
         guard let data else {
@@ -134,23 +158,23 @@ extension AdobeDRMContainer: Container {
         return DRMDataResource(encryptedData: data, path: path, drmContainer: self, sourceURL: sourceURL)
     }
 
-    private func retrieveDataSynchronously(for path: String, completion: @escaping (Data?) -> Void) {
+    private func retrieveDataSynchronously(for path: String, completion: @escaping @Sendable (Data?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let runLoop = CFRunLoopGetCurrent()
-            var retrievedData: Data?
-            var isCompleted = false
+            // Swift 6 `complete`: the async-bridge result + done-flag are shared
+            // between the `@Sendable` `Task` (writer) and this run-loop-pumping
+            // closure (reader), so they cannot be captured as plain local `var`s.
+            // The lock-backed `SyncDataBridge` box is the single serialization
+            // point; behavior (spin the run loop until the Task finishes or the
+            // 10s cap elapses, then hand the data back) is unchanged.
+            let bridge = SyncDataBridge()
             Task {
-                do {
-                    retrievedData = try await self.retrieveData(for: path)
-                } catch {
-                    retrievedData = nil
-                }
-
-                isCompleted = true
+                let data = try? await self.retrieveData(for: path)
+                bridge.complete(with: data)
                 CFRunLoopStop(runLoop)
             }
 
-            while !isCompleted {
+            while !bridge.isCompleted {
                 CFRunLoopRunInMode(CFRunLoopMode.defaultMode, 0.1, false)
 
                 if Date() > Date(timeIntervalSinceNow: 10) {
@@ -158,7 +182,7 @@ extension AdobeDRMContainer: Container {
                 }
             }
 
-            completion(retrievedData)
+            completion(bridge.data)
         }
     }
 
@@ -184,13 +208,27 @@ extension AdobeDRMContainer: Container {
         }
 
         do {
-            var data = Data()
-            _ = try await archive.extract(entry, consumer: { data.append($0) })
-            return data
+            // Swift 6: the `extract` consumer closure may execute in a
+            // concurrent context, so a captured `var data` is a data race.
+            // Accumulate into a lock-backed box (chunks arrive sequentially;
+            // the lock documents the invariant and satisfies the checker).
+            let accumulator = ArchiveDataAccumulator()
+            _ = try await archive.extract(entry, consumer: { accumulator.append($0) })
+            return accumulator.data
         } catch {
             return nil
         }
     }
+}
+
+/// Lock-backed `Data` accumulator for `Archive.extract`'s `@Sendable` consumer
+/// closure (Swift 6 `complete`): chunks are appended under an `NSLock` so the
+/// captured accumulator is race-free even though extraction is sequential.
+private final class ArchiveDataAccumulator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+    func append(_ chunk: Data) { lock.withLock { storage.append(chunk) } }
+    var data: Data { lock.withLock { storage } }
 }
 
 /// A DRM-enabled Resource that decrypts (decodes) its data once and then serves
@@ -238,7 +276,17 @@ public actor DRMDataResource: Resource {
         return fullData
     }
 
-    public func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
+    // `nonisolated`: the `Streamable.stream(range:consume:)` requirement declares
+    // `consume` as a plain `@escaping (Data) -> Void` (NOT `@Sendable`), so the
+    // witness cannot strengthen it to `@Sendable` — function parameters are
+    // contravariant and Readium passes a non-Sendable closure. Marking the witness
+    // `nonisolated` removes the actor-isolation boundary the closure would otherwise
+    // be *sent* across (the Swift 6 error), keeping the closure in the caller's
+    // domain. Decryption is unchanged: the actual decrypt + cache still happens on
+    // the actor inside the isolated `read(range:)` helper we `await` below; only the
+    // `consume` callback now runs in this nonisolated async context, which is where
+    // the Streamable contract expects callers to accumulate chunks anyway.
+    public nonisolated func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
         do {
             let chunk = try await read(range: range)
             consume(chunk)
@@ -271,6 +319,36 @@ extension ResourceProperties {
             return value.map(UInt64.init)
         }
         set { self["length"] = newValue.map { Int($0) } }
+    }
+}
+
+/// Lock-backed carrier for the async→sync bridge in `AdobeDRMContainer`'s
+/// `Container` subscript.
+///
+/// Swift 6 `complete`: replaces the mutable local `var retrievedData` / `var
+/// isCompleted` that were shared between the `@Sendable` `Task` (the writer) and
+/// the run-loop / semaphore reader. `@unchecked Sendable` is honest because every
+/// field access is serialized by `lock`. `complete(with:)` is idempotent-safe:
+/// the bridge is used for exactly one round trip per subscript call.
+private final class SyncDataBridge: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _data: Data?
+    private var _isCompleted = false
+
+    var data: Data? {
+        lock.lock(); defer { lock.unlock() }
+        return _data
+    }
+
+    var isCompleted: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _isCompleted
+    }
+
+    func complete(with data: Data?) {
+        lock.lock(); defer { lock.unlock() }
+        _data = data
+        _isCompleted = true
     }
 }
 

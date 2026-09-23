@@ -37,9 +37,9 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `setup-repo-drm.sh` | Initial repo setup with Adobe RMSDK / LCP wired in. | `unit-testing.yml`, `ui-testing.yml`, `upload.yml`, `upload-on-merge.yml` |
+| `setup-repo-drm.sh` | Initial repo setup with Adobe RMSDK / LCP wired in. | `unit-testing.yml`, `upload.yml`, `upload-on-merge.yml` |
 | `setup-repo-nodrm.sh` | Initial repo setup for the open-source `Palace-noDRM` target. | `non-drm-build.yml` |
-| `build-3rd-party-dependencies.sh` | Builds non-Carthage third-party deps (Readium etc.). | `unit-testing.yml`, `ui-testing.yml`, `non-drm-build.yml`, `upload*.yml` |
+| `build-3rd-party-dependencies.sh` | Builds non-Carthage third-party deps (Readium etc.). | `unit-testing.yml`, `non-drm-build.yml`, `upload*.yml` |
 | `build-carthage.sh` | Carthage bootstrap for binary frameworks (DRM path: also fetches AudioEngine + builds R2LCPClient). | invoked by `build-3rd-party-dependencies.sh` |
 | `bootstrap-drm.sh` | Pulls Adobe RMSDK / LCP into the working tree. | dev/local |
 | `fetch-audioengine.sh` | Fetches AudioEngine and unzips it into the build tree. | dev/local |
@@ -62,8 +62,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `verify-pr.sh` | One-shot pre-PR battery: build, tests, lint, coverage, mutation, a11y. | dev/local (run before pushing) |
 | `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`. | local git hook |
 | `resolve-tests-for.py` | Maps a changed production-file path to the XCTest class selectors that cover it. | `verify-pr.sh`, `palace_mutate.py` |
-| `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml`, `ui-testing.yml` |
-| `parse-test-results.py` | Older test-results parser; kept for compatibility. | dev/local |
+| `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml` |
 | `coverage-report.py` | Extracts code coverage from `.xcresult` and writes JSON. | `unit-testing.yml` |
 | `coverage-floors.json` | Per-target coverage thresholds (see `README_coverage_floors.md`). | `enforce_coverage_floors.py` |
 | `coverage-exclude.json` | Files excluded from the testable-coverage denominator (UI/lifecycle). | `coverage-report.py` |
@@ -74,52 +73,23 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `generate-html-report.py` | Renders an interactive HTML test report. | `unit-testing.yml` |
 | `process-snapshots.py` | Generates a snapshot-failure viewer with diff images. | `unit-testing.yml` |
 | `record-snapshots.sh` | Records baseline snapshots for snapshot-test classes. | dev/local |
-| `test-visual-regression.sh` | End-to-end smoke test for the visual-regression infrastructure. | dev/local |
 | `wire_orphan_tests.py` | Adds orphaned test files into the `PalaceTests` Sources phase. | dev/local (after extracting tests) |
 | `wire_untracked_tests.py` | Wires fully-untracked test files into the Xcode project. | dev/local |
 
-### simdrive (E2E sim driving) — maintainer-internal
-
-> **Note for outside contributors:** `simdrive` is the iOS sim-driving MCP tool the maintainers use for E2E regression. It is **not yet publicly distributed** — `pip install --pre simdrive` requires maintainer access. The recorded artifacts under `.simdrive/` ARE in the repo and are exercised by CI (`chaos-replay-on-pr.yml`), so a contributor's PR will run through the regression corpus server-side; you just can't author new recordings locally without simdrive. The scripts below are listed for transparency; "dev/local" means *maintainer dev/local*, not anyone's.
-
-| Script | What it does | Called by |
-|--------|--------------|-----------|
-| `simdrive-test.sh` | Builds Palace and runs the simdrive integration tests. | maintainer dev/local, chaos workflows |
-| `simdrive-regress.sh` | Replays every `.simdrive/journeys/*.yaml` against a booted simulator. | `chaos-replay-on-pr.yml`, maintainer dev/local |
-| `simdrive-coverage.sh` | Captures code coverage from simdrive runs and merges with unit coverage. | maintainer dev/local |
-| `simdrive-report.sh` | Generates a Markdown report of simdrive replay results for PR evidence. | maintainer dev/local |
-| `simdrive-structural-check.py` | OPDS-tolerant journey verifier (checks structure, not pixels). | `chaos-replay-on-pr.yml` |
-| `fix-replay-assertions.py` | Trims `expect_elements` in replay YAMLs to stable, screen-appropriate elements. | maintainer dev/local (after recording) |
-| `fix-replay-timing.py` | Removes `expect_elements` from steps where timing makes assertions unreliable. | maintainer dev/local |
-| `marks-diff.py` | Diffs two simdrive fixture corpora and emits findings rows. | maintainer dev/local |
-| `chaos-targets.py` | Maps changed file paths to fixture flow seeds whose mutation targets cover them. | `chaos-replay-on-pr.yml` |
-| `run-chaos-pass.sh` | Runs a chaos QA pass (mutation + simdrive replay). | `chaos-qa-on-demand.yml` |
 
 ### Mutation and test-quality
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `palace_mutate.py` | Mutation testing harness: mutates a Swift file, runs tests, reports surviving mutants. | dev/local, `mutation-gate.yml` |
+| `palace_mutate.py` | Mutation testing harness: mutates a Swift file, runs tests, reports surviving mutants. | dev/local |
 | `test_palace_mutate.py` | Unit tests for `palace_mutate.py` itself. | dev/local |
-| `summarize-mutation-reports.py` | Aggregates per-file mutation reports into a single summary. | `mutation-gate.yml` |
-| `regression-report.sh` | Orchestrates the regression-testing workflow (workspace + tools + report). | `mutation-gate.yml`, dev/local |
-| `generate-regression-report.py` | Renders an interactive HTML regression report from a findings CSV. | `regression-report.sh` |
 | `generate-jira-tickets.py` | Creates Jira tickets from a regression-findings CSV. | dev/local (post-regression) |
 | `lint-test-quality.py` | Static linter that flags fluff tests (tautologies, no-op asserts, etc.). | dev/local, pre-PR check |
-
-### Performance
-
-| Script | What it does | Called by |
-|--------|--------------|-----------|
-| `run-perf-suite.sh` | Runs Allocations / Leaks / Time Profiler traces on a physical device while the walker drives the app. | dev/local |
-| `perf-walker-device.py` | Appium walker that drives Palace through major flows on a real device. | `run-perf-suite.sh`, dev/local |
-| `browserstack-screenshot-walker.py` | Drives Palace on BrowserStack devices and captures screenshots. | dev/local |
 
 ### Code quality
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `a11y-coverage.py` | Measures VoiceOver label coverage against a simdrive fixture. | dev/local |
 | `snapshot-library-registry.py` | Snapshots the library registry JSON and diffs against live; surfaces account/auth-doc drift. | dev/local, drift-investigation |
 | `check_registry_snapshot_freshness.sh` | CI guard that fails if the committed registry snapshot is older than the live registry. | `ledger.yml` |
 | `export-module-contracts.py` | Emits module public-API contracts to `.forgeos/contracts/<module>.json`; consumed by the architect agent and `verify-pr.sh --check`. | dev/local, swarm |
@@ -131,8 +101,8 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 |--------|--------------|-----------|
 | `create-release-notes.sh` | CI-side wrapper that activates a venv and calls `release-notes.sh` for both `RELEASE_NOTES.md` and `CHANGELOG.md`. | `release.yml`, `release-rc.yml`, `release-on-merge.yml`, `upload*.yml` |
 | `release-notes.sh` | Walks git history (`fetch-depth: 0` required) to build release notes from commit messages. | `create-release-notes.sh`, RELEASING.md |
-| `ios-check-version.sh` | Validates the build number against tags before upload. | `upload*.yml`, `check-build-number.yml` |
-| `ios-binaries-check.sh` | Checks whether a binary with the current build number already exists. | `check-build-number.yml` |
+| `ios-check-version.sh` | Validates the build number against tags before upload. | `upload.yml`, `upload-on-merge.yml` |
+| `ios-binaries-check.sh` | Checks whether a binary with the current build number already exists. | dev/local (no workflow calls it) |
 | `ios-binaries-upload.sh` | Uploads exported `.ipa` to the Palace binaries bucket. | `upload*.yml` |
 | `testflight-upload.sh` | Uploads an `.ipa` to TestFlight. | dev/local (manual maintainer run) |
 | `install-profile.sh` | Installs a distribution provisioning profile on the CI runner. | `upload*.yml` |
@@ -147,17 +117,22 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `jira-integration.sh` | Helpers for transitioning Jira tickets and adding fix comments from CI. | `jira-pr-opened.yml`, `jira-update-on-merge.yml` |
 | `test-push-notifications.py` | Test harness for sending push notifications to a development build. | dev/local |
 
-### ForgeOS governance (maintainer-only)
+### ForgeOS governance — moved out of this repo (2026-08-26)
 
-These are maintainer scripts; outside contributors do not run them. ForgeOS is the governance system that enforces gates on commits, pushes, and PRs. See `CLAUDE.md` for context.
+The five `forgeos-*` scripts that used to live here now live in the maintainer's
+local harness at `~/harness/stacks/ios/forgeos/`.
 
-> **Maintainer note:** Existing local sessions need `export FORGEOS_API_URL=<your-forgeos-instance>` in `~/harness/.env` (or wherever you keep your env). Without it, the three forgeos scripts (`forgeos-session.sh`, `forgeos-orchestrate.sh`, `forgeos-gate-hook.sh`) will fail loud with a message pointing back at this README.
+They were never runnable from a clone: every one of them talks to a private
+ForgeOS API instance via `FORGEOS_API_URL` and a key no outside contributor has.
+Keeping 1,330 lines of them in a public repository advertised a workflow nobody
+reading this could follow, and cost every doc-reference sweep and shell-syntax
+gate a walk through code that could not execute. ForgeOS is also currently
+switched off for this project, so they were not running for maintainers either.
 
-| Script | What it does | When |
-|--------|--------------|------|
-| `forgeos-session.sh` | Per-session governance: start, evidence, promote, close changesets. | every maintainer session that produces code |
-| `forgeos-orchestrate.sh` | Multi-agent orchestration extension on top of `forgeos-session.sh`. | multi-agent / multi-task sessions |
-| `forgeos-gate-hook.sh` | Pre-PR gate check, called by the Claude Code hook before `gh pr create`. | automatic via hook |
+The rule they failed is the one this repository already states: only tooling any
+contributor can run unaided belongs here. `verify-pr.sh`, the standalone
+detectors, and `palace_mutate.py` pass that test and stay.
+
 
 The previous one-shot bootstrap scripts (`forgeos-bootstrap-palace-evolution.sh`,
 `forgeos-apply-palace-gate-template.sh`, `forgeos-full-suite.sh`,
@@ -190,3 +165,11 @@ If you need the behavior of one of these scripts, copy + adapt into a new file r
 - `CLAUDE.md` documents the build invocations, project layout, and DRM/no-DRM target split.
 - `RELEASING.md` documents the release-notes flow that ties `create-release-notes.sh` and `release-notes.sh` together.
 - `.github/workflows/` is the source of truth for which scripts CI calls; if a script is not referenced in any workflow under there, it is dev-local or archived.
+
+## QA / regression harness (not in this repo)
+
+The simulator-driving QA apparatus — chaos passes, regression campaign
+fan-out, simdrive journey replay and the visual-diff tooling — is
+maintainer-local and lives outside this repo. It needs a driven simulator
+and an agent runner, so no CI job and no clean clone can run it. Nothing
+here depends on it.

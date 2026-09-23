@@ -20,12 +20,12 @@ This document maps requirements to their implementing code and corresponding tes
 | AUTH-001 | Secure credential storage | `Palace/Keychain/TPPKeychainManager.swift` | All |
 | | | `Palace/Accounts/User/TPPUserAccount.swift` | All |
 | AUTH-002 | OAuth token refresh | `Palace/Network/TPPNetworkExecutor.swift` | 312-430 |
-| | | `Palace/Network/TokenRequest.swift` | All |
-| AUTH-003 | SAML auth flow | `Palace/SignInLogic/TPPSAMLHelper.swift` | All |
+| | | `Palace/Packages/PalaceAuth/Sources/PalaceAuth/TokenRequest.swift` | All |
+| AUTH-003 | SAML auth flow | `Palace/Packages/PalaceAuth/Sources/PalaceAuth/TPPSAMLHelper.swift` | All |
 | | | `Palace/SignInLogic/TPPCookiesWebViewController.swift` | All |
 | AUTH-004 | Proactive token refresh | `Palace/Network/TPPNetworkExecutor.swift` | 120-135 |
 | AUTH-005 | Sign-out with DRM preservation | `Palace/SignInLogic/TPPSignInBusinessLogic+SignOut.swift` | All |
-| AUTH-006 | Age verification | `Palace/Accounts/User/TPPAgeCheck.swift` | All |
+| AUTH-006 | Age verification | `Palace/Accounts/AgeCheck/TPPAgeCheck.swift` | All |
 | AUTH-007 | Account switch cleanup | `Palace/Accounts/Library/AccountsManager.swift` | 128-147 |
 
 ### Code to Tests
@@ -56,11 +56,11 @@ This document maps requirements to their implementing code and corresponding tes
 
 | Req ID | Requirement | Implementing Files | Lines |
 |--------|-------------|-------------------|-------|
-| CAT-001 | OPDS 1.x parsing | `Palace/OPDS/TPPOPDSFeed.swift` | All |
-| | | `Palace/OPDS/TPPOPDSEntry.swift` | All |
-| CAT-002 | OPDS 2.0 parsing | `Palace/OPDS2/OPDS2CatalogsFeed.swift` | All |
+| CAT-001 | OPDS 1.x parsing | `Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPOPDSFeed.swift` | All |
+| | | `Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPOPDSEntry.swift` | All |
+| CAT-002 | OPDS 2.0 parsing | `Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/OPDS2CatalogsFeed.swift` | All |
 | | | `Palace/OPDS2/Service/UnifiedOPDSService.swift` | All |
-| CAT-003 | Stale-while-revalidate | `Palace/CatalogDomain/Repository/CatalogRepository.swift` | 50-120 |
+| CAT-003 | Stale-while-revalidate | `Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/CatalogRepository.swift` | 50-120 |
 | | | `Palace/Accounts/Library/AccountsManager.swift` | 216-265 |
 | CAT-004 | Cache expiry | `Palace/Accounts/Library/AccountsManager.swift` | 7-29 |
 | CAT-005 | Search debouncing | `Palace/CatalogUI/ViewModels/CatalogSearchViewModel.swift` | All |
@@ -95,12 +95,12 @@ This document maps requirements to their implementing code and corresponding tes
 
 | Req ID | Requirement | Implementing Files | Lines |
 |--------|-------------|-------------------|-------|
-| BOOK-001 | Book state transitions | `Palace/Book/Models/TPPBookState.swift` | All |
-| | | `Palace/Book/Models/TPPBookRegistry.swift` | state methods |
-| BOOK-002 | Registry persistence | `Palace/Book/Models/TPPBookRegistry.swift` | save/load |
-| BOOK-003 | Cell model cache invalidation | `Palace/MyBooks/BookCellModelCache.swift` | All |
+| BOOK-001 | Book state transitions | `Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBookState.swift` | All |
+| | | `Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/TPPBookRegistry.swift` | state methods |
+| BOOK-002 | Registry persistence | `Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/TPPBookRegistry.swift` | save/load |
+| BOOK-003 | Cell model cache invalidation | `Palace/MyBooks/MyBooks/BookCell/BookCellModelCache.swift` | All |
 | BOOK-004 | Download progress UI | `Palace/MyBooks/MyBooksDownloadInfo.swift` | All |
-| | | `Palace/MyBooks/MyBooksViewModel.swift` | progress |
+| | | `Palace/MyBooks/MyBooks/MyBooksViewModel.swift` | progress |
 | BOOK-005 | Concurrent download limit | `Palace/MyBooks/MyBooksDownloadCenter.swift` | coordinator |
 | BOOK-006 | Download recovery | `Palace/MyBooks/DownloadErrorRecovery.swift` | All |
 | BOOK-007 | File cleanup | `Palace/Utilities/FileCleanup.swift` | All |
@@ -132,7 +132,7 @@ This document maps requirements to their implementing code and corresponding tes
 
 | Req ID | Requirement | Implementing Files | Lines |
 |--------|-------------|-------------------|-------|
-| EPUB-001 | Reader settings | `Palace/Reader2/Settings/TPPReaderSettings.swift` | All |
+| EPUB-001 | Reader settings | `Palace/Reader2/ReaderSettings/TPPReaderSettings.swift` | All |
 | EPUB-002 | Bookmark sync | `Palace/Reader2/BusinessLogic/TPPReaderBookmarksBusinessLogic.swift` | All |
 | | | `Palace/Reader2/Bookmarks/TPPAnnotations.swift` | All |
 | EPUB-003 | Position restore | `Palace/Reader2/BusinessLogic/PositionSync.swift` | All |
@@ -233,9 +233,9 @@ This document maps requirements to their implementing code and corresponding tes
 | | | `Palace/Network/Core/URLSessionNetworkClient.swift` | All |
 | NET-002 | Token refresh retry | `Palace/Network/TPPNetworkExecutor.swift` | 312-430 |
 | NET-003 | Offline queue | `Palace/Network/TPPNetworkQueue.swift` | All |
-| NET-004 | Reachability trigger | `Palace/Network/Reachability.swift` | All |
+| NET-004 | Reachability trigger | `Palace/Packages/PalaceNetwork/Sources/PalaceNetwork/Reachability.swift` | All |
 | NET-005 | Custom User-Agent | `Palace/Network/URLRequest+TPP.swift` | All |
-| NET-006 | Cache policies | `Palace/Network/TPPCaching.swift` | All |
+| NET-006 | Cache policies | `Palace/Packages/PalaceNetwork/Sources/PalaceNetwork/TPPCaching.swift` | All |
 
 ### Code to Tests
 
@@ -318,10 +318,10 @@ This document maps requirements to their implementing code and corresponding tes
 
 | Req ID | Requirement | Implementing Files | Lines |
 |--------|-------------|-------------------|-------|
-| SET-001 | Settings persistence | `Palace/Settings/TPPSettings.swift` | All |
-| SET-002 | Beta library toggle | `Palace/Settings/TPPSettings.swift` | useBetaLibraries |
+| SET-001 | Settings persistence | `Palace/Packages/PalacePreferences/Sources/PalacePreferences/TPPSettings.swift` | All |
+| SET-002 | Beta library toggle | `Palace/Packages/PalacePreferences/Sources/PalacePreferences/TPPSettings.swift` | useBetaLibraries |
 | | | `Palace/Accounts/Library/AccountsManager.swift` | beta handling |
-| SET-003 | Developer settings | `Palace/Settings/DebugSettings.swift` | All |
+| SET-003 | Developer settings | `Palace/Settings/Debug/DebugSettings.swift` | All |
 
 ### Code to Tests
 

@@ -1,11 +1,11 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "PalaceTriageBot",
     defaultLocalization: "en",
     platforms: [
-        .iOS(.v16),
+        .iOS(.v17),
         .macOS(.v12)
     ],
     products: [
@@ -31,25 +31,45 @@ let package = Package(
         )
     ],
     targets: [
+        // Source targets → Swift 6 mode (race-checked). Test targets → v5 to
+        // avoid test-infra churn (XCTestCase isn't Sendable). See #1130.
         .target(
             name: "TriageBotCore",
-            resources: [.process("Resources")]
+            resources: [.process("Resources")],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
             name: "TriageBotIOS",
-            dependencies: ["TriageBotCore"]
+            dependencies: ["TriageBotCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
             name: "TriageBotUI",
-            dependencies: ["TriageBotCore", "TriageBotIOS"]
+            dependencies: ["TriageBotCore", "TriageBotIOS"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "TriageBotCoreTests",
-            dependencies: ["TriageBotCore"]
+            dependencies: ["TriageBotCore"],
+            // PP-4806: synthetic redaction corpus. Copied verbatim so the
+            // deny-list guard (RedactionCorpusTests) can enumerate the
+            // captured-payload fixtures at runtime via Bundle.module.
+            resources: [.copy("Fixtures")],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // iOS-adapter tests. Depends on TriageBotIOS (ClaudeFallbackClassifier)
+        // and TriageBotUI (TriageBotViewModel). Both targets are gated on
+        // `canImport(UIKit)`, so on macOS `swift test` this target compiles to an
+        // empty bundle — the real assertions run only on an iOS sim (CI).
+        .testTarget(
+            name: "TriageBotIOSTests",
+            dependencies: ["TriageBotIOS", "TriageBotUI"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "TriageBotUITests",
-            dependencies: ["TriageBotUI"]
+            dependencies: ["TriageBotUI"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
 )

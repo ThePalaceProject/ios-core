@@ -18,6 +18,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountAuthSurfaceHostsTests: XCTestCase {
 
     private var mockImageCache: MockImageCache!

@@ -8,19 +8,29 @@ import Foundation
 /// side-effect, `.send(action)` to dispatch synchronously on the main actor,
 /// and `.task { env in ... }` for async work that eventually yields an
 /// action (or `nil` to end the chain).
-struct Effect<Action, Environment> {
-    let run: (Environment) async -> Action?
+///
+/// `Environment: Sendable` (Swift 6): the `@MainActor` `Store` hands the
+/// environment to `run` from an `async` context that hops off the main
+/// actor (both `send`'s unstructured `Task` and `sendAwait`'s off-actor
+/// `await`), so the environment value crosses an isolation boundary. A
+/// `Sendable` environment makes that crossing safe; the alternative
+/// (`sending` the stored property) would consume it and break the reuse
+/// across the effect chain. Concrete environments are lightweight value
+/// bags of `@Sendable` closures / immutable data — see `HoldsEnvironment`,
+/// `BorrowEnvironment`.
+struct Effect<Action, Environment: Sendable> {
+    let run: @Sendable (Environment) async -> Action?
 
     static var none: Effect<Action, Environment> {
         Effect { _ in nil }
     }
 
-    static func send(_ action: Action) -> Effect<Action, Environment> {
+    static func send(_ action: Action) -> Effect<Action, Environment> where Action: Sendable {
         Effect { _ in action }
     }
 
     static func task(
-        _ work: @escaping (Environment) async -> Action?
+        _ work: @escaping @Sendable (Environment) async -> Action?
     ) -> Effect<Action, Environment> {
         Effect(run: work)
     }
@@ -37,7 +47,7 @@ struct Effect<Action, Environment> {
 /// Not TCA: no scoped reducers, no pullback, no TestStore. One reducer
 /// closure per domain, effects as `async` closures capturing the environment.
 @MainActor
-final class Store<State, Action, Environment>: ObservableObject {
+final class Store<State, Action, Environment: Sendable>: ObservableObject {
     @Published private(set) var state: State
     private let environment: Environment
     private let reduce: (inout State, Action) -> Effect<Action, Environment>

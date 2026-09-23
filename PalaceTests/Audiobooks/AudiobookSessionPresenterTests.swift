@@ -188,6 +188,70 @@ final class AudiobookSessionPresenterTests: XCTestCase {
                      "Errored session must drop the current book so no chrome lingers after a failed open")
     }
 
+    // MARK: - Instant-present loading shell (present before the loader runs)
+
+    /// The manager calls `presentLoadingShell(for:coverImage:)` the instant a
+    /// fresh open begins — BEFORE the loader chain runs — so the player slides
+    /// up immediately with a cover + skeleton. This pins that the shell adopts
+    /// the book identity + cover and expands, WITHOUT any playback model yet
+    /// (the loader binds that later). Mutates: dropping any of the three writes
+    /// in `presentLoadingShell` fails a corresponding assertion.
+    func testPresentLoadingShell_adoptsBookAndCoverAndExpands_withNoPlaybackModelYet() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let book = TPPBookMocker.mockBook(title: "Instant Open", authors: "Author")
+        let cover = UIImage()
+        XCTAssertFalse(presenter.isPlayerExpanded, "PRECONDITION: collapsed")
+        XCTAssertNil(presenter.currentBook, "PRECONDITION: no book")
+        XCTAssertNil(presenter.playbackModel, "PRECONDITION: no model")
+
+        presenter.presentLoadingShell(for: book, coverImage: cover)
+
+        XCTAssertEqual(presenter.currentBook?.identifier, book.identifier,
+                       "shell must adopt the book so the root mount gate + title/author chrome have a source")
+        XCTAssertTrue(presenter.coverImage === cover,
+                      "shell must adopt the low-res cover so it shows the instant the skeleton clears")
+        XCTAssertTrue(presenter.isPlayerExpanded,
+                      "shell must expand so the morphing player slides up on tap, not after load")
+        XCTAssertNil(presenter.playbackModel,
+                     "shell must present BEFORE the loader binds a playback model — this is the whole point of instant-present")
+    }
+
+    /// A coverless book must clear the mirror (placeholder), not inherit a stale
+    /// cover. Mutates: `adoptCoverImage(coverImage)` → skipping the write leaves
+    /// a prior cover in place; this test would then see the stale image.
+    func testPresentLoadingShell_withNilCover_clearsCoverForPlaceholder() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.adoptCoverImage(UIImage())  // stale cover from a prior session
+        let book = TPPBookMocker.mockBook(title: "No Cover", authors: "Author")
+
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        XCTAssertNil(presenter.coverImage,
+                     "a coverless open must show the placeholder, not a stale cover from a previous session")
+    }
+
+    /// Round-trip through the production seam: present the shell via
+    /// `presentLoadingShell`, then a failed load publishes `.error` — the shell
+    /// must tear down completely so it never lingers with no book actually
+    /// loaded. Mutates: removing the `.error` teardown leaves the shell up.
+    func testPresentLoadingShell_thenErrorState_tearsDownShell() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let book = TPPBookMocker.mockBook(title: "Fails To Load", authors: "Author")
+
+        presenter.presentLoadingShell(for: book, coverImage: UIImage())
+        XCTAssertTrue(presenter.isPlayerExpanded, "PRECONDITION: shell up")
+        XCTAssertNotNil(presenter.currentBook, "PRECONDITION: book adopted")
+
+        spySession.state = .error(bookId: book.identifier, message: "boom")
+        spySession.playbackStatePublisher.send(.error(bookId: book.identifier, message: "boom"))
+        spinRunLoopForPublisherDelivery()  // the .error teardown sink hops via receive(on: .main)
+
+        XCTAssertFalse(presenter.isPlayerExpanded,
+                       "a failed open must collapse the shell — no phantom loading player")
+        XCTAssertNil(presenter.currentBook,
+                     "a failed open must drop the book so the root overlay unmounts")
+    }
+
     // MARK: - First-open expand (§7.4 / F-011)
 
     /// PRE: presenter has `isPlayerExpanded == false`.
@@ -281,16 +345,19 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     /// THREE transitions per CLAUDE.md DoD #3 multi-step-test-body check.
     // MARK: - Helper
 
-    /// Spins the main runloop briefly so a publisher event sent
-    /// synchronously via `playbackStatePublisher.send(...)` is delivered
-    /// through `.receive(on: DispatchQueue.main)` BEFORE the test
-    /// asserts on the presenter's published mirrored state. Without
-    /// this, the assertion races the sink and intermittently fails.
+    /// Flushes the main queue so a publisher event sent synchronously via
+    /// `playbackStatePublisher.send(...)` is delivered through
+    /// `.receive(on: DispatchQueue.main)` BEFORE the test asserts on the
+    /// presenter's published mirrored state. Without this, the assertion races
+    /// the sink and intermittently fails.
     private func spinRunLoopForPublisherDelivery() {
-        // 50ms — empirically large enough to outrun CI scheduler jitter that
-        // caused intermittent failures at 10ms. Each call adds ~50ms to the
-        // suite walltime; current usage (~10 sites) ≈ +0.5s total.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        // Deterministic FIFO drain instead of a fixed wall-clock
+        // `RunLoop.main.run(until:)` spin. The presenter mirrors state through
+        // `.receive(on: DispatchQueue.main)`; enqueueing a no-op behind the
+        // already-queued delivery block and awaiting it guarantees delivery has
+        // landed — no fixed 50ms guess that under CI sim-clone oversubscription
+        // could expire before the hop delivers (races the sink → flaky assert).
+        drainMainQueue()
     }
 
     func testPresenter_expand_minimize_expandAgain_drivesIsPlayerExpandedCorrectly_acrossThreeTransitions() {
@@ -312,6 +379,83 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertTrue(presenter.isPlayerExpanded,
                       "Transition 3 (expand again): re-entry must work — collapsed → expanded after a minimize must drive published value back to true. This is the production seam round-trip per CLAUDE.md.")
     }
+
+    // MARK: - Collapse / restore inert in the morphing player (pill removed)
+
+    /// The morphing player REMOVED the collapsed-pill concept: `collapse()` and
+    /// `restoreFromCollapsed()` are now inert no-ops (see
+    /// `AudiobookSessionPresenter.collapse()`), so `isCollapsed` never flips
+    /// true. This pins the current reality — the mini-bar's swipe-down routes
+    /// to `collapse()` harmlessly: it must NOT hide the bar into a pill AND
+    /// must NOT tear the session down (collapsing was never a teardown).
+    ///
+    /// Replaces the former pill round-trip / cross-axis tests
+    /// (`..._drivesIsCollapsed_acrossThreeTransitions`,
+    /// `testPresenter_expand_clearsCollapsedState`,
+    /// `testPresenter_clearActiveSession_resetsCollapsedState`) whose premise
+    /// (collapse() sets isCollapsed true) is dead. The non-pill behavior those
+    /// pinned — expand()→isPlayerExpanded, clearActiveSession() teardown — is
+    /// still covered by `testExpand_setsIsPlayerExpandedTrue` and
+    /// `testPresenter_clearActiveSession_clearsPolishPhaseFields`.
+    func testPresenter_collapse_and_restore_areInertNoOps_isCollapsedStaysFalse() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        // Drive an active, expanded session so we prove collapse() leaves the
+        // session (and the full-player axis) untouched, not just the dead axis.
+        spySession.playbackStatePublisher.send(.playing(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+        presenter.expand()
+        XCTAssertTrue(presenter.hasActiveSession, "PRECONDITION: active session")
+        XCTAssertTrue(presenter.isPlayerExpanded, "PRECONDITION: full player expanded")
+        XCTAssertFalse(presenter.isCollapsed, "PRECONDITION: never collapsed (pill removed)")
+
+        var observed: [Bool] = []
+        let cancellable = presenter.$isCollapsed.sink { observed.append($0) }
+        defer { cancellable.cancel() }
+
+        // collapse() is a no-op: isCollapsed must NOT flip true, and the
+        // session must stay active (collapsing is not a teardown).
+        presenter.collapse()
+        XCTAssertFalse(presenter.isCollapsed,
+                       "collapse() is inert in the morphing player — isCollapsed must stay false")
+        XCTAssertTrue(presenter.hasActiveSession,
+                      "collapse() must not tear down the session — audio keeps running")
+        XCTAssertTrue(presenter.isPlayerExpanded,
+                      "collapse() must not touch the full-player axis")
+
+        // restoreFromCollapsed() is likewise inert — keeps isCollapsed false.
+        presenter.restoreFromCollapsed()
+        XCTAssertFalse(presenter.isCollapsed,
+                       "restoreFromCollapsed() must keep isCollapsed false (pill removed)")
+
+        // Across the whole sequence isCollapsed never emits true — the pill
+        // axis is dead. A regression that re-wired collapse() to set true
+        // (restoring the old pill) would put `true` into this stream.
+        XCTAssertFalse(observed.contains(true),
+                       "isCollapsed must never emit true — the collapsed-pill concept was removed in the morphing player")
+    }
+
+    /// `minimize()` (full player → mini-bar) must land on the FULL bar, not a
+    /// leftover pill — so a collapse that predated an expand doesn't survive
+    /// the expand/minimize cycle. Pins the cross-axis reset.
+    func testPresenter_minimize_landsOnFullBar_notStalePill() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        // Simulate: user collapsed, then something expanded the player.
+        presenter.collapse()
+        presenter.expand()
+        XCTAssertFalse(presenter.isCollapsed, "PRECONDITION: expand cleared the collapse")
+
+        presenter.minimize()
+
+        XCTAssertFalse(presenter.isCollapsed,
+                       "minimize() must land on the full mini-bar, never the pill")
+        XCTAssertFalse(presenter.isPlayerExpanded, "minimize() must still collapse the full player")
+    }
+
+    // `testPresenter_clearActiveSession_resetsCollapsedState` was removed: the
+    // collapsed-pill concept is gone (collapse() is inert, isCollapsed never
+    // flips true), so "reset the pill on hard dismiss" no longer has a
+    // reachable state to reset. clearActiveSession()'s real teardown surface is
+    // covered by `testPresenter_clearActiveSession_clearsPolishPhaseFields`.
 
     // MARK: - Polish-phase: isPlaying derivation (Bug 2)
 
@@ -502,5 +646,687 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertEqual(presenter.progress.playbackProgress, 0,
                        "clearActiveSession must reset playbackProgress to 0 so the scrubber doesn't briefly show the prior book's progress")
     }
-}
 
+    /// CONCERN coverage (qa_test SoD review of PR #1230): `clearActiveSession()`
+    /// must reset the chapter-scoped progress mirrors (`chapterOffset`,
+    /// `chapterTimeLeft`, `chapterProgress`) — the seek slider binds to
+    /// `chapterProgress`, so a stale non-zero value would leave the next
+    /// session's scrubber thumb parked mid-chapter before the first tick.
+    ///
+    /// These three fields are publicly settable `@Published` values on the
+    /// high-frequency `AudiobookPlaybackProgress` object, so the test pre-seeds
+    /// them directly (they are NOT `private(set)` toolkit-driven mirrors).
+    ///
+    /// Mutates: dropping any of the three `progress.chapter* = 0` lines from
+    /// `clearActiveSession()` leaves that field non-zero and fails here.
+    ///
+    /// PP-5205 adds a FOURTH member to that family, `chapterTitle`, and it is asserted
+    /// here rather than in a test of its own for a specific reason: its predecessor
+    /// (`AudiobookSessionManager.currentChapter`) was nilled at teardown by the session
+    /// manager, so this reset list never had to carry the chapter NAME. Moving the
+    /// source without moving the reset showed book A's chapter beside book B's zeroed
+    /// timecodes. A field that joins this family must join this assertion.
+    func testClearActiveSession_resetsChapterProgressFields() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.progress.chapterOffset = 42
+        presenter.progress.chapterTimeLeft = 30
+        presenter.progress.chapterProgress = 0.5
+        presenter.progress.chapterTitle = "Chapter 42"
+        XCTAssertEqual(presenter.progress.chapterOffset, 42, "PRECONDITION: chapterOffset seeded")
+        XCTAssertEqual(presenter.progress.chapterTimeLeft, 30, "PRECONDITION: chapterTimeLeft seeded")
+        XCTAssertEqual(presenter.progress.chapterProgress, 0.5, accuracy: 0.0001, "PRECONDITION: chapterProgress seeded")
+        XCTAssertEqual(presenter.progress.chapterTitle, "Chapter 42", "PRECONDITION: chapterTitle seeded")
+
+        presenter.clearActiveSession()
+
+        XCTAssertEqual(presenter.progress.chapterTitle, "",
+                       "clearActiveSession must reset chapterTitle so the next book does not open showing the PRIOR book's chapter name beside its own zeroed timecodes")
+
+        XCTAssertEqual(presenter.progress.chapterOffset, 0,
+                       "clearActiveSession must reset chapterOffset to 0 so the next session's chapter time-elapsed label doesn't show the prior book's offset")
+        XCTAssertEqual(presenter.progress.chapterTimeLeft, 0,
+                       "clearActiveSession must reset chapterTimeLeft to 0 so the next session's time-remaining label starts fresh")
+        XCTAssertEqual(presenter.progress.chapterProgress, 0, accuracy: 0.0001,
+                       "clearActiveSession must reset chapterProgress to 0 so the seek slider thumb doesn't start parked mid-chapter for the next book")
+    }
+    // MARK: - Polish-phase: transport-glyph self-heal (Bug 2, $currentLocation tick)
+
+    /// PRE: fresh presenter (`isPlaying == false`); the toolkit has advanced
+    /// the playhead so `sessionManager.isPlaying == true` WITHOUT re-emitting a
+    /// `.playing` state event (chapter/track rollover, buffer resume after a
+    /// seek). This is the exact stale-glyph race the self-heal fixes.
+    /// EXPECTED: reconciling from the advancing `$currentLocation` tick flips
+    /// the presenter's `isPlaying` (the play/pause glyph) true within one frame.
+    /// Mutates: flipping the change-guard comparison `!=` to `==` skips the
+    /// re-snap, leaving the glyph latched on "play" while audio is audible —
+    /// this assertion then fails, killing that mutant.
+    func testPresenter_playheadAdvancesWhileManagerIsPlaying_reconcileSelfHealsPlayGlyph() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        XCTAssertFalse(presenter.isPlaying,
+                       "PRECONDITION: glyph starts on play (isPlaying == false)")
+
+        // The toolkit is playing audio but never re-emitted `.playing`.
+        spySession.isPlaying = true
+
+        // Advancing `$currentLocation` tick runs the self-heal.
+        presenter.reconcileTransportGlyphFromSessionManager()
+
+        XCTAssertTrue(presenter.isPlaying,
+                      "An advancing playhead with sessionManager.isPlaying == true MUST self-heal the presenter's glyph to playing even without a discrete .playing event. A regression that drops or inverts the re-snap leaves the pause glyph missing while audio plays.")
+    }
+
+    /// PRE: fresh presenter (`isPlaying == false`); `sessionManager.isPlaying`
+    /// is ALSO false (genuinely paused / not advancing).
+    /// EXPECTED: reconciling does NOT flip the glyph to playing — the guard is
+    /// authoritative-driven, not unconditional, so a paused player keeps the
+    /// play glyph.
+    /// Mutates: replacing the assignment source with a literal `true` (or
+    /// dropping the guard so it always re-snaps to a stale value) would flip
+    /// this false → true and fail here.
+    func testPresenter_managerNotPlaying_reconcileLeavesGlyphOnPlay() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        spySession.isPlaying = false
+
+        presenter.reconcileTransportGlyphFromSessionManager()
+
+        XCTAssertFalse(presenter.isPlaying,
+                       "When sessionManager.isPlaying is false the self-heal must NOT flip the glyph to playing — the reconcile mirrors the authoritative manager flag, it does not fabricate a playing state.")
+    }
+
+    // MARK: - chapterProgress (chapter-relative scrubber value)
+
+    /// Mid-chapter: offset 30s into a 120s chapter (30 elapsed + 90 left) is
+    /// exactly 0.25. Pins `offset / (offset + timeLeft)`. A mutant that swaps
+    /// the numerator/denominator, or reads book-relative progress instead,
+    /// fails this exact value.
+    func testChapterProgress_midChapter_isOffsetOverDuration() {
+        let value = AudiobookSessionPresenter.chapterProgress(offset: 30, timeLeft: 90)
+        XCTAssertEqual(value, 0.25, accuracy: 0.0001,
+                       "chapterProgress must be offset / (offset + timeLeft): 30 / 120 = 0.25")
+    }
+
+    /// Zero chapter duration (offset 0, timeLeft 0 → duration 0) must return 0,
+    /// NOT NaN. Pins the `duration > 0` guard: a mutant relaxing it to `>= 0`
+    /// (or dropping it) divides 0/0 → NaN and fails this assertion.
+    func testChapterProgress_zeroDuration_returnsZeroNotNaN() {
+        let value = AudiobookSessionPresenter.chapterProgress(offset: 0, timeLeft: 0)
+        XCTAssertFalse(value.isNaN, "Zero-duration chapter must not yield NaN")
+        XCTAssertEqual(value, 0, accuracy: 0.0001,
+                       "Zero-duration chapter progress must be 0 (guard returns early)")
+    }
+
+    /// Past chapter end: offset 200 with timeLeft -50 (duration 150) computes a
+    /// raw ratio of 200/150 ≈ 1.33 which must clamp to 1.0. Pins the upper
+    /// `min(_, 1)` clamp; a mutant dropping it lets the thumb run past the end.
+    func testChapterProgress_clampsPastChapterEnd() {
+        let value = AudiobookSessionPresenter.chapterProgress(offset: 200, timeLeft: -50)
+        XCTAssertEqual(value, 1.0, accuracy: 0.0001,
+                       "Progress past the chapter end must clamp to 1.0, not exceed it")
+    }
+
+    /// NIT coverage (qa_test SoD review of PR #1230): a negative offset (offset
+    /// -30 into a 60s chapter → raw ratio -0.5) must clamp to 0 via the lower
+    /// `max(_, 0)` bound, never a negative thumb position. Pins the LOWER clamp
+    /// specifically (the existing tests pin the upper `min(_, 1)` and the
+    /// zero-duration guard).
+    ///
+    /// Mutates: dropping the `max(offset / duration, 0)` lower clamp lets the
+    /// value go negative (-0.5) and fails this assertion.
+    func testChapterProgress_negativeOffset_clampsToZero() {
+        XCTAssertEqual(AudiobookSessionPresenter.chapterProgress(offset: -30, timeLeft: 90), 0, accuracy: 0.0001,
+                       "A negative chapter offset must clamp to 0, not produce a negative scrubber position")
+    }
+
+    // MARK: - fix/audiobook-first-open-hang: pre-bind download progress
+    //
+    // During the PP-4542 content-download wait the toolkit playback model that
+    // normally mirrors `$overallDownloadProgress` doesn't exist yet, so the
+    // loading shell showed a static skeleton that read as "hung." `showDownloadProgress`
+    // feeds download-center progress into the shell during that window so it shows
+    // a determinate "Downloading…" bar. Superseded by `adoptPlaybackModel` at bind.
+
+    /// EXPECTED: sets the download fraction and flips `isDownloading` true so the
+    /// shell's download bar becomes visible during the pre-bind wait.
+    /// Mutates: dropping the `isDownloading = true` assignment hides the bar and
+    /// fails this; changing the assigned fraction fails the value assertion.
+    func testShowDownloadProgress_setsProgressAndDownloadingFlag() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.showDownloadProgress(0.42)
+        XCTAssertEqual(presenter.overallDownloadProgress, 0.42, accuracy: 0.0001,
+                       "showDownloadProgress must publish the download fraction so the shell bar is determinate")
+        XCTAssertTrue(presenter.isDownloading,
+                      "showDownloadProgress must flip isDownloading true so the shell's download bar is visible during the wait")
+    }
+
+    /// EXPECTED: fractions outside 0…1 clamp. Pins BOTH bounds of the
+    /// `max(0, min(1, fraction))` guard — a garbage download-center reading must
+    /// never drive the bar past full or negative.
+    /// Mutates: dropping the upper `min(1,_)` lets 1.7 through; dropping the lower
+    /// `max(0,_)` lets -0.3 through — each fails the respective assertion.
+    func testShowDownloadProgress_clampsOutOfRangeFractions() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.showDownloadProgress(1.7)
+        XCTAssertEqual(presenter.overallDownloadProgress, 1.0, accuracy: 0.0001,
+                       "A fraction > 1 must clamp to 1.0 — the download bar can't exceed full")
+        presenter.showDownloadProgress(-0.3)
+        XCTAssertEqual(presenter.overallDownloadProgress, 0.0, accuracy: 0.0001,
+                       "A negative fraction must clamp to 0 — the download bar can't go negative")
+    }
+
+    /// EXPECTED: the pre-bind placeholder is torn down by `clearActiveSession`
+    /// (the stopPlayback/dismiss path), so a superseded/failed open doesn't leave
+    /// a stale "Downloading…" bar behind.
+    /// Mutates: if clearActiveSession stops resetting these mirrors, the bar
+    /// persists and this fails.
+    func testShowDownloadProgress_clearedByClearActiveSession() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.showDownloadProgress(0.6)
+        presenter.clearActiveSession()
+        XCTAssertEqual(presenter.overallDownloadProgress, 0, accuracy: 0.0001,
+                       "clearActiveSession must reset the pre-bind download fraction so no stale bar survives teardown")
+        XCTAssertFalse(presenter.isDownloading,
+                       "clearActiveSession must clear the pre-bind isDownloading flag")
+    }
+
+    // MARK: - hasStartedPlayback (latched; gates the player download bar)
+    //
+    // The player's download bar is gated on this rather than the live
+    // `isPlaying`, because for LCP the toolkit reports "downloading" through
+    // track decryption that streaming playback never waits for. See
+    // `AudiobookDownloadProgressPolicy`.
+
+    // NOTE: a `testHasStartedPlayback_isFalseOnAFreshPresenter` case was removed
+    // here. It asserted a default with no action taken, which CLAUDE.md bans
+    // outright — it could only fail if the property's initialiser changed. The
+    // states that matter are driven below: a non-playing event must NOT latch,
+    // `.playing` must, a pause must not clear it, and teardown must.
+    /// PRE: session emits `.playing`.
+    /// EXPECTED: the latch rises.
+    /// Mutates: deleting the latch assignment fails this.
+    func testHasStartedPlayback_latchesTrueOnFirstPlayingState() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+
+        XCTAssertTrue(presenter.hasStartedPlayback,
+                      "the first .playing must latch — this is what retires the download bar for the session")
+    }
+
+    /// The cell none of the others reach: a NON-playing state arriving FIRST.
+    ///
+    /// Added because mutation found it. Flipping the latch's `&&` to `||`
+    /// survived the whole suite — and that mutant is a real defect, not a
+    /// curiosity: with `||`, `playing == false` plus a not-yet-set latch raises
+    /// the latch, so the very first `.loading` would retire the download bar
+    /// BEFORE playback started. That is precisely the window the bar still
+    /// exists for, so the player would go silent-and-blank exactly when the
+    /// patron is waiting.
+    ///
+    /// The four tests around this one all send `.playing` first, so every one
+    /// of them passes under the mutant. Enumerating the event that comes before
+    /// playback is what distinguishes a latch from an unconditional set.
+    func testHasStartedPlayback_doesNotLatchOnALoadingStateBeforePlaybackBegins() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.loading(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "loading is not playing — latching here retires the download bar during the very wait it exists to explain")
+    }
+
+    /// Same cell, the other non-playing event, so the rule is pinned as "only
+    /// `.playing` latches" rather than "`.loading` happens not to".
+    func testHasStartedPlayback_doesNotLatchOnIdleBeforePlaybackBegins() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.idle)
+        spinRunLoopForPublisherDelivery()
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "only a real .playing may raise the latch")
+    }
+
+    /// The reason the flag is latched rather than mirrored. A pause drops
+    /// `isPlaying`; if the bar were gated on that, pausing a book the patron had
+    /// been listening to for twenty minutes would pop a download bar onto it.
+    /// Mutates: clearing the latch on a non-playing state fails this and not the
+    /// test above, which is what distinguishes "latched" from "mirrored".
+    func testHasStartedPlayback_survivesAPauseAfterPlaying() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+        spySession.playbackStatePublisher.send(.idle)
+        spinRunLoopForPublisherDelivery()
+
+        XCTAssertFalse(presenter.isPlaying,
+                       "precondition: the pause must actually have dropped isPlaying, or this asserts nothing")
+        XCTAssertTrue(presenter.hasStartedPlayback,
+                      "a pause must not take the latch back down — otherwise pausing re-summons the download bar")
+    }
+
+    /// SAME-BOOK RE-OPEN — the case that was actually broken.
+    ///
+    /// `stopPlayback(dismissPhoneUI: !isSameBook)` skips `clearActiveSession()`
+    /// when the book is unchanged, so `currentBook` survives into the next open.
+    /// An earlier fix reset the latch in `adoptBook` on IDENTIFIER CHANGE, which
+    /// therefore never fired here — and the test written to prove it asserted
+    /// the different-book case under a "same-book" heading, so it passed while
+    /// the bug stood. Both reviewers caught that independently.
+    ///
+    /// `presentLoadingShell` is the session boundary and resets unconditionally.
+    func testHasStartedPlayback_resetsOnAReOpenOfTheSAMEBook() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let book = TPPBookMocker.mockBook(title: "Same Book", authors: "Author")
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: book.identifier))
+        spinRunLoopForPublisherDelivery()
+        XCTAssertTrue(presenter.hasStartedPlayback, "precondition: the latch must be up")
+
+        // Re-open the SAME book. No teardown runs on this path.
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "a re-open of the same book is a new session — a surviving latch silences its loading wait")
+    }
+
+    /// SEAM INVARIANT, not a currently-reachable path. Review traced every
+    /// production caller and found none passes `startPlaying: false`, so today
+    /// `adoptBook` is never reached without `presentLoadingShell`. That is a
+    /// property of the callers, not of the code — a future CarPlay or prefetch
+    /// caller passing `false` would silently resurrect the stale latch.
+    ///
+    /// Pinned here so the resurrection fails a test rather than shipping: any
+    /// path that adopts a book for a NEW session must leave the latch down.
+    func testHasStartedPlayback_isDownAfterAdoptingAFreshBookWithoutTheShell() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let first = TPPBookMocker.mockBook(title: "Seam First", authors: "Author")
+        presenter.presentLoadingShell(for: first, coverImage: nil)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: first.identifier))
+        spinRunLoopForPublisherDelivery()
+        XCTAssertTrue(presenter.hasStartedPlayback, "precondition: the latch must be up")
+
+        // Tear the session down the way a close does, then adopt a new book
+        // WITHOUT the shell — the shape a `startPlaying: false` open would take.
+        presenter.clearActiveSession()
+        let second = TPPBookMocker.mockBook(title: "Seam Second", authors: "Author")
+        presenter.adoptBook(second)
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "a new session must start with the bar permitted, whichever seam opened it")
+    }
+
+    /// A different book re-opened through the same seam must reset too.
+    func testHasStartedPlayback_resetsOnAReOpenOfADifferentBook() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let first = TPPBookMocker.mockBook(title: "First Book", authors: "Author")
+        presenter.presentLoadingShell(for: first, coverImage: nil)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: first.identifier))
+        spinRunLoopForPublisherDelivery()
+
+        let second = TPPBookMocker.mockBook(title: "Second Book", authors: "Author")
+        XCTAssertNotEqual(first.identifier, second.identifier, "precondition: distinct identifiers")
+        presenter.presentLoadingShell(for: second, coverImage: nil)
+
+        XCTAssertFalse(presenter.hasStartedPlayback)
+    }
+
+    /// The property the identifier guard was reaching for, kept: a bare
+    /// `adoptBook` mid-session (cover refresh) must NOT drop a live latch, or
+    /// the download bar returns underneath playing audio.
+    func testHasStartedPlayback_survivesABareAdoptBookMidSession() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let book = TPPBookMocker.mockBook(title: "Mid Session", authors: "Author")
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: book.identifier))
+        spinRunLoopForPublisherDelivery()
+
+        presenter.adoptBook(book)
+
+        XCTAssertTrue(presenter.hasStartedPlayback,
+                      "a bare re-adopt is not a new session — dropping the latch here puts the bar back under playing audio")
+    }
+
+    /// The latch is session-scoped: the NEXT book opens with the bar permitted
+    /// again. Without this reset a second audiobook would never show progress
+    /// while it genuinely was loading.
+    func testHasStartedPlayback_resetsOnClearActiveSession() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+
+        spySession.playbackStatePublisher.send(.playing(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+        XCTAssertTrue(presenter.hasStartedPlayback, "precondition: the latch must be up before teardown")
+
+        presenter.clearActiveSession()
+
+        XCTAssertFalse(presenter.hasStartedPlayback,
+                       "the latch is per-session — the next book must be able to show its loading progress")
+    }
+
+
+    // MARK: - Archive fetch (`archiveProgress`) — the producer of the bar's third input
+    //
+    // The policy table in AudiobookDownloadProgressPolicyTests covers the pure
+    // rule. These cover the code that decides whether its input is ever true
+    // for the RIGHT book — the half three reviewers blocked on, and the same
+    // "a pure rule was covered while the code computing its input was not"
+    // shape 264676c7d names in its own retro.
+
+    /// Helper mirroring the production wiring: edges + progress + seed.
+    @MainActor
+    private func makeArchivePresenter(
+        activeIdentifiers: Set<String> = []
+    ) -> (AudiobookSessionPresenter,
+          PassthroughSubject<(String, Bool), Never>,
+          PassthroughSubject<(String, Double), Never>) {
+        let edges = PassthroughSubject<(String, Bool), Never>()
+        let progress = PassthroughSubject<(String, Double), Never>()
+        let presenter = AudiobookSessionPresenter(
+            sessionManager: SpyShimSession(),
+            archiveTransferPublisher: edges.eraseToAnyPublisher(),
+            archiveProgressPublisher: progress.eraseToAnyPublisher(),
+            isArchiveTransferActive: { activeIdentifiers.contains($0) }
+        )
+        return (presenter, edges, progress)
+    }
+
+    @MainActor
+    func testArchiveTransferForCurrentBook_raisesTheBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        XCTAssertFalse(presenter.isFetchingArchive, "precondition: no transfer")
+
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+
+        XCTAssertTrue(presenter.isFetchingArchive,
+                      "an archive fetch for the bound book must raise the bar — this is the signal the player had no access to")
+    }
+
+    @MainActor
+    func testArchiveTransferForADifferentBook_isIgnored() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let other = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter()
+        presenter.adoptBook(book)
+
+        edges.send((other.identifier, true))
+        await drainMainQueueAsync()
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "another book's transfer must not raise this book's bar — the filter is at DELIVERY time because the presenter outlives sessions")
+    }
+
+    @MainActor
+    func testFallingEdge_clearsTheBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter()
+        presenter.adoptBook(book)
+
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+        XCTAssertTrue(presenter.isFetchingArchive, "precondition")
+
+        edges.send((book.identifier, false))
+        await awaitConditionAsync { !presenter.isFetchingArchive }
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "the falling edge is the ONLY thing that lowers the bar — without it the bar never clears and reads as a permanent hang")
+    }
+
+    @MainActor
+    func testBoundMidTransfer_seedsTheBarImmediately() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, _, _) = makeArchivePresenter(activeIdentifiers: [book.identifier])
+
+        presenter.adoptBook(book)
+
+        XCTAssertTrue(presenter.isFetchingArchive,
+                      "opening a book mid-transfer is the COMMON path — the measured archives all run past three minutes and the publisher only speaks on edges, so without the seed the bar never appears")
+    }
+
+    @MainActor
+    func testBoundWithNoTransfer_doesNotSeedTheBarOn() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, _, _) = makeArchivePresenter(activeIdentifiers: [])
+
+        presenter.adoptBook(book)
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "the seed must report the query's answer, not assume one — a seed stuck ON would put the bar on every book")
+    }
+
+    @MainActor
+    func testClearActiveSession_resetsTheArchiveBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+        XCTAssertTrue(presenter.isFetchingArchive, "precondition")
+
+        presenter.clearActiveSession()
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "a stale bar must not leak into the next session")
+        XCTAssertNil(presenter.archiveProgress,
+                     "and its number must go with it")
+    }
+
+    /// The bar must carry the ARCHIVE's number, not the toolkit's per-track
+    /// figure. Review caught the first cut summoning the bar off a flag while
+    /// the view still rendered `overallDownloadProgress`, which during an
+    /// archive fetch reads ~0 — a bar frozen at 0% for minutes.
+    @MainActor
+    func testArchiveProgress_tracksTheArchiveTransfer() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await drainMainQueueAsync()
+
+        progress.send((book.identifier, 0.42))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0 }
+
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.42, accuracy: 0.001,
+                       "the bar's number must be the archive fetch's own progress")
+    }
+
+    /// Progress alone must not summon the bar: the same publisher carries
+    /// ordinary (non-LCP) download progress, and raising the archive bar on it
+    /// would put the player bar back on transfers this policy keeps quiet.
+    @MainActor
+    func testProgressWithoutAnActiveTransfer_doesNotRaiseTheBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, _, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+
+        progress.send((book.identifier, 0.5))
+        await drainMainQueueAsync()
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "a progress tick is not evidence that an ARCHIVE fetch is running")
+    }
+
+    /// THE TWIN GUARD. `testArchiveTransferForADifferentBook_isIgnored` covers
+    /// the EDGES sink; this covers the PROGRESS sink, written in the same
+    /// function from the same template and previously untested. Deleting its
+    /// `update.0 == currentBook?.identifier` check survived all eight tests.
+    ///
+    /// `downloadProgressPublisher` is app-wide and Palace downloads
+    /// concurrently, so without the guard an unrelated book's progress writes
+    /// into the bound book's archive bar — the exact defect family this whole
+    /// change exists to fix.
+    @MainActor
+    func testArchiveProgressForADifferentBook_isIgnored() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let other = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+
+        progress.send((other.identifier, 0.9))
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0, accuracy: 0.001,
+                       "another book's progress must not drive this book's bar")
+    }
+
+    /// The clamp is the only thing keeping the capsule inside its track — the
+    /// view multiplies this by the available width.
+    @MainActor
+    func testArchiveProgress_isClampedToUnitRange() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+
+        progress.send((book.identifier, 4.2))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0 }
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 1.0, accuracy: 0.001,
+                       "over-unit progress must clamp to 1 or the bar overruns its track")
+
+        progress.send((book.identifier, -1))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 1) < 1 }
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0, accuracy: 0.001,
+                       "negative progress must clamp to 0")
+    }
+
+    /// Pins the rising edge's documented promise to keep any progress already
+    /// seen. `adoptBook` seeds twice per open, so a repeated rising edge must
+    /// not snap a climbing bar back to 0%.
+    @MainActor
+    func testRepeatedRisingEdge_keepsProgressAlreadySeen() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter()
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+        progress.send((book.identifier, 0.6))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.5 }
+
+        edges.send((book.identifier, true))
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.6, accuracy: 0.001,
+                       "a second rising edge must not reset a bar that already climbed")
+    }
+
+    /// THE VETO'S PROTECTIVE BRANCH. `testFallingEdge_clearsTheBar` runs with
+    /// an EMPTY active set, so the query answers false and only the CLEARING
+    /// half of the falling edge executes. Reverting the veto to an
+    /// unconditional `archiveProgress = nil` left the whole suite green —
+    /// the hardening was indistinguishable from its own absence, which is the
+    /// same shape review blocked this branch for twice.
+    ///
+    /// A falling edge can be stale: enqueued on the main hop before a seed or
+    /// a restart found the transfer live again. The synchronous query is
+    /// authoritative, so it vetoes the clear and the bar stays up.
+    @MainActor
+    func testStaleFallingEdge_isVetoedByTheAuthoritativeQuery() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter(
+            activeIdentifiers: [book.identifier]
+        )
+        presenter.adoptBook(book)
+        // No `await` on `isFetchingArchive` here: the seed already made it true,
+        // so that wait would return without suspending and deliver nothing —
+        // the defect this test was rewritten to remove. The `> 0.3` wait below
+        // is false-before/true-after and carries the delivery.
+        edges.send((book.identifier, true))
+        progress.send((book.identifier, 0.4))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.3 }
+
+        // Record every emission from here on. Asserting only the FINAL value
+        // cannot see a bar that blanked to 0 and was refilled by the 0.55 tick:
+        // review found `stillActive ? 0 : nil` surviving for exactly that
+        // reason. The veto must neither clear NOR reset, so assert on what the
+        // bar actually published.
+        var emissions: [Double?] = []
+        let recorder = presenter.$archiveProgress.sink { emissions.append($0) }
+        defer { recorder.cancel() }
+
+        // The transfer is STILL registered, so this edge is stale.
+        edges.send((book.identifier, false))
+
+        // DELIVERY BARRIER: a plain main-queue drain, on purpose.
+        //
+        // An earlier revision awaited `isFetchingArchive`, which the seed had
+        // already made true — `awaitConditionAsync` checks before suspending,
+        // so it returned without turning the runloop, NEITHER edge was
+        // delivered, and this test passed with the veto reverted. Review caught
+        // it and a mutation re-run confirmed the survivor.
+        //
+        // The replacement is the drain this test used originally. It is proven
+        // to deliver in this harness (the rising-edge mutant dies through a
+        // test that uses it), it stays on ONE publisher, and it therefore
+        // carries none of the cross-publisher ordering premise a progress-tick
+        // barrier would need.
+        await drainMainQueueAsync()
+
+        XCTAssertTrue(presenter.isFetchingArchive,
+                      "a stale falling edge must not clear a bar the authoritative query still reports as live")
+        XCTAssertFalse(emissions.contains(where: { $0 == nil }),
+                       "the vetoed clear must never publish nil — that is the bar disappearing")
+        XCTAssertFalse(emissions.contains(where: { $0 == 0 }),
+                       "nor reset to 0 — that blanks a 40% bar on every stale edge, which a final-value assertion cannot see because a later tick refills it")
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.4, accuracy: 0.001,
+                       "and the vetoed bar keeps the progress it had")
+    }
+
+    /// THE SEED'S PRESERVE ARM. `testRepeatedRisingEdge_keepsProgressAlreadySeen`
+    /// pins the SINK's `?? 0`; this pins the SEED's, and the seed is the one
+    /// whose failure mode is on the common path: `presentLoadingShell` and
+    /// `AudiobookSessionManager` both reach `adoptBook`, so a book seeds TWICE
+    /// per open with the progress sink climbing in between. A seed of `= 0`
+    /// snaps a 60% bar back to 0% every time.
+    ///
+    /// Review found `? 0 : nil` surviving the whole suite — the twin was
+    /// pinned, the one that matters was not.
+    @MainActor
+    func testSecondSeed_keepsProgressAlreadyClimbed() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, progress) = makeArchivePresenter(
+            activeIdentifiers: [book.identifier]
+        )
+        presenter.adoptBook(book)
+        // Same reason as above: the seed already made `isFetchingArchive` true,
+        // so awaiting it would deliver nothing. The `> 0.5` wait carries it.
+        edges.send((book.identifier, true))
+        progress.send((book.identifier, 0.6))
+        await awaitConditionAsync { (presenter.archiveProgress ?? 0) > 0.5 }
+
+        // The second seed of the same open.
+        presenter.adoptBook(book)
+
+        XCTAssertEqual(presenter.archiveProgress ?? -1, 0.6, accuracy: 0.001,
+                       "the second seed of an open must not snap a climbing bar back to 0%")
+    }
+
+    /// THE SEED'S CLEAR ARM. Matters on a same-book re-open, which by the
+    /// presenter's own contract skips `clearActiveSession()` — so the seed is
+    /// the only thing that can retire a bar left over from the previous open.
+    @MainActor
+    func testSeedWithNoActiveTransfer_clearsAStaleBar() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let (presenter, edges, _) = makeArchivePresenter(activeIdentifiers: [])
+        presenter.adoptBook(book)
+        edges.send((book.identifier, true))
+        await awaitConditionAsync { presenter.isFetchingArchive }
+
+        // Re-open with nothing transferring: the seed must retire the bar.
+        presenter.adoptBook(book)
+
+        XCTAssertFalse(presenter.isFetchingArchive,
+                       "a seed that only ever sets and never clears leaves a finished transfer's bar up forever")
+    }
+}

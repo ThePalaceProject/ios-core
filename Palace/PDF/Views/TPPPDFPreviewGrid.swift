@@ -43,6 +43,11 @@ struct TPPPDFPreviewGrid: UIViewControllerRepresentable {
         }
     }
 
+    // `@MainActor`: conforms to the (now main-actor) `TPPPDFPreviewGridDelegate`
+    // and its `action` closure mutates the main-actor `metadata.currentPage`.
+    // The Coordinator is only ever created in `makeCoordinator()` and driven by
+    // main-actor UIKit delegate callbacks, so this is behavior-preserving.
+    @MainActor
     class Coordinator: TPPPDFPreviewGridDelegate {
         let action: (Int) -> Void
 

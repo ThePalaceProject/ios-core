@@ -16,6 +16,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class BookAvailabilityFormatterTests: XCTestCase {
 
     // MARK: - String.isDate(_:moreRecentThan:with:) — Core Sync Decision Logic

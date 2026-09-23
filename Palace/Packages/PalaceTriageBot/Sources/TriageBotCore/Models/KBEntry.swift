@@ -31,6 +31,45 @@ public enum KBCategory: String, Codable, Sendable, CaseIterable {
     case download
     case library
     case other
+
+    /// Patron-facing label, matching the category-chip wording exactly so the
+    /// ticket-preview "Category" field reads the same as the chip the patron
+    /// tapped (PP-4847). `rawValue.capitalized` produced "Signin" (no space) and
+    /// surfaced the internal `reader` case as "Reader" instead of "Reading".
+    public var displayName: String {
+        switch self {
+        case .audiobook: return "Audiobook"
+        case .reader:    return "Reading"
+        case .signin:    return "Sign in"
+        case .download:  return "Download"
+        case .library:   return "Library"
+        case .other:     return "Other"
+        }
+    }
+}
+
+/// What KIND of entry this is — the axis that lets general-help content live
+/// alongside known-issue content without overloading `status`.
+///
+///  - `.knownIssue` — a bug/known problem: has a `status`, may be version-gated
+///    by `fixedInVersion`, its `userFacingWorkaround` is a workaround.
+///  - `.howTo` — a general-help / FAQ answer ("how do I renew?"): no status, no
+///    version gate; its `userFacingWorkaround` field holds the answer text.
+///
+/// Entries that omit `kind` in JSON decode as `.knownIssue`, so the existing
+/// corpus keeps working unchanged. Prefer `resolvedKind` at call sites — it
+/// applies that default.
+public enum KBKind: String, Codable, Sendable {
+    case knownIssue = "known_issue"
+    case howTo = "how_to"
+    /// A per-category remedy ladder, not a diagnosis.
+    ///
+    /// Carries `user_facing_steps` like a known_issue, but claims nothing about
+    /// what is wrong — it is the short, safe sequence offered when no entry
+    /// matched, which is most of the time. Deliberately excluded from
+    /// classification: a ladder must never win a match, scope a ticket, or appear
+    /// as a considered candidate, because it has no diagnostic content to offer.
+    case genericFlow = "generic_flow"
 }
 
 public struct KBInternalReference: Codable, Equatable, Sendable {
@@ -51,9 +90,32 @@ public struct KBInternalReference: Codable, Equatable, Sendable {
 public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let category: KBCategory
-    public let status: KBStatus
+    /// Nil in JSON decodes as `.knownIssue`; use `resolvedKind`.
+    public let kind: KBKind?
+    /// Absent for `.howTo` entries (a general-help answer has no known-issue
+    /// status). Present for `.knownIssue` entries.
+    public let status: KBStatus?
     public let fixedInVersion: String?
+    /// STRONG evidence — phrases specific enough that one of them, alone, is
+    /// grounds to offer this entry. "won't download", "hold is ready",
+    /// "grayed out". A patron who writes one of these has named this problem.
     public let symptomKeywords: [String]
+    /// WEAK evidence — generic symptom words that are consistent with this entry
+    /// but describe half the app: "stuck", "crashes", "download", "bookshelf".
+    /// They raise confidence when they accompany a strong match and are NEVER
+    /// sufficient on their own.
+    ///
+    /// The distinction exists because these two populations were previously one
+    /// flat `symptom_keywords` list, which forced the classifier to gate on
+    /// COUNT ("require ≥2 matches") as a proxy for quality. That proxy suppressed
+    /// the strong keywords along with the weak ones: a patron writing the single
+    /// decisive phrase "my book won't download" scored 1 and escalated, while the
+    /// bot's guided steps sat unreachable behind the ≥2 floor (PP-4865).
+    ///
+    /// Optional in JSON so existing catalogs — and the Kotlin reader of the same
+    /// schema — decode unchanged; absent means "this entry has no weak keywords",
+    /// which is the correct reading for every `how_to` entry.
+    let corroboratingKeywords: [String]?
     public let distributorFilter: [String]?
     public let authTypeFilter: [String]?
     public let iosVersionFilter: [String]?
@@ -75,13 +137,26 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     public let helpspotTag: String?
     public let trustLevel: KBTrustLevel
     public let visibility: KBVisibility
+    /// The UI screen a `how_to` answer depends on (e.g. "settings-libraries").
+    /// A how_to answer references the app's navigation and has no fix version to
+    /// expire against, so it goes stale silently when the UI moves. This anchor
+    /// lets a governance lint flag entries whose screen changed after they were
+    /// last reviewed. Nil for known_issue entries (PP-4831).
+    public let uiSurface: String?
+    /// The date (YYYY-MM-DD) a how_to answer was last verified against the UI.
+    public let reviewedAt: String?
+
+    /// `kind` with its default applied — `.knownIssue` when the JSON omitted it.
+    public var resolvedKind: KBKind { kind ?? .knownIssue }
 
     enum CodingKeys: String, CodingKey {
         case id
         case category
+        case kind
         case status
         case fixedInVersion = "fixed_in_version"
         case symptomKeywords = "symptom_keywords"
+        case corroboratingKeywords = "corroborating_keywords"
         case distributorFilter = "distributor_filter"
         case authTypeFilter = "auth_type_filter"
         case iosVersionFilter = "ios_version_filter"
@@ -94,14 +169,18 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         case helpspotTag = "helpspot_tag"
         case trustLevel = "trust_level"
         case visibility = "visibility"
+        case uiSurface = "ui_surface"
+        case reviewedAt = "reviewed_at"
     }
 
     public init(
         id: String,
         category: KBCategory,
-        status: KBStatus,
+        kind: KBKind? = nil,
+        status: KBStatus? = nil,
         fixedInVersion: String? = nil,
         symptomKeywords: [String],
+        corroboratingKeywords: [String]? = nil,
         distributorFilter: [String]? = nil,
         authTypeFilter: [String]? = nil,
         iosVersionFilter: [String]? = nil,
@@ -113,13 +192,17 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         escalateAnyway: Bool = false,
         helpspotTag: String? = nil,
         trustLevel: KBTrustLevel = .authoritative,
-        visibility: KBVisibility = .userFacing
+        visibility: KBVisibility = .userFacing,
+        uiSurface: String? = nil,
+        reviewedAt: String? = nil
     ) {
         self.id = id
         self.category = category
+        self.kind = kind
         self.status = status
         self.fixedInVersion = fixedInVersion
         self.symptomKeywords = symptomKeywords
+        self.corroboratingKeywords = corroboratingKeywords
         self.distributorFilter = distributorFilter
         self.authTypeFilter = authTypeFilter
         self.iosVersionFilter = iosVersionFilter
@@ -132,6 +215,8 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         self.helpspotTag = helpspotTag
         self.trustLevel = trustLevel
         self.visibility = visibility
+        self.uiSurface = uiSurface
+        self.reviewedAt = reviewedAt
     }
 }
 
@@ -142,10 +227,49 @@ public struct KBCatalog: Codable, Equatable, Sendable {
     public let version: String
     public let updatedAt: String
     public let entries: [KBEntry]
+    /// One question per category, asked when we recognized NOTHING.
+    ///
+    /// Measured on 318 real tickets, 69% of escalations carry no recognized entry
+    /// and therefore ask nothing — support receives "a patron reports a problem"
+    /// plus diagnostics. Matching cannot close that: 8% of complaints are under a
+    /// dozen words ("Cant sign in"), and the catalog covers a fraction of the
+    /// causes behind the rest.
+    ///
+    /// A per-category question does not need to know the cause. It only needs to
+    /// ask the thing that most often splits that category's clusters — for
+    /// sign-in, whether the card came from the library or was created in the app,
+    /// which separates the two largest groups in one answer. That turns a blank
+    /// ticket into a scoped one without any claim about what is wrong.
+    ///
+    /// Keyed by `KBCategory.rawValue`. Optional so existing catalogs decode
+    /// unchanged; a missing category simply asks nothing, as today.
+    let categoryFollowUps: [String: KBEscalationFollowUp]?
+    /// The newest app version this catalog knows about.
+    ///
+    /// Lets a ladder skip its "check for an update" rung for anyone already at or
+    /// past it. The bot cannot see the App Store, so this is the only way it can
+    /// avoid sending a patron on the newest build to look for an update that is
+    /// not there. Optional and conservatively handled: absent means offer the
+    /// rung. Going stale costs one cohort a wasted rung — the same cost as having
+    /// no gate at all — so staleness degrades to today's behaviour rather than to
+    /// a withheld fix.
+    let latestKnownAppVersion: String?
 
     enum CodingKeys: String, CodingKey {
         case version
         case updatedAt = "updated_at"
         case entries
+        case categoryFollowUps = "category_follow_ups"
+        case latestKnownAppVersion = "latest_known_app_version"
+    }
+
+    init(version: String, updatedAt: String, entries: [KBEntry],
+                categoryFollowUps: [String: KBEscalationFollowUp]? = nil,
+                latestKnownAppVersion: String? = nil) {
+        self.version = version
+        self.updatedAt = updatedAt
+        self.entries = entries
+        self.categoryFollowUps = categoryFollowUps
+        self.latestKnownAppVersion = latestKnownAppVersion
     }
 }

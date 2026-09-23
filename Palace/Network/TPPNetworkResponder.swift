@@ -16,6 +16,30 @@ private struct TPPNetworkTaskInfo {
     var progressData: Data
     var startDate: Date
     var completion: ((NYPLResult<Data>) -> Void)
+    /// Set once the response's declared or accumulated size exceeds
+    /// `TPPNetworkResponder.maxResponseBodyBytes`. When true, `didReceive data:`
+    /// stops appending and `didCompleteWithError` fails the task with a clean
+    /// `responseTooLarge` error instead of surfacing the (partial / cancelled)
+    /// body. See PP-4769 (crash 898c0776).
+    var didExceedSizeLimit: Bool = false
+
+    /// The same pending completion, rebound to a retry attempt with a FRESH
+    /// response buffer.
+    ///
+    /// PP-5065: the completion must survive a token-refresh retry (that is the
+    /// whole point of remapping it), but the bytes must not. The 401's problem
+    /// document is already buffered by the time the refresh is decided, and
+    /// `didReceive data:` APPENDS, so carrying the buffer forward hands the
+    /// caller `<problem-doc JSON><retry body>` as a single successful response.
+    ///
+    /// `startDate` is deliberately preserved: elapsed-time logging should span
+    /// the whole user-visible operation, refresh included, not just the retry.
+    func rebornForRetry() -> TPPNetworkTaskInfo {
+        var fresh = self
+        fresh.progressData = Data()
+        fresh.didExceedSizeLimit = false
+        return fresh
+    }
 
     // ----------------------------------------------------------------------------
     init(completion: (@escaping (NYPLResult<Data>) -> Void)) {
@@ -28,13 +52,52 @@ private struct TPPNetworkTaskInfo {
 /// This class responds to URLSession events related to the tasks being
 /// issued on the URLSession, keeping a tally of the related completion
 /// handlers in a thread-safe way.
-class TPPNetworkResponder: NSObject {
+///
+/// Swift 6 `complete` — `@unchecked Sendable` invariant: `URLSession` retains this
+/// as its delegate and delivers callbacks across its own (off-main) queues, so `self`
+/// crosses concurrency boundaries. All mutable state is guarded: `taskInfo` by the
+/// serial `taskInfoQueue`, `retriedURLs` and `tokenRefreshAttempts` by
+/// `retriedURLsLock`; `credentialsProvider` is a `weak var` written once in `init`
+/// and only read thereafter; the remaining stored members are immutable `let`s —
+/// including `fallbackCredentialsProvider`, a non-`Sendable` closure written once
+/// in `init` and only invoked (never reassigned), and
+/// `wasSuppliedCredentialsProvider`, a `Bool` captured at init (PP-4969).
+/// Documented invariant, not a bare waiver. (Critical-path: isolation via existing
+/// locks only — no broadening of the 401/auth decision.)
+class TPPNetworkResponder: NSObject, @unchecked Sendable {
     typealias TaskID = Int
 
+    /// Guarded by `retriedURLsLock` at every access (reset in `clearAllRetries`,
+    /// read+incremented in the 401 delegate path). Previously a bare `var` racing
+    /// between the URLSession delegate queue and `clearAllRetries`; the lock makes
+    /// the confinement sound under `complete` without changing the retry semantics.
     private var tokenRefreshAttempts: Int = 0
     private var taskInfo: [TaskID: TPPNetworkTaskInfo]
     private let useFallbackCaching: Bool
-    private let credentialsProvider: NYPLBasicAuthCredentialsProvider?
+    /// WEAK on purpose: the responder reads the provider ONCE per auth challenge
+    /// (with a `?? currentUserAccount` fallback — see `urlSession(_:task:didReceive:)`),
+    /// and never retains it beyond a method-local `TPPBasicAuth`. A strong
+    /// reference here closed a retain cycle for any provider that also
+    /// (transitively) owns the executor — the `AccountDetailViewModel` case:
+    /// VM → businessLogic → networkExecutor → responder → credentialsProvider(=VM).
+    /// The only non-nil provider in the app is that VM, and it is the ROOT owner of
+    /// its executor chain, so it is normally alive whenever a challenge fires;
+    /// every other site passes nil and already relies on the fallback.
+    ///
+    /// KNOWN RACE, and PP-4895 widened the window rather than introducing it. The
+    /// read is no longer synchronous on the session's delegate queue: the callback
+    /// is now the SDK's `async` requirement, so the compiler-generated thunk hops
+    /// to a Task before the body runs. If the VM is released inside that hop — or,
+    /// as was already possible, before the challenge arrived at all — the weak
+    /// reference is nil and the fallback substitutes the CURRENT library's account.
+    /// On a credential-validation request aimed at a different library, that means
+    /// sending the wrong library's barcode. A nil provider is indistinguishable
+    /// from "no provider was ever supplied", which is the deliberate configuration
+    /// at every other call site, so the fallback cannot simply be removed. Tracked
+    /// separately (PP-4969) rather than fixed here: closing it means distinguishing
+    /// "died" from "never had one" and deciding to cancel instead of substitute,
+    /// which is a behavior change on a credential path and needs its own ticket.
+    private weak var credentialsProvider: NYPLBasicAuthCredentialsProvider?
 
     /// Tracks URLs that have been retried after a 401 to prevent infinite retry loops.
     /// Key is the URL absoluteString, value is the number of retry attempts.
@@ -46,19 +109,97 @@ class TPPNetworkResponder: NSObject {
         label: "com.thepalaceproject.networkResponder.taskInfo"
     )
 
+    /// Pathological-response ceiling. Any response whose declared
+    /// (`expectedContentLength`) or accumulated body would exceed this is
+    /// refused before the whole payload is materialized into a single `Data`,
+    /// which is where iPad-under-memory-pressure crash 898c0776 (PP-4769)
+    /// OOM-trapped inside `__DataStorage.init`.
+    ///
+    /// 100 MB is deliberately far above every legitimate Palace response: OPDS
+    /// feeds and loan documents are at most a few MB, and real book/audiobook
+    /// content is fetched by `MyBooksDownloadCenter` over its own
+    /// `URLSessionDownloadDelegate` (streamed to disk) — it never flows through
+    /// this in-memory data-task path. So the cap only ever fires on a
+    /// genuinely pathological / malformed response, never on normal traffic.
+    static let defaultMaxResponseBodyBytes: Int64 = 100 * 1024 * 1024
+
+    /// Effective per-response body ceiling. Initialized to
+    /// `defaultMaxResponseBodyBytes` and never mutated on any production path
+    /// (zero production write sites repo-wide — effectively constant after
+    /// init). `internal var` rather than `let` solely so adversarial tests can
+    /// lower it to drive the oversize path deterministically without allocating
+    /// a real 100 MB body. Mirrors the `tokenRefreshWatchdogSeconds` test-seam
+    /// convention on `TPPNetworkExecutor`.
+    var maxResponseBodyBytes: Int64 = TPPNetworkResponder.defaultMaxResponseBodyBytes
+
     // ----------------------------------------------------------------------------
     /// - Parameter shouldEnableFallbackCaching: If set to `true`, the executor
     /// will attempt to cache responses even when these lack a sufficient set of
     /// caching headers. The default is `false`.
     /// - Parameter credentialsProvider: The object providing the credentials
     /// to respond to an authentication challenge.
+    /// - Parameter fallbackCredentialsProvider: Overrides the credentials used
+    /// when NO provider was supplied at all — the deliberate configuration at
+    /// every call site but `AccountDetailViewModel`. Injectable so that path can
+    /// be exercised without warming the production container (PP-4969).
+    ///
+    /// `nil` (the default) means "resolve the current account", and that read
+    /// stays where it always was: inside the challenge callback.
+    ///
+    /// The hazard being avoided, stated precisely because an earlier version of
+    /// this comment stated it WRONGLY: `AppContainer._cachedValue()` holds an
+    /// `OSAllocatedUnfairLock` while it BUILDS the container, and the container
+    /// builds this object, so any container read that EXECUTES during `init`
+    /// re-enters that non-recursive lock and aborts the process at launch
+    /// (`_os_unfair_lock_recursive_abort`). A default argument that CALLS
+    /// `production()` — a value-typed default, no braces — does exactly that,
+    /// because value defaults are evaluated at the call site. A default that
+    /// returns a CLOSURE which calls it later does not; the generator only makes
+    /// the closure. That distinction was verified three ways: two standalone
+    /// reproductions during review, and a clean-build run of this file with the
+    /// closure default restored, which passed.
+    ///
+    /// A live example of the dangerous form is `TPPNetworkExecutor.swift`'s
+    /// DI-friendly init, whose `accountsManager` default calls
+    /// `AppContainer.production()`. It is safe today only because overload
+    /// ranking prefers the `@objc` init for the container's own call — safe by
+    /// accident, not by design.
+    ///
+    /// `nil` is used here regardless: it keeps container reads off every
+    /// construction path by shape rather than by argument-evaluation rules, which
+    /// is the property worth having when the container builds you.
     init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
-         useFallbackCaching: Bool = false) {
+         useFallbackCaching: Bool = false,
+         fallbackCredentialsProvider: (() -> NYPLBasicAuthCredentialsProvider)? = nil) {
         self.taskInfo = [Int: TPPNetworkTaskInfo]()
         self.useFallbackCaching = useFallbackCaching
         self.credentialsProvider = credentialsProvider
+        // PP-4969: a nil `credentialsProvider` READ LATER cannot distinguish
+        // "released since" from "never supplied", and the two must be answered
+        // differently. Recorded here, where the difference is still knowable.
+        self.wasSuppliedCredentialsProvider = credentialsProvider != nil
+        self.fallbackCredentialsProvider = fallbackCredentialsProvider
         super.init()
     }
+
+    /// True when a credentials provider was supplied at construction. See the
+    /// challenge callback for why this cannot be inferred later.
+    private let wasSuppliedCredentialsProvider: Bool
+
+    /// See the `init` parameter doc. `nil` means "use the current account".
+    ///
+    /// Obligation on whoever injects one: it is invoked from the auth-challenge
+    /// callback, which is `nonisolated` and runs on the cooperative pool, so the
+    /// closure must be safe to call off any particular executor. Not enforced by
+    /// the type (it is not `@Sendable` — see below), so it is stated here.
+    ///
+    /// Covered by the class's `@unchecked Sendable`
+    /// conformance on the same terms as its other stored members: `let`-bound,
+    /// written once in `init`, only ever read. NOT `@Sendable`, because the value
+    /// it returns is a `NYPLBasicAuthCredentialsProvider` existential — which is
+    /// not `Sendable` — and requiring it would force every caller to launder a
+    /// credentials object through an unchecked box to inject one.
+    private let fallbackCredentialsProvider: (() -> NYPLBasicAuthCredentialsProvider)?
 
     // MARK: - Retry Tracking
 
@@ -121,10 +262,26 @@ class TPPNetworkResponder: NSObject {
             // (caught at PR #956's CI). Production callers see the completion
             // fire twice — second call is a cancelled-error overwriting the
             // genuine retry result. Move the mapping to fix.
+            //
+            // The completion MOVES; the accumulated body does NOT (PP-5065).
+            // See `rebornForRetry()`.
             if let info = self.taskInfo.removeValue(forKey: oldId) {
-                self.taskInfo[newId] = info
+                self.taskInfo[newId] = info.rebornForRetry()
             }
         }
+    }
+
+    /// Test seam: the bytes accumulated for `taskID` so far, or nil if no task
+    /// info is registered under that id.
+    ///
+    /// Read-only, and deliberately narrow. The delivery path in
+    /// `didCompleteWithError` requires a real `URLResponse`, which a
+    /// non-resumed `URLSessionDataTask` cannot carry, so the accumulated body
+    /// is not otherwise observable from a test — which is precisely how PP-5065
+    /// went unnoticed for four months. Sharing `taskInfoQueue` with the writers
+    /// also makes a `sync` read an ordering barrier behind the async appends.
+    func accumulatedBytesForTesting(taskID: TaskID) -> Data? {
+        taskInfoQueue.sync { self.taskInfo[taskID]?.progressData }
     }
 }
 
@@ -171,15 +328,62 @@ extension TPPNetworkResponder: URLSessionDelegate {
 extension TPPNetworkResponder: URLSessionDataDelegate {
 
     // ----------------------------------------------------------------------------
+    /// Up-front oversize guard (PP-4769). When the server declares a
+    /// `Content-Length` (`expectedContentLength > 0`) that already exceeds
+    /// `maxResponseBodyBytes`, refuse the response BEFORE any body is buffered:
+    /// mark the task oversize and `.cancel` it. The cancellation surfaces in
+    /// `didCompleteWithError`, where the oversize flag routes to a clean
+    /// `responseTooLarge` failure. Responses with unknown length
+    /// (`expectedContentLength == NSURLSessionTransferSizeUnknown`, i.e. -1 —
+    /// chunked / streamed) fall through to `.allow` and are caught by the
+    /// running-total check in `didReceive data:` instead.
+    func urlSession(_ session: URLSession,
+                    dataTask: URLSessionDataTask,
+                    didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        let declared = response.expectedContentLength
+        if declared > 0, declared > self.maxResponseBodyBytes {
+            Log.warn(#file, "Refusing response for task \(dataTask.taskIdentifier): declared Content-Length \(declared) exceeds cap \(self.maxResponseBodyBytes)")
+            taskInfoQueue.sync {
+                if var info = self.taskInfo[dataTask.taskIdentifier] {
+                    info.didExceedSizeLimit = true
+                    self.taskInfo[dataTask.taskIdentifier] = info
+                }
+            }
+            completionHandler(.cancel)
+            return
+        }
+        completionHandler(.allow)
+    }
+
+    // ----------------------------------------------------------------------------
     func urlSession(_ session: URLSession,
                     dataTask: URLSessionDataTask,
                     didReceive data: Data) {
         taskInfoQueue.async { [ weak self] in
-            var info = self?.taskInfo[dataTask.taskIdentifier]
-            info?.progressData.append(data)
-            if let updated = info {
-                self?.taskInfo[dataTask.taskIdentifier] = updated
+            guard let self, var info = self.taskInfo[dataTask.taskIdentifier] else { return }
+
+            // Already over the ceiling from a prior chunk — don't keep growing
+            // the buffer while the cancel propagates.
+            guard !info.didExceedSizeLimit else { return }
+
+            // Running-total guard for chunked / unknown-length responses that
+            // slipped past the up-front `didReceive response:` check (PP-4769).
+            // If appending this chunk would cross `maxResponseBodyBytes`, mark
+            // the task oversize, cancel it, and stop appending — the accumulated
+            // partial body is discarded when `didCompleteWithError` fails the
+            // task with `responseTooLarge`.
+            let projected = Int64(info.progressData.count) + Int64(data.count)
+            if projected > self.maxResponseBodyBytes {
+                Log.warn(#file, "Refusing response for task \(dataTask.taskIdentifier): accumulated body \(projected) would exceed cap \(self.maxResponseBodyBytes)")
+                info.didExceedSizeLimit = true
+                self.taskInfo[dataTask.taskIdentifier] = info
+                dataTask.cancel()
+                return
             }
+
+            info.progressData.append(data)
+            self.taskInfo[dataTask.taskIdentifier] = info
         }
     }
 
@@ -248,6 +452,26 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
             // Only log at debug level to avoid noise in crash reporting.
             // If this becomes a real issue, the user will see failed network requests.
             Log.debug(#file, "Task \(taskID) completed but no taskInfo found - likely an internal URLSession task")
+            return
+        }
+
+        // Oversize guard (PP-4769): the response was refused by
+        // `didReceive response:` / `didReceive data:` for exceeding
+        // `maxResponseBodyBytes`. That refusal cancels the task, so `networkError`
+        // here is `NSURLErrorCancelled` — but this MUST fail with the clean,
+        // specific `responseTooLarge` error (not the generic cancelled error, and
+        // never by materializing the partial `progressData`), so callers/UI see
+        // a meaningful reason instead of an OOM crash. Checked before the generic
+        // cancelled branch below precisely because oversize-cancels look like
+        // cancellations at the URLSession layer.
+        if info.didExceedSizeLimit {
+            Log.warn(#file, "Task \(taskID) failed: response exceeded \(self.maxResponseBodyBytes)-byte cap")
+            let err = NSError(
+                domain: TPPErrorLogger.clientDomain,
+                code: TPPErrorCode.responseTooLarge.rawValue,
+                userInfo: [NSLocalizedDescriptionKey: "The server response was too large to process."]
+            )
+            info.completion(.failure(err, task.response))
             return
         }
 
@@ -329,7 +553,36 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                     }
                 }
             }
+        } else if let netErr = networkError as NSError? {
+            // PP-4987: surface the UNDERLYING transport error.
+            //
+            // This branch is the no-HTTP-response case — the task never got a
+            // reply, which is what "offline" looks like. It used to discard
+            // `networkError` and substitute `invalidOrNoHTTPResponse` (914),
+            // which erased the one piece of information every downstream
+            // offline check reads: the NSURLError code.
+            //
+            // What that broke, all of it silently:
+            //   - `NetworkQueue.StatusCodes` is composed ENTIRELY of NSURLError
+            //     values, so `willQueueOffline` could never be true and NOT ONE
+            //     write was ever queued for retry. That is PP-4987 itself, and
+            //     it is why patrons lose reading positions rather than having
+            //     them delivered late.
+            //   - The offline/timeout arms of `TPPAlertUtils` (:68, :72),
+            //     `PalaceError` (:596, :598), `TPPSignInBusinessLogic` (:688)
+            //     and `PalaceAuth.AuthReducer` (:264) all match on those same
+            //     codes, so they were unreachable for anything routed through
+            //     this responder. Patrons saw a generic failure where the app
+            //     had a specific "you appear to be offline" message ready.
+            //
+            // Preserving the error re-enables all of the above at once. The
+            // error is passed through unchanged rather than re-wrapped so the
+            // domain stays NSURLErrorDomain, which is what those call sites
+            // check alongside the code.
+            result = .failure(netErr, task.response)
         } else {
+            // Genuinely no response AND no error to explain it — keep the
+            // generic code, which is what 914 was always meant to describe.
             let err = NSError(domain: "Api call with failure HTTP status",
                               code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
                               userInfo: logMetadata)
@@ -366,8 +619,17 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
             if httpResponse.statusCode == 401 {
                 let snap = AppContainer.production().accountsManager.currentUserAccount.credentialSnapshot()
-                if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
-                    tokenRefreshAttempts += 1
+                // Atomic check-and-increment under `retriedURLsLock` (matches the
+                // reset in `clearAllRetries`) so the token-refresh budget can't race
+                // across concurrent 401 delegate callbacks.
+                let shouldRefreshToken: Bool = retriedURLsLock.withLock {
+                    if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
+                        tokenRefreshAttempts += 1
+                        return true
+                    }
+                    return false
+                }
+                if shouldRefreshToken {
                     return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
                 }
 
@@ -634,13 +896,61 @@ extension URLSessionTask {
 // ----------------------------------------------------------------------------
 // MARK: - URLSessionTaskDelegate
 extension TPPNetworkResponder: URLSessionTaskDelegate {
-    func urlSession(_ session: URLSession,
-                    task: URLSessionTask,
-                    didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        let credsProvider = credentialsProvider ?? AppContainer.production().accountsManager.currentUserAccount
-        let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
-        authChallenger.handleChallenge(challenge, completion: completionHandler)
+    /// Answers an authentication challenge on any request routed through the
+    /// network layer.
+    ///
+    /// PP-4895 — deliberately the SDK's **async** spelling, and it must stay that
+    /// way. The completion-handler requirement shares its block type with
+    /// `WKNavigationDelegate.webView(_:didReceive:completionHandler:)`, which
+    /// WebKit annotates `WK_SWIFT_UI_ACTOR`; under Xcode 26.2 the ClangImporter
+    /// caches one imported type per canonical block type per frontend process, so
+    /// whichever framework is imported first decides whether the requirement
+    /// carries `@MainActor`. When WebKit wins, a plain `@escaping` handler stops
+    /// matching, the method is never exported to the ObjC runtime, and URLSession
+    /// — which invokes optional delegate methods only when the delegate
+    /// `respondsToSelector:` — never calls it. The async requirement has no block
+    /// parameter and so registers under both import orders. Full reasoning and the
+    /// two-order reproduction are on the download center's copy of this callback
+    /// (`MyBooksDownloadCenter`), the app's only other challenge site.
+    ///
+    /// Guarded by `NetworkResponderAuthChallengeWitnessTests`.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        return TPPBasicAuth(credentialsProvider: challengeCredentialsProvider()).response(to: challenge)
+    }
+
+    /// Decides WHOSE credentials answer this challenge (PP-4969).
+    ///
+    /// Three cases, and the middle one is the fix:
+    ///   * the supplied provider is still alive — use it.
+    ///   * a provider WAS supplied and has since been released — answer with no
+    ///     credentials. Falling back here would hand the challenging library the
+    ///     CURRENT library's barcode, which is the cross-account leak this
+    ///     guards (same boundary as F-034 / PP-4020).
+    ///   * none was ever supplied — use the fallback. This is the deliberate
+    ///     configuration at every call site except `AccountDetailViewModel`, so
+    ///     the fallback must stay intact for them.
+    ///
+    /// The released case returns a credential-less PROVIDER rather than a
+    /// hard-coded disposition on purpose: `TPPBasicAuth` then still answers each
+    /// protection space correctly — basic auth is declined, server trust is left
+    /// to the system (cancelling it would break every HTTPS request), and an
+    /// unsupported method is still rejected. One decision point, no drift.
+    private func challengeCredentialsProvider() -> NYPLBasicAuthCredentialsProvider {
+        if let live = credentialsProvider {
+            return live
+        }
+        if wasSuppliedCredentialsProvider {
+            Log.warn(#file, "Auth challenge: the supplied credentials provider was released before the challenge arrived; answering with no credentials rather than substituting the current account's (PP-4969). For a basic-auth challenge that means declining it; a server-trust challenge is still left to the system.")
+            return NoCredentialsProvider()
+        }
+        if let injected = fallbackCredentialsProvider {
+            return injected()
+        }
+        return AppContainer.production().accountsManager.currentUserAccount
     }
 
     func refreshToken(userAccount: TPPUserAccount = AppContainer.production().accountsManager.currentUserAccount) async throws {
@@ -659,4 +969,13 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
             throw error
         }
     }
+}
+
+/// A credentials provider that has no credentials, used to answer an
+/// authentication challenge when the provider that WOULD have answered it has
+/// been released (PP-4969). Routing that case through `TPPBasicAuth` with this
+/// keeps every protection space's disposition decided in one place.
+private final class NoCredentialsProvider: NSObject, NYPLBasicAuthCredentialsProvider {
+    var username: String? { nil }
+    var pin: String? { nil }
 }

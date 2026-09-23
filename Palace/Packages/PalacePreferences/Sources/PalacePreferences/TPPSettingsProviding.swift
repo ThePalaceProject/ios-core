@@ -1,0 +1,101 @@
+//
+//  TPPSettingsProviding.swift
+//  Palace
+//
+//  Created for dependency injection support.
+//  Copyright © 2026 The Palace Project. All rights reserved.
+//
+
+import Foundation
+
+/// Protocol for accessing application settings, enabling dependency injection for testing.
+///
+/// This protocol extracts the testable interface from `TPPSettings`, allowing tests
+/// to inject mock implementations instead of relying on the singleton that persists
+/// to `UserDefaults`.
+///
+/// Usage in production code:
+/// ```swift
+/// class MyClass {
+///     private let settings: TPPSettingsProviding
+///
+///     init(settings: TPPSettingsProviding = AppContainer.production().settings) {
+///         self.settings = settings
+///     }
+/// }
+/// ```
+public protocol TPPSettingsProviding: AnyObject {
+
+    // MARK: - Library Feed URLs
+
+    /// The main feed URL for the current account/library.
+    /// This is the primary catalog URL used for fetching library content.
+    var accountMainFeedURL: URL? { get set }
+
+    /// Custom feed URL override. When set, this URL is used instead of
+    /// the standard library feed. Set to nil to use the default feed.
+    var customMainFeedURL: URL? { get set }
+
+    // MARK: - User Preferences
+
+    /// Whether the user wants to use beta/testing libraries in addition
+    /// to production libraries.
+    var useBetaLibraries: Bool { get set }
+
+    /// Whether the age check dialog has been presented to the user.
+    /// Part of COPPA compliance for children's content.
+    var userPresentedAgeCheck: Bool { get set }
+
+    /// Whether the user has accepted the End User License Agreement.
+    var userHasAcceptedEULA: Bool { get set }
+
+    // MARK: - LCP Settings
+
+    /// Whether to prompt the user to manually enter LCP passphrases
+    /// instead of attempting automatic retrieval.
+    var enterLCPPassphraseManually: Bool { get set }
+
+    // MARK: - App Metadata
+
+    /// The stored version string of the app, used for detecting upgrades.
+    var appVersion: String? { get set }
+
+    /// Custom library registry server URL. When set, the app fetches
+    /// the library list from this server instead of the default.
+    var customLibraryRegistryServer: String? { get set }
+
+    // MARK: - Download Settings
+
+    /// When true, content downloads are restricted to Wi-Fi connections only.
+    /// Cellular/mobile data downloads are blocked with a user-facing message.
+    var downloadOnlyOnWiFi: Bool { get set }
+
+    // MARK: - App Rating (PP-4087)
+    // Local/on-device engagement signals feeding the rating-prompt eligibility
+    // policy. No PII; persisted so they survive app updates.
+
+    /// Number of times the app has been opened/became active.
+    var appRatingSessionCount: Int { get set }
+
+    /// Number of books the patron has finished (read or listened to).
+    var appRatingBooksCompleted: Int { get set }
+
+    /// When the sentiment gate was last shown, or nil if never.
+    var appRatingLastPromptDate: Date? { get set }
+
+    /// Lifetime number of times the sentiment gate has been displayed.
+    var appRatingPromptDisplayCount: Int { get set }
+
+    /// Number of times the patron dismissed/declined the sentiment gate.
+    var appRatingDismissalCount: Int { get set }
+
+    /// Whether the patron selected "Don't ask again".
+    var appRatingOptedOut: Bool { get set }
+
+    /// Whether the most recent previous session ended without a crash.
+    var appRatingCrashFreeLastSession: Bool { get set }
+}
+
+// MARK: - TPPSettings Conformance
+
+extension TPPSettings: TPPSettingsProviding {}

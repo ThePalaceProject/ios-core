@@ -10,6 +10,7 @@ import XCTest
 ///      implementation uses `finishTasksAndInvalidate()` precisely so a
 ///      reset call mid-test doesn't strand a completion handler on a freed
 ///      delegate queue.
+@MainActor
 final class URLSessionStubbingResetTests: XCTestCase {
 
     override func setUp() {

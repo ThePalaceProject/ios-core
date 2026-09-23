@@ -1,9 +1,27 @@
 import SwiftUI
+import PalacePreferences
+import PalaceFeatureFlags
 import Combine
+import os
 import PalaceAuth
 import PalaceNetwork
+import PalaceCatalog // swarm_27c181b5 A5: shared CatalogRepository / DefaultCatalogAPI accessor
+import PalaceBookModel
+import PalaceBookRegistry
+import PalaceLogging
 
-struct AppContainer {
+// Swift 6 `complete` — `@unchecked Sendable` invariant: every stored member is
+// an immutable `let` established once at the composition root and only read
+// thereafter; the struct is a value-typed bag of long-lived DI references
+// (`_cachedValue()` builds it once and hands out copies). It cannot synthesize
+// `: Sendable` because `drmAuthorizerProvider` is a non-`@Sendable` closure and
+// several collaborator classes (`TPPNetworkExecutor`, `AccountsManager`, …) are
+// not yet Sendable-audited upstream — forcing `: Sendable` here would cascade
+// the requirement across the entire DI graph. The value carries no unguarded
+// mutable state of its own, so sharing a copy across the `OSAllocatedUnfairLock`
+// slot and the test-only rebuild `@Sendable` closure is data-race-free. This
+// comment is the documented invariant, not a bare waiver.
+struct AppContainer: @unchecked Sendable {
 
     let bookRegistry: TPPBookRegistryProvider
     let networkExecutor: TPPNetworkExecutor
@@ -11,6 +29,9 @@ struct AppContainer {
     let reachability: Reachability
     let accountsManager: AccountsManager
     let settings: TPPSettings
+    /// THE feature-flag read seam (Wave 1b). Protocol-typed so tests inject
+    /// MockFeatureFlagProvider; production binds RemoteFeatureFlags.shared.
+    let featureFlags: FeatureFlagProviding
     let downloadCenter: MyBooksDownloadCenter
     let downloadAnnouncementService: DownloadAnnouncementService
     let debugSettings: DebugSettings
@@ -111,6 +132,7 @@ struct AppContainer {
             reachability: self.reachability,
             accountsManager: self.accountsManager,
             settings: self.settings,
+            featureFlags: self.featureFlags,
             downloadCenter: self.downloadCenter,
             downloadAnnouncementService: self.downloadAnnouncementService,
             debugSettings: self.debugSettings,
@@ -163,6 +185,7 @@ struct AppContainer {
             reachability: self.reachability,
             accountsManager: self.accountsManager,
             settings: self.settings,
+            featureFlags: self.featureFlags,
             downloadCenter: self.downloadCenter,
             downloadAnnouncementService: self.downloadAnnouncementService,
             debugSettings: self.debugSettings,
@@ -215,17 +238,25 @@ struct AppContainer {
     @MainActor
     var audiobookSession: AudiobookSessionManaging {
         if let cached = AppContainer._audiobookSession { return cached }
-        let session = AudiobookSessionManager(appContainer: self)
+        // Pass the flag provider explicitly so the frozen god-class default arg
+        // (RemoteFeatureFlags.shared, exception E4) stops firing in production.
+        // FeatureFlagProviding is Sendable, so capturing `flags` in the
+        // @escaping () -> Bool is clean under Swift 6 `complete`.
+        let flags = self.featureFlags
+        let session = AudiobookSessionManager(
+            appContainer: self,
+            inAppPlaybackNavEnabledProvider: { flags.isInAppPlaybackNavEnabled }
+        )
         AppContainer._audiobookSession = session
         return session
     }
 
-    /// Polish-phase (in-app-nav-polish-2026-06-01) — wall-clock open-time
-    /// tracker keyed by book identifier. Used by `RecentlyReadingService`
-    /// to surface the genuinely last-opened book on the Continue Reading
-    /// row (without it, EPUB/PDF locations fall back to `book.updated`
-    /// from the OPDS feed and the row shows the wrong book). Audiobook
-    /// + reader open-paths record into this tracker.
+    /// Wall-clock open-time tracker keyed by book identifier. Audiobook +
+    /// reader open-paths record into it. Its only reader (the "Continue"
+    /// catalog rows) was removed in PP-4910, so the tracker is currently
+    /// write-only — retained because the recording call sites live in the
+    /// critical-path reader/audiobook flows and a future "resume" re-entry
+    /// point would consume it. See PP-4910's removal note.
     @MainActor
     var bookOpenTracker: BookOpenTracking {
         if let cached = AppContainer._bookOpenTracker { return cached }
@@ -234,6 +265,62 @@ struct AppContainer {
         return tracker
     }
     @MainActor private static var _bookOpenTracker: BookOpenTracking?
+
+    /// Side-loading (PP-2678) — process-wide registry of side-loaded books.
+    /// Source of truth for the sync-exemption set (consumed by
+    /// `BookRegistrySync.sync()` via a lazy provider) and the side-loaded
+    /// catalog lane (Module D). File-backed shared cache, lazy + cached the
+    /// same way `bookOpenTracker` is; `_resetForTesting()` nils it so its
+    /// on-disk manifest state does not bleed across test classes.
+    var sideloadedBookRegistry: SideloadedBookRegistry {
+        if let cached = AppContainer._sideloadedBookRegistry.withLock({ $0 }) { return cached }
+        // Built outside the lock (matches the prior non-atomic check-then-set
+        // race semantics — `SideloadedBookRegistry()` does no `production()`
+        // re-entry, so no deadlock even if two first-callers each build one).
+        // The lock re-checks on store so a concurrent winner is honored and
+        // the loser's instance is discarded; production callers observe a
+        // single stable registry either way.
+        let registry = SideloadedBookRegistry()
+        return AppContainer._sideloadedBookRegistry.withLock { slot in
+            if let existing = slot { return existing }
+            slot = registry
+            return registry
+        }
+    }
+    /// Swift 6: `OSAllocatedUnfairLock`-guarded so the off-main first access
+    /// (its `identifiers` is read off-main) is concurrency-safe without a
+    /// `@MainActor` annotation that would forbid the off-main read. The
+    /// stored value (`SideloadedBookRegistry`) is itself `@unchecked Sendable`.
+    private static let _sideloadedBookRegistry = OSAllocatedUnfairLock<SideloadedBookRegistry?>(initialState: nil)
+
+    /// Side-loading (PP-2677) — orchestrates the import/remove/rehydrate flow on
+    /// top of `sideloadedBookRegistry`. Consumes the side-loaded registry (truth
+    /// store + sync-exemption), the main `bookRegistry` (so the reader sees the
+    /// book as `.downloadSuccessful`), and a `BookFileManager` for the fixed-
+    /// account file path. Lazy + cached the same way `sideloadedBookRegistry` is;
+    /// `_resetForTesting()` nils it so a stale manager doesn't outlive the
+    /// registry it was wired to. Additive property only — the big `init`,
+    /// `_buildCachedAppContainer()` return, and `with*Presenter` copies are NOT
+    /// touched (Module A owns this property region; Module C appends here).
+    var sideloadedBookManager: SideloadedBookManager {
+        if let cached = AppContainer._sideloadedBookManager.withLock({ $0 }) { return cached }
+        // Built outside the lock (see `sideloadedBookRegistry`). Reads
+        // `self.sideloadedBookRegistry`, which acquires a DIFFERENT lock —
+        // consistent manager→registry ordering, no reverse path, no deadlock.
+        let manager = SideloadedBookManager(
+            bookRegistry: self.bookRegistry,
+            sideloadedRegistry: self.sideloadedBookRegistry,
+            bookFileManager: BookFileManager(accountScope: self.downloadAccountContext)
+        )
+        return AppContainer._sideloadedBookManager.withLock { slot in
+            if let existing = slot { return existing }
+            slot = manager
+            return manager
+        }
+    }
+    /// Swift 6: `OSAllocatedUnfairLock`-guarded (see `_sideloadedBookRegistry`).
+    /// Stored value is `@unchecked Sendable`.
+    private static let _sideloadedBookManager = OSAllocatedUnfairLock<SideloadedBookManager?>(initialState: nil)
 
     /// Process-wide audiobook session presenter — the root-level
     /// SwiftUI-observable bridge between the manager's published state and
@@ -253,7 +340,17 @@ struct AppContainer {
     var audiobookSessionPresenter: AudiobookSessionPresenter {
         if let override = _audiobookSessionPresenterOverride { return override }
         if let cached = AppContainer._audiobookSessionPresenter { return cached }
-        let presenter = AudiobookSessionPresenter(sessionManager: self.audiobookSession)
+        let presenter = AudiobookSessionPresenter(
+            sessionManager: self.audiobookSession,
+            // The player's download bar must distinguish the `.lcpa` network
+            // fetch from local track decryption; the download centre is the
+            // only thing that knows. Same signal the half-sheet consumes.
+            archiveTransferPublisher: self.downloadCenter.lcpContentDownloadPublisher.eraseToAnyPublisher(),
+            archiveProgressPublisher: self.downloadCenter.progressReporter.downloadProgressPublisher.eraseToAnyPublisher(),
+            isArchiveTransferActive: { [weak downloadCenter = self.downloadCenter] identifier in
+                downloadCenter?.progressReporter.isLCPContentTransferActive(for: identifier) ?? false
+            }
+        )
         AppContainer._audiobookSessionPresenter = presenter
         return presenter
     }
@@ -274,11 +371,90 @@ struct AppContainer {
         return bootstrapper
     }
 
+    /// App-rating service (Epic PP-4086). Owns engagement tracking + eligibility
+    /// evaluation; persists through `self.settings` and reads thresholds from
+    /// Remote Config. Lazy + cached like the audiobook services above.
+    @MainActor
+    var appRatingService: AppRatingService {
+        if let cached = AppContainer._appRatingService { return cached }
+        let flags = self.featureFlags
+        let service = AppRatingService(
+            tracker: RatingEngagementTracker(settings: self.settings),
+            // Wave 1b exception E1: appRatingConfig returns RatingConfig (an
+            // app-target type) — read off the concrete impl at this composition
+            // root; it is deliberately NOT on the FeatureFlagProviding protocol.
+            configProvider: { RemoteFeatureFlags.shared.appRatingConfig },
+            promptEnabledProvider: { flags.isAppRatingPromptEnabled },
+            forceEligibleProvider: { flags.isAppRatingForceEligible },
+            crashFreeProbe: { FirebaseManager.shared.wasLastSessionCrashFree() },
+            now: Date.init
+        )
+        AppContainer._appRatingService = service
+        return service
+    }
+
+    /// Root-level presenter driving the app-rating sentiment gate (PP-4089).
+    /// Observed by the overlay in `AppTabHostView`; lazy + cached like the
+    /// audiobook presenter above.
+    @MainActor
+    var ratingPromptPresenter: RatingPromptPresenter {
+        if let cached = AppContainer._ratingPromptPresenter { return cached }
+        let presenter = RatingPromptPresenter(
+            service: self.appRatingService,
+            reviewRequester: RatingReviewRequester(),
+            feedbackPresenter: RatingFeedbackPresenter()
+        )
+        AppContainer._ratingPromptPresenter = presenter
+        return presenter
+    }
+
+    // MARK: - Shared Catalog Repository / API (swarm_27c181b5 A5)
+    //
+    // ONE process-wide `DefaultCatalogAPI` + `CatalogRepository`, resolved
+    // lazily and cached statically — same lazy+cached shape as the presenters
+    // above. Before this, `CatalogLaneMoreView.searchSection`,
+    // `CatalogSearchView`, and `CatalogLaneMoreViewModel` each built a fresh
+    // `CatalogRepository(api: DefaultCatalogAPI(...))` on every body/init,
+    // giving each render its own throwaway in-memory cache and defeating the
+    // account-scoped stale-while-revalidate cache. Sharing one instance keeps
+    // the cache warm across catalog navigation. The repository is account-UUID
+    // scoped (mirrors `AppTabHostView`'s main catalog repository) so library
+    // A's catalog can never be served to library B.
+
+    @MainActor
+    var catalogAPI: DefaultCatalogAPI {
+        if let cached = AppContainer._catalogAPI { return cached }
+        let api = DefaultCatalogAPI(
+            client: URLSessionNetworkClient(),
+            parser: OPDSParser(),
+            featureFlags: self.featureFlags
+        )
+        AppContainer._catalogAPI = api
+        return api
+    }
+
+    @MainActor
+    var catalogRepository: CatalogRepositoryProtocol {
+        if let cached = AppContainer._catalogRepository { return cached }
+        let accountsManager = self.accountsManager
+        let repository = CatalogRepository(
+            api: catalogAPI,
+            accountID: { [weak accountsManager] in accountsManager?.currentAccount?.uuid }
+        )
+        AppContainer._catalogRepository = repository
+        return repository
+    }
+
+    @MainActor private static var _catalogAPI: DefaultCatalogAPI?
+    @MainActor private static var _catalogRepository: CatalogRepositoryProtocol?
+
     @MainActor private static var _bookCellModelCache: BookCellModelCache?
     @MainActor private static var _samplePreviewManager: SamplePreviewManager?
     @MainActor private static var _audiobookSession: AudiobookSessionManager?
     @MainActor private static var _audiobookSessionPresenter: AudiobookSessionPresenter?
     @MainActor private static var _playbackBootstrapper: PlaybackBootstrapper?
+    @MainActor private static var _appRatingService: AppRatingService?
+    @MainActor private static var _ratingPromptPresenter: RatingPromptPresenter?
 
     init(
         bookRegistry: TPPBookRegistryProvider,
@@ -287,6 +463,7 @@ struct AppContainer {
         reachability: Reachability,
         accountsManager: AccountsManager,
         settings: TPPSettings,
+        featureFlags: FeatureFlagProviding,
         downloadCenter: MyBooksDownloadCenter,
         downloadAnnouncementService: DownloadAnnouncementService,
         debugSettings: DebugSettings,
@@ -308,6 +485,7 @@ struct AppContainer {
         self.reachability = reachability
         self.accountsManager = accountsManager
         self.settings = settings
+        self.featureFlags = featureFlags
         self.downloadCenter = downloadCenter
         self.downloadAnnouncementService = downloadAnnouncementService
         self.debugSettings = debugSettings
@@ -325,7 +503,32 @@ struct AppContainer {
     }
 
     static func production() -> AppContainer {
-        _cached
+        let container = _cachedValue()
+        container.ensureOfflineQueueExecutorRegistered()
+        return container
+    }
+
+    /// Reliability WS-C (seam S2): install the offline-queue executor
+    /// exactly once. The coordinator is retained in a process-wide slot so
+    /// its `[weak self]` executor closure stays alive; the actual
+    /// `setExecutor` call lives in `OfflineQueueCoordinator.registerExecutor()`
+    /// (WS-C owns the wiring). Empty-fast on every subsequent call.
+    private static let _offlineQueueCoordinator =
+        OSAllocatedUnfairLock<OfflineQueueCoordinator?>(initialState: nil)
+
+    func ensureOfflineQueueExecutorRegistered() {
+        let coordinator: OfflineQueueCoordinator? =
+            AppContainer._offlineQueueCoordinator.withLock { slot in
+                if slot != nil { return nil }
+                let c = OfflineQueueCoordinator.production(
+                    downloadCenter: self.downloadCenter,
+                    bookRegistry: self.bookRegistry
+                )
+                slot = c
+                return c
+            }
+        guard let coordinator else { return }
+        Task { await coordinator.registerExecutor() }
     }
 
     /// The cached app-wide composition graph. Initially populated by Swift's
@@ -339,10 +542,25 @@ struct AppContainer {
     /// residual race window.
     ///
     /// swarm_4b64e4e0 Fix 2 — closes the H1 finding from swarm_f88ae9e3 A.
-    /// Production behaviour is unchanged: first call to `production()`
-    /// triggers the static-var lazy init, which runs `_buildCachedAppContainer()`
-    /// once; subsequent reads return the cached struct value.
-    private static var _cached: AppContainer = Self._buildCachedAppContainer()
+    /// Production behaviour is unchanged: first read materialises the value via
+    /// `_buildCachedAppContainer()` under the lock; subsequent reads return it.
+    ///
+    /// Swift 6 `complete`: `OSAllocatedUnfairLock`-guarded (matching this file's
+    /// `_sideloadedBookRegistry` precedent) instead of a bare mutable `static var`,
+    /// which is a data-race hazard under strict concurrency. The lock preserves the
+    /// prior lazy-once semantics for production callers (first `production()` read
+    /// builds once; the test-only rebuild seams reassign through the lock) without
+    /// pinning `AppContainer` to any actor.
+    private static let _cachedLock = OSAllocatedUnfairLock<AppContainer?>(initialState: nil)
+
+    private static func _cachedValue() -> AppContainer {
+        _cachedLock.withLock { slot in
+            if let existing = slot { return existing }
+            let built = Self._buildCachedAppContainer()
+            slot = built
+            return built
+        }
+    }
 
     /// Builds a fresh AppContainer composition graph. Extracted from the
     /// prior `static let _cached: AppContainer = { ... }()` lambda VERBATIM
@@ -350,8 +568,65 @@ struct AppContainer {
     /// invariants (TPPBookRegistry takes AccountsManager explicitly; no
     /// default arg ever fires; collaborator construction is hand-threaded
     /// through `executor`, `reachability`, `accountsManager`, etc.).
+    /// Test seam (NOT `#if DEBUG` — BR-2/blast-radius forbids `#if DEBUG` on
+    /// production paths; this is a plain internal hook that is EMPTY in
+    /// production, so it changes nothing there). Tests set this (via
+    /// `PalaceTestSetup`) so the SHARED network executor's `URLSession` includes
+    /// `NoNetworkURLProtocol`: `URLProtocol.registerClass` only covers
+    /// `URLSession.shared`, NOT a `URLSession(configuration:)`, which consults
+    /// only its `config.protocolClasses` — so the shared executor that
+    /// `AccountsManager.fallbackDirectRefresh` uses would otherwise escape to the
+    /// real `registry.palaceproject.io` in unit tests. The executor is rebuilt
+    /// with this on every `_resetForTesting()` (which re-runs the builder below),
+    /// so the protocol applies to every test's graph. Follows AppContainer's
+    /// existing lock-backed static pattern (e.g. `_cached`, `_sideloadedBookRegistry`).
+    ///
+    /// Swift 6 `complete`: backed by an `OSAllocatedUnfairLock` rather than a bare
+    /// mutable `static var` (a data-race hazard). The computed accessor keeps the
+    /// `AppContainer.testExecutorProtocolClasses = [...]` / read API the test seams
+    /// use, so no call site changes. Empty in production — zero behaviour change.
+    private static let _testExecutorProtocolClassesLock =
+        OSAllocatedUnfairLock<[AnyClass]>(initialState: [])
+
+    internal static var testExecutorProtocolClasses: [AnyClass] {
+        get { _testExecutorProtocolClassesLock.withLock { $0 } }
+        set { _testExecutorProtocolClassesLock.withLock { $0 = newValue } }
+    }
+
+    /// Builds the shared network executor. In production `testExecutorProtocolClasses`
+    /// is empty, so this is the verbatim default `TPPNetworkExecutor(cachingStrategy:
+    /// .fallback)` — zero production change. When a test installs extra protocol
+    /// classes, the executor is built through the EXISTING
+    /// `init(... sessionConfiguration:)` seam with those classes prepended onto a
+    /// normal `.fallback` config (no new TPPNetworkExecutor/PalaceNetwork surface).
+    private static func makeNetworkExecutor() -> TPPNetworkExecutor {
+        let extra = testExecutorProtocolClasses
+        guard !extra.isEmpty else {
+            return TPPNetworkExecutor(cachingStrategy: .fallback)
+        }
+        let config = TPPCaching.makeURLSessionConfiguration(
+            caching: .fallback,
+            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
+        config.protocolClasses = extra + (config.protocolClasses ?? [])
+        return TPPNetworkExecutor(cachingStrategy: .fallback, sessionConfiguration: config)
+    }
+
+    /// Non-DEBUG test seam (BR-2 forbids `#if DEBUG` on prod paths; this is a
+    /// plain internal method that production never calls). Rebuilds the cached
+    /// graph so its network executor picks up `testExecutorProtocolClasses`.
+    /// Needed because the host app already built the cached graph (and its
+    /// executor) during launch — BEFORE the test bundle could install the test
+    /// protocol classes — and the per-test `_resetForTesting` rebuild is
+    /// `#if DEBUG` (compiled out in the non-DEBUG config `harness test` uses), so
+    /// without this the executor would never honor `NoNetworkURLProtocol` locally
+    /// (and the FIRST test of any run would escape even under DEBUG/CI).
+    /// `PalaceTestSetup` calls this once, after installing the protocol classes.
+    internal static func _rebuildCachedForTestProtocols() {
+        _cachedLock.withLock { $0 = _buildCachedAppContainer() }
+    }
+
     private static func _buildCachedAppContainer() -> AppContainer {
-        let executor = TPPNetworkExecutor(cachingStrategy: .fallback)
+        let executor = makeNetworkExecutor()
         let reachability = Reachability()
         // AccountsManager and TPPBookRegistry are constructed inline here.
         // TPPBookRegistry.init takes AccountsManager as an explicit dependency,
@@ -360,7 +635,29 @@ struct AppContainer {
         // motivated killing TPPBookRegistry.shared in Phase 6.6). We hand
         // both into AppContainer.init — and into every collaborator built
         // here — explicitly so no default arg ever fires.
-        let accountsManager = AccountsManager()
+        // CP-D1 LaunchHydration: `AccountsManager.init` no longer eagerly
+        // decodes+maps the full ~1142-account registry on this (launch) thread.
+        // It hydrates only a SLIM snapshot (current + settings accounts, a few
+        // ms) synchronously; the full list materializes OFF-MAIN via the
+        // background `loadCatalogs` the initializer dispatches. Do NOT reintroduce
+        // a synchronous full-account preload here — `production()` must return
+        // without paying the ~207ms (fast sim) / ~0.3-0.6s (device) full decode.
+        // Wave 3 S1: inject the account-switch borrow-reauth circuit-breaker
+        // reset explicitly (no-default-fires house rule) rather than relying on
+        // AccountsManager's real default arg. `DownloadCenterBorrowReauthResetter`
+        // is a stateless struct that forwards to a static, so it needs no MBDC
+        // instance — no construction-order hazard even though MBDC is built later
+        // in this method.
+        // Wave 3 S3: inject the account-switch cleanup collaborators as a frozen
+        // bundle (the `RegistryExternalDependencies` precedent) rather than letting
+        // the setter / cleanup reach for the shared singletons directly. `.production`
+        // resolves them at the composition root — its network-executor + nav-hub
+        // reads are DEFERRED in closures, so evaluating it here does not re-enter this
+        // dispatch_once. Passed explicitly (no-default-fires house rule).
+        let accountsManager = AccountsManager(
+            borrowReauthResetter: DownloadCenterBorrowReauthResetter(),
+            switchDependencies: .production
+        )
         // Single image-loading umbrella composed of the existing disk+memory
         // ImageCache and the TPPBookCoverRegistry actor — replaces three
         // overlapping singletons at consumer sites (Track A of the 3.2.0
@@ -370,6 +667,18 @@ struct AppContainer {
         // that re-entered _cached's own dispatch_once and SIGTRAPped on launch.
         let imageCache = ImageCache.shared
         let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
+        // Wave 2a: configure the package-side image context BEFORE the first
+        // TPPBook is constructed (the registry construction below parses records).
+        TPPBookImageContext.imageCacheProvider = { imageCache }
+        TPPBookImageContext.imageLoaderProvider = { imageLoader }
+        // god-class decomposition Wave 2b: the registry engine now lives in the
+        // PalaceBookRegistry package and consumes accounts through the value-only
+        // `AccountScopeProviding` inversion + a `RegistryExternalDependencies` bundle.
+        // The convenience init builds the `AccountsManagerAccountScopeAdapter` and the
+        // `.production()` dependency bundle whose provider closures keep the SAME lazy
+        // `AppContainer.production()` resolution the engine's inline closures had
+        // (deferred to first use, so a mid-reset rebuild can't capture a stale graph
+        // and construction here doesn't re-enter the still-resolving dispatch_once).
         let bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: imageLoader)
         // Build one accessibility announcer and one DownloadAnnouncementService
         // that wraps it. Sharing this announcer between the service and any
@@ -420,23 +729,58 @@ struct AppContainer {
             reachability: reachability,
             authCoordinator: authCoordinator
         )
+        // `UserAccountPublisher.shared` is `@MainActor`-isolated; this builder
+        // runs on the main thread (it is only ever reached from the first
+        // `production()` caller, which is UIKit app-launch lifecycle —
+        // `TPPAppDelegate.application(_:didFinishLaunchingWithOptions:)` /
+        // `SceneDelegate` — and from main-thread XCTest setup). The same
+        // main-thread precondition is already asserted a few lines above where
+        // `authCoordinator` is built inside `MainActor.assumeIsolated`, so this
+        // read introduces no new precondition. Hoisted behind `assumeIsolated`
+        // to satisfy the `targeted` checker without a signature change.
+        let userAccountPublisher = MainActor.assumeIsolated { UserAccountPublisher.shared }
+        // PP-5022 — the navigation hub resolves "which stack is on screen" by
+        // asking the tab router which tab is selected, so the two hubs are one
+        // unit. Built as a pair here, in the one place both exist, so a
+        // mis-paired hub is not something a caller can assemble by accident.
+        let tabRouterHub = AppTabRouterHub()
+        let navigationCoordinatorHub = NavigationCoordinatorHub(tabRouterHub: tabRouterHub)
+
         return AppContainer(
             bookRegistry: bookRegistry,
             networkExecutor: executor,
-            networkQueue: NetworkQueue(transport: executor.transport, reachability: reachability),
+            // Bind the drain-time credential provider HERE, where
+            // `accountsManager` is already in scope — the default closure would
+            // otherwise re-enter `AppContainer.production()` from the queue's
+            // serial queue at drain time. Same reasoning as the featureFlags
+            // note below: the composition root is the binding site.
+            networkQueue: NetworkQueue(
+                transport: executor.transport,
+                reachability: reachability,
+                authorizationHeaderProvider: { [accountsManager] libraryID in
+                    accountsManager.userAccount(for: libraryID)
+                        .credentialSnapshot().authToken.map { "Bearer \($0)" }
+                }
+            ),
             reachability: reachability,
             accountsManager: accountsManager,
             settings: TPPSettings(),
+            // Composition root — the one legitimate binding site for the seam.
+            // `.shared` keeps the process-singleton identity (one lastFetchTime,
+            // one `.standard`-backed override store, the same instance CarPlay's
+            // cached-read path warms). Constructing a second instance here would
+            // fork the CarPlay UserDefaults cache writer.
+            featureFlags: RemoteFeatureFlags.shared,
             downloadCenter: downloadCenter,
             downloadAnnouncementService: downloadAnnouncementService,
             debugSettings: DebugSettings(),
             imageCache: imageCache,
             imageLoader: imageLoader,
-            userAccountPublisher: .shared,
+            userAccountPublisher: userAccountPublisher,
             opdsFeedService: OPDSFeedService(),
             readerService: ReaderService(),
-            navigationCoordinatorHub: NavigationCoordinatorHub(),
-            tabRouterHub: AppTabRouterHub(),
+            navigationCoordinatorHub: navigationCoordinatorHub,
+            tabRouterHub: tabRouterHub,
             drmAuthorizerProvider: {
                 #if FEATURE_DRM_CONNECTOR
                 return AdobeCertificate.isDRMAvailable ? AdobeDRMService.shared.adeptInstance : nil
@@ -481,18 +825,21 @@ struct AppContainer {
     ///      (`AppContainerResetTests`); the safe default between tests is
     ///      `true`, matching `PalaceTestSetup.bootstrap()`.
     ///
-    /// Residual race window (DOCUMENTED INTENTIONAL):
-    /// Step 2's cancellation is cooperative. If the prior AccountsManager's
-    /// `fetchFromNetwork` Task is mid-await on `crawler.crawlFirstPage`, the
-    /// completion still fires and writes through to `accountSets` on the OLD
-    /// instance — but the OLD instance is no longer reachable from
-    /// `production()`, so the write is observable only by code paths that
-    /// held a strong reference to the prior `accountsManager` (none in
-    /// production; vanishingly few in tests). The next test gets a clean
-    /// `production()` graph regardless. This window is the brief moment
-    /// between cancel-request and Task cancellation observation; on a
-    /// 100Mbps link with the bundled snapshot path, < 50ms in 99% of cases.
-    /// Acceptable per swarm_4b64e4e0 outcome.md user direction.
+    /// Residual race window (NARROWED — PP-4754):
+    /// Step 2 no longer relies on cooperative cancellation alone. Every
+    /// background crawl Task — including the previously un-drainable fallback
+    /// GET completions — is now OWNED by `AccountsManager.ownedCrawlTasks`, and
+    /// `cancelAndDrainBackgroundWork()` (called below) synchronously awaits the
+    /// full owned set before returning. So a `fetchFromNetwork` Task mid-await
+    /// on `crawler.crawlFirstPage` is drained to completion (its post-await
+    /// `Task.isCancelled` guard drops the write) inside this boundary rather
+    /// than landing on the OLD instance a few ms later. The one remaining
+    /// window: a crawl that passes its `Task.isCancelled` guard concurrently
+    /// with the cancel can spawn a successor (pagination/preload) that is
+    /// neither in the drained snapshot nor yet cancelled — it is caught at the
+    /// NEXT boundary by `_drainAllLiveInstancesForTesting()`. Strictly narrower
+    /// than the pre-change fire-and-forget behavior; no write survives past that
+    /// next boundary's store reset.
     ///
     /// swarm_4b64e4e0 Fix 2 — DEBUG-only test seam. Not callable from
     /// production code (compile-time gated). The function is `internal` so
@@ -517,8 +864,26 @@ struct AppContainer {
         // against (120s main-jam "auth-state-bleed"). Draining (with run-loop
         // pumping) closes that residual race globally at every test boundary.
         // WS-0 follow-up; see AccountsManager.cancelAndDrainBackgroundWork.
-        _cached.accountsManager.cancelAndDrainBackgroundWork()
-        _cached = Self._buildCachedAppContainer()
+        // Drain the prior cached graph's crawl, then rebuild. Build OUTSIDE the
+        // lock (`_buildCachedAppContainer` must not re-enter the lock) and assign
+        // the fresh graph through it — same reassign semantics as the old
+        // `_cached = ...`, now race-safe under `complete`.
+        _cachedValue().accountsManager.cancelAndDrainBackgroundWork()
+        // Global drain: the per-manager drain above only touches the CURRENT
+        // cached manager. A foreign AccountsManager built by an earlier test
+        // (e.g. an `AppContainer.production()` manager a Catalog/Borrow test
+        // never tore down) keeps a leaked `loadCatalogs` crawl / deferred
+        // auth-doc main-hop that late-writes `AccountStateStore.shared` and
+        // pollutes later async victims. Drain ALL live instances here — BEFORE
+        // the `AccountStateStore.shared._resetAllForTesting()` resetter (which
+        // is registered AFTER this `AppContainer._resetForTesting` resetter in
+        // `PalaceTestSetup.registerBuiltInResetters`, so it runs strictly after
+        // this whole function) so any flushed late write is then wiped. This is
+        // the shared mechanism behind BOTH pollution clusters. Idempotent, so
+        // re-draining the current manager captured above is harmless.
+        AccountsManager._drainAllLiveInstancesForTesting()
+        let rebuilt = Self._buildCachedAppContainer()
+        _cachedLock.withLock { $0 = rebuilt }
         // Reset the process-wide audiobook session/presenter statics — the only
         // graph members `_buildCachedAppContainer()` does NOT rebuild. Left
         // intact, `_audiobookSessionPresenter` carries active-session state (and
@@ -539,7 +904,21 @@ struct AppContainer {
             _audiobookSession = nil
             _audiobookSessionPresenter = nil
             _playbackBootstrapper = nil
+            _appRatingService = nil
+            _ratingPromptPresenter = nil
         }
+        // Side-loading (PP-2678): the side-loaded registry is a file-backed
+        // shared static cache, so it WOULD bleed manifest state across test
+        // classes if left intact. Nil it here so the next `production()`
+        // resolution rebuilds a fresh instance reading the current manifest.
+        // Not `@MainActor`-isolated (its `identifiers` is read off-main), so
+        // reset outside the `assumeIsolated` block. Now lock-guarded storage
+        // (Swift 6) — clear the slot through the lock.
+        _sideloadedBookRegistry.withLock { $0 = nil }
+        // Side-loading (PP-2677): the manager caches a reference to the
+        // side-loaded registry above, so nil it in lockstep — a stale manager
+        // would keep pointing at the reset registry across test classes.
+        _sideloadedBookManager.withLock { $0 = nil }
         // Leave the flag at the test-safe `true` (see step 4 above) — do NOT
         // reset to `false`. The next test class inherits this value before its
         // own setUp runs; `false` here is the root of the cross-test
@@ -547,6 +926,21 @@ struct AppContainer {
         AccountsManager.deferInitialLoadCatalogsForTesting = true
     }
     #endif
+}
+
+// MARK: - Downloads account-context seam (Wave 3 S2)
+
+extension AppContainer {
+    /// Vends the Downloads-owned account-context adapter over this container's
+    /// `accountsManager` (god-class decomposition Wave 3, S2). Stateless
+    /// wrapper — computed, so it needs no stored property and no init churn, and
+    /// every container (production or a test container) yields an adapter scoped
+    /// to its OWN `accountsManager`. Consumed by `BookFileManager` (and, at the
+    /// deferred follow-up, `MyBooksDownloadCenter`) in place of the concrete
+    /// `AccountsManager`.
+    var downloadAccountContext: AccountsManagerDownloadContextAdapter {
+        AccountsManagerDownloadContextAdapter(accountsManager: accountsManager)
+    }
 }
 
 // MARK: - SwiftUI Environment Integration
@@ -562,5 +956,98 @@ extension EnvironmentValues {
     var appContainer: AppContainer {
         get { self[AppContainerKey.self] }
         set { self[AppContainerKey.self] = newValue }
+    }
+}
+
+// MARK: - Account-switch cleanup deps (Wave 3 S3)
+
+extension AccountSwitchDependencies {
+    /// The live account-switch cleanup collaborators, resolved at the composition
+    /// root. This is the ONE legitimate binding site for these singletons — the
+    /// account-switch cleanup used to reach for them inline. The network-executor and
+    /// nav-hub reads are wrapped in closures so they resolve LAZILY (first account
+    /// switch), never during the `production()` dispatch_once that constructs the
+    /// manager — preserving the documented init-cycle deferral.
+    static var production: AccountSwitchDependencies {
+        AccountSwitchDependencies(
+            imageCache: ImageCache.shared,
+            accountStateStore: .shared,
+            resetCoverCircuitBreaker: { TPPBookCoverRegistry.shared.resetHostFailures() },
+            networkExecutorProvider: { AppContainer.production().networkExecutor },
+            popToRootForAccountSwitch: { await AppContainer.popToRootForAccountSwitch() }
+        )
+    }
+}
+
+extension AppContainer {
+    /// Main-actor navigation cleanup for an account switch: pop the active navigation
+    /// stack to root when it is non-empty, then wait the documented settle interval.
+    /// Extracted verbatim from the manager's prior inline cleanup Task so the seam is
+    /// a single spy point while the production behavior is byte-for-byte identical.
+    @MainActor
+    fileprivate static func popToRootForAccountSwitch() async {
+        popAllToRootForAccountSwitch(hub: AppContainer.production().navigationCoordinatorHub)
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+    }
+
+    /// Sends the patron to a tab's ROOT, for navigation the APP initiates rather
+    /// than the patron.
+    ///
+    /// PP-5051 — every `tabRouterHub.navigate(to:)` site is "take them to that
+    /// tab to see a specific thing": a ready hold, their downloaded books, the
+    /// new library's catalog. Those relied on the destination already being at
+    /// its root, which was true only because leaving a tab reset it. Tabs now
+    /// keep their stacks, so a hold-ready notification could land the patron on
+    /// whatever book detail they happened to leave in the Holds tab. Preserving
+    /// your place is for the tabs YOU tap; being sent somewhere is not that.
+    ///
+    /// Popped BEFORE the switch so the destination is already at its root as it
+    /// appears — no flash of the previous screen.
+    ///
+    /// Animated only when the patron is already ON that tab, because then they
+    /// are watching the stack collapse and an instant cut has no tab transition
+    /// to hide behind. Arriving from another tab stays un-animated, for the
+    /// reason recorded on `NavigationCoordinator.popToRoot`.
+    @MainActor
+    func navigateToTabRoot(_ tab: AppTab) {
+        let animated = Self.shouldAnimateArrival(currentTab: tabRouterHub.currentTab,
+                                                 destination: tab)
+        navigationCoordinatorHub.coordinator(for: tab)?.popToRoot(animated: animated)
+        tabRouterHub.navigate(to: tab)
+    }
+
+    /// Whether the pop in `navigateToTabRoot` should animate.
+    ///
+    /// Animate only when the patron is ALREADY on the destination tab: they are
+    /// watching that stack, there is no cross-tab transition to hide an instant
+    /// cut behind, and `navigate(to:)` writes an unchanged value so no tab
+    /// animation races it. Arriving from another tab — or from an unknown tab,
+    /// which is a fresh arrival — stays instant.
+    ///
+    /// Extracted so the two cells are a table rather than a condition inside a
+    /// call, matching `shouldPopToRoot` / `shouldFinishSwitchingImmediately` /
+    /// `tabTapOutcome`.
+    static func shouldAnimateArrival(currentTab: AppTab?, destination: AppTab) -> Bool {
+        currentTab == destination
+    }
+
+    /// Clears active content out of EVERY tab before a library switch.
+    ///
+    /// PP-5051 — this used to pop only the tab in view, which was sufficient
+    /// only because leaving a tab reset it, so no other stack could be holding
+    /// anything. Tabs now keep their stacks: without this, switching libraries
+    /// would leave the previous library's book details, lanes, and search
+    /// results sitting in the three tabs the patron is not looking at, ready to
+    /// be found later with no indication they belong to a library they left.
+    ///
+    /// Takes the hub explicitly so the sweep is exercisable without the
+    /// production graph.
+    @MainActor
+    static func popAllToRootForAccountSwitch(hub: NavigationCoordinatorHub) {
+        for coordinator in hub.allRegisteredCoordinators() {
+            guard AccountsManager.shouldPopToRoot(navigationPathCount: coordinator.path.count) else { continue }
+            Log.info(#file, "  🔄 Popping a tab to root to clean up active content before account switch")
+            coordinator.popToRoot(animated: false)
+        }
     }
 }

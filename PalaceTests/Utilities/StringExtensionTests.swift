@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class StringExtensionTests: XCTestCase {
 
     // MARK: - MD5 Hash Tests
@@ -106,6 +107,7 @@ final class StringExtensionTests: XCTestCase {
 
 // MARK: - Additional String Tests
 
+@MainActor
 final class StringNYPLAdditionsTests: XCTestCase {
 
     func testStringIsEmpty_withWhitespace() {

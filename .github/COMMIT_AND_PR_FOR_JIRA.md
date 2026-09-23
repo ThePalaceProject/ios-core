@@ -1,5 +1,11 @@
 # Commit and PR format for JIRA
 
+> This is the **authored layer** of the [PR Report Contract](../docs/architecture/pr-report-contract.md).
+> The contract explains *why* the format exists (durable forensic record + fleet telemetry for an
+> agent-authored, human-orchestrated codebase); this file is the concrete commit/PR format. The PR
+> **body** is now driven by [`.github/PULL_REQUEST_TEMPLATE.md`](./PULL_REQUEST_TEMPLATE.md), which adds
+> `Evidence` / `Repro` / `Class` / `Obligations` to the Root-cause/Solution/How-to-verify below.
+
 When commits or PRs are linked to JIRA, the default post often shows only hash, author, date, one-line message, and file list. To make JIRA posts **useful** (root cause, what changed, how to verify), use the formats below.
 
 ---

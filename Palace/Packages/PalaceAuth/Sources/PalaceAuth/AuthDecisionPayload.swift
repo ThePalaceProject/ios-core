@@ -150,7 +150,7 @@ public struct AuthDecisionPayload: Sendable, Equatable {
             "decision": decision,
             "call_site": callSite,
             "correlation_id": correlationID.uuidString,
-            "timestamp_iso": Self.iso8601Formatter.string(from: timestamp)
+            "timestamp_iso": Self.makeISO8601Formatter().string(from: timestamp)
         ]
         if let libraryUUID { result["library_uuid"] = libraryUUID }
         if let statusCode { result["status_code"] = String(statusCode) }
@@ -158,11 +158,15 @@ public struct AuthDecisionPayload: Sendable, Equatable {
         return result
     }
 
-    private static let iso8601Formatter: ISO8601DateFormatter = {
+    // Localized per call (playbook: a shared non-Sendable ISO8601DateFormatter
+    // static is a #MutableGlobalVariable under Swift 6; never nonisolated(unsafe)).
+    // Called once per telemetry payload — not a hot path, so per-call allocation
+    // is fine and keeps the formatter provably race-free.
+    private static func makeISO8601Formatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 }
 
 // MARK: - Convenience constructors

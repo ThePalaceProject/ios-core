@@ -1,8 +1,13 @@
 import Foundation
+import os
 import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
-import FirebaseDynamicLinks
+import PalaceBookRegistry
+// `@preconcurrency`: FirebaseDynamicLinks is not Sendable-audited upstream; its
+// `DynamicLink` crosses into a `@MainActor` Task when routing a universal link.
+// Honest ceiling until Firebase annotates its concurrency (see fix vocabulary).
+@preconcurrency import FirebaseDynamicLinks
 import BackgroundTasks
 import SwiftUI
 import CarPlay
@@ -33,9 +38,25 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
+        // Instrument cold-launch timing (AppLaunchTracker). `processStart` is
+        // captured as early as possible so `timeToFirstFrame` / `timeToInteractive`
+        // compute non-nil once `.firstFrame` (SceneDelegate) and `.catalogLoaded`
+        // (CatalogViewModel) land. Both are recorded in a single Task so their
+        // actor-serialized timestamps stay ordered (processStart ≤ didFinishLaunching).
+        Task {
+            await AppLaunchTracker.shared.recordMilestone(.processStart)
+            await AppLaunchTracker.shared.recordMilestone(.didFinishLaunching)
+        }
+
         // Register Crashlytics forwarder before any Log call fires.
         // PalaceLogging is Firebase-free; the host app supplies the bridge.
         Log.crashlyticsBridge = FirebaseCrashlyticsBridge()
+
+        // Wave 1c (cycle 2): ErrorHandling reads account context through this
+        // registered provider instead of importing Accounts.
+        ErrorReportingContext.libraryNameProvider = {
+            AppContainer.production().accountsManager.currentAccount?.name
+        }
 
         let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
@@ -82,7 +103,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         } else {
             Task {
                 await FirebaseManager.shared.fetchAndActivateRemoteConfig()
-                _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+                _ = AppContainer.production().featureFlags.isCarPlayEnabled
             }
             TPPErrorLogger.configureCrashAnalytics()
         }
@@ -111,7 +132,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
-    private func performBackgroundStartupTasks() {
+    // `nonisolated`: deliberately dispatched on `startupQueue` (background) 0.5s
+    // after launch. Body touches only nonisolated APIs; the one `@MainActor`
+    // access (`audiobookLifecycleManager.didFinishLaunching()`) hops to the main
+    // actor explicitly below. `complete`-mode satisfied without forcing this
+    // off-main work onto the main actor.
+    nonisolated private func performBackgroundStartupTasks() {
         let isFreshInstall = AppContainer.production().settings.appVersion == nil
         TPPKeychainManager.validateKeychain()
         TPPMigrationManager.migrate()
@@ -124,7 +150,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             AppContainer.production().accountsManager.currentUserAccount.authToken
         }
 
-        DispatchQueue.main.async {
+        // `Task { @MainActor }` (was `DispatchQueue.main.async`): `didFinishLaunching()`
+        // touches the `@MainActor`-isolated `audiobookLifecycleManager`; the Task
+        // gives the closure main-actor isolation so the access is checked, not a
+        // `@Sendable` capture of main-actor state. Same "next main run-loop" timing.
+        Task { @MainActor in
             self.audiobookLifecycleManager.didFinishLaunching()
 
             // TODO: Implement audiobook downloads migration from Caches to Application Support
@@ -135,12 +165,26 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             TransifexManager.setup()
         }
 
-        NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
-            self?.signingIn(notification)
+        // `queue: .main` + `Task { @MainActor }`: `signingIn` mutates the
+        // `@MainActor` `isSigningIn` flag. Post can arrive off-main, so hop to the
+        // main actor before touching main-actor state (previously `queue: nil`
+        // fired on the posting thread — a `complete`-mode data race on `isSigningIn`).
+        //
+        // `complete`: snapshot the Sendable `Bool` payload out of the non-Sendable
+        // `Notification` BEFORE the `@MainActor` Task so we don't `send` the whole
+        // notification across the boundary. `signingIn` only ever reads
+        // `notification.object as? Bool`, so this is behavior-preserving.
+        NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: .main) { [weak self] notification in
+            let isSigningIn = notification.object as? Bool
+            Task { @MainActor in
+                self?.setSigningIn(isSigningIn)
+            }
         }
     }
 
-    private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
+    // `nonisolated`: called only from the nonisolated `performBackgroundStartupTasks`;
+    // reads nonisolated account APIs and logs. No `@MainActor` state.
+    nonisolated private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
         let accountsManager = AppContainer.production().accountsManager
         let account = accountsManager.currentUserAccount
         let accountId = accountsManager.currentAccountId ?? "nil"
@@ -183,7 +227,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
-    private func setupBookRegistryAndNotifications() {
+    // `nonisolated`: intentionally invoked on `startupQueue` (a background queue)
+    // from `applicationDidFinishLaunching`. Touches only nonisolated APIs
+    // (`AppContainer.production()`, `NotificationService.shared`) — no `@MainActor`
+    // `self` state — so `complete`-mode isolation is satisfied without a main hop,
+    // preserving the deliberate off-main registry priming.
+    nonisolated private func setupBookRegistryAndNotifications() {
         // Populate the in-memory registry from disk BEFORE any view path can
         // trigger sync(). Previously this did a fire-and-forget singleton poke
         // on a background queue and never called load() — so sync() calls from
@@ -197,7 +246,21 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // store's own queue — but it primes the `loadingAccount` guard and
         // queues the state transition to .loaded. Any sync() that races it is
         // caught by the .unloaded/.loading guard in BookRegistrySync.sync.
-        AppContainer.production().bookRegistry.load()
+        // PP-2677 side-loading: re-register persisted side-loaded books into the
+        // MAIN registry so they open in the reader and appear on the shelf. This
+        // MUST run in the `load(completion:)` callback — `load()` is async and a
+        // rehydrate that ran before the disk snapshot landed would be clobbered
+        // when the store transitions to `.loaded`. `load(completion:)` lives on
+        // the concrete `TPPBookRegistry`, not the `TPPBookRegistryProvider`
+        // surface, hence the cast; production always resolves to the concrete
+        // type. The fallback keeps the original behaviour if that ever changes.
+        if let loadableRegistry = AppContainer.production().bookRegistry as? TPPBookRegistry {
+            loadableRegistry.load {
+                AppContainer.production().sideloadedBookManager.rehydrateAtLaunch()
+            }
+        } else {
+            AppContainer.production().bookRegistry.load()
+        }
 
         NotificationService.shared.setupPushNotifications()
     }
@@ -255,7 +318,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
                     return
                 }
                 if let dynamicLink = dynamicLink, DLNavigator.shared.isValidLink(dynamicLink) {
-                    DLNavigator.shared.navigate(to: dynamicLink)
+                    // `handleUniversalLink`'s completion is `@Sendable`/off-main; hop
+                    // to the main actor for the now-`@MainActor` `navigate(to:)`.
+                    Task { @MainActor in
+                        DLNavigator.shared.navigate(to: dynamicLink)
+                    }
                 }
             }
         }
@@ -290,11 +357,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // Resume Firebase operations when app becomes active
         FirebaseManager.shared.applicationDidBecomeActive()
 
+        // Record an app-open for the rating-prompt engagement signals (PP-4087).
+        AppContainer.production().appRatingService.recordSession()
+
         // Update feature flag cache after Remote Config is refreshed
         Task {
             // Small delay to let Remote Config fetch complete
             try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+            _ = AppContainer.production().featureFlags.isCarPlayEnabled
         }
 
         // Sync held books when app becomes active to ensure UI reflects current availability
@@ -387,7 +457,18 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
-        audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
+        // Reliability WS-A (INV-7): route the book download center's background
+        // session wake to MyBooksDownloadCenter — store its system completion
+        // handler (invoked once, then cleared, in urlSessionDidFinishEvents) and,
+        // by accessing `downloadCenter`, ensure its background session is
+        // instantiated so iOS reconnects and re-delivers the pending delegate
+        // callbacks. Every OTHER identifier keeps the byte-for-byte audiobook
+        // route.
+        if MyBooksDownloadCenter.isDownloadCenterBackgroundSession(identifier) {
+            AppContainer.production().downloadCenter.setBackgroundCompletionHandler(completionHandler)
+        } else {
+            audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
+        }
     }
 
     // MARK: - Scene Configuration
@@ -429,9 +510,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     // MARK: - User Sign-in Tracking
 
-    func signingIn(_ notification: Notification) {
-        if let boolValue = notification.object as? Bool {
-            isSigningIn = boolValue
+    /// Updates the `@MainActor` `isSigningIn` flag from the Sendable `Bool`
+    /// snapshotted out of the `.TPPIsSigningIn` notification's `object` at the
+    /// observer boundary (see `addObserver` above). Taking the `Bool` rather than
+    /// the `Notification` keeps a non-Sendable value off the `@MainActor` hop.
+    func setSigningIn(_ isSigningIn: Bool?) {
+        if let isSigningIn {
+            self.isSigningIn = isSigningIn
         }
     }
 
@@ -527,7 +612,11 @@ extension TPPAppDelegate {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.presentFirstRunFlowIfNeeded()
+                // Registered with `queue: .main`; `assumeIsolated` to call the
+                // `@MainActor` `presentFirstRunFlowIfNeeded()` without a re-hop.
+                MainActor.assumeIsolated {
+                    self?.presentFirstRunFlowIfNeeded()
+                }
             }
             accountsManager.loadCatalogs(completion: nil)
             return
@@ -600,11 +689,31 @@ private enum CleanupSeverity {
 
 /// Centralized observer for memory pressure, thermal state, and disk space cleanup.
 /// Performs cache purges, download throttling, and space reclamation when needed.
-final class MemoryPressureMonitor {
+///
+/// `@unchecked Sendable` invariant (mirrors `FirebaseManager`): every stored
+/// property is either an immutable `let` of a `Sendable` type
+/// (`monitorQueue` is a `DispatchQueue`) or the single piece of mutable
+/// state (`proactiveMonitoringTask`) which is guarded by
+/// `OSAllocatedUnfairLock`. All work runs off the main actor on
+/// `monitorQueue` or in a detached `Task`; the type is intentionally NOT
+/// `@MainActor` because its job is background pressure monitoring and disk
+/// reclamation. Cross-actor hops to the main actor are made explicitly
+/// where UIKit-adjacent collaborators require it (see `proactiveCacheCleanup`
+/// and `handleMemoryWarning`). This lets the `static let shared` singleton
+/// and the `self`-capturing queue/task closures satisfy the `complete`
+/// concurrency checker without a `@MainActor` annotation that would be
+/// semantically wrong for a background monitor.
+final class MemoryPressureMonitor: @unchecked Sendable {
     static let shared = MemoryPressureMonitor()
 
     private let monitorQueue = DispatchQueue(label: "org.thepalaceproject.memory-pressure", qos: .utility)
-    private var proactiveMonitoringTask: Task<Void, Never>?
+
+    /// The proactive-monitoring loop task. Guarded by
+    /// `OSAllocatedUnfairLock` because it is written from `start()` (via
+    /// `startProactiveMonitoring()`) and read+cancelled from `stop()`,
+    /// which may be invoked from different threads over the monitor's
+    /// lifetime.
+    private let proactiveMonitoringTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
     private init() {}
 
@@ -644,14 +753,15 @@ final class MemoryPressureMonitor {
 
     /// Proactively monitors memory usage and cleans up before hitting critical levels
     private func startProactiveMonitoring() {
-        proactiveMonitoringTask = Task {
+        let task = Task { [weak self] in
             while !Task.isCancelled {
                 // Check every 30 seconds
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
 
-                await checkMemoryPressure()
+                await self?.checkMemoryPressure()
             }
         }
+        proactiveMonitoringTask.withLock { $0 = task }
     }
 
     /// Checks current memory usage and takes action if needed
@@ -684,8 +794,8 @@ final class MemoryPressureMonitor {
     private func proactiveCacheCleanup(severity: CleanupSeverity) async {
         switch severity {
         case .high:
-            // Aggressive cleanup
-            URLCache.shared.removeAllCachedResponses()
+            // Aggressive cleanup — N1: clear the executor's PRIVATE URLCache
+            // (feeds live there, not in `URLCache.shared`).
             AppContainer.production().networkExecutor.clearCache()
             await MainActor.run {
                 AppContainer.production().downloadCenter.pauseAllDownloads()
@@ -693,20 +803,24 @@ final class MemoryPressureMonitor {
             Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
 
         case .medium:
-            // Moderate cleanup - just network caches
-            URLCache.shared.removeAllCachedResponses()
+            // Moderate cleanup - just network caches. N1: the executor's PRIVATE
+            // URLCache is the one serving feeds, so clear it (not `URLCache.shared`).
+            AppContainer.production().networkExecutor.clearCache()
             Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
         }
     }
 
     func stop() {
-        proactiveMonitoringTask?.cancel()
-        proactiveMonitoringTask = nil
+        proactiveMonitoringTask.withLock { task in
+            task?.cancel()
+            task = nil
+        }
     }
 
     @objc private func handleMemoryWarning() {
         monitorQueue.async {
-            URLCache.shared.removeAllCachedResponses()
+            // N1: clear the executor's PRIVATE URLCache (feeds live there, not
+            // in `URLCache.shared`).
             AppContainer.production().networkExecutor.clearCache()
 
             DispatchQueue.main.async {
@@ -756,8 +870,9 @@ final class MemoryPressureMonitor {
         let freeBytes = FileSystem.freeDiskSpaceInBytes()
         guard freeBytes < minimumFreeBytes else { return }
 
-        // Clear caches first
-        URLCache.shared.removeAllCachedResponses()
+        // Clear caches first — N1: the executor's PRIVATE URLCache serves feeds,
+        // so clear it (not `URLCache.shared`).
+        AppContainer.production().networkExecutor.clearCache()
         AppContainer.production().imageLoader.clearAll()
         GeneralCache<String, Data>.clearAllCaches()
 

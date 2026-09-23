@@ -4,6 +4,7 @@ import XCTest
 /// End-to-end credential isolation tests simulating the full user journey:
 /// sign in to Library A → switch to Library B → sign in to B → verify A intact.
 /// Extends the unit-level isolation tests in TPPPerAccountIsolationTests.
+@MainActor
 final class TPPCredentialIsolationE2ETests: XCTestCase {
 
     private let uuidA = "urn:uuid:e2e-isolation-library-a"

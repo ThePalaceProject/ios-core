@@ -8,21 +8,20 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DeviceOrientationTests: XCTestCase {
 
     var orientation: DeviceOrientation!
 
-    @MainActor
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         orientation = DeviceOrientation()
     }
 
-    @MainActor
-    override func tearDown() {
+    override func tearDown() async throws {
         orientation?.stopTracking()
         orientation = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Initial State Tests

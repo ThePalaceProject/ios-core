@@ -23,7 +23,7 @@ func runOnMain(_ work: @escaping @MainActor () -> Void) {
 /// Runs work on the main actor asynchronously from a non-isolated context
 /// Replaces: DispatchQueue.main.async { }
 @inlinable
-func runOnMainAsync(_ work: @escaping @MainActor () -> Void) {
+func runOnMainAsync(_ work: @escaping @MainActor @Sendable () -> Void) {
     Task { @MainActor in
         work()
     }
@@ -32,7 +32,7 @@ func runOnMainAsync(_ work: @escaping @MainActor () -> Void) {
 /// Runs work on the main actor with a delay
 /// Replaces: DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { }
 @inlinable
-func runOnMainAfter(seconds: TimeInterval, _ work: @escaping @MainActor () -> Void) {
+func runOnMainAfter(seconds: TimeInterval, _ work: @escaping @MainActor @Sendable () -> Void) {
     Task { @MainActor in
         try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         work()
@@ -53,10 +53,10 @@ func runInBackground(priority: TaskPriority = .utility, _ work: @escaping @Senda
 /// Runs work on a background task and returns the result on main actor
 /// Replaces: DispatchQueue.global().async { let result = ...; DispatchQueue.main.async { use(result) } }
 @inlinable
-func runInBackgroundThenMain<T>(
+func runInBackgroundThenMain<T: Sendable>(
     priority: TaskPriority = .utility,
     backgroundWork: @escaping @Sendable () async -> T,
-    mainWork: @escaping @MainActor (T) -> Void
+    mainWork: @escaping @Sendable @MainActor (T) -> Void
 ) {
     Task.detached(priority: priority) {
         let result = await backgroundWork()
@@ -71,7 +71,7 @@ func runInBackgroundThenMain<T>(
 /// Runs multiple tasks in parallel and collects results
 /// Replaces: DispatchQueue.concurrentPerform or multiple async calls
 @inlinable
-func runParallel<T>(
+func runParallel<T: Sendable>(
     _ work: [@Sendable () async throws -> T]
 ) async throws -> [T] {
     try await withThrowingTaskGroup(of: (Int, T).self) { group in
@@ -242,7 +242,7 @@ actor BarrierExecutor<Value> {
 /// - Parameter work: Function that takes a completion handler
 /// - Returns: The result from the completion handler
 @inlinable
-func withAsyncCallback<T>(
+func withAsyncCallback<T: Sendable>(
     _ work: (@escaping (T) -> Void) -> Void
 ) async -> T {
     await withCheckedContinuation { continuation in
@@ -257,7 +257,7 @@ func withAsyncCallback<T>(
 /// - Returns: The unwrapped result
 /// - Throws: The error from the Result.failure
 @inlinable
-func withAsyncThrowingCallback<T>(
+func withAsyncThrowingCallback<T: Sendable>(
     _ work: (@escaping (Result<T, Error>) -> Void) -> Void
 ) async throws -> T {
     try await withCheckedThrowingContinuation { continuation in

@@ -22,7 +22,12 @@ import Foundation
 ///
 /// Storage is an array of `(name, closure)` tuples — NOT a dictionary —
 /// because iteration order = registration order is part of the contract.
-internal class SingletonResetRegistry {
+/// `@unchecked Sendable`: all mutable stored state (`resetters`, `isIterating`)
+/// is guarded by `lock` — every read/write path acquires it before touching
+/// storage (`register`, `registeredNames`, `invokeAll`, `_removeAllForTests`).
+/// The compiler can't see the lock, but the type guarantees it, so `static let
+/// shared` is safe to share across concurrency domains.
+internal class SingletonResetRegistry: @unchecked Sendable {
     static let shared = SingletonResetRegistry()
 
     private let lock = NSLock()

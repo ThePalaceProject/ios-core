@@ -156,9 +156,18 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
         "missing": False,
     })
 
+    unmeasured = floors.get("unmeasured", {})
+
     for name, floor in floors.get("modules", {}).items():
         actual = find_module_coverage(coverage, name)
         if actual is None:
+            # A module that cannot be found in the coverage data is NOT a pass.
+            # This used to `continue` without touching `all_pass`, so a module
+            # that left the measured surface silently stopped being gated —
+            # which is exactly what the decomposition campaign does every time
+            # it extracts one into Palace/Packages (coverage reports a single
+            # target, Palace.app, so no package source is measured at all).
+            # A deliberate exemption goes in `unmeasured` with a reason.
             rows.append({
                 "module": name,
                 "floor": float(floor),
@@ -166,6 +175,7 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
                 "status": "MISSING",
                 "missing": True,
             })
+            all_pass = False
             continue
         effective_floor = actual if baseline_only else float(floor)
         status = "PASS" if actual + 1e-9 >= effective_floor else "FAIL"
@@ -242,6 +252,9 @@ def main() -> int:
 
     log(f"Gating on '{args.metric}' coverage metric.")
     rows, all_pass = evaluate(coverage, floors, args.baseline_only, args.metric)
+
+    for name, reason in floors.get("unmeasured", {}).items():
+        log(f"UNMEASURED  {name}: {reason}")
     print_table(rows)
 
     missing = [r["module"] for r in rows if r.get("missing")]

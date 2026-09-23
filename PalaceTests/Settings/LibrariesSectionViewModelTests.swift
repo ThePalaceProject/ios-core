@@ -91,6 +91,87 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         XCTAssertNil(sut.currentAccountUUID)
     }
 
+    // MARK: - isLoading (Settings skeleton gate)
+
+    /// Fresh launch: nothing resolves yet AND the catalog hasn't loaded ⇒ the
+    /// MY LIBRARIES skeleton must show instead of a blank list that pops in.
+    func test_isLoading_true_whenNoAccountsResolveAndCatalogNotLoaded() {
+        let env = FakeLibrariesEnvironment(currentUUID: nil, persisted: [], accountsLoaded: false)
+
+        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+
+        XCTAssertTrue(sut.isLoading,
+                      "During hydration (no resolved accounts, catalog not loaded) the section is loading.")
+        XCTAssertTrue(sut.accounts.isEmpty)
+    }
+
+    /// Once a library resolves, the real row can render — the skeleton must
+    /// come down even if the full catalog is still materializing.
+    func test_isLoading_false_whenAnAccountResolves_evenIfCatalogNotLoaded() {
+        let bookshelf = makeAccount(uuid: "bookshelf", name: "Palace Bookshelf")
+        let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid,
+                                           persisted: [bookshelf],
+                                           accountsLoaded: false)
+        env.lookupResponses = [bookshelf.uuid: bookshelf]
+
+        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+
+        XCTAssertFalse(sut.isLoading,
+                       "A resolved library means real content is available — no skeleton.")
+        XCTAssertEqual(sut.accounts.map { $0.uuid }, ["bookshelf"])
+    }
+
+    /// Genuinely-empty configuration AFTER the catalog has loaded is NOT a
+    /// loading state — the skeleton must not park forever on a user who has no
+    /// libraries. Guards the `!accountsHaveLoaded` half of the decision.
+    func test_isLoading_false_whenEmptyButCatalogHasLoaded() {
+        let env = FakeLibrariesEnvironment(currentUUID: nil, persisted: [], accountsLoaded: true)
+
+        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+
+        XCTAssertFalse(sut.isLoading,
+                       "An empty list after the catalog loaded is a real empty state, not a skeleton.")
+    }
+
+    /// Hydration completes mid-session: a re-`refresh()` (fired by the Settings
+    /// view on appear / current-account change) must flip the skeleton off once
+    /// an account resolves. Drives the flag through the production seam
+    /// (`refresh`), not by writing it directly.
+    func test_isLoading_flipsFalse_onRefresh_afterAccountBecomesResolvable() {
+        let bookshelf = makeAccount(uuid: "bookshelf", name: "Palace Bookshelf")
+        let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid,
+                                           persisted: [bookshelf],
+                                           accountsLoaded: false)
+        // Account is persisted but does NOT resolve yet (pre-hydration).
+        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        XCTAssertTrue(sut.isLoading, "Sanity: persisted account not yet resolvable ⇒ loading.")
+
+        // Hydration completes: the lookup now resolves.
+        env.lookupResponses = [bookshelf.uuid: bookshelf]
+        env.accountsLoaded = true
+        sut.refresh()
+
+        XCTAssertFalse(sut.isLoading, "Once the account resolves, the skeleton must come down.")
+        XCTAssertEqual(sut.accounts.map { $0.uuid }, ["bookshelf"])
+    }
+
+    // MARK: - shouldShowSkeleton (pure decision)
+
+    func test_shouldShowSkeleton_onlyWhenEmptyAndNotLoaded() {
+        // The one true case: nothing resolved AND catalog still loading.
+        XCTAssertTrue(LibrariesSectionViewModel.shouldShowSkeleton(
+            resolvedAccountCount: 0, accountsHaveLoaded: false))
+
+        // Any resolved account ⇒ no skeleton (real content exists).
+        XCTAssertFalse(LibrariesSectionViewModel.shouldShowSkeleton(
+            resolvedAccountCount: 1, accountsHaveLoaded: false))
+        // Catalog loaded ⇒ empty is a real empty state, not a skeleton.
+        XCTAssertFalse(LibrariesSectionViewModel.shouldShowSkeleton(
+            resolvedAccountCount: 0, accountsHaveLoaded: true))
+        XCTAssertFalse(LibrariesSectionViewModel.shouldShowSkeleton(
+            resolvedAccountCount: 3, accountsHaveLoaded: true))
+    }
+
     // MARK: - deleteSecondary
 
     func test_deleteSecondary_callsTokenDeleter_andRemovesAccount_andPersists() {
@@ -226,11 +307,19 @@ private final class FakeLibrariesEnvironment: LibrariesSectionEnvironment {
     var persistedIds: [String]?
     var tokensDeleted: [String] = []
     var switchedTo: [String] = []
-    private var pendingSwitchCompletions: [String: () -> Void] = [:]
+    var accountsLoaded: Bool = true
+    // Parked in nonisolated, lock-guarded storage — NOT main-actor state — so the
+    // `nonisolated` witness below can stash the (non-Sendable) completion without
+    // *sending* it into a `MainActor.assumeIsolated` region, which Swift 6 rejects
+    // as a data race. The closure never crosses an isolation boundary: it's stored
+    // and later fired from whatever context calls `fireSwitchCompletion`.
+    private nonisolated(unsafe) var pendingSwitchCompletions: [String: () -> Void] = [:]
+    private let pendingCompletionsLock = NSLock()
 
-    init(currentUUID: String?, persisted: [Account]) {
+    init(currentUUID: String?, persisted: [Account], accountsLoaded: Bool = true) {
         self.currentUUID = currentUUID
         self.persisted = persisted
+        self.accountsLoaded = accountsLoaded
     }
 
     nonisolated func currentAccountUUID() -> String? {
@@ -248,17 +337,24 @@ private final class FakeLibrariesEnvironment: LibrariesSectionEnvironment {
     nonisolated func deleteToken(for account: Account) {
         MainActor.assumeIsolated { self.tokensDeleted.append(account.uuid) }
     }
+    nonisolated func accountsHaveLoaded() -> Bool {
+        MainActor.assumeIsolated { self.accountsLoaded }
+    }
     nonisolated func switchToAccount(_ account: Account, completion: @escaping () -> Void) {
         MainActor.assumeIsolated {
             self.switchedTo.append(account.uuid)
             self.currentUUID = account.uuid
-            // Park the completion so tests can simulate the async auth-doc
-            // callback at a deterministic point.
-            self.pendingSwitchCompletions[account.uuid] = completion
         }
+        // Park the completion so tests can simulate the async auth-doc callback at
+        // a deterministic point. Stored in the nonisolated lock-guarded box (see
+        // the property) — no isolation boundary is crossed, so no `sending` race.
+        pendingCompletionsLock.withLock { pendingSwitchCompletions[account.uuid] = completion }
     }
 
     func fireSwitchCompletion(for uuid: String) {
-        pendingSwitchCompletions.removeValue(forKey: uuid)?()
+        let completion = pendingCompletionsLock.withLock {
+            pendingSwitchCompletions.removeValue(forKey: uuid)
+        }
+        completion?()
     }
 }

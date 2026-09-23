@@ -26,6 +26,8 @@
 
 import Foundation
 import PalaceLogging
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - DownloadQueueOrchestratorDelegate
 
@@ -43,7 +45,17 @@ protocol DownloadQueueOrchestratorDelegate: AnyObject {
 /// Coordinates the pending-download queue: parks books past the
 /// concurrency cap with the right state-broadcast UX, and pumps the
 /// queue whenever capacity opens up.
-final class DownloadQueueOrchestrator {
+///
+/// - Sendable invariant (Swift 6 `complete`-mode): the stored dependencies
+///   (`bookRegistry`, `stateManager`, `notificationCenter`) are all `let` bound
+///   at init; the only mutable member is `weak var delegate`, assigned exactly
+///   once during owner (`MyBooksDownloadCenter`) construction and never
+///   reassigned (weak-ref reads + ARC zeroing are atomic). The enqueue / pump
+///   paths hop into `Task { }`, touching only the actor-serialized
+///   `stateManager.downloadCoordinator` and posting on `notificationCenter`
+///   (thread-safe). `@unchecked` only because the stored service types are not
+///   themselves `Sendable`.
+final class DownloadQueueOrchestrator: @unchecked Sendable {
 
     weak var delegate: DownloadQueueOrchestratorDelegate?
 
@@ -81,15 +93,26 @@ final class DownloadQueueOrchestrator {
         bookRegistry.setState(.downloading, for: book.identifier)
 
         Task { [weak self] in
-            guard let self else { return }
-            await self.downloadCoordinator.enqueuePending(book)
-            let queueSize = await self.downloadCoordinator.queueCount
-            Log.debug(#file, "📋 Enqueued '\(book.title)' for download, queue size: \(queueSize)")
+            await self?.enqueuePendingAsync(book)
+        }
+    }
 
-            // Notify UI to refresh
-            runOnMainAsync {
-                self.notificationCenter.post(name: .TPPMyBooksDownloadCenterDidChange, object: nil)
-            }
+    /// Async body of `enqueuePending`: the actor-hopping portion (coordinator
+    /// enqueue + DidChange broadcast) that `enqueuePending` fires as a
+    /// detached `Task`. Exposed so callers already inside an `async` context
+    /// — and tests — can `await` the enqueue to completion deterministically
+    /// instead of polling for the resulting queue/notification state. Mirrors
+    /// the `schedulePendingStartsIfPossible()` → `schedulePendingStartsAsync()`
+    /// split. The synchronous `.downloading` state broadcast stays in
+    /// `enqueuePending` (it runs before the Task hop, same as before).
+    func enqueuePendingAsync(_ book: TPPBook) async {
+        await self.downloadCoordinator.enqueuePending(book)
+        let queueSize = await self.downloadCoordinator.queueCount
+        Log.debug(#file, "📋 Enqueued '\(book.title)' for download, queue size: \(queueSize)")
+
+        // Notify UI to refresh
+        runOnMainAsync {
+            self.notificationCenter.post(name: .TPPMyBooksDownloadCenterDidChange, object: nil)
         }
     }
 

@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import PalacePreferences
 import Combine
 
 /// Environment seam for `LibrariesSectionViewModel`. Production wiring
@@ -22,6 +23,14 @@ protocol LibrariesSectionEnvironment {
     func lookupAccount(_ uuid: String) -> Account?
     func persistAccountIds(_ ids: [String])
     func deleteToken(for account: Account)
+    /// Whether the full library catalog has materialized. During the brief
+    /// launch-hydration window (`false`) the persisted-account lookup can
+    /// resolve to an empty list even though the user HAS configured libraries
+    /// — the full `AccountsManager` account set simply hasn't loaded yet. The
+    /// view model uses this to distinguish "genuinely no libraries" from
+    /// "libraries not loaded yet" so the Settings screen shows a skeleton
+    /// during hydration instead of a blank list that then pops in.
+    func accountsHaveLoaded() -> Bool
     /// Switches the active library to `account`. Mirrors
     /// `MyBooksViewModel.updateFeed` — adds to the persisted accounts list,
     /// updates the main-feed URL, assigns `accountsManager.currentAccount`,
@@ -39,6 +48,13 @@ final class LibrariesSectionViewModel: ObservableObject {
     @Published private(set) var accounts: [Account] = []
     @Published private(set) var currentAccountUUID: String?
     @Published private(set) var isSwitching: Bool = false
+    /// True while the library list is in the launch-hydration window: no
+    /// accounts have resolved yet AND the full catalog hasn't finished
+    /// loading. Drives the Settings skeleton so the MY LIBRARIES section shows
+    /// placeholder rows instead of a blank list that pops in when hydration
+    /// completes. Once a library resolves (or the catalog reports loaded) this
+    /// flips false and stays false.
+    @Published private(set) var isLoading: Bool = false
     @Published var showAddLibrarySheet: Bool = false
 
     /// Upper bound on how long the loading overlay parks the user — picked
@@ -48,14 +64,22 @@ final class LibrariesSectionViewModel: ObservableObject {
     private let switchTimeout: TimeInterval = 2.5
 
     private let environment: LibrariesSectionEnvironment
-    private var accountChangeObserver: NSObjectProtocol?
+
+    /// Reference box holding the notification-observer token so `deinit`
+    /// (nonisolated) can read it without hopping the main actor. Safe as
+    /// `@unchecked Sendable`: `token` is written once during `init` on the
+    /// main actor and read once in `deinit`, never concurrently.
+    private final class ObserverTokenBox: @unchecked Sendable {
+        var token: NSObjectProtocol?
+    }
+    private let observerBox = ObserverTokenBox()
 
     init(environment: LibrariesSectionEnvironment, observeNotifications: Bool = true) {
         self.environment = environment
         refresh()
 
         if observeNotifications {
-            accountChangeObserver = NotificationCenter.default.addObserver(
+            observerBox.token = NotificationCenter.default.addObserver(
                 forName: .TPPCurrentAccountDidChange,
                 object: nil,
                 queue: .main
@@ -70,8 +94,8 @@ final class LibrariesSectionViewModel: ObservableObject {
     }
 
     deinit {
-        if let accountChangeObserver {
-            NotificationCenter.default.removeObserver(accountChangeObserver)
+        if let token = observerBox.token {
+            NotificationCenter.default.removeObserver(token)
         }
     }
 
@@ -90,11 +114,28 @@ final class LibrariesSectionViewModel: ObservableObject {
 
         accounts = (current.map { [$0] } ?? []) + others
         currentAccountUUID = currentUUID
+        isLoading = LibrariesSectionViewModel.shouldShowSkeleton(
+            resolvedAccountCount: resolved.count,
+            accountsHaveLoaded: environment.accountsHaveLoaded()
+        )
 
         let resolvedIds = resolved.map { $0.uuid }
         if resolvedIds.count != persisted.count {
             environment.persistAccountIds(resolvedIds)
         }
+    }
+
+    /// Pure decision: show the MY LIBRARIES skeleton only during the
+    /// launch-hydration window — when NO library has resolved yet AND the full
+    /// catalog is still loading. Once any account resolves, or the catalog
+    /// reports loaded (even with zero libraries — a genuinely empty
+    /// configuration), the real (possibly empty) section shows instead of a
+    /// perpetual skeleton.
+    ///
+    /// Kept static + primitive-typed so it is unit-testable without the view,
+    /// the environment, or a SwiftUI host.
+    static func shouldShowSkeleton(resolvedAccountCount: Int, accountsHaveLoaded: Bool) -> Bool {
+        resolvedAccountCount == 0 && !accountsHaveLoaded
     }
 
     /// Sets `account` as the active library. No-ops when it already is.
@@ -194,6 +235,10 @@ struct ProductionLibrariesSectionEnvironment: LibrariesSectionEnvironment {
         tokenDeleter(account)
     }
 
+    func accountsHaveLoaded() -> Bool {
+        accountsManager.accountsHaveLoaded
+    }
+
     func switchToAccount(_ account: Account, completion: @escaping () -> Void) {
         if !settings.settingsAccountIdsList.contains(account.uuid) {
             settings.settingsAccountIdsList.append(account.uuid)
@@ -208,6 +253,25 @@ struct ProductionLibrariesSectionEnvironment: LibrariesSectionEnvironment {
         // doc resolves the receivers have already kicked off their work,
         // shaving visible latency off the user-facing transition.
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-        account.loadAuthenticationDocument { _ in completion() }
+        // `loadAuthenticationDocument`'s completion fires on the URLSession
+        // delegate queue (off-main — `TPPNetworkExecutor` uses `delegateQueue:
+        // nil`). `completion` is supplied by `@MainActor` callers that touch
+        // main-actor state on return, so invoking it off-main risks Swift 6's
+        // `swift_task_checkIsolated` SIGTRAP. Hop to main before firing it.
+        // `completion` is a non-`Sendable` `() -> Void`, so it cannot be captured
+        // directly by `DispatchQueue.main.async`'s `@Sendable` closure — box it
+        // (invoked exactly once, on main, so the `@unchecked` is sound).
+        let completionBox = UncheckedSendableBox(completion)
+        account.loadAuthenticationDocument { _ in
+            DispatchQueue.main.async { completionBox.value() }
+        }
     }
+}
+
+/// Carries a non-`Sendable` closure across the `@Sendable` `DispatchQueue.main`
+/// boundary for a one-shot, main-thread invocation. Sound because the wrapped
+/// closure is called exactly once, on the main queue.
+private struct UncheckedSendableBox: @unchecked Sendable {
+    let value: () -> Void
+    init(_ value: @escaping () -> Void) { self.value = value }
 }

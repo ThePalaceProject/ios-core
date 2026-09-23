@@ -56,6 +56,16 @@ from typing import Callable, Iterable
 # `|| true` masked the failure so the mutation gate "passed" with zero reports.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# The Xcode project this script drives. Overridable via --project/--scheme/
+# --repo-root so the tool can mutate code in a SIBLING checkout — notably
+# ios-audiobooktoolkit, which is the audiobook playback/download critical
+# path and could not be mutated at all while these were literals. That gap
+# is why PP-4724 wave 3 was "verified" with hand-authored mutants, which
+# inherit the author's blind spots: a reviewer's mechanically-derived
+# mutant later survived a suite those hand-written ones had passed.
+PROJECT = "Palace.xcodeproj"
+SCHEME = "Palace"
+
 # SIM_ID: prefer the harness-allocated UDID (HARNESS_SESSION_SIM_UDID env var)
 # so parallel agents and CI can each pin a different sim. Fall back to the
 # author's local sim for direct dev invocation; the script is still allowed to
@@ -65,7 +75,7 @@ DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".forgeos", "mutation-cache")
 # Per-mutant incremental cache lives in a subdir so it never collides with the
 # whole-file cache files (which sit directly in DEFAULT_CACHE_DIR).
 DEFAULT_MUTANT_CACHE_DIR = os.path.join(DEFAULT_CACHE_DIR, "mutants")
-CACHE_VERSION = 1  # bump when cache schema changes
+CACHE_VERSION = 2  # bump when cache schema changes (v2: keys include test CONTENT)
 
 # Coverage-gating support is OPTIONAL — palace_mutate must still run if Component
 # A's mutate_coverage.py is somehow absent (fresh checkout before that file lands,
@@ -211,13 +221,27 @@ def changed_lines(file_relpath: str, base_ref: str) -> set[int] | None:
     that are added or modified vs `base_ref`. Returns None if git fails so the
     caller falls back to whole-file mutation.
 
-    Uses `git diff --unified=0 <base>..HEAD -- <path>` and parses the @@ hunk
+    Uses `git diff --unified=0 <base> -- <path>` and parses the @@ hunk
     headers. Lines reported are 1-indexed against the WORKING-TREE version of
     the file (the version palace_mutate is about to mutate).
+
+    NOTE the diff is `<base>` and NOT `<base>..HEAD`. It used to be the latter,
+    which compares base against the last COMMIT while this tool mutates the
+    WORKING TREE. With a dirty tree the two files have different line
+    numbering, so hunk line numbers referred to one version and the mutations
+    were applied to another: genuinely-changed lines were skipped, and stale
+    numbers still resolved to *some* line, so the wrong lines could be mutated
+    without any error. That is the state you are in whenever you iterate on a
+    fix before committing it — the normal case for `--diff-only`.
+
+    Found while mutating a toolkit change: the one behaviour-carrying line in
+    the diff had four mutation points and the tool reported "0/57 mutation
+    points on changed lines". When the tree is clean the two forms are
+    identical, so CI behaviour is unchanged.
     """
     try:
         result = subprocess.run(
-            ["git", "diff", "--unified=0", f"{base_ref}..HEAD", "--", file_relpath],
+            ["git", "diff", "--unified=0", base_ref, "--", file_relpath],
             cwd=REPO_ROOT, capture_output=True, text=True, check=False,
         )
     except OSError as e:
@@ -339,6 +363,24 @@ def any_tests_ran(output: str) -> bool:
     return bool(re.search(r"Executed [1-9]\d* test", output))
 
 
+def classify_test_outcome(*, timed_out: bool, tests_ran: bool, succeeded: bool) -> str:
+    """Grade a targeted test run into one of three outcomes:
+
+      - "passed"  — tests ran and all passed (the mutant SURVIVED).
+      - "failed"  — tests ran and at least one failed (the mutant was KILLED).
+      - "errored" — the run could not judge the mutant: it timed out (a wedged
+        run, not a caught mutant) or no test executed at all (a build failure or
+        misconfiguration, not a caught mutant).
+
+    Grading a timeout or build-failure as "failed"/killed inflates the kill rate
+    with mutants the suite never actually discriminated. "errored" mutants are
+    counted separately AND are not cached as terminal, so they retry next run.
+    """
+    if timed_out or not tests_ran:
+        return "errored"
+    return "passed" if succeeded else "failed"
+
+
 _DEFAULT_TARGETED_TEST_TIMEOUT = int(os.environ.get("PALACE_MUTATE_TEST_TIMEOUT", "1200"))
 
 
@@ -378,8 +420,8 @@ def build_xcodebuild_command(test_class_paths: list[str],
                          "-resultBundlePath", coverage_bundle_path]
     return [
         "xcodebuild",
-        "-project", "Palace.xcodeproj",
-        "-scheme", "Palace",
+        "-project", PROJECT,
+        "-scheme", SCHEME,
         "-destination", f"platform=iOS Simulator,id={SIM_ID}",
         "test",
     ] + derived_data_args + fast_flags + coverage_args + only_testing_args
@@ -389,9 +431,10 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
                        coverage_bundle_path: str | None = None) -> tuple[bool, str]:
     """
     Run xcodebuild test scoped to the given test classes.
-    Returns (all_passed, last_lines_of_output).
-    Returns (False, "ERROR: ...") if the configuration ran zero tests — that
-    is treated as a misconfiguration, not a passing run, so callers don't
+    Returns (all_passed, outcome, last_lines_of_output) where outcome is
+    "passed" | "failed" | "errored" (see classify_test_outcome). A timeout or a
+    run that executed zero tests (build failure / misconfiguration) returns
+    outcome="errored" so callers grade it as errored, not KILLED, and don't
     grade mutants as SURVIVED against an empty test set.
 
     Default timeout is 1200s (20 min). On a cold CI runner the first xcodebuild
@@ -423,8 +466,9 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
             text=True,
             timeout=timeout,
         )
-    except subprocess.TimeoutExpired as e:
-        return (False, f"TIMEOUT after {timeout}s")
+    except subprocess.TimeoutExpired:
+        # A wedged/hung run is NOT the mutant being caught — grade errored.
+        return (False, "errored", f"TIMEOUT after {timeout}s")
     output = result.stdout + result.stderr
     last = "\n".join(output.splitlines()[-15:])
     if not any_tests_ran(output):
@@ -443,24 +487,153 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
             f"---- last 40 lines of xcodebuild output ----\n{xcb_tail}\n"
             f"---- end xcodebuild output ----"
         )
-        return (False, diagnostic)
+        # No tests executed = build failure / misconfiguration, not a caught mutant.
+        return (False, "errored", diagnostic)
     passed = result.returncode == 0 and "** TEST SUCCEEDED **" in output
-    return (passed, last)
+    outcome = classify_test_outcome(timed_out=False, tests_ran=True, succeeded=passed)
+    return (passed, outcome, last)
 
 
 # ---------------------------------------------------------------------------
 # Cache
 # ---------------------------------------------------------------------------
 
+def discover_test_roots(repo_root: str) -> list[str]:
+    """Top-level directories holding test sources, found rather than listed.
+
+    Hardcoding `["PalaceTests", "TenPrintCoverTests"]` looks harmless and is not:
+    `--repo-root` deliberately supports mutating a SIBLING checkout, and the
+    audiobook toolkit's tests live in `PalaceAudiobookToolkitTests`. Against that
+    repo the hardcoded list resolves nothing, `test_fingerprint` returns None, and
+    caching silently switches off for every toolkit mutation run.
+
+    That fails closed, so it is safe — but it is a silent, permanent slowdown on
+    the audiobook critical path, and it was invisible until a cache audit turned
+    up five entries whose test classes could not be resolved. All five were
+    toolkit runs.
+    """
+    try:
+        return sorted(
+            name for name in os.listdir(repo_root)
+            if name.endswith("Tests") and os.path.isdir(os.path.join(repo_root, name))
+        )
+    except OSError:
+        return []
+
+
+def resolve_test_sources(tests: list[str], repo_root: str,
+                         test_roots: list[str] | None = None) -> list[str] | None:
+    """Source files declaring the XCTest classes named by `--tests`.
+
+    Returns paths sorted, or **None** if ANY named class cannot be resolved.
+    None means "cannot fingerprint the tests" and the caller MUST disable the
+    cache rather than fall back — see `test_fingerprint`.
+
+    `--tests` values are `<Bundle>/<Class>` (what `-only-testing` takes), so the
+    class name is the last path component.
+    """
+    roots = test_roots or discover_test_roots(repo_root)
+    wanted = {t.rsplit("/", 1)[-1] for t in tests if t.strip()}
+    if not wanted:
+        return None
+
+    found: dict[str, str] = {}
+    for root in roots:
+        root_abs = os.path.join(repo_root, root)
+        if not os.path.isdir(root_abs):
+            continue
+        for dirpath, _dirnames, filenames in os.walk(root_abs):
+            for fn in filenames:
+                if not fn.endswith(".swift"):
+                    continue
+                path = os.path.join(dirpath, fn)
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as f:
+                        text = f.read()
+                except OSError:
+                    continue
+                for name in wanted:
+                    if name in found:
+                        continue
+                    # `class Foo`, `final class Foo`, `open class Foo`, and the
+                    # `Foo:` / `Foo {` forms. Word-bounded so `FooTests` does not
+                    # match `FooTestsExtra`.
+                    if re.search(rf"\bclass\s+{re.escape(name)}\s*[:{{]", text):
+                        found[name] = path
+
+    if len(found) != len(wanted):
+        return None
+    return sorted(found.values())
+
+
+def test_fingerprint(tests: list[str], repo_root: str,
+                     test_roots: list[str] | None = None) -> str | None:
+    """Content hash of the test sources `--tests` selects, or None.
+
+    THIS IS THE FIX FOR A FALSE-GREEN DEFECT, and the reason it fails closed.
+
+    Both cache keys used to hash the test *names* and never the test *content*,
+    so editing a test body did not invalidate anything. A cached verdict was
+    replayed against a suite that no longer produced it. The harmless direction
+    is a stale "survived" after tests are strengthened. The dangerous direction
+    is a stale **"killed"** after a test is weakened or deleted while the
+    production file is untouched — mutation then reports a kill it never
+    measured, which is exactly the "a build failure is not a kill" class of lie
+    this tool exists to avoid.
+
+    Returning None (unresolvable class, missing file) disables caching for the
+    run. Falling back to name-only hashing would silently restore the defect.
+
+    KNOWN BOUND, stated rather than papered over: this fingerprints the files
+    DECLARING the named classes. A verdict can still change from an edit to a
+    shared helper those tests use — `PalaceTests/Mocks/`, fixtures, a base
+    class — so those are folded in below when present. It cannot cover a change
+    to a *production* file other than the one under mutation; that gap is
+    inherent to per-file caching and predates this fix.
+    """
+    sources = resolve_test_sources(tests, repo_root, test_roots)
+    if sources is None:
+        return None
+
+    # Shared test infrastructure that many suites depend on. Included because a
+    # mock change really can flip a verdict; the cost is broader invalidation,
+    # which is the safe direction.
+    shared: list[str] = []
+    for root in (test_roots or discover_test_roots(repo_root)):
+        mocks = os.path.join(repo_root, root, "Mocks")
+        if os.path.isdir(mocks):
+            for dirpath, _d, filenames in os.walk(mocks):
+                shared += [os.path.join(dirpath, fn)
+                           for fn in filenames if fn.endswith(".swift")]
+
+    h = hashlib.sha256()
+    for path in sources + sorted(shared):
+        try:
+            with open(path, "rb") as f:
+                content = f.read()
+        except OSError:
+            return None  # fail closed
+        h.update(os.path.relpath(path, repo_root).encode())
+        h.update(b"\n")
+        h.update(hashlib.sha256(content).hexdigest().encode())
+        h.update(b"\n")
+    return h.hexdigest()[:16]
+
+
 def cache_key(file_content: str, tests: list[str], seed: int, max_mutations: int,
-              diff_only: bool = False, diff_base: str = "") -> str:
+              diff_only: bool = False, diff_base: str = "",
+              tests_fingerprint: str | None = None) -> str:
     """Stable hash of the inputs that determine mutation results.
 
-    Cache invalidates when the file changes, the test selection changes, or
-    the run parameters change. Cache survives unrelated edits to other files.
+    Cache invalidates when the file changes, the test selection changes, the
+    CONTENT of those tests changes, or the run parameters change. Cache survives
+    unrelated edits to other files.
 
     --diff-only + --diff-base are part of the key so a whole-file scan and a
     diff-scoped scan don't share cache (their mutation lists differ).
+
+    `tests_fingerprint` is required for a cacheable run; callers pass the result
+    of `test_fingerprint` and skip the cache entirely when it is None.
     """
     h = hashlib.sha256()
     h.update(f"v{CACHE_VERSION}\n".encode())
@@ -469,6 +642,9 @@ def cache_key(file_content: str, tests: list[str], seed: int, max_mutations: int
     for t in sorted(tests):
         h.update(t.encode())
         h.update(b"\n")
+    h.update(b"--tests-content--\n")
+    h.update((tests_fingerprint or "UNRESOLVED").encode())
+    h.update(b"\n")
     h.update(f"--seed={seed}\n--max={max_mutations}\n".encode())
     if diff_only:
         h.update(f"--diff-only={diff_base}\n".encode())
@@ -523,18 +699,24 @@ def cache_store(cache_dir: str, file_relpath: str, key: str, report: dict) -> st
 # first); this layer is the incremental fallback when the whole-file key misses.
 
 def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
-                       context_after: str, original: str, mutated: str) -> str:
+                       context_after: str, original: str, mutated: str,
+                       tests_fingerprint: str | None = None) -> str:
     """Stable 16-hex key for one mutant.
 
-    Hashed over (CACHE_VERSION, sorted(tests), context_before + '\\n' +
-    line_text + '\\n' + context_after, original, mutated). Properties:
+    Hashed over (CACHE_VERSION, sorted(tests), tests_fingerprint, context_before
+    + '\\n' + line_text + '\\n' + context_after, original, mutated). Properties:
       - STABILITY: identical inputs -> identical key (so a re-run on an
         unchanged file reuses the cached status).
       - LOCALITY: edits ELSEWHERE in the file don't change a mutant's key
         (context is only the immediate neighbours, not line numbers).
       - DISAMBIGUATION: two byte-identical lines in different surrounding
         context get DIFFERENT keys, so their results never collide.
-    Pure — unit-tested for stability and disambiguation.
+      - TEST-SENSITIVITY: a change to the TESTS changes every key, so a stored
+        `killed` cannot outlive the assertion that produced it. This cache is
+        the more dangerous of the two — it persists per-mutant verdicts across
+        runs, so without the fingerprint a deleted test left "killed" in place
+        indefinitely.
+    Pure — unit-tested for stability, disambiguation and test-sensitivity.
     """
     h = hashlib.sha256()
     h.update(f"v{CACHE_VERSION}\n".encode())
@@ -542,6 +724,9 @@ def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
     for t in sorted(tests):
         h.update(t.encode())
         h.update(b"\n")
+    h.update(b"--tests-content--\n")
+    h.update((tests_fingerprint or "UNRESOLVED").encode())
+    h.update(b"\n")
     h.update(b"--context--\n")
     h.update((context_before + "\n" + line_text + "\n" + context_after).encode())
     h.update(b"\n--ops--\n")
@@ -698,6 +883,13 @@ def compute_exit_code(summary: dict) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(description="Focused Swift mutation tester for Palace iOS")
     p.add_argument("--file", required=True, help="source file to mutate (relative to repo root)")
+    p.add_argument("--repo-root", default=None,
+                   help="repo containing --file and the Xcode project (default: this script's repo). "
+                        "Use to mutate a sibling checkout such as ios-audiobooktoolkit.")
+    p.add_argument("--project", default=None,
+                   help="Xcode project filename (default: Palace.xcodeproj)")
+    p.add_argument("--scheme", default=None,
+                   help="scheme to test (default: Palace)")
     p.add_argument("--tests", required=True, action="append",
                    help="test class path for -only-testing (repeatable). e.g. PalaceTests/PalaceCheckPropertyTests")
     p.add_argument("--max-mutations", type=int, default=20, help="cap number of mutations")
@@ -726,6 +918,16 @@ def main() -> int:
     p.add_argument("--mutant-cache-dir", default=DEFAULT_MUTANT_CACHE_DIR,
                    help=f"per-mutant incremental cache dir (default: {DEFAULT_MUTANT_CACHE_DIR})")
     args = p.parse_args()
+
+    # Retarget at a different checkout/project before anything reads these.
+    # Defaults keep existing invocations byte-identical.
+    global REPO_ROOT, PROJECT, SCHEME
+    if args.repo_root:
+        REPO_ROOT = os.path.abspath(args.repo_root)
+    if args.project:
+        PROJECT = args.project
+    if args.scheme:
+        SCHEME = args.scheme
 
     file_path = os.path.join(REPO_ROOT, args.file)
     if not os.path.isfile(file_path):
@@ -760,9 +962,24 @@ def main() -> int:
 
     # Cache check: if we've already mutation-tested this exact file content
     # against this exact test selection, we can skip the (slow) re-run.
+    # Fingerprint the CONTENT of the selected tests. None => unresolvable =>
+    # caching is disabled for this run rather than falling back to a name-only
+    # key, which is what let a stale verdict outlive the assertion that produced
+    # it. Fail closed: a slower honest run beats a fast wrong one.
+    # REPO_ROOT, not args.repo_root: the flag defaults to None and the module
+    # global is what the override above resolves it into, so reading the raw arg
+    # crashes every default invocation.
+    fingerprint = test_fingerprint(args.tests, REPO_ROOT)
+    cache_disabled = args.no_cache or fingerprint is None
+    if fingerprint is None and not args.no_cache:
+        print("  cache: DISABLED — could not resolve every --tests class to a source "
+              "file, so test content cannot be fingerprinted and a cached verdict "
+              "could not be trusted. Running in full.")
+
     key = cache_key(original, args.tests, args.seed, args.max_mutations,
-                    diff_only=args.diff_only, diff_base=args.diff_base)
-    if not args.no_cache and not args.dry_run:
+                    diff_only=args.diff_only, diff_base=args.diff_base,
+                    tests_fingerprint=fingerprint)
+    if not cache_disabled and not args.dry_run:
         cached = cache_load(args.cache_dir, args.file, key)
         if cached:
             report = cached["report"]
@@ -821,13 +1038,48 @@ def main() -> int:
 
     print("baseline: running tests with no mutations...")
     t0 = time.time()
-    baseline_ok, baseline_out = run_targeted_tests(args.tests, coverage_bundle_path=coverage_bundle)
+    baseline_ok, _, baseline_out = run_targeted_tests(args.tests, coverage_bundle_path=coverage_bundle)
     t1 = time.time()
-    print(f"baseline: {'PASS' if baseline_ok else 'FAIL'} in {t1-t0:.1f}s")
+    baseline_elapsed = t1 - t0
+    # Bound each per-mutant run at 3x the baseline (baseline includes the cold
+    # build, so this is a generous ceiling for a warm incremental run), floored
+    # at 180s and never exceeding the default ceiling. A wedged mutant is cut
+    # here and graded errored, instead of burning the full 20-min default.
+    per_mutant_timeout = min(
+        _DEFAULT_TARGETED_TEST_TIMEOUT,
+        max(180, int(3 * baseline_elapsed)),
+    )
+    print(f"baseline: {'PASS' if baseline_ok else 'FAIL'} in {baseline_elapsed:.1f}s "
+          f"(per-mutant timeout: {per_mutant_timeout}s)")
     if not baseline_ok:
-        print("error: baseline test run failed. Cannot mutation-test against a broken suite.", file=sys.stderr)
+        print("error: baseline test run failed — NOTHING WAS MEASURED.", file=sys.stderr)
+        print("error: this is 'could not measure', NOT 'measured clean'. No mutant ran, "
+              "so no conclusion about test strength is available from this run.", file=sys.stderr)
+        print("error: a failing baseline is usually the environment rather than the code — "
+              "a stale DerivedData precompiled header from a parallel build is the common "
+              "cause. Retry with an isolated PALACE_MUTATE_DERIVED_DATA_PATH before "
+              "believing the suite is broken.", file=sys.stderr)
         print("last lines:")
         print(baseline_out)
+        # Overwrite any report from a PREVIOUS run. Leaving a stale one on disk is
+        # the silent-success shape: the process exits 2, but anything that reads
+        # the artifact instead of the exit code sees the last successful run's
+        # numbers and believes them. `summary` is deliberately OMITTED rather than
+        # zeroed — a consumer reading `summary.killed` should fail loudly, not read
+        # 0 killed / 0 survived as a clean sheet.
+        try:
+            with open(args.report, "w") as f:
+                json.dump({
+                    "file": args.file,
+                    "tests": args.tests,
+                    "measured": False,
+                    "error": "baseline-failed",
+                    "detail": "The unmutated suite did not pass, so no mutant was run. "
+                              "This report records the ABSENCE of a measurement.",
+                }, f, indent=2)
+            print(f"  report: {args.report} (records NO measurement)")
+        except OSError as exc:
+            print(f"error: could not write the no-measurement report: {exc}", file=sys.stderr)
         if cov_tmpdir:
             shutil.rmtree(cov_tmpdir, ignore_errors=True)
         return 2
@@ -867,7 +1119,7 @@ def main() -> int:
     # Per-mutant incremental cache (in ADDITION to the whole-file cache, which
     # already missed if we got here). Reuse cached statuses for mutants whose
     # local context is unchanged; only execute misses; persist atomically.
-    mutant_cache = {} if args.no_cache else mutant_cache_load(args.mutant_cache_dir, args.file)
+    mutant_cache = {} if cache_disabled else mutant_cache_load(args.mutant_cache_dir, args.file)
     mutant_cache_dirty = False
 
     results: list[dict] = []
@@ -918,7 +1170,7 @@ def main() -> int:
         # PER-MUTANT CACHE: reuse a prior status for an unchanged-context mutant.
         mkey = compute_mutant_key(args.tests, m.context_before, m.line_text,
                                   m.context_after, m.original, m.mutated)
-        if not args.no_cache and mkey in mutant_cache:
+        if not cache_disabled and mkey in mutant_cache:
             cached_entry = mutant_cache[mkey]
             cached_status = cached_entry.get("status")
             if cached_status in ("killed", "survived"):
@@ -950,26 +1202,40 @@ def main() -> int:
 
         try:
             t0 = time.time()
-            passed, last = run_targeted_tests(selected_tests)
+            passed, outcome, last = run_targeted_tests(selected_tests, timeout=per_mutant_timeout)
             elapsed = time.time() - t0
         finally:
             revert_file(file_path, original)
 
-        status = "SURVIVED" if passed else "KILLED"
+        # outcome: passed -> survived, failed -> killed, errored -> errored
+        # (timeout / build-failure: the suite never judged the mutant).
+        if outcome == "errored":
+            status_l = "errored"
+            display = "ERRORED"
+        else:
+            status_l = "survived" if passed else "killed"
+            display = status_l.upper()
         if not args.quiet:
-            print(f"  {status}  ({elapsed:.1f}s)")
+            note = ""
+            if outcome == "errored":
+                note = " — timeout/build-failure; not counted as killed"
+            print(f"  {display}  ({elapsed:.1f}s){note}")
 
-        results.append({
+        result_entry = {
             "mutation": dataclasses.asdict(m),
-            "status": status.lower(),
+            "status": status_l,
             "elapsed_sec": round(elapsed, 1),
-        })
+        }
+        if outcome == "errored":
+            result_entry["reason"] = last
+        results.append(result_entry)
 
-        # Update the per-mutant cache and persist atomically each time, so a
-        # killed process leaves a consistent cache for the next run.
-        if not args.no_cache:
+        # Update the per-mutant cache only for TERMINAL outcomes (killed/survived).
+        # An errored mutant (timeout/build-failure) is deliberately NOT cached, so
+        # it is retried on the next run instead of frozen as a false result.
+        if not cache_disabled and status_l in ("killed", "survived"):
             mutant_cache[mkey] = {
-                "status": status.lower(),
+                "status": status_l,
                 "elapsed_sec": round(elapsed, 1),
                 "stored_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
@@ -1006,7 +1272,7 @@ def main() -> int:
     print("=" * 60)
     print(f"report: {args.report}")
 
-    if not args.no_cache:
+    if not cache_disabled:
         try:
             stored = cache_store(args.cache_dir, args.file, key, report)
             print(f"cached: {os.path.relpath(stored, REPO_ROOT)}")

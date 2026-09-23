@@ -68,8 +68,8 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
         try await super.setUp()
         spyPresenter = SpyAudiobookSessionPresenter()
         realCoordinator = NavigationCoordinator()
-        realHub = NavigationCoordinatorHub()
-        realHub.coordinator = realCoordinator
+        realHub = NavigationCoordinatorHub(tabRouterHub: nil)
+        realHub.register(realCoordinator, for: nil)
         appContainer = makeTestAppContainer()
 
         // Manager is constructed with BOTH seams overridden:
@@ -251,6 +251,64 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
         // is only triggered on first-open via `pushSessionToPresenter`.
         XCTAssertEqual(spyPresenter.presentOnFirstOpenCallCount, 0,
                        "Resume-from-mini-player must NOT touch presentOnFirstOpen() — that's the first-open auto-expand path, not the resume path")
+    }
+
+    // MARK: - Nil-book dismiss branch (PR #1230 "✕ did nothing" fix)
+
+    /// BLOCKER coverage (qa_test SoD review of PR #1230): `stopPlayback` with
+    /// `dismissPhoneUI: true` and NO bound book (`currentBook == nil`) must
+    /// STILL clear the presenter on the flag-ON path. This is the exact
+    /// regression the fix addressed — gating the whole dismiss behind
+    /// `if let bookId` left a nil-book teardown (transient / already-cleared
+    /// states) with the mini-bar + pill on screen, so the ✕ appeared to do
+    /// nothing.
+    ///
+    /// The manager from `setUp` is built with `inAppPlaybackNavEnabledProvider:
+    /// { true }` and never has a book bound, so `currentBook` is nil here —
+    /// exactly the state that reaches the `else if inAppPlaybackNavEnabledProvider()`
+    /// branch. Driving the real `stopPlayback` entrypoint (not the internal
+    /// `dismissPlayerOnPhone` seam) exercises the nil-book path end to end.
+    ///
+    /// Mutates: removing the `else if inAppPlaybackNavEnabledProvider()` branch
+    /// (or its `audiobookSessionPresenterProvider().clearActiveSession()` call)
+    /// drops this count to 0 — the ✕-did-nothing regression returns.
+    func testStopPlayback_nilBook_flagOn_clearsActiveSession() async {
+        XCTAssertNil(sessionManager.currentBook,
+                     "PRECONDITION: no book bound — currentBook must be nil so stopPlayback takes the nil-book dismiss branch")
+
+        await sessionManager.stopPlayback(dismissPhoneUI: true)
+
+        XCTAssertEqual(spyPresenter.clearActiveSessionCallCount, 1,
+                       "Flag-ON nil-book dismiss must clear the presenter exactly once — a regression that gates the whole dismiss behind `if let bookId` leaves the mini-bar + pill on screen (the ✕-did-nothing bug PR #1230 fixed)")
+    }
+
+    /// Sibling of the blocker test: with the in-app-nav flag OFF and no bound
+    /// book, `stopPlayback(dismissPhoneUI: true)` must NOT touch the presenter.
+    /// The flag-OFF path owns its chrome via the legacy coordinator pop (only
+    /// reachable with a `bookId`), so a nil book on the flag-OFF path has
+    /// nothing to clear — clearing the presenter here would be wrong (it isn't
+    /// the presenter's session).
+    ///
+    /// Built with a locally-constructed manager whose flag provider returns
+    /// false (the shared `setUp` manager forces the flag ON), reusing the same
+    /// spy presenter so the call count is observable.
+    ///
+    /// Mutates: dropping the `inAppPlaybackNavEnabledProvider()` guard on the
+    /// nil-book branch (so it clears unconditionally) flips this to 1 and fails.
+    func testStopPlayback_nilBook_flagOff_doesNotClear() async {
+        let flagOffManager = AudiobookSessionManager(
+            appContainer: appContainer,
+            navigationCoordinatorHubProvider: { [unowned self] in self.realHub },
+            audiobookSessionPresenterProvider: { [unowned self] in self.spyPresenter },
+            inAppPlaybackNavEnabledProvider: { false }
+        )
+        XCTAssertNil(flagOffManager.currentBook,
+                     "PRECONDITION: no book bound on the flag-OFF manager")
+
+        await flagOffManager.stopPlayback(dismissPhoneUI: true)
+
+        XCTAssertEqual(spyPresenter.clearActiveSessionCallCount, 0,
+                       "Flag-OFF nil-book dismiss must NOT clear the presenter — the flag-OFF path owns its chrome via the legacy coordinator pop, and a nil book has no presenter session to tear down. Clearing here would be a cross-path regression.")
     }
 
     // MARK: - Path 2: real coordinator, observable state (tests 2, 3, 4)

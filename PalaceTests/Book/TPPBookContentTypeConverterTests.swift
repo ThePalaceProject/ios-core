@@ -12,12 +12,14 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // Renamed to avoid collision with the legacy class of the same name embedded
 // in `TPPBookLocationTests.swift` — Module A created this file but the
 // pre-existing class lived inline in TPPBookLocationTests. The new class
 // scopes to streamingHTML token coverage; legacy `TPPBookContentTypeConverterTests`
 // in TPPBookLocationTests still owns the .epub/.audiobook/.pdf/.unsupported cases.
+@MainActor
 final class TPPBookContentTypeConverterStreamingHTMLTests: XCTestCase {
 
     // MARK: - PP-4161: Streaming-HTML token

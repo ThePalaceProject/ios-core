@@ -59,7 +59,18 @@ if [[ -n "$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)"
   M1_INTENT_FLAG=()
   M1_SUBJECT=$(grep -v '^#' "$MSG_FILE" | head -1 | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
   if [[ -n "$M1_SUBJECT" ]] && [[ -d "$REPO_ROOT_M1/.forgeos/intent" ]]; then
-    M1_INTENT_MATCH=$(find "$REPO_ROOT_M1/.forgeos/intent" -maxdepth 1 -name "*${M1_SUBJECT}*.md" -type f 2>/dev/null | head -1)
+    # When several intent files share the subject's ticket tokens (sibling
+    # same-ticket intents from earlier merged work), prefer the one STAGED in
+    # THIS commit — an old sibling's claims must not gate an unrelated diff
+    # (false-positive observed when PP-4527 had two intents). Fall back to the
+    # first match when none is staged.
+    M1_STAGED_INTENT=$(git diff --cached --name-only --diff-filter=AM 2>/dev/null | grep '\.forgeos/intent/.*\.md$' || true)
+    M1_INTENT_MATCH=""
+    for _cand in $(find "$REPO_ROOT_M1/.forgeos/intent" -maxdepth 1 -name "*${M1_SUBJECT}*.md" -type f 2>/dev/null); do
+      _rel="${_cand#"$REPO_ROOT_M1"/}"
+      if printf '%s\n' "$M1_STAGED_INTENT" | grep -qxF "$_rel"; then M1_INTENT_MATCH="$_cand"; break; fi
+    done
+    [[ -z "$M1_INTENT_MATCH" ]] && M1_INTENT_MATCH=$(find "$REPO_ROOT_M1/.forgeos/intent" -maxdepth 1 -name "*${M1_SUBJECT}*.md" -type f 2>/dev/null | head -1)
     [[ -n "$M1_INTENT_MATCH" ]] && M1_INTENT_FLAG=(--intent "$M1_INTENT_MATCH")
   fi
 
@@ -68,9 +79,11 @@ if [[ -n "$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)"
   M1_FAIL=0
   # check-contract-reconciliation.py needs a claim source (commit msg +
   # optional intent) — without one it silently passes (architect rev_f1c4ea3c
-  # finding). check-intent-recorded.py needs `--commit-msg` to match the
-  # subject against the intent file's `name:` field. The `[@]+` guard keeps
-  # the empty-array expansion safe under `set -u` on macOS's bash 3.2.
+  # finding). check-intent-recorded.py is passed `--commit-msg` only for
+  # call-site compatibility; since PP-5024 it matches on the intent's
+  # `## Files in scope`, not on the subject, so the flag does not affect its
+  # verdict. The `[@]+` guard keeps the empty-array expansion safe under
+  # `set -u` on macOS's bash 3.2.
   if ! run_m1_check "contract_reconciliation" "scripts/check-contract-reconciliation.py" --commit-msg "$MSG_FILE" ${M1_INTENT_FLAG[@]+"${M1_INTENT_FLAG[@]}"}; then
     M1_FAIL=$((M1_FAIL + 1))
   fi
@@ -79,6 +92,14 @@ if [[ -n "$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)"
   fi
 
   m1_enforce "$M1_FAIL"
+
+  # Discipline nudges — ADVISORY only, never blocks (the script always exits 0;
+  # the `|| true` is belt-and-suspenders). Surfaces retro-tracked habits at
+  # commit time: a fix commit missing a root-cause line, or a fix/feat changing
+  # source with no test. Runs after the M1 gates pass.
+  if [[ -f "$REPO_ROOT_M1/scripts/check-discipline-nudge.py" ]]; then
+    python3 "$REPO_ROOT_M1/scripts/check-discipline-nudge.py" --commit-msg "$MSG_FILE" --diff "$M1_DIFF" 2>&1 || true
+  fi
 fi
 
 HARNESS_HOOK="$HOME/harness/core/hooks/commit-msg-stanza.sh"

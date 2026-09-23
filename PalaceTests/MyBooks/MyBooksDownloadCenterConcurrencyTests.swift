@@ -19,6 +19,8 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
+@testable import PalaceBookRegistry
 
 @MainActor
 final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
@@ -80,17 +82,6 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
     /// in-flight download without a real URLSessionDownloadTask).
     private func markActive(_ book: TPPBook) async {
         await stateManager.downloadCoordinator.registerStart(identifier: book.identifier)
-    }
-
-    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
-    /// forwarded so timeout XCTFail blames the call site.
-    private func waitForAsync(
-        timeout: TimeInterval = 10.0,
-        file: StaticString = #file,
-        line: UInt = #line,
-        _ predicate: @escaping () -> Bool
-    ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
     }
 
     private func attach(task: URLSessionDownloadTask, to book: TPPBook) async {
@@ -255,9 +246,10 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         cancellationHandler.cancelDownload(for: active.identifier)
 
         // The cancel completion fires synchronously (per SyncCompletingDownloadTask),
-        // then queues an actor Task to register the completion. Wait for
-        // the schedule signal so we know the actor work landed.
-        await waitForAsync { [self] in self.cancellationSpy.scheduleCount > 0 }
+        // then spawns an actor Task to register the completion. Join that Task
+        // directly via the retained handle instead of polling the schedule
+        // signal against a wall-clock deadline (which starves under CI load).
+        await cancellationHandler.lastCancelTeardownTask?.value
 
         XCTAssertEqual(task.cancelByProducingResumeDataCount, 1,
                        "cancelDownload must invoke URLSessionDownloadTask.cancel(byProducingResumeData:) exactly once")
@@ -282,7 +274,9 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         await stateManager.downloadCoordinator.enqueuePending(queued)
 
         cancellationHandler.cancelDownload(for: active.identifier)
-        await waitForAsync { [self] in self.cancellationSpy.scheduleCount > 0 }
+        // Join the cancel-teardown Task directly (it registers the completion
+        // and fires the schedule callback as its last step) instead of polling.
+        await cancellationHandler.lastCancelTeardownTask?.value
 
         // After cancel, the schedule callback is invoked on the *cancellation*
         // delegate (not the orchestrator's delegate). We pump the orchestrator
@@ -459,8 +453,13 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         await markActive(a1)
         await markActive(a2)
 
-        throttle.limitActiveDownloads(max: 2)
-        await waitForAsync { throttleSpy.scheduleCount > 0 }
+        // Join the throttle's async body directly (it ends by awaiting
+        // delegate.schedulePendingStartsAsync) instead of polling the spy
+        // against a deadline. The sync limitActiveDownloads(max:) just sets
+        // maxConcurrentDownloads (already 2 here) then fires this same body
+        // as a detached Task — awaiting it is behavior-identical for this
+        // assertion and removes the starvable poll.
+        await throttle.limitActiveDownloadsAsync(max: 2)
 
         XCTAssertGreaterThan(throttleSpy.scheduleCount, 0,
                              "limitActiveDownloads (foreground reapply path) must always end with schedulePendingStartsAsync — kills mutants that skip the tail call when running==max")
@@ -592,6 +591,74 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
                        "Actor must serialize concurrent enqueues — final count must equal unique inputs (\(books.count)). Kills mutants that race on pendingQueue.append.")
     }
 
+    /// Many concurrent download lifecycles each flip the registry's
+    /// per-book processing flag on (start) then off (barrier/cleanup
+    /// completion) — exactly what BorrowOperation / BookReturnService drive
+    /// around `setProcessing(true, …)` … `setProcessing(false, …)`. The
+    /// registry's processing state is guarded by a reader/writer barrier
+    /// (`BookRegistryStore.performBarrier`) / lock (mock). This pins two
+    /// contracts under real thread contention:
+    ///   1. Liveness — no deadlock: the barrier/lock must not stall when
+    ///      writers from many threads and readers interleave (a generous
+    ///      timeout catches a hang instead of hanging the suite forever).
+    ///   2. Consistency — the final processing set is exactly right: every
+    ///      book that finished its lifecycle (true→false) must NOT be left
+    ///      stuck processing. A lost/racy write to `processingIdentifiers`
+    ///      would strand a book as "processing forever," which is the
+    ///      user-visible spinner-that-never-stops bug.
+    /// Uses `DispatchQueue.concurrentPerform` to get genuine OS-thread
+    /// parallelism into the synchronized write path (stronger than a
+    /// cooperative-pool `withTaskGroup`, which may not truly parallelize).
+    func testConcurrentSetProcessing_fromMultipleDownloads_serializes() async {
+        let books = (0..<10).map { _ in makeBook() }
+        let ids = books.map { $0.identifier }
+
+        // A distinct book that stays processing the whole time — its flag is
+        // set once and never cleared. Verifies the concurrent churn on the
+        // other 10 identifiers does NOT clobber an unrelated in-flight entry.
+        let inflight = makeBook()
+        bookRegistry.setProcessing(true, for: inflight.identifier)
+
+        // Drive ~10 concurrent "download lifecycles" from real parallel
+        // threads. Each thread flips its book on, then off — the terminal
+        // state for all 10 must be "not processing." Repeat the on/off toggle
+        // several times per thread to widen the race window on the shared set.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async { [bookRegistry] in
+                DispatchQueue.concurrentPerform(iterations: ids.count) { index in
+                    let id = ids[index]
+                    for _ in 0..<20 {
+                        bookRegistry?.setProcessing(true, for: id)
+                        bookRegistry?.setProcessing(false, for: id)
+                    }
+                    // Terminal write for this lifecycle: cleared (download
+                    // finished / cancelled). This is the state that must win.
+                    bookRegistry?.setProcessing(false, for: id)
+                }
+                continuation.resume()
+            }
+        }
+
+        // 1. Liveness: reaching here (the continuation resumed) already proves
+        //    no deadlock — concurrentPerform is synchronous, so ALL of its
+        //    setProcessing writes have completed before the continuation
+        //    resumed. There is no in-flight async work left to await; the
+        //    end-state is already final, so the consistency assertions below
+        //    read it directly (no starvable deadline-poll needed).
+
+        // 2. Consistency: no lifecycle-completed book is stuck processing.
+        for id in ids {
+            XCTAssertFalse(bookRegistry.processing(forIdentifier: id),
+                           "After a true→false lifecycle from many threads, book \(id) must NOT be left processing — a lost write to processingIdentifiers strands the spinner forever")
+        }
+
+        // 3. Isolation: the concurrent churn must not have touched the
+        //    unrelated in-flight book (kills mutants that swap the per-id
+        //    remove for a removeAll / clobber the whole set on any write).
+        XCTAssertTrue(bookRegistry.processing(forIdentifier: inflight.identifier),
+                      "A book still in-flight must remain processing — concurrent set/clear on OTHER identifiers must not clear it")
+    }
+
     // MARK: - 13. Orchestrator: empty queue is no-op, never calls delegate
 
     /// Kills mutants that make `schedulePendingStartsAsync` call the
@@ -701,7 +768,7 @@ private final class ThrottleScheduleSpy: DownloadThrottlingServiceDelegate {
 
 /// Minimal URLSessionDownloadTask stub for state-machine tests that don't
 /// exercise the cancel-completion path.
-private final class StubDownloadTask: URLSessionDownloadTask {
+private final class StubDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
     private(set) var cancelByProducingResumeDataCount = 0
 
@@ -723,7 +790,7 @@ private final class StubDownloadTask: URLSessionDownloadTask {
 /// URLSessionDownloadTask stub whose cancel(byProducingResumeData:) calls
 /// the completion synchronously with nil data, so the cancel cleanup path
 /// runs in-line (no waiting on iOS to drive the completion).
-private final class SyncCompletingDownloadTask: URLSessionDownloadTask {
+private final class SyncCompletingDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
     private(set) var cancelByProducingResumeDataCount = 0
 

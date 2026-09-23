@@ -12,6 +12,7 @@ import Combine
 import MediaPlayer
 @testable import Palace
 @testable import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Tests for CarPlay audiobook browsing and playback integration.
 /// Verifies library display, chapter navigation, and error handling.

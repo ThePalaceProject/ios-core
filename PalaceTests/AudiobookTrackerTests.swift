@@ -43,6 +43,7 @@ class MockDataManager: DataManager {
     }
 }
 
+@MainActor
 class AudiobookTimeTrackerTests: XCTestCase {
 
     var sut: AudiobookTimeTracker!
@@ -261,6 +262,7 @@ class AudiobookTimeTrackerTests: XCTestCase {
 /// These tests verify fixes for:
 /// 1. playbackStopped() not saving accumulated time
 /// 2. Multiple timers running simultaneously causing overcounting
+@MainActor
 final class PlaybackTrackingRegressionTests: XCTestCase {
 
     private var tracker: AudiobookTimeTracker!
@@ -430,6 +432,7 @@ final class PlaybackTrackingRegressionTests: XCTestCase {
 
 /// Tests for app lifecycle events affecting time tracking
 /// Covers: background/foreground/termination data persistence
+@MainActor
 final class AudiobookTimeTrackerLifecycleTests: XCTestCase {
 
     private var tracker: AudiobookTimeTracker!
@@ -588,6 +591,7 @@ final class AudiobookTimeTrackerLifecycleTests: XCTestCase {
 
 /// Tests for time tracking during track/chapter transitions
 /// During continuous playback, handlePlaybackCompleted() must call playbackStopped()
+@MainActor
 final class ContinuousPlaybackTrackingTests: XCTestCase {
 
     private var tracker: AudiobookTimeTracker!
@@ -707,6 +711,7 @@ final class ContinuousPlaybackTrackingTests: XCTestCase {
 
 /// Tests to verify time tracking works correctly via CarPlay code paths
 /// CarPlay uses the same BookService.open() -> AudiobookManager flow
+@MainActor
 final class CarPlayTimeTrackingTests: XCTestCase {
 
     private var tracker: AudiobookTimeTracker!
@@ -816,6 +821,7 @@ final class CarPlayTimeTrackingTests: XCTestCase {
 
 /// Tests for sleep timer integration with time tracking
 /// Covers: sleep timer triggering proper time save
+@MainActor
 final class AudiobookSleepTimerIntegrationTests: XCTestCase {
 
     private var tracker: AudiobookTimeTracker!

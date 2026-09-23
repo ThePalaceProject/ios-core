@@ -13,6 +13,7 @@
 //
 
 import AVFoundation
+import PalacePreferences
 import XCTest
 @testable import Palace
 @testable import PalaceAudiobookToolkit
@@ -22,6 +23,7 @@ import XCTest
 /// Tests the save suppression bypass logic.
 /// AudiobookPlaybackModel can't be easily mocked (requires full AudiobookManager),
 /// so we test the decision logic directly.
+@MainActor
 final class PositionPersistenceLogicTests: XCTestCase {
 
     /// Simulates the old saveLocation() behavior WITH suppression check
@@ -117,6 +119,7 @@ final class PositionPersistenceLogicTests: XCTestCase {
 
 /// Tests the interruption resume logic extracted from OpenAccessPlayer.
 /// The real handler is @objc private, so we test the decision logic independently.
+@MainActor
 final class AudioInterruptionLogicTests: XCTestCase {
 
     /// Simulates the decision logic in handleAudioSessionInterruption
@@ -213,6 +216,7 @@ final class AudioInterruptionLogicTests: XCTestCase {
 
 // MARK: - Sync Deletion Guard Tests (Bug 5: CONTENT_DISAPPEARING)
 
+@MainActor
 final class SyncDeletionGuardTests: XCTestCase {
 
     func testVersionComparison_emptyIsLessThan() {
@@ -247,6 +251,7 @@ final class SyncDeletionGuardTests: XCTestCase {
 
 // MARK: - Post-Update Migration Tests (Bug 6: APP_UPDATE_BREAK)
 
+@MainActor
 final class PostUpdateMigrationTests: XCTestCase {
 
     private let buildKey = "TPPMigrationManager.lastLaunchBuild"
@@ -258,7 +263,7 @@ final class PostUpdateMigrationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        isolatedDefaults = testUserDefaults()
+        isolatedDefaults = Self.testUserDefaults()
     }
 
     override func tearDown() {
@@ -331,6 +336,7 @@ final class PostUpdateMigrationTests: XCTestCase {
 
 // MARK: - Bearer Token Auth Header Tests (Bug 1/2: DOWNLOAD_STUCK / PLAYBACK_STOPS)
 
+@MainActor
 final class BearerTokenRefreshTests: XCTestCase {
 
     func testRefreshRequest_includesAuthHeader() {
@@ -391,6 +397,7 @@ final class BearerTokenRefreshTests: XCTestCase {
 
 // MARK: - Sync Deletion Ratio Tests
 
+@MainActor
 final class SyncDeletionRatioTests: XCTestCase {
 
     func testEmptyFeedWithLocalBooks_shouldSkipDeletion() {
@@ -468,6 +475,7 @@ final class SyncDeletionRatioTests: XCTestCase {
 
 // MARK: - Return Flow Tests (Bug 7: RETURN_FAILED)
 
+@MainActor
 final class ReturnFlowTests: XCTestCase {
 
     func testRetryTracker_limitsRetries() {
@@ -497,6 +505,7 @@ final class ReturnFlowTests: XCTestCase {
 
 /// Tests that isNavigating is properly cleared on error/unload to prevent
 /// the seek slider from becoming permanently frozen (HelpSpot #17335).
+@MainActor
 final class NavigationFreezePreventionTests: XCTestCase {
 
     /// Simulates the isNavigating state machine.
@@ -579,6 +588,7 @@ final class NavigationFreezePreventionTests: XCTestCase {
 
 /// Tests that stop() uses persistLocation() (bypasses suppression)
 /// instead of saveLocation() (subject to suppression). HelpSpot #16317.
+@MainActor
 final class StopPositionSaveTests: XCTestCase {
 
     func testStop_bypassesSaveSuppression() {

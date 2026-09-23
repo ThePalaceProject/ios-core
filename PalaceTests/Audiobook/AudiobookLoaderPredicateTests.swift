@@ -22,6 +22,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AudiobookLoaderPredicateTests: XCTestCase {
 
     override func tearDown() {

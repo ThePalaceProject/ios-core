@@ -21,7 +21,7 @@
 //
 //        a) The whitelist (5 production-identity-pinning files where
 //           reading `production()` IS the test contract).
-//        b) The deferred list at `.forgeos/swarms/swarm_47883816/A-deferred-files.txt`
+//        b) The deferred list at `PalaceTests/MetaTests/Baselines/A-deferred-files.txt`
 //           (~55 files queued for a follow-up shrink swarm).
 //        c) A line carrying `// MIGRATED-DEFERRED:` inline marker
 //           (per-line exemption for individual sites where production()
@@ -52,21 +52,32 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class AppContainerIsolationLintTests: XCTestCase {
 
   // MARK: - Resolution
 
   /// `PalaceTests/` resolved relative to this file's location.
   private static let palaceTestsRoot: URL = {
-    URL(fileURLWithPath: #file)
+    URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // MetaTests/
       .deletingLastPathComponent()  // PalaceTests/
   }()
 
-  /// Repo root — two directories above `PalaceTests/`.
-  /// Used to resolve `.forgeos/swarms/swarm_47883816/A-deferred-files.txt`.
+  /// Where this lint's own baselines live. They sit beside the lint, inside
+  /// `PalaceTests/`, because they are gate INPUTS: without them the amnesty
+  /// list is empty and every pre-existing violation reports as new. They used
+  /// to live under `.forgeos/swarms/<id>/`, which is written at run time and
+  /// gitignored, so archiving that directory silently emptied this list and
+  /// reddened every branch cut afterwards.
+  /// Repo root — one level above `PalaceTests/`. Still used to express findings
+  /// as repo-relative paths; it is no longer where the baseline lives.
   private static let repoRoot: URL = {
     palaceTestsRoot.deletingLastPathComponent()
+  }()
+
+  private static let baselinesRoot: URL = {
+    palaceTestsRoot.appendingPathComponent("MetaTests/Baselines")
   }()
 
   /// Whitelist — files allowed to reference `AppContainer.production()`
@@ -205,14 +216,13 @@ final class AppContainerIsolationLintTests: XCTestCase {
     "Accounts/AccountsManagerTests.swift",
   ]
 
-  /// Deferred file list — loaded from
-  /// `.forgeos/swarms/swarm_47883816/A-deferred-files.txt` at test time.
-  /// Each entry is a path relative to the repo root. The lint allows
-  /// `AppContainer.production()` references in these files; a follow-up
-  /// swarm shrinks the list.
+  /// Deferred file list — loaded from `MetaTests/Baselines/A-deferred-files.txt`
+  /// at test time. Each entry is a path relative to the repo root. The lint
+  /// allows `AppContainer.production()` references in these files; follow-up
+  /// work shrinks the list.
   private static let deferredFiles: Set<String> = {
-    let path = repoRoot
-      .appendingPathComponent(".forgeos/swarms/swarm_47883816/A-deferred-files.txt")
+    let path = baselinesRoot
+      .appendingPathComponent("A-deferred-files.txt")
     guard let contents = try? String(contentsOf: path, encoding: .utf8) else {
       return []
     }
@@ -279,6 +289,42 @@ final class AppContainerIsolationLintTests: XCTestCase {
   /// reference. Exempt:
   ///   - lines whose first non-whitespace is `//` or `///` (comments)
   ///   - lines carrying the `// MIGRATED-DEFERRED:` per-line marker
+  /// The banned pattern. Defined once so the detector and self-tests agree.
+  static let bannedProductionToken = "AppContainer.production()"
+
+  /// True iff `line` contains `bannedProductionToken` OUTSIDE any double-quoted
+  /// string literal. A mention *inside* a string — e.g. an `XCTFail` /
+  /// assertion message that describes the banned pattern — is documentation,
+  /// not a production() read, and must not trip the lint (same reasoning as the
+  /// comment-line skip). Escaped quotes (`\"`) are handled; a `\(...)`
+  /// interpolation is treated as still-inside-string, so a (vanishingly rare)
+  /// real call placed inside an interpolation would be missed — an acceptable
+  /// false-negative versus the deterministic false-positive this closes
+  /// (AccountsManagerLaunchSnapshotTests's re-entrancy-guard XCTFail message
+  /// named the pattern in prose and reddened the lint on every run).
+  static func hasNonStringProductionReference(_ line: String) -> Bool {
+    let chars = Array(line)
+    let token = Array(bannedProductionToken)
+    var inString = false
+    var i = 0
+    while i < chars.count {
+      if inString {
+        if chars[i] == "\\" { i += 2; continue }   // skip escaped char (incl. \" and \()
+        if chars[i] == "\"" { inString = false }
+        i += 1
+        continue
+      }
+      if chars[i] == "\"" { inString = true; i += 1; continue }
+      if chars[i] == token.first,
+         i + token.count <= chars.count,
+         Array(chars[i ..< i + token.count]) == token {
+        return true
+      }
+      i += 1
+    }
+    return false
+  }
+
   private func violations(in source: String) -> [(Int, String)] {
     var out: [(Int, String)] = []
     for (i, line) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
@@ -292,7 +338,10 @@ final class AppContainerIsolationLintTests: XCTestCase {
       if lineStr.contains(Self.perLineExemptionMarker) {
         continue
       }
-      guard lineStr.contains("AppContainer.production()") else { continue }
+      // Only a REAL (non-string-literal) reference is a violation. A mention
+      // inside an assertion/XCTFail message is documentation — same as a
+      // comment — and previously produced a deterministic false positive.
+      guard Self.hasNonStringProductionReference(lineStr) else { continue }
       out.append((i + 1, lineStr))
     }
     return out
@@ -404,17 +453,84 @@ final class AppContainerIsolationLintTests: XCTestCase {
                    "A code line carrying `// MIGRATED-DEFERRED:` must NOT trigger the lint")
   }
 
+  /// The baselines must be TRACKED, not merely present on the machine that
+  /// wrote them. They used to live under `.forgeos/swarms/<id>/`, which is
+  /// gitignored; archiving that directory (#1411) left the files on disk for
+  /// anyone who already had them and absent for every fresh checkout, so this
+  /// lint passed locally and on branches cut earlier while failing on every
+  /// branch cut afterwards. A gitignored gate input is a gate that is off.
+  ///
+  /// The test target runs in the simulator, where `Process` does not exist, so
+  /// this cannot ask git directly. It reads `.gitignore` instead and fails if
+  /// anything there names the baselines directory — which is the specific way
+  /// this broke, and the specific way it would break again.
+  func testBaselinesDirectoryIsNotGitIgnored() throws {
+    let gitignore = Self.repoRoot.appendingPathComponent(".gitignore")
+    let contents = try XCTUnwrap(
+      try? String(contentsOf: gitignore, encoding: .utf8),
+      "could not read .gitignore at \(gitignore.path)"
+    )
+
+    let offenders = contents
+      .split(separator: "\n")
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+      .filter { $0.contains("MetaTests/Baselines") || $0.contains("MetaTests/") }
+
+    XCTAssertTrue(
+      offenders.isEmpty,
+      "`.gitignore` names the lint baselines directory (\(offenders.joined(separator: ", "))). "
+      + "These files are gate INPUTS: ignored, they vanish from fresh checkouts, the amnesty list "
+      + "comes back empty, and every pre-existing violation reports as a new one."
+    )
+  }
+
   /// Deferred-list-file self-test: confirms the resolver reads the
   /// `A-deferred-files.txt` file and parses ≥1 entry. If the file moves
   /// or is empty, the lint will silently treat every legacy file as a
   /// violator — a louder failure mode than letting them pass.
   func testDeferredListFileIsLoaded() {
     XCTAssertFalse(Self.deferredFiles.isEmpty,
-                   "Expected the A-deferred-files.txt list to load with at least one entry — if this fails, the resolver path is wrong or the file is missing")
+                   "Expected A-deferred-files.txt to load with at least one entry. Most likely the file is not in this checkout rather than the resolver being wrong — it is a gate INPUT and must be tracked; it previously lived under gitignored `.forgeos/swarms/` and vanished for every fresh checkout.")
     // The deferred list should be a reasonable size (not 0, not the entire
     // repo). A growing-over-time deferred list is a smell, but baseline must
     // be reachable.
     XCTAssertLessThan(Self.deferredFiles.count, 200,
                       "Deferred list is unexpectedly large — verify the file was not corrupted")
+  }
+
+  /// String-literal self-test — the false positive this detector fix closes.
+  /// An `AppContainer.production()` mention inside a string literal (e.g. an
+  /// `XCTFail` / assertion message that *describes* the banned pattern) MUST
+  /// NOT trigger the lint. This is the exact deterministic failure
+  /// `AccountsManagerLaunchSnapshotTests` produced: its re-entrancy-guard
+  /// XCTFail message names `AppContainer.production()` with no real call, yet
+  /// reddened `testNoAppContainerProductionOutsideWhitelist` on every run
+  /// (masked only by the unit-test workflow's `continue-on-error`).
+  func testLintIgnoresStringLiteralMentions() {
+    let syntheticWithStringMention = """
+    func sut() {
+        XCTFail("re-enters AppContainer.production() under the held lock (PR #1226)")
+        assert(condition, "AppContainer.production() must not be reached here")
+    }
+    """
+    let vios = violations(in: syntheticWithStringMention)
+    XCTAssertEqual(vios.count, 0,
+                   "`AppContainer.production()` inside a string literal (assertion message) must NOT trigger the lint")
+  }
+
+  /// Boundary self-test: the string-literal skip must NOT blind the detector to
+  /// a REAL call that shares a line with a string mention — otherwise the fix
+  /// would open a hole where wrapping a call site in a same-line log message
+  /// evades the lint.
+  func testLintFlagsRealCallEvenWhenSameLineAlsoMentionsInString() {
+    let mixed = """
+    func sut() {
+        let x = AppContainer.production().bookRegistry; log("touched AppContainer.production()")
+    }
+    """
+    let vios = violations(in: mixed)
+    XCTAssertEqual(vios.count, 1,
+                   "A real `AppContainer.production()` call must still be flagged even when the same line also mentions it inside a string")
   }
 }

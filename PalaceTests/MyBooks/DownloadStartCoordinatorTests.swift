@@ -13,6 +13,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class DownloadStartCoordinatorTests: XCTestCase {
@@ -81,19 +82,6 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    /// Thin wrapper around the shared `awaitConditionAsync` helper.
-    /// Replaces the prior local copy that silently swallowed timeouts.
-    /// `file`/`line` forwarded so a timeout XCTFail blames the call
-    /// site, not this wrapper.
-    private func waitForAsync(
-        timeout: TimeInterval = 10.0,
-        file: StaticString = #file,
-        line: UInt = #line,
-        _ predicate: @escaping () -> Bool
-    ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
-    }
-
     // MARK: - startBorrow slot-release semantics
 
     func testStartBorrow_success_invokesCompletionAndDoesNotReleaseSlot() async {
@@ -103,11 +91,13 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         bookRegistry.setState(.downloadSuccessful, for: book.identifier)
         var completionCalls = 0
 
-        coordinator.startBorrow(for: book, attemptDownload: false) {
-            completionCalls += 1
-        }
-
-        await waitForAsync { completionCalls > 0 }
+        // Await the behavior-identical async body so slot-release + completion
+        // are JOINED — no deadline poll (starves under CI oversubscription).
+        await coordinator.startBorrowAsync(
+            for: book,
+            attemptDownload: false,
+            borrowCompletionBox: BorrowCompletionBox { completionCalls += 1 }
+        )
 
         XCTAssertEqual(completionCalls, 1, "Borrow success must invoke completion exactly once")
         let active = await stateManager.downloadCoordinator.activeCount
@@ -126,11 +116,11 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         bookRegistry.setState(.holding, for: book.identifier)
         var completionCalls = 0
 
-        coordinator.startBorrow(for: book, attemptDownload: true) {
-            completionCalls += 1
-        }
-
-        await waitForAsync { [self] in self.spyDelegate.scheduleCount > 0 }
+        await coordinator.startBorrowAsync(
+            for: book,
+            attemptDownload: true,
+            borrowCompletionBox: BorrowCompletionBox { completionCalls += 1 }
+        )
 
         XCTAssertEqual(completionCalls, 1)
         let active = await stateManager.downloadCoordinator.activeCount
@@ -145,11 +135,11 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         await stateManager.downloadCoordinator.registerStart(identifier: book.identifier)
         var completionCalls = 0
 
-        coordinator.startBorrow(for: book, attemptDownload: true) {
-            completionCalls += 1
-        }
-
-        await waitForAsync { [self] in self.spyDelegate.scheduleCount > 0 }
+        await coordinator.startBorrowAsync(
+            for: book,
+            attemptDownload: true,
+            borrowCompletionBox: BorrowCompletionBox { completionCalls += 1 }
+        )
 
         XCTAssertEqual(completionCalls, 1,
                        "Borrow error path must STILL invoke completion (otherwise UI hangs)")
@@ -282,22 +272,36 @@ final class DownloadStartCoordinatorTests: XCTestCase {
 
 // MARK: - Stubs
 
-private final class SpyDelegate: DownloadStartCoordinatorDelegate {
+private final class SpyDelegate: DownloadStartCoordinatorDelegate, @unchecked Sendable {
     enum BorrowResult {
         case success(TPPBook)
         case failure(Error)
     }
 
-    var borrowAsyncResult: BorrowResult = .success(TPPBookMocker.mockBook(distributorType: .EpubZip))
+    // Swift 6: `borrowAsync` / `schedulePendingStartsIfPossible` are
+    // `nonisolated` protocol requirements, so their bodies cannot capture
+    // `self` (a non-Sendable spy) to reach recorder vars — the previous
+    // `MainActor.run { self.… }` / `Task { @MainActor in self.… }` hops each
+    // sent `self`. Back the storage with `LockIsolated` (@unchecked Sendable,
+    // lock-guarded) so every read/write is thread-safe with no self-capturing
+    // actor hop. `var` shims keep the test call sites unchanged.
+    private let _borrowAsyncResult = LockIsolated<BorrowResult>(
+        .success(TPPBookMocker.mockBook(distributorType: .EpubZip))
+    )
+    var borrowAsyncResult: BorrowResult {
+        get { _borrowAsyncResult.value }
+        set { _borrowAsyncResult.value = newValue }
+    }
 
-    private(set) var scheduleCount = 0
-    private(set) var borrowCount = 0
+    private let _scheduleCount = LockIsolated<Int>(0)
+    var scheduleCount: Int { _scheduleCount.value }
+
+    private let _borrowCount = LockIsolated<Int>(0)
+    var borrowCount: Int { _borrowCount.value }
 
     nonisolated func borrowAsync(_ book: TPPBook, attemptDownload: Bool) async throws -> TPPBook {
-        // Hop to MainActor since the recorder vars are MainActor-isolated
-        // (the test class is @MainActor).
-        await MainActor.run { self.borrowCount += 1 }
-        let result = await MainActor.run { self.borrowAsyncResult }
+        _borrowCount.withValue { $0 += 1 }
+        let result = _borrowAsyncResult.value
         switch result {
         case .success(let book): return book
         case .failure(let error): throw error
@@ -305,13 +309,11 @@ private final class SpyDelegate: DownloadStartCoordinatorDelegate {
     }
 
     nonisolated func schedulePendingStartsIfPossible() {
-        // Schedule increments synchronously from a Task block — bridge
-        // back to MainActor with a Task to avoid the data-race warning.
-        Task { @MainActor in self.scheduleCount += 1 }
+        _scheduleCount.withValue { $0 += 1 }
     }
 }
 
-private final class StubDownloadTask: URLSessionDownloadTask {
+private final class StubDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
     init(taskIdentifier: Int) {
         self._taskIdentifier = taskIdentifier

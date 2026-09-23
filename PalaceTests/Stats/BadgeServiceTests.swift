@@ -1,6 +1,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class BadgeServiceTests: XCTestCase {
   private var statsStore: MockStatsStore!
   private var statsService: ReadingStatsService!

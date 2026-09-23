@@ -44,6 +44,7 @@ import XCTest
 import PalaceNetwork
 @testable import Palace
 
+@MainActor
 final class CatalogOPDS2NegotiationTests: XCTestCase {
 
     // MARK: - Fixtures

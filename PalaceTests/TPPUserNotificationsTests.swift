@@ -7,8 +7,11 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// Tests for NotificationService hold availability and badge functionality
+@MainActor
 final class TPPUserNotificationsTests: XCTestCase {
 
     override func tearDown() {

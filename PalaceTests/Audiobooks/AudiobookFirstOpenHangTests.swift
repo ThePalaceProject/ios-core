@@ -132,9 +132,14 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
         let gate = PlaybackReadinessGate()
         let position = makeFakeTrackPosition()
 
-        // Schedule the ready transition 50ms after the await begins.
+        // Schedule the ready transition 50ms after the await begins, and record
+        // WHEN it happened. The recorded instant is what the ordering assertion
+        // below compares against — an absolute wall-clock budget would be
+        // measuring the machine (see the note above the assertions).
+        let readyAt = LockIsolated<ContinuousClock.Instant?>(nil)
         Task {
             try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+            readyAt.value = ContinuousClock().now
             await gate.markReady()
         }
 
@@ -155,14 +160,81 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
         }
         let elapsed = ContinuousClock().now - started
 
+        // The properties, none of which a busy machine can falsify. A slow
+        // runner makes each of these MORE true, never less.
         XCTAssertEqual(playbackSpy.playAtCallCount, 1,
                        "play(at:) must be called exactly once after readiness — pre-fix issued before ready, post-fix issues exactly once after ready")
         XCTAssertGreaterThan(elapsed, .milliseconds(40),
-                             "play(at:) must be DELAYED until the ready signal — sub-40ms return means the gate did not actually block")
-        XCTAssertLessThan(elapsed, .milliseconds(500),
-                          "Once ready, play(at:) must fire promptly — >500ms suggests the gate is polling rather than woken by signal")
+                             "play(at:) must be DELAYED until the ready signal — sub-40ms return means the gate did not actually block. Load-safe: contention only makes this longer")
+        // THE assertion that distinguishes the fix from the bug, and the one an
+        // earlier revision of this test got wrong twice over. Comparing elapsed
+        // time cannot see it: with play issued BEFORE the await, the function
+        // still awaits afterwards, so total elapsed is unchanged and every
+        // duration bound still passes. Comparing `ContinuousClock().now` to the
+        // ready instant cannot see it either — that is true by construction
+        // whatever the code did. Only the instant of the PLAY CALL, compared to
+        // the instant of the READY SIGNAL, states the contract.
+        //
+        // Verified by reintroducing the defect: moving `command.play(at:)`
+        // above `gate.awaitReady` fails this assertion by name and no other.
+        let readyInstant = try XCTUnwrap(readyAt.value,
+                                         "the ready signal must actually have fired; nil means the await returned without it")
+        let playInstant = try XCTUnwrap(playbackSpy.firstPlayAt,
+                                        "play(at:) must have been invoked; nil means the gate never released")
+        XCTAssertGreaterThan(playInstant, readyInstant,
+                             "play(at:) must be issued AFTER the ready signal. This is the F-011 hang: issuing play against a not-yet-ready engine. Ordering, not duration — load cannot falsify it")
         XCTAssertEqual(playbackSpy.lastPlayedPosition?.timestamp, position.timestamp,
                        "play(at:) must be invoked with the initial position, not a default")
+
+    }
+
+    /// The wall-clock latency bound, opt-in — the load-sensitive half of the
+    /// test above, split out rather than appended to it.
+    ///
+    /// It previously lived at the end of that test as `elapsed < 500ms`, meaning
+    /// "woken by signal, not polling". A real property, measured with a
+    /// stopwatch. `awaitReady` races a continuation against a `Task.sleep` on
+    /// the COOPERATIVE POOL, so any sibling saturating that pool delays both the
+    /// arming sleep and the resume. Under `-test-iterations 3` with the scheme's
+    /// random ordering the polluting sibling varies per iteration, which is how
+    /// it produced `passed · failed · passed` inside one run.
+    ///
+    /// Kept as its own test because an `XCTSkipUnless` at the END of the other
+    /// one reported the WHOLE test as skipped — the property assertions had
+    /// already run and passed, but the result read as "nothing was checked",
+    /// which is worse than the flake it replaced.
+    ///
+    /// The polling-vs-signal claim is carried structurally in the test above:
+    /// `awaitReady` suspends on a keyed continuation resumed by `markReady`,
+    /// with no poll loop to be slow. A stopwatch cannot tell a polling gate from
+    /// a busy runner — that, not the threshold, was the flaw.
+    func testFirstOpen_readinessWake_latencyBound_loadSensitive() async throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["PALACE_STRESS_POOL"] == "1",
+            // TEST_RUNNER_ prefix is required: xcodebuild forwards only
+            // TEST_RUNNER_-prefixed variables into the test process, so a bare
+            // PALACE_STRESS_POOL=1 sets it in the SHELL and the test still skips.
+            "load-sensitive; run with TEST_RUNNER_PALACE_STRESS_POOL=1"
+        )
+
+        let gate = PlaybackReadinessGate()
+        let position = makeFakeTrackPosition()
+        Task {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            await gate.markReady()
+        }
+
+        let started = ContinuousClock().now
+        try await PlaybackReadinessGate.awaitReadinessAndPlay(
+            at: position,
+            gate: gate,
+            timeout: 2.0,
+            command: playbackSpy
+        )
+        let elapsed = ContinuousClock().now - started
+
+        XCTAssertLessThan(elapsed, .milliseconds(500),
+                          "on an IDLE machine, once ready, play(at:) must fire promptly — >500ms suggests the gate is polling rather than woken by signal")
     }
 
     // MARK: - Test 2: engine never ready within timeout
@@ -275,6 +347,91 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
 
         XCTAssertEqual(playbackSpy.playAtCallCount, 1,
                        "Total play(at:) calls across BOTH attempts must == 1 — the second open, not double-firing — pinning the F-011 fix shape")
+    }
+
+    // MARK: - Multi-awaiter fan-out (pins PlaybackReadinessOutcome: Sendable)
+    //
+    // The doc on `PlaybackReadinessGate` promises: "Multiple consumers
+    // awaiting the gate concurrently all resume with the same outcome." These
+    // two tests drive N concurrent awaiters that are PARKED in the gate's
+    // pending-waiter queue when the terminal signal arrives, then assert every
+    // one of them resumes with the same `PlaybackReadinessOutcome`. The
+    // outcome value is carried out of the gate's actor into N separate child
+    // tasks of a `withThrowingTaskGroup` — the exact path that requires
+    // `PlaybackReadinessOutcome` to be `Sendable`.
+    //
+    // MUTATION SURFACE THESE KILL:
+    //   - `applyOutcome` resuming only `pending.first` instead of iterating
+    //     all waiters → the other (N-1) awaiters never get the signal and hit
+    //     their own awaitReady timeout; `awaitReady` then THROWS
+    //     `PlaybackReadinessError.timeout`, which the task group rethrows out of
+    //     the test body, so the test fails (via the thrown error, before the
+    //     all-equal assertion is even reached).
+    //   - `markFailed(reason:)` collapsing the reason (e.g. hardcoding a
+    //     different string) → the `.failed(reason:)` equality assertion fails.
+    // NOT killed here (covered separately): dropping the `outcome = next` latch
+    // — both tests below park ALL awaiters BEFORE the terminal signal, so the
+    // resume-all loop fires regardless of the latch. The latch (late-arriving
+    // awaiter sees the already-set outcome) is killed by the pre-set-ready test
+    // (`gate.markReady()` before `awaitReady`) elsewhere in this file.
+
+    /// N awaiters parked before `markReady` all resume with `.ready`.
+    func testAwaitReady_manyConcurrentAwaiters_parkedBeforeReady_allResumeReady() async throws {
+        let gate = PlaybackReadinessGate()
+        let awaiterCount = 6
+
+        // Signal ready AFTER the awaiters have had time to park in the gate's
+        // pending queue — this exercises the "resume every pending waiter"
+        // path rather than the fast `if let existing = outcome` shortcut.
+        Task {
+            try? await Task.sleep(nanoseconds: 60_000_000) // 60ms
+            await gate.markReady()
+        }
+
+        let outcomes = try await withThrowingTaskGroup(of: PlaybackReadinessOutcome.self) { group in
+            for _ in 0..<awaiterCount {
+                group.addTask { try await gate.awaitReady(timeout: 2.0) }
+            }
+            var collected: [PlaybackReadinessOutcome] = []
+            for try await outcome in group {
+                collected.append(outcome)
+            }
+            return collected
+        }
+
+        XCTAssertEqual(outcomes.count, awaiterCount,
+                       "every concurrent awaiter must resume exactly once")
+        XCTAssertTrue(outcomes.allSatisfy { $0 == .ready },
+                      "all awaiters parked before the terminal signal must resume with .ready — a gate that resumed only the first waiter would leave the rest to time out with .failed(\"timeout\")")
+    }
+
+    /// N awaiters parked before `markFailed` all resume with the SAME
+    /// `.failed(reason:)`, preserving the reason payload across the boundary.
+    func testAwaitReady_manyConcurrentAwaiters_parkedBeforeFailed_allResumeSameFailureReason() async throws {
+        let gate = PlaybackReadinessGate()
+        let awaiterCount = 6
+        let reason = "engine-init-aborted"
+
+        Task {
+            try? await Task.sleep(nanoseconds: 60_000_000) // 60ms
+            await gate.markFailed(reason: reason)
+        }
+
+        let outcomes = try await withThrowingTaskGroup(of: PlaybackReadinessOutcome.self) { group in
+            for _ in 0..<awaiterCount {
+                group.addTask { try await gate.awaitReady(timeout: 2.0) }
+            }
+            var collected: [PlaybackReadinessOutcome] = []
+            for try await outcome in group {
+                collected.append(outcome)
+            }
+            return collected
+        }
+
+        XCTAssertEqual(outcomes.count, awaiterCount,
+                       "every concurrent awaiter must resume exactly once")
+        XCTAssertTrue(outcomes.allSatisfy { $0 == .failed(reason: reason) },
+                      "all awaiters must resume with the SAME .failed(reason:) — the reason payload must survive the actor→task-group boundary intact")
     }
 
     // MARK: - Test 4: production-wiring proof — drives the extracted seam end-to-end
@@ -456,6 +613,98 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
         XCTAssertEqual(spy.stopCallCount, 1, "probe.stop must run via defer even on exhaustion")
     }
 
+    // MARK: - fix/audiobook-first-open-hang: early loading-shell-presented hook
+    //
+    // BUG A: on first checkout+open of an LCP audiobook, the BookDetail
+    // download-progress half-sheet stayed presented over the loading shell for
+    // the ENTIRE PP-4542 content-download wait (~19s in the live repro), because
+    // its dismissal was chained to the FULL open completion. The fix fires
+    // `onLoadingShellPresented` the moment the morphing player's loading shell is
+    // on screen (before the wait) so the caller can dismiss its transient UI
+    // immediately, present-first-then-dismiss (no iPad race). These tests pin the
+    // production fire site (`AudiobookSessionManager` open path, after
+    // `presentLoadingShell`) and its gating.
+
+    /// Builds a session manager bound to a SPECIFIC presenter instance (captured
+    /// + reset so cross-test pollution on the shared presenter can't leak
+    /// `isPlayerExpanded`/`currentBook` into these assertions) with a fixed
+    /// in-app-nav flag. Returns both so the test can assert on the same presenter
+    /// the manager drives.
+    private func makeManagerForShellTests(inAppNavEnabled: Bool) -> (AudiobookSessionManager, AudiobookSessionPresenter) {
+        let presenter = appContainer.audiobookSessionPresenter
+        presenter.clearActiveSession()
+        let manager = AudiobookSessionManager(
+            appContainer: appContainer,
+            audiobookSessionPresenterProvider: { presenter },
+            inAppPlaybackNavEnabledProvider: { inAppNavEnabled }
+        )
+        return (manager, presenter)
+    }
+
+    /// PRE: in-app nav ON, `startPlaying: true` → the shell IS eligible.
+    /// EXPECTED: `presentLoadingShellIfEligible` presents the shell (presenter
+    /// adopts the book + expands) and fires `onLoadingShellPresented` exactly
+    /// once, returning true. This is the seam `openAudiobook` calls after
+    /// validation and BEFORE the PP-4542 wait — firing here is what lets
+    /// BookDetail dismiss the half-sheet before the download instead of after.
+    /// Deleting the `onLoadingShellPresented?()` call makes fireCount fail;
+    /// deleting the `presentLoadingShell` call makes the presenter assertions fail.
+    func testPresentLoadingShellIfEligible_presentsShellAndFiresHook_whenEligible() {
+        let (manager, presenter) = makeManagerForShellTests(inAppNavEnabled: true)
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+        var fireCount = 0
+
+        let presented = manager.presentLoadingShellIfEligible(
+            for: book, startPlaying: true, onLoadingShellPresented: { fireCount += 1 }
+        )
+
+        XCTAssertTrue(presented, "An eligible user-initiated open with in-app nav on must present the shell")
+        XCTAssertEqual(fireCount, 1,
+                       "onLoadingShellPresented must fire exactly once when the shell is presented — this is the early half-sheet-dismiss signal")
+        XCTAssertEqual(presenter.currentBook?.identifier, book.identifier,
+                       "Presenting the shell must adopt the book so the morphing player shows its cover/title")
+        XCTAssertTrue(presenter.isPlayerExpanded,
+                      "Presenting the shell must expand the player (present-first, so the sheet dismisses underneath it — no iPad race)")
+    }
+
+    /// PRE: in-app nav OFF → not eligible (legacy pushed route, no shell).
+    /// EXPECTED: returns false, does NOT fire the hook, does NOT present a shell.
+    /// The caller relies on its always-fired final `onFinish` backstop to dismiss
+    /// its transient UI on this path — the architect-F1 stuck-sheet guard. A
+    /// mutant that drops the `inAppPlaybackNavEnabledProvider()` gate fails this.
+    func testPresentLoadingShellIfEligible_doesNotFireOrPresent_whenInAppNavOff() {
+        let (manager, presenter) = makeManagerForShellTests(inAppNavEnabled: false)
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+        var fireCount = 0
+
+        let presented = manager.presentLoadingShellIfEligible(
+            for: book, startPlaying: true, onLoadingShellPresented: { fireCount += 1 }
+        )
+
+        XCTAssertFalse(presented, "With in-app nav off no shell is shown — the hook must not fire")
+        XCTAssertEqual(fireCount, 0, "The early hook must not fire when no shell is presented")
+        XCTAssertFalse(presenter.isPlayerExpanded,
+                       "No shell must be presented when in-app nav is off")
+    }
+
+    /// PRE: `startPlaying: false` (background/resume open) → not eligible.
+    /// EXPECTED: returns false, hook does not fire. Pins the `startPlaying` half
+    /// of the eligibility gate (a mutant dropping the `startPlaying` guard fails).
+    func testPresentLoadingShellIfEligible_doesNotFire_whenNotStartPlaying() {
+        let (manager, presenter) = makeManagerForShellTests(inAppNavEnabled: true)
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+        var fireCount = 0
+
+        let presented = manager.presentLoadingShellIfEligible(
+            for: book, startPlaying: false, onLoadingShellPresented: { fireCount += 1 }
+        )
+
+        XCTAssertFalse(presented, "A non-user-initiated open (startPlaying: false) presents no shell")
+        XCTAssertEqual(fireCount, 0, "The early hook must not fire on a non-start-playing open")
+        XCTAssertFalse(presenter.isPlayerExpanded,
+                       "A non-start-playing open must not expand the player")
+    }
+
     // MARK: - Helpers
 
     /// Builds a TrackPosition without touching the toolkit's heavy
@@ -527,7 +776,14 @@ private final class PlaybackEngineSpy: PlaybackEngineCommanding {
     private(set) var playAtCallCount: Int = 0
     private(set) var lastPlayedPosition: TrackPositionShape?
 
+    /// When `play(at:)` was first invoked. Recorded so a test can assert the
+    /// ORDERING of play against the ready signal rather than a wall-clock
+    /// budget — the ordering is the actual contract and is load-insensitive,
+    /// where a duration is neither.
+    private(set) var firstPlayAt: ContinuousClock.Instant?
+
     func play(at position: TrackPositionShape) async throws {
+        if firstPlayAt == nil { firstPlayAt = ContinuousClock().now }
         playAtCallCount += 1
         lastPlayedPosition = position
     }

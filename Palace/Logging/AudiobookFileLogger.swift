@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 /// Protocol seam for test-time injection. Production call sites continue to
 /// use `AudiobookFileLogger.shared`.
@@ -17,7 +18,11 @@ protocol AudiobookFileLogging {
     func retrieveLogs(forBookIds bookIds: [String]) -> [String: String]
 }
 
-class AudiobookFileLogger: AudiobookFileLogging {
+// `final` + `Sendable`: all stored properties are immutable value types
+// (`Int64` and `URL?`), and every method is read-only over that state (file I/O
+// via the thread-safe `FileManager`), so the type carries no shared mutable
+// state. This makes `static let shared` concurrency-safe under Swift 6.
+final class AudiobookFileLogger: AudiobookFileLogging, Sendable {
 
     static let shared = AudiobookFileLogger()
 
@@ -158,5 +163,13 @@ class AudiobookFileLogger: AudiobookFileLogging {
             }
         }
         return logs
+    }
+}
+
+// Wave 1c: dev-tools log-email seam. Internal witness is fine — the
+// conforming type is internal (public-witness rule applies to public types).
+extension AudiobookFileLogger: LogArchiveExporting {
+    func logArchiveDirectoryURL() -> URL? {
+        getLogsDirectoryUrl()
     }
 }

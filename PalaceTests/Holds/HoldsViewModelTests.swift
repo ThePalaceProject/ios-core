@@ -8,9 +8,12 @@
 //
 
 import XCTest
+import PalacePreferences
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class HoldsViewModelTests: XCTestCase {
@@ -40,7 +43,10 @@ final class HoldsViewModelTests: XCTestCase {
             bookRegistry: mockRegistry,
             accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            debugSettings: appContainer.debugSettings
+            debugSettings: appContainer.debugSettings,
+            // S7 seam: 0ms debounce so `_awaitRefreshForTesting()` settles
+            // instantly and deterministically instead of racing a 300ms timer.
+            debounceInterval: 0
         )
     }
 
@@ -75,22 +81,13 @@ final class HoldsViewModelTests: XCTestCase {
     func testSyncBeganSetsLoadingTrue() async {
         let viewModel = createViewModel()
 
-        let expectation = XCTestExpectation(description: "Loading becomes true on sync began")
-
-        viewModel.$isLoading
-            .dropFirst()
-            .sink { isLoading in
-                if isLoading {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
         NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
 
-        // 5s budget covers the .receive(on: DispatchQueue.main) hop +
-        // suite-wide dispatch saturation.
-        await fulfillment(of: [expectation], timeout: 5.0)
+        // The `.TPPSyncBegan` observer hops through `.receive(on: .main)` before
+        // dispatching `.syncBegan`; draining the main queue lands that hop
+        // deterministically — no wall-clock race against dispatch saturation.
+        await drainMainQueueAsync()
+
         XCTAssertTrue(viewModel.isLoading)
     }
 
@@ -98,21 +95,14 @@ final class HoldsViewModelTests: XCTestCase {
         let viewModel = createViewModel()
         viewModel.isLoading = true // Set initial state
 
-        let expectation = XCTestExpectation(description: "Loading becomes false on sync ended")
-
-        viewModel.$isLoading
-            .dropFirst()
-            .sink { isLoading in
-                if !isLoading {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
-        // 5s budget covers the production 300ms debounce + dispatch saturation.
-        await fulfillment(of: [expectation], timeout: 5.0)
+        // `.TPPSyncEnded` feeds the merged debounce: the `.receive(on: .main)`
+        // hop schedules the refresh Task, which we then JOIN via the S7 seam.
+        // `debounceInterval` is 0 in tests, so the join settles immediately.
+        await drainMainQueueAsync()
+        await viewModel._awaitRefreshForTesting()
+
         XCTAssertFalse(viewModel.isLoading)
     }
 
@@ -301,21 +291,13 @@ final class HoldsViewModelTests: XCTestCase {
         let book = TPPBookMocker.snapshotReservedBook(identifier: "new-book", title: "New Book")
         mockRegistry.addBook(book, state: .holding)
 
-        let expectation = XCTestExpectation(description: "visibleBooks updated after registry change")
-
-        viewModel.$visibleBooks
-            .dropFirst()
-            .sink { books in
-                if !books.isEmpty {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
-        // Post registry change notification (which triggers reloadData after debounce)
+        // Post registry change notification (which triggers reloadData through
+        // the merged debounce). Drain the scheduling main-hop, then JOIN the
+        // refresh Task via the S7 seam — deterministic, no timeout.
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        await drainMainQueueAsync()
+        await viewModel._awaitRefreshForTesting()
 
-        await fulfillment(of: [expectation], timeout: 1.0)
         XCTAssertFalse(viewModel.visibleBooks.isEmpty, "visibleBooks should be updated after registry change")
     }
 
@@ -386,50 +368,32 @@ final class HoldsViewModelTests: XCTestCase {
 
     // MARK: - Published Properties Tests
 
-    func testIsLoading_PublishesChanges() {
+    func testIsLoading_PublishesChanges() async {
         let viewModel = createViewModel()
 
-        let expectation = XCTestExpectation(description: "isLoading publishes change")
-        var publishedValue: Bool?
-
-        viewModel.$isLoading
-            .dropFirst()
-            .sink { newValue in
-                publishedValue = newValue
-                expectation.fulfill()
-            }
-            .store(in: &cancellables)
-
-        // Trigger loading state change via notification
+        // Trigger loading state change via notification, then drain the
+        // `.receive(on: .main)` hop so the published change lands deterministically.
         NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        await drainMainQueueAsync()
 
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertNotNil(publishedValue, "isLoading must have emitted a value after TPPSyncBegan notification")
+        XCTAssertTrue(viewModel.isLoading,
+                      "isLoading must be true after TPPSyncBegan is processed")
     }
 
     func testVisibleBooks_PublishesChanges() async {
         let viewModel = createViewModel()
 
-        let expectation = XCTestExpectation(description: "visibleBooks publishes change")
-        var publishedBooks: [TPPBook]?
-
-        viewModel.$visibleBooks
-            .dropFirst()
-            .sink { books in
-                publishedBooks = books
-                expectation.fulfill()
-            }
-            .store(in: &cancellables)
-
-        // Add a book and reload
+        // Add a book, then post the registry-change notification that drives the
+        // merged debounce. Drain the scheduling hop, JOIN the refresh Task.
         let book = TPPBookMocker.snapshotReservedBook()
         mockRegistry.addBook(book, state: .holding)
 
-        // Post notification to trigger reload
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        await drainMainQueueAsync()
+        await viewModel._awaitRefreshForTesting()
 
-        await fulfillment(of: [expectation], timeout: 1.0)
-        XCTAssertNotNil(publishedBooks, "visibleBooks must have emitted a value after book registry change")
+        XCTAssertFalse(viewModel.visibleBooks.isEmpty,
+                       "visibleBooks must be populated after the registry change is processed")
     }
 }
 
@@ -482,29 +446,18 @@ final class HoldsSyncFailureTests: XCTestCase {
         let viewModel = makeSignedInViewModel()
         XCTAssertNil(viewModel.syncError, "No error initially")
 
-        let errorExpectation = XCTestExpectation(description: "syncError is set")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
 
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
+        // `.TPPSyncFailed` dispatches through `.receive(on: .main)`; draining the
+        // main queue lands the reducer update deterministically, no timeout.
+        await drainMainQueueAsync()
+
         XCTAssertNotNil(viewModel.syncError, "syncError should be set after TPPSyncFailed")
         XCTAssertFalse(viewModel.syncError!.message.isEmpty, "Error message should not be empty")
     }
 
     func testSyncFailure_WithProblemDocument_ShowsServerMessage() async {
         let viewModel = makeSignedInViewModel()
-
-        let errorExpectation = XCTestExpectation(description: "syncError is set with server detail")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
 
         let errorDoc: [AnyHashable: Any] = [
             "type": "http://librarysimplified.org/terms/problem/credentials-invalid",
@@ -516,8 +469,8 @@ final class HoldsSyncFailureTests: XCTestCase {
             object: nil,
             userInfo: [TPPBookRegistry.syncFailureErrorDocumentKey: errorDoc]
         )
+        await drainMainQueueAsync()
 
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
         XCTAssertEqual(
             viewModel.syncError?.message,
             "Your library card has expired. Please contact your library.",
@@ -528,16 +481,9 @@ final class HoldsSyncFailureTests: XCTestCase {
     func testSyncFailure_WithoutProblemDocument_ShowsGenericMessage() async {
         let viewModel = makeSignedInViewModel()
 
-        let errorExpectation = XCTestExpectation(description: "syncError is set")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        await drainMainQueueAsync()
 
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
         XCTAssertEqual(
             viewModel.syncError?.message,
             Strings.HoldsView.syncFailedMessage,
@@ -549,16 +495,9 @@ final class HoldsSyncFailureTests: XCTestCase {
         let viewModel = makeSignedInViewModel()
         viewModel.isLoading = true
 
-        let errorExpectation = XCTestExpectation(description: "syncError is set")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        await drainMainQueueAsync()
 
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
         XCTAssertFalse(viewModel.isLoading, "Loading should stop on sync failure")
     }
 

@@ -11,6 +11,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class URLBackupExclusionTests: XCTestCase {
 
     private var sandbox: URL!

@@ -15,6 +15,7 @@
 
 import Foundation
 import PalaceReadingPosition
+import PalaceBookModel
 
 /// Bridges `PositionNetworkAdapter` to the existing `TPPAnnotations` API.
 ///

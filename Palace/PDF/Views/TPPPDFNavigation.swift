@@ -49,8 +49,6 @@ struct TPPPDFNavigation<Content>: View where Content: View {
 
     @EnvironmentObject var metadata: TPPPDFDocumentMetadata
 
-    @Environment(\.presentationMode) var presentationMode: Binding<PresentationMode>
-
     @Binding var readerMode: TPPPDFReaderMode
 
     private var isShowingPdfContorls: Bool {
@@ -61,7 +59,10 @@ struct TPPPDFNavigation<Content>: View where Content: View {
 
     var body: some View {
         content(readerMode)
-            .navigationBarItems(leading: leadingItems, trailing: trailingItems)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) { leadingItems }
+                ToolbarItem(placement: .navigationBarTrailing) { trailingItems }
+            }
     }
 
     private let minButtonSize = CGSize(width: 24, height: 24)
@@ -77,7 +78,7 @@ struct TPPPDFNavigation<Content>: View where Content: View {
                 .accessibilityLabel(Strings.Generic.tableOfContents)
                 .visible(when: !isShowingPdfContorls)
 
-                Picker("", selection: $pickerSelection.onChange(changeReaderMode)) {
+                Picker("", selection: Binding(get: { pickerSelection }, set: { pickerSelection = $0; changeReaderMode($0) })) {
                     ForEach(TPPPDFReaderModeValues.allValues) { readerModeValue in
                         readerModeValue.image
                             .tag(readerModeValue.rawValue)
@@ -112,6 +113,9 @@ struct TPPPDFNavigation<Content>: View where Content: View {
                     }
                 }
                 .accessibilityLabel(metadata.isBookmarked() ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: metadata.isBookmarked())
+                .palaceHaptic(.success, trigger: metadata.isBookmarked())
             }
             .visible(when: !isShowingPdfContorls)
         }

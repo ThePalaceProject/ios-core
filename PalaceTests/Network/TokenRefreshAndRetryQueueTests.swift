@@ -22,6 +22,7 @@ import PalaceAuth
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -35,8 +36,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     private let tokenURL = URL(string: "https://token.example.com/oauth/token")!
     private let apiURL = URL(string: "https://api.example.com/protected")!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         HTTPStubURLProtocol.reset()
         TPPUserAccountMock.resetShared()
 
@@ -107,7 +108,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     }
 
     /// Encodes a TokenResponse JSON body the way the server would return it.
-    private static func tokenResponseJSON(accessToken: String,
+    private nonisolated static func tokenResponseJSON(accessToken: String,
                                           expiresIn: Int = 3600) -> Data {
         return """
         {"access_token":"\(accessToken)","token_type":"Bearer","expires_in":\(expiresIn)}
@@ -126,18 +127,43 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         return executor.transport.urlSession.dataTask(with: request)
     }
 
-    /// Waits up to `timeout` seconds for `condition` to become true, polling
-    /// every 25ms on the test thread (with `RunLoop.run(mode:before:)` so
-    /// async URLSession callbacks can land). Returns true if the condition
-    /// fired, false on timeout.
-    private func waitForCondition(timeout: TimeInterval = 5.0,
-                                   _ condition: @escaping () -> Bool) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if condition() { return true }
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.025))
+    /// Deterministic barrier for ABSENCE assertions ("no spurious refresh",
+    /// "no duplicate completion"). The executor's refresh work runs on
+    /// `Task { … }` closures; awaiting a short chain of enqueued `Task` values
+    /// steps the cooperative pool through any already-scheduled continuations
+    /// so a same-turn spurious effect has landed before we assert its absence.
+    /// Unlike the fixed-deadline poll it replaces, this never consults a wall
+    /// clock — it completes the instant the pool is free, so it can't starve
+    /// under parallel-CI contention. Also hops the main actor to flush the
+    /// `await MainActor.run { … }` sub-path the 401 branch uses.
+    private func drainPendingRefreshWork() async {
+        for _ in 0..<8 {
+            await Task { }.value
+            await Task { @MainActor in }.value
         }
-        return condition()
+    }
+
+    /// Bridges a `DispatchSemaphore` signal into async/await WITHOUT blocking the
+    /// Swift concurrency cooperative pool. `Task.detached`'s operation closure is
+    /// itself an async context, so a blocking `sem.wait()` there is a Swift 6
+    /// error ("`wait` is unavailable from asynchronous contexts"). Running the
+    /// blocking wait inside a plain `DispatchQueue.global().async` closure (a
+    /// non-async context where `wait()` is allowed) on a Dispatch thread — never
+    /// a cooperative-pool thread — and resuming a continuation when it returns is
+    /// the correct off-pool bridge. Resumes the instant the semaphore is
+    /// signaled, never on a wall-clock deadline.
+    private func awaitSemaphore(_ sem: DispatchSemaphore) async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async { sem.wait(); cont.resume() }
+        }
+    }
+
+    /// Timeout variant — returns the `DispatchTimeoutResult` so a test can assert
+    /// the signal arrived (`.success`) vs. timed out. Same off-pool bridge.
+    private func awaitSemaphore(_ sem: DispatchSemaphore, timeout: DispatchTime) async -> DispatchTimeoutResult {
+        await withCheckedContinuation { (cont: CheckedContinuation<DispatchTimeoutResult, Never>) in
+            DispatchQueue.global().async { cont.resume(returning: sem.wait(timeout: timeout)) }
+        }
     }
 
     // MARK: - Test 1: 401-failure path marks credentials stale
@@ -155,10 +181,11 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     func testRefresh_TokenEndpointReturns401_MarksCredentialsStaleAndDoesNotLoop() async throws {
         await executor.resetRefreshAttemptCount()
 
-        var tokenRequestCount = 0
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        let tokenRequestCount = LockIsolated(0)
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
-            tokenRequestCount += 1
+            tokenRequestCount.withValue { $0 += 1 }
             // 401 from the token endpoint — credentials no longer accepted.
             return .init(statusCode: 401, headers: nil, body: Data("denied".utf8))
         }
@@ -176,16 +203,18 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
         await fulfillment(of: [finished], timeout: 5.0)
 
-        // markCredentialsStale hops to MainActor — give it a tick.
-        _ = waitForCondition(timeout: 2.0) { [weak self] in
-            self?.userAccount.authState == .credentialsStale
-        }
+        // No wall-clock poll for markCredentialsStale: in the executor's failure
+        // branch the `await MainActor.run { …markCredentialsStale() }` completes
+        // BEFORE the caller completion is invoked. This test is @MainActor, so by
+        // the time `fulfillment(of: [finished])` returns, that main-actor mutation
+        // has already been applied — the completion is the deterministic join to
+        // the stale-mark, no fixed-deadline `waitForCondition` needed.
 
         XCTAssertTrue(observedFailure,
                       "401 from /token must surface as a .failure to the caller")
         XCTAssertEqual(userAccount.authState, .credentialsStale,
                        "A 401 from /token must mark the user's credentials stale (kills `==` → `!=` on the 401-check, and deletion of markCredentialsStale)")
-        XCTAssertEqual(tokenRequestCount, 1,
+        XCTAssertEqual(tokenRequestCount.value, 1,
                        "Failed /token must NOT be retried by the executor — kills any mutation that turns the failure path into a retry loop")
 
         let attempts = await executor.refreshAttemptCount
@@ -208,7 +237,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // Return a 500 — NOT a 401. The TokenRequest layer maps non-200
         // into an NSError with `.code == statusCode` (so .code == 500).
         // The executor branch we care about gates on .code == 401 only.
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
             return .init(statusCode: 500, headers: nil, body: Data("boom".utf8))
         }
@@ -223,9 +253,12 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
         await fulfillment(of: [finished], timeout: 5.0)
 
-        // Give any MainActor work a tick to settle (we expect none, but
-        // we need to avoid a flake from missing a delayed mutation).
-        _ = waitForCondition(timeout: 1.0) { false }
+        // No settling sleep: the executor invokes the caller completion as the
+        // LAST step of its failure branch (after any main-actor work on the 401
+        // sub-path — which this non-401 case never enters). Once `fulfillment`
+        // returns, the branch has fully run; a fixed `waitForCondition(1.0){false}`
+        // wall-clock sleep only widened the CI-starvation window without adding
+        // any additional happens-before we don't already have from the completion.
 
         XCTAssertTrue(observedFailure,
                       "Non-401 refresh failure must still surface to caller")
@@ -251,9 +284,10 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         userAccount._credentials = nil
         XCTAssertNil(userAccount.barcode)
 
-        var tokenEndpointCalls = 0
-        HTTPStubURLProtocol.register { [tokenURL] request in
-            if request.url == tokenURL { tokenEndpointCalls += 1 }
+        let tokenEndpointCalls = LockIsolated(0)
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            if request.url == tokenURL { tokenEndpointCalls.withValue { $0 += 1 } }
             return .init(statusCode: 200,
                          headers: nil,
                          body: Self.tokenResponseJSON(accessToken: "should-not-be-returned"))
@@ -271,7 +305,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
         XCTAssertTrue(observedFailure,
                       "Missing credentials must surface as .failure (kills deletion of completion(.failure) in the missing-creds branch)")
-        XCTAssertEqual(tokenEndpointCalls, 0,
+        XCTAssertEqual(tokenEndpointCalls.value, 0,
                        "No HTTP call to /token can occur without credentials (kills inversion of the credentials guard)")
 
         let attempts = await executor.refreshAttemptCount
@@ -313,12 +347,19 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // pile up behind the same /token request. We release after we've
         // observed all callers entering the queue.
         let releaseGate = DispatchSemaphore(value: 0)
-        var tokenRequestCount = 0
-        let counterQueue = DispatchQueue(label: "token.count")
+        // Signalled the instant the /token stub thread is entered. The test
+        // `wait`s on this instead of polling `tokenRequestCount == 1` on a
+        // wall-clock deadline — a deterministic join to "the single /token
+        // request has been received", which is exactly the moment single-flight
+        // must be sampled. No clock, so it never starves under parallel-CI load.
+        let tokenEntered = DispatchSemaphore(value: 0)
+        let tokenRequestCount = LockIsolated(0)
 
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
-            counterQueue.sync { tokenRequestCount += 1 }
+            tokenRequestCount.withValue { $0 += 1 }
+            tokenEntered.signal()
             // Block the protocol thread until the test releases. Cap at
             // 3s so a broken single-flight guard surfaces as N>1 instead
             // of a hung test.
@@ -356,15 +397,13 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             }
         }
 
-        // Give the actor a moment to serialize all entrances before we
-        // release the gate. Polling: when all 5 callers have entered, the
-        // refreshAttemptCount must still be exactly 1.
-        _ = waitForCondition(timeout: 2.0) { [counterQueue] in
-            // Wait until the /token request has been received. After that,
-            // any other in-flight refresh callers have either coalesced
-            // or are stuck in the actor hop.
-            counterQueue.sync { tokenRequestCount } == 1
-        }
+        // Deterministic join: block a background thread on the entry
+        // semaphore until the single /token request has actually been
+        // received. `tokenEntered.signal()` fires from the stub thread the
+        // instant it's entered, so this resumes exactly then — never on a
+        // wall-clock deadline. Waited off the main actor so the executor's
+        // Task/actor hops that drive the request to the stub aren't starved.
+        await awaitSemaphore(tokenEntered)
 
         // Sample the attempt counter while /token is still blocked: this
         // is the moment that proves single-flight. If the guard is broken
@@ -413,13 +452,19 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // synchronization the test thread can observe `retryHits >= 1`
         // before the prior `capturedRetryAuth` store is visible (no
         // happens-before across plain `var`s in Swift). The CI flake
-        // was nil!=newToken precisely because of this gap. NSLock
+        // was nil!=newToken precisely because of this gap. LockIsolated
         // around every shared-state access closes it.
-        let lock = NSLock()
-        nonisolated(unsafe) var capturedRetryAuth: String? = nil
-        nonisolated(unsafe) var retryHits = 0
+        let capturedRetryAuth = LockIsolated<String?>(nil)
+        let retryHits = LockIsolated(0)
+        // Signalled the instant the retried API request reaches the stub. The
+        // test joins on this rather than polling `retryHits >= 1` against a
+        // 30s wall-clock deadline — the retry landing is the exact event we
+        // gate on, so the semaphore resumes precisely when it happens and can
+        // never starve under parallel-CI contention.
+        let retryLanded = DispatchSemaphore(value: 0)
 
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
                 return .init(statusCode: 200,
                              headers: nil,
@@ -427,10 +472,9 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             }
             if request.url == apiURL {
                 let authValue = request.value(forHTTPHeaderField: "Authorization")
-                lock.lock()
-                capturedRetryAuth = authValue
-                retryHits += 1
-                lock.unlock()
+                capturedRetryAuth.value = authValue
+                retryHits.withValue { $0 += 1 }
+                retryLanded.signal()
                 return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
             }
             return nil
@@ -441,20 +485,14 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
         executor.refreshTokenAndResume(task: queuedTask, accountId: nil)
 
-        // Wait until the retry request has been observed. 30s budget matches
-        // the #999 "un-tighten" pattern (local <1s baseline, CI runner under
-        // parallel-test contention can stall the actor-hop + URLSession
-        // teardown well past 5s — same root cause as the BookRegistry,
-        // CatalogCache, and ImageCache flakes documented in 2877d1a8e).
-        let retried = waitForCondition(timeout: 30.0) {
-            lock.lock(); defer { lock.unlock() }
-            return retryHits >= 1
-        }
+        // Deterministic join to the retry landing (off the main actor so the
+        // executor's refresh Task/actor hops and URLSession delivery aren't
+        // starved). Resumes the instant the retried API request hits the stub.
+        await awaitSemaphore(retryLanded)
+        let retried = retryHits.value >= 1
         XCTAssertTrue(retried, "The queued task must be retried after the /token refresh succeeds")
 
-        lock.lock()
-        let observedAuth = capturedRetryAuth
-        lock.unlock()
+        let observedAuth = capturedRetryAuth.value
 
         XCTAssertEqual(observedAuth,
                        "Bearer \(newToken)",
@@ -477,21 +515,26 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // Two successive successful refreshes must both increment the
         // attempt counter (1 → 2). If the slot is never released, the
         // second attempt would coalesce and the counter would stay at 1.
-        var tokenHits = 0
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        let tokenHits = LockIsolated(0)
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
-            tokenHits += 1
+            let hit = tokenHits.withValue { $0 += 1; return $0 }
             return .init(statusCode: 200,
                          headers: nil,
-                         body: Self.tokenResponseJSON(accessToken: "tok-\(tokenHits)"))
+                         body: Self.tokenResponseJSON(accessToken: "tok-\(hit)"))
         }
 
         let first = expectation(description: "first refresh")
         executor.refreshTokenAndResume(task: nil, accountId: nil) { _ in first.fulfill() }
         await fulfillment(of: [first], timeout: 5.0)
 
-        // Give the actor's setRefreshing(false) hop a chance to land.
-        _ = waitForCondition(timeout: 1.0) { false }
+        // No wall-clock gap needed: the task==nil success completion is invoked
+        // AFTER `setRefreshing(false)` in the executor (the slot is released, then
+        // the completion fires), so once `fulfillment(of: [first])` returns the
+        // single-flight slot is deterministically released. Awaiting the completion
+        // IS the join to slot-release — a fixed `waitForCondition(1.0) { false }`
+        // sleep here only added a starvation surface under parallel-CI contention.
 
         let second = expectation(description: "second refresh")
         executor.refreshTokenAndResume(task: nil, accountId: nil) { _ in second.fulfill() }
@@ -500,7 +543,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         let attempts = await executor.refreshAttemptCount
         XCTAssertEqual(attempts, 2,
                        "Two successive successful refreshes must each claim the slot — kills deletion of setRefreshing(false) on the success branch")
-        XCTAssertEqual(tokenHits, 2,
+        XCTAssertEqual(tokenHits.value, 2,
                        "Each released-and-reclaimed refresh must fire its own /token request")
     }
 
@@ -521,7 +564,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     func testQueuedRequest_CompletionFiresWithRetryBodyAfterRetry() async throws {
         await executor.resetRefreshAttemptCount()
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
                 return .init(statusCode: 200,
                              headers: nil,
@@ -543,32 +587,42 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // for the original task and the success event for the retry,
         // so we rely on polling for the retry-body to land rather than
         // an XCTestExpectation that would over-fulfill.
-        var successBodies: [Data] = []
-        var failureCount = 0
-        let observerQueue = DispatchQueue(label: "test.observer")
-        executor.responder.addCompletion({ result in
-            observerQueue.sync {
-                switch result {
-                case .success(let data, _):
-                    successBodies.append(data)
-                case .failure:
-                    failureCount += 1
-                }
+        // @Sendable completion + LockIsolated: the responder invokes this
+        // completion off the main actor (URLSession delegate queue), but the
+        // closure is inferred @MainActor-isolated in this @MainActor test — so
+        // without @Sendable it trips Swift 6's off-main executor-isolation
+        // assertion (EXC_BREAKPOINT) exactly like the register stubs above.
+        let successBodies = LockIsolated<[Data]>([])
+        let failureCount = LockIsolated(0)
+        // Signalled from inside the responder completion the instant the
+        // retry-body success is delivered. The test joins on this rather than
+        // polling `successBodies.contains(retry-body)` on a wall-clock deadline
+        // — the completion firing with the retry body IS the event under test,
+        // so signalling from within it is the deterministic join. The
+        // cancellation failure for the old task may fire first; only the
+        // retry-body success signals, so the wait resumes on the right event.
+        let retryBodyDelivered = DispatchSemaphore(value: 0)
+        executor.responder.addCompletion({ @Sendable result in
+            switch result {
+            case .success(let data, _):
+                successBodies.withValue { $0.append(data) }
+                if data == Data("retry-body".utf8) { retryBodyDelivered.signal() }
+            case .failure:
+                failureCount.withValue { $0 += 1 }
             }
         }, taskID: queuedTask.taskIdentifier)
 
         executor.refreshTokenAndResume(task: queuedTask, accountId: nil)
 
-        // Wait for at least one success body to land. The cancellation
-        // failure may fire first; we keep polling until the retry-body
-        // success arrives (or we time out, which means updateCompletionId
-        // was bypassed and the new task has no completion mapping).
-        let sawRetryBody = waitForCondition(timeout: 5.0) {
-            observerQueue.sync { successBodies.contains(Data("retry-body".utf8)) }
-        }
+        // Deterministic join to the retry-body delivery (off the main actor so
+        // the executor's refresh Task/actor hops and URLSession delivery aren't
+        // starved). If `updateCompletionId` were bypassed the new task would
+        // have no completion mapping and this would hang — surfaced as the test
+        // timeout, exactly the regression this test guards.
+        let sawRetryBody = await awaitSemaphore(retryBodyDelivered, timeout: .now() + 30.0) == .success
 
-        let snapshotSuccess = observerQueue.sync { successBodies.count }
-        let snapshotFailure = observerQueue.sync { failureCount }
+        let snapshotSuccess = successBodies.value.count
+        let snapshotFailure = failureCount.value
         XCTAssertTrue(sawRetryBody,
                       "The retried task's success must reach the caller's completion (kills deletion of responder.updateCompletionId — without rewiring, no success body ever fires). successBodies=\(snapshotSuccess), failureCount=\(snapshotFailure)")
     }
@@ -592,9 +646,10 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // and verify no token-endpoint request fires when the delete 401s.
         await executor.resetRefreshAttemptCount()
 
-        var tokenHits = 0
-        HTTPStubURLProtocol.register { [tokenURL] request in
-            if request.url == tokenURL { tokenHits += 1 }
+        let tokenHits = LockIsolated(0)
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            if request.url == tokenURL { tokenHits.withValue { $0 += 1 } }
             // Fail-closed 401 on the DELETE; no body required.
             if request.httpMethod == "DELETE" {
                 return .init(statusCode: 401, headers: nil, body: nil)
@@ -611,11 +666,12 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         }
 
         await fulfillment(of: [done], timeout: 5.0)
-        // Give any spurious refresh task a chance to launch (so absence
-        // is meaningful, not just earliness).
-        _ = waitForCondition(timeout: 0.5) { false }
+        // Drain any already-scheduled refresh work so a spurious /token launch
+        // would have landed before we assert its absence — deterministic
+        // actor-hop barrier, not a fixed 0.5s wall-clock sleep.
+        await drainPendingRefreshWork()
 
-        XCTAssertEqual(tokenHits, 0,
+        XCTAssertEqual(tokenHits.value, 0,
                        "A DELETE 401 must not trigger a token refresh — kills removal of the DELETE early-return in handleExpiredTokenIfNeeded")
         let attempts = await executor.refreshAttemptCount
         XCTAssertEqual(attempts, 0,
@@ -633,7 +689,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     func testRefresh_SuccessWithoutTask_FiresSuccessCompletion() async throws {
         await executor.resetRefreshAttemptCount()
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
             return .init(statusCode: 200,
                          headers: nil,
@@ -650,10 +707,11 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         }
         await fulfillment(of: [exp], timeout: 5.0)
 
-        // Pump a brief idle window so any duplicate completion (which
-        // would indicate the success-path didn't gate on task == nil)
-        // has a chance to land.
-        _ = waitForCondition(timeout: 0.4) { false }
+        // Drain any already-scheduled refresh work so a duplicate completion
+        // (which would indicate the success-path didn't gate on task == nil)
+        // has landed before we assert callCount == 1 — deterministic actor-hop
+        // barrier, not a fixed 0.4s wall-clock sleep.
+        await drainPendingRefreshWork()
 
         XCTAssertTrue(sawSuccess,
                       "task == nil + refresh success must emit a .success completion (kills deletion of the success-callback branch)")

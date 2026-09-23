@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class CatalogAccessibilityTests: XCTestCase {
 
     // MARK: - Lane "More" Button Tests

@@ -10,9 +10,11 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Tests for audiobook playback functionality including skip navigation,
 /// chapter transitions, and playback speed calculations.
+@MainActor
 class AudiobookPlaybackTests: XCTestCase {
 
     var mockRegistry: TPPBookRegistryMock!
@@ -78,7 +80,7 @@ class AudiobookPlaybackTests: XCTestCase {
         super.tearDown()
     }
 
-    func loadTracks(for manifestJSON: ManifestJSON) throws -> Tracks {
+    nonisolated func loadTracks(for manifestJSON: ManifestJSON) throws -> Tracks {
         let manifest = try Manifest.from(jsonFileName: manifestJSON.rawValue, bundle: Bundle(for: type(of: self)))
         return Tracks(manifest: manifest, audiobookID: testID, token: nil)
     }

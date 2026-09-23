@@ -13,6 +13,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class BackupExclusionMigrationTests: XCTestCase {
 
     private var sandbox: URL!

@@ -45,7 +45,11 @@
 //
 
 import Foundation
-import PalaceAudiobookToolkit
+// `@preconcurrency`: the toolkit's `Player` / `TrackPosition` are not
+// Sendable-audited upstream, and this file passes a `TrackPosition` across the
+// `await player.play(at:)` boundary and awaits the toolkit player. This is the
+// honest ceiling until the toolkit annotates its types.
+@preconcurrency import PalaceAudiobookToolkit
 import PalaceLogging
 
 // MARK: - PlaybackReadinessError
@@ -65,7 +69,13 @@ public enum PlaybackReadinessError: Error, Equatable {
 /// Terminal state of the readiness gate. The gate transitions from
 /// implicit `pending` to one of these once-only. Multiple consumers
 /// awaiting the gate concurrently all resume with the same outcome.
-public enum PlaybackReadinessOutcome: Equatable {
+///
+/// `Sendable` because the outcome crosses concurrency boundaries: it is the
+/// child-task element type of the `withThrowingTaskGroup` in `awaitReady`,
+/// the return type of the actor-isolated `awaitReady`/`suspend`, and the
+/// value resumed into each awaiter's `CheckedContinuation`. Conformance is
+/// synthesized — the only associated value is a `String`, already `Sendable`.
+public enum PlaybackReadinessOutcome: Equatable, Sendable {
     case ready
     case failed(reason: String)
 }
@@ -347,14 +357,25 @@ internal final class PlayerReadinessProbe: PlaybackReadinessProbing {
         }
 
         pollTimer?.invalidate()
+        // The `Timer.scheduledTimer` block fires on the main runloop, but its
+        // `Timer` argument is not `Sendable`, so it must NOT be captured into
+        // the nested `@MainActor` `Task`. Handle the two invalidation cases
+        // without crossing the non-Sendable `Timer` over the task boundary:
+        //   • dead-self: invalidate synchronously in the outer block (which
+        //     legitimately holds the `timer` argument on the main runloop),
+        //     matching the original leak-guard behavior.
+        //   • ready: invalidate via the stored `pollTimer` (the same timer)
+        //     from inside the `@MainActor` Task.
         let timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] timer in
+            guard self != nil else {
+                timer.invalidate()
+                return
+            }
             Task { @MainActor [weak self] in
-                guard let self = self else {
-                    timer.invalidate()
-                    return
-                }
+                guard let self = self else { return }
                 if self.isLoadedSnapshot() {
-                    timer.invalidate()
+                    self.pollTimer?.invalidate()
+                    self.pollTimer = nil
                     await gate.markReady()
                 }
             }

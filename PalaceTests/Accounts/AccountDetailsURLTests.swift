@@ -12,21 +12,29 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountDetailsURLTests: XCTestCase {
 
     private var sut: AccountDetails!
-    private var defaults: UserDefaults!
+    // nonisolated(unsafe): read by the nonisolated factory below; all
+    // access is main-thread (setUp/tearDown/test bodies).
+    private nonisolated(unsafe) var defaults: UserDefaults!
     private let testUUID = "test-account-url-\(UUID().uuidString)"
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    // `setUp() async throws` (not the synchronous `setUpWithError()`): the async
+    // override adopts this @MainActor class's isolation, so the @MainActor
+    // fixtures (`defaults`, `sut`, `makeAccountDetails`) are touched on-actor.
+    // The synchronous `setUpWithError()` override is nonisolated, which sends
+    // the task-isolated `self` into any @MainActor access (Swift 6 data race).
+    override func setUp() async throws {
+        try await super.setUp()
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults instead
         // of mutating `.standard`. Every `AccountDetails` constructed in
         // this file shares the same per-test suite so persistence reads
         // (eulaIsAccepted, syncPermissionGranted, urlEULA dict, etc.)
         // observe the same store, and the suite is dropped by
         // `SingletonResetRegistry` when the test finishes.
-        defaults = testUserDefaults()
+        defaults = Self.testUserDefaults()
         sut = try makeAccountDetails(uuid: testUUID)
     }
 
@@ -281,7 +289,9 @@ final class AccountDetailsURLTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeAccountDetails(uuid: String) throws -> AccountDetails {
+    // nonisolated: called from the inherited-nonisolated setUp override
+    // (Swift 6 sending error otherwise).
+    private nonisolated func makeAccountDetails(uuid: String) throws -> AccountDetails {
         // Create minimal auth document JSON and parse it
         let json: [String: Any] = [
             "id": uuid,

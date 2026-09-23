@@ -6,6 +6,8 @@ on:
     types: [closed]
 jobs:
   create-release:
+    # Only when the PR actually merged — a closed-but-unmerged PR to main must not cut a release.
+    if: github.event.pull_request.merged == true
     runs-on: macos-26
     outputs:
       version: ${{ steps.export-version.outputs.version }}
@@ -18,13 +20,13 @@ jobs:
       - name: Verify Xcode Version
         run: xcodebuild -version
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           submodules: true
           fetch-depth: 0
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Checkout Certificates
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}

@@ -14,6 +14,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class MyBooksDownloadSessionInvalidationTests: XCTestCase {
 
     /// Contract 1: `URLSession.downloadTask(with:)` on an invalidated session

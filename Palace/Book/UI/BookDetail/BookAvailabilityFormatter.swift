@@ -10,6 +10,7 @@
 import Foundation
 import PalaceAudiobookToolkit
 import PalaceCatalog
+import PalaceBookModel
 
 /// Provides audiobook location sync UI helpers formerly located in BookDetailViewModel.
 /// Also hosts the end-of-book alert and timer-based polling logic.
@@ -85,11 +86,11 @@ final class BookAvailabilityFormatter {
                     AppContainer.production().navigationCoordinatorHub.coordinator?.pop()
                     AppContainer.production().downloadCenter.returnBook(withIdentifier: book.identifier)
                 }
-                TPPAppStoreReviewPrompt.presentIfAvailable()
+                Task { @MainActor in AppContainer.production().ratingPromptPresenter.noteBookCompleted() }
             }
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         } else {
-            TPPAppStoreReviewPrompt.presentIfAvailable()
+            Task { @MainActor in AppContainer.production().ratingPromptPresenter.noteBookCompleted() }
         }
     }
 }

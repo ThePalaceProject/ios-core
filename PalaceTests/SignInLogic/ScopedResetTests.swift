@@ -17,6 +17,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ScopedResetTests: XCTestCase {
 
     private let ephemeralKey = TPPSignInBusinessLogic.nextOIDCSessionEphemeralKey
@@ -26,7 +27,7 @@ final class ScopedResetTests: XCTestCase {
     override func setUp() {
         super.setUp()
         savedDefaults = TPPSignInBusinessLogic.forceResetUserDefaults
-        defaults = testUserDefaults()
+        defaults = Self.testUserDefaults()
         TPPSignInBusinessLogic.forceResetUserDefaults = defaults
     }
 

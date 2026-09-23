@@ -9,6 +9,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TPPUserFriendlyErrorTests: XCTestCase {
 
     // MARK: - Protocol Default Implementation

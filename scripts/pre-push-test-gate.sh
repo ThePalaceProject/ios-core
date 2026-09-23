@@ -119,7 +119,10 @@ if [[ -z "$SWIFT_CHANGED" ]]; then
   if [[ -d "$REPO_DIR/scripts/tests" ]] && command -v python3 >/dev/null 2>&1 \
      && python3 -c 'import pytest' >/dev/null 2>&1; then
     echo "[pre-push-test-gate] Running scripts/tests/ suite (python -m pytest)…" >&2
-    if (cd "$REPO_DIR" && python3 -m pytest scripts/tests -q) >/tmp/pre-push-scripts-tests.log 2>&1; then
+    # Scrub the git hook env (GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE/…) before pytest —
+    # inherited, it makes the tests' throwaway-repo git commands operate on the real
+    # repo being pushed and corrupt the branch (same cause as the xcodebuild scrub below).
+    if (cd "$REPO_DIR" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_EXEC_PATH python3 -m pytest scripts/tests -q) >/tmp/pre-push-scripts-tests.log 2>&1; then
       echo "[pre-push-test-gate] scripts/tests PASS — tooling suite green." >&2
       exit 0
     else
@@ -295,6 +298,27 @@ else
     echo "[pre-push-test-gate] Verify locally with 'scripts/verify-pr.sh --quick'; CI remains authoritative." >&2
     exit 0
   fi
+
+  # A build that fails ONLY because Carthage / audiobook binary frameworks are
+  # absent (a worktree that was never `carthage bootstrap`-ed / submodule-init'd,
+  # e.g. a throwaway feature worktree) is an ENVIRONMENT limitation, not a code
+  # failure — the same false-positive class the zero-.swift exemption above
+  # already documents (R2LCPClient.xcframework etc.). The app can't even LINK, so
+  # no test ran; CI (which has the frameworks) is the authoritative gate. Detect
+  # the framework-missing signature AND confirm there is no real Swift/clang
+  # compile error, then treat it as a non-blocking WARN (like the timeout case
+  # above) instead of forcing SKIP_PRE_PUSH_TESTS.
+  _FW_MISSING_RE="no XCFramework found at|Copy Files build phase contains a reference to a missing file"
+  _REAL_ERRORS="$(grep -E ' error:' /tmp/pre-push-test-gate.log 2>/dev/null \
+                  | grep -vE "$_FW_MISSING_RE" || true)"
+  if grep -qE "$_FW_MISSING_RE" /tmp/pre-push-test-gate.log 2>/dev/null && [[ -z "$_REAL_ERRORS" ]]; then
+    echo "" >&2
+    echo "[pre-push-test-gate] BUILD could not LINK: Carthage/audiobook binary frameworks absent." >&2
+    echo "[pre-push-test-gate]   (worktree not 'carthage bootstrap'-ed / submodule-initialised) — NOT a code failure." >&2
+    echo "[pre-push-test-gate]   No test ran; CI has the frameworks and is authoritative — allowing the push." >&2
+    exit 0
+  fi
+
   echo "" >&2
   echo "[pre-push-test-gate] FAIL (exit $rc) — push blocked." >&2
   echo "[pre-push-test-gate] Last 40 lines of /tmp/pre-push-test-gate.log:" >&2

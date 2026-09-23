@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class CodeReviewFixesTests: XCTestCase {
 
     // MARK: - OAuth Param Parsing (Finding #4: base64 token truncation)

@@ -11,8 +11,13 @@
 import XCTest
 import Combine
 import PalaceCatalog
+import PalacePreferences
+import PalaceNetwork
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
+@MainActor
 final class LocalBookContentServiceTests: XCTestCase {
 
     private var tempDir: URL!
@@ -20,6 +25,9 @@ final class LocalBookContentServiceTests: XCTestCase {
     private var bookFileManager: SpyBookFileManager!
     private var service: LocalBookContentService!
     private var appContainer: AppContainer!
+    /// Isolated UserDefaults suites created per test, removed in teardown so a
+    /// preference cannot outlive the test that set it.
+    private var isolatedSuiteNames: [String] = []
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -37,14 +45,15 @@ final class LocalBookContentServiceTests: XCTestCase {
         service = LocalBookContentService(
             bookRegistry: registry,
             accountsManager: appContainer.accountsManager,
-            bookFileManager: bookFileManager,
-            // PP-4957: pinned for the same reason as `makeService` — the shared
-            // instance must not read the live Firebase flag.
-            streamingEnabledProvider: { false }
+            bookFileManager: bookFileManager
         )
     }
 
     override func tearDownWithError() throws {
+        for name in isolatedSuiteNames {
+            UserDefaults().removePersistentDomain(forName: name)
+        }
+        isolatedSuiteNames = []
         try? FileManager.default.removeItem(at: tempDir)
         tempDir = nil
         registry = nil
@@ -228,12 +237,239 @@ final class LocalBookContentServiceTests: XCTestCase {
         return book
     }
 
+    // MARK: - Post-return content leak (the write guard)
+    //
+    // CONFIRMED ON DEVICE, not theorised. Moes Max, build 505: two returned
+    // loans left `.lcpa` archives of 0.48 GB and 1.07 GB in Application
+    // Support. Each on-disk filename is SHA-256 of the book identifier, and
+    // both mapped to books that were NOT in the registry at all — 1.55 GB of
+    // DRM audio for loans the patron had given back.
+    //
+    // The cause is structural: the fetch is fire-and-forget (`LCPContentFulfilling`
+    // returns Void, handle discarded) so a Return cannot cancel it. The cleanup
+    // deletes the content, then the transfer completes and re-creates it.
+
+    /// The whole table. `TPPBookState` is finite, so every case is asserted
+    /// rather than the two or three anyone thought to write down.
+    func testMayStoreFetchedContent_overTheWholeStateTable() {
+        let mayStore: [TPPBookState] = [
+            .downloadNeeded, .downloading, .downloadSuccessful, .used,
+            .downloadFailed, .SAMLStarted
+        ]
+        let mustNotStore: [TPPBookState] = [
+            .unregistered, .returning, .holding, .unsupported
+        ]
+
+        for state in mayStore {
+            XCTAssertTrue(
+                LocalBookContentService.mayStoreFetchedContent(registryState: state, accountUnchanged: true),
+                "a live loan must still receive its archive — failed at \(state)"
+            )
+        }
+        for state in mustNotStore {
+            XCTAssertFalse(
+                LocalBookContentService.mayStoreFetchedContent(registryState: state, accountUnchanged: true),
+                "content must never be written for a book the patron does not hold — failed at \(state)"
+            )
+        }
+
+        // Set equality, not a count sum. `count + count == allCases.count` is
+        // satisfiable by a duplicate in one list plus an omission in the other,
+        // so it can report "all classified" while a state is unlisted — the
+        // exact shape of hole this assertion exists to catch.
+        XCTAssertEqual(
+            Set(mayStore).union(mustNotStore),
+            Set(TPPBookState.allCases),
+            "every TPPBookState must be classified — an unlisted case is how content-writing defaults get in"
+        )
+        XCTAssertTrue(
+            Set(mayStore).isDisjoint(with: Set(mustNotStore)),
+            "a state cannot be both writable and not"
+        )
+    }
+
+    /// A LIBRARY SWITCH IS NOT A LOAN ENDING. `bookRegistry.state(for:)` is
+    /// scoped to the CURRENT account, so after a switch it answers for a
+    /// different library and reports `.unregistered` for a book account A still
+    /// holds. Deleting on that answer destroys up to a gigabyte of content the
+    /// patron is entitled to — strictly worse than the retention this guard
+    /// exists to stop, because retention is recoverable and deletion is not.
+    ///
+    /// Found in review, not by me: the first revision of this guard read the
+    /// registry unconditionally.
+    func testMayStoreFetchedContent_whenTheAccountChangedMidTransfer_writesAnyway() {
+        for state in TPPBookState.allCases {
+            XCTAssertTrue(
+                LocalBookContentService.mayStoreFetchedContent(
+                    registryState: state,
+                    accountUnchanged: false
+                ),
+                "after a library switch the registry cannot judge this loan, so the non-destructive arm must win — failed at \(state)"
+            )
+        }
+    }
+
+    /// The guard must still bite when the account has NOT moved, or the fix
+    /// above would disable the leak fix entirely.
+    func testMayStoreFetchedContent_sameAccount_stillRefusesAReturnedBook() {
+        XCTAssertFalse(
+            LocalBookContentService.mayStoreFetchedContent(
+                registryState: .unregistered,
+                accountUnchanged: true
+            ),
+            "same library, book gone from the registry — this is the returned-loan leak and it must still be refused"
+        )
+    }
+
+    /// WIRING for the library-switch arm — the pure-rule tests above cannot
+    /// reach it, and a mutation survivor proved that gap: flipping
+    /// `(self != nil) && (accountNow == accountAtFetchStart)` to `||` makes
+    /// `accountUnchanged` always true, silently deleting the protection, and the
+    /// whole suite stayed green. The rule was covered; the code computing its
+    /// input was not.
+    ///
+    /// Drives the real completion path with the library moving mid-transfer and
+    /// the book absent from the (now other library's) registry — the exact shape
+    /// that would otherwise delete a held book's archive.
+    func testFetchCompletingAfterALibrarySwitch_writesRatherThanDeleting() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        var account = "library-A"
+        let service = makeService(fulfiller: fulfiller,
+                                  currentAccountIdProvider: { account })
+
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the transfer must have started")
+
+        // The patron switches libraries. The registry now answers for library B
+        // and reports this book as absent — which is NOT a return.
+        account = "library-B"
+        registry.setState(.unregistered, for: book.identifier)
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("switch-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "a library switch is not a loan ending — deleting here destroys a gigabyte the patron still holds"
+        )
+    }
+
+    /// The same wiring with the library UNCHANGED must still refuse, or the fix
+    /// above would disable the leak guard entirely rather than narrow it.
+    func testFetchCompletingWithoutASwitch_stillRefusesAReturnedBook() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller,
+                                  currentAccountIdProvider: { "library-A" })
+
+        service.redownloadLCPContentFile(for: book)
+        registry.setState(.unregistered, for: book.identifier)
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("noswitch-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "same library, book gone — this is the returned-loan leak and it must still be refused"
+        )
+    }
+
+    /// THE DEVICE SEQUENCE, end to end: the fetch is in flight, the patron
+    /// returns the book, and only then does the transfer complete. The archive
+    /// must not reach disk.
+    ///
+    /// Drives the real completion path rather than the pure rule, because the
+    /// leak was never in the rule — it was that nothing consulted one.
+    func testFetchCompletingAfterTheBookIsReturned_doesNotWriteTheArchive() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the transfer must have started")
+
+        // The patron returns the book while the archive is still transferring.
+        registry.setState(.unregistered, for: book.identifier)
+
+        // The transfer, which nothing could cancel, now completes.
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("leak-guard-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil),
+                                    "precondition: the content destination must resolve")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "a returned book must not receive its archive — this is the 1.55 GB measured on device"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: tempURL.path),
+            "the fetched file must be discarded, not merely left unmoved — otherwise it leaks in the temp directory instead"
+        )
+    }
+
+    /// The other half, so the guard cannot be satisfied by simply never writing:
+    /// a loan that is still held DOES receive its archive.
+    func testFetchCompletingWhileTheBookIsStillHeld_writesTheArchive() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the transfer must have started")
+
+        registry.setState(.downloadSuccessful, for: book.identifier)
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("held-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "a live loan must still get its archive — a guard that blocks every write would pass the leak test and break offline playback"
+        )
+    }
+
+    /// `.returning` is the same loan a moment earlier — the return is committed
+    /// and its cleanup is in flight, so a write here re-creates precisely what
+    /// that cleanup is deleting. This is the state the half-sheet shows while
+    /// the Return confirmation is up.
+    func testFetchCompletingWhileTheBookIsReturning_doesNotWriteTheArchive() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+        registry.setState(.returning, for: book.identifier)
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("returning-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "the cleanup for this return is already running — writing here is what re-created the orphan"
+        )
+    }
+
     private func makeService(
         fulfiller: SpyLCPContentFulfiller,
         reporter: SpyProgressReporter? = nil,
         idleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
         clock: FakeClock? = nil,
-        streamingEnabled: Bool = false
+        currentAccountIdProvider: (() -> String?)? = nil
     ) -> LocalBookContentService {
         let service = LocalBookContentService(
             bookRegistry: registry,
@@ -242,15 +478,277 @@ final class LocalBookContentServiceTests: XCTestCase {
             lcpContentFulfiller: fulfiller.fulfill,
             inflightIdleTimeout: idleTimeout,
             monotonicClock: clock.map { c in { c.now } },
-            // PP-4957: PIN the flag. Without this the suite reads
-            // `RemoteFeatureFlags.shared`, whose Firebase value is TRUE at 100%
-            // — so the streaming early-return fires and these tests measure a
-            // remote config rather than the code. Three would fail and three
-            // would pass vacuously. Default false = pre-streaming behaviour.
-            streamingEnabledProvider: { streamingEnabled }
+            currentAccountIdProvider: currentAccountIdProvider
         )
         service.contentDownloadReporter = reporter
         return service
+    }
+
+    // MARK: - PP-5135 — a downloaded LCP audiobook must have its audio on disk
+
+    /// The self-heal fetches the `.lcpa` whenever the book is left with only its
+    /// `.lcpl` license, unconditionally.
+    ///
+    /// PP-4957 used to skip this while the streaming flag was ON, reasoning that
+    /// a streaming LCP audiobook is "intentionally content-absent" because its
+    /// license alone makes it playable. That holds only while the device is
+    /// online, and the same book is reported to the patron as **Downloaded** — so
+    /// going offline, which is the entire point of downloading, left the open
+    /// with no audio behind it and it dead-ended in `PublicationOpenError`.
+    /// Measured on device for PP-5135: every borrowed LCP audiobook had its
+    /// `.lcpl` and not one `.lcpa`.
+    ///
+    /// Streaming keeps its benefit — playback starts immediately rather than
+    /// waiting on a multi-gigabyte archive — because this fetch is a background
+    /// transfer nobody blocks on.
+    ///
+    /// There is deliberately no flag-ON/flag-OFF pair here: the streaming seam
+    /// was REMOVED from `LocalBookContentService`, so "skips the fetch while
+    /// streaming" is now unrepresentable rather than merely untaken. A test
+    /// asserting the other flag state could only pass a provider the type no
+    /// longer has.
+    func testRedownload_licenseOnly_fetchesTheArchiveSoTheBookWorksOffline() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 1,
+                       "the .lcpa must land in the background, or the book cannot be played offline (PP-5135)")
+        XCTAssertTrue(service.isContentDownloadInFlight(for: book.identifier),
+                      "the transfer claimed its slot, so a concurrent trigger cannot start a duplicate")
+    }
+
+    /// PP-5135 regression: the fetch is SWALLOWED while the download center still
+    /// reports a transfer for this book.
+    ///
+    /// This is the test that would have caught the first version of the fix. That
+    /// version fired the trigger from inside `LCPFulfillmentHandler`, which runs
+    /// while `bookIdentifierToDownloadInfo` still holds the fulfillment entry —
+    /// so `downloadCenterHasTransfer` was true and `redownloadLCPContentFile`
+    /// returned at "already transferring — skipping duplicate", fetching nothing
+    /// on every fresh borrow. The tests written alongside it injected a SPY
+    /// trigger, so they asserted the call and never the callee, and the guard
+    /// that defeated the fix lived past the seam. Two reviewers caught it by
+    /// reading; no test could.
+    ///
+    /// Asserting this from BOTH sides is the point: the guard must swallow the
+    /// fetch when a transfer is live (or two producers duplicate a multi-hundred-
+    /// megabyte archive), and must NOT swallow it once the transfer is cleared
+    /// (or the book never gets its audio). A caller therefore has to fire after
+    /// the download-completion cleanup, which is why the production trigger sits
+    /// in `MyBooksDownloadCenter.startLCPContentFetchIfNeeded`.
+    func testRedownload_whileDownloadCenterReportsATransfer_isSkipped() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+        service.downloadCenterHasTransfer = { _ in true }
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 0,
+                       "a live download-center transfer must suppress the fetch — two producers of one .lcpa is how a 778 MB archive got downloaded twice")
+    }
+
+    /// The other side of the same guard: once the download center no longer
+    /// reports a transfer — i.e. after the completion cleanup — the identical
+    /// call DOES fetch. Together with the test above this pins the timing
+    /// requirement on the production caller rather than restating the guard.
+    func testRedownload_afterTheTransferClears_fetches() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+        service.downloadCenterHasTransfer = { _ in false }
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 1,
+                       "with no transfer in flight the .lcpa must be fetched, or a borrowed audiobook never gets its audio (PP-5135)")
+    }
+
+    // MARK: - PP-5135: the download centre's trigger honours the WiFi preference
+
+    /// The `MyBooksDownloadCenter` trigger site, not the audiobook one.
+    ///
+    /// Added because review found a SURVIVING MUTANT: deleting the
+    /// `guard LocalBookContentService.backgroundFetchAllowed(...)` from
+    /// `startLCPContentFetchIfNeeded` left all 71 tests green. The cube tests
+    /// cover the pure rule, the gate test covers the AudiobookSessionManager
+    /// site, and the placement lints check ordering — none of them touch the
+    /// policy at THIS caller. Intent Claim E asserts "neither trigger site"
+    /// starts a transfer against `downloadOnlyOnWiFi`; without these two tests
+    /// that claim was true of one site and unverified at the other, which is
+    /// exactly the cellular regression an earlier review round forced the guard
+    /// into existence for.
+    ///
+    /// `TPPSettings` is built over an isolated UserDefaults suite (the pattern in
+    /// `DownloadOnlyOnWiFiTests`) rather than `.standard`, so the preference
+    /// cannot leak into or out of neighbouring tests.
+    ///
+    /// Named "whenNotOnWiFi" rather than "onCellular" because `isOnWiFi` is NOT
+    /// driven here: `Reachability.isOnWiFi` is `public`, not `open`, across the
+    /// PalaceNetwork boundary, so `MockReachability` cannot stub it and it reads
+    /// an unstarted `NWPathMonitor` — measured as deterministically
+    /// `.unsatisfied` -> false, not host-dependent. The preference is the input
+    /// this test actually drives. Closing the gap needs an `isOnWiFi` seam; the
+    /// precedent is `DownloadStartDispatcher.swift:62`, which takes
+    /// `isOnWiFi: @escaping () -> Bool`.
+    func testDownloadCentreFetch_whenNotOnWiFiAndWiFiOnlySet_doesNotFetch() async throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let center = try makeDownloadCentre(fulfiller: fulfiller,
+                                            connected: true,
+                                            downloadOnlyOnWiFi: true)
+
+        await center.startLCPContentFetchIfNeeded(for: book, account: appContainer.accountsManager.currentAccountId ?? "")
+
+        XCTAssertEqual(fulfiller.callCount, 0,
+                       "download-only-on-WiFi is a preference the patron set — the completion path must not pull a multi-hundred-megabyte archive over cellular (PP-5135)")
+    }
+
+    /// The inverse, so the test above cannot pass merely because the trigger
+    /// never fires: with the preference off, the same call DOES fetch. Deleting
+    /// the guard fails the test above; deleting the trigger fails this one.
+    func testDownloadCentreFetch_whenPolicyAllows_fetches() async throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let center = try makeDownloadCentre(fulfiller: fulfiller,
+                                            connected: true,
+                                            downloadOnlyOnWiFi: false)
+
+        await center.startLCPContentFetchIfNeeded(for: book, account: appContainer.accountsManager.currentAccountId ?? "")
+
+        XCTAssertEqual(fulfiller.callCount, 1,
+                       "with the policy satisfied the .lcpa must be fetched, or a borrowed audiobook never gets its audio (PP-5135)")
+    }
+
+    /// Builds a download centre whose settings, reachability and local-content
+    /// service are all injected, so the policy decision is driven rather than
+    /// inherited from the test host.
+    private func makeDownloadCentre(fulfiller: SpyLCPContentFulfiller,
+                                    connected: Bool,
+                                    downloadOnlyOnWiFi: Bool) throws -> MyBooksDownloadCenter {
+        let suiteName = "pp5135-\(UUID().uuidString)"
+        let isolatedDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName),
+                                             "could not create an isolated defaults suite")
+        isolatedSuiteNames.append(suiteName)
+        let settings = TPPSettings(defaults: isolatedDefaults)
+        settings.downloadOnlyOnWiFi = downloadOnlyOnWiFi
+
+        let service = makeService(fulfiller: fulfiller)
+        return MyBooksDownloadCenter(
+            bookRegistry: registry,
+            accountsManager: appContainer.accountsManager,
+            bookFileManager: bookFileManager,
+            localContentService: service,
+            reachability: MockReachability(initiallyConnected: connected),
+            settings: settings
+        )
+    }
+
+    // MARK: - PP-5135: the fetch's PLACEMENT in the completion path
+
+    /// The two tests above pin the guard. These pin the one CALLER whose position
+    /// relative to that guard is the entire fix, and which no behavioural test in
+    /// this target can reach.
+    ///
+    /// `MyBooksDownloadCenter.startLCPContentFetchIfNeeded` routes here, and the
+    /// duplicate guard consults `downloadCenterHasTransfer` — `downloadInfo(for:)
+    /// != nil`. That entry is live during fulfillment and cleared by
+    /// `bookIdentifierToDownloadInfo.remove` in the download-completion cleanup.
+    /// A fetch triggered BEFORE that removal is swallowed, silently, on every
+    /// fresh borrow. That is exactly what the first revision of PP-5135 did; two
+    /// reviewers caught it by reading the guard, and no test could, because every
+    /// test injected a spy trigger and so asserted the call and never the callee.
+    ///
+    /// Asserted against the source text rather than by driving the method:
+    /// `handleDownloadCompletion` needs a live `URLSessionDownloadTask`, and the
+    /// invariant is positional, not behavioural. `PalaceTests/MetaTests/` pins
+    /// wiring facts the same way for the same reason. Move the call five lines up
+    /// and this fails while everything else stays green.
+    func testContentFetchIsTriggeredAfterDownloadInfoIsCleared() throws {
+        let source = try downloadCenterSource()
+        let lines = source.components(separatedBy: .newlines)
+
+        let fetchIndex = try XCTUnwrap(
+            lines.firstIndex { $0.contains("startLCPContentFetchIfNeeded(") && !$0.contains("func ") },
+            "the call to `startLCPContentFetchIfNeeded(` is gone. Without it a freshly borrowed LCP audiobook never fetches its .lcpa and cannot be played offline (PP-5135).")
+
+        // The NEAREST PRECEDING removal, not `firstIndex`. There is more than one
+        // `bookIdentifierToDownloadInfo.remove(` in this file, so anchoring on the
+        // first one would let any earlier insertion satisfy the ordering while the
+        // fetch sat above the removal that actually governs it.
+        let removalIndex = try XCTUnwrap(
+            lines[..<fetchIndex].lastIndex { $0.contains("bookIdentifierToDownloadInfo.remove(") },
+            "no `bookIdentifierToDownloadInfo.remove(` appears ABOVE the fetch call. Either the cleanup moved below it — which reinstates the defect — or it was renamed, in which case re-point this lint at whatever now clears the transfer record rather than deleting it.")
+
+        // Both lines must live in the SAME function. A `func ` between them means
+        // the fetch is no longer downstream of that cleanup at all, and the
+        // ordering above would be comparing positions in unrelated bodies.
+        let interveningFunc = lines[removalIndex..<fetchIndex].first { $0.contains("    func ") || $0.contains("    private func ") }
+        XCTAssertNil(interveningFunc,
+            "a function boundary sits between the cleanup and the fetch — they are no longer in the same body, so the ordering this lint checks no longer means the fetch happens after the transfer record is cleared.")
+
+        XCTAssertGreaterThan(fetchIndex, removalIndex,
+            """
+            startLCPContentFetchIfNeeded is called at line \(fetchIndex + 1), BEFORE \
+            bookIdentifierToDownloadInfo.remove at line \(removalIndex + 1). At that \
+            point downloadInfo(for:) is still non-nil, so redownloadLCPContentFile \
+            returns at its duplicate-suppression guard and fetches nothing — the book \
+            stays license-only while the shelf says "Downloaded", and offline playback \
+            is impossible. Move the call back below the cleanup.
+            """)
+    }
+
+    /// The ordering rule above was derived from this predicate. If the guard stops
+    /// consulting `downloadInfo`, that derivation no longer holds and a green lint
+    /// would be asserting a rule that does not bind any more.
+    func testDuplicateGuardStillConsultsDownloadInfo() throws {
+        let source = try downloadCenterSource()
+        XCTAssertTrue(
+            source.contains("downloadInfo(forBookIdentifier: identifier) != nil"),
+            "`downloadCenterHasTransfer` no longer consults `downloadInfo` — re-derive the ordering rule pinned above before trusting this suite.")
+    }
+
+    private func downloadCenterSource() throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // MyBooks/
+            .deletingLastPathComponent()  // PalaceTests/
+            .deletingLastPathComponent()  // repo root
+            .appendingPathComponent("Palace/MyBooks/MyBooksDownloadCenter.swift")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    // MARK: - PP-5135 background-fetch policy (pure)
+
+    /// The Wi-Fi/connectivity rule, driven over the full input cube. A patron who
+    /// set download-only-on-WiFi must not have a multi-hundred-megabyte archive
+    /// pulled over cellular, and an offline device has nothing to fetch.
+    func testBackgroundFetchAllowed_acrossConnectivityAndPreference() {
+        for connected in [true, false] {
+            for onWiFi in [true, false] {
+                for wifiOnly in [true, false] {
+                    let expected = connected && !(wifiOnly && !onWiFi)
+                    XCTAssertEqual(
+                        LocalBookContentService.backgroundFetchAllowed(
+                            isConnectedToNetwork: connected,
+                            isOnWiFi: onWiFi,
+                            downloadOnlyOnWiFi: wifiOnly),
+                        expected,
+                        "connected=\(connected) onWiFi=\(onWiFi) wifiOnly=\(wifiOnly)")
+                }
+            }
+        }
+    }
+
+    /// The specific cell the regression is about, named so a failure reads as the
+    /// patron-facing rule rather than a truth-table cell.
+    func testBackgroundFetchAllowed_onCellularWithWiFiOnlySet_refuses() {
+        XCTAssertFalse(
+            LocalBookContentService.backgroundFetchAllowed(
+                isConnectedToNetwork: true, isOnWiFi: false, downloadOnlyOnWiFi: true),
+            "cellular + download-only-on-WiFi must refuse the background archive fetch — 3.2.x refused it at DownloadStartReducer (.failWifi)")
     }
 
     // MARK: - Claim lifetime: idle expiry, heartbeat, token-matched release
@@ -335,44 +833,6 @@ final class LocalBookContentServiceTests: XCTestCase {
         XCTAssertEqual(fulfiller.callCount, 1,
                        "a transfer already in flight must not be duplicated — this is the 2x-bandwidth defect")
         XCTAssertTrue(service.isContentDownloadInFlight(for: book.identifier))
-    }
-
-    /// PP-4957 streaming guard, at BOTH flag values in one test.
-    ///
-    /// The two halves share every input except the flag, so a failure can only
-    /// mean the flag stopped being what decides. Written differentially because
-    /// the ON half alone is satisfiable by a service that never fulfills at all
-    /// — the OFF half is what proves the seed, the spy and the call site are
-    /// live, and therefore that the ON half's zero is the guard's doing.
-    ///
-    /// Deleting the `streamingEnabledProvider()` early-return in
-    /// `redownloadLCPContentFile` makes the ON half fail: a `.lcpl`-only book
-    /// would fetch the full `.lcpa` the streaming path exists to avoid, and the
-    /// patron pays for an archive the license alone can already play.
-    func testRedownload_licenseOnlyBook_fetchesWhenStreamingOff_andSkipsWhenOn() throws {
-        // --- streaming OFF: today's download-first behaviour ---
-        let offBook = try seedLicenseOnlyLCPAudiobook()
-        let offFulfiller = SpyLCPContentFulfiller()
-        let offService = makeService(fulfiller: offFulfiller, streamingEnabled: false)
-
-        offService.redownloadLCPContentFile(for: offBook)
-
-        XCTAssertEqual(offFulfiller.callCount, 1,
-                       "flag OFF must be unchanged: a license-only audiobook self-heals by fetching its .lcpa")
-        XCTAssertTrue(offService.isContentDownloadInFlight(for: offBook.identifier),
-                      "the OFF path must claim the in-flight slot — if it does not, the ON half's zero proves nothing")
-
-        // --- streaming ON: the license alone is playable, so no fetch ---
-        let onBook = try seedLicenseOnlyLCPAudiobook()
-        let onFulfiller = SpyLCPContentFulfiller()
-        let onService = makeService(fulfiller: onFulfiller, streamingEnabled: true)
-
-        onService.redownloadLCPContentFile(for: onBook)
-
-        XCTAssertEqual(onFulfiller.callCount, 0,
-                       "flag ON must NOT re-fetch the .lcpa — the self-heal would undo streaming and re-download the whole archive")
-        XCTAssertFalse(onService.isContentDownloadInFlight(for: onBook.identifier),
-                       "a skipped self-heal must not leave a claim behind, or a later real download is blocked forever")
     }
 
     func testRedownload_afterTransferCompletes_allowsAFreshDownload() throws {
@@ -715,7 +1175,6 @@ private final class SpyBookFileManager: BookFileManager {
         self.tempDir = tempDir
         super.init(
             bookRegistry: bookRegistry,
-            accountsManager: accountsManager,
             fileManager: .default
         )
     }

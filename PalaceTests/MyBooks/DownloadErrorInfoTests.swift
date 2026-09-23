@@ -9,6 +9,7 @@ import XCTest
 @testable import Palace
 
 /// Tests for DownloadErrorInfo struct — PP-3707
+@MainActor
 final class DownloadErrorInfoTests: XCTestCase {
 
     // MARK: - Convenience Initializer (non-retryable)

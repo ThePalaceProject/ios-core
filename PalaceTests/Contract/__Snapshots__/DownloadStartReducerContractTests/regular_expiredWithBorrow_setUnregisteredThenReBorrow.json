@@ -1,0 +1,17 @@
+[
+  {
+    "args" : {
+      "bookId" : "DSR-BOOK",
+      "state" : "unregistered"
+    },
+    "method" : "registry.setState"
+  },
+  {
+    "args" : {
+      "attemptDownload" : "true",
+      "bookId" : "DSR-BOOK",
+      "hasCompletion" : "false"
+    },
+    "method" : "startBorrow"
+  }
+]

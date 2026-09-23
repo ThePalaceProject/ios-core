@@ -1,0 +1,6 @@
+# SYNTHETIC — hand-authored, all values FAKE. See Fixtures/README.md.
+2026-07-16T15:01:00Z [Borrow] patron tapped Borrow on "A Fake Title" isbn 9780306406157
+2026-07-16T15:01:00Z [Network] PUT /works/12345/borrow Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJsb2FuIjoiZmFrZSJ9.FAKEborrowSIG Cookie: JSESSIONID=FAKEjsess-borrow-456
+2026-07-16T15:01:01Z [Borrow] fulfillment link https://circulation.example.org/loans/98765?access_token=FAKE-loan-token-abcdef
+2026-07-16T15:01:01Z [Borrow] patron note: card 24000000778899 won't let me borrow, pin 1357
+2026-07-16T15:01:02Z [Borrow] loan uuid 11112222-3333-4444-5555-666677778888 recorded ok

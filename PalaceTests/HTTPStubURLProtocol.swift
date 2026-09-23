@@ -8,7 +8,11 @@ final class HTTPStubURLProtocol: URLProtocol {
     }
 
     private static let handlerQueue = DispatchQueue(label: "HTTPStubURLProtocol.handlerQueue")
-    private static var requestHandlers: [(URLRequest) -> StubbedResponse?] = []
+    private static let _requestHandlers = LockIsolated<[(URLRequest) -> StubbedResponse?]>([])
+    private static var requestHandlers: [(URLRequest) -> StubbedResponse?] {
+        get { _requestHandlers.value }
+        set { _requestHandlers.value = newValue }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         return true

@@ -3,9 +3,12 @@ import SwiftUI
 /// Entry point for the Stats tab, ready to plug into the main tab bar.
 /// Constructs the service graph and passes dependencies to child views.
 /// Gated by `RemoteFeatureFlags.FeatureFlag.readingStatsEnabled`.
-@available(iOS 16.0, *)
 struct StatsTab: View {
   /// Whether the Reading Stats feature is enabled.
+  /// Wave 1b exception E3: static gate on a UIKit/static boundary with zero
+  /// current callers — kept on `.shared` (injecting here would require a
+  /// production-container locator read that raises the locator ratchet).
+  /// Slated for the Wave 5 presentation-slimming work.
   static var isEnabled: Bool {
       RemoteFeatureFlags.shared.isFeatureEnabled(.readingStatsEnabled)
   }

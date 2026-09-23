@@ -16,6 +16,7 @@ import XCTest
 @testable import PalaceCatalog
 import PalaceNetwork
 
+@MainActor
 final class CatalogProblemDocumentTests: XCTestCase {
 
     // MARK: - Properties

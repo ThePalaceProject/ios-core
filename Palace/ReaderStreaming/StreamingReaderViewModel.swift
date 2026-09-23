@@ -16,6 +16,7 @@ import Combine
 import CoreGraphics
 import Foundation
 import PalaceNetwork
+import PalaceBookModel
 
 /// State surface bound to `StreamingReaderViewController`.
 /// - `loading`: transient state before reachability evaluation completes.

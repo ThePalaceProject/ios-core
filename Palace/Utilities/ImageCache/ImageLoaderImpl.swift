@@ -1,5 +1,18 @@
 import UIKit
 import PalaceLogging
+import PalaceBookModel
+
+/// Transports the non-`Sendable` completion handler across the `@Sendable`
+/// `Task` boundary in the Obj-C/completion-style bridge methods. The wrapped
+/// closure is ONLY ever invoked inside `await MainActor.run { ... }` — never
+/// off the main actor and never concurrently — so `@unchecked Sendable` is
+/// sound: the box merely satisfies the capture check without changing the
+/// `ImageLoading` protocol's public signature (which would ripple `@Sendable`
+/// to every completion-handler call site).
+private final class ImageCompletionBox: @unchecked Sendable {
+    let call: (UIImage?) -> Void
+    init(_ call: @escaping (UIImage?) -> Void) { self.call = call }
+}
 
 /// Concrete `ImageLoading` implementation. Composes the existing
 /// `TPPBookCoverRegistry` actor (which still owns the source-bytes cache,
@@ -12,7 +25,26 @@ import PalaceLogging
 ///
 /// Not `final` so test subclasses can override individual hooks if needed —
 /// per CLAUDE.md "don't make new services final reflexively".
-public class ImageLoader: ImageLoading {
+///
+/// `nonisolated` is load-bearing (Wave 2a), for the same empirical reason as
+/// `ImageCache`: moving the `ImageLoading` protocol out of this app-target
+/// module into the `PalaceBookModel` package changed this conformer's inferred
+/// isolation. That flip stamped a main-executor precondition onto the class —
+/// so constructing it synchronously off the main actor (`_buildCachedAppContainer`
+/// is a nonisolated `static func`, and `AccountsManager`'s background
+/// `loadCatalogs` runs alongside it) tripped `dispatch_assert_queue` →
+/// EXC_BREAKPOINT (SIGTRAP) at launch, crashing the test host before any test
+/// ran. This class is genuinely off-main-safe — every stored property is an
+/// immutable `let` (an actor-backed `TPPBookCoverRegistry` + a `Sendable`
+/// `ImageCacheType`), it holds no mutable state, and every main-only touch
+/// (`UIScreen.main.scale`, the completion callbacks) is already an explicit
+/// `await MainActor.run` hop — so `nonisolated` restores the pre-extraction
+/// base behavior exactly rather than papering over a real main-thread need.
+public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
+    // @unchecked Sendable: only immutable `let` collaborators (an actor-backed
+    // registry + a shared cache), no mutable state — safe to reference across
+    // concurrency domains (its async methods are awaited from @MainActor tests).
+
 
     // MARK: - Composition
 
@@ -52,6 +84,11 @@ public class ImageLoader: ImageLoading {
     /// (`<identifier>_<px>px`) so a cache pre-warmed by an earlier read at the
     /// same display height is honored without re-fetch.
     public func coverImage(for book: TPPBook, displayPoints: CGFloat) async -> UIImage? {
+        // A non-finite / non-positive display size (a view mid-layout) would trap at
+        // `Int(neededPixels)` below. Fall back to the unsized cover. PP-4772 / 077218fc.
+        guard let displayPoints = displayPoints.finitePositiveDimension else {
+            return await coverImage(for: book)
+        }
         let scale = await MainActor.run { UIScreen.main.scale }
         let neededPixels = min(displayPoints * scale * 1.5, 1200)
         let key = "\(book.identifier)_\(Int(neededPixels))px"
@@ -85,6 +122,7 @@ public class ImageLoader: ImageLoading {
         let authors = book.authors
         let cache = self.cache
         let registry = self.registry
+        let completionBox = ImageCompletionBox(completion)
 
         Task { [weak book] in
             var image: UIImage?
@@ -102,10 +140,18 @@ public class ImageLoader: ImageLoading {
             let capturedBook = book
             await MainActor.run {
                 if let finalImage {
+                    // Two DISTINCT cache references, not a duplicate write: `cache`
+                    // is this loader's injected `ImageCacheType` (what `coverImage(for:)`
+                    // reads), and `capturedBook?.imageCache` is the book's own cache
+                    // (what `TPPBook.fetchCoverImage`'s sync check reads). They are the
+                    // same object ONLY when both were built with `ImageCache.shared`
+                    // (the production convention) — the two injection points are
+                    // independent (AppContainer vs. TPPBook.init), so identity is not
+                    // structurally guaranteed and neither set is safely removable.
                     cache.set(finalImage, for: coverKey)
                     capturedBook?.imageCache.set(finalImage, for: coverKey)
                 }
-                completion(finalImage)
+                completionBox.call(finalImage)
             }
         }
     }
@@ -118,6 +164,7 @@ public class ImageLoader: ImageLoading {
         let authors = book.authors
         let cache = self.cache
         let registry = self.registry
+        let completionBox = ImageCompletionBox(completion)
 
         Task { [weak book] in
             var image: UIImage?
@@ -132,10 +179,14 @@ public class ImageLoader: ImageLoading {
             let capturedBook = book
             await MainActor.run {
                 if let finalImage {
+                    // Distinct cache references (see `coverImage(for:completion:)`):
+                    // loader-injected `cache` vs. the book's own `imageCache`.
+                    // Identical only under the `ImageCache.shared` convention; the
+                    // independent injection points mean neither set is safely removable.
                     cache.set(finalImage, for: thumbnailKey)
                     capturedBook?.imageCache.set(finalImage, for: thumbnailKey)
                 }
-                completion(finalImage)
+                completionBox.call(finalImage)
             }
         }
     }

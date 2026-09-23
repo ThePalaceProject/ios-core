@@ -61,6 +61,7 @@ import Combine
 ///    private set so the base can drain on tearDown.
 ///  - Mint `AccountsManager` via `makeFreshAccountsManager()` rather
 ///    than `AccountsManager()` so the cancellation hook fires.
+@MainActor
 class PalaceWiringTestCase: PalaceTestCase {
 
     /// Combine subscription bag for the subclass. The base drains this
@@ -68,14 +69,28 @@ class PalaceWiringTestCase: PalaceTestCase {
     /// `.store(in: &cancellables)`; the property is mutated only on the
     /// main thread (test methods inherit `@MainActor` via XCTest's
     /// default isolation for sync test methods).
-    var cancellables: Set<AnyCancellable> = []
+    ///
+    /// `nonisolated(unsafe)`: accessed both from `@MainActor` subclass test
+    /// bodies (`.store(in: &cancellables)`) and from the `nonisolated`
+    /// `tearDownWithError` override that drains it. XCTest runs a single test
+    /// method's body and its teardown serially on one instance — never
+    /// concurrently — so there is no data race to guard; the unsafe opt-out
+    /// keeps the bag reachable from the nonisolated hook without sending
+    /// `self` across an actor boundary.
+    nonisolated(unsafe) var cancellables: Set<AnyCancellable> = []
 
     /// Internal list of `AccountsManager` instances minted via
     /// `makeFreshAccountsManager` during a single test method. tearDown
     /// walks this list and calls `cancelBackgroundWork()` on each, then
     /// empties the list so the next method starts clean. Stored as
     /// `private` — only `makeFreshAccountsManager` mutates it.
-    private var managersToCancelOnTearDown: [AccountsManager] = []
+    ///
+    /// `nonisolated(unsafe)`: appended from `makeFreshAccountsManager`
+    /// (invoked in `@MainActor` test bodies) and drained from the `nonisolated`
+    /// `tearDownWithError` override. Same single-threaded serial test lifecycle
+    /// as `cancellables` — no concurrent access to guard; the opt-out keeps the
+    /// list reachable from the nonisolated hook without sending `self`.
+    nonisolated(unsafe) private var managersToCancelOnTearDown: [AccountsManager] = []
 
     // MARK: - Lifecycle
 
@@ -124,15 +139,22 @@ class PalaceWiringTestCase: PalaceTestCase {
         // managers.
         cancellables.removeAll()
 
-        // Cancel background work on every helper-minted manager. We
+        // Cancel AND DRAIN background work on every helper-minted manager. We
         // capture the list locally and clear the stored property first
         // so a re-entrant tearDown (shouldn't happen, but) sees an empty
-        // list. `cancelBackgroundWork()` is idempotent — already-cancelled
-        // managers ignore the second call.
+        // list. `cancelAndDrainBackgroundWork()` is idempotent — already-drained
+        // managers return immediately.
+        //
+        // Drain (not just cancel): a bare `cancelBackgroundWork()` returns while
+        // a just-cancelled crawl is still mid-flight, which then bleeds into the
+        // NEXT method of THIS same class (the per-class boundary drain in
+        // `AppContainer._resetForTesting()` only covers cross-CLASS bleed). The
+        // synchronous drain here awaits the full owned set — including the
+        // wrapped fallback GETs — so nothing survives the method boundary.
         let managers = managersToCancelOnTearDown
         managersToCancelOnTearDown.removeAll()
         for manager in managers {
-            manager.cancelBackgroundWork()
+            manager.cancelAndDrainBackgroundWork()
         }
 
         // Symmetry with setUp: wipe the on-disk OPDS2 catalog cache so
@@ -163,7 +185,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     ///   AND whose `cancelBackgroundWork()` will fire in tearDown
     ///   regardless of whether the test body called it.
     @discardableResult
-    func makeFreshAccountsManager(_ configure: (AccountsManager) -> Void = { _ in }) -> AccountsManager {
+    nonisolated func makeFreshAccountsManager(_ configure: (AccountsManager) -> Void = { _ in }) -> AccountsManager {
         // Pin the opt-out flag immediately before construction. setUp
         // already set it, but a test method that intentionally toggled
         // it off mid-body must not poison helper construction after
@@ -183,11 +205,11 @@ class PalaceWiringTestCase: PalaceTestCase {
     ///
     /// swarm_cd181acd D-cleanup: lets wiring tests seed
     /// `currentAccountIdentifierKey` into a per-test isolated suite (via
-    /// `testUserDefaults()`) instead of mutating `UserDefaults.standard`,
+    /// `Self.testUserDefaults()`) instead of mutating `UserDefaults.standard`,
     /// so cross-test pollution through that key is structurally
     /// impossible.
     @discardableResult
-    func makeFreshAccountsManager(
+    nonisolated func makeFreshAccountsManager(
         defaults: UserDefaults,
         _ configure: (AccountsManager) -> Void = { _ in }
     ) -> AccountsManager {
@@ -195,6 +217,112 @@ class PalaceWiringTestCase: PalaceTestCase {
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
         let manager = AccountsManager(defaults: defaults)
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
+    /// DI-aware overload that also injects the account-switch borrow-reauth reset
+    /// seam (`BorrowReauthResetting`, Wave 3 S1). Routes bare `AccountsManager`
+    /// construction through this whitelisted helper so a spy-injected switch test
+    /// still gets the `loadCatalogs` opt-out pin + tearDown cancellation, keeping
+    /// it off the `AccountsManagerIsolationLint` bare-construction ban.
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        borrowReauthResetter: any BorrowReauthResetting,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults, borrowReauthResetter: borrowReauthResetter)
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
+    /// DI-aware overload that injects the background-crawl spawn seam
+    /// (`CrawlTaskScheduler`, PP-4754). Lets a test install a recording scheduler
+    /// to pin the crawl scheduling contract while keeping the same opt-out flag
+    /// pin + tearDown drain as the other helpers (so it stays off the
+    /// `AccountsManagerIsolationLint` bare-construction ban).
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        crawlScheduler: CrawlTaskScheduler,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults, crawlScheduler: crawlScheduler)
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
+    /// DI-aware overload that injects BOTH the account-switch borrow-reauth reset
+    /// seam and the account-switch cleanup collaborators (`AccountSwitchDependencies`,
+    /// Wave 3 S3). Lets the switch-cleanup contract test drive the setter with spies
+    /// for every cleanup side effect (image evict, cover reset, account-state store,
+    /// nav pop-to-root, network cancel) while keeping the same `loadCatalogs` opt-out
+    /// pin + tearDown drain — so it stays off the isolation-lint bare-construction ban.
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        borrowReauthResetter: any BorrowReauthResetting,
+        switchDependencies: AccountSwitchDependencies,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(
+            defaults: defaults,
+            borrowReauthResetter: borrowReauthResetter,
+            switchDependencies: switchDependencies
+        )
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
+    /// DI-aware overload that injects the disk-cache collaborator
+    /// (`AccountRegistryCaching`, Wave 3 / 3a-1). Lets a test install a recording
+    /// cache to pin the catalog read/write/clear routing while keeping the same
+    /// opt-out flag pin + tearDown drain as the other helpers (so it stays off the
+    /// `AccountsManagerIsolationLint` bare-construction ban).
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        registryCache: any AccountRegistryCaching,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults, registryCache: registryCache)
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
+    /// DI-aware overload that injects the account-registry state collaborator
+    /// (`AccountRegistryStore`, Wave 3 / 3a-2). Lets a test drive registry state
+    /// through an owned store and assert the hub's retrieval facades delegate to it,
+    /// while keeping the opt-out flag pin + tearDown drain (so it stays off the
+    /// `AccountsManagerIsolationLint` bare-construction ban).
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        registryStore: AccountRegistryStore,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults, registryStore: registryStore)
         configure(manager)
         managersToCancelOnTearDown.append(manager)
         return manager
@@ -215,7 +343,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     ///
     /// Missing files (cold-start) and missing directory are silently
     /// ignored — both are valid pre-test states.
-    private func purgeAccountsDiskCacheForWiringTests() {
+    private nonisolated func purgeAccountsDiskCacheForWiringTests() {
         let prefixes = [
             "library_list_",
             "accounts_catalog_",

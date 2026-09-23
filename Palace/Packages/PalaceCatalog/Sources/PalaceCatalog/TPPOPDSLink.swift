@@ -1,7 +1,12 @@
 import Foundation
 import PalaceLogging
 
-@objc public class TPPOPDSLink: NSObject {
+// @unchecked Sendable invariant: every stored property is `private(set)` and
+// assigned exactly once during the failable `init?`; nothing mutates an
+// instance after init. `attributes` is an immutable `NSDictionary` of parsed XML
+// attributes (never an `NSMutableDictionary`, never re-exposed for mutation),
+// which is why this is `@unchecked` rather than a checked conformance.
+@objc public final class TPPOPDSLink: NSObject, @unchecked Sendable {
 
   @objc public private(set) var attributes: NSDictionary = [:]
   @objc public private(set) var href: URL

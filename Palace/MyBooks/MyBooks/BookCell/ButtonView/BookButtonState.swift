@@ -8,8 +8,14 @@
 
 import Foundation
 import PalaceCatalog
+import PalaceBookModel
+import PalaceBookRegistry
 
-enum BookButtonState: Equatable {
+/// `CaseIterable` so tests can assert COMPLETENESS over the whole enum rather
+/// than over the cases someone remembered. Its `TPPBookState` counterpart
+/// already is, and the `.canBorrow` regression in `HalfSheetProgressCue` was
+/// exactly a case nobody had enumerated.
+enum BookButtonState: Equatable, CaseIterable {
     case canBorrow
     case canHold
     case holding

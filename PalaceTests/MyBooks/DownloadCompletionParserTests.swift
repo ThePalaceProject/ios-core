@@ -13,7 +13,12 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
+// Deliberately NOT @MainActor: the object under test is nonisolated and
+// non-Sendable — awaiting its async APIs on a @MainActor-held reference is a
+// Swift 6 sending error, while from a nonisolated test everything stays in
+// one isolation domain. Nothing here touches UI or main-actor state.
 final class DownloadCompletionParserTests: XCTestCase {
 
     private var stateManager: DownloadStateManager!
@@ -67,6 +72,10 @@ final class DownloadCompletionParserTests: XCTestCase {
         try json.write(to: tempLocation)
         let task = StubDownloadTask(mimeType: "application/problem+json")
 
+        // Swift 6: capture the (now `@unchecked Sendable`) parser as a local so
+        // awaiting its nonisolated `async parse` doesn't send `self.parser` off
+        // the @MainActor test. Mirrors the DownloadStateManagerTests local-hoist.
+        let parser = parser!
         let result = await parser.parse(book: book, task: task, location: tempLocation, session: session)
 
         switch result {
@@ -97,6 +106,10 @@ final class DownloadCompletionParserTests: XCTestCase {
         router.detectRightsResult = .none
         let task = StubDownloadTask(mimeType: "application/epub+zip")
 
+        // Swift 6: capture the (now `@unchecked Sendable`) parser as a local so
+        // awaiting its nonisolated `async parse` doesn't send `self.parser` off
+        // the @MainActor test. Mirrors the DownloadStateManagerTests local-hoist.
+        let parser = parser!
         let result = await parser.parse(book: book, task: task, location: tempLocation, session: session)
 
         guard case .proceed(let rights, let mimeType) = result else {
@@ -121,6 +134,10 @@ final class DownloadCompletionParserTests: XCTestCase {
         await stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: initial)
         let task = StubDownloadTask(mimeType: "application/epub+zip")
 
+        // Swift 6: capture the (now `@unchecked Sendable`) parser as a local so
+        // awaiting its nonisolated `async parse` doesn't send `self.parser` off
+        // the @MainActor test. Mirrors the DownloadStateManagerTests local-hoist.
+        let parser = parser!
         let result = await parser.parse(book: book, task: task, location: tempLocation, session: session)
 
         guard case .proceed(let rights, _) = result else {
@@ -138,6 +155,10 @@ final class DownloadCompletionParserTests: XCTestCase {
         router.opdsEntryResult = true
         let task = StubDownloadTask(mimeType: "application/atom+xml")
 
+        // Swift 6: capture the (now `@unchecked Sendable`) parser as a local so
+        // awaiting its nonisolated `async parse` doesn't send `self.parser` off
+        // the @MainActor test. Mirrors the DownloadStateManagerTests local-hoist.
+        let parser = parser!
         let result = await parser.parse(book: book, task: task, location: tempLocation, session: session)
 
         if case .followUpStarted = result {
@@ -154,6 +175,10 @@ final class DownloadCompletionParserTests: XCTestCase {
         router.opdsEntryResult = false
         let task = StubDownloadTask(mimeType: "text/xml")
 
+        // Swift 6: capture the (now `@unchecked Sendable`) parser as a local so
+        // awaiting its nonisolated `async parse` doesn't send `self.parser` off
+        // the @MainActor test. Mirrors the DownloadStateManagerTests local-hoist.
+        let parser = parser!
         let result = await parser.parse(book: book, task: task, location: tempLocation, session: session)
 
         guard case .failure(let problemDoc, let mimeType, _) = result else {
@@ -170,6 +195,10 @@ final class DownloadCompletionParserTests: XCTestCase {
         router.opds2PubResult = true
         let task = StubDownloadTask(mimeType: "application/opds-publication+json")
 
+        // Swift 6: capture the (now `@unchecked Sendable`) parser as a local so
+        // awaiting its nonisolated `async parse` doesn't send `self.parser` off
+        // the @MainActor test. Mirrors the DownloadStateManagerTests local-hoist.
+        let parser = parser!
         let result = await parser.parse(book: book, task: task, location: tempLocation, session: session)
 
         if case .followUpStarted = result {
@@ -186,6 +215,10 @@ final class DownloadCompletionParserTests: XCTestCase {
         router.opds2PubResult = false
         let task = StubDownloadTask(mimeType: "application/opds+json")
 
+        // Swift 6: capture the (now `@unchecked Sendable`) parser as a local so
+        // awaiting its nonisolated `async parse` doesn't send `self.parser` off
+        // the @MainActor test. Mirrors the DownloadStateManagerTests local-hoist.
+        let parser = parser!
         let result = await parser.parse(book: book, task: task, location: tempLocation, session: session)
 
         guard case .failure = result else {
@@ -199,6 +232,10 @@ final class DownloadCompletionParserTests: XCTestCase {
         // image/png is not in TPPOPDSAcquisitionPath.supportedTypes()
         let task = StubDownloadTask(mimeType: "image/png")
 
+        // Swift 6: capture the (now `@unchecked Sendable`) parser as a local so
+        // awaiting its nonisolated `async parse` doesn't send `self.parser` off
+        // the @MainActor test. Mirrors the DownloadStateManagerTests local-hoist.
+        let parser = parser!
         let result = await parser.parse(book: book, task: task, location: tempLocation, session: session)
 
         guard case .failure(let problemDoc, let mimeType, _) = result else {
@@ -215,6 +252,10 @@ final class DownloadCompletionParserTests: XCTestCase {
     func testParse_supportedMime_returnsProceed() async {
         let task = StubDownloadTask(mimeType: "application/epub+zip")
 
+        // Swift 6: capture the (now `@unchecked Sendable`) parser as a local so
+        // awaiting its nonisolated `async parse` doesn't send `self.parser` off
+        // the @MainActor test. Mirrors the DownloadStateManagerTests local-hoist.
+        let parser = parser!
         let result = await parser.parse(book: book, task: task, location: tempLocation, session: session)
 
         guard case .proceed(let rights, let mimeType) = result else {
@@ -274,7 +315,7 @@ private final class StubRouter: DownloadCompletionRouting {
     }
 }
 
-private final class StubDownloadTask: URLSessionDownloadTask {
+private final class StubDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _response: URLResponse?
     private let _taskIdentifier: Int
 

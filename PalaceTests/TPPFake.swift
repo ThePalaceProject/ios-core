@@ -117,7 +117,7 @@ class TPPFake {
       {
         "drm:vendor": "NYPL",
         "drm:scheme": "http://librarysimplified.org/terms/drm/scheme/ACS",
-        "drm:clientToken": "someToken"
+        "drm:clientToken": "NYPL|1893456000|patron-uuid-fixed|c2lnbmF0dXJl"
       }
     ],
     "links": [

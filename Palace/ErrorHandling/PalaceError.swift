@@ -567,7 +567,7 @@ extension PalaceError {
         // Adobe DRM errors
         #if FEATURE_DRM_CONNECTOR
         if nsError.domain == NYPLADEPTErrorDomain {
-            return .drm(drmErrorFrom(nsError))
+            return .drm(drmError(for: nsError))
         }
         #endif
 
@@ -622,18 +622,46 @@ extension PalaceError {
     }
 
     #if FEATURE_DRM_CONNECTOR
-    private static func drmErrorFrom(_ error: NSError) -> DRMError {
-        if let adobeError = NYPLADEPTError(rawValue: error.code) {
-            switch adobeError {
-            case .authenticationFailed:
-                return .authenticationFailed
-            case .tooManyActivations:
-                return .tooManyActivations
-            default:
-                return .adobeError
-            }
+    /// THE Adobe-error mapping table. There is deliberately only one.
+    ///
+    /// PP-3649 added a second copy on `AdobeDRMService` so the borrow-time
+    /// activation failure could stop throwing a hardcoded
+    /// `.authenticationFailed` — which told every patron "Please sign out and
+    /// sign in again", advice that for `E_ACT_TOO_MANY_ACTIVATIONS` spends
+    /// ANOTHER activation, the exact resource that has run out. The two copies
+    /// then disagreed, and a mapping that depends on which call site you
+    /// entered through is worse than either version alone: the patron-facing
+    /// alert is chosen from it. So the new arms live here and the copy is gone.
+    ///
+    /// Mapping at this layer is deliberate — it is the last point where the
+    /// original `NSError` still exists. Downstream it has been flattened into a
+    /// `PalaceError` and the Adobe code is gone.
+    ///
+    /// The unmapped fallback is `.adobeError` ("Please contact support if this
+    /// problem persists"), NOT `.authenticationFailed`. An error we cannot name
+    /// is not evidence the patron's credentials are bad, and pinning that is
+    /// what `AdobeDRMCharacterizationTests` exists for.
+    static func drmError(for error: Error) -> DRMError {
+        let ns = error as NSError
+        guard ns.domain == NYPLADEPTErrorDomain,
+              let adobeError = NYPLADEPTError(rawValue: ns.code) else {
+            return .adobeError
         }
-        return .adobeError
+        switch adobeError {
+        case .authenticationFailed:
+            return .authenticationFailed
+        case .tooManyActivations:
+            return .tooManyActivations
+        case .userNotActivated, .invalidUserActivation:
+            // "Please sign in to activate your device" — the device has no
+            // usable activation, which is a different repair from bad
+            // credentials and a different one again from an unknown Adobe
+            // fault. `deviceNotActivated` is a THIRD, ACSM-fulfillment-stage
+            // code and stays on the default arm.
+            return .noActivation
+        default:
+            return .adobeError
+        }
     }
     #endif
 }

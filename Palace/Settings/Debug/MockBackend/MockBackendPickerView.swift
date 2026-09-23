@@ -32,10 +32,10 @@ struct MockBackendPickerView: View {
                 if service.isActive, let current = service.currentScenario {
                     HStack {
                         Text("Active Scenario")
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                         Spacer()
                         Text(current.displayName)
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.primary)
                     }
                 }
             } header: {
@@ -53,10 +53,10 @@ struct MockBackendPickerView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(scenario.displayName)
-                                        .foregroundColor(.primary)
+                                        .foregroundStyle(.primary)
                                     Text(scenario.description)
                                         .font(.caption)
-                                        .foregroundColor(.secondary)
+                                        .foregroundStyle(.secondary)
                                         .lineLimit(2)
                                 }
 
@@ -64,7 +64,7 @@ struct MockBackendPickerView: View {
 
                                 if service.currentScenario?.id == scenario.id {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(.accentColor)
+                                        .foregroundStyle(Color.accentColor)
                                 }
                             }
                         }
@@ -74,14 +74,14 @@ struct MockBackendPickerView: View {
                 Section("Diagnostics") {
                     HStack {
                         Text("Routes")
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                         Spacer()
                         Text("\(service.currentScenario?.routes.count ?? 0)")
                     }
 
                     HStack {
                         Text("Fixture Bundle")
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                         Spacer()
                         Text(MockBackendURLProtocol.fixtureBundle == .main ? "Main" : "Test")
                             .font(.caption)

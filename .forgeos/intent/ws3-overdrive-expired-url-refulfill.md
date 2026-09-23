@@ -77,3 +77,45 @@ Cached-manifest-replay fork:
   manifest-persistence path.
 - Tests: `PalaceTests/DRM/OverdriveFulfillmentTests.swift` +
   `AudiobookSessionManager` playback-failed tests.
+
+---
+
+# Follow-up (2026-07-15): recovery fires on AVPlayer -1008 (the real field shape)
+
+branch: `fix/overdrive-expired-url-refulfill-minus1008`
+
+## Context
+
+The 410-only predicate above NEVER fired in the field. OverDrive streams tracks
+through AVFoundation, which collapses the CDN's HTTP 410 (expired signed URL) into
+`NSURLErrorDomain -1008` (NSURLErrorResourceUnavailable) with NO `httpStatusCode`, so
+`httpStatusCode(from:error) == 410` is nil → the bounded re-fulfill never triggered.
+Device repro captured on Moes Max (Mi historia / A1QA staging, 2026-07-15): expired
+`links.contentlinks` → 410 → surfaced as -1008 → dead-ended to "A Problem Has Occurred",
+and skip-across-tracks broke identically (each track's URL dead).
+
+## Claims
+
+- broadens `shouldTriggerOverdriveRefulfillForPlaybackFailure` to also return true on an
+  `NSURLErrorResourceUnavailable` (-1008) signal, IN ADDITION TO the existing 410 path
+- adds `static func isResourceUnavailable(from:)` matching -1008 in three shapes:
+  top-level `NSURLErrorDomain`, the flattened `underlyingCode`/`underlyingDomain` userInfo
+  scalars, and one level down the `NSUnderlyingError` chain
+- adds unit tests in `OverdriveFulfillmentTests.swift` for the three recover shapes plus
+  the negative/guard cases (offline -1009, timeout -1001, already-attempted bound,
+  non-OverDrive distributor, non-URL-domain -1008, nil)
+
+## Anti-claims
+
+- does NOT touch `httpStatusCode(from:)`; the 410 path is byte-preserved
+- does NOT broaden the SAML sibling to -1008 (a -1008 on a SAML book must not loop a
+  revoked session)
+- does NOT re-fulfill on -1009 (offline), -1001 (timeout), 401, or 403; the
+  one-attempt-per-book-per-session bound is preserved
+- does NOT add the proactive re-fulfill-on-open layer (deferred) and does NOT modify the
+  `ios-audiobooktoolkit` submodule (app-side only)
+
+## Files in scope
+
+- `Palace/Audiobooks/AudiobookSessionManager.swift`
+- `PalaceTests/DRM/OverdriveFulfillmentTests.swift`

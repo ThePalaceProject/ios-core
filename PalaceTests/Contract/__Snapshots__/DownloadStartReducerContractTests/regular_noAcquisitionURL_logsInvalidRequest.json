@@ -1,0 +1,10 @@
+[
+  {
+    "args" : {
+      "bookId" : "DSR-BOOK",
+      "hasURL" : "false",
+      "state" : "download-successful"
+    },
+    "method" : "logInvalidURLRequest"
+  }
+]

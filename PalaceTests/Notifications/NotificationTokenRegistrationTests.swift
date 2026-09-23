@@ -23,6 +23,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class NotificationTokenRegistrationTests: XCTestCase {
 
     // MARK: - Failure paths (flag must NOT be set → retry stays possible)

@@ -14,6 +14,7 @@ import XCTest
 
 // MARK: - CatalogRepository Tests
 
+@MainActor
 final class CatalogRepositoryCoreTests: XCTestCase {
 
     private var api: CatalogAPIMock!
@@ -97,11 +98,11 @@ final class CatalogRepositoryCoreTests: XCTestCase {
         _ = try await repository.loadTopLevelCatalog(at: testURL)
         XCTAssertEqual(api.fetchFeedCallCount, 1)
 
-        // Invalidate cache
+        // Invalidate cache. `invalidateCache` mutates the memory cache
+        // synchronously under the cache lock (the former serial cacheQueue was
+        // replaced by an OSAllocatedUnfairLock), so there is nothing async to
+        // wait on — the entry is gone the instant this returns.
         repository.invalidateCache(for: testURL)
-
-        // Give cache queue time to process
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         // Next load should fetch from API again
         _ = try await repository.loadTopLevelCatalog(at: testURL)
@@ -128,9 +129,9 @@ final class CatalogRepositoryCoreTests: XCTestCase {
         api.defaultFeed = mockFeed
         _ = try await repository.loadTopLevelCatalog(at: testURL)
 
-        // Invalidate cache so next load tries network
+        // Invalidate cache so next load tries network. Synchronous lock
+        // mutation — no cache queue to drain (see companion test above).
         repository.invalidateCache(for: testURL)
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         // Now make API fail
         api.fetchFeedError = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
@@ -175,6 +176,7 @@ final class CatalogRepositoryCoreTests: XCTestCase {
 
 // MARK: - OPDSParser Tests
 
+@MainActor
 final class OPDSParserCoreTests: XCTestCase {
 
     private let parser = OPDSParser()
@@ -220,6 +222,7 @@ final class OPDSParserCoreTests: XCTestCase {
 
 // MARK: - CatalogFeed Model Tests
 
+@MainActor
 final class CatalogFeedModelTests: XCTestCase {
 
     func testCatalogFeedFromNilFeedReturnsNil() {
@@ -255,6 +258,7 @@ final class CatalogFeedModelTests: XCTestCase {
 
 // MARK: - DefaultCatalogAPI.extractSearchEntryPoints Tests
 
+@MainActor
 final class CatalogAPIEntryPointTests: XCTestCase {
 
     func testExtractSearchEntryPointsFromEmptyFeed() {

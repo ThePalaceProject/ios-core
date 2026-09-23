@@ -21,6 +21,7 @@
 
 import Foundation
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Production conformance for `AudiobookManifestNetworkFetching`. Delegates
 /// to `TPPNetworkExecutor.GET` with the executor's cache + token defaults.
@@ -62,7 +63,7 @@ final class ProductionAudiobookFileReader: AudiobookFileReading {
 final class ProductionBearerTokenRefresher: BearerTokenRefreshing {
     func refreshToken(
         from fulfillURL: URL,
-        completion: @escaping (MyBooksSimplifiedBearerToken?) -> Void
+        completion: @escaping @Sendable (MyBooksSimplifiedBearerToken?) -> Void
     ) {
         MyBooksSimplifiedBearerToken.refreshToken(from: fulfillURL, completion: completion)
     }

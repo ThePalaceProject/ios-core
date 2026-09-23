@@ -9,6 +9,7 @@ import XCTest
 import PalaceNetwork
 @testable import Palace
 
+@MainActor
 final class TPPBasicAuthTests: XCTestCase {
 
     // MARK: - Properties
@@ -207,6 +208,51 @@ final class TPPBasicAuthTests: XCTestCase {
                 "Credentials should not be permanently persisted"
             )
         }
+    }
+
+    // MARK: - Returning form used by the async delegate callbacks (PP-4895)
+
+    func testResponseTo_returnsTheSameAnswerAsTheCompletionForm() {
+        // The async URLSession delegate callbacks return a disposition instead of
+        // invoking a handler, and route through `response(to:)` to get it. The
+        // two shapes must not be allowed to drift apart, so this pins them to the
+        // same answer across every protection space the switch handles.
+        credentialsProvider.username = "testuser"
+        credentialsProvider.pin = "testpin"
+
+        let cases: [(String, URLAuthenticationChallenge)] = [
+            ("basic", createBasicAuthChallenge()),
+            ("basic after a failure", createBasicAuthChallenge(previousFailureCount: 1)),
+            ("server trust", createServerTrustChallenge()),
+            ("unsupported method", createChallenge(method: NSURLAuthenticationMethodNTLM)),
+        ]
+
+        for (name, challenge) in cases {
+            var expectedDisposition: URLSession.AuthChallengeDisposition?
+            var expectedCredential: URLCredential?
+            basicAuth.handleChallenge(challenge) { disposition, credential in
+                expectedDisposition = disposition
+                expectedCredential = credential
+            }
+
+            let (disposition, credential) = basicAuth.response(to: challenge)
+
+            XCTAssertEqual(disposition, expectedDisposition, "disposition drifted for \(name)")
+            XCTAssertEqual(credential?.user, expectedCredential?.user, "credential drifted for \(name)")
+            XCTAssertEqual(credential?.password, expectedCredential?.password,
+                           "credential drifted for \(name)")
+        }
+    }
+
+    func testResponseTo_returnsTheStoredCredentialForABasicAuthChallenge() {
+        credentialsProvider.username = "testuser"
+        credentialsProvider.pin = "testpin"
+
+        let (disposition, credential) = basicAuth.response(to: createBasicAuthChallenge())
+
+        XCTAssertEqual(disposition, .useCredential)
+        XCTAssertEqual(credential?.user, "testuser")
+        XCTAssertEqual(credential?.password, "testpin")
     }
 
     // MARK: - Helper Methods

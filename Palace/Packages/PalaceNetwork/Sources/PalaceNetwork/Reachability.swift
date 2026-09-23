@@ -19,8 +19,20 @@ extension Notification.Name {
     public static let TPPReachabilityChanged = Notification.Name("TPPReachabilityChanged")
 }
 
+/// `@unchecked Sendable`: `Reachability` is captured in the NWPathMonitor
+/// `pathUpdateHandler`, which is a `@Sendable` closure (Swift 6
+/// `#SendableClosureCaptures`). The class is manually thread-safe, which is what
+/// `@unchecked` asserts — NOT `nonisolated(unsafe)`:
+///  - `_isConnected` is guarded by `stateLock` on every get/set;
+///  - `connectivitySubject.send(_:)` is invoked ONLY on the main queue
+///    (`DispatchQueue.main.async`), so the non-Sendable `CurrentValueSubject`
+///    is single-threaded;
+///  - `NWPathMonitor` is internally thread-safe for `currentPath` reads /
+///    `start` / `cancel`.
+/// Conformance is additive (no consumer/test-double ripple — Sendable is a
+/// capability, not a constraint on holders).
 @objcMembers
-open class Reachability: NSObject {
+open class Reachability: NSObject, @unchecked Sendable {
     private let connectionMonitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "NetworkMonitor")
     private let stateLock = NSLock()

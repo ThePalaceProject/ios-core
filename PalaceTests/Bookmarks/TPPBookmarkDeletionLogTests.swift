@@ -12,6 +12,7 @@ import PalaceLogging
 
 /// Tests for the bookmark deletion log which tracks explicitly deleted bookmarks
 /// to ensure they get deleted from the server during sync, regardless of device ID.
+@MainActor
 final class TPPBookmarkDeletionLogTests: XCTestCase {
 
     private var deletionLog: TPPBookmarkDeletionLog!
@@ -27,7 +28,7 @@ final class TPPBookmarkDeletionLogTests: XCTestCase {
         // backed by a per-test UserDefaults suite (instead of mutating the
         // `.shared` singleton's `.standard` backing store). The injected
         // suite is wiped by `SingletonResetRegistry` when the test finishes.
-        deletionLog = TPPBookmarkDeletionLog(defaults: testUserDefaults())
+        deletionLog = TPPBookmarkDeletionLog(defaults: Self.testUserDefaults())
     }
 
     override func tearDown() {

@@ -8,7 +8,9 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 class Date_NYPLAdditionsTests: XCTestCase {
     func testRFC1123() {
         let date = Date(timeIntervalSince1970: 1_000_000_000)

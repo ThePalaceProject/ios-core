@@ -11,11 +11,20 @@ import PalaceLogging
 
 /// Manages registration of custom fonts (e.g. OpenDyslexic) and checks font availability.
 /// Call `registerCustomFonts()` at app launch to ensure bundled fonts are available.
-final class FontManager {
+///
+/// Swift 6 `complete`: `@unchecked Sendable` makes the `static let shared`
+/// singleton concurrency-safe. The only mutable state is `hasRegistered`, a
+/// launch-once guard flipped exclusively from `registerCustomFonts()`, which is
+/// called once at app launch on the main thread. Availability reads
+/// (`isFontAvailable`, `availableFamilies`) are pure CoreText/UIFont lookups
+/// with no shared mutable state. INVARIANT — `hasRegistered` is written only on
+/// the main thread during launch, so no data race is waived.
+final class FontManager: @unchecked Sendable {
 
     static let shared = FontManager()
 
     /// Tracks whether fonts have already been registered this session.
+    /// Written only from `registerCustomFonts()` on the main thread at launch.
     private var hasRegistered = false
 
     private init() {}

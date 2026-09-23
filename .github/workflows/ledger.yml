@@ -19,6 +19,12 @@ on:
       - '**.m'
       - '**.h'
       - 'tools/ledger/**'
+      # The reporting pipeline runs on its own changes, so a PR that edits the
+      # analysis or the comment rendering demonstrates the result instead of
+      # merging unexercised. Both were silently broken for a month precisely
+      # because nothing re-ran them.
+      - '.github/workflows/ledger.yml'
+      - 'scripts/ledger_scc.py'
 
   # Allow manual trigger for testing
   workflow_dispatch:
@@ -43,7 +49,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Fetch full history for diff analysis
           fetch-depth: 0
@@ -59,9 +65,11 @@ jobs:
 
       - name: Install ledger
         run: |
-          # v0.9.6: Ledger 0.9.6 + QAAtlas 2.3.0
+          # v0.9.7: monolith app-target indexing (real blast-radius on the app
+          # target; sign-in path no longer false-LOW). See CodeAtlas
+          # fix/monolith-target-indexing. Install URL redirects to SyncTek-LLC.
           curl -fsSL https://raw.githubusercontent.com/mauricecarrier7/ledger-dist/main/install.sh \
-            | bash -s -- --version 0.9.6 --dir ./tools/bin
+            | bash -s -- --version 0.9.7 --dir ./tools/bin
           
           # Clear macOS quarantine attributes (fixes exit code 11)
           xattr -cr ./tools/bin/ 2>/dev/null || true
@@ -120,7 +128,7 @@ jobs:
           fi
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ledger-analysis
@@ -138,6 +146,8 @@ jobs:
           # Initialize defaults
           echo "components=0" >> $GITHUB_OUTPUT
           echo "cycles=0" >> $GITHUB_OUTPUT
+          echo "scc_count=0" >> $GITHUB_OUTPUT
+          echo "largest_scc=0" >> $GITHUB_OUTPUT
           echo "violations=0" >> $GITHUB_OUTPUT
           echo "hotspots=0" >> $GITHUB_OUTPUT
           echo "changed_files=0" >> $GITHUB_OUTPUT
@@ -267,14 +277,41 @@ jobs:
               "$OBSERVE_DIR/qa/test-matches.json" 2>/dev/null > /tmp/qa_test_matches.md || true
           fi
           
-          # Architecture: Cycle details
+          # Architecture: Cycle details.
+          #
+          # Ledger emits `.cycles` as an INTEGER and `.findings` as an empty
+          # array; ALL detail lives in `.issues[]`. The previous extraction read
+          # `.cycles[] | .components` and `.findings[] | .message`, both of which
+          # error on the real shape — the errors went to /dev/null and every PR
+          # comment silently printed "See full report for cycle details."
+          #
+          # ledger_scc.py additionally collapses the reported cycle PATHS into
+          # the distinct cycles (strongly-connected components) they represent,
+          # and discounts edges `tools/ledger/ledger-config.json` declares
+          # structurally impossible. See scripts/ledger_scc.py for why the raw
+          # path count cannot be trended.
           if [[ -f "$OBSERVE_DIR/arch/analysis.json" ]]; then
-            jq -r 'if .cycles then .cycles[] | "- " + (.components | join(" → ")) else empty end' \
-              "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null > /tmp/arch_cycles.md || true
-            
-            # Findings/issues
-            jq -r '.findings[]? | "- **" + .type + "**: " + .message' \
-              "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null > /tmp/arch_findings.md || true
+            python3 scripts/ledger_scc.py \
+              --analysis "$OBSERVE_DIR/arch/analysis.json" \
+              --config tools/ledger/ledger-config.json \
+              --json /tmp/arch_scc.json \
+              --markdown /tmp/arch_cycles.md || true
+
+            if [[ -f /tmp/arch_scc.json ]]; then
+              echo "scc_count=$(jq -r '.sccCount // 0' /tmp/arch_scc.json)" >> $GITHUB_OUTPUT
+              echo "largest_scc=$(jq -r '.largestSccSize // 0' /tmp/arch_scc.json)" >> $GITHUB_OUTPUT
+            fi
+
+            # Non-cycle findings (layer violations, hotspots, orphans) — also
+            # from `.issues[]`, so a violation is NAMED and not left as a bare
+            # number the reader cannot act on (pr-report-contract.md gap #8).
+            {
+              jq -r '.issues[]? | select(.type != "dependency_cycle")
+                     | "- **" + .type + "**: " + .description' \
+                "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null || true
+              jq -r '.findings[]? | "- **" + .type + "**: " + .message' \
+                "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null || true
+            } > /tmp/arch_findings.md || true
           fi
           
           # Parse diff summary for changed files count
@@ -304,7 +341,7 @@ jobs:
 
       - name: Post PR comment
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -319,6 +356,11 @@ jobs:
             const changedFiles = '${{ steps.parse.outputs.changed_files }}' || '0';
             const components = '${{ steps.parse.outputs.components }}' || '0';
             const cycles = '${{ steps.parse.outputs.cycles }}' || '0';
+            // Distinct cycles (strongly-connected components), not cycle paths.
+            // `cycles` above is the analyzer's raw path enumeration — see
+            // scripts/ledger_scc.py for why it cannot be trended.
+            const sccCount = '${{ steps.parse.outputs.scc_count }}' || '0';
+            const largestScc = '${{ steps.parse.outputs.largest_scc }}' || '0';
             const violations = '${{ steps.parse.outputs.violations }}' || '0';
             const hotspots = '${{ steps.parse.outputs.hotspots }}' || '0';
             const avgCouplingRaw = '${{ steps.parse.outputs.avg_coupling }}' || '0';
@@ -409,16 +451,16 @@ jobs:
             // ═══════════════════════════════════════════════════════════════
             // TEST COVERAGE SECTION (QAAtlas) - only if qa domain enabled
             // ═══════════════════════════════════════════════════════════════
-            body += '---\n';
-            body += '### 🧪 Test Coverage (via QAAtlas)\n\n';
-            
-            // Check if we have valid QA data
+            // TEST COVERAGE (QAAtlas): the `qa` domain is disabled
+            // (DOMAINS="arch,reach,a11y" at the top of this file), so this
+            // section stays SILENT rather than posting a standing "set
+            // OPENAI_API_KEY" banner on every PR — a constant banner is noise
+            // that trains readers to skim past warnings
+            // (pr-report-contract.md §2, delta-or-silent).
             const hasQAData = qaCoverage && parseFloat(qaCoverage) > 0 || (parseInt(qaTested) > 0 || parseInt(qaTotal) > 0);
-            
-            if (!hasQAData) {
-              body += '> ⚠️ **No coverage data available** - QAAtlas requires an OpenAI API key.\n';
-              body += '> Set `OPENAI_API_KEY` in repository secrets to enable AI-powered test coverage analysis.\n\n';
-            } else {
+            if (hasQAData) {
+              body += '---\n';
+              body += '### 🧪 Test Coverage (via QAAtlas)\n\n';
               const coverageNum = parseFloat(qaCoverage);
               const coverageIcon = coverageNum >= 50 ? '🟢' : coverageNum >= 30 ? '🟡' : '🔴';
               body += `**Coverage Estimate:** ${coverageIcon} **${qaCoverage}%**\n\n`;
@@ -515,22 +557,39 @@ jobs:
             body += '| Metric | Value | ℹ️ What This Means |\n';
             body += '|--------|-------|-------------------|\n';
             body += `| Components | ${components} | Distinct modules/layers detected in your codebase |\n`;
-            body += `| Dependency Cycles | ${cycles} | Circular dependencies (A→B→C→A). Goal: **0** |\n`;
+            body += `| Dependency Cycles | ${sccCount} | Distinct circular dependencies (A→B→C→A). Goal: **0** |\n`;
+            body += `| Largest Cycle | ${largestScc === '0' ? '—' : largestScc + ' components'} | How many components are mutually tangled in the biggest cycle |\n`;
             body += `| Layer Violations | ${violations} | Dependencies that break architectural boundaries |\n`;
             body += `| Hotspots | ${hotspots} | Files with high complexity + frequent changes |\n`;
             body += `| Avg Coupling | ${avgCoupling} | How interconnected modules are (lower is better, <1.0 is good) |\n\n`;
-            
-            if (parseInt(archIssues) === 0 && cycles === '0' && violations === '0') {
+
+            // Honesty note: these are repo-BASELINE metrics, not diff deltas —
+            // they read identically on most PRs. Don't misread a constant as
+            // PR-caused. A true base-vs-head delta is a tracked Obligation
+            // (pr-report-contract.md §2).
+            if (changedFiles === '0') {
+              body += `> ℹ️ This diff changed **0** architecture-relevant files — the numbers above are the repo baseline, unchanged by this PR.\n\n`;
+            } else {
+              body += `> ℹ️ Baseline metrics (whole-repo), not a diff delta. Watch for a value that *moves* vs. \`develop\`, not its absolute level.\n\n`;
+            }
+
+            if (parseInt(archIssues) === 0 && sccCount === '0' && violations === '0') {
               body += '✅ **Architecture looks healthy!**\n\n';
             } else {
               // Show issues summary
               if (parseInt(archIssues) > 0) {
                 body += `⚠️ Found **${archIssues}** architectural issue(s).\n\n`;
               }
-              
+              // A layer violation with no issue count still gets NAMED, not left
+              // as a bare number the reader can't act on (pr-report-contract.md
+              // gap #8). Surfaces the same findings file below.
+              if (parseInt(violations) > 0) {
+                body += `⚠️ **${violations}** layer violation(s) — see **Architecture Findings** below for the offending dependency edge(s).\n\n`;
+              }
+
               // Expandable: Dependency Cycles
-              if (parseInt(cycles) > 0) {
-                body += '<details>\n<summary><strong>🔄 Dependency Cycles</strong></summary>\n\n';
+              if (parseInt(sccCount) > 0) {
+                body += `<details>\n<summary><strong>🔄 Dependency Cycles (${sccCount})</strong></summary>\n\n`;
                 try {
                   const cyclesDetail = fs.readFileSync('/tmp/arch_cycles.md', 'utf8');
                   if (cyclesDetail.trim()) {
@@ -544,8 +603,9 @@ jobs:
                 body += '\n</details>\n\n';
               }
               
-              // Expandable: All Findings
-              if (parseInt(archIssues) > 0) {
+              // Expandable: All Findings — open when a violation exists so the
+              // offending edge is named, not just counted (gap #8).
+              if (parseInt(archIssues) > 0 || parseInt(violations) > 0) {
                 body += '<details>\n<summary><strong>📋 Architecture Findings</strong></summary>\n\n';
                 try {
                   const findings = fs.readFileSync('/tmp/arch_findings.md', 'utf8');
@@ -569,7 +629,14 @@ jobs:
             body += '> 💡 *Detects code that cannot be reached from entry points (dead code).*\n\n';
             
             if (parseInt(reachIssues) === 0) {
-              body += '✅ **No dead code detected**\n\n';
+              // Don't present a vacuous truth as a green check: "no dead code"
+              // over ZERO analyzed files is meaningless, and a fake ✅ trains
+              // readers to trust the real ones less (pr-report-contract.md §2).
+              if (changedFiles === '0') {
+                body += 'ℹ️ No architecture-relevant files in this diff — reachability not evaluated.\n\n';
+              } else {
+                body += '✅ **No dead code detected**\n\n';
+              }
             } else {
               body += `Found **${reachIssues}** potentially unreachable symbol(s).\n`;
               body += `> These functions/classes may be unused and could be candidates for removal.\n\n`;

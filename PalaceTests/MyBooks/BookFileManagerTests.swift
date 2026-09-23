@@ -11,7 +11,9 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class BookFileManagerTests: XCTestCase {
 
     private var registry: TPPBookRegistryMock!
@@ -24,7 +26,6 @@ final class BookFileManagerTests: XCTestCase {
         testAccountId = "bookfilemanager-test-\(UUID().uuidString)"
         sut = BookFileManager(
             bookRegistry: registry,
-            accountsManager: AppContainer.production().accountsManager,
             fileManager: .default
         )
     }

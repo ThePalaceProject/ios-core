@@ -6,16 +6,28 @@ struct NavigationHostView<Content: View>: View {
     @StateObject private var coordinator = NavigationCoordinator()
     @Environment(\.appContainer) private var appContainer
     let rootView: Content
+    /// The tab that hosts this stack. PP-5022 — registration is keyed by tab so a
+    /// stack that appears while its tab is offscreen cannot become the target for
+    /// reader pushes. Optional, but deliberately WITHOUT a default: a future
+    /// fifth tab that forgot to pass one would silently register as fallback-only
+    /// and reinstate the defect, with no compile error and no red test. A host
+    /// that genuinely has no tab identity has to say `nil` out loud.
+    let tab: AppTab?
 
-    init(rootView: Content) {
+    init(rootView: Content, tab: AppTab?) {
         self.rootView = rootView
+        self.tab = tab
     }
 
     var body: some View {
         NavigationStack(path: $coordinator.path) {
             rootView
                 .navigationTitle("")
-                .onAppear { AppContainer.production().navigationCoordinatorHub.coordinator = coordinator }
+                // Registers through the INJECTED container (its environment default
+                // is `AppContainer.production()`, so production is unchanged) —
+                // the hub now resolves against a per-container tab router, so a
+                // test or preview container must see its own host register.
+                .onAppear { appContainer.navigationCoordinatorHub.register(coordinator, for: tab) }
                 .fullScreenCover(item: $coordinator.presentedEPUBSample) { epubData in
                     if let book = coordinator.resolveBook(for: BookRoute(id: epubData.bookId)) {
                         // §7.3 Option α — sample EPUB modal is a reader

@@ -25,6 +25,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ForceResetTests: XCTestCase {
 
     private let key = TPPSignInBusinessLogic.nextOIDCSessionEphemeralKey
@@ -39,7 +40,7 @@ final class ForceResetTests: XCTestCase {
         // `static var` swap-and-restore is the chosen seam because Swift
         // extensions cannot hold stored properties (so no init-DI path).
         savedDefaults = TPPSignInBusinessLogic.forceResetUserDefaults
-        defaults = testUserDefaults()
+        defaults = Self.testUserDefaults()
         TPPSignInBusinessLogic.forceResetUserDefaults = defaults
     }
 

@@ -13,6 +13,7 @@ import PalaceNetwork
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CatalogRepositoryTests: XCTestCase {
 
     // MARK: - Properties
@@ -415,6 +416,7 @@ extension CatalogRepositoryTests {
 // resolve the OPDS2 search URL. These tests pin the invariant that concurrent
 // callers share one network fetch.
 
+@MainActor
 final class CatalogAPIDedupeTests: XCTestCase {
 
     private var networkClient: NetworkClientMock!
@@ -446,6 +448,8 @@ final class CatalogAPIDedupeTests: XCTestCase {
     }
 
     func testFetchFeed_ConcurrentCallersForSameURL_ShareOneNetworkRequest() async throws {
+        let api = api!  // Sendable local so the async-let children don't send @MainActor self
+        let feedURL = feedURL  // Sendable local: async-let children must not read self.feedURL
         async let a = api.fetchFeed(at: feedURL)
         async let b = api.fetchFeed(at: feedURL)
         async let c = api.fetchFeed(at: feedURL)
@@ -461,6 +465,9 @@ final class CatalogAPIDedupeTests: XCTestCase {
     }
 
     func testFetchFeed_ConcurrentCallersForDifferentURLs_DoNotDedupe() async throws {
+        let api = api!  // Sendable local so the async-let children don't send @MainActor self
+        let feedURL = feedURL   // Sendable locals: async-let children must not read self.*
+        let otherURL = otherURL
         async let a = api.fetchFeed(at: feedURL)
         async let b = api.fetchFeed(at: otherURL)
 

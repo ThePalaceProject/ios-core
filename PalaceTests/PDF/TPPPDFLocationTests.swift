@@ -10,6 +10,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPPDFLocationTests: XCTestCase {
 
     // MARK: - Initialization Tests

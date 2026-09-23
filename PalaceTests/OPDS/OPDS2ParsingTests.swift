@@ -16,6 +16,7 @@
 import XCTest
 @testable import Palace
 import PalaceCatalog
+import PalaceBookModel
 
 // MARK: - Fixture loader
 
@@ -29,6 +30,7 @@ private enum OPDS2Fixture {
     }
 }
 
+@MainActor
 final class OPDS2ParsingTests: XCTestCase {
 
     // MARK: - OPDS2Feed: typical catalog (opds2_catalog.json)

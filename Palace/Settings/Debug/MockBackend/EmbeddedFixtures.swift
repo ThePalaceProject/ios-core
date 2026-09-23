@@ -19,6 +19,7 @@ enum EmbeddedFixtures {
         case "auth_document": return authDocument.data(using: .utf8)
         case "problem_documents": return problemDocuments.data(using: .utf8)
         case "annotations": return annotations.data(using: .utf8)
+        case "opds1_hold_entries": return holdsFeed.data(using: .utf8)
         default: return nil
         }
     }
@@ -37,6 +38,70 @@ enum EmbeddedFixtures {
 
     static let annotations = """
     {"@context":"http://www.w3.org/ns/anno.jsonld","id":"https://example.com/annotations/","type":["BasicContainer","AnnotationCollection"],"total":2,"first":{"id":"https://example.com/annotations/page/1","type":"AnnotationPage","items":[{"id":"https://example.com/annotations/abc123","type":"Annotation","motivation":"http://www.w3.org/ns/oa#idling","body":{"http://librarysimplified.org/terms/time":"2026-04-10T14:30:00Z","http://librarysimplified.org/terms/device":"urn:uuid:device-1234","http://librarysimplified.org/terms/chapter":"Chapter 3"},"target":{"source":"urn:uuid:b309a3a0-1234","selector":{"type":"oa:FragmentSelector","value":"{\\"idref\\":\\"chapter3\\",\\"contentCFI\\":\\"/4/2/10\\",\\"progressWithinChapter\\":0.45,\\"progressWithinBook\\":0.23}"}}},{"id":"https://example.com/annotations/def456","type":"Annotation","motivation":"http://www.w3.org/ns/oa#bookmarking","body":{"http://librarysimplified.org/terms/time":"2026-04-09T08:15:00Z"},"target":{"source":"urn:uuid:b309a3a0-1234","selector":{"type":"oa:FragmentSelector","value":"{\\"idref\\":\\"chapter1\\",\\"contentCFI\\":\\"/4/2/4\\",\\"progressWithinChapter\\":0.10,\\"progressWithinBook\\":0.05}"}}}]}}
+    """
+
+    /// OPDS 1.x (Atom) loans/holds feed — one reserved hold (queue position 3
+    /// of 8, 0 of 2 copies) + one ready-to-borrow hold. Mirrors
+    /// PalaceTests/Fixtures/API/opds1_hold_entries.xml so the app can populate
+    /// the Holds tab from the mock backend (the test bundle can't be read at
+    /// app runtime). Served by the `holds_reserved` scenario for the /loans
+    /// route; the registry sync parses it into `.holding` books.
+    static let holdsFeed = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:opds="http://opds-spec.org/2010/catalog"
+          xmlns:schema="http://schema.org/"
+          xmlns:dcterms="http://purl.org/dc/terms/"
+          xmlns:bibframe="http://bibframe.org/vocab/"
+          xmlns:simplified="http://librarysimplified.org/terms/">
+      <id>https://gorgon.staging.palaceproject.io/a1qa-test/holds</id>
+      <title>Holds</title>
+      <updated>2024-06-15T12:00:00Z</updated>
+      <link href="https://gorgon.staging.palaceproject.io/a1qa-test/holds" rel="self" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+      <entry schema:additionalType="http://schema.org/Book">
+        <id>urn:librarysimplified.org/terms/id/TestLib%20ID/hold-reserved-001</id>
+        <title>The Glass Menagerie Reimagined</title>
+        <author><name>Tomoko Fujioka</name></author>
+        <summary type="html">A modern retelling of Tennessee Williams&#8217; classic, set in contemporary Tokyo.</summary>
+        <updated>2024-06-10T11:00:00Z</updated>
+        <published>2024-04-01T00:00:00Z</published>
+        <dcterms:language>en</dcterms:language>
+        <dcterms:publisher>Sakura Literary</dcterms:publisher>
+        <category term="http://librarysimplified.org/terms/fiction/Fiction" scheme="http://librarysimplified.org/terms/fiction/" label="Fiction"/>
+        <link href="https://gorgon.staging.palaceproject.io/images/glass-menagerie-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+        <link href="https://gorgon.staging.palaceproject.io/images/glass-menagerie-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+        <link href="https://gorgon.staging.palaceproject.io/a1qa-test/works/TestLib%20ID/hold-reserved-001/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog">
+          <opds:indirectAcquisition type="application/vnd.adobe.adept+xml">
+            <opds:indirectAcquisition type="application/epub+zip"/>
+          </opds:indirectAcquisition>
+          <opds:availability status="reserved" since="2024-06-05T10:00:00Z" until="2024-07-05T10:00:00Z"/>
+          <opds:holds total="8" position="3"/>
+          <opds:copies available="0" total="2"/>
+        </link>
+        <link href="https://gorgon.staging.palaceproject.io/a1qa-test/works/TestLib%20ID/hold-reserved-001/revoke" rel="http://librarysimplified.org/terms/rel/revoke" type="application/atom+xml;type=entry;profile=opds-catalog"/>
+      </entry>
+      <entry schema:additionalType="http://schema.org/Book">
+        <id>urn:librarysimplified.org/terms/id/TestLib%20ID/hold-ready-002</id>
+        <title>Quantum Cooking: Science in the Kitchen</title>
+        <author><name>Dr. Amara Osei</name></author>
+        <summary type="html">A cookbook that explains the physics and chemistry behind everyday cooking techniques.</summary>
+        <updated>2024-06-14T16:00:00Z</updated>
+        <published>2023-11-15T00:00:00Z</published>
+        <dcterms:language>en</dcterms:language>
+        <dcterms:publisher>Catalyst Books</dcterms:publisher>
+        <category term="http://librarysimplified.org/terms/fiction/Nonfiction" scheme="http://librarysimplified.org/terms/fiction/" label="Nonfiction"/>
+        <link href="https://gorgon.staging.palaceproject.io/images/quantum-cooking-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+        <link href="https://gorgon.staging.palaceproject.io/images/quantum-cooking-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+        <link href="https://gorgon.staging.palaceproject.io/a1qa-test/works/TestLib%20ID/hold-ready-002/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog">
+          <opds:indirectAcquisition type="application/vnd.readium.lcp.license.v1.0+json">
+            <opds:indirectAcquisition type="application/epub+zip"/>
+          </opds:indirectAcquisition>
+          <opds:availability status="ready" since="2024-06-14T08:00:00Z" until="2024-06-17T08:00:00Z"/>
+          <opds:holds total="5"/>
+          <opds:copies available="1" total="3"/>
+        </link>
+      </entry>
+    </feed>
     """
 }
 

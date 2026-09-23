@@ -9,7 +9,9 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class OPDS2BookBridgeTests: XCTestCase {
 
     // MARK: - Basic Metadata Mapping

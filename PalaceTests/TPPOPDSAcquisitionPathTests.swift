@@ -2,7 +2,9 @@ import XCTest
 import PalaceCatalog
 
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 class TPPOPDSAcquisitionPathTests: XCTestCase {
 
     var acquisitions: [TPPOPDSAcquisition]!

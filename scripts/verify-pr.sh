@@ -13,11 +13,20 @@
 #                                              #   from branch-introduced regressions.
 #                                              #   Per .forgeos/wall-failures/ —
 #                                              #   PR #1018 lessons.
+#   scripts/verify-pr.sh --baseline-compare    # Adds the ONLY check that can call a
+#                                              #   failure "this branch's": re-run the
+#                                              #   classes that failed in isolation
+#                                              #   against the merge-base in a throwaway
+#                                              #   worktree. Failing there too means
+#                                              #   pre-existing. Costs a cold build, so
+#                                              #   it is opt-in; without it the gate says
+#                                              #   UNDETERMINED rather than guessing.
 #   scripts/verify-pr.sh --mutation-only       # Run ONLY the mutation step (skips
 #                                              # build/test/lint/coverage/a11y).
-#                                              # Used by the mutation-on-pr.yml
-#                                              # CI workflow which already runs
-#                                              # the rest via unit-testing.yml.
+#                                              # LOCAL ONLY. There is no
+#                                              # mutation CI workflow — this
+#                                              # header named one that has never
+#                                              # existed in this repo.
 #   scripts/verify-pr.sh --enforce-mutations   # Strictness ON for every changed
 #                                              # file (default: critical paths
 #                                              # strict, non-critical advisory).
@@ -39,14 +48,11 @@
 #                                              # YOUR diff, not the file's whole
 #                                              # history). Pass this for release
 #                                              # runs that want full-file coverage.
-#   scripts/verify-pr.sh --simdrive            # Also replay .simdrive/journeys/*.yaml
-#                                              # via simdrive. MAINTAINER-INTERNAL:
-#                                              # simdrive is not yet publicly
-#                                              # distributed; `pip3 install --pre
-#                                              # simdrive` requires private access.
-#                                              # CI (chaos-replay-on-pr.yml) replays
-#                                              # the corpus server-side for every PR
-#                                              # regardless of this flag.
+#   scripts/verify-pr.sh --simdrive            # MAINTAINER-INTERNAL. Replays the
+#                                              # UI journey corpus, which lives in
+#                                              # the maintainer's local QA harness,
+#                                              # not this repo. Reports
+#                                              # "unavailable" on a clean clone.
 #
 # Mutation policy (per CLAUDE.md "Mutation testing"):
 #   Critical paths (Palace/Audiobooks/, Palace/SignInLogic/,
@@ -69,16 +75,29 @@
 #
 # Designed to be called by:
 #   - Claude Code agents before PR creation
-#   - forgeos-session.sh evidence (comprehensive mode)
+#   - forgeos-session.sh evidence (comprehensive mode; maintainer-only, now at
+#     ~/harness/stacks/ios/forgeos/)
 #   - CI workflows for gating
 
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# An absolute name for this file, captured before the `cd` below. `$0` is NOT a
+# reliable handle for "my own source": invoked by a relative path it stops
+# resolving the moment we change directory, and a grep over it then yields
+# nothing — silently. Reviewers measured `cd scripts && ./verify-pr.sh`
+# deriving ZERO owed legs with no output at all.
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+# The arguments as the caller actually gave them. The accounting below must
+# reconcile against THESE and not against the mode variables, because those are
+# what an inverted guard tampers with — a check that derives its authority from
+# the thing it checks cannot witness that thing's tampering.
+ORIGINAL_ARGV=("$@")
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
 QUICK=false
+CHAOS=false
 REPORT_FILE=""
 SIMDRIVE=false
 # Default for --diff-baseline; without this the `elif [ "$DIFF_BASELINE" ...`
@@ -113,6 +132,7 @@ CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks/|SignInLogic/|MyBooks/(Downlo
 # agents on the same machine don't collide on one device. Falls back to the
 # pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
 # sim UDID" — this default is the documented fallback, not a hardcode.
+BASELINE_COMPARE="${BASELINE_COMPARE:-false}"
 SIM_ID="${HARNESS_SESSION_SIM_UDID:-DF4A2A27-9888-429D-A749-2E157A049A37}"
 
 while [[ $# -gt 0 ]]; do
@@ -120,17 +140,27 @@ while [[ $# -gt 0 ]]; do
     --quick) QUICK=true; shift ;;
     --report) REPORT_FILE="$2"; shift 2 ;;
     --diff-baseline) DIFF_BASELINE=true; shift ;;
+    --baseline-compare) BASELINE_COMPARE=true; shift ;;
     --simdrive) SIMDRIVE=true; shift ;;
+    --chaos) CHAOS=true; shift ;;
     --enforce-mutations) MUTATION_POLICY="enforce_all"; shift ;;
     --no-enforce-mutations) MUTATION_POLICY="advisory_all"; shift ;;
     --mutation-only) MUTATION_ONLY=true; QUICK=false; shift ;;
     --mutation-min-kill-rate) MUTATION_MIN_KILL_RATE="$2"; shift 2 ;;
     --mutation-whole-file) MUTATION_WHOLE_FILE=true; shift ;;
+    --base) BASE_OVERRIDE="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
 
 # Detect changed files against base branch
+# Count lines in a shell variable that may be empty. `echo "$V" | wc -l`
+# returns 1 for an empty V because echo still writes a newline; `grep -c .`
+# counts only non-empty lines, so empty input gives 0.
+count_lines() {
+  printf '%s' "$1" | grep -c . || true
+}
+
 detect_base_branch() {
   for candidate in origin/develop origin/main origin/master; do
     if git rev-parse --verify "$candidate" &>/dev/null; then
@@ -141,7 +171,102 @@ detect_base_branch() {
   echo "HEAD~10"
 }
 
-BASE=$(detect_base_branch)
+# `--base <ref>` overrides the detected base. Needed because `detect_base_branch`
+# answers "which integration branch does this repo have", not "which one is this
+# branch off". A PR onto `release/X.Y.Z` diffed against `origin/develop` picks up
+# every commit the release branch carries: PP-5205 read as 51 changed production
+# files across four unrelated tickets, and every diff-scoped gate below
+# (intent, signing, doc-hygiene, superpartner, blast-radius) judged that diff
+# instead of the branch's own. The default is unchanged; this is opt-in.
+BASE=${BASE_OVERRIDE:-$(detect_base_branch)}
+if ! git rev-parse --verify "$BASE" &>/dev/null; then
+  echo "verify-pr: --base '$BASE' is not a resolvable ref" >&2
+  exit 2
+fi
+XCODEBUILD_BIN="${XCODEBUILD_BIN:-$(command -v xcodebuild)}"
+
+# Re-run the named test classes at the merge-base, in a throwaway worktree, and
+# say whether they fail there too.
+#
+# This is the ONLY check in this script that can attribute a failure to the
+# branch. Everything else — "it failed", "it failed in isolation", "it failed
+# all three iterations" — is equally true of a deterministic failure that was
+# already on develop. Distinguishing them needs a run WITHOUT the branch's code.
+#
+# Echoes exactly one of:
+#   all-preexisting     every class fails at the base too
+#   some-new:<names>    those classes pass at the base, so this branch broke them
+#   undetermined        the base run could not be made to produce suite results
+#
+# Costs a cold build of the base tree, which is why the caller gates it behind
+# --baseline-compare rather than paying it on every red run.
+compare_against_baseline() {
+  local classes="$1"
+  local wt dd out iso_suites new_names cls only_testing
+
+  # An explicit XXXXXX template: BSD mktemp treats `-t foo` as a prefix while
+  # GNU requires the X's, and a silently-empty $wt would turn the worktree path
+  # below into "/src".
+  wt=$(mktemp -d "${TMPDIR:-/tmp}/verify-pr-baseline.XXXXXX" 2>/dev/null)
+  if [ -z "$wt" ] || [ ! -d "$wt" ]; then
+    echo "undetermined"
+    return
+  fi
+  dd="$wt/dd"
+
+  # A detached worktree at the base commit: no branch is created, and it is
+  # removed below whatever happens.
+  if ! git worktree add --detach -q "$wt/src" "$BASE" 2>/dev/null; then
+    rm -rf "$wt"
+    echo "undetermined"
+    return
+  fi
+
+  only_testing=""
+  for cls in $classes; do
+    only_testing="$only_testing -only-testing:PalaceTests/$cls"
+  done
+
+  out=$(cd "$wt/src" && "$XCODEBUILD_BIN" -project Palace.xcodeproj -scheme Palace \
+    -destination "id=$SIM_ID" -derivedDataPath "$dd" $only_testing test 2>&1 || true)
+
+  git worktree remove --force "$wt/src" >/dev/null 2>&1 || true
+  rm -rf "$wt"
+
+  baseline_verdict_from_output "$out" "$classes"
+}
+
+# The verdict itself, separated from the machinery that produces the output.
+# Pure: takes the base run's text and the class names, echoes one verdict.
+# Kept apart so it can be tested without git, a simulator, or a 15-minute build
+# — the orchestration above is what needs a real tree, the decision is not.
+baseline_verdict_from_output() {
+  local out="$1" classes="$2"
+  local iso_suites new_names cls
+
+  # Same fail-closed reasoning as the isolation re-run: no suite lines means the
+  # build or the simulator failed, and scoring classes off that would report an
+  # infrastructure problem as a code verdict.
+  iso_suites=$(echo "$out" | grep -cE "Test Suite '[A-Za-z_][A-Za-z0-9_]*' (passed|failed)")
+  if [ "$iso_suites" -eq 0 ]; then
+    echo "undetermined"
+    return
+  fi
+
+  # A class that PASSES at the base and fails here is this branch's doing.
+  new_names=""
+  for cls in $classes; do
+    if echo "$out" | grep -qE "Test Suite '$cls' passed"; then
+      new_names="$new_names $cls"
+    fi
+  done
+
+  if [ -n "$new_names" ]; then
+    echo "some-new:$new_names"
+  else
+    echo "all-preexisting"
+  fi
+}
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
 CHANGED_TEST_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep 'Tests/' || true)
 # Scope a11y file picker to actual SwiftUI/UIKit view files. Exclude
@@ -152,7 +277,22 @@ CHANGED_UI=$(echo "$CHANGED_SWIFT" \
   | grep -E '(UI/|View|Cell|Controller)' \
   | grep -Ev '(ViewModel|ViewState|Model|Reducer|Service|Provider|Mapper|Store|Coordinator|Builder|Dispatcher|Repository|Manager)\.swift$' \
   || true)
-ALL_CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null || true)
+# `--ignore-submodules=none` is load-bearing, not defensive (PP-4976).
+#
+# Every submodule in this repo has `ignore = all` set in git config, so a plain
+# `git diff --name-only` reports a submodule POINTER BUMP AS NOTHING AT ALL.
+# Measured on a real toolkit bump (862364d9b): default reports 0 lines for
+# `ios-audiobooktoolkit`, `--ignore-submodules=none` reports 1.
+#
+# The consequence is worse than a missed audiobook gate. A PR that ONLY bumps a
+# submodule — which is exactly how an audiobook toolkit change lands here —
+# produces an EMPTY changed-file list, which the docs-only predicate below reads
+# as "nothing but documentation changed" and skips the entire battery: build,
+# tests, coverage, mutation, accessibility. It then prints CLEAR.
+#
+# So the gate did not merely fail to see the submodule; it treated a
+# submodule-only change as a documentation change.
+ALL_CHANGED=$(git diff --name-only --ignore-submodules=none "$BASE"...HEAD 2>/dev/null || true)
 
 # Docs-only fast-path. If every changed file matches a documentation or
 # repo-meta pattern, skip the build/test/lint/coverage/mutation/a11y battery.
@@ -171,6 +311,22 @@ ALL_CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null || true)
 DOCS_ONLY=false
 if [ -n "$ALL_CHANGED" ]; then
   NON_DOCS=$(echo "$ALL_CHANGED" | grep -vE '^docs/|\.md$|\.txt$|(^|/)README|(^|/)LICENSE|(^|/)NOTICE|(^|/)CHANGELOG|(^|/)\.gitignore$|(^|/)\.gitattributes$' || true)
+  # NO BELT-AND-BRACES SUBMODULE CHECK HERE, DELIBERATELY.
+  #
+  # A first version of this fix added one: scan ALL_CHANGED for each submodule
+  # path and refuse the fast path if any matched. It was deleted because it
+  # cannot do the job it claims. Its whole purpose was "if the pointer ever
+  # becomes invisible to the diff again, catch it here" — but if the diff goes
+  # blind, ALL_CHANGED contains no submodule path either, so the check has
+  # nothing to match and stays silent. It derives its signal from the thing it
+  # is supposed to be independent of.
+  #
+  # It was also unkillable: with --ignore-submodules=none in place, removing the
+  # check entirely left every test green, because the submodule path is always
+  # in ALL_CHANGED and already fails the documentation filter above.
+  #
+  # The single load-bearing guard is --ignore-submodules=none on ALL_CHANGED,
+  # and it is pinned by test_verify_pr_submodule_visibility.py.
   if [ -z "$NON_DOCS" ]; then
     DOCS_ONLY=true
   fi
@@ -178,13 +334,23 @@ fi
 
 PASS_COUNT=0
 FAIL_COUNT=0
+SKIP_COUNT=0
 RESULTS=()
 
 record() {
   local check="$1" status="$2" detail="$3"
+  # THREE outcomes, not two. A leg that did not run is not a leg that passed —
+  # that conflation is the exact defect this branch exists to remove, and it was
+  # re-introduced here by reporting an absent maintainer tool as "pass". `skip`
+  # keeps the run green (a missing private tool is not a defect in the PR under
+  # test) while saying plainly, in the console and in the JSON, that nothing was
+  # verified. Anyone reading the report can tell "clean" from "did not look".
   if [ "$status" = "pass" ]; then
     PASS_COUNT=$((PASS_COUNT + 1))
     echo "  [PASS] $check"
+  elif [ "$status" = "skip" ]; then
+    SKIP_COUNT=$((SKIP_COUNT + 1))
+    echo "  [SKIP] $check — $detail"
   else
     FAIL_COUNT=$((FAIL_COUNT + 1))
     echo "  [FAIL] $check — $detail"
@@ -194,8 +360,19 @@ record() {
 
 echo "=== Palace Pre-PR Verification ==="
 echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
-echo "Changed files: $(echo "$CHANGED_SWIFT" | wc -l | tr -d ' ') production, $(echo "$CHANGED_TEST_SWIFT" | wc -l | tr -d ' ') test"
+# `echo "$EMPTY" | wc -l` is 1, not 0 — echo emits a newline even for an empty
+# variable — so this line could never print "0 production" and every docs-only
+# or test-only PR read as touching production. `grep -c .` counts non-empty
+# lines and returns 0 for empty input. Covered by
+# scripts/tests/test_verify_pr_line_counts.py.
+echo "Changed files: $(count_lines "$CHANGED_SWIFT") production, $(count_lines "$CHANGED_TEST_SWIFT") test"
 echo ""
+
+# Mark the start of this run so the coverage-floor step (find -newer) matches
+# only THIS run's xcresult. Without it, `find -newer /tmp/.verify-pr-start`
+# errors on the missing marker → XCRESULT="" → the gate silently records
+# "No xcresult found (skipped)" and has never actually enforced a floor.
+touch /tmp/.verify-pr-start 2>/dev/null || true
 
 # Docs-only fast-path: skip build/test/lint/coverage/mutation/a11y when no
 # source files changed. Honest pass records, written to JSON report and stdout
@@ -206,13 +383,14 @@ if [ "$DOCS_ONLY" = "true" ]; then
   echo "Changed files:"
   echo "$ALL_CHANGED" | sed 's/^/  /'
   echo ""
-  record "build" "pass" "Skipped — docs-only PR (no source files changed)"
-  record "unit_tests" "pass" "Skipped — docs-only PR (no source files changed)"
-  record "test_quality" "pass" "Skipped — docs-only PR (no test files changed)"
-  record "coverage_floors" "pass" "Skipped — docs-only PR (no source files changed)"
-  record "mutation" "pass" "Skipped — docs-only PR (no production Swift changed)"
-  record "audiobook_smoke" "pass" "Skipped — docs-only PR (no audiobook files changed)"
-  record "accessibility" "pass" "Skipped — docs-only PR (no UI files changed)"
+  record "build" "skip" "Skipped — docs-only PR (no source files changed)"
+  record "unit_tests" "skip" "Skipped — docs-only PR (no source files changed)"
+  record "triage_bot_package" "skip" "Skipped — docs-only PR (no source files changed)"
+  record "test_quality" "skip" "Skipped — docs-only PR (no test files changed)"
+  record "coverage_floors" "skip" "Skipped — docs-only PR (no source files changed)"
+  record "mutation" "skip" "Skipped — docs-only PR (no production Swift changed)"
+  record "audiobook_smoke" "skip" "Skipped — docs-only PR (no audiobook files changed)"
+  record "accessibility" "skip" "Skipped — docs-only PR (no UI files changed)"
   TEST_PASS=0
   TEST_FAIL=0
 
@@ -220,6 +398,14 @@ if [ "$DOCS_ONLY" = "true" ]; then
   echo "=== Summary ==="
   echo "  Passed: $PASS_COUNT"
   echo "  Failed: $FAIL_COUNT"
+  echo "  Skipped: $SKIP_COUNT (ran nothing — not a pass)"
+  # NOTE: this lane exits before the leg accounting below, so the 28 legs it
+  # never reaches are not reconciled here. That is a real gap, not a design:
+  # a reviewer measured 12 docs-only commits in the last 400 on develop. It is
+  # stated rather than closed because closing it means recording 28 docs-only
+  # skips, which is a larger change than this branch should carry. The lane
+  # does announce itself in stdout and in `"fast_path":"docs-only"`, so a
+  # wrongly-taken fast path is legible even though a missing leg is not.
 
   if [ -n "$REPORT_FILE" ]; then
     RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
@@ -230,6 +416,7 @@ if [ "$DOCS_ONLY" = "true" ]; then
   "fast_path": "docs-only",
   "pass_count": $PASS_COUNT,
   "fail_count": $FAIL_COUNT,
+  "skip_count": $SKIP_COUNT,
   "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
   "checks": [$RESULTS_JSON]
 }
@@ -248,7 +435,7 @@ fi
 # runs the build separately via unit-testing.yml.
 echo "--- Build ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "build" "pass" "Skipped (--mutation-only)"
+  record "build" "skip" "Skipped (--mutation-only)"
 else
 BUILD_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination "id=$SIM_ID" build 2>&1)
@@ -269,54 +456,81 @@ fi
 # 2. Unit tests
 echo "--- Unit Tests ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "unit_tests" "pass" "Skipped (--mutation-only)"
+  record "unit_tests" "skip" "Skipped (--mutation-only)"
   TEST_PASS=0
   TEST_FAIL=0
 else
+# Pin the result bundle. Reading "the newest .xcresult in DerivedData" is not
+# safe: DerivedData is shared across worktrees, so a parallel session's run is
+# routinely newer than this one's, and its failures would be reported as ours.
+RESULT_BUNDLE="${TMPDIR:-/tmp}/verify-pr-$$.xcresult"
+rm -rf "$RESULT_BUNDLE"
 TEST_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination "id=$SIM_ID" test 2>&1 || true)
-# Count only the top-level "All tests" rollups (one per .xctest bundle).
-# Each XCTestCase suite ALSO emits "Executed N" + each bundle emits its own
-# "Selected tests" wrapper, so the prior `grep -o ... | awk '{s+=$1}'` summed
-# the same tests 4-5× and inflated the headline by ~3.5× (e.g. 5,867 unique
-# tests reported as 17,640). The `-A1` after "Test Suite 'All tests' (passed|failed)"
-# captures the bundle-rollup `Executed N tests` line per bundle.
-ROLLUP_LINES=$(echo "$TEST_OUTPUT" | grep -A1 "Test Suite '\(All tests\|Selected tests\)' \(passed\|failed\)")
-TEST_PASS=$(echo "$ROLLUP_LINES" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
-# Failed-bundle rollups say "and 3 failures" (no "with" prefix); passed
-# bundles say "with 0 failures". Match on the trailing " failure" word.
-TEST_FAIL=$(echo "$ROLLUP_LINES" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  -destination "id=$SIM_ID" -resultBundlePath "$RESULT_BUNDLE" test 2>&1 || true)
+
+# The xcresult is the authoritative tally; stdout is a fallback.
+#
+# Scraping stdout for "Test Suite 'All tests' passed" + "Executed N tests" only
+# works in serial mode. Under parallel clones - how both CI and the optimized
+# script run - xcodebuild emits per-test-case lines and those rollups are
+# absent or partial. Same tree, three consecutive runs, this gate reported
+# "2815 tests, 1 failures", "4786 tests, 1 failures" and "0 tests, 0 failures"
+# while the xcresults held 8246/7, 8250/5 and a full green. A gate that
+# under-reports failures is worse than no gate, because it is believed.
+TEST_PASS=""
+TEST_FAIL=""
+TEST_TALLY=""
+if [ -d "$RESULT_BUNDLE" ] && [ -f scripts/xcresult_summary.py ]; then
+  XCR_TALLY=$(python3 scripts/xcresult_summary.py --path "$RESULT_BUNDLE" --mode tally 2>/dev/null || true)
+  if [ -n "$XCR_TALLY" ]; then
+    TEST_PASS=$(echo "$XCR_TALLY" | awk '{print $1}')
+    TEST_FAIL=$(echo "$XCR_TALLY" | awk '{print $2}')
+  fi
+  # Report the SUITE SIZE with every count named, not the passed count under the
+  # word "tests". `tally` returns (passed, failed); printing its first number as
+  # "N tests" understates the suite by the skips and expected failures, and a
+  # local figure below CI's reads as an excluded target.
+  TEST_TALLY=$(python3 scripts/xcresult_summary.py --path "$RESULT_BUNDLE" --mode label 2>/dev/null || true)
+fi
+if [ -z "$TEST_PASS" ]; then
+  ROLLUP_LINES=$(echo "$TEST_OUTPUT" | grep -A1 "Test Suite '\(All tests\|Selected tests\)' \(passed\|failed\)")
+  TEST_PASS=$(echo "$ROLLUP_LINES" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  TEST_FAIL=$(echo "$ROLLUP_LINES" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+fi
+
+# stdout scraping yields only passed/failed, so the label says which two numbers
+# these are rather than implying a suite size the scrape cannot know.
+if [ -z "$TEST_TALLY" ]; then
+  TEST_TALLY="$TEST_PASS passed, $TEST_FAIL failed (suite size unknown - no xcresult)"
+fi
+
+# A timeout or a restarted runner is a FAILURE even when the tally reads clean
+# (CLAUDE.md). Neither shows up in passed/failed counts.
+if echo "$TEST_OUTPUT" | grep -qE 'exceeded execution time allowance|Restarting after .* test timeout'; then
+  TEST_FAIL=$((TEST_FAIL + 1))
+fi
 if [ "$TEST_FAIL" -eq 0 ] && [ "$TEST_PASS" -gt 0 ]; then
-  record "unit_tests" "pass" "$TEST_PASS tests, 0 failures"
+  record "unit_tests" "pass" "$TEST_TALLY"
 elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
   # --diff-baseline: distinguish pre-existing test-isolation flakes from
-  # branch-introduced regressions. Extract failing class names from the
-  # most recent xcresult, re-run each class in isolation, and only fail
-  # the gate if a class fails in isolation too. Mirrors the manual triage
-  # for PR #1018 (9 "failures" all passed in isolation).
-  XCRESULT=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -mmin -30 -type d 2>/dev/null | head -1)
-  if [ -n "$XCRESULT" ] && command -v xcrun >/dev/null 2>&1; then
-    # Walk xcresult JSON to extract failing test-case node names → class names
-    FAILING_CLASSES=$(xcrun xcresulttool get test-results tests --path "$XCRESULT" --format json 2>/dev/null | \
-      python3 -c "
-import json, sys, re
-data = json.load(sys.stdin)
-classes = set()
-def walk(node, parent=''):
-    name = node.get('name', '')
-    full = f'{parent}/{name}' if parent else name
-    if node.get('result') == 'Failed':
-        # Test case path looks like 'Palace > PalaceTests > <Class> > <test>()'
-        parts = full.split(' > ')
-        if len(parts) >= 3:
-            cls = parts[-2]
-            if cls and re.match(r'^[A-Za-z_][A-Za-z0-9_]*Tests?$', cls):
-                classes.add(cls)
-    for child in node.get('children', []) + node.get('testNodes', []):
-        walk(child, full)
-walk(data)
-print('\n'.join(sorted(classes)))
-" 2>/dev/null | head -20)
+  # branch-introduced regressions. Extract failing class names from THIS
+  # run's result bundle, re-run each class in isolation, and only fail the
+  # gate if a class fails in isolation too. Mirrors the manual triage for
+  # PR #1018 (9 "failures" all passed in isolation).
+  #
+  # If a class cannot be re-run - a name -only-testing does not recognise -
+  # it counts as a real failure, not a flake. That direction is deliberate:
+  # xcodebuild silently ignores unknown -only-testing selectors and still
+  # prints ** TEST SUCCEEDED **, so the alternative fails open.
+  # Use the pinned bundle from this run, not "newest in DerivedData" - a
+  # parallel worktree's run is routinely newer, and its failures are not ours.
+  XCRESULT="$RESULT_BUNDLE"
+  if [ -d "$XCRESULT" ] && [ -f scripts/xcresult_summary.py ]; then
+    # Shared extractor, covered by scripts/tests/test_xcresult_summary.py. The
+    # inline version this replaces keyed on "failed leaf node", but a failed
+    # test case is NOT a leaf - its children are Failure Message nodes - so it
+    # returned nothing on every real bundle and silently skipped triage.
+    FAILING_CLASSES=$(python3 scripts/xcresult_summary.py --path "$XCRESULT" --mode classes 2>/dev/null | head -20)
 
     if [ -n "$FAILING_CLASSES" ]; then
       echo "  → --diff-baseline: re-running $(echo "$FAILING_CLASSES" | wc -l | tr -d ' ') failed class(es) in isolation..."
@@ -330,27 +544,122 @@ print('\n'.join(sorted(classes)))
       # one build is much faster than N separate builds with cold derivedData.
       ISOLATED_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
         -destination "id=$SIM_ID" $ONLY_TESTING_ARGS test 2>&1 || true)
+      # Did the isolated run happen at all? If the build failed or the simulator
+      # was busy, NO suite lines are printed, and the loop below would score
+      # every class as a real regression — an infrastructure problem reported as
+      # a code problem. That misfired on this very branch: four classes were
+      # called regressions and all four passed when re-run by hand.
+      ISO_SUITES=$(echo "$ISOLATED_OUTPUT" | grep -cE "Test Suite '[A-Za-z_][A-Za-z0-9_]*' (passed|failed)")
+      if [ "$ISO_SUITES" -eq 0 ]; then
+        record "unit_tests" "fail" "$TEST_TALLY — isolation re-run produced no suites (build or simulator problem), so flake-vs-regression is UNDETERMINED for:$(echo "$FAILING_CLASSES" | tr '\n' ' ')"
+      else
+      REAL_FAIL_NAMES=""
       for cls in $FAILING_CLASSES; do
         if echo "$ISOLATED_OUTPUT" | grep -qE "Test Suite '$cls' passed"; then
           FLAKE_COUNT=$((FLAKE_COUNT + 1))
         else
           REAL_FAIL=$((REAL_FAIL + 1))
+          REAL_FAIL_NAMES="$REAL_FAIL_NAMES $cls"
         fi
       done
       if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
-        record "unit_tests" "pass" "$TEST_PASS tests, $TEST_FAIL fails — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
+        record "unit_tests" "pass" "$TEST_TALLY — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
       else
-        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL classes fail IN ISOLATION (real regression), $FLAKE_COUNT classes are isolation flakes"
+        # "Fails in isolation" does NOT mean "this branch broke it". A
+        # deterministic pre-existing failure fails in isolation too, and this
+        # gate called exactly that a "real regression" on three separate
+        # branches when two lint baselines went missing from develop. The only
+        # evidence that separates the two is the merge-base: re-run the same
+        # classes there and see whether they fail without this branch's code.
+        BASELINE_VERDICT=""
+        if [ "$BASELINE_COMPARE" = true ]; then
+          BASELINE_VERDICT=$(compare_against_baseline "$REAL_FAIL_NAMES")
+        fi
+
+        case "$BASELINE_VERDICT" in
+          all-preexisting)
+            record "unit_tests" "pass" "$TEST_TALLY — $REAL_FAIL class(es) fail in isolation but fail identically at $BASE, so they are PRE-EXISTING, not this branch:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
+            ;;
+          some-new:*)
+            record "unit_tests" "fail" "$TEST_TALLY — REGRESSION introduced by this branch (passes at $BASE, fails here):${BASELINE_VERDICT#some-new:}; $FLAKE_COUNT isolation flake(s)"
+            ;;
+          undetermined)
+            record "unit_tests" "fail" "$TEST_TALLY — $REAL_FAIL class(es) fail in isolation; the $BASE comparison could not run, so whether this branch caused them is UNDETERMINED:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
+            ;;
+          *)
+            # NAME them. Reporting only a count leaves the reader to guess which
+            # classes to open — the same defect this gate is being fixed for.
+            record "unit_tests" "fail" "$TEST_TALLY — $REAL_FAIL class(es) fail IN ISOLATION:$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s). NOT established as this branch's — a pre-existing deterministic failure looks identical here. Re-run with --baseline-compare, or check $BASE."
+            ;;
+        esac
+      fi
       fi
     else
-      record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline could not extract class names from xcresult)"
+      record "unit_tests" "fail" "$TEST_TALLY (--diff-baseline could not extract class names from xcresult)"
     fi
   else
-    record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline requires xcrun + recent xcresult)"
+    record "unit_tests" "fail" "$TEST_TALLY (--diff-baseline requires xcrun + recent xcresult)"
   fi
 else
-  record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures"
+  record "unit_tests" "fail" "$TEST_TALLY"
 fi
+fi
+
+# 2b. PalaceTriageBot SPM package tests
+# Fast, DRM-free gate: runs the UIKit-free Core tests (TriageBotCore) via
+# `swift test`. UIKit-importing targets (TriageBotIOS / parts of TriageBotUI)
+# do not build under macOS `swift test` and are covered by the app build, so
+# this is Core-only. Skipped in --mutation-only mode (that CI path runs the
+# app build/test separately, same as the app-level build/unit gates above).
+echo "--- PalaceTriageBot Package Tests ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "triage_bot_package" "skip" "Skipped (--mutation-only)"
+elif [ ! -d "Palace/Packages/PalaceTriageBot" ]; then
+  record "triage_bot_package" "skip" "Package not present"
+else
+  TRIAGE_OUTPUT=$(swift test --package-path Palace/Packages/PalaceTriageBot 2>&1 || true)
+  # Sum the per-bundle "Executed N tests" rollups under the "All tests" wrapper.
+  TRIAGE_ROLLUP=$(echo "$TRIAGE_OUTPUT" | grep -A1 "Test Suite 'All tests' \(passed\|failed\)")
+  TRIAGE_PASS=$(echo "$TRIAGE_ROLLUP" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  TRIAGE_FAIL=$(echo "$TRIAGE_ROLLUP" | grep -oE '[0-9]+ failures?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  if echo "$TRIAGE_OUTPUT" | grep -q "error:"; then
+    record "triage_bot_package" "fail" "swift test failed to build the package"
+  elif [ "${TRIAGE_FAIL:-0}" -eq 0 ] && [ "${TRIAGE_PASS:-0}" -gt 0 ]; then
+    record "triage_bot_package" "pass" "$TRIAGE_PASS tests, 0 failures"
+  else
+    record "triage_bot_package" "fail" "$TRIAGE_PASS tests, $TRIAGE_FAIL failures"
+  fi
+fi
+
+# 2c. TriageBot redaction leak gate (self-testing)
+# The package suite above already runs RedactionCorpusTests, but a deny-list
+# guard is only worth as much as its ability to fail. This runs the guard AND
+# its --self-test, which disables redaction to prove the guard goes red on an
+# un-redacted corpus. A guard that silently stopped guarding is the failure
+# mode this catches; the suite alone cannot catch it. Build products are warm
+# from 2b, so this is seconds.
+echo "--- TriageBot Redaction Leak Gate ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "triage_redaction_gate" "skip" "Skipped (--mutation-only)"
+elif [ ! -f "scripts/triage-corpus-check.sh" ]; then
+  record "triage_redaction_gate" "skip" "Gate script not present"
+elif [ ! -d "Palace/Packages/PalaceTriageBot" ]; then
+  record "triage_redaction_gate" "skip" "Package not present"
+else
+  # Capture rc from the command itself; `|| true` would mask it and $? would
+  # always read 0.
+  if GATE_OUTPUT=$(bash scripts/triage-corpus-check.sh --self-test 2>&1); then
+    GATE_RC=0
+  else
+    GATE_RC=$?
+  fi
+  if echo "$GATE_OUTPUT" | grep -q "SELF-TEST PASS"; then
+    record "triage_redaction_gate" "pass" "Deny-list guard clean; gate provably fails on a leak"
+  elif echo "$GATE_OUTPUT" | grep -q "SELF-TEST FAIL"; then
+    record "triage_redaction_gate" "fail" "Guard did NOT go red on an injected leak — the gate is broken"
+  else
+    record "triage_redaction_gate" "fail" "A credential shape survived redaction (rc=$GATE_RC)"
+  fi
 fi
 
 # 3. Test quality lint
@@ -361,7 +670,7 @@ fi
 # can scope precisely with anchored grep.
 echo "--- Test Quality Lint ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "test_quality" "pass" "Skipped (--mutation-only)"
+  record "test_quality" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/lint-test-quality.py ]; then
   LINT_PER_FILE=$(python3 scripts/lint-test-quality.py --per-file 2>&1 || true)
   NEW_VIOLATIONS=0
@@ -379,7 +688,7 @@ elif [ -f scripts/lint-test-quality.py ]; then
     record "test_quality" "fail" "$NEW_VIOLATIONS blocking violations in changed test files"
   fi
 else
-  record "test_quality" "pass" "Lint script not found (skipped)"
+  record "test_quality" "skip" "Lint script not found"
 fi
 
 # 3a. Contract reconciliation (M1 universal-rigor-floor gate)
@@ -389,7 +698,7 @@ fi
 # class surfaced in waves 1-4. See `scripts/check-contract-reconciliation.py`.
 echo "--- Contract reconciliation ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "contract_reconciliation" "pass" "Skipped (--mutation-only)"
+  record "contract_reconciliation" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-contract-reconciliation.py ]; then
   CR_DIFF=$(mktemp -t cr-diff.XXXX)
   CR_MSG=$(mktemp -t cr-msg.XXXX)
@@ -405,7 +714,14 @@ elif [ -f scripts/check-contract-reconciliation.py ]; then
   CR_INTENT_FLAG=""
   CR_SUBJECT=$(head -1 "$CR_MSG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
   if [ -n "$CR_SUBJECT" ] && [ -d .forgeos/intent ]; then
-    CR_INTENT_MATCH=$(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null | head -1)
+    # Prefer an intent file present in THIS branch's diff over an old sibling
+    # that merely shares the ticket tokens — an already-merged same-ticket
+    # intent's claims must not gate this diff. Fall back to first match.
+    CR_INTENT_MATCH=""
+    for _c in $(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null); do
+      if grep -qF "${_c#./}" "$CR_DIFF" 2>/dev/null; then CR_INTENT_MATCH="$_c"; break; fi
+    done
+    [ -z "$CR_INTENT_MATCH" ] && CR_INTENT_MATCH=$(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null | head -1)
     [ -n "$CR_INTENT_MATCH" ] && CR_INTENT_FLAG="--intent $CR_INTENT_MATCH"
   fi
   CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --commit-msg "$CR_MSG" $CR_INTENT_FLAG --quiet 2>&1)
@@ -417,7 +733,7 @@ elif [ -f scripts/check-contract-reconciliation.py ]; then
     record "contract_reconciliation" "fail" "Unreconciled claims: $(echo "$CR_OUT" | head -3 | tr '\n' ' ')"
   fi
 else
-  record "contract_reconciliation" "pass" "check-contract-reconciliation.py not found (skipped)"
+  record "contract_reconciliation" "skip" "check-contract-reconciliation.py not found"
 fi
 
 # 3b. Blast-radius (M1 universal-rigor-floor gate)
@@ -427,7 +743,7 @@ fi
 # High-severity findings block. See `scripts/check-blast-radius.py`.
 echo "--- Blast-radius ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "blast_radius" "pass" "Skipped (--mutation-only)"
+  record "blast_radius" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-blast-radius.py ]; then
   BR_DIFF=$(mktemp -t br-diff.XXXX)
   git diff "$BASE"...HEAD > "$BR_DIFF" 2>/dev/null || true
@@ -437,10 +753,261 @@ elif [ -f scripts/check-blast-radius.py ]; then
   if [ "$BR_EXIT" -eq 0 ]; then
     record "blast_radius" "pass" "No high-severity blast-radius findings"
   else
-    record "blast_radius" "fail" "High-severity findings: $(echo "$BR_OUT" | head -3 | tr '\n' ' ')"
+    # Report the COUNT and every finding. `head -3` silently hid 24 of 27 on
+    # one PR, so fixing the three shown looked like fixing them all and the
+    # gate came back red with what looked like new findings.
+    BR_COUNT=$(echo "$BR_OUT" | grep -c 'BR-[0-9]')
+    record "blast_radius" "fail" "$BR_COUNT high-severity finding(s): $(echo "$BR_OUT" | tr '\n' ' ')"
   fi
 else
-  record "blast_radius" "pass" "check-blast-radius.py not found (skipped)"
+  record "blast_radius" "skip" "check-blast-radius.py not found"
+fi
+
+# Repo rule: never commit code-signing info (team ID / provisioning profile) and
+# never add Automatic signing. Diff-based. See `scripts/check-no-committed-signing.sh`.
+echo "--- Committed-signing ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "committed_signing" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-no-committed-signing.sh ]; then
+  NS_DIFF=$(mktemp -t ns-diff.XXXX)
+  git diff "$BASE"...HEAD > "$NS_DIFF" 2>/dev/null || true
+  NS_OUT=$(bash scripts/check-no-committed-signing.sh "$NS_DIFF" 2>&1)
+  NS_EXIT=$?
+  rm -f "$NS_DIFF"
+  if [ "$NS_EXIT" -eq 0 ]; then
+    record "committed_signing" "pass" "No committed signing info / Automatic style added"
+  else
+    record "committed_signing" "fail" "$(echo "$NS_OUT" | grep -m1 BLOCK)"
+  fi
+else
+  record "committed_signing" "skip" "check-no-committed-signing.sh not found"
+fi
+
+# 3b1a. Playback-UI latch — a BLOCKING audiobook UI state must not be derived from
+# a live readiness signal (isLoaded / isBuffering / isDownloading / isPlaying)
+# without the `hasStartedPlayback` session-phase latch. Whole-tree, NOT diff-based:
+# the class is a missing parameter, so a predicate goes wrong when a CALLER starts
+# passing a live signal, in a commit that need not touch the predicate's file.
+# See `scripts/check-playback-ui-latch.py` (PP-5205).
+echo "--- Playback-UI latch ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "playback_ui_latch" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-playback-ui-latch.py ]; then
+  PL_OUT=$(python3 scripts/check-playback-ui-latch.py 2>&1)
+  PL_RC=$?
+  if [ "$PL_RC" -eq 0 ]; then
+    record "playback_ui_latch" "pass" "No unlatched blocking playback UI predicate"
+  else
+    record "playback_ui_latch" "fail" "$(echo "$PL_OUT" | grep -m1 -E '^  .*\.swift:' || echo "$PL_OUT" | head -1)"
+  fi
+else
+  record "playback_ui_latch" "skip" "check-playback-ui-latch.py not found"
+fi
+
+# 3b1b. Override-drops-base-state — an override that replaces a base method
+# wholesale must not silently drop the live state that method maintained. Whole-tree
+# and BASELINED: the two pre-existing findings are amnestied by key, and the gate
+# fails both on anything new and on a baselined entry that stops firing.
+# See `scripts/check-override-drops-base-state.py` (PP-5205).
+echo "--- Override drops base state ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "override_base_state" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-override-drops-base-state.py ]; then
+  OB_OUT=$(python3 scripts/check-override-drops-base-state.py 2>&1)
+  OB_RC=$?
+  if [ "$OB_RC" -ne 0 ]; then
+    OB_FIRST=$(printf '%s\n' "$OB_OUT" | grep -m1 -E '^  [A-Za-z]' || true)
+    [ -n "$OB_FIRST" ] || OB_FIRST=$(printf '%s\n' "$OB_OUT" | sed -n '1p')
+    record "override_base_state" "fail" "$OB_FIRST"
+  elif printf '%s\n' "$OB_OUT" | grep -q "SKIP"; then
+    # NOT a pass: the toolkit submodule is not checked out, so nothing was scanned.
+    record "override_base_state" "skip" "scan roots absent (toolkit submodule not checked out) - nothing was scanned"
+  else
+    record "override_base_state" "pass" "$(printf '%s\n' "$OB_OUT" | grep -o '([0-9]* baselined, [0-9]* new)' | sed -n '1p')"
+  fi
+else
+  record "override_base_state" "skip" "check-override-drops-base-state.py not found"
+fi
+
+# 3b2. Doc-hygiene — only commit docs that explain the code's what/why, never
+# process/generated artifacts (swarm transcripts/contracts, generated IR).
+# Diff-based. See `scripts/check-doc-hygiene.sh`.
+echo "--- Doc-hygiene ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "doc_hygiene" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-doc-hygiene.sh ]; then
+  DH_OUT=$(bash scripts/check-doc-hygiene.sh --base "$BASE" 2>&1)
+  if [ "$?" -eq 0 ]; then
+    record "doc_hygiene" "pass" "No process/generated doc artifacts added"
+  else
+    record "doc_hygiene" "fail" "$(echo "$DH_OUT" | grep -m1 BLOCK)"
+  fi
+else
+  record "doc_hygiene" "skip" "check-doc-hygiene.sh not found"
+fi
+
+# 3b2a. Doc references resolve — every script, workflow, and source path a doc
+# names must exist. Whole-tree (NOT diff-based): a doc goes stale when the CODE
+# moves, and that commit touches no docs at all, so a diff-scoped check would
+# never see it. Pre-existing breakage is baselined; only new breakage fails.
+echo "--- Doc references resolve ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "doc_references" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-doc-references-resolve.py ]; then
+  DR_OUT=$(python3 scripts/check-doc-references-resolve.py 2>&1)
+  DR_RC=$?
+  if [ "$DR_RC" -eq 0 ]; then
+    record "doc_references" "pass" "$(echo "$DR_OUT" | tail -1)"
+  else
+    record "doc_references" "fail" "$(echo "$DR_OUT" | grep -m1 -- '->')"
+  fi
+else
+  record "doc_references" "skip" "check-doc-references-resolve.py not found"
+fi
+
+# 3b2b. Doc indexes complete — a doc nobody can find costs every future search
+# and helps no one. Whole-tree for the same reason as above: deleting a doc and
+# forgetting its index line is a diff that touches only the deleted file.
+echo "--- Doc indexes complete ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "doc_index" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-doc-index-complete.py ]; then
+  DI_OUT=$(python3 scripts/check-doc-index-complete.py 2>&1)
+  DI_RC=$?
+  if [ "$DI_RC" -eq 0 ]; then
+    record "doc_index" "pass" "$(echo "$DI_OUT" | tail -1)"
+  else
+    record "doc_index" "fail" "$(echo "$DI_OUT" | grep -m1 'does not')"
+  fi
+else
+  record "doc_index" "skip" "check-doc-index-complete.py not found"
+fi
+
+# 3b3. DORMANT Wave 2b gate — PalaceBookRegistry/Sources package purity.
+# Whole-tree scan (not diff-based), but a no-op until the package is
+# extracted. See `scripts/check-bookregistry-package-purity.sh`.
+echo "--- BookRegistry package purity (dormant — Wave 2b) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "bookregistry_package_purity" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-bookregistry-package-purity.sh ]; then
+  BR_OUT=$(bash scripts/check-bookregistry-package-purity.sh 2>&1)
+  if [ "$?" -eq 0 ]; then
+    record "bookregistry_package_purity" "pass" "$(echo "$BR_OUT" | head -1)"
+  else
+    record "bookregistry_package_purity" "fail" "$(echo "$BR_OUT" | grep -m1 FAIL)"
+  fi
+else
+  record "bookregistry_package_purity" "skip" "check-bookregistry-package-purity.sh not found"
+fi
+
+# 3b4. DORMANT Wave 3a gate — PalaceAccounts/Sources package purity.
+# Whole-tree scan (not diff-based), but a no-op until the package is
+# extracted. See `scripts/check-palaceaccounts-package-purity.sh`.
+echo "--- PalaceAccounts package purity (dormant — Wave 3a) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "palaceaccounts_package_purity" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-palaceaccounts-package-purity.sh ]; then
+  PA_OUT=$(bash scripts/check-palaceaccounts-package-purity.sh 2>&1)
+  if [ "$?" -eq 0 ]; then
+    record "palaceaccounts_package_purity" "pass" "$(echo "$PA_OUT" | head -1)"
+  else
+    record "palaceaccounts_package_purity" "fail" "$(echo "$PA_OUT" | grep -m1 FAIL)"
+  fi
+else
+  record "palaceaccounts_package_purity" "skip" "check-palaceaccounts-package-purity.sh not found"
+fi
+
+# 3b5. DORMANT Wave 3b gate — PalaceDownloads/Sources package purity.
+# Whole-tree scan (not diff-based), but a no-op until the package is
+# extracted. See `scripts/check-palacedownloads-package-purity.sh`.
+echo "--- PalaceDownloads package purity (dormant — Wave 3b) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "palacedownloads_package_purity" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-palacedownloads-package-purity.sh ]; then
+  PD_OUT=$(bash scripts/check-palacedownloads-package-purity.sh 2>&1)
+  if [ "$?" -eq 0 ]; then
+    record "palacedownloads_package_purity" "pass" "$(echo "$PD_OUT" | head -1)"
+  else
+    record "palacedownloads_package_purity" "fail" "$(echo "$PD_OUT" | grep -m1 FAIL)"
+  fi
+else
+  record "palacedownloads_package_purity" "skip" "check-palacedownloads-package-purity.sh not found"
+fi
+
+# 3b6. Decomposition ratchets — locator count, god-class LOC, `.shared` reads.
+# Three whole-tree scans that each hold a baseline file. They were written with
+# baselines and pytests but wired into NOTHING, so the lines they exist to hold
+# could drift upward silently (audited 2026-08-20: all three orphaned). A check
+# nothing invokes is inert — see memory `fixes-must-be-systemic-not-remembered`.
+# Each exits non-zero only when the tree regresses PAST its committed baseline,
+# so they are no-ops on a clean tree and cost ~7s total.
+echo "--- Decomposition ratchets (locator / god-class LOC / .shared reads) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "decomposition_ratchets" "skip" "not run (--mutation-only)"
+else
+  RATCHET_FAILED=""
+  RATCHET_DETAIL=""
+  RATCHET_RAN=""
+  RATCHET_MISSING=""
+  for ratchet in check-appcontainer-locator-count.sh check-godclass-loc-freeze.sh check-shared-read-count.sh; do
+    # A MISSING ratchet is not a passing one. Skipping it silently and then
+    # reporting "all three at or under baseline" is how a deleted gate reads as
+    # green — name the ones that actually ran.
+    if [ ! -f "scripts/$ratchet" ]; then
+      RATCHET_MISSING="$RATCHET_MISSING $ratchet"
+      continue
+    fi
+    RATCHET_OUT=$(bash "scripts/$ratchet" 2>&1)
+    RATCHET_RC=$?
+    RATCHET_RAN="$RATCHET_RAN $ratchet"
+    if [ "$RATCHET_RC" -ne 0 ]; then
+      RATCHET_FAILED="yes"
+      RATCHET_DETAIL="$RATCHET_DETAIL $ratchet: $(echo "$RATCHET_OUT" | grep -m1 -iE 'FAIL|exceed|over baseline' | head -c 160);"
+    fi
+  done
+  if [ -n "$RATCHET_FAILED" ]; then
+    record "decomposition_ratchets" "fail" "$RATCHET_DETAIL"
+  elif [ -n "$RATCHET_MISSING" ]; then
+    # Some ran clean, but the report must not imply the missing ones did.
+    record "decomposition_ratchets" "skip" "ran:${RATCHET_RAN:- none} — MISSING:$RATCHET_MISSING"
+  else
+    record "decomposition_ratchets" "pass" "at or under baseline:$RATCHET_RAN"
+  fi
+fi
+
+# 3b7. Completion-isolation (diff-scoped).
+# Flags a completion handler invoked from a Task inside a non-main-actor
+# function: a @MainActor caller's closure then fails an isolation assertion and
+# the process is killed outright, with no error and no saved reading position
+# (PP-4955). Swift emits no warning for this.
+#
+# DIFF-SCOPED ON PURPOSE. A whole-tree run currently exits 1 on 11 pre-existing
+# violations in LCPAudiobooks + AudiobookBookmarkBusinessLogic, which is exactly
+# why this detector was never wired: as a scan-all gate it would block every
+# commit on debt it did not introduce. Passing only the changed Swift files
+# blocks NEW violations while leaving the known backlog to its own tickets.
+echo "--- Completion isolation (changed files) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "completion_isolation" "skip" "not run (--mutation-only)"
+elif [ ! -f scripts/check-completion-isolation.py ]; then
+  record "completion_isolation" "skip" "check-completion-isolation.py not found"
+elif [ -z "$CHANGED_SWIFT" ]; then
+  record "completion_isolation" "skip" "no changed production Swift files to scan"
+else
+  CI_FILES=()
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$f" ] && CI_FILES+=("$f")
+  done <<< "$CHANGED_SWIFT"
+  if [ "${#CI_FILES[@]}" -eq 0 ]; then
+    record "completion_isolation" "skip" "no changed production Swift files on disk to scan"
+  else
+    CI_OUT=$(python3 scripts/check-completion-isolation.py "${CI_FILES[@]}" 2>&1)
+    if [ "$?" -eq 0 ]; then
+      record "completion_isolation" "pass" "${#CI_FILES[@]} changed file(s); no completion delivered off the main actor"
+    else
+      record "completion_isolation" "fail" "$(echo "$CI_OUT" | head -1)"
+    fi
+  fi
 fi
 
 # 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
@@ -449,7 +1016,7 @@ fi
 # See `scripts/check-adjacency-staleness.py`.
 echo "--- Adjacency staleness ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "adjacency_staleness" "pass" "Skipped (--mutation-only)"
+  record "adjacency_staleness" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-adjacency-staleness.py ]; then
   ADJ_DIFF=$(mktemp -t adj-diff.XXXX)
   git diff "$BASE"...HEAD > "$ADJ_DIFF" 2>/dev/null || true
@@ -464,37 +1031,42 @@ elif [ -f scripts/check-adjacency-staleness.py ]; then
     record "adjacency_staleness" "pass" "${ADJ_WARN_COUNT:-0} stale-comment warning(s) — non-blocking"
   fi
 else
-  record "adjacency_staleness" "pass" "check-adjacency-staleness.py not found (skipped)"
+  record "adjacency_staleness" "skip" "check-adjacency-staleness.py not found"
 fi
 
 # 3d. Intent recorded (M1 universal-rigor-floor gate)
 # Requires a `.forgeos/intent/<name>.md` for diffs ≥10 prod LOC under Palace/.
 # Intent file must have frontmatter (name/created/author) + body sections
-# (## Claims / ## Anti-claims / ## Files in scope). See `scripts/check-intent-recorded.py`.
+# (## Claims / ## Anti-claims / ## Files in scope), and its `## Files in scope`
+# must name every production file the diff adds code to.
+# See `scripts/check-intent-recorded.py`.
 echo "--- Intent recorded ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "intent_recorded" "pass" "Skipped (--mutation-only)"
+  record "intent_recorded" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-intent-recorded.py ]; then
   IR_DIFF=$(mktemp -t ir-diff.XXXX)
-  IR_MSG=$(mktemp -t ir-msg.XXXX)
   git diff "$BASE"...HEAD > "$IR_DIFF" 2>/dev/null || true
-  # Pass HEAD's commit subject so the intent-name → subject match runs.
-  # Without this, the check sees the diff but has no subject to match
-  # `.forgeos/intent/<name>.md`'s `name:` field against, and bails out
-  # with INTENT-MISSING even when the intent file exists and matches.
-  git log -1 --format="%s" > "$IR_MSG" 2>/dev/null || true
+  # No commit subject is passed: the intent is matched by its `## Files in
+  # scope` against the branch diff, not by its `name:` against HEAD's subject
+  # (PP-5024). Feeding HEAD's subject in made this gate's verdict a function
+  # of how the last commit was worded, on a branch-wide diff.
   IR_OUT=$(python3 scripts/check-intent-recorded.py --diff "$IR_DIFF" \
-                                                   --commit-msg "$IR_MSG" \
                                                    --quiet 2>&1)
   IR_EXIT=$?
-  rm -f "$IR_DIFF" "$IR_MSG"
+  rm -f "$IR_DIFF"
   if [ "$IR_EXIT" -eq 0 ]; then
     record "intent_recorded" "pass" "Intent file present (or below threshold)"
   else
+    # Echo the whole thing: the gate's failure output names the files to add,
+    # the intents that list them but cannot answer for them, and the rule
+    # being applied. `record` keeps only the first lines for the JSON detail,
+    # so without this the author sees a truncated verdict and none of the
+    # diagnosis — an inert explanation is the same as no explanation.
+    echo "$IR_OUT"
     record "intent_recorded" "fail" "Intent missing/invalid: $(echo "$IR_OUT" | head -3 | tr '\n' ' ')"
   fi
 else
-  record "intent_recorded" "pass" "check-intent-recorded.py not found (skipped)"
+  record "intent_recorded" "skip" "check-intent-recorded.py not found"
 fi
 
 # 3e. Superpartner spectrum (M1 universal-rigor-floor gate, warn-only)
@@ -504,7 +1076,7 @@ fi
 # See `scripts/check-superpartner-spectrum.py`.
 echo "--- Superpartner spectrum ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "superpartner_spectrum" "pass" "Skipped (--mutation-only)"
+  record "superpartner_spectrum" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-superpartner-spectrum.py ]; then
   SP_DIFF=$(mktemp -t sp-diff.XXXX)
   git diff "$BASE"...HEAD > "$SP_DIFF" 2>/dev/null || true
@@ -519,7 +1091,7 @@ elif [ -f scripts/check-superpartner-spectrum.py ]; then
     record "superpartner_spectrum" "pass" "${SP_WARN_COUNT:-0} superpartner warning(s) — non-blocking"
   fi
 else
-  record "superpartner_spectrum" "pass" "check-superpartner-spectrum.py not found (skipped)"
+  record "superpartner_spectrum" "skip" "check-superpartner-spectrum.py not found"
 fi
 
 # 3f. Test name-vs-body (M1 universal-rigor-floor gate, warn-only, file-based)
@@ -528,12 +1100,12 @@ fi
 # files, not a diff. See `scripts/check-test-name-vs-body.py`.
 echo "--- Test name-vs-body ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "test_name_vs_body" "pass" "Skipped (--mutation-only)"
+  record "test_name_vs_body" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/check-test-name-vs-body.py ] && [ -n "$CHANGED_TEST_SWIFT" ]; then
   TNB_FILES=()
   while IFS= read -r f; do [ -n "$f" ] && [ -f "$f" ] && TNB_FILES+=("$f"); done <<< "$CHANGED_TEST_SWIFT"
   if [ "${#TNB_FILES[@]}" -eq 0 ]; then
-    record "test_name_vs_body" "pass" "No changed test files on disk"
+    record "test_name_vs_body" "skip" "No changed test files on disk"
   else
     TNB_OUT=$(python3 scripts/check-test-name-vs-body.py "${TNB_FILES[@]}" --quiet 2>&1)
     TNB_EXIT=$?
@@ -546,7 +1118,7 @@ elif [ -f scripts/check-test-name-vs-body.py ] && [ -n "$CHANGED_TEST_SWIFT" ]; 
     fi
   fi
 else
-  record "test_name_vs_body" "pass" "No changed test files (skipped)"
+  record "test_name_vs_body" "skip" "No changed test files"
 fi
 
 # 3g-3l. Phase 3.5 class-detectable detectors (swarm_162a3219)
@@ -559,7 +1131,7 @@ run_phase35_detector() {
   # $1=record key  $2=script  $3=block|warn  $4=pass message  $5=diff|scan (invocation mode)
   local key="$1" script="$2" mode="$3" pass_msg="$4" scan_mode="${5:-diff}"
   if [ "$MUTATION_ONLY" = "true" ]; then
-    record "$key" "pass" "Skipped (--mutation-only)"
+    record "$key" "skip" "not run (--mutation-only)"
   elif [ -f "scripts/$script" ]; then
     local d out exit_code
     if [ "$scan_mode" = "scan" ]; then
@@ -582,7 +1154,7 @@ run_phase35_detector() {
       record "$key" "fail" "$(echo "$out" | head -3 | tr '\n' ' ')"
     fi
   else
-    record "$key" "pass" "scripts/$script not found (skipped)"
+    record "$key" "skip" "scripts/$script not found"
   fi
 }
 
@@ -599,26 +1171,60 @@ run_phase35_detector "swiftui_placeholder_a11y" "check-swiftui-placeholder-a11y.
   "No SwiftUI placeholder/label without .accessibilityLabel" "diff"
 run_phase35_detector "notification_center_observer_storage" "check-notification-center-observer-storage.py" "warn" \
   "No NotificationCenter observer registered without storage/removal" "diff"
+run_phase35_detector "unsynchronized_sendable_mock" "check-unsynchronized-sendable-mock.py" "block" \
+  "No unsynchronized @unchecked Sendable mock driven by concurrent tests" "scan"
+run_phase35_detector "addoperation_literal_ban" "check-addoperation-literal-ban.py" "block" \
+  "No raw NSOperation-family closure literal (#1338 ClangImporter @MainActor-poisoning risk)" "diff"
+run_phase35_detector "auth_challenge_async_form" "check-auth-challenge-async-form.py" "block" \
+  "No completion-handler-form auth-challenge delegate callback (PP-4895 ClangImporter @MainActor-poisoning risk)" "diff"
+run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" \
+  "No NSKeyedUnarchiver.unarchiveObject(with:) — raises uncatchably on a corrupt archive" "diff"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "coverage_floors" "pass" "Skipped (--mutation-only)"
+  record "coverage_floors" "skip" "Skipped (--mutation-only)"
 elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.json ]; then
-  # Extract coverage from test results
-  XCRESULT=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -newer /tmp/.verify-pr-start 2>/dev/null | head -1)
-  if [ -n "$XCRESULT" ]; then
-    COV_OUTPUT=$(python3 scripts/enforce_coverage_floors.py --baseline-only 2>&1 || true)
-    if echo "$COV_OUTPUT" | grep -q "VIOLATED"; then
-      record "coverage_floors" "fail" "Coverage below module thresholds"
+  # Use the bundle THIS run pinned. Two defects lived in the line this
+  # replaces. (1) `xcodebuild` is invoked with `-resultBundlePath
+  # "$RESULT_BUNDLE"`, which is under $TMPDIR — so a search of DerivedData
+  # could never find this run's bundle, and the leg recorded "No xcresult
+  # found" on every run. (2) On the rare hit it would have scored a PARALLEL
+  # WORKTREE's bundle; the --diff-baseline site above was fixed for exactly
+  # that hazard and this copy was missed.
+  XCRESULT="$RESULT_BUNDLE"
+  if [ -d "$XCRESULT" ]; then
+    # enforce_coverage_floors.py takes coverage-data.json as a REQUIRED
+    # positional. It was called without one, so argparse exited 2 with a usage
+    # error, `|| true` swallowed it, the usage text contains no "VIOLATED",
+    # and the leg recorded PASS having measured nothing. Key off the
+    # documented exit code (0 met / 1 violated / 2 input error) and never
+    # report a pass for a run that produced no measurement.
+    COV_JSON="${TMPDIR:-/tmp}/verify-pr-coverage-$$.json"
+    if python3 scripts/coverage-report.py "$XCRESULT" --json "$COV_JSON" >/dev/null 2>&1 && [ -s "$COV_JSON" ]; then
+      # NOT `--baseline-only`. That flag sets every floor to the CURRENT
+      # actual (`effective_floor = actual if baseline_only`), so the
+      # comparison is `actual >= actual` and the gate can never fail —
+      # measured and confirmed: exit 0 on a tree that violates its own
+      # recorded floors. Enforcing `scripts/coverage-floors.json` is the
+      # whole point of the leg.
+      COV_OUTPUT=$(python3 scripts/enforce_coverage_floors.py "$COV_JSON" 2>&1)
+      COV_RC=$?
+      if [ "$COV_RC" -eq 0 ]; then
+        record "coverage_floors" "pass" "All module floors met"
+      elif [ "$COV_RC" -eq 1 ]; then
+        record "coverage_floors" "fail" "Coverage below module thresholds"
+      else
+        record "coverage_floors" "fail" "coverage enforcement exited $COV_RC (input error) — the floor was NOT checked"
+      fi
     else
-      record "coverage_floors" "pass" "All module floors met"
+      record "coverage_floors" "fail" "could not extract coverage from $XCRESULT — the floor was NOT checked"
     fi
   else
-    record "coverage_floors" "pass" "No xcresult found (skipped)"
+    record "coverage_floors" "skip" "this run wrote no result bundle at $RESULT_BUNDLE"
   fi
 else
-  record "coverage_floors" "pass" "Coverage enforcement not configured (skipped)"
+  record "coverage_floors" "skip" "Coverage enforcement not configured"
 fi
 
 # 5. Mutation testing
@@ -639,7 +1245,7 @@ fi
 echo "--- Mutation Testing ---"
 MUTATION_REPORTS_DIR=".forgeos/mutation-reports"
 if [ "$QUICK" = "true" ] && [ "$MUTATION_ONLY" != "true" ]; then
-  record "mutation" "pass" "Skipped (--quick mode)"
+  record "mutation" "skip" "Skipped (--quick mode)"
 elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
   TOTAL_KILLED=0
   TOTAL_MUTATIONS=0
@@ -691,7 +1297,7 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
       continue
     fi
 
-    # Per-file JSON report so post-mutation-pr-comment.py can render the table.
+    # Per-file JSON report of mutation results (kept for local inspection).
     SLUG=$(echo "$swift_file" | tr '/' '_' | sed 's/\.swift$//')
     REPORT_PATH="$MUTATION_REPORTS_DIR/$SLUG.json"
 
@@ -834,7 +1440,7 @@ PYEOF
     record "mutation" "pass" "$DETAIL"
   fi
 else
-  record "mutation" "pass" "No production Swift files changed (skipped)"
+  record "mutation" "skip" "No production Swift files changed"
 fi
 
 # 5b. Audiobook cross-vendor smoke (if audiobook files changed)
@@ -851,11 +1457,41 @@ fi
 # is robust if the file lands on develop before Module B's PR merges.
 echo "--- Audiobook Cross-Vendor Smoke ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "audiobook_smoke" "pass" "Skipped (--mutation-only)"
+  record "audiobook_smoke" "skip" "Skipped (--mutation-only)"
 else
-  AUDIOBOOK_CHANGED=$(echo "$ALL_CHANGED" | grep -E '^Palace/Audiobooks/|^ios-audiobooktoolkit/' || true)
+  # WHAT COUNTS AS AN AUDIOBOOK FILE. This matched only `Palace/Audiobooks/` and
+  # `ios-audiobooktoolkit/`, and a player view under `AppInfrastructure/` slipped
+  # through — the change was entirely about audiobook playback and the gate
+  # reported a pass having run nothing (PP-4976).
+  #
+  # A census of the tree found 25 files outside those two prefixes that reference
+  # audiobook types. Matching on a mere mention over-fires: `Strings.swift` and
+  # `AccessibilityIdentifiers.swift` name audiobooks and are not audiobook code.
+  # Two signals together are precise on the measured tree:
+  #   - the path names an audiobook concept, OR
+  #   - the file imports PalaceAudiobookToolkit
+  # That catches AudiobookMorphingPlayerView (import) and the bookmark/position
+  # adapters (path), and excludes the localisation and test-identifier files.
+  AUDIOBOOK_BY_PATH=$(echo "$ALL_CHANGED" \
+    | grep -iE '^Palace/Audiobooks/|^ios-audiobooktoolkit/|audiobook' || true)
+
+  # Import arm. Only inspects files that still exist — a deletion cannot be read,
+  # and its path is already covered by the arm above if it was audiobook-named.
+  AUDIOBOOK_BY_IMPORT=""
+  while IFS= read -r ab_file; do
+    [ -n "$ab_file" ] || continue
+    case "$ab_file" in *.swift) ;; *) continue ;; esac
+    [ -f "$ab_file" ] || continue
+    if grep -qE '^[[:space:]]*import PalaceAudiobookToolkit' "$ab_file" 2>/dev/null; then
+      AUDIOBOOK_BY_IMPORT="${AUDIOBOOK_BY_IMPORT}${ab_file}
+"
+    fi
+  done <<< "$ALL_CHANGED"
+
+  AUDIOBOOK_CHANGED=$(printf '%s\n%s\n' "$AUDIOBOOK_BY_PATH" "$AUDIOBOOK_BY_IMPORT" \
+    | grep -v '^[[:space:]]*$' | sort -u || true)
   if [ -z "$AUDIOBOOK_CHANGED" ]; then
-    record "audiobook_smoke" "pass" "Skipped (no audiobook files changed)"
+    record "audiobook_smoke" "skip" "Skipped (no audiobook files changed)"
   else
     SMOKE_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
       -destination "id=$SIM_ID" \
@@ -881,7 +1517,7 @@ fi
 # 6. Accessibility audit (if UI files changed)
 echo "--- Accessibility ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "accessibility" "pass" "Skipped (--mutation-only)"
+  record "accessibility" "skip" "Skipped (--mutation-only)"
 elif [ -n "$CHANGED_UI" ]; then
   # Check for missing accessibility identifiers in changed UI files
   A11Y_ISSUES=0
@@ -904,7 +1540,7 @@ elif [ -n "$CHANGED_UI" ]; then
     record "accessibility" "fail" "$A11Y_ISSUES UI files missing accessibility annotations"
   fi
 else
-  record "accessibility" "pass" "No UI files changed (skipped)"
+  record "accessibility" "skip" "No UI files changed"
 fi
 
 # 6b. Ledger PR-drift check — flags contracts whose source files changed
@@ -915,9 +1551,9 @@ fi
 #     [skip-ledger-check] in commit messages for typo/refactor PRs.
 echo "--- Ledger PR Drift ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "ledger_pr_drift" "pass" "Skipped (--mutation-only)"
+  record "ledger_pr_drift" "skip" "Skipped (--mutation-only)"
 elif [ ! -x scripts/ledger-pr-check.py ] || [ ! -d docs/ledger ]; then
-  record "ledger_pr_drift" "pass" "Ledger PR-drift check not available (skipped)"
+  record "ledger_pr_drift" "skip" "Ledger PR-drift check not available"
 else
   LEDGER_PR_OUT=$(scripts/ledger-pr-check.py "$BASE" 2>&1 || true)
   if echo "$LEDGER_PR_OUT" | grep -q "^✓ ledger pr-drift clean"; then
@@ -933,26 +1569,73 @@ else
   fi
 fi
 
-# 7. simdrive replay (opt-in via --simdrive). Delegates to scripts/simdrive-regress.sh
-#    which enforces the two-tier gate (stateless = blocking on drift, stateful = smoke).
+# 7. simdrive replay (opt-in via --simdrive). MAINTAINER-INTERNAL: the driver and
+#    its journey corpus live outside this repo, in the maintainer's local QA
+#    harness. A clean clone does not have them, which is why this leg is opt-in
+#    and reports "unavailable" rather than "fail" when they are absent — a
+#    missing private tool is not a defect in the PR under test.
+SIMDRIVE_REGRESS="${PALACE_QA_HARNESS:-$HOME/harness/palace-qa}/scripts/simdrive-regress.sh"
 echo "--- simdrive Replay ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "simdrive" "pass" "Skipped (--mutation-only)"
+  record "simdrive" "skip" "Not run (--mutation-only)"
 elif [ "$SIMDRIVE" != "true" ]; then
-  record "simdrive" "pass" "Skipped (pass --simdrive to enable)"
-elif [ ! -x scripts/simdrive-regress.sh ]; then
-  record "simdrive" "fail" "scripts/simdrive-regress.sh missing or not executable"
+  record "simdrive" "skip" "Not run (pass --simdrive to enable)"
+elif [ ! -x "$SIMDRIVE_REGRESS" ]; then
+  record "simdrive" "skip" "Not run (maintainer-only tooling absent from this repo)"
 elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
   record "simdrive" "fail" "simdrive package not installed (pip3 install --pre simdrive)"
 else
   SIMDRIVE_REPORT=$(mktemp)
-  if SIMDRIVE_SIM_ID="$SIM_ID" scripts/simdrive-regress.sh --tier stateless --report "$SIMDRIVE_REPORT" >/dev/null 2>&1; then
+  if SIMDRIVE_SIM_ID="$SIM_ID" "$SIMDRIVE_REGRESS" --tier stateless --report "$SIMDRIVE_REPORT" >/dev/null 2>&1; then
     SD_PASS=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('pass_count', 0))" 2>/dev/null || echo 0)
     record "simdrive" "pass" "${SD_PASS} stateless journey(s) clean"
   else
     SD_FAIL=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('fail_count', 0))" 2>/dev/null || echo "?")
     SD_PASS=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('pass_count', 0))" 2>/dev/null || echo 0)
     record "simdrive" "fail" "${SD_FAIL} stateless journey(s) drifted (${SD_PASS} clean) — see ${SIMDRIVE_REPORT}"
+  fi
+fi
+
+# 7b. chaos pass (opt-in via --chaos). MAINTAINER-INTERNAL, same trade as the
+#     replay leg above: the runner lives in the local QA harness, not here.
+#
+#     DELIBERATELY NOT A CI CHECK, and not because of tooling. A chaos pass
+#     drives a booted simulator through a headless agent to explore adversarially;
+#     it is non-deterministic BY DESIGN — it explores, it does not assert — and a
+#     job whose output varies per run cannot gate a PR. It also costs an API
+#     budget per invocation. So it belongs here, in local pre-PR validation,
+#     where the maintainer chooses when to spend it. CI must not claim it runs.
+CHAOS_PASS="${PALACE_QA_HARNESS:-$HOME/harness/palace-qa}/scripts/run-chaos-pass.sh"
+echo "--- Chaos Pass ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "chaos" "skip" "not run (--mutation-only)"
+elif [ "$CHAOS" != "true" ]; then
+  record "chaos" "skip" "not run (opt-in; pass --chaos to enable)"
+elif [ ! -x "$CHAOS_PASS" ]; then
+  record "chaos" "skip" "driver unavailable (maintainer-only; not in this repo)"
+elif ! command -v claude >/dev/null 2>&1; then
+  record "chaos" "fail" "chaos drives a headless agent; 'claude' CLI not on PATH"
+elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
+  record "chaos" "fail" "simdrive package not installed (pip3 install --pre simdrive)"
+else
+  CHAOS_RUN_DIR=$(mktemp -d)
+  # Scoped to the PR's changed files, and hard-capped, because this leg spends
+  # real wall-clock and real API budget on every invocation. ALL_CHANGED is the
+  # same list the rest of this script reports on, written to a file because the
+  # runner takes a path, not a list.
+  CHAOS_FILES=$(mktemp)
+  printf '%s\n' "$ALL_CHANGED" > "$CHAOS_FILES"
+  if "$CHAOS_PASS" --udid "$SIM_ID" --diff-files-from "$CHAOS_FILES" \
+       --run-dir "$CHAOS_RUN_DIR" --max-paths 10 --max-minutes 5 >/dev/null 2>&1; then
+    CHAOS_FINDINGS=$(find "$CHAOS_RUN_DIR" -name 'findings.csv' -exec tail -n +2 {} + 2>/dev/null | grep -c . || echo 0)
+    if [ "$CHAOS_FINDINGS" = "0" ]; then
+      record "chaos" "pass" "0 findings (run dir ${CHAOS_RUN_DIR})"
+    else
+      record "chaos" "fail" "${CHAOS_FINDINGS} finding(s) — see ${CHAOS_RUN_DIR}"
+    fi
+  else
+    # A chaos pass that could not drive the sim is NOT a clean pass.
+    record "chaos" "fail" "chaos pass did not complete — see ${CHAOS_RUN_DIR}"
   fi
 fi
 
@@ -967,13 +1650,25 @@ fi
 echo "--- Coverage by FR ---"
 HARNESS_BIN="$HOME/harness/bin/harness"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "coverage_by_fr" "pass" "Skipped (--mutation-only)"
+  record "coverage_by_fr" "skip" "Skipped (--mutation-only)"
 elif [ ! -x "$HARNESS_BIN" ]; then
-  record "coverage_by_fr" "pass" "harness not installed (skipped)"
+  record "coverage_by_fr" "skip" "harness not installed"
 elif ! "$HARNESS_BIN" srd --help 2>&1 | grep -q '\bcoverage\b'; then
-  record "coverage_by_fr" "pass" "harness srd coverage subcommand not available (skipped)"
+  record "coverage_by_fr" "skip" "harness srd coverage subcommand not available"
 else
   COV_JSON=$("$HARNESS_BIN" srd coverage --json 2>/dev/null)
+  # A missing sidecar is absent infrastructure, not code drift — failing here
+  # false-reds EVERY branch (incl. develop) on machines where the hand-curated
+  # matrix was never created or was orphaned by a project rename (Heka dogfood
+  # finding R8, 2026-07-05). Detect via the structured JSON error field (NOT
+  # stderr-string matching — wording drift would route to the false-drift
+  # branch below, because empty fr_gaps/missing/stale parse as all-zeros).
+  COV_ERR=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('error',''))" 2>/dev/null || echo "unparseable")
+  if [ "$COV_ERR" = "sidecar_missing" ]; then
+    record "coverage_by_fr" "skip" "coverage-matrix sidecar absent — skipped (hand-curated file; see harness srd coverage)"
+    COV_SKIP=1
+  fi
+  if [ "${COV_SKIP:-0}" != "1" ]; then
   COV_GAPS=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('fr_gaps', [])))" 2>/dev/null || echo "?")
   COV_MISSING=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('missing_test_areas', [])))" 2>/dev/null || echo "?")
   COV_STALE=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('fr_stale',[]))+len(d.get('nfr_stale',[])))" 2>/dev/null || echo "?")
@@ -986,6 +1681,112 @@ else
   else
     record "coverage_by_fr" "fail" "FR↔Tests matrix issues — gaps=$COV_GAPS missing=$COV_MISSING stale=$COV_STALE — run: harness srd coverage"
   fi
+  fi
+fi
+
+# --- Every leg must ACCOUNT for itself -------------------------------------
+#
+# A leg that never executes records nothing, and a summary built only from what
+# ran cannot tell "clean" from "never reached". Review demonstrated attacks that
+# reach that state while leaving the code present and `bash -n` clean: wrapping
+# a section in `if false`, inverting an outer guard, moving a block into an
+# uncalled function.
+#
+# THE OWED SET IS DERIVED from this script's own call sites, which is robust
+# against those by construction: each preserves the call-site text and removes
+# only the execution. It is read from SCRIPT_PATH, not `$0` — see above.
+EXPECTED_KEYS=$(grep -oE '(record|run_phase35_detector) "[a-z_0-9]+"' "$SCRIPT_PATH" \
+                | sed -E 's/.*"([a-z_0-9]+)"/\1/' \
+                | grep -vE '^leg_accounting' | sort -u)
+EXPECTED_COUNT=$(printf '%s\n' "$EXPECTED_KEYS" | grep -c .)
+
+# An empty derivation is the vacuous pass this whole branch is about: zero owed
+# legs means zero missing legs means green. Floor it.
+if [ "$EXPECTED_COUNT" -lt 30 ]; then
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  echo "  [FAIL] leg_accounting — derived only $EXPECTED_COUNT owed legs from $SCRIPT_PATH."
+  echo "         That is too few to be real: the derivation is broken, so the"
+  echo "         accounting below would pass without checking anything."
+  RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"derivation broken: $EXPECTED_COUNT legs\"}")
+else
+  MISSING_KEYS=""
+  for key in $EXPECTED_KEYS; do
+    case " ${RESULTS[*]} " in
+      *"\"check\":\"$key\""*) ;;
+      *) MISSING_KEYS="$MISSING_KEYS $key" ;;
+    esac
+  done
+
+  # A `skip` satisfies the accounting deliberately — "ran nothing and said so"
+  # is a different fact from "never reached". That leaves a hole: inverting a
+  # mode guard sends an ORDINARY run down a skip arm, so the leg accounts for
+  # itself while doing nothing.
+  #
+  # Close it by checking each reason against the flags the CALLER passed, held
+  # in ORIGINAL_ARGV from before parsing — reconciling against $MUTATION_ONLY et
+  # al. would be reconciling against the variable the tampering sets.
+  #
+  # POLARITY IS THE WHOLE DIFFICULTY, and the first version of this got it
+  # backwards in both directions. Two arms mean the OPPOSITE thing:
+  #
+  #   "Skipped (--mutation-only)"            skipped BECAUSE the flag was given
+  #   "Not run (pass --simdrive to enable)"  skipped BECAUSE it was NOT given
+  #
+  # Only the first kind can be impossible. Treating both alike made every
+  # ordinary run FAIL — including `--quick`, which is the documented pre-PR
+  # command and what the pre-push hook gates on — while still passing when
+  # tampered. Opt-in phrasing ("pass X to enable" / "opt-in") marks the second
+  # kind and is exempt.
+  #
+  # PASS details are censused too, not just skips: a leg can also claim a flag
+  # as the reason it PASSED (`--diff-baseline` does exactly that, and records
+  # `pass`, never `skip`), so a skip-only loop left it listed but unguarded —
+  # the appearance of coverage without the fact of it.
+  ARGV_TEXT=" ${ORIGINAL_ARGV[*]-} "
+  IMPOSSIBLE=""
+  for entry in "${RESULTS[@]}"; do
+    case "$entry" in
+      *'"status":"skip"'*|*'"status":"pass"'*) ;;
+      *) continue ;;
+    esac
+    entry_key=$(printf '%s' "$entry" | sed -E 's/.*"check":"([a-z_0-9]+)".*/\1/')
+    for flag in --mutation-only --quick --simdrive --chaos --diff-baseline; do
+      case "$entry" in
+        *"$flag"*) ;;
+        *) continue ;;
+      esac
+      # Opt-in phrasing means THIS flag's ABSENCE is the reason, so the entry is
+      # not impossible. Both spellings are scoped to the flag under test: a bare
+      # `*"opt-in"*` would exempt an entry for all five flags at once because
+      # this runs inside the per-flag loop.
+      # `*"opt-in; pass $flag"*` used to sit here too and was strictly subsumed
+      # by `*"pass $flag"*` — dead by construction, unkillable by any test.
+      case "$entry" in
+        *"pass $flag"*|*"opt-in; $flag"*) continue ;;
+      esac
+      case "$ARGV_TEXT" in
+        *" $flag "*) ;;
+        *) IMPOSSIBLE="$IMPOSSIBLE $entry_key($flag)" ;;
+      esac
+    done
+  done
+
+  if [ -n "$MISSING_KEYS" ]; then
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    echo "  [FAIL] leg_accounting — these checks recorded NOTHING, so they did not run:$MISSING_KEYS"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"unreported legs:$MISSING_KEYS\"}")
+  elif [ -n "$IMPOSSIBLE" ]; then
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    echo "  [FAIL] leg_accounting — reason names a flag the caller never passed:$IMPOSSIBLE"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"fail\",\"detail\":\"impossible reason:$IMPOSSIBLE\"}")
+  else
+    # RECORD THE SUCCESS. Without this the accounting is silent when it passes,
+    # so a run where the block was disabled outright looks exactly like a run
+    # where it passed — the defect it exists to detect, in itself.
+    PASS_COUNT=$((PASS_COUNT + 1))
+    echo "  [PASS] leg_accounting — $EXPECTED_COUNT/$EXPECTED_COUNT legs accounted for"
+    RESULTS+=("{\"check\":\"leg_accounting\",\"status\":\"pass\",\"detail\":\"$EXPECTED_COUNT/$EXPECTED_COUNT legs accounted for\"}")
+  fi
 fi
 
 # Summary
@@ -993,6 +1794,7 @@ echo ""
 echo "=== Summary ==="
 echo "  Passed: $PASS_COUNT"
 echo "  Failed: $FAIL_COUNT"
+echo "  Skipped: $SKIP_COUNT (ran nothing — not a pass)"
 
 # Write JSON report if requested
 if [ -n "$REPORT_FILE" ]; then
@@ -1003,6 +1805,7 @@ if [ -n "$REPORT_FILE" ]; then
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "pass_count": $PASS_COUNT,
   "fail_count": $FAIL_COUNT,
+  "skip_count": $SKIP_COUNT,
   "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
   "checks": [$RESULTS_JSON]
 }
@@ -1017,5 +1820,9 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
 fi
 
 echo ""
-echo "CLEAR: All checks passed."
+if [ "$SKIP_COUNT" -gt 0 ]; then
+  echo "CLEAR: no checks failed — but $SKIP_COUNT ran nothing. Not the same as verified."
+else
+  echo "CLEAR: All checks passed."
+fi
 exit 0

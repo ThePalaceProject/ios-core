@@ -10,6 +10,8 @@ import CarPlay
 import Combine
 import PalaceAudiobookToolkit
 import PalaceLogging
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// Manages CarPlay template hierarchy and navigation for audiobook playback.
 /// Pure UI layer - all playback logic delegated to AudiobookSessionManager via CarPlayAudiobookBridge.
@@ -85,13 +87,35 @@ final class CarPlayTemplateManager: NSObject {
         setupPlayerBridgeBindings()
     }
 
-    deinit {
-        // Remove ourselves as observer from the Now Playing template to prevent crashes
-        // during CarPlay disconnect/reconnect cycles
-        if hasConfiguredNowPlaying, let nowPlayingTemplate = nowPlayingTemplate {
-            nowPlayingTemplate.remove(self)
-            Log.debug(#file, "CarPlay: Removed Now Playing observer during deinit")
-        }
+    // MARK: - Teardown
+
+    /// Removes our `CPNowPlayingTemplate.shared` observer registration before
+    /// this object is released. The shared Now Playing template outlives every
+    /// `CarPlayTemplateManager`; if we dealloc while still registered, the
+    /// singleton holds a dangling observer and the next disconnect/reconnect
+    /// cycle crashes (the reason the removal is load-bearing).
+    ///
+    /// This USED to live in `deinit`, but under Swift 6 strict concurrency the
+    /// call is unrepresentable there: `CPNowPlayingTemplate.remove(_:)` is
+    /// main-actor-isolated while `deinit` is nonisolated, and the banned
+    /// `MainActor.assumeIsolated` would risk a `fatalError` because `deinit`
+    /// isn't guaranteed to run on the main thread. Instead the owning
+    /// `CarPlaySceneDelegate` calls this from its `@MainActor` disconnect path
+    /// (and defensively before replacing the manager on reconnect), so removal
+    /// happens at a deterministic point on the main actor BEFORE dealloc.
+    ///
+    /// Idempotent: clears `hasConfiguredNowPlaying` and drops the template
+    /// reference so a second call (e.g. teardown-then-dealloc) is a no-op.
+    // no-superpartner: CPInterfaceController / CPNowPlayingTemplate.shared are
+    // non-injectable CarPlay singletons — the teardown removal cannot be spied
+    // without a seam refactor, so no unit test is feasible for this method (the
+    // pre-refactor deinit was equally untestable; this is not a coverage regression).
+    func tearDown() {
+        guard hasConfiguredNowPlaying, let nowPlayingTemplate else { return }
+        nowPlayingTemplate.remove(self)
+        self.nowPlayingTemplate = nil
+        hasConfiguredNowPlaying = false
+        Log.debug(#file, "CarPlay: Removed Now Playing observer during teardown")
     }
 
     // MARK: - Public Methods
@@ -765,7 +789,11 @@ extension CarPlayTemplateManager: CPInterfaceControllerDelegate {
 
 // MARK: - CPNowPlayingTemplateObserver
 
-extension CarPlayTemplateManager: CPNowPlayingTemplateObserver {
+// `@preconcurrency`: CarPlay's CPNowPlayingTemplateObserver requirements are
+// non-isolated, but this type is @MainActor; CarPlay delivers these observer
+// callbacks on the main thread by contract, so the conformance is sound and
+// behavior-preserving. No logic change.
+extension CarPlayTemplateManager: @preconcurrency CPNowPlayingTemplateObserver {
     func nowPlayingTemplateUpNextButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
         Log.info(#file, "CarPlay: Up next (chapters) button tapped")
         showChapterList()

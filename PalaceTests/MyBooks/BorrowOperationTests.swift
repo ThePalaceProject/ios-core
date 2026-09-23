@@ -15,6 +15,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class BorrowOperationTests: XCTestCase {
@@ -26,11 +27,27 @@ final class BorrowOperationTests: XCTestCase {
     private var book: TPPBook!
 
     /// Recorders for the closure-injected seams.
-    private var fetchBookResult: Result<TPPBook, Error>!
-    private var fetchBookCalls: [(url: URL, resetCache: Bool, useToken: Bool)] = []
-    private var alertCalls: [(title: String, message: String, book: TPPBook, hasRetryAction: Bool)] = []
-    private var signInModalCompletions: [() -> Void] = []
-    private var oidcReauthResult: Bool = false
+    // Swift 6: `fetchBook`/`attemptOIDCReauth` are non-isolated `async` closures
+    // and cannot capture `self` (a @MainActor, non-Sendable XCTestCase) to reach
+    // these. Box them (Sendable, lock-guarded); the async closures capture the
+    // boxes, the @MainActor closures keep capturing `self`.
+    private let fetchBookResult = LockIsolated<Result<TPPBook, Error>?>(nil)
+    private let fetchBookCalls = LockIsolated<[(url: URL, resetCache: Bool, useToken: Bool)]>([])
+    // Swift 6: the `presentBorrowErrorAlert` / `presentSignInModal` seams are
+    // `@MainActor` closures stored on the `@unchecked Sendable` `BorrowOperation`,
+    // so a closure that captures `self` (a non-Sendable XCTestCase) to append to
+    // these recorders sends `self` across the boundary. Box them (lock-guarded,
+    // Sendable) and capture the boxes as locals in `setUp` so the closures
+    // reference the boxes, not `self`. Computed shims keep every read site unchanged.
+    private let alertCallsBox = LockIsolated<[(title: String, message: String, book: TPPBook, hasRetryAction: Bool)]>([])
+    private var alertCalls: [(title: String, message: String, book: TPPBook, hasRetryAction: Bool)] {
+        alertCallsBox.value
+    }
+    private let signInModalCompletionsBox = LockIsolated<[() -> Void]>([])
+    private var signInModalCompletions: [() -> Void] {
+        signInModalCompletionsBox.value
+    }
+    private let oidcReauthResult = LockIsolated<Bool>(false)
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -43,12 +60,21 @@ final class BorrowOperationTests: XCTestCase {
         book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         // Default: borrow returns the same book (with whatever availability
         // the test sets via book.acquisition replacement before calling).
-        fetchBookResult = .success(book)
-        fetchBookCalls = []
-        alertCalls = []
-        signInModalCompletions = []
-        oidcReauthResult = false
+        fetchBookResult.value = .success(book)
+        fetchBookCalls.value = []
+        alertCallsBox.value = []
+        signInModalCompletionsBox.value = []
+        oidcReauthResult.value = false
 
+        // Capture the Sendable boxes as locals so the closures (both the
+        // non-isolated async ones and the @MainActor present-* ones stored on
+        // the @unchecked Sendable BorrowOperation) reference the boxes, not
+        // `self` (a non-Sendable @MainActor XCTestCase).
+        let fetchBookCallsBox = fetchBookCalls
+        let fetchBookResultBox = fetchBookResult
+        let oidcReauthResultBox = oidcReauthResult
+        let alertCallsBox = alertCallsBox
+        let signInModalCompletionsBox = signInModalCompletionsBox
         operation = BorrowOperation(
             bookRegistry: bookRegistry,
             downloadAnnouncementService: DownloadAnnouncementService(),
@@ -57,20 +83,20 @@ final class BorrowOperationTests: XCTestCase {
             userRetryTracker: .shared,
             userAccountProvider: { [unowned self] in self.userAccount },
             adobeDRMService: AdobeDRMService.shared,
-            fetchBook: { [unowned self] url, resetCache, useToken in
-                self.fetchBookCalls.append((url, resetCache, useToken))
-                switch self.fetchBookResult! {
+            fetchBook: { url, resetCache, useToken in
+                fetchBookCallsBox.withValue { $0.append((url, resetCache, useToken)) }
+                switch fetchBookResultBox.value! {
                 case .success(let result): return result
                 case .failure(let error): throw error
                 }
             },
-            presentBorrowErrorAlert: { [unowned self] title, message, _, _, book, retryAction in
-                self.alertCalls.append((title, message, book, retryAction != nil))
+            presentBorrowErrorAlert: { title, message, _, _, book, retryAction in
+                alertCallsBox.withValue { $0.append((title, message, book, retryAction != nil)) }
             },
-            presentSignInModal: { [unowned self] completion in
-                self.signInModalCompletions.append(completion)
+            presentSignInModal: { completion in
+                signInModalCompletionsBox.withValue { $0.append(completion) }
             },
-            attemptOIDCReauth: { [unowned self] in self.oidcReauthResult }
+            attemptOIDCReauth: { oidcReauthResultBox.value }
         )
         operation.delegate = spyDelegate
     }
@@ -97,7 +123,7 @@ final class BorrowOperationTests: XCTestCase {
         XCTAssertEqual(result.identifier, book.identifier)
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadNeeded,
                        "Successful borrow with .ready/.unlimited availability must register .downloadNeeded")
-        XCTAssertEqual(fetchBookCalls.count, 1,
+        XCTAssertEqual(fetchBookCalls.value.count, 1,
                        "Borrow must hit the fetchBook closure exactly once on the success path")
         XCTAssertEqual(spyDelegate.startDownloadCalls.count, 0,
                        "attemptDownload=false must NOT call delegate.startDownload")
@@ -109,11 +135,9 @@ final class BorrowOperationTests: XCTestCase {
         let result = try await operation.borrowAsync(book, attemptDownload: true)
 
         XCTAssertEqual(result.identifier, book.identifier)
-        // Allow the @MainActor.run hop for delegate?.startDownload to settle.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // borrowAsync awaits its `await MainActor.run { delegate?.startDownload }`
+        // hop before returning, so the call has already landed — assert directly,
+        // no deadline poll (which starved under CI oversubscription).
         XCTAssertEqual(spyDelegate.startDownloadCalls.map { $0.identifier }, [book.identifier],
                        "attemptDownload=true with .downloadNeeded must call delegate.startDownload")
     }
@@ -125,7 +149,7 @@ final class BorrowOperationTests: XCTestCase {
         // availability, simulating CM's Loan→Hold race. Easiest path: build
         // a fresh book with the right availability.
         let raceBook = makeBookWithReservedAvailability()
-        fetchBookResult = .success(raceBook)
+        fetchBookResult.value = .success(raceBook)
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -157,7 +181,7 @@ final class BorrowOperationTests: XCTestCase {
             } else {
                 XCTFail("Expected .bookRegistry(.invalidState), got \(error)")
             }
-            XCTAssertEqual(fetchBookCalls.count, 0,
+            XCTAssertEqual(fetchBookCalls.value.count, 0,
                            "No-URL guard must short-circuit BEFORE the fetchBook closure runs")
         } catch {
             XCTFail("Expected PalaceError, got \(error)")
@@ -168,7 +192,7 @@ final class BorrowOperationTests: XCTestCase {
 
     func testBorrowAsync_genericError_presentsAlertAndRethrows() async {
         struct TestError: Error {}
-        fetchBookResult = .failure(TestError())
+        fetchBookResult.value = .failure(TestError())
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -177,11 +201,9 @@ final class BorrowOperationTests: XCTestCase {
             // Expected — errored borrow rethrows after presenting alert.
         }
 
-        // Allow the @MainActor.run hop for showBorrowError to settle.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // borrowAsync awaits its `await MainActor.run { showBorrowError }` hop
+        // before rethrowing, so the alert has already been presented once the
+        // catch returns — assert directly, no deadline poll.
         XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
                                     "Generic error path must invoke presentBorrowErrorAlert")
         XCTAssertEqual(alertCalls.last?.book.identifier, book.identifier)
@@ -204,7 +226,7 @@ final class BorrowOperationTests: XCTestCase {
 
         // Throw the PalaceError directly so we route through the first
         // catch block (the "no originalError NSError" path).
-        fetchBookResult = .failure(PalaceError.network(.unauthorized))
+        fetchBookResult.value = .failure(PalaceError.network(.unauthorized))
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -213,11 +235,9 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        // Let the @MainActor.run hop for presentSignInModal settle.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // handleBorrowAuthErrorIfNeeded is awaited inside borrowAsync and the
+        // sign-in modal is presented inside `await MainActor.run { ... }`, so the
+        // completion has been recorded once the catch returns — assert directly.
 
         XCTAssertEqual(signInModalCompletions.count, 1,
                        "401-no-problem-doc must present the sign-in modal (item #7)")
@@ -232,7 +252,7 @@ final class BorrowOperationTests: XCTestCase {
         userAccount._credentials = nil
         userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
 
-        fetchBookResult = .failure(PalaceError.network(.forbidden))
+        fetchBookResult.value = .failure(PalaceError.network(.forbidden))
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -241,11 +261,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(signInModalCompletions.count, 1,
                        "403-no-problem-doc must present the sign-in modal (item #7)")
     }
@@ -256,7 +272,7 @@ final class BorrowOperationTests: XCTestCase {
     /// Locks the boundary so the item #7 predicate broadening doesn't
     /// silently absorb every network error.
     func testBorrow_NetworkUnknownError_fallsThroughToAlert() async {
-        fetchBookResult = .failure(PalaceError.network(.unknown))
+        fetchBookResult.value = .failure(PalaceError.network(.unknown))
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -265,11 +281,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(signInModalCompletions.count, 0,
                        "Non-auth network errors must NOT trigger the sign-in modal")
         XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
@@ -294,7 +306,7 @@ final class BorrowOperationTests: XCTestCase {
         // Use a problem-doc-typed invalidCredentials to drive isAuthError
         // through the problemDoc branch (the canonical SQ-007 trigger).
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -306,11 +318,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(alertCalls.count, 0,
                        "SQ-007 suppression must NOT surface a borrow-error alert (item #8)")
         XCTAssertEqual(signInModalCompletions.count, 0,
@@ -329,7 +337,7 @@ final class BorrowOperationTests: XCTestCase {
         userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
 
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -341,11 +349,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(signInModalCompletions.count, 1,
                        "No-credentials + loan-state must STILL trigger sign-in modal (not SQ-007)")
     }
@@ -361,7 +365,7 @@ final class BorrowOperationTests: XCTestCase {
         userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
 
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -373,11 +377,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         // basic auth + creds + .unregistered → not SQ-007 → not
         // browser-reauth → no automatic recovery → generic alert.
         XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
@@ -393,7 +393,7 @@ final class BorrowOperationTests: XCTestCase {
         userAccount.setAuthState(.loggedIn)
 
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -405,11 +405,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(alertCalls.count, 0,
                        ".holding + credentials → SQ-007 fires → no alert")
         XCTAssertFalse(bookRegistry.processing(forIdentifier: book.identifier),
@@ -449,7 +445,7 @@ final class BorrowOperationTests: XCTestCase {
         // .unregistered registry state so SQ-007 (already-has-loan) does NOT
         // fire and suppress the path — we want the live browser-reauth branch.
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -461,11 +457,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(signInModalCompletions.count, 1,
                        "SAML browser-based account + creds must route to the browser re-auth modal " +
                        "(needsBrowserReauth branch at :636). A `!= true` mutant would skip this and alert instead.")

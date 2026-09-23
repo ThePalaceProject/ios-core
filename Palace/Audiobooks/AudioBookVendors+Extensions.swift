@@ -43,6 +43,13 @@ extension AudioBookVendors {
             return
         }
 
+        // `DPLAAudiobooks.drmKey`'s completion is `@Sendable`, but the caller's
+        // `completion` is a plain `((Error?) -> Void)?` (the public API can't
+        // require `@Sendable` without rippling to every caller). Capturing that
+        // bare optional closure inside the `@Sendable` callback trips
+        // `sending 'completion' risks data races`. Box it once before entering
+        // `drmKey` so the `@Sendable` closure captures the Sendable carrier.
+        let completionBox = SendableCertCompletion(completion)
         // Fetch a new drmKey
         DPLAAudiobooks.drmKey { (data, date, error) in
             if let error = error {
@@ -51,13 +58,13 @@ extension AudioBookVendors {
                 } else {
                     Log.error(#file, "Could not receive DRM public key, URL: \(DPLAAudiobooks.certificateUrl): \(error)")
                 }
-                completion?(error)
+                completionBox.fire(error)
                 return
             }
             // drmKey completion handler returns either non-empty data value or an error
             guard let keyData = data else {
                 Log.error(#file, "Public key data is empty, URL: \(DPLAAudiobooks.certificateUrl)")
-                completion?(DPLAAudiobooks.DPLAError.drmKeyError("Public key data is empty, URL: \(DPLAAudiobooks.certificateUrl)"))
+                completionBox.fire(DPLAAudiobooks.DPLAError.drmKeyError("Public key data is empty, URL: \(DPLAAudiobooks.certificateUrl)"))
                 return
             }
             // Check if we have a valid date
@@ -83,8 +90,34 @@ extension AudioBookVendors {
                 TPPKeychainManager.logKeychainError(forVendor: self.rawValue, status: status, message: "FeedbookDrmPrivateKeyManagement Error:")
             }
 
-            completion?(nil)
+            completionBox.fire(nil)
         }
     }
 
+}
+
+/// `Sendable` wrapper for the optional `(Error?) -> Void` completion of
+/// `updateDrmCertificate`.
+///
+/// `DPLAAudiobooks.drmKey`'s completion is `@Sendable`, so the caller's plain
+/// (non-`@Sendable`) optional completion cannot be captured inside it without a
+/// `sending` diagnostic. This box lets the completion cross that boundary while
+/// keeping the public `updateDrmCertificate` API free of a `@Sendable`
+/// requirement that would ripple to callers. Mirrors `SendableDecryptCompletion`
+/// (LCPAudiobooks).
+///
+/// - Sendable invariant: `fire(_:)` forwards to the wrapped closure. The
+///   underlying `drmKey` contract invokes its completion exactly once, so
+///   `fire(_:)` runs at most once per certificate update. The wrapped closure is
+///   otherwise opaque, hence `@unchecked`.
+private struct SendableCertCompletion: @unchecked Sendable {
+    private let completion: ((Error?) -> Void)?
+
+    init(_ completion: ((Error?) -> Void)?) {
+        self.completion = completion
+    }
+
+    func fire(_ error: Error?) {
+        completion?(error)
+    }
 }

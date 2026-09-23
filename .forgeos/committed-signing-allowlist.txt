@@ -1,0 +1,5 @@
+# Allowlist for scripts/check-no-committed-signing.sh — substrings matched against
+# the offending signing line to intentionally permit it. One per line; '#' = comment.
+# Normally EMPTY: the detector is path-aware (only scans .pbxproj/.xcconfig/.entitlements/
+# .plist), so its own test fixtures/docs don't need suppression. Add an entry only for a
+# genuine, reviewed exception — with a reason.

@@ -11,6 +11,7 @@ import Combine
 
 // MARK: - Extended Sign-In Business Logic Tests
 
+@MainActor
 final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     // MARK: - Properties
@@ -993,6 +994,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
 // MARK: - OAuth Flow Tests
 
+@MainActor
 final class TPPSignInOAuthFlowTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -1030,6 +1032,7 @@ final class TPPSignInOAuthFlowTests: XCTestCase {
 
 // MARK: - Error Handling Tests
 
+@MainActor
 final class TPPSignInErrorHandlingTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -1105,12 +1108,39 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
 
 // MARK: - Mock Extensions
 
-class TPPNetworkErrorMock: TPPRequestExecuting {
-    var requestTimeout: TimeInterval = 60
-    var shouldFail = false
-    var errorStatusCode = 500
+/// Transfers the non-Sendable completion across the `DispatchQueue.main.async`
+/// hop. Safe: called exactly once, on the main queue. (File-local — the
+/// identically-shaped helper in NYPLNetworkExecutorMock is `private` there.)
+private struct MainQueueResultCompletion: @unchecked Sendable {
+    let completion: (NYPLResult<Data>) -> Void
+}
 
-    private var generation: Int = 0
+/// `@unchecked Sendable`: all mutable state is guarded by `lock`, so the mock
+/// can cross into the @MainActor SUT safely (Swift 6). Mirrors TPPBookRegistryMock.
+final class TPPNetworkErrorMock: TPPRequestExecuting, @unchecked Sendable {
+    private let lock = NSLock()
+
+    private var _requestTimeout: TimeInterval = 60
+    var requestTimeout: TimeInterval {
+        get { lock.withLock { _requestTimeout } }
+        set { lock.withLock { _requestTimeout = newValue } }
+    }
+    private var _shouldFail = false
+    var shouldFail: Bool {
+        get { lock.withLock { _shouldFail } }
+        set { lock.withLock { _shouldFail = newValue } }
+    }
+    private var _errorStatusCode = 500
+    var errorStatusCode: Int {
+        get { lock.withLock { _errorStatusCode } }
+        set { lock.withLock { _errorStatusCode = newValue } }
+    }
+
+    private var _generation: Int = 0
+    private var generation: Int {
+        get { lock.withLock { _generation } }
+        set { lock.withLock { _generation = newValue } }
+    }
 
     func reset() {
         generation += 1
@@ -1122,8 +1152,10 @@ class TPPNetworkErrorMock: TPPRequestExecuting {
         completion: @escaping (NYPLResult<Data>) -> Void
     ) -> URLSessionDataTask? {
         let capturedGeneration = generation
+        let completionBox = MainQueueResultCompletion(completion: completion)
         DispatchQueue.main.async { [weak self] in
             guard let self, self.generation == capturedGeneration else { return }
+            let completion = completionBox.completion
 
             if self.shouldFail {
                 let error = NSError(domain: "Test", code: self.errorStatusCode, userInfo: nil)
@@ -1151,17 +1183,33 @@ class TPPNetworkErrorMock: TPPRequestExecuting {
 
 extension TPPSignInOutBusinessLogicUIDelegateMock {
     var willSignInHandler: (() -> Void)? {
-        get { objc_getAssociatedObject(self, &AssociatedKeys.willSignIn) as? () -> Void }
-        set { objc_setAssociatedObject(self, &AssociatedKeys.willSignIn, newValue, .OBJC_ASSOCIATION_RETAIN) }
+        get { objc_getAssociatedObject(self, AssociatedKeys.willSignIn.raw) as? () -> Void }
+        set { objc_setAssociatedObject(self, AssociatedKeys.willSignIn.raw, newValue, .OBJC_ASSOCIATION_RETAIN) }
     }
 
     var validationErrorHandler: ((Error?, String?, String?) -> Void)? {
-        get { objc_getAssociatedObject(self, &AssociatedKeys.validationError) as? (Error?, String?, String?) -> Void }
-        set { objc_setAssociatedObject(self, &AssociatedKeys.validationError, newValue, .OBJC_ASSOCIATION_RETAIN) }
+        get { objc_getAssociatedObject(self, AssociatedKeys.validationError.raw) as? (Error?, String?, String?) -> Void }
+        set { objc_setAssociatedObject(self, AssociatedKeys.validationError.raw, newValue, .OBJC_ASSOCIATION_RETAIN) }
     }
 }
 
-private struct AssociatedKeys {
-    static var willSignIn = "willSignIn"
-    static var validationError = "validationError"
+/// Address-stable objc associated-object key. Holds ONE immutable pointer,
+/// allocated once and never mutated — only its address is used as a key — so
+/// it is genuinely `Sendable` (the @unchecked waiver covers the fact that
+/// `UnsafeMutableRawPointer` isn't `Sendable`, which is safe here because the
+/// pointer is a `let` and its pointee is never read or written).
+private final class AssociatedKey: @unchecked Sendable {
+    let raw = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+}
+
+private enum AssociatedKeys {
+    // Swift-6 safe associated-object keys — used ONLY for their stable address.
+    // A mutable `static var` is rejected as global mutable state; the
+    // LockIsolated computed-var pattern does NOT work (`&computedVar` yields a
+    // fresh temporary pointer each access, so set/get key differently and the
+    // association silently fails). A bare `static let UnsafeMutableRawPointer`
+    // is address-stable but non-Sendable, so it too is rejected under Swift 6.
+    // Wrapping the immutable pointer in a Sendable holder is the correct fix.
+    static let willSignIn = AssociatedKey()
+    static let validationError = AssociatedKey()
 }

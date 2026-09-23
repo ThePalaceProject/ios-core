@@ -21,6 +21,8 @@ import ReadiumShared
 import PalaceCatalog
 import PalaceReadingPosition
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Mock Annotations Provider
 
@@ -210,6 +212,7 @@ enum SynchronizerTestFixtures {
 
 // MARK: - Main Test Case
 
+@MainActor
 final class TPPLastReadPositionSynchronizerTests: XCTestCase {
 
     private var sut: TPPLastReadPositionSynchronizer!
@@ -685,6 +688,7 @@ final class TPPLastReadPositionSynchronizerTests: XCTestCase {
 
 /// Tests for the real TPPLastReadPositionSynchronizer class.
 /// These tests focus on initialization and non-network functionality.
+@MainActor
 final class TPPLastReadPositionSynchronizerIntegrationTests: XCTestCase {
 
     private var mockRegistry: TPPBookRegistryMock!
@@ -796,6 +800,7 @@ final class TPPLastReadPositionSynchronizerIntegrationTests: XCTestCase {
 // MARK: - TPPBookLocation Tests
 
 /// Tests for TPPBookLocation which is used by the synchronizer.
+@MainActor
 final class TPPLastReadPositionSynchronizer_BookLocationTests: XCTestCase {
 
     func testTPPBookLocation_Creation_WithValidParameters() {
@@ -922,6 +927,7 @@ final class TPPLastReadPositionSynchronizer_BookLocationTests: XCTestCase {
 // MARK: - TPPReadiumBookmark Tests
 
 /// Tests for TPPReadiumBookmark which represents server annotations.
+@MainActor
 final class TPPLastReadPositionSynchronizer_ReadiumBookmarkTests: XCTestCase {
 
     func testReadiumBookmark_Init_WithValidParameters() {
@@ -1134,6 +1140,7 @@ final class TPPLastReadPositionSynchronizer_ReadiumBookmarkTests: XCTestCase {
 // MARK: - Sync Logic Edge Case Tests
 
 /// Focused tests on sync decision edge cases and boundary conditions.
+@MainActor
 final class TPPLastReadPositionSynchronizer_SyncLogicTests: XCTestCase {
 
     // MARK: - Complex Location String Tests
@@ -1387,6 +1394,7 @@ final class TPPLastReadPositionSynchronizer_SyncLogicTests: XCTestCase {
 // MARK: - Concurrent Access Tests
 
 /// Tests for thread safety and concurrent access patterns.
+@MainActor
 final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
 
     private var mockRegistry: TPPBookRegistryMock!
@@ -1401,6 +1409,26 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
         super.tearDown()
     }
 
+    // nonisolated static: builds only from literals, so each fresh return is a
+    // disconnected (sendable) region — one per sending task closure.
+    private nonisolated static func makeConcurrentPublication() -> Publication {
+        Publication(manifest: Manifest(
+            metadata: Metadata(title: "Concurrent Sync"),
+            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
+        ))
+    }
+
+    /// REGRESSION PIN for the 2026-07-04 SIGSEGV (fix/sync-mock-race-segv-bookmark-keys).
+    ///
+    /// This test hammers the shared mock through the `TPPBookRegistryProvider`
+    /// protocol from 100 concurrent threads. Production consumers
+    /// (`TPPLastReadPositionSynchronizer` et al.) are entitled to exactly this
+    /// usage — the provider protocol is `Sendable` and production
+    /// `TPPBookRegistry` is split-lock thread-safe. Before the mock was
+    /// lock-backed, this test raced ARC retain/release on
+    /// `TPPBookRegistryRecord.location`, corrupting the heap and segfaulting
+    /// a LATER test in this class. If the mock's lock is ever removed, this
+    /// test is the one that should crash — not its neighbors.
     func testConcurrentLocationUpdates_DoNotCrash() {
         // Arrange
         let book = SynchronizerTestFixtures.createTestBook()
@@ -1466,29 +1494,53 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
         XCTAssertEqual(results.count, 100)
     }
 
-    func testMultipleSynchronizersWithSameRegistry_DoNotConflict() {        // Arrange
-        let sync1 = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
-        let sync2 = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
+    /// Two synchronizers sharing ONE registry is the production pattern (e.g.
+    /// reader mount + a second sync trigger). This drives the REAL
+    /// `sync(for:book:drmDeviceID:)` path on both instances concurrently,
+    /// interleaved with location writes through the provider API — the
+    /// honest version of what this test's name has always claimed.
+    func testMultipleSynchronizersWithSameRegistry_DoNotConflict() async {
+        // Arrange
+        let registry = mockRegistry!
+        let writer1 = SynchronizerSpyWriter()
+        let writer2 = SynchronizerSpyWriter()
+        let sync1 = TPPLastReadPositionSynchronizer(bookRegistry: registry, positionWriter: writer1)
+        let sync2 = TPPLastReadPositionSynchronizer(bookRegistry: registry, positionWriter: writer2)
 
         let book = SynchronizerTestFixtures.createTestBook()
-        mockRegistry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        registry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let bookID = book.identifier
 
-        // Act - both synchronizers exist and can access the registry
-        XCTAssertNotNil(sync1)
-        XCTAssertNotNil(sync2)
+        // Act — both synchronizers sync concurrently while a third task
+        // writes locations through the same provider the synchronizers read.
+        // Each sending closure builds its own disconnected publication so no
+        // non-Sendable Publication is captured across the concurrency boundary.
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await sync1.sync(for: Self.makeConcurrentPublication(), book: book, drmDeviceID: "device-A") }
+            group.addTask { await sync2.sync(for: Self.makeConcurrentPublication(), book: book, drmDeviceID: "device-B") }
+            group.addTask {
+                for i in 0..<50 {
+                    let location = SynchronizerTestFixtures.createBookLocation(progress: Double(i) / 50.0)
+                    registry.setLocation(location, forIdentifier: bookID)
+                }
+            }
+        }
 
-        let location = SynchronizerTestFixtures.createBookLocation(progress: 0.5)
-        mockRegistry.setLocation(location, forIdentifier: book.identifier)
-
-        // Assert - registry state is consistent
-        let storedLocation = mockRegistry.location(forIdentifier: book.identifier)
-        XCTAssertEqual(storedLocation?.locationString, location?.locationString)
+        // Assert — both synchronizers completed a REAL load through their
+        // writer, and the shared registry survived the interleaving intact.
+        let loaded1 = await writer1.loadedBookIDs
+        let loaded2 = await writer2.loadedBookIDs
+        XCTAssertEqual(loaded1, [bookID], "sync1 must delegate to its writer exactly once")
+        XCTAssertEqual(loaded2, [bookID], "sync2 must delegate to its writer exactly once")
+        XCTAssertNotNil(registry.location(forIdentifier: bookID),
+                        "registry must hold a consistent location after concurrent syncs + writes")
     }
 }
 
 // MARK: - Documentation Tests
 
 /// Tests that serve as executable documentation for expected behavior.
+@MainActor
 final class TPPLastReadPositionSynchronizer_BehaviorDocumentationTests: XCTestCase {
 
     /// Documents: When server has no reading position, no sync occurs.
@@ -1603,6 +1655,7 @@ private actor SynchronizerSpyWriter: PositionWriter {
 /// an injected spy `PositionWriter`. These tests exercise the actual class
 /// (not `SyncDecisionHelper`) — they catch regressions in the delegation
 /// to `PositionWriter.load` and in the conflict-resolution wiring.
+@MainActor
 final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
 
     private var bookRegistryMock: TPPBookRegistryMock!
@@ -1616,10 +1669,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         bookRegistryMock = TPPBookRegistryMock()
         spyWriter = SynchronizerSpyWriter()
         testBook = SynchronizerTestFixtures.createTestBook(identifier: "writer-delegation-book")
-        publication = Publication(manifest: Manifest(
-            metadata: Metadata(title: "Writer Delegation"),
-            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
-        ))
+        publication = Self.makePublication()
         bookRegistryMock.addBook(
             testBook,
             location: nil,
@@ -1644,10 +1694,19 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    // nonisolated static: builds only from literals, so each fresh return is a
+    // disconnected (sendable) region that can cross into sync(for: sending ...).
+    private nonisolated static func makePublication() -> Publication {
+        Publication(manifest: Manifest(
+            metadata: Metadata(title: "Writer Delegation"),
+            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
+        ))
+    }
+
     func testSync_writerReturnsNil_callsLoadOnce_noAlertPath() async {
         await spyWriter.set(snapshot: nil)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded, [testBook.identifier],
@@ -1657,7 +1716,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
     func testSync_writerThrows_logsAndReturnsWithoutAlert() async {
         await spyWriter.set(loadError: PositionWriterError.networkUnavailable)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded, [testBook.identifier],
@@ -1683,7 +1742,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         )
         await spyWriter.set(snapshot: snapshot)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded.count, 1)
@@ -1711,7 +1770,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         )
         await spyWriter.set(snapshot: snapshot)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded.count, 1)

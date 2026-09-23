@@ -1,10 +1,11 @@
 import Foundation
 
-@objc public class TPPOPDSCategory: NSObject {
+// Sendable: `final` + immutable `let` Sendable value-type stored properties.
+@objc public final class TPPOPDSCategory: NSObject, Sendable {
 
-  @objc public private(set) var term: String
-  @objc public private(set) var label: String?
-  @objc public private(set) var scheme: URL?
+  @objc public let term: String
+  @objc public let label: String?
+  @objc public let scheme: URL?
 
   @objc public init(term: String, label: String?, scheme: URL?) {
     self.term = term

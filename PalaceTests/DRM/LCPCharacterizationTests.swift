@@ -38,6 +38,7 @@ import XCTest
 import PalaceCatalog
 import ReadiumLCP
 
+@MainActor
 final class LCPCharacterizationTests: XCTestCase {
 
     // MARK: - Setup / teardown

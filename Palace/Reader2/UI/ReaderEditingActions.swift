@@ -11,6 +11,7 @@
 
 import Foundation
 import ReadiumNavigator
+import PalaceBookModel
 
 enum ReaderEditingActions {
 

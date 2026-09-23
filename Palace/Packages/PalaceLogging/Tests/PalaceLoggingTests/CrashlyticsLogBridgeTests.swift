@@ -4,10 +4,14 @@ import XCTest
 final class CrashlyticsLogBridgeTests: XCTestCase {
 
     /// Captures messages forwarded by `Log` so the test can assert on them.
-    private final class CapturingBridge: CrashlyticsLogBridge {
-        private(set) var messages: [String] = []
+    /// `CrashlyticsLogBridge` is `Sendable` (Swift 6), so the capture buffer is
+    /// lock-guarded; `@unchecked Sendable` is justified by that lock.
+    private final class CapturingBridge: CrashlyticsLogBridge, @unchecked Sendable {
+        private let lock = NSLock()
+        private var _messages: [String] = []
+        var messages: [String] { lock.withLock { _messages } }
         func log(_ message: String) {
-            messages.append(message)
+            lock.withLock { _messages.append(message) }
         }
     }
 

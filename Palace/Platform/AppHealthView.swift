@@ -39,7 +39,7 @@ struct AppHealthView: View {
                     Section("Performance Summary") {
                         Text(report.summary)
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -76,7 +76,7 @@ private struct HealthMetricRow: View {
 
             Text(item.value)
                 .font(.body.monospacedDigit())
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.name): \(item.value)")

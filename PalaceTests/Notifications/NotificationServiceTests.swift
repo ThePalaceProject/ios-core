@@ -10,7 +10,9 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class NotificationServiceTests: XCTestCase {
 
     // MARK: - TokenData Tests

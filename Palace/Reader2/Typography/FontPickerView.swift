@@ -16,7 +16,7 @@ struct FontPickerView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ForEach(FontCategory.allCases, id: \.self) { category in
                     let fonts = availableFonts.filter { $0.category == category }
@@ -62,11 +62,11 @@ private struct FontRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(font.displayName)
                         .font(Font(font.uiFont(size: 17)))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
 
                     Text(font.previewText)
                         .font(Font(font.uiFont(size: 13)))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
 
@@ -74,7 +74,7 @@ private struct FontRow: View {
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .foregroundColor(.accentColor)
+                        .foregroundStyle(Color.accentColor)
                         .fontWeight(.semibold)
                 }
             }

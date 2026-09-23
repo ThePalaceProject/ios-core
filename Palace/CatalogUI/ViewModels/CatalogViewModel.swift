@@ -1,7 +1,10 @@
 import Foundation
 import Combine
 import PalaceLogging
-import PalaceCatalog
+import PalaceBookRegistry
+@preconcurrency import PalaceCatalog
+import PalaceNetwork
+import PalaceBookModel
 
 @MainActor
 final class CatalogViewModel: ObservableObject {
@@ -19,6 +22,14 @@ final class CatalogViewModel: ObservableObject {
   private let topLevelURLProvider: () -> URL?
   private let bookRegistry: TPPBookRegistryProvider
   private let imageCache: ImageCacheType
+  private let reachability: Reachability
+  /// Supplies the books for the "Side Loaded" catalog lane (Module D / PP-2679).
+  /// Returns `[]` when side-loading is off — the feature-flag gate lives at the
+  /// construction site (`AppTabHostView`), keeping the flag out of the VM. When
+  /// this returns ≥1 book, `withSideloadedLane(_:)` prepends a lane on every
+  /// catalog conversion path.
+  private let sideloadedLaneBooksProvider: () -> [TPPBook]
+  private var cancellables = Set<AnyCancellable>()
 
   // MARK: - Public accessors for search
   var searchRepository: CatalogRepositoryProtocol { repository }
@@ -39,16 +50,131 @@ final class CatalogViewModel: ObservableObject {
   private var lastLoadedURL: URL?
   private var currentLoadTask: Task<Void, Never>?
 
+  /// Detached cover-prefetch tasks spawned during a load. They intentionally
+  /// outlive `currentLoadTask` (background cache warming), so they must be
+  /// tracked and cancelled explicitly on reload / refresh / teardown.
+  /// Otherwise they keep firing cover downloads for a feed the patron has
+  /// already navigated away from, piling avoidable load onto the shared
+  /// connection pool — the load multiplier behind the "catalog stuck" bug.
+  private var prefetchTasks: [Task<Void, Never>] = []
+
   init(
     repository: CatalogRepositoryProtocol,
     topLevelURLProvider: @escaping () -> URL?,
     bookRegistry: TPPBookRegistryProvider,
-    imageCache: ImageCacheType
+    imageCache: ImageCacheType,
+    sideloadedLaneBooksProvider: @escaping () -> [TPPBook] = { [] },
+    reachability: Reachability = AppContainer.production().reachability
   ) {
     self.repository = repository
     self.topLevelURLProvider = topLevelURLProvider
     self.bookRegistry = bookRegistry
     self.imageCache = imageCache
+    self.sideloadedLaneBooksProvider = sideloadedLaneBooksProvider
+    self.reachability = reachability
+    observeConnectivity()
+  }
+
+  /// Literal (not localized) side-loaded lane title. Side-loading is a
+  /// DEBUG/test-only feature gated behind `isSideLoadingEnabled` (default OFF in
+  /// production), so per the Module D contract a literal is acceptable here.
+  private static let sideloadedLaneTitle = "Side Loaded"
+
+  /// SINGLE CHOKE POINT for injecting the "Side Loaded" lane into every catalog
+  /// conversion (PP-2679). EVERY former catalog-content call site routes
+  /// through here so the lane can never silently vanish on one path — in
+  /// particular the `applyFacet` cache-HIT fast path, which a per-site patch
+  /// would miss. The lane is present iff `sideloadedLaneBooksProvider()` returns
+  /// ≥1 book; when it returns `[]` the result is identical to the un-injected
+  /// baseline shape.
+  private func withSideloadedLane(_ mapped: MappedCatalog) -> CatalogContent {
+    mapped.toCatalogContent(prepending: sideloadedLanes())
+  }
+
+  /// The "Side Loaded" lane rows for the current provider snapshot — empty when
+  /// side-loading is off or the registry has no books. Shared by the success
+  /// path (`withSideloadedLane`) and the failure path (`loadFailureState`, F-1)
+  /// so both surface exactly the same lane, and neither shows one when the
+  /// provider is empty.
+  private func sideloadedLanes() -> [CatalogLaneModel] {
+    let books = sideloadedLaneBooksProvider()
+    return books.isEmpty
+      ? []
+      : [CatalogLaneModel(title: Self.sideloadedLaneTitle, books: books, moreURL: nil)]
+  }
+
+  deinit {
+    prefetchTasks.forEach { $0.cancel() }
+  }
+
+  /// Cancel any in-flight background cover prefetch. Called whenever the feed
+  /// the prefetch was warming is being replaced (reload / refresh) or the view
+  /// model is torn down, so stale prefetch can't keep saturating the network.
+  private func cancelPrefetch() {
+    prefetchTasks.forEach { $0.cancel() }
+    prefetchTasks.removeAll()
+  }
+
+  /// Test seams for the prefetch-cancellation contract (no real timing needed).
+  /// Plain `internal` (matching the codebase's existing test-accessor
+  /// convention, e.g. TPPNetworkExecutor.refreshAttemptCount) rather than a
+  /// `#if DEBUG` block, which the blast-radius gate flags for shipping into
+  /// sim/dev/TestFlight builds.
+  var prefetchTaskCountForTesting: Int { prefetchTasks.count }
+  func appendPrefetchTaskForTesting(_ task: Task<Void, Never>) { prefetchTasks.append(task) }
+  func cancelPrefetchForTesting() { cancelPrefetch() }
+
+  /// Test seam — deterministically join the in-flight load. `load()` /
+  /// `forceRefresh()` / `reload()` spawn `currentLoadTask` (repo fetch →
+  /// off-actor `mapFeed` → image-cache warming) and return WITHOUT awaiting it,
+  /// so the `.loaded`/`.error`/`.offline` transition lands asynchronously. A
+  /// test that asserts the terminal state must otherwise wait on the `$state`
+  /// publisher against a fixed wall-clock deadline (`fulfillment(timeout:)`),
+  /// which STARVES under CI sim-clone oversubscription — the `.userInitiated`
+  /// map hop and cache warming get deferred past the deadline even though the
+  /// code is correct. Awaiting the retained Task handle blocks EXACTLY until the
+  /// load finishes, removing the pool/wall-clock dependence entirely.
+  ///
+  /// Changes NO production behavior: this only reads a handle the view model
+  /// already retains; `load()` still spawns the task and returns immediately.
+  /// Returns at once if no load is in flight.
+  func _awaitLoadForTesting() async {
+    await currentLoadTask?.value
+  }
+
+  // MARK: - Connectivity
+
+  /// Auto-reload the catalog when connectivity returns while we are showing the
+  /// offline state. This is what makes the offline state self-healing — the
+  /// patron does not need a Reload button (AC: loads automatically on reconnect).
+  private func observeConnectivity() {
+    reachability.connectivityPublisher
+      .filter { $0 }
+      .sink { [weak self] _ in
+        Task { @MainActor in self?.handleConnectivityRestored() }
+      }
+      .store(in: &cancellables)
+  }
+
+  private func handleConnectivityRestored() {
+    guard case .offline = state else { return }
+    Log.info(#file, "Connectivity restored — reloading catalog")
+    Task { await forceRefresh() }
+  }
+
+  /// Map a load failure to either the offline state (no connectivity) or the
+  /// generic error state (genuine online failure). Keeps the offline-vs-error
+  /// decision in one place so both the nil-feed and thrown-error paths agree.
+  private func loadFailureState(message: String) -> CatalogState {
+    // F-1: attach the Side Loaded lane so imported books stay reachable even
+    // when the catalog feed fails. The feed error is still surfaced (the view
+    // renders the error/offline banner above the lane). When side-loading
+    // contributes no lane the states carry `[]`, so the plain error/offline
+    // presentation is byte-identical to the pre-F-1 behavior.
+    let lanes = sideloadedLanes()
+    return reachability.isConnectedToNetwork()
+      ? .error(message, sideloadedLanes: lanes)
+      : .offline(sideloadedLanes: lanes)
   }
 
   // MARK: - Public API
@@ -65,6 +191,7 @@ final class CatalogViewModel: ObservableObject {
 
     state = .loading
     currentLoadTask?.cancel()
+    cancelPrefetch()
 
     currentLoadTask = Task { [weak self] in
       guard let self, !Task.isCancelled else { return }
@@ -74,7 +201,7 @@ final class CatalogViewModel: ObservableObject {
 
         guard let feed = try await self.repository.loadTopLevelCatalog(at: url) else {
           guard !Task.isCancelled else { return }
-          self.state = .error("Failed to load catalog")
+          self.state = self.loadFailureState(message: "Failed to load catalog")
           return
         }
 
@@ -100,7 +227,7 @@ final class CatalogViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
 
-        let content = mapped.toCatalogContent()
+        let content = self.withSideloadedLane(mapped)
         self.state = .loaded(content)
         self.lastLoadedURL = url
         // Store under both the top-level URL and the active entry point href,
@@ -112,6 +239,10 @@ final class CatalogViewModel: ObservableObject {
           self.loadedFeeds[epHref] = content
         }
         self.activeEntryPointURL = url
+
+        // Launch-timing: catalog content is on screen. Records the
+        // process-start → catalog-loaded interval (time-to-interactive).
+        await AppLaunchTracker.shared.recordMilestone(.catalogLoaded)
 
         let t3 = CFAbsoluteTimeGetCurrent()
         let lanesCount = mapped.lanes.count
@@ -135,35 +266,54 @@ final class CatalogViewModel: ObservableObject {
           await self.prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
         }
 
-        // Deferred prefetch for below-fold lanes
+        // Deferred prefetch for below-fold lanes. Tracked + cancellable so a
+        // reload/teardown stops it mid-flight instead of letting it keep
+        // warming covers for a feed the patron has left.
         if mapped.lanes.count > 3 {
-          Task.detached(priority: .background) { [weak self] in
+          let belowFoldPrefetch = Task.detached(priority: .background) { [weak self] in
             guard let self else { return }
             let remaining = mapped.lanes.dropFirst(3).flatMap { $0.books }
             for batch in stride(from: 0, to: remaining.count, by: 20) {
+              if Task.isCancelled { return }
               let end = min(batch + 20, remaining.count)
               await self.prefetchThumbnails(for: Array(remaining[batch..<end]))
             }
           }
+          self.prefetchTasks.append(belowFoldPrefetch)
         }
 
-        // Preload inactive entry points in background
+        // Preload inactive entry points in background. Also tracked so a
+        // library switch / reload cancels these speculative feed fetches.
         let inactiveEntryPoints = mapped.entryPoints.filter { !$0.active }
         if !inactiveEntryPoints.isEmpty {
-          Task.detached(priority: .utility) { [weak self] in
-            guard let self else { return }
+          // Hoist the main-actor-isolated `repository` read onto the main actor
+          // here. `CatalogRepositoryProtocol` is now `Sendable`, so the detached
+          // preload captures the value rather than reading `self.repository` off
+          // the main actor (the `targeted` isolation diagnostic). The task is
+          // tracked in `prefetchTasks` and cancelled on reload/teardown (`deinit`
+          // cancels all prefetch tasks), and each fetch is guarded by
+          // `Task.isCancelled`, so dropping `[weak self]` is behavior-equivalent-
+          // or-better: the old strong-`self` capture kept the VM alive for the
+          // task's lifetime (so `deinit`'s cancel couldn't interrupt an in-flight
+          // preload); capturing only `repository` lets the VM deinit mid-preload,
+          // so `deinit`'s cancel now genuinely short-circuits at the next
+          // isCancelled check. Benign either way (speculative, cached preload).
+          let repository = self.repository
+          let entryPointPreload = Task.detached(priority: .utility) {
             await withTaskGroup(of: Void.self) { group in
               for ep in inactiveEntryPoints {
                 guard let epURL = ep.href else { continue }
                 group.addTask {
+                  if Task.isCancelled { return }
                   do {
-                    _ = try await self.repository.loadTopLevelCatalog(at: epURL)
+                    _ = try await repository.loadTopLevelCatalog(at: epURL)
                     Log.warn(#file, "[PERF] Preloaded entry point '\(ep.title)'")
                   } catch { }
                 }
               }
             }
           }
+          self.prefetchTasks.append(entryPointPreload)
         }
       } catch is CancellationError {
         Log.debug(#file, "Catalog load was cancelled")
@@ -171,7 +321,7 @@ final class CatalogViewModel: ObservableObject {
       } catch {
         guard !Task.isCancelled else { return }
         Log.error(#file, "Failed to load catalog: \(error.localizedDescription)")
-        self.state = .error(error.localizedDescription)
+        self.state = self.loadFailureState(message: error.localizedDescription)
       }
     }
   }
@@ -180,7 +330,11 @@ final class CatalogViewModel: ObservableObject {
   func forceRefresh() async {
     Log.info(#file, "Force refreshing catalog...")
     repository.invalidateCache(for: topLevelURLProvider() ?? URL(fileURLWithPath: "/"))
-    URLCache.shared.removeAllCachedResponses()
+    // Clear the network executor's PRIVATE URLCache (where feeds are actually
+    // served from) — not URLCache.shared, which holds only public non-feed
+    // responses. Clearing the wrong cache let an explicit pull-to-refresh still
+    // be served a stale feed (N1 split-brain, same class as sign-out/force-reset).
+    AppContainer.production().networkExecutor.clearCache()
     lastLoadedURL = nil
     loadedFeeds.removeAll()
     activeEntryPointURL = nil
@@ -188,9 +342,26 @@ final class CatalogViewModel: ObservableObject {
     await load()
   }
 
+  /// Pull-to-refresh. Invalidates the account-scoped cache so the reload is
+  /// guaranteed to hit the network, then reloads.
   func refresh() async {
+    await reload(invalidatingCache: true)
+  }
+
+  /// Shared reload path for both pull-to-refresh and library switches.
+  ///
+  /// - When `invalidatingCache == true` (pull-to-refresh) the current feed's
+  ///   cache entry is dropped via the protocol seam
+  ///   (`repository.invalidateCache(for:)`), forcing a fresh network fetch.
+  /// - When `invalidatingCache == false` (library switch / account change) the
+  ///   account-scoped cache is left intact so stale-while-revalidate can serve
+  ///   the new library's catalog instantly with a background refresh — the
+  ///   de-triple-fire win on A→B→A switches.
+  private func reload(invalidatingCache: Bool) async {
     guard let url = topLevelURLProvider() else { return }
-    (repository as? CatalogRepository)?.invalidateCache(for: url)
+    if invalidatingCache {
+      repository.invalidateCache(for: url)
+    }
     lastLoadedURL = nil
     loadedFeeds.removeAll()
     activeEntryPointURL = nil
@@ -210,7 +381,7 @@ final class CatalogViewModel: ObservableObject {
     // Try synchronous cache check — instant swap, no opacity fade
     if let cachedFeed = repository.cachedFeed(for: href) {
       let mapped = Self.mapFeed(cachedFeed, bookRegistry: bookRegistry)
-      let newContent = mapped.toCatalogContent()
+      let newContent = withSideloadedLane(mapped)
       state = .loaded(CatalogContent(
         title: newContent.title,
         feed: newContent.feed,
@@ -235,7 +406,7 @@ final class CatalogViewModel: ObservableObject {
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
         let mapped = Self.mapFeed(feed, bookRegistry: bookRegistry)
-        state = .loaded(mapped.toCatalogContent())
+        state = .loaded(withSideloadedLane(mapped))
         scrollGeneration &+= 1
       } else {
         state = .loaded(currentContent)
@@ -289,7 +460,7 @@ final class CatalogViewModel: ObservableObject {
 
     // Try repository cache — feed data exists but views need creation
     if let cachedFeed = repository.cachedFeed(for: href) {
-      let base = Self.mapFeed(cachedFeed, bookRegistry: bookRegistry).toCatalogContent()
+      let base = withSideloadedLane(Self.mapFeed(cachedFeed, bookRegistry: bookRegistry))
       let newContent = CatalogContent(
         title: base.title, feed: base.feed,
         selectors: CatalogSelectors(entryPoints: optimisticSelectors.entryPoints, facetGroups: base.selectors.facetGroups)
@@ -308,7 +479,7 @@ final class CatalogViewModel: ObservableObject {
 
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
-        let base = Self.mapFeed(feed, bookRegistry: bookRegistry).toCatalogContent()
+        let base = withSideloadedLane(Self.mapFeed(feed, bookRegistry: bookRegistry))
         let newContent = CatalogContent(
           title: base.title, feed: base.feed,
           selectors: CatalogSelectors(entryPoints: optimisticSelectors.entryPoints, facetGroups: base.selectors.facetGroups)
@@ -335,9 +506,10 @@ final class CatalogViewModel: ObservableObject {
   func handleAccountChange() async {
     guard let url = topLevelURLProvider() else { return }
     if lastLoadedURL == nil || url != lastLoadedURL {
-      currentLoadTask?.cancel()
-      state = .loading
-      await refresh()
+      // Serve the new library's account-scoped cache instantly (SWR); do NOT
+      // invalidate. `reload` handles the load-task cancel + `.loading`
+      // transition.
+      await reload(invalidatingCache: false)
     }
   }
 }
@@ -345,7 +517,16 @@ final class CatalogViewModel: ObservableObject {
 // MARK: - Models
 
 struct CatalogLaneModel: Identifiable {
-  let id = UUID()
+  /// Content-derived identity: a lane IS its title + group href within a feed.
+  ///
+  /// Previously a fresh `UUID()` per instance, so every re-map (facet apply,
+  /// registry update, entry-point switch) minted brand-new identities and
+  /// `ForEach` tore down + rebuilt every lane — each horizontal ScrollView and
+  /// all its covers — instead of diffing in place, flashing the whole feed. The
+  /// codebase already treats `title` + `moreURL` as a lane's identity (the
+  /// `catalogLaneMore(title:url:)` route), so deriving `id` from them is stable
+  /// across re-maps and consistent with existing assumptions.
+  var id: String { "\(title)|\(moreURL?.absoluteString ?? "")" }
   let title: String
   let books: [TPPBook]
   let moreURL: URL?
@@ -362,7 +543,7 @@ struct CatalogLaneModel: Identifiable {
 // MARK: - Feed Mapping
 
 extension CatalogViewModel {
-  struct MappedCatalog {
+  struct MappedCatalog: Sendable {
     let title: String
     let entries: [CatalogEntry]
     let lanes: [CatalogLaneModel]

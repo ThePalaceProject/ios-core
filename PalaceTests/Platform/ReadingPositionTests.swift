@@ -10,6 +10,7 @@ import XCTest
 @testable import Palace
 import PalaceReadingPosition
 
+@MainActor
 final class ReadingPositionTests: XCTestCase {
 
     // MARK: - EPUB Position

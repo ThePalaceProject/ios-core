@@ -9,9 +9,21 @@
 import CarPlay
 import UIKit
 import PalaceLogging
+import PalaceBookModel
 
 /// Provides artwork images for CarPlay audiobook display
 /// Handles async loading, caching, and placeholder generation
+///
+/// `@MainActor`: every rendering path touches main-actor UIKit — `UIScreen.main`,
+/// `UIGraphicsImageRenderer`, `NYPLTenPrintCoverView`, `CPImageSet` — and its
+/// consumers (`CarPlayTemplateBuilder`, `CarPlayTemplateManager`) are already
+/// main-actor CarPlay UI builders. Hoisting the isolation to the type is the
+/// `complete`-mode fix for the "main-actor API from nonisolated context" warnings
+/// in `processForCarPlay`/`generatePlaceholder`, and makes `self` a `Sendable`
+/// main-actor reference so the async `Task` in `artwork(for:)` no longer needs the
+/// completion-box hop. `loadArtwork`'s `URLSession` await runs fine on the main
+/// actor (it suspends, it doesn't block).
+@MainActor
 final class CarPlayImageProvider {
 
     // MARK: - Constants
@@ -55,17 +67,18 @@ final class CarPlayImageProvider {
             return
         }
 
-        // Load asynchronously
-        Task {
+        // Load asynchronously on the main actor (the type is `@MainActor`, so the
+        // Task inherits that isolation and `self` is a Sendable main-actor ref —
+        // no completion-box hop needed). `loadArtwork`'s `URLSession` await
+        // suspends without blocking main; the completion is invoked on main.
+        Task { @MainActor in
             let image = await loadArtwork(for: book)
             let finalImage = image ?? generatePlaceholder(for: book)
             let processed = processForCarPlay(finalImage)
 
             imageLoader.set(processed, for: cacheKey)
 
-            await MainActor.run {
-                completion(processed)
-            }
+            completion(processed)
         }
     }
 

@@ -1,5 +1,39 @@
 {
   "architectureStyle": "layered",
+  "componentRoots": [
+    "Palace",
+    "Palace/Accounts",
+    "Palace/AppInfrastructure",
+    "Palace/AppRating",
+    "Palace/Audiobooks",
+    "Palace/Book",
+    "Palace/BuildSupport",
+    "Palace/CarPlay",
+    "Palace/Catalog",
+    "Palace/CatalogDomain",
+    "Palace/CatalogUI",
+    "Palace/ErrorHandling",
+    "Palace/FeatureFlags",
+    "Palace/Holds",
+    "Palace/Keychain",
+    "Palace/Logging",
+    "Palace/Migrations",
+    "Palace/MyBooks",
+    "Palace/Network",
+    "Palace/Notifications",
+    "Palace/OPDS",
+    "Palace/OPDS2",
+    "Palace/PDF",
+    "Palace/Platform",
+    "Palace/Reader2",
+    "Palace/ReaderStreaming",
+    "Palace/Settings",
+    "Palace/SignInLogic",
+    "Palace/Stats",
+    "Palace/Support",
+    "Palace/Utilities",
+    "Palace/Views"
+  ],
   "excludePaths": [
     "*.build",
     "*.generated.swift",
@@ -94,6 +128,15 @@
       "from": "ios-audiobooktoolkit",
       "to": "PalaceUIKit",
       "reason": "Toolkit provides both core playback (Infrastructure) and default UI (Presentation). UI components import PalaceUIKit for shared styles."
+    }
+  ],
+  "knownFalsePositiveEdges": [
+    {
+      "from": "PalaceTriageBot",
+      "aka": "TriageBotUI",
+      "to": "Palace",
+      "confidence": "name-inferred",
+      "reason": "SwiftPM structurally forbids a package (PalaceTriageBot / its TriageBotUI target) from importing the app target (Palace). This edge is a name-based inference artifact, not a real import — the compiler cannot produce it. The trend gate must DISCOUNT it so the cycle count is not inflated by an impossible edge. See docs/architecture/god-class-decomposition-plan.md §3b cycle 9 (Wave 0 ledger hygiene)."
     }
   ]
 }

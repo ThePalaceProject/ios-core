@@ -99,7 +99,23 @@ struct AudiobookDataManagerStore: Codable {
     }
 }
 
-class AudiobookDataManager {
+/// - Sendable invariant: `AudiobookDataManager` is captured by the `@Sendable`
+///   closures it schedules onto `syncQueue` (barrier writes + the sync loop),
+///   the `beginBackgroundTask` expiration handler, the `.TPPCurrentAccountDidChange`
+///   observer, and the `networkService.POST` completion. It is safe to share
+///   across those boundaries because:
+///   1. Every stored dependency (`syncTimeInterval`, `syncQueue`, `audiobookLogger`,
+///      `networkService`, `currentAccountIdProvider`) is a `let` — immutable after
+///      `init`.
+///   2. The only mutable persisted state (`store`) is read and written EXCLUSIVELY
+///      through the serial `syncQueue` (`.async`/`.async(flags:.barrier)`/`.sync`),
+///      so there is no unsynchronized shared mutation. `subscriptions` and
+///      `accountChangeObserver` are written once during `init` (before any escape)
+///      and only read afterwards (the observer in `deinit`).
+///   Hence `@unchecked Sendable` rather than a compiler-checked conformance — the
+///   `syncQueue` discipline is the invariant the compiler cannot see, and
+///   `TPPNetworkExecutor` is not Sendable-audited.
+class AudiobookDataManager: @unchecked Sendable {
     private let syncTimeInterval: TimeInterval
     private var subscriptions: Set<AnyCancellable> = []
     /// Serial dispatch queue that owns all writes to `store`. Exposed at
@@ -125,7 +141,7 @@ class AudiobookDataManager {
     ///
     /// See `.forgeos/handoffs/2026-06-05-icarus-cross-host-logout-regression.md`
     /// §2 Bug B for the regression that motivated this guard.
-    private let currentAccountIdProvider: () -> String?
+    private let currentAccountIdProvider: @Sendable () -> String?
     /// Observer token for `.TPPCurrentAccountDidChange` posted by
     /// `AccountsManager.currentAccount.didSet`. Held so the observer is
     /// removed at dealloc; the notification only logs (no queue mutation)
@@ -133,7 +149,7 @@ class AudiobookDataManager {
     private var accountChangeObserver: NSObjectProtocol?
     init(syncTimeInterval: TimeInterval = 60,
          networkService: TPPNetworkExecutor = AppContainer.production().networkExecutor,
-         currentAccountIdProvider: @escaping () -> String? = { AppContainer.production().accountsManager.currentAccountId }) {
+         currentAccountIdProvider: @escaping @Sendable () -> String? = { AppContainer.production().accountsManager.currentAccountId }) {
         self.syncTimeInterval = syncTimeInterval
         self.networkService = networkService
         self.currentAccountIdProvider = currentAccountIdProvider
@@ -193,17 +209,26 @@ class AudiobookDataManager {
     }
 
     func syncValues(_: Date? = nil) {
-        // Request background task to ensure sync completes even if app is backgrounded
-        var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
-        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "AudiobookTimeSync") {
-            // Cleanup handler if time expires
-            UIApplication.shared.endBackgroundTask(backgroundTaskId)
-            backgroundTaskId = .invalid
-        }
+        // Request background task to ensure sync completes even if app is
+        // backgrounded. The identifier is shared-mutable across the expiration
+        // handler, the `syncQueue.async` body, and every per-request POST
+        // completion — all of which are `@Sendable` closures. A lock-backed
+        // reference box makes that sharing race-free (and `Sendable`) rather
+        // than capturing a mutable local `var` by reference across the
+        // concurrency boundaries. Behavior is unchanged: begin once, end once.
+        let backgroundTask = BackgroundTaskToken()
+        // `UIApplication.shared` is `@MainActor`-isolated, so both the
+        // `beginBackgroundTask` and `endBackgroundTask` touches must run on the
+        // main actor. The token owns those hops internally (see `begin`/`end`),
+        // which keeps `syncValues` free of a `@MainActor` annotation that would
+        // ripple to its Combine-sink call sites and tests. The main-queue hops
+        // are FIFO-ordered — `begin` is enqueued here before `syncQueue.async`
+        // can enqueue any `end`, so "begin once, end once" ordering holds.
+        backgroundTask.begin(named: "AudiobookTimeSync")
 
         syncQueue.async { [weak self] in
             guard let self = self else {
-                UIApplication.shared.endBackgroundTask(backgroundTaskId)
+                backgroundTask.end()
                 return
             }
 
@@ -244,14 +269,17 @@ class AudiobookDataManager {
             // they produce no completion callback, so counting them would leak
             // the background task until iOS reclaims it.
             let pendingCount = postableLibraryBooks.count
-            var completedCount = 0
-            let countLock = NSLock()
+            // Lock-backed completion counter — mutated from each POST completion
+            // (`@Sendable`) closure. A reference box keeps the shared count
+            // race-free without capturing a mutable local `var` across the
+            // concurrency boundary.
+            let completion = SyncCompletionCounter()
 
             // If no postable entries (queue empty OR every entry is cross-
             // account), end background task immediately so iOS doesn't bill
             // the app for an open background slot that will never close.
             if pendingCount == 0 {
-                UIApplication.shared.endBackgroundTask(backgroundTaskId)
+                backgroundTask.end()
                 return
             }
 
@@ -281,13 +309,8 @@ class AudiobookDataManager {
                     self.networkService.POST(request, useTokenIfAvailable: true) { [weak self] result, response, error in
                         defer {
                             // Track request completion for background task management
-                            countLock.lock()
-                            completedCount += 1
-                            let allComplete = completedCount >= pendingCount
-                            countLock.unlock()
-
-                            if allComplete {
-                                UIApplication.shared.endBackgroundTask(backgroundTaskId)
+                            if completion.increment() >= pendingCount {
+                                backgroundTask.end()
                             }
                         }
 
@@ -356,13 +379,8 @@ class AudiobookDataManager {
                     }
                 } else {
                     // No request made for this book, count as complete
-                    countLock.lock()
-                    completedCount += 1
-                    let allComplete = completedCount >= pendingCount
-                    countLock.unlock()
-
-                    if allComplete {
-                        UIApplication.shared.endBackgroundTask(backgroundTaskId)
+                    if completion.increment() >= pendingCount {
+                        backgroundTask.end()
                     }
                 }
             }
@@ -415,6 +433,79 @@ class AudiobookDataManager {
     private func removeSynchronizedEntries(ids: [String]) {
         store.queue = store.queue.filter { !ids.contains($0.id) }
         saveStore()
+    }
+}
+
+/// Lock-backed holder for the `UIBackgroundTaskIdentifier` used by
+/// `syncValues`. The id is shared-mutable across the `beginBackgroundTask`
+/// expiration handler and every POST-completion `@Sendable` closure; the lock
+/// serializes access and makes the holder `Sendable`.
+///
+/// The token also owns the two `UIApplication.shared` touches. Because
+/// `UIApplication.shared` is `@MainActor`-isolated, both `beginBackgroundTask`
+/// and `endBackgroundTask` are performed inside a `DispatchQueue.main.async`
+/// hop (mirroring `TPPBackgroundExecutor`), so callers on any queue — the
+/// `syncQueue.async` body and the per-request POST completions — can drive the
+/// lifecycle without a main-actor-isolation error and without forcing
+/// `@MainActor` onto `AudiobookDataManager`.
+///
+/// - Sendable invariant: `id` is only ever read/written under `lock`. `end()`
+///   is idempotent — it ends the task at most once and resets to `.invalid`,
+///   preserving the original code's "begin once, end once" semantics even if
+///   two completion paths race to finish. The main-queue is FIFO, so a `begin`
+///   enqueued before any `end` always runs first.
+private final class BackgroundTaskToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var id: UIBackgroundTaskIdentifier = .invalid
+
+    private func set(_ newId: UIBackgroundTaskIdentifier) {
+        lock.lock()
+        id = newId
+        lock.unlock()
+    }
+
+    /// Begins the background task on the main actor and stores its identifier.
+    /// The expiration handler ends the task via `end()` (also main-hopped).
+    func begin(named name: String) {
+        DispatchQueue.main.async { [self] in
+            let newId = UIApplication.shared.beginBackgroundTask(withName: name) { [self] in
+                end()
+            }
+            set(newId)
+        }
+    }
+
+    func end() {
+        DispatchQueue.main.async { [self] in
+            lock.lock()
+            let current = id
+            id = .invalid
+            lock.unlock()
+            if current != .invalid {
+                UIApplication.shared.endBackgroundTask(current)
+            }
+        }
+    }
+}
+
+/// Lock-backed completion counter for `syncValues`' per-request POST callbacks.
+/// Replaces the previous `var completedCount` + `NSLock` local pair so the
+/// count can be mutated from `@Sendable` completion closures without capturing
+/// a mutable local `var` across the concurrency boundary.
+///
+/// - Sendable invariant: `count` is only mutated inside `increment()` under
+///   `lock`, which returns the post-increment value atomically.
+private final class SyncCompletionCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    /// Atomically increments and returns the new value.
+    func increment() -> Int {
+        lock.lock()
+        count += 1
+        let value = count
+        lock.unlock()
+        return value
     }
 }
 

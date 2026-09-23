@@ -1,7 +1,9 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 class TPPOPDSGroupSwiftTests: XCTestCase {
 
   func testInitStoresProperties() {

@@ -1,11 +1,13 @@
 import XCTest
 import SwiftUI
 @testable import Palace
+import PalaceBookModel
 
 /// End-to-end tests that exercise the `ImageLoading` injection seam on
 /// `AppContainer`. The point is to prove a `MockImageLoader` can be threaded
 /// through the SwiftUI Environment and that prod code reads it rather than
 /// reaching for the legacy singletons.
+@MainActor
 final class AppContainerImageLoaderInjectionTests: XCTestCase {
 
     override func tearDown() {
@@ -23,6 +25,7 @@ final class AppContainerImageLoaderInjectionTests: XCTestCase {
             reachability: production.reachability,
             accountsManager: production.accountsManager,
             settings: production.settings,
+            featureFlags: production.featureFlags,
             downloadCenter: production.downloadCenter,
             downloadAnnouncementService: production.downloadAnnouncementService,
             debugSettings: production.debugSettings,

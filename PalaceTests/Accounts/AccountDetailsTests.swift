@@ -14,6 +14,7 @@ import PalaceCatalog
 
 // MARK: - LoginKeyboard Tests
 
+@MainActor
 final class LoginKeyboardTests: XCTestCase {
 
     func testInit_WithDefaultString_ReturnsStandard() {
@@ -73,6 +74,7 @@ final class LoginKeyboardTests: XCTestCase {
 
 // MARK: - AuthType Tests
 
+@MainActor
 final class AuthTypeTests: XCTestCase {
 
     func testAuthType_BasicRawValue_IsCorrect() {
@@ -114,6 +116,7 @@ final class AuthTypeTests: XCTestCase {
 
 // MARK: - Authentication Tests
 
+@MainActor
 final class AuthenticationTests: XCTestCase {
 
     func testNeedsAuth_ForBasicType_ReturnsTrue() {
@@ -220,6 +223,7 @@ final class AuthenticationTests: XCTestCase {
 /// BUG-004 holds-fetch suppression — when an anonymous library
 /// (Palace Bookshelf) is selected, holds must not be fetched and the error
 /// banner must not appear.
+@MainActor
 final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
 
     func testAccountDetails_NeedsAuth_BasicOnly_ReturnsTrue() {
@@ -381,6 +385,7 @@ final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
 
 // MARK: - URLType Tests
 
+@MainActor
 final class URLTypeTests: XCTestCase {
 
     func testURLType_HasAllExpectedCases() {

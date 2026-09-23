@@ -9,6 +9,31 @@ import Foundation
 import OSLog
 import PalaceLogging
 
+/// A single collected log record, decoupled from `OSLogEntry`.
+///
+/// This is the unit the formatting / counting / truncation logic operates on.
+/// Production adapts `OSLogEntryLog` / `OSLogEntrySignpost` into it (see
+/// `DeviceLogCollector.liveOSLogStoreEntries`); tests build fixtures directly,
+/// so the collector's logic is exercised without scanning the live process log
+/// store. `OSLogEntry` subclasses aren't publicly constructible, which is
+/// exactly why the seam is a value type rather than the OS type.
+struct DeviceLogEntry: Sendable {
+    /// Mirrors `OSLogEntryLog.Level` as a closed, `Sendable` value so the seam
+    /// type carries no dependency on the OSLog SDK's own (non-`Sendable`) enum.
+    enum Level: Sendable {
+        case undefined, debug, info, notice, error, fault, other
+    }
+    enum Kind: Sendable {
+        case log(level: Level)
+        case signpost
+    }
+    let date: Date
+    let subsystem: String
+    let category: String
+    let message: String
+    let kind: Kind
+}
+
 /// Collects device-level logs from the unified logging system (OSLogStore).
 ///
 /// This provides comprehensive diagnostic logs similar to Android's logcat output,
@@ -18,12 +43,31 @@ actor DeviceLogCollector {
     static let shared = DeviceLogCollector()
 
     /// Maximum number of log entries to collect to prevent excessive memory usage
-    private let maxEntries = 50_000
+    private let maxEntries: Int
 
     /// Maximum output size in bytes (~10MB uncompressed text)
-    private let maxOutputBytes = 10_000_000
+    private let maxOutputBytes: Int
 
-    private init() {}
+    /// Source of log records. Defaults to the live process OSLogStore.
+    ///
+    /// Injectable so tests drive the format/count/truncation logic against a
+    /// bounded fixture instead of `OSLogStore(scope: .currentProcessIdentifier)`
+    /// — whose entry volume grows with every test that ran before, making a live
+    /// scan both slow and load-dependent under full-suite CI (the DeviceLogCollector
+    /// 120s full-suite hang). The `maxEntries` argument lets the source bound its
+    /// own walk so the expensive scan terminates early, mirroring the pre-refactor
+    /// in-loop cap.
+    private let entrySource: @Sendable (_ days: Int, _ maxEntries: Int) throws -> [DeviceLogEntry]
+
+    init(
+        entrySource: @escaping @Sendable (_ days: Int, _ maxEntries: Int) throws -> [DeviceLogEntry] = DeviceLogCollector.liveOSLogStoreEntries,
+        maxEntries: Int = 50_000,
+        maxOutputBytes: Int = 10_000_000
+    ) {
+        self.entrySource = entrySource
+        self.maxEntries = maxEntries
+        self.maxOutputBytes = maxOutputBytes
+    }
 
     // MARK: - Public API
 
@@ -37,32 +81,34 @@ actor DeviceLogCollector {
         output += "Note: These are full process logs from the iOS unified logging system.\n\n"
 
         do {
-            let store = try OSLogStore(scope: .currentProcessIdentifier)
-            let startDate = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-            let position = store.position(date: startDate)
-
-            let entries = try store.getEntries(at: position)
+            // The source bounds its own walk at `maxEntries` (the expensive scan),
+            // so the returned array is already capped; the byte budget is applied
+            // here during formatting.
+            let entries = try entrySource(days, maxEntries)
 
             var entryCount = 0
             var byteCount = 0
+            var truncated = false
 
             for entry in entries {
-                guard entryCount < maxEntries, byteCount < maxOutputBytes else {
-                    output += "\n[Log output truncated at \(entryCount) entries / \(ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file))]\n"
+                if byteCount >= maxOutputBytes {
+                    truncated = true
                     break
                 }
+                let line = format(entry)
+                output += line
+                byteCount += line.utf8.count
+                entryCount += 1
+            }
 
-                if let logEntry = entry as? OSLogEntryLog {
-                    let line = formatLogEntry(logEntry)
-                    output += line
-                    byteCount += line.utf8.count
-                    entryCount += 1
-                } else if let signpostEntry = entry as? OSLogEntrySignpost {
-                    let line = formatSignpostEntry(signpostEntry)
-                    output += line
-                    byteCount += line.utf8.count
-                    entryCount += 1
-                }
+            // The source returning a full `maxEntries` batch means more entries
+            // existed than we collected — same "truncated" signal the old in-loop
+            // entry cap produced.
+            if !truncated && entries.count >= maxEntries {
+                truncated = true
+            }
+            if truncated {
+                output += "\n[Log output truncated at \(entryCount) entries / \(ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file))]\n"
             }
 
             output += "\n=== End Device Logs (\(entryCount) entries) ===\n"
@@ -75,31 +121,64 @@ actor DeviceLogCollector {
         return Data(output.utf8)
     }
 
-    // MARK: - Formatting
+    // MARK: - Live OSLogStore source (production default)
 
-    private func formatLogEntry(_ entry: OSLogEntryLog) -> String {
-        let timestamp = formatDate(entry.date)
-        let level = levelString(for: entry.level)
-        let subsystem = entry.subsystem.isEmpty ? "-" : entry.subsystem
-        let category = entry.category.isEmpty ? "-" : entry.category
-        let message = entry.composedMessage
+    /// The production entry source: reads the current process's unified log
+    /// store and adapts each record into a `DeviceLogEntry`. Bounds its walk at
+    /// `maxEntries` so the scan terminates early instead of decoding the entire
+    /// (potentially enormous) store. This is the only live-store reader; tests
+    /// substitute a fixture source and never reach it.
+    static func liveOSLogStoreEntries(days: Int, maxEntries: Int) throws -> [DeviceLogEntry] {
+        let store = try OSLogStore(scope: .currentProcessIdentifier)
+        let startDate = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        let position = store.position(date: startDate)
+        let rawEntries = try store.getEntries(at: position)
 
-        return "[\(timestamp)] [\(level)] [\(subsystem)/\(category)] \(message)\n"
+        var result: [DeviceLogEntry] = []
+        result.reserveCapacity(min(maxEntries, 4096))
+        for entry in rawEntries {
+            if result.count >= maxEntries { break }
+            if let logEntry = entry as? OSLogEntryLog {
+                result.append(DeviceLogEntry(
+                    date: logEntry.date,
+                    subsystem: logEntry.subsystem,
+                    category: logEntry.category,
+                    message: logEntry.composedMessage,
+                    kind: .log(level: mapLevel(logEntry.level))
+                ))
+            } else if let signpostEntry = entry as? OSLogEntrySignpost {
+                result.append(DeviceLogEntry(
+                    date: signpostEntry.date,
+                    subsystem: signpostEntry.subsystem,
+                    category: signpostEntry.category,
+                    message: signpostEntry.composedMessage,
+                    kind: .signpost
+                ))
+            }
+        }
+        return result
     }
 
-    private func formatSignpostEntry(_ entry: OSLogEntrySignpost) -> String {
+    // MARK: - Formatting
+
+    private func format(_ entry: DeviceLogEntry) -> String {
         let timestamp = formatDate(entry.date)
         let subsystem = entry.subsystem.isEmpty ? "-" : entry.subsystem
         let category = entry.category.isEmpty ? "-" : entry.category
 
-        return "[\(timestamp)] [SIGNPOST] [\(subsystem)/\(category)] \(entry.composedMessage)\n"
+        switch entry.kind {
+        case .log(let level):
+            return "[\(timestamp)] [\(levelString(for: level))] [\(subsystem)/\(category)] \(entry.message)\n"
+        case .signpost:
+            return "[\(timestamp)] [SIGNPOST] [\(subsystem)/\(category)] \(entry.message)\n"
+        }
     }
 
     private func formatDate(_ date: Date) -> String {
         Self.dateFormatter.string(from: date)
     }
 
-    private func levelString(for level: OSLogEntryLog.Level) -> String {
+    private func levelString(for level: DeviceLogEntry.Level) -> String {
         switch level {
         case .undefined:
             return "UNDEF"
@@ -113,8 +192,22 @@ actor DeviceLogCollector {
             return "ERROR"
         case .fault:
             return "FAULT"
-        @unknown default:
+        case .other:
             return "OTHER"
+        }
+    }
+
+    /// Maps the OSLog SDK level onto our closed `Sendable` mirror. Kept adjacent
+    /// to `levelString` so the two stay in sync.
+    private static func mapLevel(_ level: OSLogEntryLog.Level) -> DeviceLogEntry.Level {
+        switch level {
+        case .undefined: return .undefined
+        case .debug: return .debug
+        case .info: return .info
+        case .notice: return .notice
+        case .error: return .error
+        case .fault: return .fault
+        @unknown default: return .other
         }
     }
 

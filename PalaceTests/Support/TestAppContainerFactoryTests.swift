@@ -24,6 +24,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookRegistry
 
 // Subclasses `PalaceTestCase` (WS-0 / M0): `testMakeTestAppContainer_doesNot…`
 // sets `AccountsManager.deferInitialLoadCatalogsForTesting = false` (restored

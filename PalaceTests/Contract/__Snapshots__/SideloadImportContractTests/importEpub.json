@@ -1,0 +1,27 @@
+[
+  {
+    "args" : {
+      "contentType" : "epub",
+      "mimeType" : "application\/epub+zip"
+    },
+    "method" : "classify"
+  },
+  {
+    "args" : {
+      "ext" : "epub"
+    },
+    "method" : "copyFile"
+  },
+  {
+    "args" : {
+      "contentType" : "epub"
+    },
+    "method" : "sideloadRegistry.add"
+  },
+  {
+    "args" : {
+      "state" : "download-successful"
+    },
+    "method" : "bookRegistry.addBook"
+  }
+]

@@ -11,7 +11,9 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class BorrowReducerContractTests: XCTestCase {
 
     /// Records the state-transition contract for every (registry-state, prior-state)

@@ -8,6 +8,7 @@
 
 import Foundation
 import ReadiumShared
+import PalaceBookModel
 
 extension Publication {
 

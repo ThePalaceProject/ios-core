@@ -16,6 +16,7 @@ import XCTest
 // MARK: - AudiobookDataManager Save Tests
 
 /// SRS: AUDIO-004 -- Time entries are queued and persisted correctly
+@MainActor
 final class AudiobookDataManagerSaveTests: XCTestCase {
 
     override func setUp() {

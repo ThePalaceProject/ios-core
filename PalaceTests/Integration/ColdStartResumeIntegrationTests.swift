@@ -30,7 +30,10 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
+@testable import PalaceBookRegistry
 
+@MainActor
 class ColdStartResumeIntegrationTests: PalaceWiringTestCase {
 
     private var account: String!

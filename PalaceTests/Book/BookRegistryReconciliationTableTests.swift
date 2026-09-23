@@ -39,7 +39,9 @@
 
 import XCTest
 import PalaceCatalog
+import PalaceBookModel
 @testable import Palace
+@testable import PalaceBookRegistry
 
 final class BookRegistryReconciliationTableTests: XCTestCase {
 
@@ -72,7 +74,7 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
         case licenseOnly
         case present
 
-        var presence: BookRegistrySync.ContentPresence {
+        var presence: RegistryContentPresence {
             switch self {
             case .absent: return .absent
             case .licenseOnly: return .licenseOnly

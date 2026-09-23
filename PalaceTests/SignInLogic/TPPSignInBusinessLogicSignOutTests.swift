@@ -26,7 +26,9 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -168,7 +170,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
 
     // MARK: - Sign-out cancels in-flight sign-out work (PP-3491 generation guard)
 
-    func test_signOut_preservesNewCredentials_whenUserReauthenticatesDuringSignOut() {
+    func test_signOut_preservesNewCredentials_whenUserReauthenticatesDuringSignOut() async {
         // The signInGeneration race-condition guard: if the user signs back
         // in WHILE the sign-out's DRM callback is still pending, the late
         // callback must NOT wipe their new credentials.
@@ -188,16 +190,11 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         businessLogic.performLogOut()
 
         // Drain the userProfile request → deauthorize() gets called → its
-        // completion is captured (deferred).
-        let waited = expectation(description: "deauthorize-was-invoked")
-        let drmPoll = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { t in
-            if self.drmAuthorizer.deauthorizeWasCalled {
-                t.invalidate()
-                waited.fulfill()
-            }
-        }
-        wait(for: [waited], timeout: 5.0)
-        drmPoll.invalidate()
+        // completion is captured (deferred). JOIN the "deauthorize invoked"
+        // edge deterministically via the mock's continuation seam instead of
+        // spinning a `Timer.scheduledTimer` that polls `deauthorizeWasCalled`
+        // on a 5s wall-clock ceiling (parallel-clone starvable).
+        await drmAuthorizer._awaitDeauthorizeCalledForTesting()
 
         // §10.4 seam: directly observe the captured snapshot — performLogOut
         // recorded the userAccount's current generation. Tests can now pin
@@ -226,7 +223,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         let signaled = expectation(description: "finish-deauth-late")
         uiDelegate.didFinishDeauthorizingHandler = { signaled.fulfill() }
         drmAuthorizer.completeDeferredDeauthorize()
-        wait(for: [signaled], timeout: 5.0)
+        await fulfillment(of: [signaled], timeout: 5.0)
 
         XCTAssertEqual(acct.authToken, "freshly-reauthed-token",
                        "Late sign-out callback must NOT wipe credentials that belong to a NEW sign-in (signInGeneration race-guard)")
@@ -238,7 +235,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
                        "Stale callback must reset isSignOutInProgress so the next sign-out can proceed")
     }
 
-    func test_signOut_preservesAdobeActivation_whenStaleCallbackArrives() {
+    func test_signOut_preservesAdobeActivation_whenStaleCallbackArrives() async {
         // Security regression: stale DRM callback must not clear userID /
         // deviceID set by the NEW sign-in. These are what Adobe uses to
         // recognize the device — clearing them burns an activation slot.
@@ -248,16 +245,9 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         drmAuthorizer.shouldDeferDeauthorize = true
         businessLogic.performLogOut()
 
-        // Wait for deauthorize-was-called
-        let captured = expectation(description: "deauthorize-was-invoked")
-        let poll = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { t in
-            if self.drmAuthorizer.deauthorizeWasCalled {
-                t.invalidate()
-                captured.fulfill()
-            }
-        }
-        wait(for: [captured], timeout: 5.0)
-        poll.invalidate()
+        // Join the "deauthorize invoked" edge deterministically (mock seam)
+        // instead of Timer-polling `deauthorizeWasCalled` on a 5s ceiling.
+        await drmAuthorizer._awaitDeauthorizeCalledForTesting()
 
         // Race in a new sign-in with NEW Adobe activation state.
         businessLogic.cancelPendingSignOut()
@@ -269,7 +259,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         let signaled = expectation(description: "finish-deauth-late")
         uiDelegate.didFinishDeauthorizingHandler = { signaled.fulfill() }
         drmAuthorizer.completeDeferredDeauthorize()
-        wait(for: [signaled], timeout: 5.0)
+        await fulfillment(of: [signaled], timeout: 5.0)
 
         XCTAssertEqual(acct.userID, "NEW-adobe-user",
                        "Stale sign-out must NOT clobber the new sign-in's Adobe userID — would burn an activation slot")
@@ -279,7 +269,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
 
     // MARK: - Re-entrant performLogOut
 
-    func test_signOut_reentrantCall_isCoalesced() {
+    func test_signOut_reentrantCall_isCoalesced() async {
         // Second performLogOut() while the first is in flight must be a no-op.
         // We arrange for the DRM completion to be deferred so the first
         // sign-out is unambiguously "in progress" during the second call.
@@ -288,24 +278,20 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
 
         businessLogic.performLogOut()
 
-        let captured = expectation(description: "first sign-out reached deauthorize")
-        let poll = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { t in
-            if self.drmAuthorizer.deauthorizeWasCalled {
-                t.invalidate()
-                captured.fulfill()
-            }
-        }
-        wait(for: [captured], timeout: 5.0)
-        poll.invalidate()
+        // Join the first sign-out reaching deauthorize deterministically
+        // (mock seam) instead of Timer-polling on a 5s wall-clock ceiling.
+        await drmAuthorizer._awaitDeauthorizeCalledForTesting()
 
         // Second call must be coalesced — must not trigger another network request
         // or another deauthorize.
         let countBefore = drmAuthorizer.deauthorizeCallCount
         businessLogic.performLogOut()
         // Drain the runloop to give a hypothetical second sign-out a chance to
-        // spin up. drainMainQueue's FIFO guarantee means every earlier-queued
-        // block has run by the time the assertion below executes.
-        drainMainQueue()
+        // spin up. FIFO guarantee means every earlier-queued block has run by
+        // the time the assertion below executes. `drainMainQueueAsync` (not the
+        // sync `drainMainQueue`) is REQUIRED here — this test is now `async`,
+        // and the synchronous variant deadlocks inside `@MainActor async` bodies.
+        await drainMainQueueAsync()
 
         XCTAssertEqual(drmAuthorizer.deauthorizeCallCount, countBefore,
                        "Second performLogOut() while first is in-flight must coalesce — must not re-invoke deauthorize()")
@@ -314,7 +300,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         let signaled = expectation(description: "first sign-out finishes")
         uiDelegate.didFinishDeauthorizingHandler = { signaled.fulfill() }
         drmAuthorizer.completeDeferredDeauthorize()
-        wait(for: [signaled], timeout: 5.0)
+        await fulfillment(of: [signaled], timeout: 5.0)
     }
 
     // MARK: - Sign-out 401 silent path
@@ -416,5 +402,45 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
                        "Sign-out must reset() the book registry — the mock's reset(_:) clears isSyncing")
         XCTAssertTrue(bookRegistry.registry.isEmpty,
                       "Sign-out must reset() the book registry — the mock's reset(_:) clears the registry dictionary; observing this proves reset() ran, not just isSyncing flipping")
+    }
+
+    // MARK: - Proactive token refresh must stay OFF on this leg
+
+    /// Pins `enableTokenRefresh: false` on the sign-out profile request.
+    ///
+    /// A one-word flag with no visible effect on the happy path, which is
+    /// exactly why it needs a test. Setting it true arms
+    /// `TPPNetworkExecutor:882-899`: a proactive refresh that 401s — an expired
+    /// card, the case someone would flip the flag to help — calls
+    /// `markCredentialsStale()` AND `presentSignInModalForCurrentAccount(...)`
+    /// when the refreshing account is the current one, which at sign-out it
+    /// almost always is. The executor ignores the refresh result, so the
+    /// sign-out completes underneath the sheet and the patron is handed a
+    /// sign-in prompt for the library they just left.
+    ///
+    /// Nothing about a green suite would show that. The flag WAS flipped to
+    /// true during development for a real reason — the response body carries
+    /// the fresh Adobe licensor — survived a full passing suite, and was caught
+    /// only by a reviewer reading the executor. This asserts what the caller
+    /// actually requested, not what the source says, so an equivalent flip
+    /// through any other route fails too.
+    ///
+    /// The BORROW path deliberately opts in (`freshLicensorFromProfileDocument`):
+    /// prompting re-auth mid-borrow is already this app's design. Sign-out is
+    /// the one flow where it never is, so only this leg is pinned.
+    func test_signOutProfileRequest_doesNotArmProactiveTokenRefresh() async {
+        seedSignedInBasicUserWithAdobe()
+
+        businessLogic.performLogOut()
+        await drainMainQueueAsync()
+
+        let asked = networkExecutor.tokenRefreshByURL
+        XCTAssertFalse(asked.isEmpty,
+                       "sign-out issued no request — the flag assertion below would be vacuous")
+        for (url, enabled) in asked {
+            XCTAssertFalse(enabled,
+                           "sign-out asked for a proactive token refresh on \(url). A refresh that "
+                           + "401s presents the sign-in modal on the way OUT of the account.")
+        }
     }
 }

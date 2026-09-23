@@ -11,6 +11,7 @@ import PalaceCatalog
 
 @testable import Palace
 
+@MainActor
 class OPDS2CatalogsFeedTests: XCTestCase {
 
     let testFeedUrl = Bundle.init(for: OPDS2CatalogsFeedTests.self)

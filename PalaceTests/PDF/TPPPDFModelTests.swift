@@ -10,9 +10,11 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - TPPPDFPage Tests
 
+@MainActor
 final class TPPPDFPageTests: XCTestCase {
 
     // SRS: TPPPDFPage stores page number correctly
@@ -76,6 +78,7 @@ final class TPPPDFPageTests: XCTestCase {
 
 // MARK: - TPPPDFLocation Tests
 
+@MainActor
 final class TPPPDFLocationCoverageTests: XCTestCase {
 
     // SRS: TPPPDFLocation initializes with all parameters
@@ -148,6 +151,7 @@ final class TPPPDFLocationCoverageTests: XCTestCase {
 
 // MARK: - TPPPDFPageBookmark Tests
 
+@MainActor
 final class TPPPDFPageBookmarkTests: XCTestCase {
 
     // SRS: TPPPDFPageBookmark initializes with page number
@@ -258,6 +262,7 @@ final class TPPPDFPageBookmarkTests: XCTestCase {
 
 // MARK: - TPPPDFReaderMode Tests
 
+@MainActor
 final class TPPPDFReaderModeTests: XCTestCase {
 
     // SRS: TPPPDFReaderMode reader value
@@ -309,6 +314,7 @@ final class TPPPDFReaderModeTests: XCTestCase {
 
 // MARK: - TPPPDFDocument Tests
 
+@MainActor
 final class TPPPDFDocumentTests: XCTestCase {
 
     // Post-migration: TPPPDFDocument is the non-encrypted/open-access PDF

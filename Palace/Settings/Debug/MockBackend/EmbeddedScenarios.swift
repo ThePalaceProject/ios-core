@@ -18,6 +18,7 @@ extension MockScenario {
         loanLimit,
         serverDown,
         slowNetwork,
+        holdsReserved,
     ]
 
     static let happyPath = MockScenario(
@@ -32,6 +33,17 @@ extension MockScenario {
             MockRoute(pathPattern: ".*/loans($|[/?].*)", fixtureName: "opds2_feed", statusCode: 200, contentType: "application/opds+json"),
             MockRoute(pathPattern: ".*/borrow($|[/?])", fixtureName: "opds2_feed", statusCode: 201, contentType: "application/opds+json"),
             MockRoute(method: "PUT", pathPattern: ".*/revoke", fixtureName: "opds2_feed", statusCode: 200, contentType: "application/opds+json"),
+        ]
+    )
+
+    static let holdsReserved = MockScenario(
+        id: "holds_reserved",
+        displayName: "Holds — Reserved + Ready",
+        description: "The loans/holds feed returns one reserved hold (queue position 3 of 8, 0/2 copies) plus one ready-to-borrow hold. Populates the Holds tab so its queue-position, ready, and cancel UI can be exercised without waiting on real limited-copy inventory.",
+        routes: [
+            MockRoute(pathPattern: ".*/authentication_document", fixtureName: "auth_document", statusCode: 200, contentType: "application/vnd.opds.authentication+json"),
+            // Loans/holds feed is OPDS 1.x (Atom); the registry sync parses it into `.holding` books.
+            MockRoute(pathPattern: ".*/loans($|[/?].*)", fixtureName: "opds1_hold_entries", statusCode: 200, contentType: "application/atom+xml;profile=opds-catalog;kind=acquisition"),
         ]
     )
 

@@ -9,13 +9,67 @@
 import Foundation
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
 /// Manages debug/testing settings for error scenarios and QA tools.
 /// Available in DEBUG and TestFlight builds; gated behind Developer Settings UI
 /// which requires a hidden gesture to access.
-final class DebugSettings {
+///
+/// Swift 6 `complete` — `@unchecked Sendable` invariant: the ONLY stored state
+/// is `defaults` (`UserDefaults.standard`, itself thread-safe). Every other member
+/// is a computed property over `UserDefaults` or a pure factory function; there is
+/// no other mutable stored state to race. Lets `DebugSettings` cross the `@Sendable`
+/// off-main badge-computation closure in `AppTabHostView.updateHoldsBadge()` without
+/// a wrapper box. (Not a bare `@unchecked` — this comment is the documented invariant.)
+final class DebugSettings: @unchecked Sendable {
 
     private let defaults = UserDefaults.standard
+
+    // MARK: - Skeleton Verification (QA / dev only)
+
+    /// Forces every first-load skeleton gate ON so the transient loading
+    /// placeholders — normally visible for only a few hundred ms during
+    /// hydration — can be inspected on the simulator in both light and dark
+    /// appearance. Set via a launch argument (`-PalaceForceSkeletons YES`) or
+    ///
+    ///     xcrun simctl spawn <udid> defaults write \
+    ///       org.thepalaceproject.palace PalaceForceSkeletons -bool true
+    ///
+    /// then relaunch. DEBUG-only: the release build returns the constant `false`
+    /// so production render paths are byte-identical (no UserDefaults read, and
+    /// the `#if DEBUG` lives here — call sites stay clean).
+    static var forceSkeletons: Bool {
+        forceSkeletons(in: .standard)
+    }
+
+    /// Testable seam — reads the override from an injectable defaults store so
+    /// the flag can be exercised without touching `UserDefaults.standard`. In
+    /// release the override is ignored and this is a compile-time `false`.
+    static func forceSkeletons(in defaults: UserDefaults) -> Bool {
+        #if DEBUG
+        return defaults.bool(forKey: "PalaceForceSkeletons")
+        #else
+        return false
+        #endif
+    }
+
+    /// Whether THIS build honors the `PalaceForceSkeletons` override at all —
+    /// `true` in DEBUG (and any build that defines DEBUG, e.g. the Debug-
+    /// configured app the unit tests link against), `false` in release.
+    ///
+    /// Exposed so tests assert `forceSkeletons`' behavior against the *Palace
+    /// module's* compile-time DEBUG (the module the code-under-test lives in),
+    /// NOT the test target's — the `PalaceTests` target intentionally does not
+    /// define `DEBUG` (its `SWIFT_ACTIVE_COMPILATION_CONDITIONS` is
+    /// `LCP FEATURE_OVERDRIVE`), so a `#if DEBUG` written in a test file
+    /// mis-evaluates this gate and diverges from the built app's real behavior.
+    static var honorsForceSkeletonsOverride: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
 
     // MARK: - Keys
 
@@ -150,16 +204,50 @@ final class DebugSettings {
         return simulatedBorrowError != .none
     }
 
+    // MARK: - Debug-simulation marker
+
+    /// Unmistakable banner stamped onto every simulated debug error. PP-4454
+    /// follow-up: a QA tester left the "Simulate Borrow Error" toggle on and
+    /// reported the resulting fake 500 as a real server bug, because the alert
+    /// was indistinguishable from a genuine failure. The marker leads the alert
+    /// body and the "Palace Error Report" so a simulation can never masquerade
+    /// as a real error again.
+    static let debugSimulationMarker = "⚠️ DEBUG SIMULATION"
+
+    /// Actionable banner line that names the toggle and how to disable it.
+    private static func debugSimulationBanner(_ displayName: String) -> String {
+        "\(debugSimulationMarker) — this is a FAKE error triggered by "
+        + "Developer Settings ▸ Simulate Borrow Error (\(displayName)). "
+        + "It is NOT a real failure. Set it to “None” to stop seeing it."
+    }
+
     // MARK: - Error Generation
 
-    /// Creates a simulated NSError with problem document for testing
-    /// Returns nil if simulation is disabled
+    /// Creates a simulated NSError with problem document for testing.
+    /// Returns nil if simulation is disabled.
+    ///
+    /// The returned problem document is a *marked* copy of the catalog document:
+    /// its title and detail carry `debugSimulationMarker` so the simulation is
+    /// obvious in every surface QA sees (borrow-error alert body + error report),
+    /// while the genuine copy is preserved beneath the banner for realistic preview.
     func createSimulatedBorrowError() -> (error: NSError, problemDocument: TPPProblemDocument)? {
-        guard let problemDoc = simulatedBorrowError.problemDocument else {
+        let simulated = simulatedBorrowError
+        guard let baseDoc = simulated.problemDocument else {
             return nil
         }
 
-        Log.warn(#file, "⚠️ DEBUG: Simulating borrow error: \(simulatedBorrowError.displayName)")
+        Log.warn(#file, "⚠️ DEBUG: Simulating borrow error: \(simulated.displayName)")
+
+        let markedTitle = "\(Self.debugSimulationMarker): \(baseDoc.title ?? "Simulated error")"
+        let markedDetail = Self.debugSimulationBanner(simulated.displayName)
+            + "\n\n" + (baseDoc.detail ?? "")
+
+        let problemDoc = TPPProblemDocument.fromDictionary([
+            "type": baseDoc.type ?? "",
+            "title": markedTitle,
+            "status": baseDoc.status ?? 403,
+            "detail": markedDetail
+        ])
 
         let error = NSError.makeFromProblemDocument(
             problemDoc,

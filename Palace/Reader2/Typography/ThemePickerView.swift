@@ -18,7 +18,7 @@ struct ThemePickerView: View {
             Text("Theme")
                 .font(.subheadline)
                 .fontWeight(.medium)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: 16) {
@@ -64,7 +64,7 @@ private struct ThemeSwatch: View {
                 // "A" letter preview showing text color
                 Text("A")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(theme.textSwiftUI)
+                    .foregroundStyle(theme.textSwiftUI)
             }
         }
         .buttonStyle(.plain)

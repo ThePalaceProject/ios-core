@@ -6,11 +6,13 @@
 //
 
 import SwiftUI
+import PalacePreferences
 import Combine
 import LocalAuthentication
 import PalaceLogging
 import PalaceNetwork
 import PalaceAuth
+import PalaceBookRegistry
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {
@@ -56,6 +58,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     private let settings: TPPSettings
     private let userAccountPublisher: UserAccountPublisher
     private let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
+    /// Source of the credential snapshot read by `accountDidChange()` and init.
+    /// Defaults to the live keychain-backed path
+    /// (`accountsManager.userAccount(for:).credentialSnapshot()`); injectable so
+    /// the signed-in derivation can be exercised without keychain. Mirrors
+    /// `drmAuthorizerProvider`.
+    private let credentialSnapshotProvider: (String) -> TPPUserAccount.CredentialSnapshot
     private var cancellables = Set<AnyCancellable>()
     var forceEditability = false
 
@@ -63,6 +71,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     var selectedAccount: Account? {
         businessLogic.libraryAccount
+    }
+
+    /// Wave 1c: caller-snapshotted context for the report-issue composer.
+    var problemReportContext: (patronIdentifier: String?, libraryName: String?, libraryUUID: String?) {
+        accountsManager.problemReportContext(forLibrary: selectedAccount?.uuid)
     }
 
     var selectedUserAccount: TPPUserAccount {
@@ -127,7 +140,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         downloadCenter: MyBooksDownloadCenter,
         settings: TPPSettings,
         userAccountPublisher: UserAccountPublisher,
-        drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?
+        drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
+        credentialSnapshotProvider: ((String) -> TPPUserAccount.CredentialSnapshot)? = nil
     ) {
         self.libraryAccountID = libraryAccountID
         self.accountsManager = accountsManager
@@ -136,6 +150,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         self.settings = settings
         self.userAccountPublisher = userAccountPublisher
         self.drmAuthorizerProvider = drmAuthorizerProvider
+        self.credentialSnapshotProvider = credentialSnapshotProvider ?? { [accountsManager] id in
+            accountsManager.userAccount(for: id).credentialSnapshot()
+        }
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
@@ -147,7 +164,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             drmAuthorizer: nil
         )
 
-        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = self.credentialSnapshotProvider(libraryAccountID)
         self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         super.init()
@@ -187,21 +204,25 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     // MARK: - Setup
 
     private func setupObservers() {
+        // `.receive(on: RunLoop.main)` is REQUIRED, not cosmetic: this sink
+        // closure is `@MainActor`-isolated (the view model is `@MainActor`), and
+        // `.TPPUserAccountDidChange` is posted on WHATEVER thread `setAuthToken`
+        // runs on — notably a BACKGROUND queue during the token-refresh-before-
+        // playback path (`TPPNetworkExecutor.executeTokenRefresh` →
+        // `TPPUserAccount.notifyAccountDidChange`). Without the hop, Combine runs
+        // the `@MainActor` closure on that background queue and Swift 6 traps
+        // (`dispatch_assert_queue_fail`) — it crashed audiobook startup. The
+        // hop also makes the inner `Task { @MainActor }` unnecessary. Mirrors the
+        // two subscribers below that already receive on main.
         NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
-            .sink { [weak self] _ in
-                Task { @MainActor in
-                    self?.accountDidChange()
-                }
-            }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.accountDidChange() }
             .store(in: &cancellables)
 
         // Listen for account switches to refresh sign-in state
         NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
-            .sink { [weak self] _ in
-                Task { @MainActor in
-                    self?.accountDidChange()
-                }
-            }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.accountDidChange() }
             .store(in: &cancellables)
 
         // Belt-and-suspenders refresh signals. The `.TPPUserAccountDidChange`
@@ -227,10 +248,14 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         isLoadingAuth = true
 
         if businessLogic.libraryAccount?.details != nil {
-            Task { @MainActor in
-                setupViews()
-                accountDidChange()
-                isLoadingAuth = false
+            // [weak self]: this init Task must not keep the view-model alive past
+            // its own scope (defense-in-depth alongside the responder
+            // weak-credentialsProvider cycle break).
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.setupViews()
+                self.accountDidChange()
+                self.isLoadingAuth = false
             }
         } else {
             businessLogic.ensureAuthenticationDocumentIsLoaded { [weak self] success in
@@ -560,7 +585,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func accountDidChange() {
-        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = credentialSnapshotProvider(libraryAccountID)
 
         let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
@@ -591,7 +616,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func refreshSignInState() {
         let wasSignedIn = isSignedIn
 
-        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = credentialSnapshotProvider(libraryAccountID)
         isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if wasSignedIn != isSignedIn {
@@ -664,7 +689,12 @@ enum CellType: Hashable {
 
 // MARK: - NYPLUserAccountInputProvider
 
-extension AccountDetailViewModel: NYPLUserAccountInputProvider {
+extension AccountDetailViewModel: @preconcurrency NYPLUserAccountInputProvider {
+    // `@preconcurrency`: this type is @MainActor, but the protocol's requirements
+    // are non-isolated, so the @MainActor witnesses 'cross into main actor-isolated
+    // code' under Swift 6. The conformance's callers (sign-in business logic / UIKit
+    // input providers) deliver on the main thread by contract, so relaxing the
+    // isolation check here is behavior-preserving. No logic change.
     var usernameTextField: UITextField? {
         get { nil }
         set { }
@@ -678,7 +708,12 @@ extension AccountDetailViewModel: NYPLUserAccountInputProvider {
 
 // MARK: - TPPSignInOutBusinessLogicUIDelegate
 
-extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
+extension AccountDetailViewModel: @preconcurrency TPPSignInOutBusinessLogicUIDelegate {
+    // `@preconcurrency`: this type is @MainActor, but the protocol's requirements
+    // are non-isolated, so the @MainActor witnesses 'cross into main actor-isolated
+    // code' under Swift 6. The conformance's callers (sign-in business logic / UIKit
+    // input providers) deliver on the main thread by contract, so relaxing the
+    // isolation check here is behavior-preserving. No logic change.
     var context: String {
         "Settings Tab"
     }
@@ -805,7 +840,12 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
 
 // MARK: - NYPLBasicAuthCredentialsProvider
 
-extension AccountDetailViewModel: NYPLBasicAuthCredentialsProvider {
+extension AccountDetailViewModel: @preconcurrency NYPLBasicAuthCredentialsProvider {
+    // `@preconcurrency`: this type is @MainActor, but the protocol's requirements
+    // are non-isolated, so the @MainActor witnesses 'cross into main actor-isolated
+    // code' under Swift 6. The conformance's callers (sign-in business logic / UIKit
+    // input providers) deliver on the main thread by contract, so relaxing the
+    // isolation check here is behavior-preserving. No logic change.
     var username: String? {
         usernameText.isEmpty ? nil : usernameText
     }

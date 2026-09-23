@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PalaceBookModel
 
 struct HoldsView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
@@ -50,7 +51,6 @@ struct HoldsView: View {
                 }
                 .onAppear {
                     model.showSearchSheet = false
-                    model.showLibraryAccountView = false
                     let account = appContainer.accountsManager.currentAccount
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
@@ -66,20 +66,6 @@ struct HoldsView: View {
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
                 }
-                .sheet(isPresented: $model.showLibraryAccountView) {
-                    UIViewControllerWrapper(
-                        TPPAccountList { account in
-                            DispatchQueue.main.async {
-                                model.loadAccount(account)
-                            }
-                        },
-                        updater: { _ in }
-                    )
-                }
-
-            if model.isLoading {
-                loadingOverlay
-            }
         }
     }
 
@@ -87,6 +73,7 @@ struct HoldsView: View {
         VStack(alignment: .leading, spacing: 0) {
             if let syncError = model.syncError {
                 syncErrorBanner(syncError)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
             if model.showSearchSheet {
                 searchBar
@@ -94,22 +81,23 @@ struct HoldsView: View {
             }
             content
         }
+        .accessibleAnimation(PalaceMotion.standard, value: model.syncError?.message)
     }
 
     private func syncErrorBanner(_ error: HoldsViewModel.SyncError) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
+                .foregroundStyle(.orange)
             Text(error.message)
                 .font(.caption)
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
                 .lineLimit(2)
             Spacer()
             Button {
                 model.dismissSyncError()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .accessibilityLabel(Strings.Generic.close)
         }
@@ -121,7 +109,7 @@ struct HoldsView: View {
     @ViewBuilder
     private var content: some View {
         GeometryReader { geometry in
-            if model.isLoading {
+            if model.isLoading || DebugSettings.forceSkeletons {
                 BookListSkeletonView(rows: 10)
                     .accessibilityIdentifier(AccessibilityID.Holds.loadingIndicator)
             } else if model.visibleBooks.isEmpty {
@@ -150,51 +138,29 @@ struct HoldsView: View {
         }
     }
 
-    /// Placeholder text when there are no holds at all
+    /// Empty state shown when the patron has no reserved or held books.
     private var emptyView: some View {
-        Text(DisplayStrings.emptyMessage)
-            .multilineTextAlignment(.center)
-            .foregroundColor(Color(white: 0.667))
-            .background(Color(TPPConfiguration.backgroundColor()))
-            .palaceFont(.body)
-            .padding(.horizontal, 24)
-            .padding(.top, 100)
+        ContentUnavailableView {
+            // Icon intentionally removed for now (was `systemImage: "clock"`,
+            // added in #1203/PP-4747). Copy unchanged — a plain title `Text`
+            // renders the same words without the SF Symbol above them.
+            Text(DisplayStrings.emptyTitle)
+        } description: {
+            Text(DisplayStrings.emptyMessage)
+        }
+        .transition(.opacity)
+        .padding(.horizontal, 24)
     }
 
-    /// Semi‐transparent loading overlay
-    private var loadingOverlay: some View {
-        ProgressView()
-            .scaleEffect(2)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black.opacity(0.5).ignoresSafeArea())
-    }
-
-    /// Leading bar button: "Pick a new library"
+    /// Leading bar item: the Palace icon, branding only.
     private var leadingBarButton: some View {
-        Button {
-            model.selectNewLibrary = true
-        } label: {
-            ImageProviders.MyBooksView.myLibraryIcon
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-        }
-        .accessibilityIdentifier(AccessibilityID.Holds.libraryButton)
-        .accessibilityLabel(Strings.Generic.switchLibrary)
-        .actionSheet(isPresented: $model.selectNewLibrary) {
-            var buttons: [ActionSheet.Button] = appContainer.settings.settingsAccountsList.map { account in
-                .default(Text(account.name)) {
-                    model.loadAccount(account)
-                }
-            }
-            buttons.append(.default(Text(Strings.MyBooksView.addLibrary)) {
-                model.showLibraryAccountView = true
-            })
-            buttons.append(.cancel())
-            return ActionSheet(
-                title: Text(NSLocalizedString(DisplayStrings.findYourLibrary, comment: "")),
-                buttons: buttons
-            )
-        }
+        // PP-4821 / PP-5066: library switching lives solely in Settings. PP-4821
+        // made this a plain image on the Catalog but missed Holds and My Books,
+        // leaving the switcher reachable — and announced to VoiceOver as
+        // "Switch Library" — on exactly the two screens it was removed from.
+        ImageProviders.MyBooksView.myLibraryIcon
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityHidden(true)
     }
 
     private var trailingBarButton: some View {
@@ -219,12 +185,12 @@ struct HoldsView: View {
             TextField(NSLocalizedString("Search Holds", comment: ""), text: $model.searchQuery)
                 .searchBarStyle()
                 .accessibilityIdentifier(AccessibilityID.Holds.searchField)
-                .onChange(of: model.searchQuery) { query in
+                .onChange(of: model.searchQuery) { _, query in
                     Task { await model.filterBooks(query: query) }
                 }
             Button(action: clearSearch, label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.gray)
+                    .foregroundStyle(.gray)
             })
             .accessibilityLabel(Strings.Generic.clearSearch)
         }

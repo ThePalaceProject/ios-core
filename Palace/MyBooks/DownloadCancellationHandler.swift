@@ -26,6 +26,8 @@
 
 import Foundation
 import PalaceLogging
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Delegate
 
@@ -36,7 +38,16 @@ protocol DownloadCancellationHandlerDelegate: AnyObject {
 
 // MARK: - DownloadCancellationHandler
 
-final class DownloadCancellationHandler {
+/// - Sendable invariant (Swift 6 `complete`-mode): the stored dependencies
+///   (`stateManager`, `bookRegistry`, `adobeDRMService`) are all `let` bound at
+///   init; the only mutable member is `weak var delegate`, assigned exactly once
+///   during owner (`MyBooksDownloadCenter`) construction and never reassigned
+///   (weak-ref reads + ARC zeroing are atomic). The cancel paths hop teardown
+///   into `Task { }` / the URLSession `cancel` completion, touching only the
+///   actor-serialized `stateManager.downloadCoordinator` / `SafeDictionary`
+///   members and the main-thread `delegate` callbacks. `@unchecked` only
+///   because the stored service types are not themselves `Sendable`.
+final class DownloadCancellationHandler: @unchecked Sendable {
 
     /// Bookkeeping states that signify a download or borrow is in flight
     /// without a URL session task — cancellation must clean these up.
@@ -45,6 +56,16 @@ final class DownloadCancellationHandler {
     ]
 
     weak var delegate: DownloadCancellationHandlerDelegate?
+
+    /// Handle to the most recently spawned cancel-teardown `Task`. The cancel
+    /// paths do their coordinator/map teardown inside a fire-and-forget
+    /// `Task { }` (spawned either from the no-task branch or from the
+    /// URLSession `cancel` completion). Retaining the handle lets callers —
+    /// and tests — `await lastCancelTeardownTask?.value` to join that teardown
+    /// deterministically instead of polling for the resulting state. Behavior
+    /// is unchanged: the same Task is created and runs exactly as before; only
+    /// a reference to it is now kept.
+    private(set) var lastCancelTeardownTask: Task<Void, Never>?
 
     /// Wired after construction by `MyBooksDownloadCenter` (two inits, DRM and
     /// noDRM, so a property is less invasive than threading it through both).
@@ -82,7 +103,6 @@ final class DownloadCancellationHandler {
     func cancelDownload(for identifier: String) {
         let state = bookRegistry.state(for: identifier)
 
-
         guard let info = stateManager.bookIdentifierToDownloadInfo.syncGet(identifier) else {
             // No URL session task — only allow cancellation for states
             // that signify a download or borrow is genuinely in flight.
@@ -99,7 +119,7 @@ final class DownloadCancellationHandler {
                 bookRegistry.setState(.downloadNeeded, for: identifier)
                 delegate?.broadcastUpdate()
 
-                Task { [weak self] in
+                lastCancelTeardownTask = Task { [weak self] in
                     guard let self else { return }
                     await self.stateManager.downloadCoordinator.removeCachedDownloadInfo(for: identifier)
                     await self.stateManager.downloadCoordinator.registerCompletion(identifier: identifier)
@@ -138,7 +158,7 @@ final class DownloadCancellationHandler {
         info.downloadTask.cancel { [weak self] _ in
             guard let self else { return }
 
-            Task { [weak self] in
+            self.lastCancelTeardownTask = Task { [weak self] in
                 guard let self else { return }
                 // Clear both maps so retry isn't blocked by stale entries.
                 _ = await self.stateManager.bookIdentifierToDownloadInfo.remove(identifier)

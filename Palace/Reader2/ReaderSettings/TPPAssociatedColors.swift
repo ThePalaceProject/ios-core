@@ -51,6 +51,7 @@ struct TPPAppearanceColors {
     }
 }
 
+@MainActor
 class TPPAssociatedColors {
     static let shared = TPPAssociatedColors()
 

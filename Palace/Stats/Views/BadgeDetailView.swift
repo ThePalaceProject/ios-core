@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// Detail popover shown when tapping a badge.
-@available(iOS 16.0, *)
 struct BadgeDetailView: View {
   let badge: Badge
   let hint: String?

@@ -3,17 +3,40 @@ import Combine
 import UIKit
 import PalaceNetwork
 import PalaceCatalog
+import PalaceBookModel
 
-// MARK: - Accessibility focus target (PP-3834: move VoiceOver to results after search)
+// MARK: - Accessibility focus target
+// PP-4641: after a search completes, VoiceOver focus must remain on the search
+// field (WCAG 3.2.2 On Input) rather than drift into the results list. (This
+// reverses PP-3834, which had deliberately moved focus into the results.)
 private enum SearchAccessibilityFocus: Hashable {
     case searchField
-    case resultsArea
+}
+
+// MARK: - Post-search accessibility gate (PP-4641)
+/// Pure decision for whether, when a search finishes, we should perform the
+/// post-search VoiceOver work: re-assert focus on the search field and announce
+/// the result count. Extracted so the gating logic is unit-testable without a
+/// live VoiceOver session. The view owns the actual focus/announcement effects.
+enum SearchAccessibilityFocusPolicy {
+    static func shouldHandlePostSearchAccessibility(
+        isLoading: Bool,
+        query: String,
+        isVoiceOverRunning: Bool
+    ) -> Bool {
+        !isLoading
+            && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && isVoiceOverRunning
+    }
 }
 
 // MARK: - SearchView
 struct CatalogSearchView: View {
     @StateObject private var viewModel: CatalogSearchViewModel
-    @FocusState private var isSearchFieldFocused: Bool
+    // PP-5021: the search field is a UIViewRepresentable (VerbatimTextField),
+    // which does not participate in SwiftUI's focus system. The field drives
+    // this flag both ways through its delegate.
+    @State private var isSearchFieldFocused: Bool = false
     @AccessibilityFocusState private var accessibilityFocus: SearchAccessibilityFocus?
     let books: [TPPBook]
     let onBookSelected: (TPPBook) -> Void
@@ -41,12 +64,10 @@ struct CatalogSearchView: View {
         onBookSelected: @escaping (TPPBook) -> Void
     ) {
 
-        let client = URLSessionNetworkClient()
-        let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
-        let dummyRepository = CatalogRepository(api: api)
+        // Use AppContainer's shared, cached CatalogRepository rather than a
+        // throwaway per-init instance (swarm_27c181b5 A5).
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
-            repository: dummyRepository,
+            repository: AppContainer.production().catalogRepository,
             baseURL: { nil },
             bookCellModelCache: AppContainer.production().bookCellModelCache
         ))
@@ -76,11 +97,10 @@ struct CatalogSearchView: View {
                 isSearchFieldFocused = true
             }
         }
-        .onChange(of: books) { newBooks in
+        .onChange(of: books) { _, newBooks in
             viewModel.updateBooks(newBooks)
         }
-        .onReceive(registryChangePublisher) { note in
-            let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
+        .onReceive(registryChangePublisher) { changedId in
             viewModel.applyRegistryUpdates(changedIdentifier: changedId)
         }
         .onReceive(downloadProgressPublisher) { changedId in
@@ -90,9 +110,13 @@ struct CatalogSearchView: View {
 
     // MARK: - Publishers
 
-    private var registryChangePublisher: AnyPublisher<Notification, Never> {
-        NotificationCenter.default
-            .publisher(for: .TPPBookRegistryStateDidChange)
+    private var registryChangePublisher: AnyPublisher<String, Never> {
+        // Migrated off `.TPPBookRegistryStateDidChange` to the registry's per-book
+        // `bookStatePublisher` (swarm_8ce6f5ae WS3); emit the changed identifier so
+        // just the affected result row refreshes. Resolved from the shared graph to
+        // match this view's existing `AppContainer.production()` defaults.
+        AppContainer.production().bookRegistry.bookStatePublisher
+            .map { $0.0 }
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }
@@ -115,18 +139,32 @@ private extension CatalogSearchView {
                 .simultaneousGesture(
                     TapGesture().onEnded { isSearchFieldFocused = false }
                 )
-                .onChange(of: viewModel.searchId) { _ in
+                .onChange(of: viewModel.searchId) { _, _ in
                     proxy.scrollTo("search-results-top", anchor: .top)
                 }
-                .onChange(of: viewModel.isLoading) { isLoading in
-                    announceSearchResults(isLoading: isLoading)
+                .onChange(of: viewModel.isLoading) { _, isLoading in
+                    handlePostSearchAccessibility(isLoading: isLoading)
                 }
         }
     }
 
     var resultsContent: some View {
         ScrollView {
-            if viewModel.shouldShowNoResultsState {
+            if viewModel.isLoading && viewModel.filteredBooks.isEmpty {
+                // Initial search load: show a content-shaped skeleton list
+                // (mirrors the result rows) instead of a blank screen + a lone
+                // field spinner. Built on the unified Skeleton primitives.
+                VStack(spacing: 0) {
+                    ForEach(0..<8, id: \.self) { _ in
+                        BookRowSkeletonView()
+                    }
+                }
+                // Match `BookListView`'s insets (the loaded results container)
+                // so rows don't shift horizontally when the search completes.
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
+                .id("search-results-top")
+            } else if viewModel.shouldShowNoResultsState {
                 // BUG-003: When a completed search returns zero results, render
                 // a visible empty state rather than a blank screen so the user
                 // can distinguish "no matches" from a hung request.
@@ -149,7 +187,6 @@ private extension CatalogSearchView {
         .accessibilityLabel(NSLocalizedString("Search results list", comment: "VoiceOver label for search results area"))
         .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count))
         .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
-        .accessibilityFocused($accessibilityFocus, equals: .resultsArea)
     }
 
     /// "No results" empty state shown when a completed search returns zero books.
@@ -159,14 +196,14 @@ private extension CatalogSearchView {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 44, weight: .light))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(Strings.SearchAnnouncements.noResultsTitle)
                 .font(.headline)
                 .multilineTextAlignment(.center)
             Text(Strings.SearchAnnouncements.noResultsBody)
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -176,13 +213,27 @@ private extension CatalogSearchView {
         .accessibilityIdentifier(AccessibilityID.Search.noResultsView)
     }
 
-    func announceSearchResults(isLoading: Bool) {
-        if !isLoading, !viewModel.searchQuery.isEmpty, UIAccessibility.isVoiceOverRunning {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count)
-                let listLabel = NSLocalizedString("Search results list", comment: "VoiceOver label for search results area")
-                UIAccessibility.post(notification: .announcement, argument: "\(listLabel), \(value)")
-            }
+    /// PP-4641: when a search finishes under VoiceOver, keep focus on the search
+    /// field (so activating Search isn't an unexpected change of context) and
+    /// announce the result count. The short delay lets the results list render
+    /// first, so our focus assertion wins the race against SwiftUI's automatic
+    /// relocation into the freshly-changed list.
+    func handlePostSearchAccessibility(isLoading: Bool) {
+        guard SearchAccessibilityFocusPolicy.shouldHandlePostSearchAccessibility(
+            isLoading: isLoading,
+            query: viewModel.searchQuery,
+            isVoiceOverRunning: UIAccessibility.isVoiceOverRunning
+        ) else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            // Re-assert focus on the search field. In the common case focus never
+            // left the field, so this is a no-op (no redundant re-announcement);
+            // if SwiftUI drifted focus into the results, this brings it back.
+            accessibilityFocus = .searchField
+            // Preserve the result-count announcement (no regression vs. prior behavior).
+            let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count)
+            let listLabel = NSLocalizedString("Search results list", comment: "VoiceOver label for search results area")
+            UIAccessibility.post(notification: .announcement, argument: "\(listLabel), \(value)")
         }
     }
 
@@ -211,16 +262,20 @@ private extension CatalogSearchView {
 
     var searchBar: some View {
         ZStack {
-            TextField(
-                NSLocalizedString("Search Catalog", comment: ""),
+            // PP-5021: a plain SwiftUI TextField cannot reach `smartQuotesType`,
+            // so a typed ' arrived at the server as U+2019. Measured: adding
+            // .autocorrectionDisabled() does NOT suppress it.
+            VerbatimTextField(
+                placeholder: NSLocalizedString("Search Catalog", comment: ""),
                 text: Binding(
                     get: { viewModel.searchQuery },
                     set: { viewModel.updateSearchQuery($0) }
-                )
+                ),
+                isFocused: $isSearchFieldFocused,
+                accessibilityIdentifier: AccessibilityID.Search.searchField,
+                onSubmit: { isSearchFieldFocused = false }
             )
-            .accessibilityIdentifier(AccessibilityID.Search.searchField)
-            .focused($isSearchFieldFocused)
-            .submitLabel(.search)
+            .accessibilityFocused($accessibilityFocus, equals: .searchField)
             .padding(8)
             .padding(.trailing, 40)
             .background(Color.gray.opacity(0.2))
@@ -236,7 +291,7 @@ private extension CatalogSearchView {
                 } else if !viewModel.searchQuery.isEmpty {
                     Button(action: { viewModel.clearSearch() }, label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.gray)
+                            .foregroundStyle(.gray)
                     })
                     .accessibilityLabel(Strings.Generic.clearSearch)
                     .padding(.trailing, 8)

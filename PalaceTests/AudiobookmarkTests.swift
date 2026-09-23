@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AudiobookmarkTests: XCTestCase {
 
     // Verifies that the legacy v1 format (time/chapter/part) is parsed into the

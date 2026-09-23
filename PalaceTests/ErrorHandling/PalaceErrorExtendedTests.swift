@@ -15,6 +15,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class PalaceErrorExtendedTests: XCTestCase {
 
     // MARK: - BookRegistry Error Descriptions

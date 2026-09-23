@@ -7,7 +7,9 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class DateExtensionTests: XCTestCase {
 
     // MARK: - RFC339 Format Tests
@@ -118,6 +120,7 @@ final class DateExtensionTests: XCTestCase {
 
 // MARK: - Date Formatting Tests
 
+@MainActor
 final class DateFormattingTests: XCTestCase {
 
     func testShortDateFormat() {

@@ -9,12 +9,26 @@
 import CarPlay
 import Combine
 import PalaceLogging
+import PalaceBookRegistry
 
 /// CarPlay scene delegate that manages the CarPlay interface lifecycle
 /// and coordinates audiobook playback from the vehicle's infotainment system.
 /// Note: This class is referenced by name in Info.plist as "CarPlaySceneDelegate"
+// `@MainActor`: a `UIResponder`-derived CarPlay scene delegate. `UIResponder` and
+// `CPTemplateApplicationSceneDelegate` are both main-actor isolated, and every
+// callback drives main-actor CarPlay UI. Annotating the type is the `complete`-mode
+// fix for the "conformance crosses into the main actor" warning on
+// `CPTemplateApplicationSceneDelegate`; all members are already main-only.
+//
+// `@preconcurrency` on the `CPTemplateApplicationSceneDelegate` conformance: the
+// protocol's requirements are declared `nonisolated` by CarPlay (not yet
+// Sendable/isolation-audited upstream), so a `@MainActor` type satisfying them
+// still trips "conformance crosses into main actor-isolated code." Every callback
+// is delivered on the main thread by CarPlay, so the `@preconcurrency` conformance
+// is the honest ceiling until Apple annotates the protocol.
+@MainActor
 @objc(CarPlaySceneDelegate)
-final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
+final class CarPlaySceneDelegate: UIResponder, @preconcurrency CPTemplateApplicationSceneDelegate {
 
     // MARK: - Properties
 
@@ -32,7 +46,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         self.interfaceController = interfaceController
 
         // Check feature flag - if CarPlay is disabled, show coming soon message
-        guard RemoteFeatureFlags.shared.isCarPlayEnabledCached else {
+        guard AppContainer.production().featureFlags.isCarPlayEnabledCached else {
             Log.info(#file, "🚗 CarPlay scene connected but feature is DISABLED - showing coming soon message")
             showComingSoonTemplate(interfaceController: interfaceController)
             return
@@ -42,6 +56,12 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
         AppContainer.production().playbackBootstrapper.ensureInitializedForCarPlay()
 
+        // Defensive: if a prior manager is somehow still held (a second
+        // didConnect without an intervening didDisconnect), tear it down first
+        // so its Now Playing observer registration is removed on the main actor
+        // before we drop the reference — otherwise it would dangle on the shared
+        // CPNowPlayingTemplate.
+        templateManager?.tearDown()
         self.templateManager = CarPlayTemplateManager(interfaceController: interfaceController)
 
         // Set up the root template
@@ -60,6 +80,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         Log.info(#file, "🚗 CarPlay disconnected")
 
         cancellables.removeAll()
+        // Remove the Now Playing observer on the main actor BEFORE releasing the
+        // manager. This replaces the former deinit-time removal (unrepresentable
+        // under Swift 6 strict concurrency) and makes removal deterministic
+        // regardless of when the manager actually deallocs.
+        templateManager?.tearDown()
         templateManager = nil
         self.interfaceController = nil
 
@@ -178,8 +203,17 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             }
             .store(in: &cancellables)
 
-        // Subscribe to account changes to update library name
+        // Subscribe to account changes to update library name.
+        // `.receive(on: DispatchQueue.main)` guards the same Swift 6 bug class as
+        // the AccountDetailViewModel fix: this closure is `@MainActor`-isolated
+        // (calls `templateManager` on the main actor), and NotificationCenter
+        // delivers synchronously on the posting thread. Every current
+        // `.TPPCurrentAccountDidChange` poster is on main, so this is defensive —
+        // but it was the lone bare sink here (the two registry sinks above hop
+        // via `.debounce(scheduler: DispatchQueue.main)`), so a future off-main
+        // poster would trap. Match the siblings.
         NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 Log.info(#file, "🚗 Account changed - updating CarPlay library name and refreshing")
                 self?.templateManager?.updateLibraryName()

@@ -14,13 +14,39 @@ import FirebaseAnalytics
 import FirebaseCrashlytics
 import PalaceLogging
 
+/// Lock-guarded, resume-exactly-once holder for a `CheckedContinuation`, shared
+/// across the two racing tasks in `FirebaseManager.withTimeout`. A
+/// `CheckedContinuation` is not `Sendable`, so it rides inside this
+/// `@unchecked Sendable` box; the continuation is nil'd on the first resume, so
+/// the losing task's later resume is a no-op rather than a double-resume crash.
+/// File-scope (not nested in the generic `withTimeout`) because Swift forbids a
+/// local type inside a generic function.
+private final class ResumeOnceBox<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+    init(_ continuation: CheckedContinuation<T, Error>) { self.continuation = continuation }
+    func resume(returning value: T) {
+        lock.lock(); let c = continuation; continuation = nil; lock.unlock()
+        c?.resume(returning: value)
+    }
+    func resume(throwing error: Error) {
+        lock.lock(); let c = continuation; continuation = nil; lock.unlock()
+        c?.resume(throwing: error)
+    }
+}
+
 /// Centralized manager for all Firebase services.
 ///
 /// Thread Safety:
 /// - Device IDs are immutable `let` properties computed once at init
 /// - RemoteConfig is thread-safe internally (no external locking needed)
 /// - lastFetchTime is advisory only; RemoteConfig handles its own rate limiting
-final class FirebaseManager {
+/// `@unchecked Sendable` invariant (mirrors `TPPAgeCheck`): all stored
+/// properties are `let`; the only mutable state (`isFetching`) is guarded by
+/// `OSAllocatedUnfairLock`; `remoteConfig` is Firebase's internally-thread-safe
+/// `RemoteConfig`. This lets the `self`-capturing `@Sendable` operation closure
+/// passed to `withTimeout(...)` compile without a signature change.
+final class FirebaseManager: @unchecked Sendable {
     static let shared = FirebaseManager()
 
     // MARK: - Configuration
@@ -63,7 +89,15 @@ final class FirebaseManager {
         case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
         case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
+        case continuationCardsEnabled = "continuation_cards_enabled"
+        case sideLoadingEnabled = "side_loading_enabled"
         case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
+        // App-rating prompt (Epic PP-4086). Master switch + tunable thresholds.
+        case appRatingPromptEnabled = "app_rating_prompt_enabled"
+        case appRatingMinSessions = "app_rating_min_sessions"
+        case appRatingMinBooksCompleted = "app_rating_min_books_completed"
+        case appRatingCooldownDays = "app_rating_cooldown_days"
+        case appRatingLifetimePromptCap = "app_rating_lifetime_prompt_cap"
     }
 
     // MARK: - Initialization
@@ -111,9 +145,14 @@ final class FirebaseManager {
             RemoteConfigKey.triageBotTicketSubmissionEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotAIFallbackEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false),
-            // PP-4957: default OFF = download-first, i.e. exactly the behaviour
-            // that shipped before streaming existed. Firebase turns it on.
-            RemoteConfigKey.lcpAudiobookStreamingEnabled.rawValue: NSNumber(value: false)
+            RemoteConfigKey.continuationCardsEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.sideLoadingEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.lcpAudiobookStreamingEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.appRatingPromptEnabled.rawValue: NSNumber(value: true),
+            RemoteConfigKey.appRatingMinSessions.rawValue: NSNumber(value: RatingConfig.fallback.minSessions),
+            RemoteConfigKey.appRatingMinBooksCompleted.rawValue: NSNumber(value: RatingConfig.fallback.minBooksCompleted),
+            RemoteConfigKey.appRatingCooldownDays.rawValue: NSNumber(value: RatingConfig.fallback.cooldownDays),
+            RemoteConfigKey.appRatingLifetimePromptCap.rawValue: NSNumber(value: RatingConfig.fallback.lifetimePromptCap)
         ])
     }
 
@@ -187,17 +226,29 @@ final class FirebaseManager {
         seconds: Double,
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw RemoteConfigFetchTimeout()
+        // A `withThrowingTaskGroup` race is WRONG here: the group re-awaits the
+        // operation child at scope exit, so when the timeout wins and we
+        // `cancelAll()`, exiting still blocks on the operation if it ignores
+        // cancellation — which Firebase's `fetchAndActivate()` does. That made
+        // the 10s bound a no-op for the one call it exists to bound (the 120s
+        // RemoteFeatureFlagsTests hang; a dead-network hang in production). The
+        // existing `Task.sleep`-based guard test passed only because sleep
+        // honors cancellation and so didn't reproduce the non-cancellable case.
+        //
+        // Instead: resume the caller from whichever task wins, and ORPHAN the
+        // loser. When the timeout wins, the operation task keeps running
+        // (untethered) but no longer blocks the caller — exactly the documented
+        // "orphaned fetch completes harmlessly in the background" contract.
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
+            let box = ResumeOnceBox(continuation)
+            Task {
+                do { box.resume(returning: try await operation()) }
+                catch { box.resume(throwing: error) }
             }
-            defer { group.cancelAll() }
-            guard let result = try await group.next() else {
-                throw RemoteConfigFetchTimeout()
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                box.resume(throwing: RemoteConfigFetchTimeout())
             }
-            return result
         }
     }
 
@@ -220,9 +271,27 @@ final class FirebaseManager {
         return remoteConfig.configValue(forKey: key.rawValue).boolValue
     }
 
+    /// Gets a numeric value from remote config (returns 0 when unset and no
+    /// default is registered). Used for the app-rating tunable thresholds.
+    func getDoubleValue(forKey key: RemoteConfigKey) -> Double {
+        remoteConfig.configValue(forKey: key.rawValue).numberValue.doubleValue
+    }
+
     /// Checks if a config value came from the remote server.
     func isRemoteValue(forKey key: RemoteConfigKey) -> Bool {
         remoteConfig.configValue(forKey: key.rawValue).source == .remote
+    }
+
+    /// Best-effort "was the previous app session crash-free?" signal for the
+    /// app-rating eligibility policy (PP-4088). Returns `true` when crash
+    /// reporting is unavailable (non-production or `FEATURE_CRASH_REPORTING`
+    /// off), so an absent signal never blocks an otherwise-eligible patron.
+    func wasLastSessionCrashFree() -> Bool {
+        #if FEATURE_CRASH_REPORTING
+        return !Crashlytics.crashlytics().didCrashDuringPreviousExecution()
+        #else
+        return true
+        #endif
     }
 
     // MARK: - Enhanced Logging
@@ -260,13 +329,38 @@ final class FirebaseManager {
         Log.info(#file, "✅ Firebase user properties set for targeting")
     }
 
+    /// Off-main-safe snapshot of the `@MainActor`-isolated `UIDevice.current`
+    /// constants. On the main thread we read them directly via
+    /// `MainActor.assumeIsolated` (provably-main branch); off-main we return
+    /// `unknown`/`nil` rather than touch UIKit off the main actor. The values are
+    /// device constants, so a main-thread caller always gets the real values and
+    /// there is no behaviour change on the paths that matter (launch-time setup
+    /// runs on main). Mirrors `URLRequest+Extensions.cachedUserAgent()`.
+    nonisolated private static func currentDeviceConstants()
+        -> (model: String, systemVersion: String, vendorID: String?) {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                (UIDevice.current.model,
+                 UIDevice.current.systemVersion,
+                 UIDevice.current.identifierForVendor?.uuidString)
+            }
+        }
+        return ("unknown", "unknown", nil)
+    }
+
     /// Returns device information dictionary for targeting and logging.
     func getDeviceInfo() -> [String: String] {
         var info: [String: String] = [:]
 
         info["device_id"] = deviceID
-        info["device_model"] = UIDevice.current.model
-        info["ios_version"] = UIDevice.current.systemVersion
+        // `UIDevice.current` is `@MainActor`-isolated under `complete`; this method
+        // has nonisolated + off-main callers (RemoteFeatureFlags, error monitors).
+        // Read the device constants on main when we're already there, else fall back
+        // to `unknown` — same off-main-safe pattern as `URLRequest+Extensions`'
+        // `cachedUserAgent()`. Values are constant, so no correctness change.
+        let device = Self.currentDeviceConstants()
+        info["device_model"] = device.model
+        info["ios_version"] = device.systemVersion
         info["app_version"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         info["build_number"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
 
@@ -292,7 +386,8 @@ final class FirebaseManager {
         #if FEATURE_CRASH_REPORTING
         Crashlytics.crashlytics().setCustomValue(deviceID, forKey: "PalaceDeviceID")
 
-        if let vendorID = UIDevice.current.identifierForVendor?.uuidString {
+        // Same `@MainActor` UIDevice guard as `getDeviceInfo()` above.
+        if let vendorID = Self.currentDeviceConstants().vendorID {
             Crashlytics.crashlytics().setCustomValue(vendorID, forKey: "VendorDeviceID")
         }
         #endif

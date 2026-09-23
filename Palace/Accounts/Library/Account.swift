@@ -1,5 +1,7 @@
 import PalaceLogging
+import PalacePreferences
 import PalaceCatalog
+import PalaceBookModel
 
 private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
 private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"
@@ -34,7 +36,18 @@ protocol AccountLogoDelegate: AnyObject {
 
 // MARK: AccountDetails
 // Extra data that gets loaded from an OPDS2AuthenticationDocument,
-@objcMembers final class AccountDetails: NSObject {
+//
+// `@unchecked Sendable`: instances are effectively immutable value-holders once
+// vended into `Account.LoadState.detailsLoaded` (which is a `Sendable` enum, so
+// the payload MUST be Sendable for `awaitReady()` / `stateStream` to cross actor
+// boundaries). All meaningfully-observable state is immutable `let` (`defaults`,
+// `uuid`, `auths`, `mainColor`, `userProfileUrl`, `signUpUrl`, `loansUrl`, the
+// `supports*` flags; `Authentication` is itself all-`let`). The `fileprivate
+// var url*` fields are write-once during account parse via `setURL(_:forLicense:)`
+// and read-only thereafter. The `eulaIsAccepted` / `syncPermissionGranted` /
+// `userAboveAgeLimit` computed setters delegate to the internally-thread-safe
+// `UserDefaults`, not to instance storage. Mirrors `TPPUserAccount` (#1155).
+@objcMembers final class AccountDetails: NSObject, @unchecked Sendable {
     enum AuthType: String, Codable {
         case basic = "http://opds-spec.org/auth/basic"
         case coppa = "http://librarysimplified.org/terms/authentication/gate/coppa" // used for Simplified collection
@@ -536,7 +549,97 @@ protocol AccountLogoDelegate: AnyObject {
 // MARK: Account
 /// Object representing one library account in the app. Patrons may
 /// choose to sign up for multiple Accounts.
-@objcMembers final class Account: NSObject {
+///
+/// `@unchecked Sendable` rationale (Swift 6 Phase B): `Account` is an
+/// auth-adjacent value-holder that is, by design, referenced across actor
+/// boundaries — SwiftUI/UIKit on `@MainActor`, the background `loadCatalogs`
+/// crawl, and the `awaitReady()` readiness-gate consumers (audiobook open,
+/// token refresh, bookmark sync, CarPlay, OPDS loans). Marking it Sendable
+/// clears the "sending 'currentAccount' risks causing data races" /
+/// "capture of non-Sendable Account in a @Sendable closure" crossings at
+/// DLNavigator, OPDSFeedService, and UnifiedOPDSService WITHOUT editing those
+/// consumers. Mirrors how `AccountsManager` (this module's sibling singleton)
+/// and `AccountStateStore` were made `@unchecked Sendable`, and how the
+/// nested `AccountDetails` above already is.
+///
+/// The crux — the genuinely cross-actor readiness state that `awaitReady()`
+/// gates on — does NOT live in `Account` instance storage. It is externalized
+/// into `AccountStateStore.shared` (keyed by `uuid`, guarded by an `NSLock`,
+/// itself `@unchecked Sendable`); `loadState` / `stateStream` / `_setState`
+/// all delegate there. So this conformance does not smuggle unsynchronized
+/// shared state across the readiness boundary — that boundary is already
+/// lock-protected in the store.
+///
+/// Per-stored-property audit (every stored property justified; no lock added
+/// — mutation semantics are preserved, additively isolating only):
+///   - `uuid: String` (let)                    — immutable, Sendable value.
+///   - `name: String` (let)                    — immutable, Sendable value.
+///   - `subtitle: String?` (let)               — immutable, Sendable value.
+///   - `catalogUrl: String?` (let)             — immutable, Sendable value.
+///   - `authenticationDocumentUrl: String?` (let) — immutable, Sendable value.
+///   - `imageCache: ImageCacheType` (let)      — immutable ref; the cache is
+///        the caller-supplied shared cache and is itself the synchronization
+///        owner for image storage (`get`/`set`/`remove` by uuid), unchanged.
+///   - `logo: UIImage` (var)                   — set-once-default then updated
+///        from the logo fetch's main-queue hop (`fetchImage` → `.main.async`)
+///        and from cell/view code (`TPPAccountList`, `FacetViewModel`), all on
+///        the main thread. UI-associated state; no cross-thread writer. UIImage
+///        is immutable/Sendable in practice here.
+///   - `supportEmail: EmailAddress?` (var)     — written only in `init` and
+///        `EmailTicketGateway` (main); read for the support-row predicate.
+///        Effectively write-once during account construction/config.
+///   - `supportURL: URL?` (var)                — same as `supportEmail`: set in
+///        `init`; `URL` is a Sendable value type.
+///   - `details: AccountDetails?` (var)        — populated synchronously by the
+///        `authenticationDocument.didSet`; `AccountDetails` is `@unchecked
+///        Sendable`. Written on the load flow, read via `awaitReady()`
+///        (lock-gated in the store) or the documented legacy-tolerant `details?`
+///        readers. `AccountDetails?` is Sendable given the payload conformance.
+///   - `homePageUrl: String?` (var)            — set in `init` only (no external
+///        writer found in the audit grep); `String?` is a Sendable value.
+///   - `hasSupportOption: Bool` (lazy var)     — memoized pure function of
+///        `supportEmail`/`supportURL`; read on main. Lazy init is not
+///        concurrency-safe in general, but this is UI-thread accessed.
+///   - `logoDelegate: AccountLogoDelegate?` (weak var) — set from view/cell
+///        code and invoked from the logo fetch's main-queue hop; all main.
+///   - `hasUpdatedToken: Bool` (var)           — a plain flag toggled from
+///        sign-in / sign-out / force-reset / notification / account-switch
+///        paths (`Sendable` `Bool`). Reads and writes are on the app's
+///        auth-flow threads; no lock is added because doing so would change
+///        the existing (un-torn `Bool`) semantics and no torn-read hazard
+///        exists for a word-sized value.
+///   - `authenticationDocument: OPDS2AuthenticationDocument?` (var w/ didSet) —
+///        assigned during the load flow (`loadAuthenticationDocument`,
+///        AccountsManager carry-over); the `didSet` synchronously builds
+///        `details`. Written on the load path; `OPDS2AuthenticationDocument`
+///        is a Codable value graph.
+///   - `logoUrl: URL?` (var)                   — set in `init` only; `URL?` is
+///        a Sendable value type.
+///   - `isLoadingLogo: Bool` (private var)     — re-entrancy guard for
+///        `loadLogo()`; both the guard-check and the completion reset run on
+///        the main thread (`loadLogo` is called from view code; the reset is
+///        inside the `fetchImage` main-queue hop). Not shared cross-actor.
+///
+/// Honesty note: the `var`s above are not lock-guarded — they are confined to
+/// the main-associated UI/load flows that already mutate them today. No writer
+/// was found that mutates a given property concurrently from a background
+/// actor; the one truly cross-actor concern (readiness) is externalized and
+/// locked in `AccountStateStore`. If a future change adds a background writer
+/// to any of these `var`s, the correct fix is to confine that writer or add a
+/// lock — NOT to widen this rationale.
+/// Lock-backed `Bool` holder — the honest synchronization for `Account`'s one
+/// concurrently-written flag (`hasUpdatedToken`). Mirrors `AccountsManagerBoolFlag`.
+private final class AccountBoolFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Bool
+    init(_ value: Bool) { storage = value }
+    var value: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); defer { lock.unlock() }; storage = newValue }
+    }
+}
+
+@objcMembers final class Account: NSObject, @unchecked Sendable {
     var logo: UIImage
     let uuid: String
     let name: String
@@ -548,7 +651,18 @@ protocol AccountLogoDelegate: AnyObject {
     var homePageUrl: String?
     lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
     weak var logoDelegate: AccountLogoDelegate?
-    var hasUpdatedToken: Bool = false
+    // `hasUpdatedToken` is written from genuinely concurrent, unserialized flows:
+    // `NotificationService.markTokenRegistered()` (= true) runs on the network
+    // delegate queue (off-main), while `AccountsManager.currentAccount`'s setter
+    // (= false) runs from the non-@MainActor account-switch path — driven by
+    // independent events with no common queue. A plain `var Bool` is a data race
+    // (UB regardless of width). Back it with a lock so `Account: @unchecked
+    // Sendable` is honest for this property. Public get/set contract is unchanged.
+    private let _hasUpdatedToken = AccountBoolFlag(false)
+    var hasUpdatedToken: Bool {
+        get { _hasUpdatedToken.value }
+        set { _hasUpdatedToken.value = newValue }
+    }
 
     let authenticationDocumentUrl: String?
     var authenticationDocument: OPDS2AuthenticationDocument? {
@@ -562,6 +676,12 @@ protocol AccountLogoDelegate: AnyObject {
     var logoUrl: URL?
 
     let imageCache: ImageCacheType
+
+    /// Wave 1c (cycle 2): error-reporting seam. Production default forwards to
+    /// TPPErrorLogger via TPPErrorReporter; tests inject a spy. Existential is
+    /// not ObjC-representable so @objcMembers skips it (by design). Becomes
+    /// constructor-injected when Account moves to PalaceAccounts (Wave 3).
+    var errorReporter: any ErrorReporting = TPPErrorReporter()
 
     var loansUrl: URL? {
         return details?.loansUrl
@@ -663,8 +783,8 @@ protocol AccountLogoDelegate: AnyObject {
     func loadAuthenticationDocument(using signedInStateProvider: TPPSignedInStateProvider? = nil, completion: @escaping (Bool) -> Void) {
         Log.debug(#function, "Entering...")
         guard let urlString = authenticationDocumentUrl else {
-            TPPErrorLogger.logError(
-                withCode: .noURL,
+            errorReporter.report(
+                code: .noURL,
                 summary: "Failed to load authentication document because its URL is invalid",
                 metadata: ["self.uuid": uuid,
                            "urlString": authenticationDocumentUrl ?? "N/A"]
@@ -687,7 +807,12 @@ protocol AccountLogoDelegate: AnyObject {
 
             if let announcements = self.authenticationDocument?.announcements {
                 DispatchQueue.main.async {
-                    TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
+                    // Already on the main queue; `presentAnnouncements` is
+                    // `@MainActor`, so assert the isolation to satisfy the
+                    // nonisolated `DispatchQueue.main.async` closure.
+                    MainActor.assumeIsolated {
+                        TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
+                    }
                 }
             }
         }
@@ -697,8 +822,8 @@ protocol AccountLogoDelegate: AnyObject {
         var document: OPDS2AuthenticationDocument?
 
         guard let url = URL(string: urlString) else {
-            TPPErrorLogger.logError(
-                withCode: .noURL,
+            errorReporter.report(
+                code: .noURL,
                 summary: "Failed to load authentication document because its URL is invalid",
                 metadata: ["self.uuid": uuid,
                            "urlString": urlString]
@@ -715,8 +840,8 @@ protocol AccountLogoDelegate: AnyObject {
                     completion(document)
                 } catch let error {
                     let responseBody = String(data: serverData, encoding: .utf8)
-                    TPPErrorLogger.logError(
-                        withCode: .authDocParseFail,
+                    self.errorReporter.report(
+                        code: .authDocParseFail,
                         summary: "Authentication Document Data Parse Error",
                         metadata: [
                             "underlyingError": error,
@@ -727,8 +852,8 @@ protocol AccountLogoDelegate: AnyObject {
                     completion(document)
                 }
             case .failure(let error, _):
-                TPPErrorLogger.logError(
-                    withCode: .authDocLoadFail,
+                self.errorReporter.report(
+                    code: .authDocLoadFail,
                     summary: "Authentication Document request failed to load",
                     metadata: ["loadError": error, "url": url]
                 )
@@ -763,26 +888,44 @@ protocol AccountLogoDelegate: AnyObject {
             return
         }
         AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
+            // The GET completion is a plain (non-Sendable) escaping closure, so
+            // `result`, `self`, and `completion` are captured safely here. They
+            // are carried across the main-queue hop in a documented box — each
+            // is only touched on that single main-queue block, never
+            // concurrently — to satisfy the `@Sendable` `DispatchQueue.main.async`.
+            let payload = LogoFetchPayload(account: self, result: result, completion: completion)
             DispatchQueue.main.async {
-                switch result {
+                switch payload.result {
                 case .success(let serverData, _):
                     guard let image = UIImage(data: serverData) else {
-                        completion(nil)
+                        payload.completion(nil)
                         return
                     }
-                    self.imageCache.set(image, for: self.uuid)
-                    completion(image)
+                    payload.account.imageCache.set(image, for: payload.account.uuid)
+                    payload.completion(image)
                 case .failure(let error, _):
-                    TPPErrorLogger.logError(
-                        withCode: .authDocLoadFail,
+                    payload.account.errorReporter.report(
+                        code: .authDocLoadFail,
                         summary: "Logo image failed to load",
                         metadata: ["loadError": error.localizedDescription, "url": url.absoluteString]
                     )
-                    completion(nil)
+                    payload.completion(nil)
                 }
             }
         }
     }
+}
+
+/// Documented carrier for `Account.fetchImage`'s network completion, which
+/// hops to the main queue to touch `imageCache` and invoke `completion`.
+/// `result` (`NYPLResult<Data>`), the `completion` closure, and the
+/// `Account` are all non-Sendable; they are only ever read on that single
+/// main-queue hop, never concurrently, so they are safe to carry in an
+/// `@unchecked Sendable` box.
+private struct LogoFetchPayload: @unchecked Sendable {
+    let account: Account
+    let result: NYPLResult<Data>
+    let completion: (UIImage?) -> Void
 }
 
 extension AccountDetails {

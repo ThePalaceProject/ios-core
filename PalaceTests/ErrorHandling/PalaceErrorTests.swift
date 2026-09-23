@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class PalaceErrorCategoryTests: XCTestCase {
 
     // MARK: - Error Descriptions

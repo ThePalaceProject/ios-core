@@ -9,33 +9,55 @@
 import Foundation
 import ObjectiveC
 import PalaceKeychain
+import PalaceBookModel
 
 // MARK: - Associated Object Keys for Keychain Variables
 
-private var bearerTokenVariableKey: UInt8 = 0
-private var fulfillURLVariableKey: UInt8 = 0
+/// Sendable wrapper for an `objc_{get,set}AssociatedObject` key. The stdlib does
+/// NOT make `UnsafeRawPointer` `Sendable`, so a bare `static let … :
+/// UnsafeRawPointer` trips the `complete`-mode "static property is not
+/// concurrency-safe because non-'Sendable' type 'UnsafeRawPointer' may have
+/// shared mutable state" diagnostic. Wrapping it here makes the keys honestly
+/// `Sendable`.
+///
+/// `@unchecked Sendable` invariant: `raw` is a constant, distinct pointer
+/// allocated once at static-init and never written, dereferenced, or freed — it
+/// is used ONLY as an opaque identity token for associated-object storage. An
+/// immutable pointer identity carries no shared mutable state, so sharing it
+/// across concurrency domains is race-free.
+private struct AssociationKey: @unchecked Sendable {
+    let raw: UnsafeRawPointer
+}
 
-@objc extension TPPBook {
+/// Stable, unique association keys. `objc_{get,set}AssociatedObject` only needs
+/// a distinct constant pointer per key. The 1-byte allocations are intentionally
+/// never freed — the keys live for the app's lifetime.
+private enum TPPBookAssociatedKeys {
+    static let bearerTokenVariable = AssociationKey(raw: UnsafeRawPointer(UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)))
+    static let fulfillURLVariable = AssociationKey(raw: UnsafeRawPointer(UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)))
+}
+
+extension TPPBook {
     typealias DisplayStrings = Strings.TPPBook
 
     /// Cached keychain variable for bearer token (reused across get/set calls)
     @nonobjc private var _bearerTokenVariable: TPPKeychainVariable<String> {
-        if let existing = objc_getAssociatedObject(self, &bearerTokenVariableKey) as? TPPKeychainVariable<String> {
+        if let existing = objc_getAssociatedObject(self, TPPBookAssociatedKeys.bearerTokenVariable.raw) as? TPPKeychainVariable<String> {
             return existing
         }
         let variable: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenQueue)
-        objc_setAssociatedObject(self, &bearerTokenVariableKey, variable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(self, TPPBookAssociatedKeys.bearerTokenVariable.raw, variable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         return variable
     }
 
     /// Cached keychain variable for fulfill URL (reused across get/set calls)
     @nonobjc private var _fulfillURLVariable: TPPKeychainVariable<String> {
-        if let existing = objc_getAssociatedObject(self, &fulfillURLVariableKey) as? TPPKeychainVariable<String> {
+        if let existing = objc_getAssociatedObject(self, TPPBookAssociatedKeys.fulfillURLVariable.raw) as? TPPKeychainVariable<String> {
             return existing
         }
         let key = "\(self.identifier)-fulfillURL"
         let variable: TPPKeychainVariable<String> = key.asKeychainVariable(with: bookTokenQueue)
-        objc_setAssociatedObject(self, &fulfillURLVariableKey, variable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(self, TPPBookAssociatedKeys.fulfillURLVariable.raw, variable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         return variable
     }
 

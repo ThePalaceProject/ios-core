@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AccessibilityPreferencesTests: XCTestCase {
 
     private var testDefaults: UserDefaults!

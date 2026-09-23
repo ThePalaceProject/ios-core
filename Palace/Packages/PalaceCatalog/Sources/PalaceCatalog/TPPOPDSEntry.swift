@@ -1,7 +1,13 @@
 import Foundation
 import PalaceLogging
 
-@objc public class TPPOPDSEntry: NSObject {
+// @unchecked Sendable invariant: every stored property is `private(set)` and is
+// populated only during `init?(xml:)` (directly or via the private `parse*`
+// helpers it invokes); none is mutated after init returns, and the type exposes
+// no public mutators. Instances are therefore effectively immutable once
+// constructed. `@unchecked` (vs checked) is needed only because the properties
+// stay `var` to allow the init-time parse helpers to assign them.
+@objc public final class TPPOPDSEntry: NSObject, @unchecked Sendable {
 
   @objc public private(set) var acquisitions: [TPPOPDSAcquisition] = []
   @objc public private(set) var alternativeHeadline: String?

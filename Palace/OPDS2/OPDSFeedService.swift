@@ -8,14 +8,12 @@
 import Foundation
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
-/// Narrow protocol that BookReturnService and similar callers depend on so
-/// tests can substitute a fixture / failing fetcher without standing up the
-/// full actor + URL stack. Production code passes an OPDSFeedService instance
-/// that satisfies this protocol via the conformance below.
-protocol OPDSFeedFetching: Sendable {
-    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed
-}
+// `OPDSFeedFetching` (the narrow feed-fetch seam) was relocated to PalaceCatalog
+// (god-class decomposition Wave 2b) so it sits beside the `TPPOPDSFeed` it returns
+// and can be consumed by the PalaceBookRegistry package without an app-target edge.
+// `OPDSFeedService` still conforms to it below.
 
 /// Modern async/await service for OPDS feed operations
 /// Wraps legacy Objective-C TPPOPDSFeed with type-safe async API
@@ -32,6 +30,15 @@ actor OPDSFeedService: OPDSFeedFetching {
     /// Delegates to the canonical 3-arg method with production defaults.
     func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
         try await fetchFeed(from: url, resetCache: false, useToken: true)
+    }
+
+    /// `OPDSFeedFetching` cache-aware conformance — overrides the protocol
+    /// extension default so the live service actually honours `resetCache`
+    /// (the loans-sync caller depends on a fresh, non-cached fetch). `useToken`
+    /// stays `true`, matching the single-arg form. Delegates to the canonical
+    /// 3-arg method.
+    func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
+        try await fetchFeed(from: url, resetCache: resetCache, useToken: true)
     }
 
     /// Fetches an OPDS feed from the given URL

@@ -14,6 +14,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AppContainerAudiobookFactoryTests: XCTestCase {
 
     override func tearDown() {

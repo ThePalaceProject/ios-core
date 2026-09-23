@@ -17,7 +17,26 @@ struct TPPPDFReaderView: View {
     @State private var readerMode: TPPPDFReaderMode = .reader
     @State private var shouldRequestPageSync = false
     private var isShowingSearch: Bool {
-        get { readerMode == .search }
+        readerMode == .search
+    }
+
+    /// Pure seam (PP-4748): resolves the reader mode after the search sheet's
+    /// `isPresented` flag changes. The previous `.constant(...)` binding could
+    /// not write back on an interactive (swipe-down) dismiss, stranding
+    /// `readerMode` in `.search` so the search sheet could never be re-opened.
+    /// Dismissing the search sheet returns to `.reader`.
+    static func searchSheetReaderMode(current: TPPPDFReaderMode, isPresented: Bool) -> TPPPDFReaderMode {
+        if !isPresented && current == .search {
+            return .reader
+        }
+        return current
+    }
+
+    private var searchSheetBinding: Binding<Bool> {
+        Binding(
+            get: { isShowingSearch },
+            set: { readerMode = Self.searchSheetReaderMode(current: readerMode, isPresented: $0) }
+        )
     }
 
     let document: TPPPDFDocument
@@ -43,7 +62,7 @@ struct TPPPDFReaderView: View {
                 TPPPDFTOCView(document: document, done: done)
                     .visible(when: readerMode == .toc)
             }
-            .sheet(isPresented: .constant(isShowingSearch)) {
+            .sheet(isPresented: searchSheetBinding) {
                 TPPPDFSearchView(document: document, done: done)
                     .environmentObject(metadata)
             }

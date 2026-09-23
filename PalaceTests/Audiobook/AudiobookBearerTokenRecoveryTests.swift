@@ -23,6 +23,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class AudiobookBearerTokenRecoveryTests: XCTestCase {
@@ -46,20 +47,20 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
     // MARK: - Signal classification: isResourceUnavailable
 
     func testResourceUnavailable_minus1008_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(resourceUnavailableError()),
+        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(from: resourceUnavailableError()),
             "URLError -1008 (resourceUnavailable) is the signal an expired signed content URL surfaces")
     }
 
     func testResourceUnavailable_minus1008InUnderlyingChain_returnsTrue() {
         let underlying = NSError(domain: NSURLErrorDomain, code: NSURLErrorResourceUnavailable, userInfo: [:])
         let wrapped = NSError(domain: "av", code: -11800, userInfo: [NSUnderlyingErrorKey: underlying])
-        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(wrapped),
+        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(from: wrapped),
             "The -1008 may be one level down the NSUnderlyingError chain (AVFoundation wraps it)")
     }
 
     func testResourceUnavailable_otherURLErrorCode_returnsFalse() {
         let notConnected = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: [:])
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(notConnected),
+        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: notConnected),
             "A different URLError code (e.g. notConnectedToInternet) is NOT an expired-URL signal")
     }
 
@@ -67,12 +68,12 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
         // Same numeric code but a different domain must NOT match — the domain
         // check is load-bearing (kills the `domain ==` mutation).
         let sameCodeOtherDomain = NSError(domain: "some.other.domain", code: NSURLErrorResourceUnavailable, userInfo: [:])
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(sameCodeOtherDomain),
+        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: sameCodeOtherDomain),
             "-1008 only counts inside NSURLErrorDomain — a same-numbered code in another domain is unrelated")
     }
 
     func testResourceUnavailable_nilError_returnsFalse() {
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(nil))
+        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: nil))
     }
 
     // MARK: - Signal classification: isExpiredEntitlementSignal

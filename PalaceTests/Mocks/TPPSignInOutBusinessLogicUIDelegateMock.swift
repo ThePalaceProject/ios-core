@@ -9,36 +9,123 @@
 import Foundation
 @testable import Palace
 
-class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLogicUIDelegate {
+/// `@unchecked Sendable`: this mock is shared across concurrency domains in
+/// sign-in tests, so all mutable stored state is guarded by a single `NSLock`
+/// via locked computed accessors — mirroring `TPPBookRegistryMock`. Property
+/// names, types, and `@objc` annotations are preserved so no call site changes.
+class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLogicUIDelegate, @unchecked Sendable {
+
+    private let lock = NSLock()
 
     // MARK: - Call Tracking for Tests
-    var didCallWillSignOut = false
-    var didCallDidFinishDeauthorizing = false
-    var didFinishDeauthorizingHandler: (() -> Void)?
+    private var _didCallWillSignOut = false
+    var didCallWillSignOut: Bool {
+        get { lock.withLock { _didCallWillSignOut } }
+        set { lock.withLock { _didCallWillSignOut = newValue } }
+    }
+
+    private var _didCallDidFinishDeauthorizing = false
+    var didCallDidFinishDeauthorizing: Bool {
+        get { lock.withLock { _didCallDidFinishDeauthorizing } }
+        set { lock.withLock { _didCallDidFinishDeauthorizing = newValue } }
+    }
+
+    private var _didFinishDeauthorizingHandler: (() -> Void)?
+    var didFinishDeauthorizingHandler: (() -> Void)? {
+        get { lock.withLock { _didFinishDeauthorizingHandler } }
+        set { lock.withLock { _didFinishDeauthorizingHandler = newValue } }
+    }
 
     // MARK: - Sign-In Flow Tracking
-    var didCallWillSignIn = false
-    var didCallDidCompleteSignIn = false
-    var didCallDidCancelSignIn = false
-    var didCallDidReceiveCredentials = false
-    var willSignInCallCount = 0
-    var didCompleteSignInCallCount = 0
-    var didReceiveCredentialsCallCount = 0
-    var didCompleteSignInHandler: (() -> Void)?
+    private var _didCallWillSignIn = false
+    var didCallWillSignIn: Bool {
+        get { lock.withLock { _didCallWillSignIn } }
+        set { lock.withLock { _didCallWillSignIn = newValue } }
+    }
+
+    private var _didCallDidCompleteSignIn = false
+    var didCallDidCompleteSignIn: Bool {
+        get { lock.withLock { _didCallDidCompleteSignIn } }
+        set { lock.withLock { _didCallDidCompleteSignIn = newValue } }
+    }
+
+    private var _didCallDidCancelSignIn = false
+    var didCallDidCancelSignIn: Bool {
+        get { lock.withLock { _didCallDidCancelSignIn } }
+        set { lock.withLock { _didCallDidCancelSignIn = newValue } }
+    }
+
+    private var _didCallDidReceiveCredentials = false
+    var didCallDidReceiveCredentials: Bool {
+        get { lock.withLock { _didCallDidReceiveCredentials } }
+        set { lock.withLock { _didCallDidReceiveCredentials = newValue } }
+    }
+
+    private var _willSignInCallCount = 0
+    var willSignInCallCount: Int {
+        get { lock.withLock { _willSignInCallCount } }
+        set { lock.withLock { _willSignInCallCount = newValue } }
+    }
+
+    private var _didCompleteSignInCallCount = 0
+    var didCompleteSignInCallCount: Int {
+        get { lock.withLock { _didCompleteSignInCallCount } }
+        set { lock.withLock { _didCompleteSignInCallCount = newValue } }
+    }
+
+    private var _didReceiveCredentialsCallCount = 0
+    var didReceiveCredentialsCallCount: Int {
+        get { lock.withLock { _didReceiveCredentialsCallCount } }
+        set { lock.withLock { _didReceiveCredentialsCallCount = newValue } }
+    }
+
+    private var _didCompleteSignInHandler: (() -> Void)?
+    var didCompleteSignInHandler: (() -> Void)? {
+        get { lock.withLock { _didCompleteSignInHandler } }
+        set { lock.withLock { _didCompleteSignInHandler = newValue } }
+    }
 
     // Track isLoading state transitions
-    var isLoading = false
-    var loadingStateChanges: [Bool] = []
+    private var _isLoading = false
+    var isLoading: Bool {
+        get { lock.withLock { _isLoading } }
+        set { lock.withLock { _isLoading = newValue } }
+    }
+
+    private var _loadingStateChanges: [Bool] = []
+    var loadingStateChanges: [Bool] {
+        get { lock.withLock { _loadingStateChanges } }
+        set { lock.withLock { _loadingStateChanges = newValue } }
+    }
 
     func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
         didCallWillSignOut = true
     }
 
     // MARK: - Sign-Out Error Tracking
-    var didCallSignOutError = false
-    var signOutErrorCallCount = 0
-    var lastSignOutErrorHTTPStatusCode: Int?
-    var signOutErrorHandler: ((Error?, Int) -> Void)?
+    private var _didCallSignOutError = false
+    var didCallSignOutError: Bool {
+        get { lock.withLock { _didCallSignOutError } }
+        set { lock.withLock { _didCallSignOutError = newValue } }
+    }
+
+    private var _signOutErrorCallCount = 0
+    var signOutErrorCallCount: Int {
+        get { lock.withLock { _signOutErrorCallCount } }
+        set { lock.withLock { _signOutErrorCallCount = newValue } }
+    }
+
+    private var _lastSignOutErrorHTTPStatusCode: Int?
+    var lastSignOutErrorHTTPStatusCode: Int? {
+        get { lock.withLock { _lastSignOutErrorHTTPStatusCode } }
+        set { lock.withLock { _lastSignOutErrorHTTPStatusCode = newValue } }
+    }
+
+    private var _signOutErrorHandler: ((Error?, Int) -> Void)?
+    var signOutErrorHandler: ((Error?, Int) -> Void)? {
+        get { lock.withLock { _signOutErrorHandler } }
+        set { lock.withLock { _signOutErrorHandler = newValue } }
+    }
 
     func businessLogic(_ logic: TPPSignInBusinessLogic,
                        didEncounterSignOutError error: Error?,
@@ -60,7 +147,11 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
         loadingStateChanges.append(false)
     }
 
-    var context = "Unit Tests Context"
+    private var _context = "Unit Tests Context"
+    var context: String {
+        get { lock.withLock { _context } }
+        set { lock.withLock { _context = newValue } }
+    }
 
     func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
         didCallWillSignIn = true
@@ -100,13 +191,33 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
         completion?()
     }
 
-    var username: String? = "username"
+    private var _username: String? = "username"
+    var username: String? {
+        get { lock.withLock { _username } }
+        set { lock.withLock { _username = newValue } }
+    }
 
-    var pin: String? = "pin"
+    private var _pin: String? = "pin"
+    var pin: String? {
+        get { lock.withLock { _pin } }
+        set { lock.withLock { _pin = newValue } }
+    }
 
-    var usernameTextField: UITextField?
+    private var _usernameTextField: UITextField?
+    var usernameTextField: UITextField? {
+        get { lock.withLock { _usernameTextField } }
+        set { lock.withLock { _usernameTextField = newValue } }
+    }
 
-    var PINTextField: UITextField?
+    private var _PINTextField: UITextField?
+    var PINTextField: UITextField? {
+        get { lock.withLock { _PINTextField } }
+        set { lock.withLock { _PINTextField = newValue } }
+    }
 
-    var forceEditability: Bool = false
+    private var _forceEditability: Bool = false
+    var forceEditability: Bool {
+        get { lock.withLock { _forceEditability } }
+        set { lock.withLock { _forceEditability = newValue } }
+    }
 }

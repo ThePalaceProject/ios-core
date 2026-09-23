@@ -23,7 +23,12 @@ import UIKit
 ///
 /// `NotificationCenter` listener purges everything on a system memory
 /// warning (or our pre-emptive `ReaderService.openPDF` notification).
-private final class LCPDecryptCache {
+/// `@unchecked Sendable` invariant: the sole stored property `cache` is an
+/// immutable `let` and `NSCache` is documented thread-safe, so concurrent
+/// `decrypted(for:)` / `store(_:for:)` calls are safe. The observer is
+/// registered once in `init`, and `handleMemoryWarning` only calls the
+/// thread-safe `removeAllObjects()`. No unsynchronized mutable state exists.
+private final class LCPDecryptCache: @unchecked Sendable {
     static let shared = LCPDecryptCache()
     private let cache = NSCache<NSData, NSData>()
 
@@ -216,6 +221,16 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
         }
 
         return result
+    }
+
+    /// PP-4848 (Readium 3.11): `LCPClient` now requires this. Readium ships a
+    /// hardcoded default list, but forwarding the value liblcp actually reports
+    /// is what lets Readium surface the correct "profile not supported" error
+    /// for a license whose profile the embedded `R2LCPClient` can't handle,
+    /// instead of failing opaquely. `R2LCPClient.getSupportedLCPProfileURIs()`
+    /// returns an optional; an empty list is the honest "none advertised" value.
+    func getSupportedLCPProfileURIs() -> [String] {
+        R2LCPClient.getSupportedLCPProfileURIs() ?? []
     }
 }
 

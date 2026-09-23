@@ -18,6 +18,7 @@ import XCTest
 
 // MARK: - Download Watchdog Tests
 
+@MainActor
 final class DownloadWatchdogTests: XCTestCase {
 
     func testWatchdogConfiguration() {
@@ -69,6 +70,7 @@ final class DownloadWatchdogTests: XCTestCase {
 
 // MARK: - Download Persistence Store Tests
 
+@MainActor
 final class DownloadPersistenceStoreTests: XCTestCase {
 
     private var store: DownloadPersistenceStore!
@@ -227,6 +229,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
 
 // MARK: - Storage Location Tests
 
+@MainActor
 final class AudiobookStorageLocationTests: XCTestCase {
 
     func testApplicationSupportDirectoryExists() {
@@ -288,6 +291,7 @@ final class AudiobookStorageLocationTests: XCTestCase {
 
 // MARK: - Background Listener Tests
 
+@MainActor
 final class BackgroundListenerTests: XCTestCase {
 
     func testOpenAccessListenerIdentifiesCorrectSessions() {

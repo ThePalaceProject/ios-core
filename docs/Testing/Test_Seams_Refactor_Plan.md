@@ -120,7 +120,7 @@ final class AccountsManager: NSObject, TPPLibraryAccountsProvider {
 
 ```swift
 // Step 1: Create provider protocol
-// Palace/Settings/TPPSettingsProviding.swift
+// Palace/Packages/PalacePreferences/Sources/PalacePreferences/TPPSettingsProviding.swift
 
 protocol TPPSettingsProviding: AnyObject {
     var useBetaLibraries: Bool { get set }
@@ -359,7 +359,7 @@ let executor = TPPNetworkExecutor(
 | File | Change |
 |------|--------|
 | `Palace/Book/Models/TPPBookRegistryProviding.swift` | Create protocol (new) |
-| `Palace/Book/Models/TPPBookRegistry.swift` | Add protocol conformance |
+| `Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/TPPBookRegistry.swift` | Add protocol conformance |
 | `PalaceTests/Mocks/TPPBookRegistryMock.swift` | Update |
 
 **Protocol Definition:**
@@ -713,7 +713,7 @@ final class KeychainFake: KeychainProviding {
 | `TPPNetworkExecuting` | `Palace/Network/TPPNetworkExecuting.swift` | P0 |
 | `TPPBookRegistryProviding` | `Palace/Book/Models/TPPBookRegistryProviding.swift` | P0 |
 | `TPPUserAccountProviding` | `Palace/Accounts/User/TPPUserAccountProviding.swift` | P0 |
-| `TPPSettingsProviding` | `Palace/Settings/TPPSettingsProviding.swift` | P1 |
+| `TPPSettingsProviding` | `Palace/Packages/PalacePreferences/Sources/PalacePreferences/TPPSettingsProviding.swift` | P1 |
 | `AudiobookSessionProviding` | `Palace/Audiobooks/AudiobookSessionProviding.swift` | P1 |
 | `OPDSFeedCaching` | `Palace/OPDS2/OPDSFeedCaching.swift` | P1 |
 | `ClockProviding` | `Palace/Utilities/Clock.swift` | P2 |

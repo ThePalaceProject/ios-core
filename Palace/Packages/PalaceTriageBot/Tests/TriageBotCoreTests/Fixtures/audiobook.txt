@@ -1,0 +1,7 @@
+# SYNTHETIC — hand-authored, all values FAKE. See Fixtures/README.md.
+2026-07-16T15:30:00Z [Audiobook] Findaway session for "A Fake Audiobook"
+2026-07-16T15:30:00Z [Audiobook] AudioEngine license request Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWRpbyI6ImZha2UifQ.FAKEaudioSIG
+2026-07-16T15:30:01Z [Audiobook] fulfillment json {"access_token":"FAKE-audio-access.aaa.bbb","expires_in":3600}
+2026-07-16T15:30:01Z [Audiobook] patron note: passcode 246810 not accepted for barcode 21234000099887
+2026-07-16T15:30:02Z [Audiobook] session Cookie: PLAYSESSION=FAKEplay-abcdef123; path=/
+2026-07-16T15:30:02Z [Audiobook] listener patron-bob@example.org account 0a1b2c3d-4e5f-6789-abcd-ef0123456789

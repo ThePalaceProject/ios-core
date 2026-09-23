@@ -1,0 +1,9 @@
+[
+  {
+    "args" : {
+      "bookId" : "DSR-BOOK",
+      "cookieCount" : "1"
+    },
+    "method" : "handleSAMLStartedState"
+  }
+]

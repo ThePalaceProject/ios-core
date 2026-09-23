@@ -18,6 +18,7 @@
 import Foundation
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Narrow seams for the two collaborators LCPAdapter needs. Defined here so
 /// the adapter is unit-testable without retrofitting protocols onto the @objc
@@ -75,13 +76,21 @@ final class LCPAdapter: AudiobookVendorAdapter {
         for book: TPPBook,
         completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
     ) {
+        // Box the non-`@Sendable` completion once. The LCP flow hands it across
+        // the `prepareLCPSource` callback, `LCPAudiobooks.contentDictionary`
+        // (whose completion IS `@Sendable`), and the `finishOnMain`
+        // `DispatchQueue.main.async` hop — all `@Sendable` boundaries. Boxing
+        // avoids marking the `AudiobookVendorAdapter` protocol `@Sendable`
+        // (which would ripple to the loader + adapter test mocks). See
+        // `AudiobookAdapterCompletionBox`.
+        let completionBox = AudiobookAdapterCompletionBox(completion)
         prepareLCPSource(for: book) { [weak self] sourceResult in
-            guard let self else { LCPAdapter.finishOnMain(completion, .failure(.cancelled)); return }
+            guard let self else { LCPAdapter.finishOnMain(completionBox, .failure(.cancelled)); return }
             switch sourceResult {
             case .success(let sourceURL):
-                self.loadLCPContent(book: book, lcpSourceURL: sourceURL, completion: completion)
+                self.loadLCPContent(book: book, lcpSourceURL: sourceURL, completionBox: completionBox)
             case .failure(let err):
-                LCPAdapter.finishOnMain(completion, .failure(err))
+                LCPAdapter.finishOnMain(completionBox, .failure(err))
             }
         }
     }
@@ -112,28 +121,28 @@ final class LCPAdapter: AudiobookVendorAdapter {
     private func loadLCPContent(
         book: TPPBook,
         lcpSourceURL: URL,
-        completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
+        completionBox: AudiobookAdapterCompletionBox
     ) {
         guard let lcpAudiobooks = lcpAudiobooksFactory(lcpSourceURL) else {
             Log.error(#file, "Failed to create LCPAudiobooks instance for \(lcpSourceURL.path)")
-            LCPAdapter.finishOnMain(completion, .failure(.lcpInstantiationFailed))
+            LCPAdapter.finishOnMain(completionBox, .failure(.lcpInstantiationFailed))
             return
         }
         if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
-            LCPAdapter.finishOnMain(completion, .success((json: cached, decryptor: lcpAudiobooks)))
+            LCPAdapter.finishOnMain(completionBox, .success((json: cached, decryptor: lcpAudiobooks)))
             return
         }
         lcpAudiobooks.contentDictionary { dict, error in
             if let error = error {
                 Log.error(#file, "LCP content dictionary error: \(error.localizedDescription)")
-                LCPAdapter.finishOnMain(completion, .failure(.lcpDecryptionFailed(underlying: error)))
+                LCPAdapter.finishOnMain(completionBox, .failure(.lcpDecryptionFailed(underlying: error)))
                 return
             }
             guard let json = dict as? [String: Any] else {
-                LCPAdapter.finishOnMain(completion, .failure(.lcpDecryptionFailed(underlying: nil)))
+                LCPAdapter.finishOnMain(completionBox, .failure(.lcpDecryptionFailed(underlying: nil)))
                 return
             }
-            LCPAdapter.finishOnMain(completion, .success((json: json, decryptor: lcpAudiobooks)))
+            LCPAdapter.finishOnMain(completionBox, .success((json: json, decryptor: lcpAudiobooks)))
         }
     }
 
@@ -186,13 +195,43 @@ final class LCPAdapter: AudiobookVendorAdapter {
     }
 
     /// Force completion onto the main thread — `AudiobookVendorAdapter`
-    /// contract requires completion fires on main exactly once.
+    /// contract requires completion fires on main exactly once. Takes the
+    /// `Sendable` completion box so the (possibly off-main) callers can hop to
+    /// main via `DispatchQueue.main.async` without capturing the raw
+    /// non-`@Sendable` completion across that boundary.
     private static func finishOnMain(
-        _ completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void,
-        _ result: Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>
+        _ completionBox: AudiobookAdapterCompletionBox,
+        _ result: AudiobookAdapterCompletionBox.Outcome
     ) {
-        if Thread.isMainThread { completion(result) }
-        else { DispatchQueue.main.async { completion(result) } }
+        if Thread.isMainThread { completionBox.fire(result) }
+        else {
+            // The `Outcome` payload carries `[String: Any]` (manifest) and a
+            // `DRMDecryptor?` (toolkit protocol), neither Sendable-audited, so
+            // capturing `result` directly into the `main.async` `@Sendable`
+            // closure trips `sending 'result' risks data races`. Box it for the
+            // single main hop — the outcome is produced once and consumed once.
+            let outcomeBox = LCPOutcomeBox(result)
+            DispatchQueue.main.async { completionBox.fire(outcomeBox.value) }
+        }
+    }
+}
+
+/// `Sendable` carrier for an `AudiobookAdapterCompletionBox.Outcome` crossing
+/// the `finishOnMain` `DispatchQueue.main.async` hop.
+///
+/// The outcome's success payload holds a non-Sendable `[String: Any]` manifest
+/// and an un-audited `DRMDecryptor?`; boxing lets it cross the main hop without
+/// a `sending` diagnostic while keeping the `AudiobookVendorAdapter` completion
+/// (and its loader/test call sites) free of a `@Sendable` requirement.
+///
+/// - Sendable invariant: `value` is set once at init and only read on the main
+///   thread thereafter — the outcome is not mutated after boxing, so there is
+///   no shared mutation. The `@unchecked` waiver covers only the un-audited
+///   payload types. Mirrors `ManifestJSONBox` (AudiobookVendorAdapter).
+private struct LCPOutcomeBox: @unchecked Sendable {
+    let value: AudiobookAdapterCompletionBox.Outcome
+    init(_ value: AudiobookAdapterCompletionBox.Outcome) {
+        self.value = value
     }
 }
 

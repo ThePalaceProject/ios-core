@@ -7,7 +7,7 @@
 //
 
 import SwiftUI
-import PDFKit
+@preconcurrency import PDFKit
 
 /// This view shows PDFKit views when PDF is not encrypted
 /// PDFKit reading controls (PDFView and PDFThumbnails) are generally faster because of direct data reading,
@@ -49,26 +49,27 @@ struct TPPPDFView: View {
                 TPPPDFLabel(documentTitle)
                     .padding(.top)
                 Spacer()
-                if let pageLabel = document.page(at: metadata.currentPage)?.label, Int(pageLabel) != (metadata.currentPage + 1) {
-                    TPPPDFLabel("\(pageLabel) (\(metadata.currentPage + 1)/\(document.pageCount))")
-                } else {
-                    TPPPDFLabel("\(metadata.currentPage + 1)/\(document.pageCount)")
+                SwiftUI.Group {
+                    if let pageLabel = document.page(at: metadata.currentPage)?.label, Int(pageLabel) != (metadata.currentPage + 1) {
+                        TPPPDFLabel("\(pageLabel) (\(metadata.currentPage + 1)/\(document.pageCount))")
+                    } else {
+                        TPPPDFLabel("\(metadata.currentPage + 1)/\(document.pageCount)")
+                    }
                 }
-                VStack(spacing: 0) {
-                    Divider()
-                    if isVoiceOverRunning {
+                .contentTransition(.numericText(value: Double(metadata.currentPage + 1)))
+                .accessibleAnimation(PalaceMotion.standard, value: metadata.currentPage)
+                if isVoiceOverRunning {
+                    VStack(spacing: 0) {
+                        Divider()
                         TPPPDFAccessibilityToolbar(
                             currentPage: $metadata.currentPage,
                             pageCount: document.pageCount
                         )
-                    } else {
-                        TPPPDFThumbnailView(pdfView: pdfView)
-                            .frame(maxHeight: 40)
-                            .background(
-                                Color(UIColor.systemBackground)
-                                    .edgesIgnoringSafeArea(.bottom)
-                            )
                     }
+                } else {
+                    // PP-1916: lazy thumbnail strip — only renders visible pages,
+                    // replacing PDFKit's eager all-pages PDFThumbnailView.
+                    PDFThumbnailStrip(document: document, currentPage: $metadata.currentPage)
                 }
             }
             .opacity(showingDocumentInfo || isVoiceOverRunning ? 1 : 0)
@@ -81,11 +82,7 @@ struct TPPPDFView: View {
             // injected, and the view is mounted before any long-press
             // gesture can fire.
             pdfView.allowsCopy = !metadata.book.isDRMProtected
-            Task {
-                if let title = await fetchDocumentTitle() {
-                    documentTitle = title
-                }
-            }
+            documentTitle = resolveDocumentTitle()
         }
         .onReceive(pageChangePublisher) { value in
             if let pdfView = (value.object as? PDFView), let page = pdfView.currentPage, let pageIndex = pdfView.document?.index(for: page) {
@@ -113,7 +110,20 @@ struct TPPPDFView: View {
         UIAccessibility.post(notification: .pageScrolled, argument: status)
     }
 
-    private func fetchDocumentTitle() async -> String? {
-        try? await document.title() ?? metadata.book.title
+    /// Resolves the document title synchronously on the main actor.
+    ///
+    /// `complete` (structural fix): the prior `try? await document.title()` sent
+    /// the non-`Sendable` PDFKit `PDFDocument` across the `await` boundary
+    /// ("sending 'self.document' risks data races"), which `@preconcurrency import
+    /// PDFKit` does not clear because the send is of the concrete document value,
+    /// not a cross-module type-annotation issue. PDFKit exposes the title
+    /// synchronously via `documentAttributes[.titleAttribute]` — the same read
+    /// `TPPPDFDocument.title` performs — so we read it here on the current (main)
+    /// actor without ever crossing an isolation boundary. `TPPPDFView` is a
+    /// main-actor `View` and `document` is main-actor-held, so this is
+    /// behavior-preserving and strictly cheaper (no Task/await hop).
+    private func resolveDocumentTitle() -> String {
+        let attributeTitle = document.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String
+        return attributeTitle ?? metadata.book.title
     }
 }

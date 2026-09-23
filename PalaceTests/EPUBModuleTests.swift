@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class EPUBModuleTests: XCTestCase {
 
     // MARK: - Initialization Tests

@@ -47,7 +47,7 @@ import PalaceCatalog
 /// into. This subclass re-routes the snapshot to read from the mock's
 /// own storage so cold-start cookie sync is observable through the
 /// real production code path.
-private final class TPPUserAccountCookieMock: TPPUserAccountMock {
+private final class TPPUserAccountCookieMock: TPPUserAccountMock, @unchecked Sendable {
     override func credentialSnapshot() -> TPPUserAccount.CredentialSnapshot {
         // Build a snapshot that uses the mock's own state. `cookies` is
         // the critical field — request(for:) installs these into
@@ -67,19 +67,22 @@ private final class TPPUserAccountCookieMock: TPPUserAccountMock {
     }
 }
 
+@MainActor
 final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Fixtures
 
     private var executor: TPPNetworkExecutor!
-    private var libraryAccount: TPPLibraryAccountMock!
+    // nonisolated(unsafe): read by the nonisolated makeExecutor helper; all
+    // access is main-thread (setUp/tearDown/test bodies).
+    private nonisolated(unsafe) var libraryAccount: TPPLibraryAccountMock!
     private var userAccount: TPPUserAccountMock!
 
     private let samlBorrowURL = URL(string: "https://library.example.com/borrow/123")!
     private let cookieDomain = "library.example.com"
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         HTTPStubURLProtocol.reset()
         TPPUserAccountMock.resetShared()
         clearSharedCookieStorage()
@@ -102,20 +105,25 @@ final class CookiePersistenceTests: XCTestCase {
         executor = makeExecutor()
     }
 
-    override func tearDown() {
+    // async tearDown adopts the class's @MainActor isolation so the main-actor
+    // clearSharedCookieStorage() call is not sent from a nonisolated context.
+    override func tearDown() async throws {
         HTTPStubURLProtocol.reset()
         clearSharedCookieStorage()
         executor = nil
         libraryAccount = nil
         userAccount = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Helpers
 
     /// Build an ephemeral executor with HTTP stubbing wired in. Each call
     /// gives a fresh URLSession (so "cold-start" is just calling this again).
-    private func makeExecutor() -> TPPNetworkExecutor {
+    // nonisolated: pure fixture/helper (no isolated state); called from
+    // inherited-nonisolated setUp/tearDown overrides or nonisolated
+    // contexts (Swift 6 sending error otherwise).
+    private nonisolated func makeExecutor() -> TPPNetworkExecutor {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
         return TPPNetworkExecutor(
@@ -127,7 +135,10 @@ final class CookiePersistenceTests: XCTestCase {
         )
     }
 
-    private static func makeSamlAuthDefinition() -> AccountDetails.Authentication {
+    // nonisolated: pure fixture/helper (no isolated state); called from
+    // inherited-nonisolated setUp/tearDown overrides or nonisolated
+    // contexts (Swift 6 sending error otherwise).
+    private nonisolated static func makeSamlAuthDefinition() -> AccountDetails.Authentication {
         // OPDS2 authentication-document JSON for SAML. Carries no tokenURL
         // by design so the token-refresh path is never eligible here.
         let json = """
@@ -157,7 +168,10 @@ final class CookiePersistenceTests: XCTestCase {
         ])!
     }
 
-    private func clearSharedCookieStorage() {
+    // nonisolated: pure fixture/helper (no isolated state); called from
+    // inherited-nonisolated setUp/tearDown overrides or nonisolated
+    // contexts (Swift 6 sending error otherwise).
+    private nonisolated func clearSharedCookieStorage() {
         let shared = HTTPCookieStorage.shared
         // Clearing only `cookieDomain`-scoped cookies keeps unrelated
         // shared cookies in other test suites untouched.
@@ -275,7 +289,10 @@ final class CookiePersistenceTests: XCTestCase {
                       "A token-auth account must NOT install its cookies into shared storage — kills inversion or deletion of the `authDef.isSaml` gate in request(for:)")
     }
 
-    private func makeTokenAuth() -> AccountDetails.Authentication {
+    // nonisolated: pure fixture/helper (no isolated state); called from
+    // inherited-nonisolated setUp/tearDown overrides or nonisolated
+    // contexts (Swift 6 sending error otherwise).
+    private nonisolated func makeTokenAuth() -> AccountDetails.Authentication {
         let json = """
         {
           "type": "http://thepalaceproject.org/authtype/basic-token",

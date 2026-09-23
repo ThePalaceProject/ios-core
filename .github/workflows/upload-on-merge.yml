@@ -9,6 +9,8 @@ on:
 
 jobs:
   check-version:
+    # Only when the PR actually merged — skip the macos-26 version probe on closed-but-unmerged PRs.
+    if: github.event.pull_request.merged == true
     # Use macos-26 for Xcode 26 / iOS 26 SDK (required for App Store starting April 2026)
     # See: https://github.blog/changelog/2025-09-11-actions-macos-26-image-now-in-public-preview/
     runs-on: macos-26
@@ -16,7 +18,7 @@ jobs:
 
       
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -51,14 +53,14 @@ jobs:
         run: xcodebuild -version
 
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           submodules: true
           fetch-depth: 0
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
 
       - name: Cache Swift Package Manager
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -69,7 +71,7 @@ jobs:
             spm-${{ runner.os }}-macos-26-
 
       - name: Cache DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           key: deriveddata-upload-${{ runner.os }}-macos-26-${{ hashFiles('**/*.swift', '**/*.m', '**/*.h', '**/project.pbxproj') }}
@@ -77,14 +79,14 @@ jobs:
             deriveddata-upload-${{ runner.os }}-macos-26-
 
       - name: Checkout Binaries
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           repository: ThePalaceProject/ios-binaries
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./ios-binaries
 
       - name: Checkout Certificates
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -126,7 +128,7 @@ jobs:
           ARCHS: "arm64"
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 

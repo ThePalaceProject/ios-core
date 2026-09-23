@@ -13,13 +13,18 @@ actor DownloadErrorRecovery {
 
     // MARK: - Retry Policy
 
-    struct RetryPolicy {
+    struct RetryPolicy: Sendable {
         let maxAttempts: Int
         let baseDelay: TimeInterval
         let maxDelay: TimeInterval
         /// Overall timeout for all retry attempts combined (prevents indefinite freezing)
         let overallTimeout: TimeInterval
-        let shouldRetry: (Error) -> Bool
+        /// `@Sendable`: every assigned classifier below is a pure, capture-free
+        /// closure over the passed-in `Error`, so it is safe to share across the
+        /// actor boundary. Required for the enclosing `RetryPolicy` to be
+        /// `Sendable` and thus a valid `static let` on the `DownloadErrorRecovery`
+        /// actor.
+        let shouldRetry: @Sendable (Error) -> Bool
 
         static let `default` = RetryPolicy(
             maxAttempts: 3,
@@ -104,6 +109,21 @@ actor DownloadErrorRecovery {
                     (nsError.code == NSURLErrorTimedOut ||
                         nsError.code == NSURLErrorNotConnectedToInternet)
             }
+        )
+
+        /// Retry policy for the plain CONTENT transfer (the URLSession bytes
+        /// download), added for Reliability WS-A. Reuses `default`'s NSURLError
+        /// classifier verbatim — it already refuses auth / 404 / bad-URL /
+        /// file-permission / no-permissions errors and admits transient network
+        /// failures — so a transient transfer blip retries with backoff while a
+        /// non-transient failure fails fast into the existing alert path. INV-6:
+        /// this governs the content transfer only; DRM fulfillment is untouched.
+        static let downloadTransfer = RetryPolicy(
+            maxAttempts: 3,
+            baseDelay: 2.0,
+            maxDelay: 30.0,
+            overallTimeout: 120.0,
+            shouldRetry: RetryPolicy.default.shouldRetry
         )
 
         /// Retry policy for borrow operations — tolerant of slow servers (hold notifications

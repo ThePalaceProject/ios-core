@@ -1,4 +1,5 @@
 import SwiftUI
+import PalaceBookModel
 
 private typealias DisplayStrings = Strings.BookButton
 
@@ -46,6 +47,44 @@ struct BookButtonsView<T: BookButtonProvider>: View {
         }
         .padding(.vertical)
         .accessibleAnimation(.spring(response: 0.4, dampingFraction: 0.7), value: filteredButtonTypes)
+    }
+}
+
+// MARK: - Tap debounce
+
+/// Decides whether a repeat press on the same control should be delivered.
+///
+/// PP-5063: none of the book action buttons debounced. Five quick taps on
+/// Borrow started five borrows; three on Remove sent three returns. The action
+/// buttons show a spinner via `isProcessing`, but they were never disabled and
+/// `isProcessing` only flips once the action has already been dispatched — so
+/// every tap inside that window was delivered.
+///
+/// Time-based rather than state-based on purpose. Gating on
+/// `provider.isProcessing` would leave a button permanently dead if processing
+/// state ever failed to clear, which is a known failure mode on this path; a
+/// window that expires on its own cannot strand a control.
+///
+/// This addresses repeat presses on the SAME control. It does not address a
+/// tap landing on a DIFFERENT control after the first press reflows or pops the
+/// view — that is a navigation-level problem and is out of scope here.
+enum ButtonTapDebounce {
+
+    /// Presses closer together than this are treated as one.
+    ///
+    /// 400ms: comfortably longer than an accidental double-tap or a stutter
+    /// from an unresponsive-feeling screen, comfortably shorter than a
+    /// deliberate second press (a patron cancelling and re-borrowing is not
+    /// doing it inside half a second).
+    static let window: TimeInterval = 0.4
+
+    /// `true` when this press should be delivered.
+    /// - Parameters:
+    ///   - now: the incoming press.
+    ///   - lastAccepted: the last press that was delivered, or `nil` if none.
+    static func shouldAccept(now: TimeInterval, lastAccepted: TimeInterval?) -> Bool {
+        guard let lastAccepted else { return true }
+        return (now - lastAccepted) >= window
     }
 }
 
@@ -105,8 +144,17 @@ struct ActionButton<T: BookButtonProvider>: View {
         }
     }
 
+    /// Timestamp of the last press this button actually delivered.
+    /// Per-button, so debouncing Borrow never suppresses Remove.
+    @State private var lastAcceptedTap: TimeInterval?
+
     var body: some View {
         Button(action: {
+            // PP-5063: swallow repeat presses inside the debounce window.
+            let now = Date().timeIntervalSinceReferenceDate
+            guard ButtonTapDebounce.shouldAccept(now: now, lastAccepted: lastAcceptedTap) else { return }
+            lastAcceptedTap = now
+
             HapticFeedback.medium()
             withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
                 onButtonTapped?(type) ?? provider.handleAction(for: type)
@@ -131,7 +179,7 @@ struct ActionButton<T: BookButtonProvider>: View {
             .padding(size.padding)
             .frame(minHeight: size.height)
             .background(type.buttonBackgroundColor(isDarkBackground))
-            .foregroundColor(type.buttonTextColor(isDarkBackground))
+            .foregroundStyle(type.buttonTextColor(isDarkBackground))
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
@@ -185,6 +233,13 @@ enum ButtonSize {
 }
 
 struct HapticFeedback {
+    // `UIImpactFeedbackGenerator` and its `prepare()`/`impactOccurred()`
+    // members are `@MainActor`-isolated UIKit APIs. Under `complete`-mode
+    // strict concurrency a nonisolated `static func` calling them warns.
+    // The sole caller is the SwiftUI `Button(action:)` closure in
+    // `ActionButton.body`, which is already `@MainActor`, so pinning this to
+    // the main actor is the correct isolation and adds no caller ripple.
+    @MainActor
     static func medium() {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.prepare()

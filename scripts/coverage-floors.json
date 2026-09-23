@@ -1,14 +1,16 @@
 {
-  "overall": 0.41,
+  "overall": 0.46,
   "modules": {
-    "MyBooksDownloadCenter": 0.40,
-    "TPPBookRegistry": 0.50,
-    "TPPSignInBusinessLogic": 0.50,
-    "TPPNetworkExecutor": 0.30,
-    "TPPNetworkResponder": 0.30,
-    "AudiobookSessionManager": 0.44,
-    "TPPAnnotations": 0.40,
-    "AudiobookBookmarkBusinessLogic": 0.36
+    "MyBooksDownloadCenter": 0.66,
+    "TPPSignInBusinessLogic": 0.91,
+    "TPPNetworkExecutor": 0.93,
+    "TPPNetworkResponder": 0.71,
+    "AudiobookSessionManager": 0.29,
+    "TPPAnnotations": 0.74,
+    "AudiobookBookmarkBusinessLogic": 0.73
   },
-  "_comment": "Floors gate on TESTABLE coverage — denominator excludes UI/lifecycle files per scripts/coverage-exclude.json. Overall floor 0.41 matches the 41.1% baseline established when the testable metric was introduced (no regression). Ratchet upward as real unit-testable coverage grows; do NOT raise the number by adding more paths to the exclude list. Per-module floors were already computed on files we unit-test directly, so they carry over unchanged."
+  "unmeasured": {
+    "TPPBookRegistry": "Extracted to Palace/Packages/PalaceBookRegistry. Coverage collection reports one target, Palace.app, so no SPM package source appears in the data at all — 11 packages, zero measured files. Not a coverage regression and not a vanished module; an unmeasured surface. Remove this entry once package coverage is collected."
+  },
+  "_comment": "Floors gate on TESTABLE coverage — denominator excludes UI/lifecycle files per scripts/coverage-exclude.json. RE-BASELINED 2026-09-02 to the first measurement this gate has ever produced. The previous per-module numbers were carried over unchanged from the pre-testable metric (see git history) and so gated on a denominator they were never computed against; the leg itself never ran, so none had ever been checked. Each floor is the measured value minus 2 points, which absorbs run-to-run variation while still catching a real drop. Ratchet upward as real unit-testable coverage grows; do NOT raise the number by adding more paths to the exclude list. A module in `modules` that cannot be found in the coverage data FAILS the gate — record a deliberate exemption in `unmeasured` with the reason instead, so an extracted module is loud rather than silent."
 }

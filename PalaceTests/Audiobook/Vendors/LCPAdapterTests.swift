@@ -18,7 +18,9 @@ import XCTest
 import PalaceCatalog
 @preconcurrency import PalaceAudiobookToolkit
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class LCPAdapterTests: XCTestCase {
 
     // MARK: - MIME constants

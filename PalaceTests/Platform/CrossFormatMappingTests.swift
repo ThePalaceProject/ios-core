@@ -11,6 +11,7 @@ import XCTest
 @testable import Palace
 import PalaceReadingPosition
 
+@MainActor
 final class CrossFormatMappingTests: XCTestCase {
 
     // MARK: - One-to-One Mapping

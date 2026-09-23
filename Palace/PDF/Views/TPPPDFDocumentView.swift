@@ -7,7 +7,10 @@
 //
 
 import SwiftUI
-import PDFKit
+// `@preconcurrency`: PDFKit is not Sendable-audited upstream; its `PDFView`,
+// `PDFDocument`, and the `PDFViewDelegate` requirement cross into this file's
+// main-actor SwiftUI/coordinator paths. Matches the sibling `TPPPDFView.swift`.
+@preconcurrency import PDFKit
 import Combine
 
 /// Wraps PDFKit PDFView control
@@ -69,7 +72,17 @@ struct TPPPDFDocumentView: UIViewRepresentable {
         return Coordinator(currentPage: $metadata.currentPage)
     }
 
-    class Coordinator: NSObject, PDFViewDelegate {
+    // `@MainActor` + `@preconcurrency PDFViewDelegate`: the coordinator holds a
+    // `@Binding` and drives main-actor SwiftUI state. Previously the nonisolated
+    // `pdfViewPerformGo` requirement forced a `MainActor.assumeIsolated` block that
+    // captured `self` (the non-`Sendable` `Coordinator`) into a `@Sendable`
+    // closure — the "sending 'self' risks data races" diagnostic. Isolating the
+    // whole coordinator to the main actor and satisfying the nonisolated PDFKit
+    // requirement via `@preconcurrency` removes the send: PDFKit delivers
+    // `PDFViewDelegate` callbacks on the main thread, so the main-actor method is a
+    // faithful, race-free implementation.
+    @MainActor
+    class Coordinator: NSObject, @preconcurrency PDFViewDelegate {
         @Binding var currentPage: Int
 
         init(currentPage: Binding<Int>) {

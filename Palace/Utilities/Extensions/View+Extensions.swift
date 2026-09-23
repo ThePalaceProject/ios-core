@@ -9,6 +9,11 @@
 import Foundation
 import SwiftUI
 
+/// Simple void-returning closure alias. Relocated here from the (removed)
+/// `RefreshableView.swift` where it originally lived; still used by
+/// `RegistrationCell.configure(...)`.
+typealias Action = () -> Void
+
 extension View {
     func anyView() -> AnyView {
         AnyView(self)
@@ -42,10 +47,6 @@ extension View {
 
     func square(length: CGFloat) -> some View {
         self.frame(width: length, height: length)
-    }
-
-    func refreshable(_ refreshAction: @escaping Action) -> some View {
-        modifier(RefreshableScrollView(refreshAction))
     }
 }
 

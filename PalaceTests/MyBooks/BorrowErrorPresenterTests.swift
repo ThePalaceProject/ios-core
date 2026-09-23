@@ -13,6 +13,7 @@ import XCTest
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class BorrowErrorPresenterTests: XCTestCase {
@@ -28,6 +29,13 @@ final class BorrowErrorPresenterTests: XCTestCase {
     private var capturedErrors: [DownloadErrorInfo] = []
     private var subscription: AnyCancellable?
 
+    /// One-shot continuation resumed the moment the error publisher emits.
+    /// Lets `awaitPublishedError()` JOIN the `@MainActor` Task that
+    /// `BorrowErrorPresenter.process` spins to publish the alert — instead
+    /// of polling a wall-clock deadline (which starves under CI
+    /// oversubscription and blows the 120s executionTimeAllowance).
+    private var errorContinuation: CheckedContinuation<Void, Never>?
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         reporter = DownloadProgressReporter(
@@ -42,7 +50,10 @@ final class BorrowErrorPresenterTests: XCTestCase {
 
         capturedErrors = []
         subscription = reporter.downloadErrorPublisher.sink { [weak self] info in
-            self?.capturedErrors.append(info)
+            guard let self else { return }
+            self.capturedErrors.append(info)
+            self.errorContinuation?.resume()
+            self.errorContinuation = nil
         }
 
         presenter = BorrowErrorPresenter(
@@ -72,15 +83,18 @@ final class BorrowErrorPresenterTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
-    /// forwarded so timeout XCTFail blames the call site.
-    private func waitForPublishedError(
-        timeout: TimeInterval = 10.0,
-        file: StaticString = #file,
-        line: UInt = #line
-    ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
-            self?.capturedErrors.isEmpty == false
+    /// Joins the next error-publisher emission via a continuation resumed
+    /// from the subscription sink. Deterministic — the `@MainActor` publish
+    /// Task runs while this `@MainActor` test is suspended at the `await`,
+    /// resumes the continuation, and we return the instant the alert lands.
+    /// No wall-clock deadline to starve.
+    ///
+    /// Fast-paths when the emission already landed (the sink appends
+    /// synchronously) so we never suspend on an event that has passed.
+    private func awaitPublishedError() async {
+        if !capturedErrors.isEmpty { return }
+        await withCheckedContinuation { continuation in
+            errorContinuation = continuation
         }
     }
 
@@ -88,7 +102,7 @@ final class BorrowErrorPresenterTests: XCTestCase {
 
     func testProcess_noErrorDict_publishesGenericBorrowFailedAlert() async throws {
         presenter.process(error: nil, for: book)
-        await waitForPublishedError()
+        await awaitPublishedError()
 
         let info = try XCTUnwrap(capturedErrors.first)
         XCTAssertEqual(info.bookId, book.identifier)
@@ -104,7 +118,7 @@ final class BorrowErrorPresenterTests: XCTestCase {
             error: ["type": TPPProblemDocument.TypeLoanAlreadyExists],
             for: book
         )
-        await waitForPublishedError()
+        await awaitPublishedError()
 
         let info = try XCTUnwrap(capturedErrors.first)
         XCTAssertNil(info.retryAction,
@@ -120,16 +134,13 @@ final class BorrowErrorPresenterTests: XCTestCase {
             self?.userAccount._credentials = .barcodeAndPin(barcode: "b2", pin: "p2")
         }
 
-        presenter.process(
+        // Await the behavior-identical async sibling of `process` so the
+        // reauth dispatch + post-reauth startDownload retry are JOINED — no
+        // deadline poll (which starved under CI oversubscription).
+        await presenter.processAsync(
             error: ["type": TPPProblemDocument.TypeInvalidCredentials],
             for: book
         )
-
-        // Allow the Task hop to run.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
 
         XCTAssertTrue(reauthenticator.authenticateIfNeededCalled,
                       "Invalid-credentials must trigger reauthenticate")
@@ -144,24 +155,22 @@ final class BorrowErrorPresenterTests: XCTestCase {
         }
 
         // First call — kicks reauth, latches hasAttemptedAuthentication.
-        presenter.process(
+        // Awaited join so the latch is set before the second call.
+        await presenter.processAsync(
             error: ["type": TPPProblemDocument.TypeInvalidCredentials],
             for: book
         )
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
         XCTAssertEqual(reauthenticator.authenticateCallCount, 1)
 
-        // Second call on same book — falls through to alert.
+        // Second call on same book — falls through to alert. `showAlert`
+        // publishes via a main-actor hop, so join the emission explicitly.
         capturedErrors.removeAll()
-        presenter.process(
+        await presenter.processAsync(
             error: ["type": TPPProblemDocument.TypeInvalidCredentials,
                     "detail": "second attempt detail"],
             for: book
         )
-        await waitForPublishedError()
+        await awaitPublishedError()
 
         XCTAssertEqual(reauthenticator.authenticateCallCount, 1,
                        "Second invalid-credentials does NOT re-trigger reauth (per-borrow latch)")
@@ -174,14 +183,13 @@ final class BorrowErrorPresenterTests: XCTestCase {
         // Pre-flag the credential state so both gates short-circuit.
         credentialState.isRequestingCredentials = true
 
-        presenter.process(
+        // Awaited join: processAsync's `isRequestingCredentials` guard
+        // short-circuits synchronously (no reauth, no publish), so by the
+        // time the await returns the absence is fully settled — no poll.
+        await presenter.processAsync(
             error: ["type": TPPProblemDocument.TypeInvalidCredentials],
             for: book
         )
-        for _ in 0..<3 {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
-        }
 
         XCTAssertFalse(reauthenticator.authenticateIfNeededCalled,
                        "If a sign-in modal is already in flight elsewhere, this path must short-circuit")
@@ -199,7 +207,7 @@ final class BorrowErrorPresenterTests: XCTestCase {
             ],
             for: book
         )
-        await waitForPublishedError()
+        await awaitPublishedError()
 
         let info = try XCTUnwrap(capturedErrors.first)
         XCTAssertTrue(info.message.contains("Server is having a moment"),

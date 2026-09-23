@@ -37,6 +37,8 @@ import Foundation
 import PalaceAuth
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Delegate
 
@@ -77,7 +79,22 @@ private enum BorrowAuthErrorDecision {
 
 // MARK: - BorrowOperation
 
-final class BorrowOperation {
+/// - Sendable invariant: every stored dependency is a `let` bound at init
+///   (`bookRegistry`, `downloadAnnouncementService`, `errorActivityTracker`,
+///   `debugSettings`, `userRetryTracker`, `userAccountProvider`,
+///   `adobeDRMService`, the four closure-injected seams, `authCoordinator`) —
+///   the same already-shared services this flow drives today under Swift-5
+///   mode from `Task` / `MainActor.run` closures. The only mutable instance
+///   member is `weak var delegate`, assigned exactly once during owner
+///   (`MyBooksDownloadCenter`) construction and never reassigned; weak-reference
+///   reads and ARC zeroing are atomic in the Swift runtime, so no explicit lock
+///   is required. Circuit-breaker state lives in the `static let reauthTracker`
+///   (`ReauthTracker`), a lock-backed `@unchecked Sendable` holder. `@unchecked` (rather than a
+///   synthesized conformance) because `delegate`'s protocol existential and the
+///   shared service types are not themselves `Sendable`; this conformance
+///   asserts the serialization contract above and does not change runtime
+///   behavior — it only formalizes how the flow already executes.
+final class BorrowOperation: @unchecked Sendable {
 
     weak var delegate: BorrowOperationDelegate?
 
@@ -87,34 +104,43 @@ final class BorrowOperation {
     /// borrow operation. Prevents infinite re-auth loops for persistent
     /// auth failures. Shared across BorrowOperation instances so
     /// account-switch state can be cleared centrally.
-    private static var borrowReauthAttempted: Set<String> = []
-    private static let borrowReauthLock = NSLock()
+    ///
+    /// Lock-backed holder rather than a `static var` + sibling `NSLock`:
+    /// under Swift 6 `complete`-mode a mutable static is nonisolated global
+    /// shared mutable state (a warning even when a paired lock guards every
+    /// access, because the compiler can't see the pairing). Wrapping the set
+    /// and its lock in one `@unchecked Sendable` holder makes the serialization
+    /// contract explicit and the storage a single immutable `let`. Behavior is
+    /// identical to the previous lock/defer accessors.
+    private final class ReauthTracker: @unchecked Sendable {
+        private let lock = NSLock()
+        private var attempted: Set<String> = []
+
+        func hasAttempted(_ bookId: String) -> Bool { lock.withLock { attempted.contains(bookId) } }
+        func mark(_ bookId: String) { lock.withLock { _ = attempted.insert(bookId) } }
+        func clear(_ bookId: String) { lock.withLock { attempted.remove(bookId) } }
+        func clearAll() { lock.withLock { attempted.removeAll() } }
+    }
+
+    private static let reauthTracker = ReauthTracker()
 
     private static func hasBorrowReauthBeenAttempted(for bookId: String) -> Bool {
-        borrowReauthLock.lock()
-        defer { borrowReauthLock.unlock() }
-        return borrowReauthAttempted.contains(bookId)
+        reauthTracker.hasAttempted(bookId)
     }
 
     private static func markBorrowReauthAttempted(for bookId: String) {
-        borrowReauthLock.lock()
-        defer { borrowReauthLock.unlock() }
-        borrowReauthAttempted.insert(bookId)
+        reauthTracker.mark(bookId)
     }
 
     private static func clearBorrowReauthAttempted(for bookId: String) {
-        borrowReauthLock.lock()
-        defer { borrowReauthLock.unlock() }
-        borrowReauthAttempted.remove(bookId)
+        reauthTracker.clear(bookId)
     }
 
     /// Clears all re-auth tracking. Called on account switch via the
     /// MBDC forwarder so stale circuit-breaker state from the previous
     /// account can't suppress legitimate re-auth attempts.
     static func clearAllBorrowReauthState() {
-        borrowReauthLock.lock()
-        defer { borrowReauthLock.unlock() }
-        borrowReauthAttempted.removeAll()
+        reauthTracker.clearAll()
     }
 
     // MARK: - Pure Helpers
@@ -161,55 +187,15 @@ final class BorrowOperation {
         }
     }
 
+    /// E2 (WS7): the availability→state + Loan→Hold race logic now lives in the
+    /// pure `BorrowReducerCore.responseState`. This static is retained as the
+    /// stable entry point for external callers (`MyBooksDownloadCenter+Async`,
+    /// the MBDC forwarder, and their tests) and simply delegates.
     static func borrowResponseState(
         for postBorrowBook: TPPBook,
         preBorrowBook: TPPBook? = nil
     ) -> (state: TPPBookState, error: PalaceError?) {
-        guard let availability = postBorrowBook.defaultAcquisition?.availability else {
-            return (.downloadNeeded, nil)
-        }
-
-        let userTappedPlaceHold = preBorrowBook.map(preBorrowWasUnavailable) ?? false
-
-        var state: TPPBookState = .downloadNeeded
-        var error: PalaceError?
-
-        availability.match(
-            unavailable: { _ in
-                state = .holding
-                if !userTappedPlaceHold {
-                    error = .bookRegistry(.holdCopyUnavailable)
-                }
-            },
-            limited: { _ in state = .downloadNeeded },
-            unlimited: { _ in state = .downloadNeeded },
-            reserved: { _ in
-                state = .holding
-                if !userTappedPlaceHold {
-                    error = .bookRegistry(.holdCopyUnavailable)
-                }
-            },
-            ready: { _ in state = .downloadNeeded }
-        )
-
-        return (state, error)
-    }
-
-    /// Pre-borrow availability discriminator: was the user looking at a
-    /// no-copies title and able only to Place Hold? PP-4178 follow-up.
-    private static func preBorrowWasUnavailable(_ book: TPPBook) -> Bool {
-        guard let availability = book.defaultAcquisition?.availability else {
-            return false
-        }
-        var wasUnavailable = false
-        availability.match(
-            unavailable: { _ in wasUnavailable = true },
-            limited: { _ in },
-            unlimited: { _ in },
-            reserved: { _ in },
-            ready: { _ in }
-        )
-        return wasUnavailable
+        BorrowReducerCore.responseState(for: postBorrowBook, preBorrowBook: preBorrowBook)
     }
 
     /// Builds a user-friendly borrow error message that always uses
@@ -287,6 +273,16 @@ final class BorrowOperation {
     /// Optional so existing tests keep compiling without rework.
     private let authCoordinator: AuthCoordinator?
 
+    /// Fire-and-forget side effect run once a borrow SUCCEEDS — the app-rating
+    /// secondary trigger (PP-4088). Injected so the critical borrow path holds
+    /// no hidden `AppContainer.production()` reach: production wires this to
+    /// `AppContainer.production().ratingPromptPresenter.noteBorrowSucceeded()`
+    /// (see `MyBooksDownloadCenter`); tests inject a recording/no-op closure so
+    /// the success path is deterministic and does not build the full DI graph on
+    /// the MainActor (which deadlocked the @MainActor contract tests). Defaults
+    /// to a no-op so non-production construction sites need no change.
+    private let onBorrowSucceeded: @MainActor () -> Void
+
     // MARK: - Init
 
     #if FEATURE_DRM_CONNECTOR
@@ -302,7 +298,8 @@ final class BorrowOperation {
         presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
         attemptOIDCReauth: @escaping () async -> Bool,
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil,
+        onBorrowSucceeded: @escaping @MainActor () -> Void = {}
     ) {
         self.bookRegistry = bookRegistry
         self.downloadAnnouncementService = downloadAnnouncementService
@@ -316,6 +313,7 @@ final class BorrowOperation {
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
         self.authCoordinator = authCoordinator
+        self.onBorrowSucceeded = onBorrowSucceeded
     }
     #else
     init(
@@ -329,7 +327,8 @@ final class BorrowOperation {
         presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
         attemptOIDCReauth: @escaping () async -> Bool,
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil,
+        onBorrowSucceeded: @escaping @MainActor () -> Void = {}
     ) {
         self.bookRegistry = bookRegistry
         self.downloadAnnouncementService = downloadAnnouncementService
@@ -342,6 +341,7 @@ final class BorrowOperation {
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
         self.authCoordinator = authCoordinator
+        self.onBorrowSucceeded = onBorrowSucceeded
     }
     #endif
 
@@ -372,18 +372,50 @@ final class BorrowOperation {
             throw simulated.error
         }
 
-        // ensure Adobe DRM device activation before proceeding.
-        #if FEATURE_DRM_CONNECTOR
-        if book.requiresAdobeDRM {
-            Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
-            try await self.adobeDRMService.ensureDeviceActivated()
-        }
-        #endif
-
+        // Side-effect-free precondition — hoisted ABOVE activation deliberately.
+        // The activation step below raises the processing spinner and only
+        // clears it if activation itself throws; this guard's throw happens
+        // before `clearProcessingState` exists, so leaving it here stranded the
+        // spinner for the process lifetime on an Adobe title with a malformed
+        // acquisition href. Checking first also avoids spending an Adobe
+        // activation on a book that cannot be borrowed anyway.
         guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {
             Task { [errorActivityTracker] in await errorActivityTracker.log("No acquisition URL found for '\(book.title)'", category: .borrow) }
             throw PalaceError.bookRegistry(.invalidState)
         }
+
+        // ensure Adobe DRM device activation before proceeding.
+        #if FEATURE_DRM_CONNECTOR
+        if book.requiresAdobeDRM {
+            Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
+
+            try await BorrowAdobeActivationStep.run(
+                setProcessing: { [bookRegistry] in bookRegistry.setProcessing($0, for: bookIdentifier) },
+                activate: { [adobeDRMService] in try await adobeDRMService.ensureDeviceActivated(licensorGracePeriod: $0) },
+                // Without this the borrow dies silently: the spinner clears, the
+                // sheet keeps its empty progress bar, and the patron is told
+                // nothing. Observed on device 2026-09-09 against A1QA —
+                // ADEPTErrorDomain error 4 twice, no visible indication. PP-3649
+                // requires this path to "fail with a clear error message".
+                onFailure: { [weak self] error in
+                    // The activation path has already mapped Adobe's code onto
+                    // a PalaceError (PalaceError.drmError(for:)); re-deriving it
+                    // here would read `error as NSError` on a value whose domain
+                    // is Palace.PalaceError and fall back silently — which is
+                    // exactly the bug that told patrons to sign in again when
+                    // their activations had run out.
+                    //
+                    // The fallback is `.adobeError`, matching the consolidated
+                    // table. It is currently unreachable (every throw site on
+                    // this path is already a PalaceError), and that is the point:
+                    // an unreachable branch that still says "sign out and sign in
+                    // again" is one refactor away from saying it to a patron.
+                    let palaceError = (error as? PalaceError) ?? .drm(.adobeError)
+                    self?.showBorrowError(palaceError, originalError: error, for: book)
+                }
+            )
+        }
+        #endif
 
         Task { [errorActivityTracker] in await errorActivityTracker.log("Requesting loan from \(acquisitionURL.host ?? acquisitionURL.absoluteString)", category: .network) }
 
@@ -430,40 +462,57 @@ final class BorrowOperation {
             )
             self.bookRegistry.setState(mapping.state, for: borrowedBook.identifier)
 
-            if let raceError = mapping.error {
-                Task { [errorActivityTracker] in await errorActivityTracker.log(
-                    "Borrow for '\(borrowedBook.title)' returned \(mapping.state) — CM Loan→Hold race (PP-4178)",
-                    category: .borrow
-                ) }
-                TPPErrorLogger.logError(raceError, summary: "Borrow race: CM returned hold for '\(borrowedBook.title)'")
-                throw raceError
-            }
+            // Branch SELECTION + effect ORDER live in the pure
+            // `BorrowReducerCore.postResponseEffects`; this loop runs each
+            // decided effect (logging, MainActor hops, the throw, and the sync
+            // `Task` stay here — the operation owns the effects).
+            let postEffects = BorrowReducerCore.postResponseEffects(
+                state: mapping.state,
+                isStreamingHTML: borrowedBook.isStreamingHTML,
+                attemptDownload: attemptDownload,
+                hasRaceError: mapping.error != nil
+            )
 
-            Task { [errorActivityTracker] in await errorActivityTracker.log("Borrow succeeded for '\(borrowedBook.title)', state: \(mapping.state)", category: .borrow) }
+            for effect in postEffects {
+                switch effect {
+                case .failWithRaceError:
+                    // PP-4178: registry is already updated to the hold state; now
+                    // throw so the catch block surfaces the borrow-failed alert.
+                    let raceError = mapping.error ?? .bookRegistry(.holdCopyUnavailable)
+                    Task { [errorActivityTracker] in await errorActivityTracker.log(
+                        "Borrow for '\(borrowedBook.title)' returned \(mapping.state) — CM Loan→Hold race (PP-4178)",
+                        category: .borrow
+                    ) }
+                    TPPErrorLogger.logError(raceError, summary: "Borrow race: CM returned hold for '\(borrowedBook.title)'")
+                    throw raceError
 
-            downloadAnnouncementService.announceBorrowSucceeded(for: borrowedBook)
+                case .announceBorrowSucceeded:
+                    Task { [errorActivityTracker] in await errorActivityTracker.log("Borrow succeeded for '\(borrowedBook.title)', state: \(mapping.state)", category: .borrow) }
+                    downloadAnnouncementService.announceBorrowSucceeded(for: borrowedBook)
 
-            // F-014: condition was inverted (`!= .downloadNeeded`), skipping
-            // auto-download on the most common post-borrow state and stranding
-            // the user on a manual Download tap. The borrow→download chain is
-            // a single user-intent step from the half-sheet, so fire startDownload
-            // whenever the borrow lands on .downloadNeeded. .holding (hold placed,
-            // not yet ready) and other terminal-after-borrow states correctly
-            // skip the chain — there's nothing to download yet.
-            // PP-4161 advisory F: streaming-HTML has no downloadable asset; readStreaming is the terminal action.
-            if attemptDownload && mapping.state == .downloadNeeded && !borrowedBook.isStreamingHTML {
-                await MainActor.run { [weak self] in
-                    self?.delegate?.startDownload(for: borrowedBook, withRequest: nil)
-                }
-            }
+                case .noteBorrowSucceeded:
+                    // App-rating secondary trigger (PP-4088). Injected seam
+                    // instead of a direct `AppContainer.production()` reach; run
+                    // sequentially (not fire-and-forget) so the emitted effect
+                    // order is deterministic relative to `startDownload`.
+                    await MainActor.run { [onBorrowSucceeded] in onBorrowSucceeded() }
 
-            // trigger a sync after a short delay so hold position
-            // updates from the loans feed (immediate borrow response often
-            // returns holdPosition=0).
-            if mapping.state == .holding {
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    (self.bookRegistry as? TPPBookRegistry)?.sync()
+                case .startDownload:
+                    // F-014: the borrow→download chain is one user-intent step
+                    // from the half-sheet — fire whenever the borrow lands on
+                    // `.downloadNeeded` (non-streaming). `.holding` and terminal
+                    // states correctly skip it (nothing to download yet).
+                    await MainActor.run { [weak self] in
+                        self?.delegate?.startDownload(for: borrowedBook, withRequest: nil)
+                    }
+
+                case .scheduleHoldPositionSync:
+                    // Sync shortly after so the hold position updates from the
+                    // loans feed (the immediate response often returns position 0).
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        (self.bookRegistry as? TPPBookRegistry)?.sync()
+                    }
                 }
             }
 
@@ -600,17 +649,7 @@ final class BorrowOperation {
         // invalidCredentials — but credentials are valid, the borrow
         // simply isn't needed.
         let registeredState = self.bookRegistry.state(for: book.identifier)
-        let alreadyHasLoan: Bool = {
-            switch registeredState {
-            case .downloadNeeded, .downloading, .downloadSuccessful,
-                 .downloadFailed, .holding, .SAMLStarted, .used, .returning:
-                return true
-            case .unregistered, .unsupported:
-                return false
-            @unknown default:
-                return false
-            }
-        }()
+        let alreadyHasLoan = BorrowReducerCore.alreadyHasActiveLoan(state: registeredState)
         if alreadyHasLoan && hasCredentials {
             Log.warn(#file, "[SQ-007] Borrow auth-error suppressed for '\(book.title)' — book is already in registry with state \(registeredState) and credentials are present. Treating as benign auto-re-borrow failure, not a credentials problem.")
             return .suppressAndClearSpinner
@@ -779,93 +818,6 @@ final class BorrowOperation {
         presentBorrowErrorAlert(title, message, originalError as NSError?, problemDoc, book, retryAction)
     }
 
-    // MARK: - OIDC Silent Re-auth (Production Helper)
-
-    /// Static helper that production wiring uses for the
-    /// `attemptOIDCReauth` closure. Tests bypass this entirely by
-    /// passing a stub closure. Returns `true` if a new token was
-    /// obtained, `false` on failure/cancel/no-OIDC-config.
-    static func attemptOIDCSilentReauth(userAccount: TPPUserAccount) async -> Bool {
-        guard let authDef = userAccount.authDefinition,
-              let oidcURL = authDef.oidcAuthenticationUrl else {
-            return false
-        }
-
-        let callbackScheme = TPPSignInBusinessLogic.oidcCallbackScheme
-        let callbackHost = TPPSignInBusinessLogic.oidcCallbackHost
-        let redirectURI = "\(callbackScheme)://\(callbackHost)/callback"
-
-        guard var urlComponents = URLComponents(url: oidcURL, resolvingAgainstBaseURL: true) else {
-            return false
-        }
-
-        let redirectParam = URLQueryItem(name: "redirect_uri", value: redirectURI)
-        if urlComponents.queryItems != nil {
-            urlComponents.queryItems?.append(redirectParam)
-        } else {
-            urlComponents.queryItems = [redirectParam]
-        }
-
-        guard let finalURL = urlComponents.url else { return false }
-
-        return await withCheckedContinuation { continuation in
-            Task { @MainActor in
-                let session = ASWebAuthenticationSession(
-                    url: finalURL,
-                    callbackURLScheme: callbackScheme
-                ) { callbackURL, error in
-                    if error != nil {
-                        continuation.resume(returning: false)
-                        return
-                    }
-
-                    guard let callbackURL,
-                          let payload = callbackURL.query ?? callbackURL.fragment else {
-                        continuation.resume(returning: false)
-                        return
-                    }
-
-                    var kvpairs = [String: String]()
-                    for param in payload.components(separatedBy: "&") {
-                        let elts = param.components(separatedBy: "=")
-                        guard elts.count >= 2, let key = elts.first else { continue }
-                        kvpairs[key] = elts.dropFirst().joined(separator: "=")
-                    }
-
-                    guard let accessToken = kvpairs["access_token"] else {
-                        continuation.resume(returning: false)
-                        return
-                    }
-
-                    userAccount.setAuthToken(accessToken, barcode: userAccount.barcode, pin: userAccount.PIN, expirationDate: nil)
-                    Log.info(#file, "OIDC silent re-auth: token updated successfully")
-                    continuation.resume(returning: true)
-                }
-
-                session.presentationContextProvider = OIDCBorrowPresentationContext.shared
-                session.prefersEphemeralWebBrowserSession = false
-
-                // F-016: defer the session start so any prior SignInModalHostingController
-                // (or the previous SFAuthenticationViewController) has time to finish
-                // deallocating. Without this, calling session.start() while a previous
-                // auth modal is still in its dealloc cycle produces the runtime warning
-                // "Attempting to load the view of a view controller while it is
-                // deallocating" and iOS cancels the new session with
-                // ASWebAuthenticationSession error 3 ("presentation cancelled by user").
-                // The cancellation leaves the user with still-stale credentials and the
-                // borrow retry 401s again — driving a re-auth loop until the per-book
-                // circuit breaker (hasBorrowReauthBeenAttempted) fires.
-                //
-                // 150ms is empirically enough for the UIKit dealloc + RunLoop drain on
-                // current iOS releases; we keep it explicit (not Task.yield) so the
-                // timing semantics survive a reader future Swift Concurrency rev.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    session.start()
-                }
-            }
-        }
-    }
-
     // MARK: - Coordinator-Routed Retry
 
     /// swarm_66819d80 Module C: coordinator-routed reauth-then-retry.
@@ -947,15 +899,5 @@ final class BorrowOperation {
                 }
             }
         }
-    }
-}
-
-/// Provides a window anchor for `ASWebAuthenticationSession` in the
-/// borrow flow's OIDC silent reauth path.
-private final class OIDCBorrowPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
-    static let shared = OIDCBorrowPresentationContext()
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.mainKeyWindow ?? ASPresentationAnchor()
     }
 }

@@ -22,7 +22,9 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class LCPAcquisitionPredicateTests: XCTestCase {
 
     // MARK: - MIME constants (mirrored from production for fixture readability)

@@ -1,0 +1,28 @@
+[
+  {
+    "args" : {
+      "bookId" : "RET-COORD-FAIL"
+    },
+    "method" : "announce.returnStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-FAIL",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-FAIL",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-COORD-FAIL"
+    },
+    "method" : "announce.returnFailed"
+  }
+]

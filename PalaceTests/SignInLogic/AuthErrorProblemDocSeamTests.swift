@@ -18,6 +18,7 @@ import PalaceAuth
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 class AuthErrorProblemDocSeamTests: XCTestCase {
 
     private let tokenURL = URL(string: "https://auth.example.com/token")!

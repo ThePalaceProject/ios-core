@@ -3,7 +3,11 @@ import Security
 import PalaceLogging
 
 /// This class is capable of working with values serializable by NSKeyedArchiver.
-public final class TPPKeychain {
+///
+/// `Sendable`: stateless (no stored mutable properties) — every method operates
+/// on function-local dictionaries and the thread-safe `SecItem*` keychain APIs.
+/// The shared singleton is therefore data-race-safe under Swift 6.
+public final class TPPKeychain: Sendable {
 
   public static let sharedKeychain: TPPKeychain = {
     let keychain = TPPKeychain()

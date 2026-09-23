@@ -11,6 +11,7 @@ import XCTest
 import ImageIO
 @testable import Palace
 
+@MainActor
 final class TPPBookCoverRegistryTests: XCTestCase {
 
     // MARK: - Downsample Decode Tests
@@ -36,6 +37,30 @@ final class TPPBookCoverRegistryTests: XCTestCase {
         XCTAssertLessThanOrEqual(maxSide, maxDimension,
                                  "Decoded image should be at most \(maxDimension)px, but was \(maxSide)px. " +
                                     "Full-resolution decoding wastes memory and triggers iOS 26 decode bugs.")
+    }
+
+    // MARK: - Decode-size (aliasing) tests
+
+    /// The cover decode target must be EXACTLY the display pixel box (1:1), not
+    /// oversampled. Oversampling then minifying a non-mipmapped bitmap every
+    /// frame is what shimmers/aliases cover edges on scroll. A 1.5× (or any >1×)
+    /// factor here would fail this test.
+    func testDecodePixels_TargetsExactDisplayPixels_NoOversample() {
+        // 150pt cell on a @3x screen → exactly 450px, not 675 (which 1.5× gave).
+        XCTAssertEqual(TPPBookCoverRegistry.decodePixels(displayPoints: 150, scale: 3), 450, accuracy: 0.001)
+        // 120pt cover on @2x → 240px.
+        XCTAssertEqual(TPPBookCoverRegistry.decodePixels(displayPoints: 120, scale: 2), 240, accuracy: 0.001)
+        // @1x is a pass-through.
+        XCTAssertEqual(TPPBookCoverRegistry.decodePixels(displayPoints: 200, scale: 1), 200, accuracy: 0.001)
+    }
+
+    /// Very large display sizes are clamped so a full-screen cover can't decode
+    /// an unbounded bitmap (memory ceiling preserved from the original code).
+    func testDecodePixels_ClampsToMemoryCeiling() {
+        // 500pt @3x = 1500px → clamped to 1200.
+        XCTAssertEqual(TPPBookCoverRegistry.decodePixels(displayPoints: 500, scale: 3), 1200, accuracy: 0.001)
+        // Just under the ceiling passes through unchanged.
+        XCTAssertEqual(TPPBookCoverRegistry.decodePixels(displayPoints: 399, scale: 3), 1197, accuracy: 0.001)
     }
 
     /// Verify that small images are not upscaled
@@ -150,8 +175,12 @@ final class TPPBookCoverRegistryTests: XCTestCase {
     /// returning DNS errors), it should be marked as failing so subsequent requests skip immediately
     /// instead of waiting for DNS timeouts.
     func testHostFailureTracker_RecordsFailureAndSkips() async {
-        // Arrange
-        let tracker = HostFailureTracker(cooldownInterval: 300)
+        // Arrange — pin failureThreshold: 1 so a single recorded failure trips the
+        // breaker. The production DEFAULT is now 3 (#1215: don't blacklist a whole
+        // cover CDN after one Wi-Fi↔cellular blip); the below/at-threshold semantics
+        // are covered by HostFailureTrackerTests.swift. This test isolates the
+        // "a tripped host is skipped" behavior, so threshold 1 keeps it single-failure.
+        let tracker = HostFailureTracker(cooldownInterval: 300, failureThreshold: 1)
         let failingHost = "palace-bookshelf-downloads.dp.la"
 
         // Initially not failing
@@ -170,8 +199,9 @@ final class TPPBookCoverRegistryTests: XCTestCase {
 
     /// Verify that a successful request clears the failure record
     func testHostFailureTracker_SuccessClearsFailure() async {
-        // Arrange
-        let tracker = HostFailureTracker(cooldownInterval: 300)
+        // Arrange — threshold 1 so one failure trips; this test targets the
+        // success-clears-the-record behavior, not the threshold (see comment above).
+        let tracker = HostFailureTracker(cooldownInterval: 300, failureThreshold: 1)
         let host = "example.com"
 
         await tracker.recordFailure(for: host)
@@ -189,8 +219,9 @@ final class TPPBookCoverRegistryTests: XCTestCase {
 
     /// Verify that the circuit breaker resets after the cooldown period
     func testHostFailureTracker_ResetsAfterCooldown() async {
-        // Arrange - Use a very short cooldown for testing
-        let tracker = HostFailureTracker(cooldownInterval: 0.1) // 100ms
+        // Arrange - Use a very short cooldown for testing; threshold 1 so one
+        // failure trips (this test targets cooldown expiry, not the threshold).
+        let tracker = HostFailureTracker(cooldownInterval: 0.1, failureThreshold: 1) // 100ms
         let host = "expired-failure.example.com"
 
         await tracker.recordFailure(for: host)
@@ -219,7 +250,9 @@ final class TPPBookCoverRegistryTests: XCTestCase {
 
     /// Verify that different hosts are tracked independently
     func testHostFailureTracker_TracksHostsIndependently() async {
-        let tracker = HostFailureTracker()
+        // threshold 1 so one failure trips the failing host; this test targets
+        // per-host independence, not the threshold (see RecordsFailureAndSkips).
+        let tracker = HostFailureTracker(failureThreshold: 1)
         let failingHost = "dead-host.example.com"
         let healthyHost = "healthy-host.example.com"
 
@@ -261,6 +294,25 @@ final class TPPBookCoverRegistryTests: XCTestCase {
 
         XCTAssertFalse(config.waitsForConnectivity,
                        "Image fetches should fail immediately without connectivity, not wait")
+    }
+
+    // MARK: - PP-4772 / 077218fc — non-finite decode dimension
+
+    /// The shared decode chokepoint must reject a NaN / infinite / non-positive
+    /// `maxDimension` (which would otherwise feed a bogus
+    /// `kCGImageSourceThumbnailMaxPixelSize` and propagate into upstream `Int(_:)`
+    /// conversions) while still decoding a valid dimension.
+    func testDownsampleImage_nonFiniteMaxDimension_returnsNil() {
+        let jpeg = createTestJPEGData(size: CGSize(width: 400, height: 600))
+
+        XCTAssertNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: .nan))
+        XCTAssertNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: .infinity))
+        XCTAssertNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: 0))
+        XCTAssertNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: -10))
+
+        // Positive control: a valid dimension still decodes, so the guard is not
+        // over-rejecting.
+        XCTAssertNotNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: 256))
     }
 
     // MARK: - Helpers

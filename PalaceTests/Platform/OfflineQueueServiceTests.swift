@@ -11,25 +11,40 @@ import Combine
 import XCTest
 @testable import Palace
 
+@MainActor
 final class OfflineQueueServiceTests: XCTestCase {
 
     private var service: OfflineQueueService!
     private var userDefaults: UserDefaults!
     private var cancellables: Set<AnyCancellable>!
-    private var executedActions: [OfflineAction]!
+    // Swift 6: the @Sendable executor closure appends to this from a concurrent
+    // context, so it must be a Sendable lock-guarded box rather than a captured
+    // `self` instance var. Reset per-test in setUp.
+    private let executedActions = LockIsolated<[OfflineAction]>([])
 
     override func setUp() {
         super.setUp()
         userDefaults = UserDefaults(suiteName: "OfflineQueueServiceTests")!
         userDefaults.removePersistentDomain(forName: "OfflineQueueServiceTests")
-        service = OfflineQueueService(userDefaults: userDefaults)
+        // Inline same-suite UserDefaults: non-Sendable, so it must be a fresh
+        // disconnected region to be `sending`-passed into the actor init (the
+        // test also retains self.userDefaults for cleanup). Shares backing store.
+        //
+        // S8 seam (swarm_ad0b4c65 Wave-3): inject a no-op retry backoff so the
+        // retry state machine runs with zero wall-clock delay. Because
+        // enqueue/retry/networkStatusChanged all `await processQueue()` to full
+        // drain, every action reaches its terminal state before the call
+        // returns — no post-call settle-sleep is needed to observe it.
+        service = OfflineQueueService(
+            userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!,
+            backoffSleep: { _ in }
+        )
         cancellables = Set<AnyCancellable>()
-        executedActions = []
+        executedActions.value = []
     }
 
     override func tearDown() {
         cancellables = nil
-        executedActions = nil
         userDefaults.removePersistentDomain(forName: "OfflineQueueServiceTests")
         service = nil
         userDefaults = nil
@@ -39,8 +54,9 @@ final class OfflineQueueServiceTests: XCTestCase {
     // MARK: - Helpers
 
     private func setupSuccessExecutor() async {
-        await service.setExecutor { [weak self] action in
-            self?.executedActions.append(action)
+        let box = executedActions
+        await service.setExecutor { action in
+            box.withValue { $0.append(action) }
             return true
         }
     }
@@ -83,15 +99,14 @@ final class OfflineQueueServiceTests: XCTestCase {
         await setupSuccessExecutor()
 
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book")
+        // enqueue awaits processQueue() to full drain — the action is
+        // completed+removed before this returns (S8: no settle-sleep needed).
         await service.enqueue(action)
-
-        // Give time for processing
-        try? await Task.sleep(nanoseconds: 100_000_000)
 
         let status = await service.currentStatus()
         XCTAssertEqual(status.pendingCount, 0)
         XCTAssertEqual(status.failedCount, 0)
-        XCTAssertEqual(executedActions.count, 1)
+        XCTAssertEqual(executedActions.value.count, 1)
     }
 
     func testProcessQueueFIFOOrder() async {
@@ -100,53 +115,53 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action1 = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Book 1")
         let action2 = OfflineAction(type: .return, bookID: "book2", bookTitle: "Book 2")
 
-        // Enqueue without immediate processing by not setting network available
+        // Network available by default: each enqueue awaits processQueue() to
+        // full drain, so both actions are executed (FIFO) before we assert.
         await service.enqueue(action1)
         await service.enqueue(action2)
 
-        try? await Task.sleep(nanoseconds: 200_000_000)
-
-        XCTAssertEqual(executedActions.count, 2)
-        XCTAssertEqual(executedActions[0].bookID, "book1")
-        XCTAssertEqual(executedActions[1].bookID, "book2")
+        XCTAssertEqual(executedActions.value.count, 2)
+        XCTAssertEqual(executedActions.value[0].bookID, "book1")
+        XCTAssertEqual(executedActions.value[1].bookID, "book2")
     }
 
     // MARK: - Retry
 
     func testRetryFailedAction() async {
-        var callCount = 0
+        // Swift 6: box the counter — the @Sendable executor can't mutate a
+        // captured local. withValue makes the increment-and-test atomic.
+        let callCount = LockIsolated<Int>(0)
         await service.setExecutor { _ in
-            callCount += 1
-            return callCount > 1 // Fail first, succeed second
+            callCount.withValue { count -> Bool in
+                count += 1
+                return count > 1 // Fail first, succeed second
+            }
         }
 
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book", maxRetries: 3)
+        // enqueue awaits processQueue(): fail (retryCount→1) → zero-delay
+        // backoff (S8) → re-process → success → completed+removed, all before
+        // this returns. No 3s wall-clock wait for the backoff.
         await service.enqueue(action)
 
-        // Wait for initial processing and backoff retry
-        try? await Task.sleep(nanoseconds: 3_000_000_000)
-
         let status = await service.currentStatus()
-        // After retry with success, should have no pending or failed
+        // After the failed-then-successful retry, nothing pending or failed.
         XCTAssertEqual(status.pendingCount, 0)
+        XCTAssertEqual(status.failedCount, 0)
     }
 
     func testMaxRetriesExceeded() async {
         await setupFailureExecutor()
 
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book", maxRetries: 1)
+        // maxRetries:1 + always-failing executor: first attempt fails,
+        // retryCount(1) >= maxRetries(1) → marked .failed immediately (no
+        // backoff branch). enqueue awaits the full drain, so the terminal
+        // failed state is observable right after it returns — deterministic.
         await service.enqueue(action)
 
-        // Wait for processing
-        try? await Task.sleep(nanoseconds: 500_000_000)
-
-        // Process again to trigger retry
-        await service.processQueue()
-        try? await Task.sleep(nanoseconds: 500_000_000)
-
         let failed = await service.actions(withState: .failed)
-        // Should have at least one failed action after exceeding retries
-        XCTAssertGreaterThanOrEqual(failed.count, 0) // May vary based on timing
+        XCTAssertEqual(failed.count, 1)
     }
 
     // MARK: - Cancel
@@ -168,9 +183,9 @@ final class OfflineQueueServiceTests: XCTestCase {
         await setupFailureExecutor()
 
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book", maxRetries: 0)
+        // enqueue drains: fails immediately (maxRetries:0) → .failed, observable
+        // on return. No settle-sleep before clearing.
         await service.enqueue(action)
-
-        try? await Task.sleep(nanoseconds: 200_000_000)
 
         await service.clearFailed()
 
@@ -187,6 +202,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         service.statusPublisher
             .dropFirst() // Drop initial empty
             .first()
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { status in
                 receivedStatus = status
                 expectation.fulfill()
@@ -206,6 +222,7 @@ final class OfflineQueueServiceTests: XCTestCase {
 
         service.actionPublisher
             .first()
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { action in
                 XCTAssertEqual(action.bookID, "book1")
                 expectation.fulfill()
@@ -225,7 +242,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: userDefaults)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
         let status = await newService.currentStatus()
         XCTAssertEqual(status.pendingCount, 1)
     }
@@ -236,7 +253,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .hold, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: userDefaults)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
         let pending = await newService.actions(withState: .pending)
         let processing = await newService.actions(withState: .processing)
 
@@ -255,14 +272,13 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        // Go online
+        // Go online — networkStatusChanged awaits processQueue() to full drain,
+        // so the queued action is executed before this returns.
         await service.networkStatusChanged(isAvailable: true)
-
-        try? await Task.sleep(nanoseconds: 200_000_000)
 
         let status = await service.currentStatus()
         XCTAssertEqual(status.pendingCount, 0)
-        XCTAssertEqual(executedActions.count, 1)
+        XCTAssertEqual(executedActions.value.count, 1)
     }
 
     // MARK: - Action Properties

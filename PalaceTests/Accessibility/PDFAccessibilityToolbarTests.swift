@@ -14,6 +14,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class PDFAccessibilityToolbarTests: XCTestCase {
 
   // MARK: - Forward navigation

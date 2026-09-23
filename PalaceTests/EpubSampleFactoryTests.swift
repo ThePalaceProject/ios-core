@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class EpubSampleFactoryTests: XCTestCase {
 
     // MARK: - URL wrapper tests

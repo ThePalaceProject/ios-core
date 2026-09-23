@@ -71,7 +71,7 @@ import WebKit
         self.present(alert, animated: true, completion: nil)
     }
 
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
 
         guard navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url else {
             decisionHandler(.allow)

@@ -3,11 +3,31 @@ import UIKit
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
+import PalaceBookModel
+import PalaceBookRegistry
+
+/// What a tab-bar tap means. PP-5051 — a tap on the already-selected tab is a
+/// distinct gesture from a switch, and SwiftUI cannot tell them apart for you.
+enum TabTapOutcome: Equatable {
+    /// Move to a different tab.
+    case switchTo(AppTab)
+    /// Stay on this tab and return it to its root.
+    case returnToRoot(AppTab)
+}
 
 struct AppTabHostView: View {
-    @StateObject private var router = AppTabRouter()
+    // `fileprivate` (not `private`) so the same-file `TabViewChrome` view
+    // modifier — which both the iOS 18+ and legacy builders apply — can read
+    // the router, container, and tab-bar observer. Still file-scoped.
+    @StateObject fileprivate var router = AppTabRouter()
     @State private var holdsBadgeCount: Int = 0
-    private let appContainer: AppContainer
+    /// Publishes the live `UITabBar` height so the floating audiobook
+    /// mini-player tracks the ACTUAL bar position instead of a hardcoded 49pt
+    /// constant — required so the card stays glued to the bar when the iOS 26
+    /// minimize-on-scroll behavior makes the bar height dynamic. See
+    /// `TabBarModernization.swift`.
+    @StateObject fileprivate var tabBarHeightObserver = TabBarHeightObserver()
+    fileprivate let appContainer: AppContainer
     let bookRegistry: TPPBookRegistryProvider
     @StateObject private var catalogViewModel: CatalogViewModel
     /// Owned once here (NOT created inline in `body`). `MyBooksViewModel.init`
@@ -15,27 +35,24 @@ struct AppTabHostView: View {
     /// it in `tabViewContent` allocated a fresh, self-publishing view-model on
     /// every re-render → "update multiple times per frame" → main-thread freeze.
     @StateObject private var myBooksViewModel: MyBooksViewModel
-    /// Module B (swarm_0b7616e7) — single ActiveSessionsViewModel for
-    /// the app lifetime. Constructed here (composition root for the
-    /// Continue Reading + Continue Listening rows) and threaded into
-    /// `CatalogView`. The viewmodel observes `bookRegistry`,
-    /// `audiobookSession`, and `.TPPCurrentAccountDidChange` internally,
-    /// so it does not need to be re-created across tab switches or
-    /// library swaps.
-    @StateObject private var activeSessionsViewModel: ActiveSessionsViewModel
     /// Polish-phase (in-app-nav-polish-2026-06-01) reactivity fix:
     /// `AppTabHostView` must observe the presenter directly so SwiftUI
     /// re-evaluates `body` when `isPlayerExpanded` flips (mini-player tap
     /// → expand → fullScreenCover presents). Without this `@ObservedObject`,
     /// the `fullScreenCover(isPresented:)` Binding never sees the change
     /// because the binding's `get` closure reads a value SwiftUI is not
-    /// tracking — only the inner `AudiobookMiniPlayerView` (which has its
+    /// tracking — only the mounted audiobook player view (which has its
     /// own `@ObservedObject`) re-renders when the presenter publishes.
     @ObservedObject private var audiobookSessionPresenter: AudiobookSessionPresenter
 
+    /// Drives the app-rating sentiment gate overlay (PP-4089). Process-cached
+    /// on the AppContainer so the trigger sites (book completion / borrow) and
+    /// this overlay share one instance.
+    @ObservedObject private var ratingPromptPresenter: RatingPromptPresenter
+
     /// Subscribes to the developer-settings local override so the view
     /// re-renders the moment the dev toggle flips. The actual gating
-    /// decision delegates to `RemoteFeatureFlags.shared
+    /// decision delegates to `appContainer.featureFlags
     /// .isInAppPlaybackNavEnabled`, which combines the override (wins
     /// when set) with the Firebase Remote Config `in_app_playback_nav_enabled`
     /// value (fallback). Reading the @AppStorage value inside
@@ -46,7 +63,7 @@ struct AppTabHostView: View {
 
     private var inAppPlaybackNavEnabled: Bool {
         _ = inAppPlaybackNavLocalOverride  // trigger SwiftUI observation
-        return RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled
+        return appContainer.featureFlags.isInAppPlaybackNavEnabled
     }
 
     init(appContainer: AppContainer = .production()) {
@@ -58,9 +75,10 @@ struct AppTabHostView: View {
         // AppContainer so this read returns the same instance the mini-
         // player + manager + CarPlay bridge all use.
         self._audiobookSessionPresenter = ObservedObject(initialValue: appContainer.audiobookSessionPresenter)
+        self._ratingPromptPresenter = ObservedObject(initialValue: appContainer.ratingPromptPresenter)
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
+        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: appContainer.featureFlags)
         // Cache isolation: scope by the *current* account UUID so a single
         // repository instance can never serve library A's catalog to
         // library B if it somehow survives a library switch. The closure
@@ -75,24 +93,19 @@ struct AppTabHostView: View {
             repository: repository,
             topLevelURLProvider: { appContainer.settings.accountMainFeedURL },
             bookRegistry: appContainer.bookRegistry,
-            imageCache: appContainer.imageCache
+            imageCache: appContainer.imageCache,
+            // Module D (swarm_495a88d9 / PP-2679): the "Side Loaded" catalog lane.
+            // The flag gate lives HERE (not in the VM) — the provider returns []
+            // when side-loading is off, so the VM never sees the flag and the lane
+            // simply doesn't appear. Read lazily so registry/flag changes take
+            // effect on the next catalog conversion.
+            sideloadedLaneBooksProvider: {
+                appContainer.featureFlags.isSideLoadingEnabled
+                    ? appContainer.sideloadedBookRegistry.allBooks
+                    : []
+            }
         ))
         _myBooksViewModel = StateObject(wrappedValue: MyBooksViewModel(appContainer: appContainer))
-        // Module B (swarm_0b7616e7) composition root for the Continue
-        // Reading row's data source. `DefaultRecentlyReadingService` is
-        // a pure function of `bookRegistry.myBooks` + saved location, so
-        // it carries no extra dependencies and lives as long as the
-        // viewmodel does. Initial state seeds synchronously inside the
-        // viewmodel `init` so the first CatalogView body sees the rows
-        // populated where applicable.
-        let recentlyReading = DefaultRecentlyReadingService(
-            bookRegistry: appContainer.bookRegistry,
-            bookOpenTracker: appContainer.bookOpenTracker
-        )
-        _activeSessionsViewModel = StateObject(wrappedValue: ActiveSessionsViewModel(
-            recentlyReadingService: recentlyReading,
-            audiobookSession: appContainer.audiobookSession
-        ))
     }
 
     // Mini-player inset modifier. Applied to each tab's NavigationHostView
@@ -106,172 +119,442 @@ struct AppTabHostView: View {
     // All 4 inset instances observe the same presenter, so the mini-player
     // chrome renders consistently across tabs and reflects the single
     // source of truth.
-    @ViewBuilder
-    private func miniPlayerInset() -> some View {
-        // Feature-flagged (in_app_playback_nav_enabled): hides the
-        // persistent mini-player chrome above the tab bar when off.
-        // The presenter + AppContainer wiring stay in place so the
-        // flag flip is instant; only the inset rendering is gated.
-        // Returning EmptyView from a `safeAreaInset(.bottom)` builder
-        // collapses the inset to zero height, which restores the
-        // pre-feature tab-bar layout.
-        if inAppPlaybackNavEnabled {
-            AudiobookMiniPlayerView(
-                presenter: appContainer.audiobookSessionPresenter,
-                progress: appContainer.audiobookSessionPresenter.progress,
-                audiobookSession: appContainer.audiobookSession
-            )
-        }
-    }
-
     var body: some View {
         ZStack(alignment: .bottom) {
             tabViewContent
-            persistentFullPlayerOverlay
+            resizingPlayerOverlay
+            SentimentGateView(presenter: ratingPromptPresenter)
         }
     }
 
-    /// Persistent full-player overlay — keeps the toolkit's
-    /// `AudiobookPlayerView` mounted across minimize/expand cycles so its
-    /// `onDisappear` (which calls the DESTRUCTIVE `playbackModel.stop()`
-    /// → `audiobookManager.unload()`) never fires. The view is animated
-    /// off-screen (`offset(y:)`) when minimized rather than removed from
-    /// the hierarchy.
+    /// Compact mini-bar height (points, excluding the safe-area/tab-bar inset
+    /// added below it when minimized). The overlay height interpolates between
+    /// this and full-screen.
+    private static let miniBarHeight: CGFloat = 74
+    /// Breathing room between the minimized card and the tab bar.
+    private static let miniMargin: CGFloat = 8
+
+    /// Standard `UITabBar` height (points) the minimized card floats above.
+    /// The device's variable home-indicator inset is added on top at runtime.
+    private static let tabBarHeight: CGFloat = 49
+
+    /// The live bottom safe-area inset (home indicator). Read from the key window
+    /// rather than the overlay's `GeometryReader`, because the overlay
+    /// `.ignoresSafeArea()`s (so the full player can go edge-to-edge) and inside
+    /// that the GR reports a bottom inset of 0 — which put the minimized card
+    /// UNDER the tab bar (it overlapped the icons). This reads the real inset so
+    /// the mini card floats clear of the tab bar + home indicator.
+    private var bottomSafeInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets.bottom ?? 0
+    }
+
+    /// The single "resize overlay" — the full player and the mini bar are ONE
+    /// bottom-anchored card that RESIZES between full-screen (`isPlayerExpanded`)
+    /// and a compact `miniBarHeight` bar (minimized), so it reads as one view
+    /// pulled down into a smaller one rather than two views swapping. Replaces
+    /// the former `persistentFullPlayerOverlay` (offset slide) + the mini-bar
+    /// `safeAreaInset` + the `collapsedPillOverlay` (the pill is gone — the
+    /// "collapsed" state is now just the mini SIZE, which also removes the
+    /// pill's tap-through bug).
     ///
-    /// User-reported bug this fixes: "playback doesn't play when
-    /// audiobook is minimized; gets stuck loading when opened from the
-    /// minimized playback." Caused by the toolkit unloading the player
-    /// on view-disappear, so re-expand had no buffered audio and
-    /// `player.isLoaded == false` → toolkit's `LoadingView` shown
-    /// forever (with 30s timeout → `LoadingErrorView`).
+    /// The custom `AudiobookMorphingPlayerView` is the ONLY player surface now —
+    /// it reflows as one view (matchedGeometry cover) between full and mini
+    /// instead of crossfading the toolkit player with a separate bar. Playback
+    /// is owned by `AudiobookSessionManager`'s `AudiobookManager` and its
+    /// model-owned throttled autosave, both independent of any mounted view, so
+    /// the card can slide off-screen (reader) or minimize WITHOUT unloading
+    /// audio. Only `stopPlayback` (the ✕) tears the session down.
+    ///
+    /// The former hidden toolkit "keeper" — an `opacity(0)`,
+    /// `allowsHitTesting(false)` container wrapping the toolkit
+    /// `AudiobookPlayerView`, mounted here solely so its
+    /// `setupBackgroundStateHandling()` observers would persist position on
+    /// background/terminate — has been removed. That lifecycle persist now
+    /// lives in `AudiobookSessionManager.subscribeToAppLifecyclePositionPersistence()`,
+    /// the object that actually owns playback.
+    ///
+    /// The existing drags already drive `isPlayerExpanded` (the mini bar's
+    /// drawer-drag-up expands; the full player's swipe-down minimizes) so this
+    /// overlay only translates that flag into a height / corner-radius / opacity
+    /// morph inside `AudiobookMorphingPlayerView`.
     @ViewBuilder
-    private var persistentFullPlayerOverlay: some View {
-        if inAppPlaybackNavEnabled, audiobookSessionPresenter.playbackModel != nil {
-            // Use UIScreen.main.bounds for the full-screen size — the
-            // GeometryReader approach was constrained to the TabView's
-            // available area (which excludes the system tab bar +
-            // mini-player safeAreaInset), so the overlay didn't fully
-            // cover the chrome below.
-            //
-            // Background extends edge-to-edge (`.ignoresSafeArea()` on
-            // the Color), but the CONTENT respects safe area so the
-            // chevron-down Done button doesn't render behind the status
-            // bar. Without this split, the button's `.padding(.top, 12)`
-            // resolves to ~12pt from screen-top — clipped under the
-            // notch — and the user can't tap it.
-            let screenHeight = UIScreen.main.bounds.height
-            AudiobookFullPlayerCoverContainer(
-                presenter: audiobookSessionPresenter
+    private var resizingPlayerOverlay: some View {
+        // Mount on `currentBook` (set by `presentLoadingShell` the instant a
+        // fresh open begins) OR `playbackModel` (set when the loader binds), so
+        // the player slides up immediately with its loading skeleton instead of
+        // waiting for the whole load chain. Both are cleared by
+        // `clearActiveSession()` on close / error, so the overlay unmounts then.
+        if inAppPlaybackNavEnabled,
+           audiobookSessionPresenter.playbackModel != nil
+            || audiobookSessionPresenter.currentBook != nil {
+            AudiobookMorphingPlayerView(
+                presenter: audiobookSessionPresenter,
+                progress: audiobookSessionPresenter.progress,
+                audiobookSession: appContainer.audiobookSession
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.systemBackground).ignoresSafeArea())
-            // Content respects TOP safe area (chevron-down Done button
-            // sits below status bar). Content extends through BOTTOM
-            // safe area so the tab bar doesn't peek behind the player
-            // when expanded.
-            .ignoresSafeArea(edges: .bottom)
-            .offset(y: audiobookSessionPresenter.isPlayerExpanded ? 0 : screenHeight)
-            .animation(
-                UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.3),
-                value: audiobookSessionPresenter.isPlayerExpanded
+            // Feed the mini-player the inset derived from the LIVE tab-bar
+            // height (measured in `TabBarHeightObserver`) instead of the
+            // hardcoded 49pt, so the floating card stays glued to the bar even
+            // as the iOS 26 minimize-on-scroll behavior changes the bar height.
+            // A `nil` (unmeasured) value leaves the mini-player on its own
+            // window-based fallback — identical to the historical behavior.
+            .environment(
+                \.miniPlayerTabBarInset,
+                TabBarModern.miniPlayerBottomInset(
+                    safeAreaBottom: bottomSafeInset,
+                    tabBarHeight: tabBarHeightObserver.tabBarHeight
+                )
             )
-            .allowsHitTesting(audiobookSessionPresenter.isPlayerExpanded)
         }
     }
 
+    /// Whether the audiobook mini-player overlay is currently mounted (an
+    /// active session floats above the tab bar). Mirrors the predicate in
+    /// `resizingPlayerOverlay`. Gates the iOS 26 minimize-on-scroll behavior:
+    /// we pin the bar while a mini-player is up so it can't minimize out from
+    /// under the floating card.
+    fileprivate var miniPlayerActive: Bool {
+        inAppPlaybackNavEnabled && audiobookSessionPresenter.playbackModel != nil
+    }
+
+    /// Whether the iOS 26 minimize-on-scroll behavior should be active. Pinned
+    /// (`false`) while a mini-player is up so the bar can't minimize out from
+    /// under the floating card. See `TabBarModern.shouldEnableTabBarMinimize`.
+    fileprivate var shouldMinimizeTabBar: Bool {
+        TabBarModern.shouldEnableTabBarMinimize(miniPlayerActive: miniPlayerActive)
+    }
+
+    /// The whole tab host. Picks the typed `Tab(value:role:)` builder on iOS 18+
+    /// and the classic `.tabItem` + `.tag` builder below it. Both apply the same
+    /// shared chrome (`tabViewChrome`) so there is no drift between the paths.
+    @ViewBuilder
     private var tabViewContent: some View {
-        TabView(selection: $router.selected) {
-            NavigationHostView(rootView: CatalogView(
-                viewModel: catalogViewModel,
-                activeSessionsViewModel: activeSessionsViewModel,
-                appContainer: appContainer
-            ))
-                .environmentObject(router)
-                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
-                .tabItem {
-                    VStack {
-                        Image("Catalog").renderingMode(.template)
-                        Text(Strings.Settings.catalog)
-                    }
-                }
+        // AnyView-erase each branch: the iOS-18 `Tab(value:)` builder and the
+        // legacy `.tabItem` builder produce different opaque `some View` types,
+        // and materializing a `_ConditionalContent` of an availability-gated
+        // opaque type trips the type-checker (surfaces as a misleading
+        // `CodingKeyRepresentable` error). Erasing resolves each branch
+        // independently. The extra AnyView is inconsequential at the tab-host
+        // root (evaluated once per launch).
+        if #available(iOS 18, *) {
+            AnyView(modernTabView)
+        } else {
+            AnyView(legacyTabView)
+        }
+    }
+
+    // MARK: - iOS 18+ typed builder
+
+    @available(iOS 18, *)
+    private var modernTabView: some View {
+        TabView(selection: tabSelection) {
+            Tab(value: AppTab.catalog) {
+                catalogRoot
+            } label: {
+                Self.tabLabel(for: .catalog)
+            }
+            .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
+
+            Tab(value: AppTab.myBooks) {
+                myBooksRoot
+            } label: {
+                Self.tabLabel(for: .myBooks)
+            }
+            .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
+
+            Tab(value: AppTab.holds) {
+                holdsRoot
+            } label: {
+                Self.tabLabel(for: .holds)
+            }
+            .badge(holdsBadgeCount)
+            .accessibilityIdentifier(AccessibilityID.TabBar.holdsTab)
+
+            Tab(value: AppTab.settings) {
+                settingsRoot
+            } label: {
+                Self.tabLabel(for: .settings)
+            }
+            .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
+        }
+        .modifier(TabViewChrome(host: self))
+    }
+
+    // MARK: - Pre-iOS-18 builder (deployment floor is iOS 17)
+
+    private var legacyTabView: some View {
+        TabView(selection: tabSelection) {
+            catalogRoot
+                .tabItem { Self.tabLabel(for: .catalog) }
                 .tag(AppTab.catalog)
                 .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
-            NavigationHostView(rootView: MyBooksView(model: myBooksViewModel, appContainer: appContainer))
-                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
-                .tabItem {
-                    VStack {
-                        Image("MyBooks").renderingMode(.template)
-                        Text(Strings.MyBooksView.navTitle)
-                    }
-                }
+            myBooksRoot
+                .tabItem { Self.tabLabel(for: .myBooks) }
                 .tag(AppTab.myBooks)
                 .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
-            NavigationHostView(rootView: HoldsView(appContainer: appContainer))
-                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
-                .tabItem {
-                    VStack {
-                        Image("Holds").renderingMode(.template)
-                        Text(Strings.HoldsView.reservations)
-                    }
-                }
+            holdsRoot
+                .tabItem { Self.tabLabel(for: .holds) }
                 .badge(holdsBadgeCount)
                 .tag(AppTab.holds)
                 .accessibilityIdentifier(AccessibilityID.TabBar.holdsTab)
 
-            NavigationHostView(rootView: TPPSettingsView())
-                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
-                .tabItem { Label(Strings.Settings.settings, systemImage: "gearshape") }
+            settingsRoot
+                .tabItem { Self.tabLabel(for: .settings) }
                 .tag(AppTab.settings)
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
         }
-        .tint(Color.accentColor)
-        // Polish-phase (in-app-nav-polish-2026-06-01): the full-player
-        // is no longer hosted in a fullScreenCover (the cover's dismiss
-        // unmounted the toolkit's AudiobookPlayerView, which fires
-        // playbackModel.stop() in its onDisappear → unloads the player).
-        // It's now rendered in `persistentFullPlayerOverlay` at the
-        // ZStack root, animated off-screen on minimize, so its
-        // onDisappear never fires and playback survives minimize/expand
-        // cycles intact.
-        .onAppear {
-            appContainer.tabRouterHub.router = router
-            appContainer.tabRouterHub.applyPending()
+        .modifier(TabViewChrome(host: self))
+    }
+
+    /// Selection binding for both TabView builders. The setter is what makes the
+    /// re-tap gesture observable — a plain `$router.selected` swallows a write of
+    /// the current value, and with it the only way back to a tab's root.
+    ///
+    /// That the TabViews use THIS binding and not `$router.selected` is a
+    /// one-line structural fact no unit test can reach — writing it needs a
+    /// rendered `TabView`. The decision and its effects are pinned by
+    /// `applyTabTap`; the wiring itself is pinned structurally by
+    /// `AppTabSelectionBindingLintTests`.
+    private var tabSelection: Binding<AppTab> {
+        Binding(
+            get: { router.selected },
+            set: { tapped in
+                Self.applyTabTap(tapped,
+                                 current: router.selected,
+                                 hub: appContainer.navigationCoordinatorHub,
+                                 selectTab: { router.selected = $0 })
+            }
+        )
+    }
+
+    // MARK: - Shared tab roots (one source of truth for both builders)
+
+    private var catalogRoot: some View {
+        NavigationHostView(rootView: CatalogView(
+            viewModel: catalogViewModel,
+            appContainer: appContainer
+        ), tab: .catalog)
+        .environmentObject(router)
+    }
+
+    private var myBooksRoot: some View {
+        NavigationHostView(rootView: MyBooksView(model: myBooksViewModel, appContainer: appContainer), tab: .myBooks)
+    }
+
+    private var holdsRoot: some View {
+        NavigationHostView(rootView: HoldsView(appContainer: appContainer), tab: .holds)
+    }
+
+    private var settingsRoot: some View {
+        NavigationHostView(rootView: TPPSettingsView(), tab: .settings)
+    }
+
+    /// The one label idiom shared by both builders. Settings uses the SF Symbol
+    /// `gearshape`; the other three use their raster PNG assets rendered as
+    /// template images so the tint tints them. Icons/order/direction unchanged.
+    @ViewBuilder
+    static func tabLabel(for tab: AppTab) -> some View {
+        switch tab {
+        case .catalog:
+            Label { Text(Strings.Settings.catalog) } icon: {
+                Image("Catalog").renderingMode(.template)
+            }
+        case .myBooks:
+            Label { Text(Strings.MyBooksView.navTitle) } icon: {
+                Image("MyBooks").renderingMode(.template)
+            }
+        case .holds:
+            Label { Text(Strings.HoldsView.reservations) } icon: {
+                Image("Holds").renderingMode(.template)
+            }
+        case .settings:
+            Label(Strings.Settings.settings, systemImage: "gearshape")
+        default:
+            EmptyView()
         }
-        .onChange(of: router.selected) { newTab in
-            // Respect reduce motion accessibility setting
-            if UIAccessibility.isReduceMotionEnabled {
-                appContainer.navigationCoordinatorHub.coordinator?.popToRoot()
-            } else {
-                withAnimation(.easeInOut) {
-                    appContainer.navigationCoordinatorHub.coordinator?.popToRoot()
-                }
-            }
-            if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
-               let top = appDelegate.topViewController() {
-                top.dismiss(animated: true)
-            }
-            NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
-            // F-035: Auto-refresh My Books and Holds when their tabs
-            // become visible so the user doesn't have to pull-to-refresh
-            // to see newly borrowed/returned/held books.
-            if newTab == .myBooks || newTab == .holds {
-                appContainer.bookRegistry.sync()
-            }
-            // Announce the new tab for VoiceOver when tab changes
-            if UIAccessibility.isVoiceOverRunning {
-                let message = Self.accessibilityLabel(for: newTab)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    UIAccessibility.post(notification: .announcement, argument: message)
-                }
+    }
+
+    // MARK: - Shared side effects
+
+    /// Routes a tab-bar tap. PP-5051 — a tap on the tab you are ALREADY on is
+    /// the standard iOS "back to the top" gesture, and it is the only way back
+    /// to a tab's root now that switching away preserves the stack.
+    ///
+    /// This cannot be an `onChange`: SwiftUI writes the same value to the
+    /// selection binding on a re-tap, so nothing changes and `onChange` never
+    /// fires. The tap has to be observed in the binding's setter instead.
+    /// Applies a tab-bar tap: return the tapped tab to its root if it is already
+    /// the current one, otherwise switch to it. A tap on the tab you are ALREADY
+    /// on is the standard iOS "back to the top" gesture, and it is the only
+    /// one-tap way back to a tab's root now that switching away preserves the
+    /// stack.
+    ///
+    /// Takes `current`, the hub and the selection sink EXPLICITLY rather than
+    /// reading `router`, because a version that read `router` could not be
+    /// pinned by any test. `router` is a `@StateObject`, and SwiftUI creates a
+    /// new instance on every access outside a rendered view ("Accessing
+    /// StateObject's object without being installed on a View") — so a write and
+    /// a read-back from a test land on different objects, and an assertion over
+    /// them passes or fails for reasons unrelated to this code. Explicit inputs
+    /// make the composition a pure function, leaving only the `tabSelection`
+    /// binding itself outside unit-test reach — and that wiring is pinned by
+    /// `AppTabSelectionBindingLintTests`.
+    ///
+    /// The pop is animated, unlike the reset this replaces: it is a deliberate
+    /// tap on the visible tab, so there is no cross-tab transition to tear
+    /// against.
+    static func applyTabTap(_ tapped: AppTab,
+                            current: AppTab,
+                            hub: NavigationCoordinatorHub,
+                            selectTab: (AppTab) -> Void) {
+        switch tabTapOutcome(tapped: tapped, current: current) {
+        case .returnToRoot(let tab):
+            hub.coordinator(for: tab)?.popToRoot()
+        case .switchTo(let tab):
+            selectTab(tab)
+        }
+    }
+
+    /// The decision behind `applyTabTap`, separated so the two-cell table can be
+    /// asserted on its own.
+    static func tabTapOutcome(tapped: AppTab, current: AppTab) -> TabTapOutcome {
+        tapped == current ? .returnToRoot(tapped) : .switchTo(tapped)
+    }
+
+    /// Runs on tab selection change: dismiss top VC, sync, announce.
+    /// Extracted so the iOS 18+ and legacy builders share one implementation.
+    func handleTabSelectionChange(from previousTab: AppTab, to newTab: AppTab) {
+        // PP-5051 — a tab switch no longer resets the tab being left. Each tab
+        // keeps its own stack, as on every other iOS app, so browsing deep into
+        // a lane and stepping over to My Books no longer costs you your place.
+        // The way back to a tab's root is tapping the tab you are already on
+        // (see `tabTapOutcome`), which is the gesture patrons already know.
+        //
+        // The reset this replaces was never a decision: it arrived in an
+        // unrelated cleanup with no rationale, and until PP-5022 it popped
+        // whichever stack a global pointer happened to hold — sometimes the tab
+        // being left, sometimes the one being entered.
+        if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
+           let top = appDelegate.topViewController() {
+            top.dismiss(animated: true)
+        }
+        NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
+        // F-035: Auto-refresh My Books and Holds when their tabs
+        // become visible so the user doesn't have to pull-to-refresh
+        // to see newly borrowed/returned/held books.
+        if newTab == .myBooks || newTab == .holds {
+            appContainer.bookRegistry.sync()
+        }
+        // Announce the new tab for VoiceOver when tab changes
+        if UIAccessibility.isVoiceOverRunning {
+            let message = Self.accessibilityLabel(for: newTab)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                UIAccessibility.post(notification: .announcement, argument: message)
             }
         }
-        .onAppear {
-            updateHoldsBadge()
+    }
+}
+
+/// The shared chrome applied to BOTH the iOS 18+ typed `Tab` builder and the
+/// pre-18 `.tabItem` builder — brand tint, selection haptic, tab-bar material,
+/// the iOS 26 Liquid-Glass minimize behavior, plus the lifecycle/selection/
+/// badge side effects. Factored into one `ViewModifier` so the two builders
+/// can never drift.
+private struct TabViewChrome: ViewModifier {
+    let host: AppTabHostView
+
+    func body(content: Content) -> some View {
+        content
+            // Monochrome tint (`.primary` = the label color): black in light /
+            // white in dark. This matches the app's long-standing monochrome
+            // chrome — `window.tintColor = TPPConfiguration.mainColor()`
+            // (`defaultLabelColor`) and `UINavigationBar/UITabBar.appearance()
+            // .tintColor = iconColor()` (`.black`). `.tint` is hierarchical and
+            // that is intentional here: the tab-bar items AND the in-tab chrome
+            // (nav-bar search icon, lane "More…" links, etc.) all read as neutral
+            // label color, exactly as before this modernization. Elements that
+            // must be colored (the filled `Color.blue` CTAs) set their own color
+            // explicitly and are unaffected.
+            .tint(.primary)
+            // Selection haptic (iOS 17+ `.sensoryFeedback` under the hood).
+            // `palaceHaptic` is preference- AND Reduce-Motion-gated, so it
+            // no-ops when the patron has haptics off or Reduce Motion on.
+            .palaceHaptic(.selection, trigger: host.router.selected)
+            // Idiomatic tab-bar background. On iOS 26 the Liquid-Glass system
+            // material owns the bar chrome, so we DON'T force a material there
+            // (forcing one fights the glass + the minimize animation). Below
+            // 26, make the standard system-material bar background explicit.
+            .modifier(TabBarBackgroundModifier())
+            .modifier(TabBarMinimizeModifier(enabled: host.shouldMinimizeTabBar))
+            // Polish-phase (in-app-nav-polish-2026-06-01): the full-player
+            // is no longer hosted in a fullScreenCover; it's rendered in the
+            // resizing overlay at the ZStack root so playback survives
+            // minimize/expand cycles intact.
+            .onAppear {
+                host.appContainer.tabRouterHub.router = host.router
+                host.appContainer.tabRouterHub.applyPending()
+                host.tabBarHeightObserver.measure()
+            }
+            .onChange(of: host.router.selected) { previousTab, newTab in
+                host.handleTabSelectionChange(from: previousTab, to: newTab)
+                // Re-measure: selecting a tab can change bar chrome/height
+                // (esp. under iOS 26 minimize), keeping the mini-player glued.
+                host.tabBarHeightObserver.measure()
+            }
+            .onAppear {
+                host.updateHoldsBadge()
+            }
+            // Migrated off `.TPPBookRegistryStateDidChange` (swarm_8ce6f5ae WS3).
+            // The badge is lifecycle-driven: a background sync flipping a hold
+            // reserved→ready changes NO book state (stays `.holding`), so it must
+            // watch `registryStatePublisher`. It also watches `bookStatePublisher`
+            // for per-book hold-state flips, and `holdsDidChangePublisher` for the
+            // hand-fired holds triggers (test-holds picker, reservations reload).
+            .onReceive(host.bookRegistry.registryStatePublisher) { _ in
+                host.updateHoldsBadge()
+            }
+            .onReceive(host.bookRegistry.bookStatePublisher) { _ in
+                host.updateHoldsBadge()
+            }
+            .onReceive(host.bookRegistry.holdsDidChangePublisher) { _ in
+                host.updateHoldsBadge()
+            }
+    }
+}
+
+/// Availability-gated tab-bar background. iOS 26's Liquid Glass owns the bar
+/// background, so we only make the system material explicit on 18–25.
+private struct TabBarBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            // Liquid Glass provides the bar material; don't override it.
+            content
+        } else {
+            content
+                .toolbarBackground(.visible, for: .tabBar)
+                .toolbarBackground(Material.bar, for: .tabBar)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)) { _ in
-            updateHoldsBadge()
+    }
+}
+
+/// Availability-gated iOS 26 Liquid-Glass minimize-on-scroll behavior. The
+/// `enabled` flag is the conditional gate: it is `false` while an audiobook
+/// mini-player is active so the bar can't minimize out from under the floating
+/// card (see `TabBarModern.shouldEnableTabBarMinimize`).
+private struct TabBarMinimizeModifier: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.tabBarMinimizeBehavior(enabled ? .onScrollDown : .never)
+        } else {
+            content
         }
     }
 }
@@ -280,7 +563,7 @@ extension AppTabHostView {
     /// Pure helpers extracted for unit testability — these were previously
     /// inline closures inside `updateHoldsBadge()` that could not be exercised
     /// by tests, leaving mutations like `+= 1` → `-= 1` undetected.
-    static func computeReadyCount(books: [TPPBook]) -> Int {
+    nonisolated static func computeReadyCount(books: [TPPBook]) -> Int {
         var count = 0
         for book in books {
             book.defaultAcquisition?.availability.match(
@@ -294,7 +577,7 @@ extension AppTabHostView {
         return count
     }
 
-    static func computeReservedCount(books: [TPPBook]) -> Int {
+    nonisolated static func computeReservedCount(books: [TPPBook]) -> Int {
         var count = 0
         for book in books {
             book.defaultAcquisition?.availability.match(
@@ -315,7 +598,7 @@ extension AppTabHostView {
     }
 }
 
-private extension AppTabHostView {
+fileprivate extension AppTabHostView {
     /// VoiceOver announcement label for each tab (matches tab item text).
     static func accessibilityLabel(for tab: AppTab) -> String {
         switch tab {

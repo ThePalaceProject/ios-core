@@ -1,6 +1,6 @@
 import UIKit
 
-final class CatalogLoadingViewController: UIViewController, TPPLoadingViewController {
+final class CatalogLoadingViewController: UIViewController, @preconcurrency TPPLoadingViewController {
     var loadingView: UIView?
 
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {

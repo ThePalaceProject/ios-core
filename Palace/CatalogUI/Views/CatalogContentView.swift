@@ -1,4 +1,6 @@
 import SwiftUI
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - CatalogContentView (Data-Driven)
 
@@ -11,51 +13,15 @@ struct CatalogContentView: View {
     let onEntryPointSelected: (CatalogFilter) -> Void
     let onFacetSelected: (CatalogFilter) -> Void
     let onRefresh: () async -> Void
-    /// Module B (swarm_0b7616e7) — drives the "Continue Listening" +
-    /// "Continue Reading" hero rows prepended above `selectorsView`.
-    /// Injected from `CatalogView`; non-optional so the view always has a
-    /// source of truth (an empty viewmodel renders zero rows — see
-    /// `ContinueRowSection`).
-    @ObservedObject var activeSessions: ActiveSessionsViewModel
-    /// Tap on a Continue Reading card. Routed by `CatalogView` to
-    /// `ReaderService.openEPUB` / `.openPDF` per content type.
-    let onResumeReading: (TPPBook) -> Void
-    /// Tap on a Continue Listening card. Routed by `CatalogView` to
-    /// `AudiobookSessionPresenter.expand()` so the full player surfaces
-    /// (§11 row 3, design doc).
-    let onResumeListening: (TPPBook) -> Void
     var bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
-
-    /// Subscribes to the developer-settings local override so the view
-    /// re-renders the moment the dev toggle flips. The actual gating
-    /// decision delegates to `RemoteFeatureFlags.shared
-    /// .isInAppPlaybackNavEnabled`, which combines the override (wins
-    /// when set) with the Firebase Remote Config `in_app_playback_nav_enabled`
-    /// value (fallback). Reading the @AppStorage value inside
-    /// `inAppPlaybackNavEnabled` registers the SwiftUI observation
-    /// against the same UserDefaults key the dev toggle writes to.
-    @AppStorage("RemoteFeatureFlags.inAppPlaybackNavLocalOverride")
-    private var inAppPlaybackNavLocalOverride: Bool = false
-
-    private var inAppPlaybackNavEnabled: Bool {
-        _ = inAppPlaybackNavLocalOverride  // trigger SwiftUI observation
-        return RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Feature-flagged (in_app_playback_nav_enabled): hides the
-            // Continue Reading / Continue Listening hero rows when off.
-            // The viewmodel still runs (subscriptions stay live so the
-            // flag flip is instant); only the rendering is gated.
-            if inAppPlaybackNavEnabled {
-                ContinueRowSection(
-                    viewModel: activeSessions,
-                    onResumeReading: onResumeReading,
-                    onResumeListening: onResumeListening
-                )
-            }
-
+            // The "Continue" section (Continue Reading / Continue Listening hero
+            // rows) was removed in PP-4910: with the in-app mini-player it was a
+            // redundant re-entry point. If a re-entry point is wanted later it
+            // should be designed on its own. The `continuation_cards_enabled`
+            // flag is intentionally left in place (out of scope for PP-4910).
             selectorsView
 
             ScrollViewReader { proxy in
@@ -65,12 +31,13 @@ struct CatalogContentView: View {
                             feedContentView
                                 .padding(.vertical, 17)
                                 .id("catalog-content-top")
+                                .accessibleAnimation(PalaceMotion.standard, value: feedIsEmpty)
                         }
                     }
                     .padding(.vertical, 17)
                 }
                 .refreshable { await onRefresh() }
-                .onChange(of: scrollGeneration) { _ in
+                .onChange(of: scrollGeneration) { _, _ in
                     accessibleWithAnimation(.easeInOut(duration: 0.3)) {
                         proxy.scrollTo("catalog-content-top", anchor: .top)
                     }
@@ -145,8 +112,21 @@ private extension CatalogContentView {
             .accessibleAnimation(.easeInOut(duration: 0.2), value: isOptimisticLoading)
 
         case .empty:
-            EmptyView()
+            ContentUnavailableView {
+                Label(Strings.Catalog.emptyFeedTitle, systemImage: "books.vertical")
+            } description: {
+                Text(Strings.Catalog.emptyFeedMessage)
+            }
+            .frame(maxWidth: .infinity, minHeight: 240)
+            .transition(.opacity)
         }
+    }
+
+    /// Whether the current feed renders no books (drives the empty-state
+    /// cross-fade animation below).
+    var feedIsEmpty: Bool {
+        if case .empty = content.feed { return true }
+        return false
     }
 }
 

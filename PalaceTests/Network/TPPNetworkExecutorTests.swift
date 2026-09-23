@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPNetworkExecutorAPITests: XCTestCase {
 
     // MARK: - Shared Instance
@@ -185,6 +186,7 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
 
 // MARK: - Stubbed HTTP Tests
 
+@MainActor
 final class TPPNetworkExecutorStubbedTests: XCTestCase {
 
     private var executor: TPPNetworkExecutor!

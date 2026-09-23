@@ -10,13 +10,20 @@ import Foundation
 import FirebaseCore
 import FirebaseAnalytics
 import PalaceLogging
+import PalaceFeatureFlags
 
 /// Remote feature flags using Firebase Remote Config.
 ///
 /// NOTE: This class delegates all Firebase RemoteConfig access to FirebaseManager
 /// to prevent race conditions that cause the "recursive_mutex lock failed" crash.
 /// Do NOT access RemoteConfig directly from this class.
-final class RemoteFeatureFlags {
+/// `@unchecked Sendable`: `FeatureFlagProviding` (the consolidated Layer-0 seam
+/// this conforms to, from the PalaceFeatureFlags leaf package — Wave 1b) is
+/// `Sendable`. This shared singleton is already accessed app-wide concurrently;
+/// the conformance is honest — its only mutable stored property, `lastFetchTime`,
+/// is accessed exclusively under `lock` (an `NSLock`); every other stored property
+/// is `let`. `final` keeps the assertion subclass-proof.
+final class RemoteFeatureFlags: @unchecked Sendable {
     static let shared = RemoteFeatureFlags()
 
     private var lastFetchTime: Date?
@@ -33,86 +40,10 @@ final class RemoteFeatureFlags {
 
     // MARK: - Feature Flag Keys
 
-    enum FeatureFlag: String {
-        case enhancedErrorLogging = "enhanced_error_logging_enabled"
-        case enhancedErrorLoggingDeviceSpecific = "enhanced_error_logging_device_"
-        case downloadRetryEnabled = "download_retry_enabled"
-        case circuitBreakerEnabled = "circuit_breaker_enabled"
-        case carPlayEnabled = "carplay_enabled"
-        case opds2Enabled = "opds2_enabled"
-        case readingStatsEnabled = "reading_stats_enabled"
-        case advancedTypographyEnabled = "advanced_typography_enabled"
-        case triageBotEnabled = "triage_bot_enabled"
-        case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
-        case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
-        /// Gates the in-app playback-navigation feature (swarm_0b7616e7 +
-        /// polish 2026-06-02): Continue Reading/Listening hero rows on
-        /// the Catalog top, the persistent mini-player chrome above the
-        /// tab bar, and the tap-to-resume routing that wires both to
-        /// `AudiobookSessionPresenter`. Default OFF — the feature is
-        /// opt-in via the developer settings toggle until broad rollout.
-        case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
-        /// Gates LCP audiobook streaming-from-license (PP-4957). When ON, an LCP
-        /// audiobook is playable on its `.lcpl` license alone and the player
-        /// streams the encrypted audio on demand via the pinned swift-toolkit
-        /// fork (3.11.0 + fix-issue-579); when OFF, the app downloads the full
-        /// `.lcpa` before playback. Default OFF in-app — Firebase decides.
-        case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
-
-        var defaultValue: Bool {
-            switch self {
-            case .downloadRetryEnabled, .circuitBreakerEnabled:
-                return true
-            case .carPlayEnabled:
-                return true
-            case .opds2Enabled:
-                return true
-            default:
-                return false
-            }
-        }
-
-        /// Converts to FirebaseManager key if available.
-        var managerKey: FirebaseManager.RemoteConfigKey? {
-            switch self {
-            case .enhancedErrorLogging:
-                return .enhancedErrorLoggingEnabled
-            case .downloadRetryEnabled:
-                return .downloadRetryEnabled
-            case .circuitBreakerEnabled:
-                return .circuitBreakerEnabled
-            case .carPlayEnabled:
-                return .carPlayEnabled
-            case .opds2Enabled:
-                return .opds2Enabled
-            case .triageBotEnabled:
-                return .triageBotEnabled
-            case .triageBotTicketSubmissionEnabled:
-                return .triageBotTicketSubmissionEnabled
-            case .triageBotAIFallbackEnabled:
-                return .triageBotAIFallbackEnabled
-            case .inAppPlaybackNavEnabled:
-                return .inAppPlaybackNavEnabled
-            case .lcpAudiobookStreamingEnabled:
-                return .lcpAudiobookStreamingEnabled
-            default:
-                return nil
-            }
-        }
-
-        /// Whether this flag also looks up a per-device override key
-        /// (`<rawValue>_device_<sanitizedDeviceID>`). Used for staged rollouts
-        /// where support enables a feature for one patron at a time via
-        /// Firebase Remote Config conditions.
-        var supportsDeviceSpecificOverride: Bool {
-            switch self {
-            case .enhancedErrorLogging:
-                return true
-            default:
-                return false
-            }
-        }
-    }
+    /// Wave 1b: the typed flag surface moved to the PalaceFeatureFlags leaf
+    /// package. This alias keeps every existing `RemoteFeatureFlags.FeatureFlag`
+    /// reference (tests, comments) compiling unchanged.
+    typealias FeatureFlag = PalaceFeatureFlag
 
     // MARK: - Initialization
 
@@ -140,9 +71,7 @@ final class RemoteFeatureFlags {
     func fetchAndActivate() async -> Bool {
         let success = await FirebaseManager.shared.fetchAndActivateRemoteConfig()
 
-        lock.lock()
-        lastFetchTime = Date()
-        lock.unlock()
+        lock.withLock { lastFetchTime = Date() }
 
         return success
     }
@@ -314,6 +243,29 @@ final class RemoteFeatureFlags {
         #endif
     }
 
+    #if DEBUG
+    /// DEBUG-only override that forces ticket submission to fail on demand, so
+    /// QA / simdrive / the chaos run can drive the error+retry UI (AC-8/9). On
+    /// a bare simulator `MFMailComposeViewController.canSendMail()` is false and
+    /// both gateway branches fall back to the always-succeeding clipboard
+    /// gateway, so the "Couldn't send / Try again / Copy details / Start over"
+    /// card is otherwise unreachable on-screen. Never present in release builds.
+    static let triageBotForceSubmitFailureLocalOverrideKey = "RemoteFeatureFlags.triageBotForceSubmitFailureLocalOverride"
+
+    /// When true, `TriageBotFactory` injects a gateway that always throws a
+    /// `.transport` failure so the real `.error` recovery card is reachable.
+    /// Defaults OFF. Honored via the tappable developer toggle OR the
+    /// `-TriageBotForceSubmitFailure 1` launch argument (auto-mapped into
+    /// UserDefaults' NSArgumentDomain), so a headless simdrive/chaos run can
+    /// force the failure without tapping through Settings. DEBUG-only.
+    var isTriageBotForceSubmitFailureEnabled: Bool {
+        if let override = defaults.object(forKey: Self.triageBotForceSubmitFailureLocalOverrideKey) as? Bool {
+            return override
+        }
+        return defaults.bool(forKey: "TriageBotForceSubmitFailure")
+    }
+    #endif
+
     /// UserDefaults override that lets QA / a developer toggle the
     /// in-app playback nav feature without a Firebase round-trip.
     /// Settable from `TPPDeveloperSettingsTableViewController`. Falls
@@ -321,40 +273,198 @@ final class RemoteFeatureFlags {
     /// `resetAccountLocalOverrideKey` pattern.
     static let inAppPlaybackNavLocalOverrideKey = "RemoteFeatureFlags.inAppPlaybackNavLocalOverride"
 
-    /// Dev-menu override for LCP audiobook streaming (PP-4957), same
-    /// precedence as the flags above: local override > Firebase remote.
-    static let lcpAudiobookStreamingLocalOverrideKey = "RemoteFeatureFlags.lcpAudiobookStreamingLocalOverride"
-
     /// Whether the in-app playback navigation feature is enabled:
     /// Continue Reading/Listening hero rows on the Catalog top, the
     /// persistent mini-player above the tab bar, and the tap-to-resume
-    /// routing that wires both to `AudiobookSessionPresenter`. Default
-    /// OFF; gateable via the developer settings toggle (local override)
-    /// or `in_app_playback_nav_enabled` in Remote Config (broad rollout).
+    /// routing that wires both to `AudiobookSessionPresenter`.
     ///
-    /// When false, the Continue row and mini-player are not rendered;
-    /// the persistent full-player overlay still surfaces when an
-    /// audiobook is opened (so playback always has a UI). Minimize
-    /// hides the overlay; without a mini-player to re-expand from, the
-    /// user re-enters playback via My Books / Catalog the same way they
-    /// did before the feature shipped.
+    /// **Default OFF — Firebase-gated (2026-07).** Production users get the
+    /// legacy toolkit player until Firebase Remote Config enables the
+    /// feature; this lets the team turn it on (globally or via a staged /
+    /// condition-based rollout) — and roll it back — without shipping a
+    /// build. The registered Remote Config default is `false`.
+    ///
+    /// Override precedence — **Firebase wins; the local override can only
+    /// ENABLE.** The local toggle is an opt-IN for previewing ahead of the
+    /// rollout, never an opt-out of it.
+    ///
+    /// It used to be the reverse (override wins outright), which made the
+    /// rollout unverifiable on the devices that verify it. The dev toggle
+    /// writes `true`/`false` and nothing anywhere removes the key, so a device
+    /// that ever switched it off was pinned off permanently — Firebase could
+    /// never reach it again, and that reads from the inside exactly like "the
+    /// remote flag isn't working". Production patrons were never affected (the
+    /// Feature Flags section is hidden when `showEngineeringTools` is false, so
+    /// nothing writes the key on an App Store build), but TestFlight and dev
+    /// devices are precisely the ones validating a staged rollout.
+    ///
+    /// The decision itself is `resolveRemoteWinsOptIn`, kept pure because a
+    /// unit test cannot make `FirebaseManager.shared` return `true` — the
+    /// remote-ON rows are only assertable through that seam.
     var isInAppPlaybackNavEnabled: Bool {
-        if let override = defaults.object(forKey: Self.inAppPlaybackNavLocalOverrideKey) as? Bool {
-            return override
-        }
-        return isFeatureEnabled(.inAppPlaybackNavEnabled)
+        Self.resolveRemoteWinsOptIn(
+            remote: isFeatureEnabled(.inAppPlaybackNavEnabled),
+            localOverride: defaults.object(forKey: Self.inAppPlaybackNavLocalOverrideKey) as? Bool
+        )
     }
 
-    /// Whether an LCP audiobook may play from its license alone (PP-4957).
+    /// Pure precedence decision for the Firebase-gated rollout flags: Firebase
+    /// ON wins outright, otherwise a local override of `true` enables. A local
+    /// `false` can never disable a remote `true`.
     ///
-    /// Precedence matches every other flag here: a dev-menu local override
-    /// wins, otherwise Firebase, otherwise the in-app default (false =
-    /// download-first, i.e. pre-PP-4957 behaviour preserved exactly).
+    /// Deliberately NOT applied to every override. `lcpAudiobookStreaming` is
+    /// already `true` at 100% in production, so QA would lose the only way to
+    /// exercise the non-streaming path; `appRatingForceEligible` is a forcing
+    /// switch rather than a rollout gate. Those keep override-wins.
+    static func resolveRemoteWinsOptIn(remote: Bool, localOverride: Bool?) -> Bool {
+        if remote { return true }
+        return localOverride ?? false
+    }
+
+    /// UserDefaults override for the continuation cards, independent of the
+    /// in-app playback-nav override. Settable from the developer settings.
+    static let continuationCardsLocalOverrideKey = "RemoteFeatureFlags.continuationCardsLocalOverride"
+
+    /// Whether the Continue Reading / Continue Listening hero rows are shown at
+    /// the top of the Catalog. Split from `isInAppPlaybackNavEnabled` so the
+    /// continuation cards and the in-app mini-player roll out independently.
+    ///
+    /// **Default OFF — Firebase-gated.** The cards are hidden until Firebase
+    /// Remote Config sets `continuation_cards_enabled = true` (global or staged).
+    ///
+    /// Override precedence (mirrors `isInAppPlaybackNavEnabled`): **Firebase
+    /// wins; the local override can only ENABLE.** Same rollout family, so it
+    /// takes the same rule — pinning one half of the feature off while the
+    /// other half follows the rollout is how a device ends up reporting a
+    /// half-broken rollout that is actually fine.
+    var isContinuationCardsEnabled: Bool {
+        Self.resolveRemoteWinsOptIn(
+            remote: isFeatureEnabled(.continuationCardsEnabled),
+            localOverride: defaults.object(forKey: Self.continuationCardsLocalOverrideKey) as? Bool
+        )
+    }
+
+    /// UserDefaults override that lets QA / a developer force side loading on
+    /// or off without a Firebase round-trip. Settable from the Testing screen's
+    /// Feature Flags section (`DeveloperSettingsView`). Falls through to the
+    /// DEBUG default / Remote Config flag when nil. Mirrors the
+    /// `triageBotLocalOverrideKey` naming pattern.
+    static let sideLoadingLocalOverrideKey = "RemoteFeatureFlags.sideLoadingLocalOverride"
+
+    /// Whether the side-loading capability is enabled: the Settings "Side
+    /// Loading" import screen and the catalog side-loaded lane. A test-only
+    /// feature for exercising the real reader + DRM stack against local files
+    /// with no OPDS feed (swarm_495a88d9 — PP-2677 / PP-2678 / PP-2679).
+    ///
+    /// Defaults OFF in production. There is NO DEBUG auto-enable; the feature
+    /// is turned on explicitly via the dev-menu local override, otherwise it
+    /// falls through to the Firebase Remote Config flag (default off).
+    ///
+    /// Side loading is a test-only capability enabled via the Testing settings
+    /// menu (per PP-2581), so it is OFF by default and turned on explicitly by a
+    /// tester/QA rather than auto-enabled by build configuration. A build-time
+    /// `#if DEBUG` gate would only enable it in local Xcode debug builds anyway
+    /// (TestFlight/Release are non-DEBUG), so it would not reach the QA builds
+    /// that actually need it — the dev-menu local override does.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (dev-menu toggle / QA / staged demos)
+    ///   2. Firebase Remote Config (default `false`)
+    var isSideLoadingEnabled: Bool {
+        if let override = defaults.object(forKey: Self.sideLoadingLocalOverrideKey) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.sideLoadingEnabled)
+    }
+
+    /// UserDefaults override that lets QA / a developer force LCP audiobook
+    /// streaming on or off without a Firebase round-trip. Settable from
+    /// `TPPDeveloperSettingsTableViewController`. Falls through to the Remote
+    /// Config flag when nil. Mirrors the `inAppPlaybackNavLocalOverrideKey` pattern.
+    static let lcpAudiobookStreamingLocalOverrideKey = "RemoteFeatureFlags.lcpAudiobookStreamingLocalOverride"
+
+    /// Whether LCP audiobook streaming-from-license is enabled (PP-4957). When
+    /// ON, an LCP audiobook is playable on the `.lcpl` license alone and the
+    /// player streams the encrypted audio on demand via the pinned swift-toolkit
+    /// fork (3.11.0 + fix-issue-579); when OFF, the app downloads the full
+    /// `.lcpa` before playback (today's behavior).
+    ///
+    /// **Default OFF — Firebase-gated.** The default flip to streaming is a
+    /// product decision; production users stay on download-first until Firebase
+    /// Remote Config sets `lcp_audiobook_streaming_enabled = true` (global or
+    /// staged), which the team can roll out and back without shipping a build.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins.
+    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `false`).
     var isLCPAudiobookStreamingEnabled: Bool {
         if let override = defaults.object(forKey: Self.lcpAudiobookStreamingLocalOverrideKey) as? Bool {
             return override
         }
         return isFeatureEnabled(.lcpAudiobookStreamingEnabled)
+    }
+
+    // MARK: - App Rating (Epic PP-4086)
+
+    /// Master switch for the app-rating prompt. When false, no eligibility
+    /// evaluation should proceed. Default ON.
+    var isAppRatingPromptEnabled: Bool {
+        isFeatureEnabled(.appRatingPromptEnabled)
+    }
+
+    /// UserDefaults override that lets QA / simdrive force the rating prompt to
+    /// be eligible without meeting the real thresholds or waiting out the
+    /// cooldown. Settable from `TPPDeveloperSettingsTableViewController`. Mirrors
+    /// the `triageBotLocalOverrideKey` pattern.
+    static let appRatingForceEligibleLocalOverrideKey = "RemoteFeatureFlags.appRatingForceEligibleOverride"
+
+    /// Whether the rating prompt is force-eligible for QA/simdrive. Defaults to
+    /// false; no remote flag — this is a local debug override only.
+    var isAppRatingForceEligible: Bool {
+      defaults.object(forKey: Self.appRatingForceEligibleLocalOverrideKey) as? Bool ?? false
+    }
+
+    // MARK: - EPUB Chapter Scrubber (PP-5006)
+
+    /// UserDefaults key for the chapter-scrubber prototype toggle in the
+    /// Testing menu.
+    static let chapterScrubberLocalOverrideKey = "RemoteFeatureFlags.chapterScrubberOverride"
+
+    /// Whether the EPUB reader shows the drag-to-navigate chapter scrubber.
+    /// Defaults to false; there is deliberately NO remote flag behind it — this
+    /// is a prototype evaluated from the Testing menu (PP-5006), and shipping it
+    /// is a separate decision that would introduce a real flag at that point.
+    var isChapterScrubberEnabled: Bool {
+        Self.isChapterScrubberEnabled(in: defaults)
+    }
+
+    /// The flag as what it actually is: one `UserDefaults` read, with no
+    /// Firebase, no cache, and no instance state behind it. Exposed statically
+    /// so the reader can consult it without holding a singleton or resolving
+    /// the composition root — both of which the decomposition ratchets count,
+    /// and rightly, since neither would buy anything here.
+    static func isChapterScrubberEnabled(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: Self.chapterScrubberLocalOverrideKey) as? Bool ?? false
+    }
+
+    /// The remote-tunable eligibility thresholds. Any threshold missing or
+    /// non-positive in Remote Config falls back to `RatingConfig.fallback`.
+    var appRatingConfig: RatingConfig {
+        RatingConfig(
+            minSessions: positiveIntOrFallback(.appRatingMinSessions, RatingConfig.fallback.minSessions),
+            minBooksCompleted: positiveIntOrFallback(.appRatingMinBooksCompleted, RatingConfig.fallback.minBooksCompleted),
+            cooldownDays: positiveIntOrFallback(.appRatingCooldownDays, RatingConfig.fallback.cooldownDays),
+            lifetimePromptCap: positiveIntOrFallback(.appRatingLifetimePromptCap, RatingConfig.fallback.lifetimePromptCap)
+        )
+    }
+
+    /// Reads a numeric Remote Config value, returning `fallback` when the value
+    /// is absent or non-positive (guards against a mis-set `0` disabling a
+    /// threshold). `minBooksCompleted` is allowed to be as low as 1, never 0,
+    /// so a positive-only guard is correct for every threshold here.
+    private func positiveIntOrFallback(_ key: FirebaseManager.RemoteConfigKey, _ fallback: Int) -> Int {
+        let value = FirebaseManager.shared.getDoubleValue(forKey: key)
+        return value > 0 ? Int(value) : fallback
     }
 
     // MARK: - Device Info for Targeting
@@ -369,3 +479,60 @@ final class RemoteFeatureFlags {
         FirebaseManager.shared.setUserPropertiesForTargeting()
     }
 }
+
+// App-side Firebase wiring for the package's typed flags. `managerKey`
+// names FirebaseManager.RemoteConfigKey (SDK adapter) — it CANNOT move to
+// the PalaceFeatureFlags leaf, which is Firebase-free by construction.
+extension PalaceFeatureFlag {
+    /// Converts to FirebaseManager key if available.
+    var managerKey: FirebaseManager.RemoteConfigKey? {
+        switch self {
+        case .enhancedErrorLogging:
+            return .enhancedErrorLoggingEnabled
+        case .downloadRetryEnabled:
+            return .downloadRetryEnabled
+        case .circuitBreakerEnabled:
+            return .circuitBreakerEnabled
+        case .carPlayEnabled:
+            return .carPlayEnabled
+        case .opds2Enabled:
+            return .opds2Enabled
+        case .triageBotEnabled:
+            return .triageBotEnabled
+        case .triageBotTicketSubmissionEnabled:
+            return .triageBotTicketSubmissionEnabled
+        case .triageBotAIFallbackEnabled:
+            return .triageBotAIFallbackEnabled
+        case .inAppPlaybackNavEnabled:
+            return .inAppPlaybackNavEnabled
+        case .continuationCardsEnabled:
+            return .continuationCardsEnabled
+        case .sideLoadingEnabled:
+            return .sideLoadingEnabled
+        case .lcpAudiobookStreamingEnabled:
+            return .lcpAudiobookStreamingEnabled
+        case .appRatingPromptEnabled:
+            return .appRatingPromptEnabled
+        default:
+            return nil
+        }
+    }
+
+    /// Whether this flag also looks up a per-device override key
+    /// (`<rawValue>_device_<sanitizedDeviceID>`). Used for staged rollouts
+    /// where support enables a feature for one patron at a time via
+    /// Firebase Remote Config conditions.
+    var supportsDeviceSpecificOverride: Bool {
+        switch self {
+        case .enhancedErrorLogging:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+// Wave 1b: the single consolidated conformance. All app consumers reach
+// this instance as `appContainer.featureFlags` (protocol-typed); packages
+// (PalaceCatalog) receive it through their initializers.
+extension RemoteFeatureFlags: FeatureFlagProviding {}

@@ -22,8 +22,12 @@ import XCTest
 
 /// A user account mock that returns separate instances per library UUID,
 /// enabling tests that verify credential isolation between libraries.
-private class TPPMultiLibraryAccountMock: TPPUserAccountMock {
-    private static var accounts: [String: TPPUserAccountMock] = [:]
+private class TPPMultiLibraryAccountMock: TPPUserAccountMock, @unchecked Sendable {
+    private static let _accounts = LockIsolated<[String: TPPUserAccountMock]>([:])
+    private static var accounts: [String: TPPUserAccountMock] {
+        get { _accounts.value }
+        set { _accounts.value = newValue }
+    }
 
     static func resetAccounts() {
         accounts.removeAll()
@@ -45,6 +49,7 @@ private class TPPMultiLibraryAccountMock: TPPUserAccountMock {
 
 // MARK: - Cross-Library Sign-Out Tests
 
+@MainActor
 final class TPPCrossLibrarySignOutTests: XCTestCase {
 
     private static let activeLibraryUUID = "urn:uuid:active-library-aaa"

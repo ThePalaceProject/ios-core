@@ -11,6 +11,7 @@ import Combine
 
 // MARK: - Playback State Transition Tests
 
+@MainActor
 final class AudiobookPlaybackStateTests: XCTestCase {
 
     private var tracker: AudiobookTimeTracker!
@@ -83,6 +84,7 @@ final class AudiobookPlaybackStateTests: XCTestCase {
 
 // MARK: - Time Entry Tests
 
+@MainActor
 final class TimeEntryTests: XCTestCase {
 
     func testTimeEntry_creation() {
@@ -131,6 +133,7 @@ final class TimeEntryTests: XCTestCase {
 
 // MARK: - Track Completion Tests
 
+@MainActor
 final class AudiobookTrackCompletionTests: XCTestCase {
 
     private var mockDataManager: MockDataManager!
@@ -188,6 +191,7 @@ final class AudiobookTrackCompletionTests: XCTestCase {
 
 /// The bug was that playbackStarted() was called unconditionally in setupNowPlayingInfoTimer()
 /// even when the player wasn't actually playing, causing time to be tracked incorrectly.
+@MainActor
 final class PP3596RegressionTests: XCTestCase {
 
     private var mockDataManager: MockDataManager!
@@ -296,6 +300,7 @@ final class PP3596RegressionTests: XCTestCase {
 
 // MARK: - Background Audio Tests
 
+@MainActor
 final class AudiobookBackgroundAudioTests: XCTestCase {
 
     private var mockDataManager: MockDataManager!

@@ -17,6 +17,7 @@ import MediaPlayer
 import PalaceAudiobookToolkit
 import UIKit
 import PalaceLogging
+import PalaceBookRegistry
 
 // MARK: - NowPlayingCoordinator
 
@@ -51,7 +52,13 @@ public final class NowPlayingCoordinator {
     private var lastUpdateTime: Date = .distantPast
     private var lastIsPlaying: Bool = false
     private var pendingUpdate: Task<Void, Never>?
-    private var foregroundObserver: NSObjectProtocol?
+    /// Foreground-notification observer token. Held in a nonisolated
+    /// `@unchecked Sendable` box so the nonisolated `deinit` can remove it
+    /// WITHOUT reading a `@MainActor`-isolated stored property (which
+    /// `complete` mode rejects, and `MainActor.assumeIsolated` is banned in
+    /// deinit). Mirrors the codebase `ObserverTokenBox` pattern
+    /// (DLNavigator / TPPBookRegistry).
+    private let foregroundObserverBox = ObserverTokenBox()
 
     /// Injectable seam for `UIApplication.shared.applicationState`. Tests
     /// flip this to drive the background / foreground branches without
@@ -101,7 +108,7 @@ public final class NowPlayingCoordinator {
         // dry-stream guard fires without coupling AudiobookSessionManager.
         // Tests drive the guard via `applicationDidBecomeActive()` directly
         // so they don't depend on UIApplication notification timing.
-        foregroundObserver = NotificationCenter.default.addObserver(
+        foregroundObserverBox.token = NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
@@ -113,9 +120,7 @@ public final class NowPlayingCoordinator {
     }
 
     deinit {
-        if let observer = foregroundObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
+        foregroundObserverBox.removeObserver()
         Log.info(#file, "NowPlayingCoordinator deinitialized")
     }
 
@@ -211,7 +216,19 @@ public final class NowPlayingCoordinator {
             return
         }
 
-        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        // MediaPlayer invokes this request handler OFF the main actor (it
+        // serializes the artwork on a background queue via
+        // `-[MPMediaItemArtwork jpegDataWithSize:]` when building the
+        // Now-Playing / lock-screen info). Under the Swift 6 language mode the
+        // closure would otherwise inherit this type's `@MainActor` isolation
+        // and trip `dispatch_assert_queue` → crash on every audiobook open
+        // (regression from the SWIFT_VERSION 5→6 flip, #1199). `@Sendable`
+        // strips the inherited isolation so the handler is callable on
+        // MediaPlayer's queue; `nonisolated(unsafe)` opts the captured image
+        // out of Sendable checking (reading a `UIImage` for rasterization is
+        // thread-safe here — it is created once and never mutated).
+        nonisolated(unsafe) let capturedImage = image
+        let artwork = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in capturedImage }
         currentArtwork = artwork
 
         var info = currentInfo
@@ -342,5 +359,32 @@ public final class NowPlayingCoordinator {
     /// gating condition.
     func _test_setLastIsPlaying(_ playing: Bool) {
         lastIsPlaying = playing
+    }
+
+    /// Test-only join seam. Awaits the in-flight debounced update `Task`
+    /// (`pendingUpdate`) so a test can deterministically block on the actual
+    /// debounce work unit instead of polling `MPNowPlayingInfoCenter` against a
+    /// fixed wall-clock deadline (`awaitCondition(timeout:)`), which starves
+    /// under CI sim-clone oversubscription. Production behavior is unchanged —
+    /// nothing calls this outside tests. No-op when no debounced update is
+    /// pending (the immediate-apply path leaves `pendingUpdate` nil).
+    func _awaitPendingUpdateForTesting() async {
+        await pendingUpdate?.value
+    }
+}
+
+/// Nonisolated `Sendable` holder for the foreground-notification observer
+/// token. Mirrors the codebase `ObserverTokenBox` pattern (DLNavigator /
+/// TPPBookRegistry): the `@MainActor`-isolated `NowPlayingCoordinator` cannot
+/// read an isolated stored property from its nonisolated `deinit`, so the
+/// token lives here instead. `token` is written exactly once (right after
+/// `addObserver` returns in `init`) and read only by `removeObserver()` —
+/// write-once-then-read confinement, hence `@unchecked Sendable`.
+private final class ObserverTokenBox: @unchecked Sendable {
+    var token: NSObjectProtocol?
+    func removeObserver() {
+        if let token {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 }

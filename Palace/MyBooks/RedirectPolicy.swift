@@ -19,16 +19,22 @@
 
 import Foundation
 
-struct RedirectPolicy {
+/// - Sendable invariant (Swift 6 `complete`-mode): a value type whose only
+///   stored members are two `@Sendable async` closures and an `Int`, so it is
+///   `Sendable` and can be awaited (`decide`) from any actor — including a
+///   `@MainActor` caller (tests) — without racing. The production closures
+///   capture only the actor-isolated `DownloadCoordinator` (itself `Sendable`);
+///   the `@Sendable` annotation is satisfied there with no widening.
+struct RedirectPolicy: Sendable {
     static let defaultMaxRedirectAttempts: Int = 10
 
-    private let getRedirectAttempts: (Int) async -> Int
-    private let incrementRedirectAttempts: (Int) async -> Void
+    private let getRedirectAttempts: @Sendable (Int) async -> Int
+    private let incrementRedirectAttempts: @Sendable (Int) async -> Void
     private let maxRedirectAttempts: Int
 
     init(
-        getRedirectAttempts: @escaping (Int) async -> Int,
-        incrementRedirectAttempts: @escaping (Int) async -> Void,
+        getRedirectAttempts: @escaping @Sendable (Int) async -> Int,
+        incrementRedirectAttempts: @escaping @Sendable (Int) async -> Void,
         maxRedirectAttempts: Int = RedirectPolicy.defaultMaxRedirectAttempts
     ) {
         self.getRedirectAttempts = getRedirectAttempts

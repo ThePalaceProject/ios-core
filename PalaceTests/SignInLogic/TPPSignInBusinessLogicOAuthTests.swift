@@ -73,6 +73,7 @@ private final class TokenRefresherMock: TokenRefreshing {
 
 // MARK: - OAuth Redirect URL Parser Tests
 
+@MainActor
 final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -363,6 +364,7 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
 
 // MARK: - Token-Flow (Basic → Bearer) Tests
 
+@MainActor
 final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
 
     private let tokenURL = URL(string: "https://stub.example.com/token")!
@@ -493,6 +495,7 @@ final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
 
 // MARK: - Basic-auth Validation Delegate-Callback Order
 
+@MainActor
 final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -536,19 +539,17 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
         // didCallDidReceiveCredentials which flips inside the method body.
         networkExecutor.shouldFail = false
 
-        // Capture into a local closure-bound flag (avoid implicit-unwrap
-        // race against tearDown that nils out self.uiDelegate).
-        let received = expectation(description: "didReceiveCredentials fires")
-        received.assertForOverFulfill = false
-
         let originalDelegate = uiDelegate!
-        let proxy = TPPSignInOutBusinessLogicUIDelegateMockReceiveProxy(
-            wrapped: originalDelegate, expectation: received
-        )
+        let proxy = TPPSignInOutBusinessLogicUIDelegateMockReceiveProxy(wrapped: originalDelegate)
         businessLogic.uiDelegate = proxy
 
         businessLogic.validateCredentials()
-        wait(for: [received], timeout: 3.0)
+
+        // Drain main queue (the executor's completion is dispatched async to
+        // .main; `businessLogicDidReceiveCredentials` fires synchronously off
+        // that same hop via `TPPMainThreadRun.asyncIfNeeded`'s on-main fast
+        // path). Mirrors test_validateCredentials_basicAuthFailure below.
+        drainMainQueue()
 
         XCTAssertEqual(proxy.receiveCredentialsCallCount, 1,
                        "businessLogicDidReceiveCredentials must fire exactly once per success")
@@ -584,10 +585,7 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
 private final class TPPSignInOutBusinessLogicUIDelegateMockReceiveProxy:
     NSObject, TPPSignInOutBusinessLogicUIDelegate {
     var receiveCredentialsCallCount = 0
-    private let expectation: XCTestExpectation
-    init(wrapped: TPPSignInOutBusinessLogicUIDelegateMock,
-         expectation: XCTestExpectation) {
-        self.expectation = expectation
+    init(wrapped: TPPSignInOutBusinessLogicUIDelegateMock) {
         super.init()
     }
 
@@ -618,6 +616,5 @@ private final class TPPSignInOutBusinessLogicUIDelegateMockReceiveProxy:
     // The one we care about.
     func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic) {
         receiveCredentialsCallCount += 1
-        expectation.fulfill()
     }
 }

@@ -15,6 +15,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class BookImageViewAccessibilityTests: XCTestCase {
 
   // MARK: - Combined accessibility label

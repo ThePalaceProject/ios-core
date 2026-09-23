@@ -9,25 +9,119 @@
 import Foundation
 import PalaceLogging
 import PalaceNetwork
-import PalaceAuth
+// `@preconcurrency`: PalaceAuth's `TokenResponse` (an `@objcMembers` class) is not
+// Sendable-audited and crosses the `@Sendable` token-refresh Task in
+// `refreshTokenAndResume` via the `Result<TokenResponse, Error>` continuation.
+// Honest ceiling until PalaceAuth annotates `TokenResponse: Sendable`; recorded in
+// RIPPLES.md as the preferred upstream fix.
+@preconcurrency import PalaceAuth
 
 enum NYPLResult<SuccessInfo> {
     case success(SuccessInfo, URLResponse?)
     case failure(TPPUserFriendlyError, URLResponse?)
 }
 
+/// Provenance travelling with a `URLSessionTask`, for facts the task's own
+/// request cannot answer later.
+///
+/// PP-4986: when a 401 queues a request for retry, the rebuild needs the account
+/// the request was ORIGINALLY dispatched for. Resolving it at retry time — or
+/// even at 401 time — reads whichever library is selected then, which is the
+/// leak: a patron who switched libraries mid-download had the new library's
+/// bearer sent to the old library's server.
+///
+/// `taskDescription` is an app-owned `String?` that never reaches the wire and
+/// survives the task, which is exactly the right carrier. It is a SHARED field
+/// though — `DownloadTaskPersistence.adoptableTask` has already earmarked it for
+/// a book id — so this encodes `key=value;` pairs rather than claiming the whole
+/// string, and a future book-id key can be added without disturbing this one.
+enum TaskProvenance {
+    /// CONSTRAINT: values must not contain `;` or `=`. Nothing escapes them, so a
+    /// value carrying either is silently truncated or dropped on the next parse.
+    /// Account ids are UUID URNs and cannot; a future co-tenant key must check.
+    private static let accountKey = "acct"
+
+    static func setAccount(_ accountId: String?, on task: URLSessionTask) {
+        guard let accountId, !accountId.isEmpty else { return }
+        var fields = parse(task.taskDescription)
+        fields[accountKey] = accountId
+        task.taskDescription = encode(fields)
+    }
+
+    static func account(of task: URLSessionTask) -> String? {
+        parse(task.taskDescription)[accountKey]
+    }
+
+    /// The co-tenant entry point. `DownloadTaskPersistence` instructs a future
+    /// book-id author to add their key *through here* rather than assigning
+    /// `taskDescription` directly — but that instruction was unfollowable until
+    /// this existed, and the erasure it warns about was therefore untestable.
+    static func set(_ value: String?, forKey key: String, on task: URLSessionTask) {
+        guard let value, !value.isEmpty, !key.isEmpty else { return }
+        var fields = parse(task.taskDescription)
+        fields[key] = value
+        task.taskDescription = encode(fields)
+    }
+
+    static func value(forKey key: String, of task: URLSessionTask) -> String? {
+        parse(task.taskDescription)[key]
+    }
+
+    private static func encode(_ fields: [String: String]) -> String {
+        fields.sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ";")
+    }
+
+    private static func parse(_ description: String?) -> [String: String] {
+        guard let description, !description.isEmpty else { return [:] }
+        var out: [String: String] = [:]
+        for pair in description.split(separator: ";") {
+            let parts = pair.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            out[String(parts[0])] = String(parts[1])
+        }
+        return out
+    }
+}
+
 /// Actor that serializes access to the token refresh state and retry queue.
 private actor TokenRefreshCoordinator {
     var isRefreshing = false
-    var retryQueue: [URLSessionTask] = []
+    /// A queued retry, and the fallback account to rebuild it with when the task
+    /// itself carries no dispatch-time stamp.
+    ///
+    /// The account must travel with the task. Requests for different libraries
+    /// share this one queue — a task enqueued because a refresh for library A
+    /// was already in flight sits next to A's own task — and by the time the
+    /// queue drains, the patron may have switched libraries. Rebuilding from
+    /// whatever account is current at drain time sends one library's
+    /// credentials to another library's server (PP-4986).
+    struct QueuedRetry {
+        let task: URLSessionTask
+        /// FALLBACK ONLY. The account resolved when the refresh was triggered,
+        /// which for a caller passing no `accountId` is simply the current
+        /// library. The load-bearing value is the dispatch-time stamp read from
+        /// the task itself (`TaskProvenance`); this is what the rebuild uses when
+        /// a task carries no stamp, which today means download-center tasks.
+        let accountIdAtRefreshStart: String?
+    }
+    var retryQueue: [QueuedRetry] = []
     /// Count of underlying token-refresh attempts that actually took the
     /// single-flight slot (i.e. transitioned `isRefreshing` from false to true).
     /// Read-only; test-observable via `TPPNetworkExecutor.refreshAttemptCount`.
     private(set) var refreshAttemptCount: Int = 0
 
+    /// Monotonic id of the current single-flight refresh, bumped each time the
+    /// slot is claimed. Lets a watchdog scheduled for one refresh tell whether
+    /// the slot it is policing is still the same one — vs. already completed
+    /// and re-claimed by a newer refresh, which it must not disturb.
+    private(set) var refreshGeneration: Int = 0
+
     func setRefreshing(_ value: Bool) {
         if value && !isRefreshing {
             refreshAttemptCount += 1
+            refreshGeneration += 1
         }
         isRefreshing = value
     }
@@ -41,27 +135,92 @@ private actor TokenRefreshCoordinator {
         guard !isRefreshing else { return false }
         isRefreshing = true
         refreshAttemptCount += 1
+        refreshGeneration += 1
         return true
+    }
+
+    func currentGeneration() -> Int { refreshGeneration }
+
+    /// Watchdog escape hatch. If the slot is STILL held by the same refresh
+    /// generation — i.e. the refresh never completed and never called
+    /// `setRefreshing(false)` — force-release it and return the stranded retry
+    /// queue so the caller can fail those requests. Returns `nil` when the
+    /// refresh already completed normally or a newer one is in progress, in
+    /// which case the watchdog must not interfere.
+    func forceReleaseIfStuck(generation: Int) -> [QueuedRetry]? {
+        guard isRefreshing, refreshGeneration == generation else { return nil }
+        isRefreshing = false
+        let stranded = retryQueue
+        retryQueue.removeAll()
+        return stranded
     }
 
     func resetRefreshAttemptCount() {
         refreshAttemptCount = 0
     }
 
-    func appendToRetryQueue(_ task: URLSessionTask) {
-        retryQueue.append(task)
+    func appendToRetryQueue(_ task: URLSessionTask, accountIdAtRefreshStart: String?) {
+        retryQueue.append(QueuedRetry(task: task,
+                                      accountIdAtRefreshStart: accountIdAtRefreshStart))
     }
 
-    func drainRetryQueue() -> [URLSessionTask] {
-        let tasks = retryQueue
+    func drainRetryQueue() -> [QueuedRetry] {
+        let entries = retryQueue
         retryQueue.removeAll()
-        return tasks
+        return entries
     }
 }
 
-@objc class TPPNetworkExecutor: NSObject {
+/// Carries a non-`Sendable` completion closure across a `@Sendable` `Task`
+/// boundary (the token-refresh continuations in `refreshTokenAndResume` and
+/// `executeTokenRefresh`). Each boxed completion is invoked at most once, and the
+/// producing method serializes its use, so `@unchecked Sendable` is sound. This is
+/// the isolation-preserving alternative to marking the public completion parameters
+/// `@Sendable`, which would ripple onto every caller. Mirrors `ImageCompletionBox`.
+private final class CompletionBox<T>: @unchecked Sendable {
+    let call: (T) -> Void
+    init(_ call: @escaping (T) -> Void) { self.call = call }
+}
+
+/// Carries a non-`Sendable` token-refresh `Result` across the `@Sendable` `Task`
+/// boundary inside `refreshTokenAndResume`. The `Result<TokenResponse, Error>`
+/// value is produced on the refresh completion callback and consumed exactly once
+/// inside the follow-up `Task`, so single-ownership handoff makes `@unchecked
+/// Sendable` sound — the honest alternative to marking the completion `@Sendable`
+/// (which would ripple onto the public `executeTokenRefresh` signature) or waiting
+/// on `TokenResponse: Sendable` from PalaceAuth. Mirrors `CompletionBox`.
+private final class CompletionResultBox: @unchecked Sendable {
+    let result: Result<TokenResponse, Error>
+    init(_ result: Result<TokenResponse, Error>) { self.result = result }
+}
+
+/// `@unchecked Sendable`: lets the executor satisfy the now-`Sendable`
+/// `NetworkClient` boundary (`URLSessionNetworkClient` holds one) and be captured
+/// across concurrency domains as it already is in production. The conformance is
+/// honest, not a blanket silence — every stored property is immutable-after-init
+/// or independently synchronized:
+///   • `transport` / `responder` — `let`; both wrap the shared, thread-safe
+///     `URLSession` and are shared-by-design (the app routes through one executor).
+///   • `tokenCoordinator` — a `private actor` (its `isRefreshing`/`retryQueue`
+///     state is actor-isolated).
+///   • `_accountsManager` — `var`, but assigned ONLY in the DI initializers
+///     (never mutated after construction; nil otherwise → lazy production read).
+///   • `tokenRefreshWatchdogSeconds` — `var` with ZERO mutation sites repo-wide;
+///     effectively constant after init.
+/// NOT `final`: three PalaceTests mocks subclass this for stubbing
+/// (SpyAudiobookNetworkExecutor, MockNetworkExecutorForSync, RecordingExecutorMock).
+/// They add only test-only or lock-guarded state, so they don't defeat the
+/// assertion; `final` would break the test-target build.
+@objc class TPPNetworkExecutor: NSObject, @unchecked Sendable {
     let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
+
+    /// Ceiling on a single token refresh before the watchdog force-releases a
+    /// wedged slot. Set comfortably above the shared session's resource
+    /// timeout (60s) so it only ever fires on a genuine wedge, never on a
+    /// slow-but-progressing refresh. Overridable so tests can drive it fast.
+    static let defaultTokenRefreshWatchdogSeconds: TimeInterval = 75
+    var tokenRefreshWatchdogSeconds: TimeInterval = TPPNetworkExecutor.defaultTokenRefreshWatchdogSeconds
 
     // `internal` (default) rather than `private` so adversarial tests can
     // wire a completion onto a synthetic task before invoking
@@ -169,6 +328,59 @@ private actor TokenRefreshCoordinator {
         await tokenCoordinator.resetRefreshAttemptCount()
     }
 
+    /// Self-healing guard against a wedged token refresh.
+    ///
+    /// If a refresh ever fails to call `setRefreshing(false)` (e.g. its
+    /// completion never fires, or `self` deallocates before the completion
+    /// runs), `isRefreshing` would stay `true` forever — and because every
+    /// later token-authed request coalesces behind the in-flight refresh, they
+    /// would all queue and hang until the app is force-quit. That matches the
+    /// "main catalog hangs across library switches until restart" report.
+    ///
+    /// This fires `tokenRefreshWatchdogSeconds` after the slot is claimed and,
+    /// if the SAME refresh generation still holds it, force-releases the slot
+    /// and fails the stranded queue so the system recovers on its own.
+    private func scheduleTokenRefreshWatchdog(generation: Int) {
+        let timeout = tokenRefreshWatchdogSeconds
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            guard let self else { return }
+            guard let stranded = await self.tokenCoordinator.forceReleaseIfStuck(generation: generation) else {
+                return // refresh completed normally, or a newer one took over
+            }
+            Log.error(#file, "Token refresh watchdog fired after \(timeout)s — force-releasing wedged refresh (generation \(generation)); failing \(stranded.count) stranded request(s)")
+            stranded.forEach { $0.task.cancel() }
+        }
+    }
+
+    /// Test windows into the token-refresh coordinator so the watchdog
+    /// contract can be locked deterministically, without real timing. Plain
+    /// `internal` (matching the existing `refreshAttemptCount` accessor
+    /// convention) rather than a `#if DEBUG` block the blast-radius gate flags.
+    var isTokenRefreshingForTesting: Bool {
+        get async { await tokenCoordinator.isRefreshing }
+    }
+    func claimTokenRefreshSlotForTesting() async -> Bool {
+        await tokenCoordinator.tryClaimRefreshSlot()
+    }
+    func currentTokenRefreshGenerationForTesting() async -> Int {
+        await tokenCoordinator.currentGeneration()
+    }
+    func appendTokenRetryForTesting(_ task: URLSessionTask,
+                                    accountIdAtRefreshStart: String? = nil) async {
+        await tokenCoordinator.appendToRetryQueue(
+            task, accountIdAtRefreshStart: accountIdAtRefreshStart)
+    }
+    func setTokenRefreshingForTesting(_ value: Bool) async {
+        await tokenCoordinator.setRefreshing(value)
+    }
+    func forceReleaseStuckTokenRefreshForTesting(generation: Int) async -> [URLSessionTask]? {
+        // Existing watchdog tests assert on the stranded TASKS; the account
+        // each carried is not part of that contract, so unwrap rather than
+        // widen the seam and ripple into them.
+        await tokenCoordinator.forceReleaseIfStuck(generation: generation)?.map(\.task)
+    }
+
     func GET(_ reqURL: URL,
              useTokenIfAvailable: Bool = true,
              completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
@@ -212,12 +424,22 @@ extension TPPNetworkExecutor: TokenRefreshing { }
 extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult
     func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
-        let accountId = accountsManager.currentAccountId
+        executeRequest(req, enableTokenRefresh: enableTokenRefresh, accountId: nil, completion: completion)
+    }
+
+    /// PP-4986: `accountId` names the library this request was BUILT for. nil
+    /// means "the current one", which is what every caller meant before this
+    /// existed — so the behaviour of the two-argument form is unchanged.
+    func executeRequest(_ req: URLRequest,
+                        enableTokenRefresh: Bool,
+                        accountId requestedAccountId: String?,
+                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
+        let accountId = requestedAccountId ?? accountsManager.currentAccountId
         let userAccount = accountId.flatMap { accountsManager.userAccount(for: $0) } ?? accountsManager.currentUserAccount
 
         // SAML auth uses cookies, not tokens - proceed directly
         if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
-            return performDataTask(with: req, completion: completion)
+            return performDataTask(with: req, accountId: accountId, completion: completion)
         }
 
         // Proactive token refresh: if token will expire soon, refresh before the request
@@ -228,17 +450,43 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
            authDef.tokenURL != nil {
             Log.info(#file, "Token near expiry - proactively refreshing before request")
             refreshTokenAndResume(task: nil, accountId: accountId) { [weak self] _ in
-                _ = self?.performDataTask(with: req, completion: completion)
+                _ = self?.performDataTask(with: req, accountId: accountId, completion: completion)
             }
             return nil
         }
 
-        return performDataTask(with: req, completion: completion)
+        return performDataTask(with: req, accountId: accountId, completion: completion)
     }
 
     private func performDataTask(with request: URLRequest,
+                                 accountId: String?,
                                  completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
         let task = transport.urlSession.dataTask(with: request)
+        // Stamp the account this task is being DISPATCHED for. Unlike
+        // `currentAccountId` read later, this cannot drift under a library
+        // switch — which is the whole defect (PP-4986).
+        //
+        // Scope, stated precisely because an earlier draft of this comment
+        // asserted an invariant that does not hold: `executeRequest` resolves
+        // `currentAccountId` and discards whatever account the CALLER built the
+        // request for. So requests built for a NON-current library are stamped
+        // with the current one. `TPPSignInBusinessLogic.makeRequest` does exactly
+        // that for Settings sign-in/sign-out on an arbitrary library
+        // (`TPPSignInBusinessLogic.swift:1049`, and `:1103` branches explicitly on
+        // `libraryAccountID != currentAccountId`), as does
+        // `NotificationService.deleteToken(for:)` — see the note below —.
+        //
+        // Those paths ARE now covered: `TPPRequestExecuting.executeRequest` gained
+        // an `accountId:` overload in this change, and the Settings sign-in /
+        // sign-out and profile-document callers pass their library.
+        //
+        // Still NOT covered: `NotificationService.deleteToken(for:)`. It dispatches
+        // through `addBearerAndExecute`, which has no account parameter and calls
+        // the two-argument form — so the overload cannot serve it. It is invoked
+        // for arbitrary accounts and is wrong at DISPATCH, not merely on retry,
+        // which makes it a wider pre-existing defect than this change addresses.
+        // Closing it needs `accountId` on `addBearerAndExecute`.
+        TaskProvenance.setAccount(accountId, on: task)
         responder.addCompletion(completion, taskID: task.taskIdentifier)
         transport.activeTasksStore.add(task)
         task.resume()
@@ -376,6 +624,11 @@ extension TPPNetworkExecutor {
         }
 
         let task = transport.urlSession.downloadTask(with: req)
+        // Fifth producer. It registers with the responder, so a 401 reaches the
+        // retry queue like any other task. Zero production callers today (tests
+        // only), which is why it was missed — but "no caller" is a fact about
+        // now, not a property of the code, and stamping it costs one line.
+        TaskProvenance.setAccount(accountsManager.currentAccountId, on: task)
         responder.addCompletion(completionWrapper, taskID: task.taskIdentifier)
         task.resume()
 
@@ -489,10 +742,14 @@ extension TPPNetworkExecutor {
 
     func refreshTokenAndResume(task: URLSessionTask?, accountId: String? = nil, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
         let capturedAccountId = accountId ?? accountsManager.currentAccountId
+        // Box the non-`Sendable` completion so it can cross the `@Sendable` Task
+        // boundaries below (this Task and the nested token-refresh continuation)
+        // without rippling `@Sendable` onto the public signature.
+        let completionBox = completion.map { CompletionBox($0) }
         Task { [weak self] in
             guard let self = self else {
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Network executor deallocated"])
-                completion?(NYPLResult.failure(error, nil))
+                completionBox?.call(NYPLResult.failure(error, nil))
                 return
             }
 
@@ -502,16 +759,22 @@ extension TPPNetworkExecutor {
             if !claimed {
                 Log.debug(#file, "Token refresh already in progress, queueing task for retry")
                 if let task {
-                    await self.tokenCoordinator.appendToRetryQueue(task)
-                    if let completion {
-                        self.responder.addCompletion(completion, taskID: task.taskIdentifier)
+                    await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
+                    if let completionBox {
+                        self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
                     }
                 } else {
                     let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
-                    completion?(NYPLResult.failure(error, nil))
+                    completionBox?.call(NYPLResult.failure(error, nil))
                 }
                 return
             }
+
+            // Arm the self-healing watchdog for THIS refresh. Safe even if we
+            // bail out below (e.g. missing credentials) — that path sets
+            // isRefreshing=false, so the watchdog finds nothing stuck.
+            let refreshGeneration = await self.tokenCoordinator.currentGeneration()
+            self.scheduleTokenRefreshWatchdog(generation: refreshGeneration)
 
             // Use per-account instance to prevent TOCTOU races: without this,
             // another thread could switch libraryUUID between sharedAccount()
@@ -524,7 +787,7 @@ extension TPPNetworkExecutor {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 await self.tokenCoordinator.setRefreshing(false)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
-                completion?(NYPLResult.failure(error, nil))
+                completionBox?.call(NYPLResult.failure(error, nil))
                 return
             }
 
@@ -532,16 +795,25 @@ extension TPPNetworkExecutor {
             Log.info(#file, "Refreshing token for auth type: \(authType), account: \(capturedAccountId ?? "current")")
 
             if let task {
-                await self.tokenCoordinator.appendToRetryQueue(task)
-                if let completion {
-                    self.responder.addCompletion(completion, taskID: task.taskIdentifier)
+                await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
+                if let completionBox {
+                    self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
                 }
             }
 
             self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: capturedAccountId) { [weak self] result in
                 guard let self else { return }
+                // Box the non-`Sendable` `Result<TokenResponse, Error>` before the
+                // `sending` `Task` closure below. `TokenResponse` is not yet
+                // Sendable-audited upstream (PalaceAuth) and the `Error` existential
+                // is never Sendable, so `result` cannot be captured directly into
+                // the Task without the "passing closure as a 'sending' parameter"
+                // diagnostic. The box is produced here and consumed exactly once
+                // inside the Task — same isolation-preserving carrier pattern as
+                // `CompletionBox`. Behavior unchanged.
+                let resultBox = CompletionResultBox(result)
                 Task {
-                    switch result {
+                    switch resultBox.result {
                     case .success(let tokenResponse):
                         Log.info(#file, "Token refresh successful for account \(capturedAccountId ?? "current"), expires in \(tokenResponse.expiresIn)s")
 
@@ -549,14 +821,42 @@ extension TPPNetworkExecutor {
                         let retryCount = queuedTasks.count
                         var newTasks = [URLSessionTask]()
 
-                        for oldTask in queuedTasks {
+                        for queued in queuedTasks {
+                            let oldTask = queued.task
                             guard let originalRequest = oldTask.originalRequest,
                                   let originalURL = originalRequest.url else {
                                 continue
                             }
 
-                            let mutableRequest = self.request(for: originalURL)
+                            // Rebuild for the account the ORIGINAL request was made
+                            // for, not whichever library is current now. The queue is
+                            // shared across libraries and the patron may have switched
+                            // while these were waiting, so resolving credentials here
+                            // sends one library's bearer to another's server (PP-4986).
+                            // The task's own provenance first: that is the
+                            // account the request was DISPATCHED for, stamped in
+                            // `performDataTask` and immune to a library switch
+                            // between dispatch and retry. `accountIdAtRefreshStart`
+                            // is the fallback for tasks that predate the stamp or
+                            // were injected by a test seam; resolving from the
+                            // CURRENT account is what leaked (PP-4986).
+                            let stamped = TaskProvenance.account(of: oldTask)
+                            if stamped == nil {
+                                // The only production tasks reaching here unstamped
+                                // are ones created outside `performDataTask` — the
+                                // download center's background session. Those still
+                                // resolve the account current at 401, i.e. they still
+                                // leak. Say so rather than fall back in silence.
+                                let host = oldTask.originalRequest?.url?.host ?? "unknown-host"
+                                Log.warn(#file, "Retry has no dispatch provenance (host: \(host)); falling back to the account current at refresh-start — this request may authenticate as the wrong library (PP-4986). All five known producers stamp; an unstamped task here is a producer the census did not predict.")
+                            }
+                            let rebuildAccountId = stamped ?? queued.accountIdAtRefreshStart
+                            let mutableRequest = self.request(for: originalURL,
+                                                              accountId: rebuildAccountId)
                             let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
+                            // A retry can itself 401. Without this the second
+                            // round loses provenance and falls back to current.
+                            TaskProvenance.setAccount(rebuildAccountId, on: newTask)
                             self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
                             newTasks.append(newTask)
                             oldTask.cancel()
@@ -568,14 +868,14 @@ extension TPPNetworkExecutor {
                         await self.tokenCoordinator.setRefreshing(false)
 
                         if task == nil {
-                            completion?(NYPLResult.success(Data(), nil))
+                            completionBox?.call(NYPLResult.success(Data(), nil))
                         }
 
                     case .failure(let error):
                         Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
 
                         let failedTasks = await self.tokenCoordinator.drainRetryQueue()
-                        failedTasks.forEach { $0.cancel() }
+                        failedTasks.forEach { $0.task.cancel() }
 
                         await self.tokenCoordinator.setRefreshing(false)
 
@@ -616,7 +916,7 @@ extension TPPNetworkExecutor {
                                               code: TPPErrorCode.invalidCredentials.rawValue,
                                               userInfo: userInfo)
                         }
-                        completion?(NYPLResult.failure(nsError, nil))
+                        completionBox?.call(NYPLResult.failure(nsError, nil))
                     }
                 }
             }
@@ -635,6 +935,9 @@ extension TPPNetworkExecutor {
         }
 
         let session = self.transport.urlSession
+        // Box the non-`Sendable` completion so it can cross the `@Sendable` Task
+        // boundary below; invoked exactly once.
+        let completionBox = CompletionBox(completion)
         Task {
             let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
             let result = await tokenRequest.execute(session: session)
@@ -649,9 +952,9 @@ extension TPPNetworkExecutor {
                     expirationDate: tokenResponse.expirationDate
                 )
                 targetAccount.markLoggedIn()
-                completion(.success(tokenResponse))
+                completionBox.call(.success(tokenResponse))
             case .failure(let error):
-                completion(.failure(error))
+                completionBox.call(.failure(error))
             }
         }
     }
@@ -675,87 +978,210 @@ private final class ContinuationGuard {
     }
 }
 
+/// Bridges structured-concurrency cancellation into the completion-handler API.
+///
+/// A `CheckedContinuation` is resumed ONLY by its completion handler.
+/// `Task.cancel()` sets a flag; it cannot resume a suspended continuation. So a
+/// bare `withCheckedThrowingContinuation` bridge whose HTTP completion never
+/// fires leaves the awaiting Task suspended forever — and, because every
+/// `Task.isCancelled` check in a caller sits BETWEEN awaits, that task is
+/// permanently undrainable. `AccountRegistryLoader`'s crawl hit exactly this:
+/// `cancelAndDrainBackgroundWork TIMED OUT ... crawl did not observe cancellation`,
+/// repeating every 3s and degrading a whole test run.
+///
+/// This box makes cancellation terminal from either side, resuming exactly once:
+///   • the HTTP completion arrives  → `finish(_:)`
+///   • the awaiting Task is cancelled → `cancel()` cancels the URLSession task
+///     (when the underlying call exposes one) AND resumes with `CancellationError`.
+///
+/// Cancellation that arrives BEFORE the continuation is installed is retained
+/// and applied on `install(_:)`, so the early-cancel race cannot strand a caller.
+/// Mirrors `CancellableTaskBox` in `URLSessionNetworkClient`, which already
+/// solved this for the newer client.
+private final class CancellableContinuationBox<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+    private var task: URLSessionTask?
+    nonisolated(unsafe) private var pendingResult: Result<T, Error>?
+    private var settled = false
+
+    /// Install the continuation. If cancellation (or a completion) already
+    /// landed, resume immediately rather than suspending forever.
+    func install(_ continuation: CheckedContinuation<T, Error>) {
+        lock.lock()
+        if let pending = pendingResult {
+            pendingResult = nil
+            lock.unlock()
+            continuation.resume(with: pending)
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    /// Store the in-flight request so cancellation can tear it down. If
+    /// cancellation already arrived, cancel it on the spot.
+    func setTask(_ task: URLSessionTask?) {
+        lock.lock()
+        if settled {
+            lock.unlock()
+            task?.cancel()
+            return
+        }
+        self.task = task
+        lock.unlock()
+    }
+
+    /// Resume with the network outcome. No-op once settled.
+    func finish(_ result: sending Result<T, Error>) {
+        lock.lock()
+        if settled { lock.unlock(); return }
+        settled = true
+        let continuation = self.continuation
+        self.continuation = nil
+        self.task = nil
+        // Consume `result` on exactly ONE path. Storing it and also resuming
+        // with it puts the same value in two regions, which the Swift 6 sending
+        // check rejects (`T` is not constrained Sendable here).
+        if let continuation {
+            lock.unlock()
+            continuation.resume(with: result)
+        } else {
+            pendingResult = result
+            lock.unlock()
+        }
+    }
+
+    /// Cancel the request and unblock the awaiting Task.
+    func cancel() {
+        lock.lock()
+        let inFlight = task
+        task = nil
+        lock.unlock()
+        inFlight?.cancel()
+        finish(.failure(CancellationError()))
+    }
+}
+
 // MARK: - Async/Await API
 
 extension TPPNetworkExecutor {
 
     /// Async version of GET that bridges to the completion-handler API.
     /// Timeout is handled by the URLSession configuration, not by a manual timer.
-    /// The `ContinuationGuard` ensures the continuation is resumed exactly
-    /// once even if a future regression in the completion path invokes the
-    /// callback twice (e.g. through the token-refresh / retry paths).
+    ///
+    /// `CancellableContinuationBox` makes the bridge cancellation-aware AND
+    /// resume-exactly-once (superseding the old `ContinuationGuard` here). Note
+    /// this overload's underlying call returns no `URLSessionDataTask`, so the
+    /// HTTP request is not torn down — but the awaiting Task is still unblocked,
+    /// which is what makes it drainable. A stray late completion is swallowed by
+    /// the box.
     func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
-                guard guarded.tryConsume() else { return }
-                switch result {
-                case let .success(data, response):
-                    continuation.resume(returning: (data, response))
-                case let .failure(error, _):
-                    continuation.resume(throwing: error)
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
+                    switch result {
+                    case let .success(data, response):
+                        box.finish(.success((data, response)))
+                    case let .failure(error, _):
+                        box.finish(.failure(error))
+                    }
                 }
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 
     /// Async version of GET with full request control.
     func GET(request: URLRequest, cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            GET(request: request, cachePolicy: cachePolicy, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                guard guarded.tryConsume() else { return }
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: (data ?? Data(), response))
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = GET(request: request, cachePolicy: cachePolicy, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                    if let error = error {
+                        box.finish(.failure(error))
+                    } else {
+                        box.finish(.success((data ?? Data(), response)))
+                    }
                 }
+                box.setTask(task)
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 
     /// Async version of PUT.
     func PUT(_ reqURL: URL, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            PUT(reqURL, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                guard guarded.tryConsume() else { return }
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: (data ?? Data(), response))
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = PUT(reqURL, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                    if let error = error {
+                        box.finish(.failure(error))
+                    } else {
+                        box.finish(.success((data ?? Data(), response)))
+                    }
                 }
+                box.setTask(task)
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 
     /// Async version of POST.
     func POST(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            POST(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                guard guarded.tryConsume() else { return }
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: (data ?? Data(), response))
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = POST(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                    if let error = error {
+                        box.finish(.failure(error))
+                    } else {
+                        box.finish(.success((data ?? Data(), response)))
+                    }
                 }
+                box.setTask(task)
             }
+        } onCancel: {
+            box.cancel()
         }
     }
 
     /// Async version of DELETE.
     func DELETE(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        return try await withCheckedThrowingContinuation { continuation in
-            let guarded = ContinuationGuard()
-            DELETE(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                guard guarded.tryConsume() else { return }
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: (data ?? Data(), response))
+        let box = CancellableContinuationBox<(Data, URLResponse?)>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = DELETE(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                    if let error = error {
+                        box.finish(.failure(error))
+                    } else {
+                        box.finish(.success((data ?? Data(), response)))
+                    }
                 }
+                box.setTask(task)
             }
+        } onCancel: {
+            box.cancel()
         }
+    }
+}
+
+// Wave 1c (cycle 3): package-protocol seam — authorized-request derivation for
+// the circulation-analytics offline enqueue. Distinct name: `request(for:)`'s
+// defaulted `useTokenIfAvailable` param means it cannot witness a protocol
+// requirement directly.
+extension TPPNetworkExecutor: AuthorizedRequestProviding {
+    func authorizedRequest(for url: URL) -> URLRequest {
+        request(for: url)
     }
 }

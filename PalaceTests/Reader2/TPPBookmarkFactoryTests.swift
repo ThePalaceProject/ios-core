@@ -10,7 +10,12 @@ import XCTest
 import ReadiumShared
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
+// Deliberately NOT @MainActor: the code under test is nonisolated and the
+// fixtures (Publication / TPPBook / factory) are non-Sendable — driving them
+// from a @MainActor test is a Swift 6 sending error, while from a
+// nonisolated test everything stays in one isolation domain. No UI here.
 final class TPPBookmarkFactoryTests: XCTestCase {
 
     // MARK: - Properties
@@ -24,11 +29,13 @@ final class TPPBookmarkFactoryTests: XCTestCase {
 
     // MARK: - Setup & Teardown
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    // async setUp adopts the class's @MainActor isolation so the @MainActor
+    // properties are not sent to a nonisolated context during construction.
+    override func setUp() async throws {
+        try await super.setUp()
 
         testBook = createTestBook(identifier: testBookId)
-        publication = createTestPublication()
+        publication = Self.makePublication()
         bookRegistry = TPPBookRegistryMock()
 
         bookRegistry.addBook(
@@ -71,7 +78,10 @@ final class TPPBookmarkFactoryTests: XCTestCase {
         )
         let r3Location = TPPBookmarkR3Location(resourceIndex: 0, locator: locator)
 
-        // Act
+        // Act — fresh local publication+factory form a disconnected (sendable)
+        // region so they can cross into the nonisolated make(...).
+        let publication = Self.makePublication()
+        let factory = TPPBookmarkFactory(book: testBook, publication: publication, drmDeviceID: testDeviceId)
         let bookmark = await factory.make(
             fromR3Location: r3Location,
             usingBookRegistry: bookRegistry,
@@ -96,7 +106,10 @@ final class TPPBookmarkFactoryTests: XCTestCase {
         )
         let r3Location = TPPBookmarkR3Location(resourceIndex: 0, locator: locator)
 
-        // Act
+        // Act — fresh local publication+factory form a disconnected (sendable)
+        // region so they can cross into the nonisolated make(...).
+        let publication = Self.makePublication()
+        let factory = TPPBookmarkFactory(book: testBook, publication: publication, drmDeviceID: testDeviceId)
         let bookmark = await factory.make(
             fromR3Location: r3Location,
             usingBookRegistry: bookRegistry,
@@ -121,7 +134,10 @@ final class TPPBookmarkFactoryTests: XCTestCase {
         )
         let r3Location = TPPBookmarkR3Location(resourceIndex: 1, locator: locator)
 
-        // Act
+        // Act — fresh local publication+factory form a disconnected (sendable)
+        // region so they can cross into the nonisolated make(...).
+        let publication = Self.makePublication()
+        let factory = TPPBookmarkFactory(book: testBook, publication: publication, drmDeviceID: testDeviceId)
         let bookmark = await factory.make(
             fromR3Location: r3Location,
             usingBookRegistry: bookRegistry,
@@ -148,7 +164,10 @@ final class TPPBookmarkFactoryTests: XCTestCase {
             creationDate: customDate
         )
 
-        // Act
+        // Act — fresh local publication+factory form a disconnected (sendable)
+        // region so they can cross into the nonisolated make(...).
+        let publication = Self.makePublication()
+        let factory = TPPBookmarkFactory(book: testBook, publication: publication, drmDeviceID: testDeviceId)
         let bookmark = await factory.make(
             fromR3Location: r3Location,
             usingBookRegistry: bookRegistry,
@@ -170,7 +189,10 @@ final class TPPBookmarkFactoryTests: XCTestCase {
         )
         let r3Location = TPPBookmarkR3Location(resourceIndex: 0, locator: locator)
 
-        // Act
+        // Act — fresh local publication+factory form a disconnected (sendable)
+        // region so they can cross into the nonisolated make(...).
+        let publication = Self.makePublication()
+        let factory = TPPBookmarkFactory(book: testBook, publication: publication, drmDeviceID: testDeviceId)
         let bookmark = await factory.make(
             fromR3Location: r3Location,
             usingBookRegistry: bookRegistry,
@@ -499,7 +521,9 @@ final class TPPBookmarkFactoryTests: XCTestCase {
         )
     }
 
-    private func createTestPublication() -> Publication {
+    // nonisolated static: builds only from literals, so its fresh return is a
+    // disconnected (sendable) region — callable from sending sites without self.
+    private nonisolated static func makePublication() -> Publication {
         let readingOrder = [
             Link(href: "/chapter1.xhtml", mediaType: .xhtml, title: "Chapter 1"),
             Link(href: "/chapter2.xhtml", mediaType: .xhtml, title: "Chapter 2"),
@@ -555,13 +579,19 @@ final class TPPBookmarkFactoryTests: XCTestCase {
 
 // MARK: - Server Annotation Edge Cases
 
+// Deliberately NOT @MainActor: the code under test is nonisolated and the
+// fixtures (Publication / TPPBook / factory) are non-Sendable — driving them
+// from a @MainActor test is a Swift 6 sending error, while from a
+// nonisolated test everything stays in one isolation domain. No UI here.
 final class TPPBookmarkFactoryServerAnnotationEdgeCaseTests: XCTestCase {
 
     private var testBook: TPPBook!
     private let testBookId = "edge-case-book"
 
-    override func setUp() {
-        super.setUp()
+    // async setUp adopts the class's @MainActor isolation so createTestBook is
+    // not called with a task-isolated self from a nonisolated context.
+    override func setUp() async throws {
+        try await super.setUp()
         testBook = createTestBook(identifier: testBookId)
     }
 
@@ -741,6 +771,7 @@ final class TPPBookmarkFactoryServerAnnotationEdgeCaseTests: XCTestCase {
 
 // MARK: - Initialization Tests
 
+@MainActor
 final class TPPBookmarkFactoryInitTests: XCTestCase {
 
     func testInit_StoresProperties() {

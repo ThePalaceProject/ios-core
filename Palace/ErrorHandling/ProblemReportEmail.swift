@@ -1,6 +1,8 @@
 import MessageUI
 import UIKit
+import PalaceBookModel
 
+@MainActor
 @objcMembers class ProblemReportEmail: NSObject {
     typealias DisplayStrings = Strings.ProblemReportEmail
 
@@ -8,33 +10,27 @@ import UIKit
 
     fileprivate weak var lastPresentingViewController: UIViewController?
 
-    func beginComposing(
-        to emailAddress: String,
-        presentingViewController: UIViewController,
-        book: TPPBook?) {
-        beginComposing(to: emailAddress, presentingViewController: presentingViewController, book: book, libraryUUID: nil)
-    }
-
-    /// Composes a problem report email using the patron ID for the specified library.
-    /// - Parameters:
-    ///   - emailAddress: The support email address.
-    ///   - presentingViewController: The view controller to present the mail composer from.
-    ///   - book: An optional book associated with the report.
-    ///   - libraryUUID: The UUID of the library being viewed. When nil, falls back to the active library.
+    /// Composes a problem report email. Wave 1c (cycle 2): the caller snapshots
+    /// the account-derived context (see AccountsManager.problemReportContext)
+    /// — ErrorHandling no longer names AccountsManager/TPPUserAccount.
+    /// `patronIdentifier`/`libraryName` are deliberately NOT defaulted so every
+    /// call site migrates explicitly (a defaulted overload would let a missed
+    /// site compile and silently drop the patron ID).
     func beginComposing(
         to emailAddress: String,
         presentingViewController: UIViewController,
         book: TPPBook?,
-        libraryUUID: String?,
-        accountsManager: AccountsManager = AppContainer.production().accountsManager) {
-        let account: TPPUserAccount
-        if let id = libraryUUID ?? accountsManager.currentAccountId {
-            account = accountsManager.userAccount(for: id)
-        } else {
-            account = accountsManager.currentUserAccount
-        }
-        let patronID = account.authorizationIdentifier
-        beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book, patronIdentifier: patronID))
+        patronIdentifier: String?,
+        libraryName: String?,
+        libraryUUID: String? = nil) {
+        beginComposing(
+            to: emailAddress,
+            presentingViewController: presentingViewController,
+            body: generateBody(
+                book: book,
+                patronIdentifier: patronIdentifier,
+                libraryName: libraryName,
+                libraryUUID: libraryUUID))
     }
 
     func beginComposing(
@@ -67,23 +63,23 @@ import UIKit
 
     /// The value rendered after `Library:` in a problem report. Never empty.
     ///
-    /// PP-5078. This previously read `currentAccount?.name ?? ""`, so a nil
-    /// account emitted the bare line `Library:`. `currentAccount` resolves
-    /// through the library registry and is nil until that registry has loaded
-    /// the selected account — so a patron who reports a problem before it
-    /// settles sends a report with no library on it, while the patron ID (a
-    /// separate, per-library lookup) resolves normally.
+    /// PP-5078. This line was built from the library's display name alone, so a
+    /// nil name emitted the bare line `Library:`. The name resolves through the
+    /// library registry and is nil until that registry has loaded the selected
+    /// account — so a patron reporting a problem before it settles sends a report
+    /// with no library on it, while the patron ID (a separate, per-library
+    /// lookup) resolves normally.
     ///
     /// Real ticket 18864, app 3.2.3: `Library:` blank, `Patron ID:` populated.
-    /// The agent's triage summary read "Sign in prompt - no library?" — the
-    /// blank implied a patron with no library configured, and the patron had
-    /// written that they were a member of Park Ridge Public Library.
+    /// The triage summary read "Sign in prompt - no library?" — the blank implied
+    /// a patron with no library configured, and the patron had written that they
+    /// were a member of Park Ridge Public Library.
     ///
     /// Three outcomes, deliberately distinguishable by whoever reads the email:
-    ///   - a real name          — the common case, passed through verbatim
-    ///   - the identifier       — the app knows WHICH library but cannot name
-    ///                            it; support can resolve a UUID, not a blank
-    ///   - "(none selected)"    — the app genuinely has no library
+    ///   - a real name    — the common case, passed through verbatim
+    ///   - the identifier — the app knows WHICH library but cannot name it;
+    ///                      support can resolve a UUID, not a blank
+    ///   - "(none selected)" — the app genuinely has no library
     ///
     /// A blank could equally mean the line was lost in mail transit. None of
     /// these can.
@@ -99,7 +95,7 @@ import UIKit
         return "(none selected)"
     }
 
-    func generateBody(book: TPPBook?, patronIdentifier: String? = nil, accountsManager: AccountsManager = AppContainer.production().accountsManager) -> String {
+    func generateBody(book: TPPBook?, patronIdentifier: String? = nil, libraryName: String? = nil, libraryUUID: String? = nil) -> String {
         let nativeHeight = UIScreen.main.nativeBounds.height
         let systemVersion = UIDevice.current.systemVersion
         let idiom: String
@@ -125,7 +121,7 @@ import UIKit
         }
 
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(Self.libraryFieldValue(name: accountsManager.currentAccount?.name, uuid: accountsManager.currentAccountId))"
+        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(Self.libraryFieldValue(name: libraryName, uuid: libraryUUID))"
 
         if let patronIdentifier = patronIdentifier {
             body += "\nPatron ID: \(patronIdentifier)"
@@ -139,7 +135,7 @@ import UIKit
     }
 }
 
-extension ProblemReportEmail: MFMailComposeViewControllerDelegate {
+extension ProblemReportEmail: @preconcurrency MFMailComposeViewControllerDelegate {
     func mailComposeController(
         _ controller: MFMailComposeViewController,
         didFinishWith result: MFMailComposeResult,

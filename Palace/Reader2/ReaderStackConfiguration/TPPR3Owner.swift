@@ -14,6 +14,7 @@ import UIKit
 import ReadiumShared
 import ReadiumStreamer
 import PalaceLogging
+import PalaceBookRegistry
 
 /// This class is the main root of R3 objects. It:
 /// - owns the sub-modules (library, reader, etc.)
@@ -42,10 +43,24 @@ extension TPPR3Owner: ModuleDelegate {
     func presentAlert(_ title: String,
                       message: String,
                       from viewController: UIViewController) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        let dismissButton = UIAlertAction(title: Strings.Generic.ok, style: .cancel)
-        alert.addAction(dismissButton)
-        viewController.present(alert, animated: true)
+        // `ModuleDelegate.presentAlert` is a nonisolated protocol requirement,
+        // but presenting a `UIAlertController` is main-actor-only work and this
+        // is always invoked on the main thread during reader presentation.
+        // `assumeIsolated` asserts that precondition (a clean crash if ever
+        // violated) instead of implicitly hopping — preserving the synchronous
+        // presentation behavior the requirement mandates.
+        MainActor.assumeIsolated {
+            let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+            let dismissButton = UIAlertAction(title: Strings.Generic.ok, style: .cancel)
+            alert.addAction(dismissButton)
+            // Route through the coordinator-waiting guarded presenter rather than a
+            // raw present() on the passed VC, which can be mid-transition during
+            // reader init — the fe741015 CA-commit race.
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
+                                                         viewController: viewController,
+                                                         animated: true,
+                                                         completion: nil)
+        }
     }
 
     func presentError(_ error: Error?, from viewController: UIViewController) {

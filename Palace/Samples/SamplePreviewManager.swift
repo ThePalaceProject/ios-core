@@ -1,5 +1,6 @@
 import SwiftUI
 import PalaceLogging
+import PalaceBookModel
 
 @MainActor
 final class SamplePreviewManager: ObservableObject {

@@ -9,6 +9,18 @@
 import Foundation
 import Dispatch
 
+/// Carries the non-`Sendable` `work` closure across the `@Sendable`
+/// `DispatchQueue.main.async` boundary in `asyncIfNeeded(_:)`. The closure is
+/// invoked exactly once, on the main queue, never concurrently — so
+/// `@unchecked Sendable` is sound. This box is the deliberate alternative to
+/// marking `asyncIfNeeded`'s parameter `@Sendable`, which callers in Reader2 and
+/// SignInLogic depend on NOT being `@Sendable` (they pass main-actor-capturing,
+/// non-`Sendable` closures). Mirrors `ImageCompletionBox`.
+private final class MainThreadWorkBox: @unchecked Sendable {
+    let run: () -> Void
+    init(_ run: @escaping () -> Void) { self.run = run }
+}
+
 @objc class TPPMainThreadRun: NSObject {
 
     /// Makes sure to run the specified work item synchronously on the
@@ -19,7 +31,7 @@ import Dispatch
     /// - See: https://github.com/apple/swift-corelibs-libdispatch/commit/e64e4b962e1f356d7561e7a6103b424f335d85f6
     /// - Parameters:
     ///   - work: The block to run on the main thread.
-    static func sync(_ work: () -> Void) {
+    static func sync(_ work: @Sendable () -> Void) {
         if Thread.isMainThread {
             work()
         } else {
@@ -42,8 +54,11 @@ import Dispatch
         if Thread.isMainThread {
             work()
         } else {
+            // Box the non-`Sendable` `work` so it can cross the `@Sendable`
+            // `main.async` boundary; invoked once, on main, never concurrently.
+            let box = MainThreadWorkBox(work)
             DispatchQueue.main.async {
-                work()
+                box.run()
             }
         }
     }

@@ -1,0 +1,17 @@
+[
+  {
+    "args" : {
+      "bookId" : "DSD-EXPIRED",
+      "state" : "unregistered"
+    },
+    "method" : "registry.setState"
+  },
+  {
+    "args" : {
+      "attemptDownload" : "true",
+      "bookId" : "DSD-EXPIRED",
+      "hasCompletion" : "false"
+    },
+    "method" : "startBorrow"
+  }
+]

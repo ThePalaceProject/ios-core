@@ -10,6 +10,24 @@ import Foundation
 import WebKit
 import PalaceLogging
 
+/// Sendable carrier for the non-Sendable `() -> Void` sign-out `completion`
+/// closure captured by WebKit's `@Sendable` `removeData` completion closures in
+/// `performFinalSignOutCleanup` (the two `self == nil` fallback branches) and
+/// `clearWebViewData`. Boxing avoids marking those `completion` params
+/// `@Sendable` — whose ultimate source is `completeLogOutProcess`'s
+/// `{ [weak self] in … }` closure capturing the non-Sendable
+/// `TPPSignInBusinessLogic self` (see handoff §F); making `completion`
+/// `@Sendable` cannot be done while the class is neither `Sendable` nor
+/// `@MainActor`. INVARIANT — the boxed closure is invoked exactly once, on the
+/// main queue: every `removeData` call site here runs inside a
+/// `DispatchQueue.main.async` (or WebKit's main-thread completion), and each
+/// sign-out path calls `completion` on exactly one terminal branch. Mirrors
+/// `ForceResetCompletionBox` / `VoidWorkBox`.
+private final class SignOutCompletionBox: @unchecked Sendable {
+    let call: () -> Void
+    init(_ call: @escaping () -> Void) { self.call = call }
+}
+
 extension TPPSignInBusinessLogic {
 
     // MARK: - Sign-Out Race Condition Guard
@@ -28,27 +46,36 @@ extension TPPSignInBusinessLogic {
     // it works across different business-logic instances for the same library,
     // while being naturally isolated per library. No global mutable state.
 
-    private static var signOutSnapshotKey = 0
-    private static var signOutInProgressKey = 0
+    /// Reference-stable sentinel type for the two associated-object keys.
+    /// Swift 6 `complete` mode rejects `static var …Key = 0` (its address was
+    /// used as the association key) as "nonisolated global shared mutable
+    /// state." A trivial empty `final class` is `Sendable`, and
+    /// `Unmanaged.passUnretained(key).toOpaque()` yields the same stable
+    /// `UnsafeRawPointer` on every call — a drop-in replacement for `&intKey`
+    /// that carries no mutable state. The associated *values* remain unchanged
+    /// (`Int` snapshot / `Bool` in-progress flag).
+    private final class AssocKey: Sendable {}
+    private static let signOutSnapshotKey = AssocKey()
+    private static let signOutInProgressKey = AssocKey()
 
     /// The signInGeneration captured when performLogOut() was called.
     private var signOutSnapshot: Int {
-        get { objc_getAssociatedObject(self, &Self.signOutSnapshotKey) as? Int ?? -1 }
-        set { objc_setAssociatedObject(self, &Self.signOutSnapshotKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+        get { objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.signOutSnapshotKey).toOpaque()) as? Int ?? -1 }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.signOutSnapshotKey).toOpaque(), newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
 
     /// Guards against re-entrant performLogOut() calls. A second call while
     /// sign-out is in progress would re-set isLoading=true and potentially
     /// leave the UI stuck in a "Signing Out..." spinner.
     private var isSignOutInProgress: Bool {
-        get { objc_getAssociatedObject(self, &Self.signOutInProgressKey) as? Bool ?? false }
-        set { objc_setAssociatedObject(self, &Self.signOutInProgressKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+        get { objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.signOutInProgressKey).toOpaque()) as? Bool ?? false }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.signOutInProgressKey).toOpaque(), newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
 
     /// Called by finalizeSignIn() to invalidate any in-flight sign-out
     /// for this library's user account.
     func cancelPendingSignOut() {
-        userAccount.signInGeneration += 1
+        userAccount.incrementSignInGeneration()
     }
 
     // MARK: - Test seams (§10.4)
@@ -102,7 +129,44 @@ extension TPPSignInBusinessLogic {
         request.timeoutInterval = 45
 
         let barcode = userAccount.barcode
-        networker.executeRequest(request, enableTokenRefresh: false) { [weak self] result in
+        // PP-4986: built for `libraryAccountID`, not necessarily the current library.
+        // enableTokenRefresh stays FALSE here.
+        //
+        // Turning it on does fetch a fresher licensor, which is what sign-out
+        // needs to deauthorize. But it also arms `TPPNetworkExecutor:882-899`:
+        // when the proactive refresh itself 401s — an expired card, precisely
+        // the case this was meant to help — that path calls
+        // `markCredentialsStale()` AND
+        // `presentSignInModalForCurrentAccount(...)` whenever the refreshing
+        // account is the current one, which sign-out almost always is. The
+        // executor then ignores the refresh result, so the sign-out completes
+        // underneath the sheet. The patron taps Sign Out and is handed a
+        // sign-in prompt for the library they just left.
+        //
+        // An earlier version of this comment justified the revert by claiming
+        // `enableTokenRefresh: true` had no production call sites. That was
+        // false, and the way it was reached is worth recording: the census
+        // grepped the LITERAL `enableTokenRefresh: true`, while the contract is
+        // semantic — `GET(useTokenIfAvailable: Bool = true)` and three siblings
+        // forward a defaulted-true straight into the same parameter
+        // (TPPNetworkExecutor:388, 676, 700, 720). That arm is live production
+        // and runs constantly.
+        //
+        // The revert stands anyway, on the narrower ground that actually holds:
+        // prompting re-auth mid-BORROW is already this app's design, so the
+        // borrow leg's opt-in adds a route to an outcome it already produces.
+        // Sign-out is the one flow where a sign-in sheet is never the right
+        // answer, whatever the rest of the app does.
+        //
+        // The stale-licensor case is still REPORTED — `deauthorizeDevice` logs
+        // an expired licensor and reports the leaked activation to Crashlytics
+        // — so what is lost is a repair, not a diagnosis.
+        //
+        // The borrow path is deliberately different: `freshLicensorFromProfileDocument`
+        // DOES opt in, because a patron borrowing with a dead token genuinely
+        // needs to re-authenticate and a sign-in prompt is the right answer
+        // there. Signing out is the one flow where it never is.
+        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
             switch result {
             case .success(let data, let response):
                 self?.processLogOut(data: data,
@@ -124,14 +188,19 @@ extension TPPSignInBusinessLogic {
         }
 
         #else
-        if self.bookRegistry.isSyncing {
-            let alert = TPPAlertUtils.alert(
-                title: "SettingsAccountViewControllerCannotLogOutTitle",
-                message: "SettingsAccountViewControllerCannotLogOutMessage")
-            uiDelegate?.present(alert, animated: true, completion: nil)
-            isSignOutInProgress = false
-        } else {
-            completeLogOutProcess()
+        // `performLogOut()` requires the main thread (see doc comment above), so
+        // assert the isolation the now-@MainActor `TPPAlertUtils.alert(...)` call
+        // needs in Swift 6 complete-mode. Matches the sibling `+UI.swift` treatment.
+        MainActor.assumeIsolated {
+            if self.bookRegistry.isSyncing {
+                let alert = TPPAlertUtils.alert(
+                    title: "SettingsAccountViewControllerCannotLogOutTitle",
+                    message: "SettingsAccountViewControllerCannotLogOutMessage")
+                uiDelegate?.present(alert, animated: true, completion: nil)
+                isSignOutInProgress = false
+            } else {
+                completeLogOutProcess()
+            }
         }
         #endif
     }
@@ -169,9 +238,16 @@ extension TPPSignInBusinessLogic {
             // Set the fresh Adobe token info into the user account so that the
             // following `deauthorizeDevice` call can use it.
             self.userAccount.setLicensor(drm.licensor)
-            Log.info(#file, "Licensor token updated to \(clientToken) for adobe user ID \(self.userAccount.userID ?? "N/A")")
+            Log.info(#file, "Licensor refreshed at sign-out: \(AdobeClientToken.redacted(clientToken)) for adobe user ID \(self.userAccount.userID ?? "N/A")")
         } else {
-            Log.error(#file, "Licensor token invalid: \(profileDoc.toJson())")
+            // NOT `toJson()`. `Log.error` is persisted to
+            // `Documents/Logs/palace_error.log`, which the patron can export and
+            // routinely attaches to support tickets, and the encoded document
+            // carries `simplified:authorization_identifier` (the BARCODE) and
+            // `drm:clientToken` (a live credential) in full. This branch fires
+            // whenever `drm.vendor` is nil — including with a perfectly good
+            // client token — so it is not a rare path.
+            Log.error(#file, "Licensor token invalid: \(profileDoc.loggableSummary)")
         }
 
         self.deauthorizeDevice()
@@ -219,7 +295,13 @@ extension TPPSignInBusinessLogic {
         guard userAccount.signInGeneration == signOutSnapshot else {
             Log.warn(#file, "Stale sign-out for library \(libraryAccountID) — user re-authenticated. Skipping credential cleanup")
             isSignOutInProgress = false
-            DispatchQueue.main.async { [weak self] in
+            // `TPPMainThreadRun.asyncIfNeeded` (non-`@Sendable` closure) instead
+            // of `DispatchQueue.main.async` (whose closure IS `@Sendable`): the
+            // latter trips the `complete`-mode "capture of non-Sendable self in
+            // a @Sendable closure" diagnostic. Behavior-equivalent — this is the
+            // terminal UI callback of the stale path with no downstream ordering
+            // dependency; sync-if-already-on-main is indistinguishable here.
+            TPPMainThreadRun.asyncIfNeeded { [weak self] in
                 guard let self else { return }
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
             }
@@ -251,8 +333,11 @@ extension TPPSignInBusinessLogic {
         samlHelper.clearState()
         dispatch(.signOutCompleted)
 
+        // N1: clear the executor's PRIVATE URLCache — the one that actually
+        // serves authenticated feeds. Clearing `URLCache.shared` here was a
+        // no-op for feeds AND a privacy leak (signed-out authenticated
+        // responses could persist in the executor's disk cache).
         AppContainer.production().networkExecutor.clearCache()
-        URLCache.shared.removeAllCachedResponses()
 
         // Clear the IdP session before notifying the UI that sign-out is complete.
         //
@@ -269,7 +354,10 @@ extension TPPSignInBusinessLogic {
         //
         // CRITICAL: all async steps must finish BEFORE notifying the UI delegate.
         performFinalSignOutCleanup(cmLogoutAccessToken: cmLogoutAccessToken) { [weak self] in
-            DispatchQueue.main.async { [weak self] in
+            // `asyncIfNeeded` (non-`@Sendable`) instead of `DispatchQueue.main.async`
+            // to avoid the `complete`-mode non-Sendable-`self`-in-`@Sendable`-closure
+            // diagnostic. Terminal UI callback; behavior-equivalent.
+            TPPMainThreadRun.asyncIfNeeded { [weak self] in
                 guard let self = self else { return }
                 self.isSignOutInProgress = false
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
@@ -283,6 +371,16 @@ extension TPPSignInBusinessLogic {
     /// SAML + logout link present (PP-3452): authenticated API call to CM
     ///   saml_logout_redirect, then WKWebView cleanup.
     /// Everything else: WKWebView cleanup only.
+    // Swift 6 `complete`: the `completion`-capturing WebKit `removeData`
+    // `@Sendable` closures in the `self == nil` fallback branches below (and in
+    // `clearWebViewData`) capture a non-Sendable `() -> Void`. Its ultimate
+    // source is `completeLogOutProcess`'s `{ [weak self] in … }` closure, which
+    // captures the non-Sendable `TPPSignInBusinessLogic self`, so `completion`
+    // cannot be made `@Sendable` while the class is neither `Sendable` nor
+    // `@MainActor` (handoff §F). We box it (`SignOutCompletionBox`) so the
+    // `@Sendable` `removeData` closures capture a Sendable carrier — runtime
+    // behavior unchanged (all hops land on main), no unsafe cast on the sign-out
+    // critical path.
     private func performFinalSignOutCleanup(cmLogoutAccessToken: String? = nil,
                                             completion: @escaping () -> Void) {
         if selectedAuthentication?.isOidc == true {
@@ -290,6 +388,7 @@ extension TPPSignInBusinessLogic {
                 guard let self = self else {
                     // self deallocated — still clear WebView data and call completion
                     // to ensure the UI state is reset.
+                    let completionBox = SignOutCompletionBox(completion)
                     DispatchQueue.main.async {
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
@@ -297,7 +396,7 @@ extension TPPSignInBusinessLogic {
                             if let cookies = HTTPCookieStorage.shared.cookies {
                                 for cookie in cookies { HTTPCookieStorage.shared.deleteCookie(cookie) }
                             }
-                            completion()
+                            completionBox.call()
                         }
                     }
                     return
@@ -307,6 +406,7 @@ extension TPPSignInBusinessLogic {
         } else if selectedAuthentication?.samlLogoutHref != nil {
             samlLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
                 guard let self = self else {
+                    let completionBox = SignOutCompletionBox(completion)
                     DispatchQueue.main.async {
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
@@ -314,7 +414,7 @@ extension TPPSignInBusinessLogic {
                             if let cookies = HTTPCookieStorage.shared.cookies {
                                 for cookie in cookies { HTTPCookieStorage.shared.deleteCookie(cookie) }
                             }
-                            completion()
+                            completionBox.call()
                         }
                     }
                     return
@@ -339,6 +439,10 @@ extension TPPSignInBusinessLogic {
         }
         #endif
 
+        // Swift 6 `complete`: box the non-Sendable `completion` before the WebKit
+        // `removeData` `@Sendable` completion closure captures it (see
+        // `SignOutCompletionBox`); invoked once on the main queue.
+        let completionBox = SignOutCompletionBox(completion)
         // WebKit operations MUST run on the main thread
         DispatchQueue.main.async {
             let dataStore = WKWebsiteDataStore.default()
@@ -355,39 +459,72 @@ extension TPPSignInBusinessLogic {
                     }
                 }
 
-                completion()
+                completionBox.call()
             }
         }
     }
 
     #if FEATURE_DRM_CONNECTOR
     private func deauthorizeDevice() {
-        guard let licensor = userAccount.licensor else {
-            Log.warn(#file, "No Licensor available to deauthorize device. Will remove user credentials anyway.")
+        let licensor = userAccount.licensor
+
+        // Signing out is the only thing that returns an Adobe activation slot,
+        // so every way of not doing it is worth naming. `attempt` is nil only
+        // when there is no licensor at all — nothing to authenticate with and
+        // nothing for RMSDK to clear.
+        guard let attempt = AdobeDeauthorization.attempt(licensor: licensor,
+                                                         userID: userAccount.userID,
+                                                         deviceID: userAccount.deviceID) else {
+            Log.error(#file, "Cannot deauthorize this device — the activation stays consumed. Signing out locally anyway.")
             TPPErrorLogger.logInvalidLicensor(withAccountID: libraryAccountID)
             completeLogOutProcess()
             return
         }
 
-        var licensorItems = (licensor["clientToken"] as? String)?
-            .replacingOccurrences(of: "\n", with: "")
-            .components(separatedBy: "|")
-        let tokenPassword = licensorItems?.last
-        licensorItems?.removeLast()
-        let tokenUsername = licensorItems?.joined(separator: "|")
-        let adobeUserID = userAccount.userID
-        let adobeDeviceID = userAccount.deviceID
+        // A licensor whose client token will not split cannot authenticate, so
+        // the server-side slot is already lost. The call still goes out: RMSDK
+        // clears the LOCAL activation whatever the network answers, and that
+        // clear is what lets the next sign-in re-activate. Refusing to call it
+        // would withhold the repair from the patron who most needs it while
+        // freeing nothing extra.
+        if !attempt.canReleaseServerSlot {
+            Log.error(#file, "Adobe client token is unparseable at sign-out — the activation slot will NOT be freed; deauthorizing anyway for the local clear (PP-3649). Token: \(AdobeClientToken.redacted(licensor?["clientToken"] as? String))")
+            TPPErrorLogger.logInvalidLicensor(withAccountID: libraryAccountID)
+        }
+
+        // The CM's short client token lives 60 minutes (see AdobeLicensorRefresh).
+        // On the sign-out paths that could not read a fresh profile document we
+        // are about to spend the attempt on a token we can already see is dead;
+        // say so, because otherwise the resulting leak has no cause in any log.
+        // Computed here rather than inside the completion: `[String: Any]?` is
+        // not Sendable and the deauthorize callback is `@Sendable`. A Bool is.
+        let licensorWasExpired = AdobeLicensorRefresh.isExpired(licensor)
+        if licensorWasExpired {
+            Log.error(#file, "Adobe licensor is past its expiry at sign-out — deauthorization will be rejected and the activation slot will leak (PP-3649)")
+        }
 
         if let drmAuthorizer = drmAuthorizer {
             drmAuthorizer.deauthorize(
-                withUsername: tokenUsername,
-                password: tokenPassword,
-                userID: adobeUserID,
-                deviceID: adobeDeviceID) { [weak self] success, error in
-                if !success {
-                    // DRM deauthorization failures are expected (e.g., E_DEACT_USER_MISMATCH when user changes PIN)
-                    // Just log locally and continue - the user should still be able to log out
-                    Log.warn(#file, "DRM deauthorization failed (expected): \(error?.localizedDescription ?? "unknown")")
+                withUsername: attempt.username,
+                password: attempt.password,
+                userID: attempt.userID,
+                deviceID: attempt.deviceID) { [weak self] success, error in
+                if case .notFreed(let reason) = AdobeDeauthorization.outcome(success: success, error: error) {
+                    // Not "expected". E_DEACT_USER_MISMATCH explains the cause
+                    // and changes nothing about the consequence: the patron is
+                    // one activation closer to the ceiling, with no way to see
+                    // it and no way to undo it.
+                    Log.error(#file, "Adobe deauthorization failed — activation slot NOT freed: \(reason)")
+
+                    // Reported so the fleet-wide rate is measurable. Until now
+                    // the only evidence a leak had happened was the patron
+                    // eventually hitting E_ACT_TOO_MANY_ACTIVATIONS, by which
+                    // point the sign-out that caused it was long gone.
+                    TPPErrorLogger.logError(
+                        withCode: .invalidLicensor,
+                        summary: "SignOut: Adobe activation NOT released",
+                        metadata: ["reason": reason,
+                                   "licensorWasExpired": licensorWasExpired])
                 }
 
                 // Check if self was deallocated during the DRM callback
@@ -415,7 +552,18 @@ extension TPPSignInBusinessLogic {
                     return
                 }
 
-                strongSelf.completeLogOutProcess()
+                // Swift 6: the DRM deauthorize completion is `@Sendable` and fires
+                // off the main actor (Adobe deauth thread); `completeLogOutProcess()`
+                // is `@MainActor`-isolated (the whole type is `@MainActor`). Hop onto
+                // the main actor to call it. `strongSelf` is a `@MainActor` class and
+                // therefore Sendable, so the capture is safe. This also corrects the
+                // latent off-main execution of the credential/WebKit cleanup that
+                // Swift 5 did not enforce across the `@Sendable` boundary; the stale-
+                // callback validity check at the top of `completeLogOutProcess()`
+                // remains correct when it runs one main-runloop turn later.
+                Task { @MainActor in
+                    strongSelf.completeLogOutProcess()
+                }
             }
         } else {
             self.completeLogOutProcess()

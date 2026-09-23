@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// Main stats tab showing streak, reading chart, key stats, and recent badges.
-@available(iOS 16.0, *)
 struct StatsView: View {
   @ObservedObject var viewModel: StatsViewModel
   let badgesViewModel: BadgesViewModel
@@ -39,6 +38,7 @@ struct StatsView: View {
           Image(systemName: "flame.fill")
             .font(.title)
             .foregroundStyle(.orange)
+            .symbolEffect(.bounce, value: viewModel.currentStreak.currentStreakDays)
             .accessibilityHidden(true)
         } else {
           Image(systemName: "flame")
@@ -71,7 +71,7 @@ struct StatsView: View {
       } label: {
         Text("Details")
           .font(.subheadline)
-          .foregroundColor(.accentColor)
+          .foregroundStyle(Color.accentColor)
       }
     }
     .padding()

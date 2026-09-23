@@ -99,6 +99,7 @@ private enum SAMLSLOFixtures {
 
 // MARK: - Auth-document parsing
 
+@MainActor
 final class SAMLLogoutLinkParsingTests: XCTestCase {
 
     func testSAMLAuth_ParsesLogoutHref_FromAuthDocument() throws {
@@ -162,6 +163,7 @@ final class SAMLLogoutLinkParsingTests: XCTestCase {
 
 // MARK: - URL construction
 
+@MainActor
 final class SAMLLogoutURLTests: XCTestCase {
 
     func testSAMLLogoutURL_ExpandsTemplateWithRedirectURI() throws {
@@ -208,6 +210,7 @@ final class SAMLLogoutURLTests: XCTestCase {
 
 // MARK: - isSAMLLogoutCallbackRedirect detection
 
+@MainActor
 final class SAMLLogoutCallbackDetectionTests: XCTestCase {
 
     func testCallbackSchemeError_DetectedAsSuccess() {

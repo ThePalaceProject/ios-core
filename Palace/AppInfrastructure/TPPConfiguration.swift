@@ -66,10 +66,12 @@ import UIKit
     return 100
   }
 
+  @MainActor
   @objc static func defaultAppearance() -> UINavigationBarAppearance {
     return appearance(withBackgroundColor: backgroundColor())
   }
 
+  @MainActor
   @objc static func appearance(withBackgroundColor backgroundColor: UIColor) -> UINavigationBarAppearance {
     let appearance = UINavigationBarAppearance()
     appearance.configureWithOpaqueBackground()

@@ -22,6 +22,7 @@ import XCTest
 /// `docs/architecture/ws4-mac-validation-runbook.md`.
 ///
 /// See PalaceTests/RegressionGuards/README.md for the full crash narrative.
+@MainActor
 final class iPadOnMacRMSDKGuardTests: XCTestCase {
 
     func testProcessInfoExposes_isiOSAppOnMac_OnSupportedSDKs() {

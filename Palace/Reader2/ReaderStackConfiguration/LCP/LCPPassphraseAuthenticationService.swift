@@ -1,13 +1,28 @@
+import PalaceBookRegistry
 #if LCP
 
 import Foundation
-import ReadiumLCP
+import PalacePreferences
+// Swift 6 `complete`: `LCPAuthenticatedLicense` / `LCPAuthenticationReason` are
+// ReadiumLCP types that are not Sendable-audited upstream, so passing the inbound
+// `license` from the `nonisolated async` `retrievePassphrase` into the sibling
+// `retrievePassphraseFromLoan` trips a region-isolation `sending` diagnostic.
+// `@preconcurrency` is the honest ceiling until Readium annotates these — matches
+// `@preconcurrency import ReadiumShared` in the sibling AdobeDRM files.
+@preconcurrency import ReadiumLCP
 import PalaceCatalog
 
 /**
  For Passphrase in License Document, see https://readium.org/lcp-specs/releases/lcp/latest#41-introduction
  */
-class LCPPassphraseAuthenticationService: LCPAuthenticating {
+// `@unchecked Sendable` (Swift 6 complete-mode): all stored state is immutable
+// `let` (bookRegistry/accountsManager/networkExecutor/settings — each Sendable or
+// documented `@unchecked Sendable`); no mutable instance state (the transient
+// `passphraseField` is a local inside the alert closure, not stored). The
+// `nonisolated async` `retrievePassphrase` therefore sends a race-free `self`
+// into the sibling `retrievePassphraseFromLoan`. Matches the sibling LCP types
+// `LCPLibraryService` / `TPPLicensesService`. `final` to keep the invariant.
+final class LCPPassphraseAuthenticationService: LCPAuthenticating, @unchecked Sendable {
 
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
@@ -26,7 +41,11 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
         self.settings = settings
     }
 
-    private func retrievePassphraseFromLoan(for license: LCPAuthenticatedLicense, reason: LCPAuthenticationReason, allowUserInteraction: Bool, sender: Any?) async -> String? {
+    // Swift 6 `complete`: `sender` (`Any?`) was forwarded here but never used in
+    // this helper. Passing an opaque `Any?` across the `async` call boundary
+    // tripped a region-isolation `sending 'sender'` diagnostic. Dropping the
+    // unused parameter removes the send entirely — no box, no behavior change.
+    private func retrievePassphraseFromLoan(for license: LCPAuthenticatedLicense, reason: LCPAuthenticationReason, allowUserInteraction: Bool) async -> String? {
         let licenseId = license.document.id
         let registry = bookRegistry
 
@@ -126,35 +145,45 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
 
         if settings.enterLCPPassphraseManually {
             return await withCheckedContinuation { continuation in
-                var passphraseField: UITextField?
-                let ac = UIAlertController(title: "Enter LCP Passphrase", message: license.hint, preferredStyle: .alert)
+                // `withCheckedContinuation` runs its body synchronously on the caller's
+                // executor, which for this `nonisolated async` method is the generic
+                // cooperative pool — NOT guaranteed main. A bare `MainActor.assumeIsolated`
+                // would be unsound. Hop the UIKit alert build+present onto main explicitly.
+                // The continuation is captured by the action handlers and resumed there
+                // (on main, from the tapped button), so the resume semantics are preserved.
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        var passphraseField: UITextField?
+                        let ac = UIAlertController(title: "Enter LCP Passphrase", message: license.hint, preferredStyle: .alert)
 
-                let doneAction = UIAlertAction(title: "Done", style: .default) { _ in
-                    continuation.resume(returning: passphraseField?.text)
+                        let doneAction = UIAlertAction(title: "Done", style: .default) { _ in
+                            continuation.resume(returning: passphraseField?.text)
+                        }
+
+                        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
+                            continuation.resume(returning: nil)
+                        }
+
+                        ac.addAction(doneAction)
+                        ac.addAction(cancelAction)
+
+                        ac.addTextField { textField in
+                            textField.placeholder = "Passphrase"
+                            textField.autocapitalizationType = .none
+                            textField.autocorrectionType = .no
+                            textField.spellCheckingType = .no
+                            textField.keyboardType = .default
+                            textField.returnKeyType = .done
+                            textField.isSecureTextEntry = true
+                            passphraseField = textField
+                        }
+
+                        TPPAlertUtils.presentFromViewControllerOrNil(alertController: ac, viewController: nil, animated: true, completion: nil)
+                    }
                 }
-
-                let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
-                    continuation.resume(returning: nil)
-                }
-
-                ac.addAction(doneAction)
-                ac.addAction(cancelAction)
-
-                ac.addTextField { textField in
-                    textField.placeholder = "Passphrase"
-                    textField.autocapitalizationType = .none
-                    textField.autocorrectionType = .no
-                    textField.spellCheckingType = .no
-                    textField.keyboardType = .default
-                    textField.returnKeyType = .done
-                    textField.isSecureTextEntry = true
-                    passphraseField = textField
-                }
-
-                TPPAlertUtils.presentFromViewControllerOrNil(alertController: ac, viewController: nil, animated: true, completion: nil)
             }
         } else {
-            return await retrievePassphraseFromLoan(for: license, reason: reason, allowUserInteraction: allowUserInteraction, sender: sender)
+            return await retrievePassphraseFromLoan(for: license, reason: reason, allowUserInteraction: allowUserInteraction)
         }
     }
 

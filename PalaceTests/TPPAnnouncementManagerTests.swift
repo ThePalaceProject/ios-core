@@ -1,6 +1,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class TPPAnnouncementManagerTests: XCTestCase {
     let announcementId = "test_announcement_id"
 

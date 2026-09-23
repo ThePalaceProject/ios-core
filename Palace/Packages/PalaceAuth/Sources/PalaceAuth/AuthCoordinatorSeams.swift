@@ -97,7 +97,7 @@ public protocol SignInModalPresenting: AnyObject, Sendable {
 ///
 /// The full ~17-method split is Phase 3 trunk-move scope per
 /// `docs/3.2.0-auth-deps.md` and explicitly out of scope here.
-public protocol TPPUserAccountReading: AnyObject {
+public protocol TPPUserAccountReading: AnyObject, Sendable {
     /// True when there's a stored credential (bearer token, basic pair,
     /// or SAML cookies). Persisted in keychain per library UUID.
     var hasCredentials: Bool { get }
@@ -112,7 +112,7 @@ public protocol TPPUserAccountReading: AnyObject {
 
 /// Narrow write slice of `TPPUserAccount`. The coordinator only writes
 /// the credentials-stale marker before fanning out a refresh attempt.
-public protocol TPPUserAccountWriting: AnyObject {
+public protocol TPPUserAccountWriting: AnyObject, Sendable {
     /// Mark the current credentials as stale so that the next consumer
     /// observes `authState == .credentialsStale` and waits for the
     /// coordinator's re-auth result instead of issuing a fresh request

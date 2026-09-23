@@ -7,20 +7,44 @@
 //
 
 import SwiftUI
+import PalacePreferences
 import PalaceUIKit
+import PalaceBookModel
+import PalaceBookRegistry
+import TriageBotCore
 
 struct TPPSettingsView: View {
     typealias DisplayStrings = Strings.Settings
 
     @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
     @AppStorage(TPPSettings.downloadOnlyOnWiFiKey) private var downloadOnlyOnWiFi: Bool = false
+    // PP-4712: patron-configurable audiobook skip intervals (seconds), bound to
+    // the same UserDefaults keys the player reads via AudiobookSkipIntervalSettings.
+    @AppStorage(AudiobookSkipIntervalSettings.forwardKey) private var skipForwardInterval: Int = AudiobookSkipIntervalSettings.defaultInterval
+    @AppStorage(AudiobookSkipIntervalSettings.backKey) private var skipBackInterval: Int = AudiobookSkipIntervalSettings.defaultInterval
     /// Subscribes to the dev-settings triage bot local override so the
     /// support section appears/disappears the moment the toggle flips.
     /// Effective gating still goes through
-    /// `RemoteFeatureFlags.shared.isTriageBotEnabled` (which folds in the
+    /// `appContainer.featureFlags.isTriageBotEnabled` (which folds in the
     /// DEBUG-default-on and Firebase fallback). The @AppStorage read in
     /// `supportSection` registers the SwiftUI observation.
     @AppStorage("RemoteFeatureFlags.triageBotLocalOverride") private var triageBotLocalOverride: Bool = false
+    /// Subscribes to the side-loading local override so the "Side Loading"
+    /// section appears/disappears the moment the dev-menu toggle flips.
+    /// Effective gating still runs through
+    /// `appContainer.featureFlags.isSideLoadingEnabled` (read in
+    /// `sideLoadingSection`), whose precedence is local override > Firebase
+    /// remote (default off); this @AppStorage read registers the observation.
+    @AppStorage(RemoteFeatureFlags.sideLoadingLocalOverrideKey) private var sideLoadingLocalOverride: Bool = false
+    /// PP-4884: the patron's "Include diagnostics" choice. Bound to the exact
+    /// key the triage bot's gating context provider reads
+    /// (`UserDefaultsDiagnosticsPreference.defaultsKey`), so flipping this switch
+    /// changes what the bot collects with no other wiring. Default ON — the bot
+    /// is most useful to support with full context; a privacy-conscious patron
+    /// can turn it off to send only app + device version.
+    @AppStorage(UserDefaultsDiagnosticsPreference.defaultsKey) private var includeTriageDiagnostics: Bool = true
+    /// Feature-flag read seam (Wave 1b), resolved from the environment.
+    @Environment(\.appContainer) private var appContainer
     @State private var selectedView: Int? = 0
     @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
     @State private var switchPromptAccount: Account? = nil
@@ -77,7 +101,7 @@ struct TPPSettingsView: View {
                     .tint(.white)
                 Text(DisplayStrings.switchingLibrary)
                     .palaceFont(.body)
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
             }
             .padding(28)
             .background(
@@ -96,19 +120,34 @@ struct TPPSettingsView: View {
     @ViewBuilder private var placeholderDetail: some View {
         Text(DisplayStrings.settings)
             .palaceFont(.body)
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var listView: some View {
         List {
-            librariesSection
+            // During the launch-hydration window the persisted-account lookup
+            // can resolve empty before the full catalog materializes; show a
+            // skeleton for the MY LIBRARIES section instead of a blank list
+            // that pops in. Cross-fades to the real section via the shared
+            // gentle motion (Reduce Motion drops the animation).
+            if librariesVM.isLoading || DebugSettings.forceSkeletons {
+                SettingsLibrariesSkeletonView()
+                    .transition(.opacity)
+            } else {
+                librariesSection
+                    .transition(.opacity)
+            }
             downloadsSection
+            playbackSection
             supportSection
+            advancedSection
+            sideLoadingSection
             infoSection
             developerSettingsSection
         }
         .navigationBarTitle(DisplayStrings.settings)
         .listStyle(GroupedListStyle())
+        .accessibleAnimation(PalaceMotion.gentle, value: librariesVM.isLoading)
         .onAppear {
             librariesVM.refresh()
         }
@@ -130,7 +169,7 @@ struct TPPSettingsView: View {
                         // parked on Settings.
                         librariesVM.showAddLibrarySheet = false
                         librariesVM.switchToAccount(account) {
-                            AppContainer.production().tabRouterHub.navigate(to: .catalog)
+                            AppContainer.production().navigateToTabRoot(.catalog)
                         }
                     }
                 },
@@ -158,6 +197,11 @@ struct TPPSettingsView: View {
                     }
             }
         }
+        // Animate add/delete of libraries (list identity keyed on the account
+        // uuids) and fire a success haptic when the current library switches
+        // (the checkmark moves to the newly-active row).
+        .accessibleAnimation(PalaceMotion.standard, value: librariesVM.accounts.map(\.uuid))
+        .palaceHaptic(.success, trigger: librariesVM.currentAccountUUID)
         .confirmationDialog(
             switchPromptTitle,
             isPresented: Binding(
@@ -174,7 +218,7 @@ struct TPPSettingsView: View {
             Button(Strings.Generic.yes) {
                 if let account = switchPromptAccount {
                     librariesVM.switchToAccount(account) {
-                        AppContainer.production().tabRouterHub.navigate(to: .catalog)
+                        AppContainer.production().navigateToTabRoot(.catalog)
                     }
                 }
                 switchPromptAccount = nil
@@ -250,9 +294,33 @@ struct TPPSettingsView: View {
                     .accessibilityLabel(DisplayStrings.downloadOnlyOnWiFi)
                 Text(DisplayStrings.downloadOnlyOnWiFiDescription)
                     .font(.footnote)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
+        }
+    }
+
+    // PP-4712: audiobook skip-interval controls. Each direction is independent;
+    // the pickers only offer valid options, so no out-of-range value can be set.
+    @ViewBuilder private var playbackSection: some View {
+        Section(header: Text(DisplayStrings.playback)) {
+            Picker(DisplayStrings.skipForwardInterval, selection: $skipForwardInterval) {
+                ForEach(AudiobookSkipIntervalSettings.options, id: \.self) { seconds in
+                    Text(DisplayStrings.skipIntervalSeconds(seconds)).tag(seconds)
+                }
+            }
+            .accessibilityIdentifier("settings.skipForwardInterval")
+            .accessibilityLabel(DisplayStrings.skipForwardInterval)
+            Picker(DisplayStrings.skipBackInterval, selection: $skipBackInterval) {
+                ForEach(AudiobookSkipIntervalSettings.options, id: \.self) { seconds in
+                    Text(DisplayStrings.skipIntervalSeconds(seconds)).tag(seconds)
+                }
+            }
+            .accessibilityIdentifier("settings.skipBackInterval")
+            .accessibilityLabel(DisplayStrings.skipBackInterval)
+            Text(DisplayStrings.skipIntervalDescription)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -273,7 +341,7 @@ struct TPPSettingsView: View {
         // triage bot is off (production Firebase default), fall back to the
         // legacy email report path so support stays reachable.
         let decision = SupportSectionDecision.decide(
-            isTriageBotEnabled: RemoteFeatureFlags.shared.isTriageBotEnabled,
+            isTriageBotEnabled: appContainer.featureFlags.isTriageBotEnabled,
             currentAccount: AppContainer.production().accountsManager.currentAccount
         )
         Section(header: Text("Support")) {
@@ -284,6 +352,22 @@ struct TPPSettingsView: View {
                 row(title: "Get Help", index: 10, selection: self.$selectedView, destination: wrapper)
                     .accessibilityIdentifier("settings.row.getHelp")
                     .accessibilityLabel("Get Help — chat with our support bot")
+                // PP-4884: give a privacy-conscious patron a way to send fewer
+                // diagnostics. Only shown when the bot is active (the toggle is
+                // moot when no support ticket is ever assembled). The bot honors
+                // this via DiagnosticsGatingContextProvider — no other wiring.
+                // COPY PENDING PRODUCT SIGN-OFF (PP-4884 done-criterion).
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $includeTriageDiagnostics) {
+                        Text("Include diagnostics")
+                            .palaceFont(.body)
+                    }
+                    .accessibilityIdentifier("settings.row.includeDiagnostics")
+                    Text("When on, a support ticket includes your app and device version, network state, and a short tail of recent activity so support can solve problems faster. Turn it off to send only your app and device version.")
+                        .palaceFont(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             case .legacyEmail(let address):
                 Button {
                     presentLegacyReportIssue(to: address)
@@ -303,11 +387,15 @@ struct TPPSettingsView: View {
     /// is always safe to offer. Mirrors `AccountDetailView.handleReportIssue`.
     private func presentLegacyReportIssue(to address: String) {
         guard let topVC = topViewController() else { return }
+        let accountsManager = AppContainer.production().accountsManager
+        let ctx = accountsManager.problemReportContext(forLibrary: accountsManager.currentAccount?.uuid)
         ProblemReportEmail.sharedInstance.beginComposing(
             to: address,
             presentingViewController: topVC,
             book: nil as TPPBook?,
-            libraryUUID: AppContainer.production().accountsManager.currentAccount?.uuid
+            patronIdentifier: ctx.patronIdentifier,
+            libraryName: ctx.libraryName,
+            libraryUUID: ctx.libraryUUID
         )
     }
 
@@ -320,6 +408,26 @@ struct TPPSettingsView: View {
             current = presented
         }
         return current
+    }
+
+    /// PP-2677 side-loading: a test-only entry to the Side Loading screen,
+    /// rendered ONLY when the feature flag is on. Row visibility depends on the
+    /// cheap flag read; the import/manage machinery lives inside
+    /// `SideLoadingView` and is resolved lazily at navigation time.
+    @ViewBuilder private var sideLoadingSection: some View {
+        // Register the @AppStorage observation so the section shows/hides the
+        // instant the dev-menu override flips; effective value still runs
+        // through isSideLoadingEnabled (local override > Firebase remote) below.
+        let _ = sideLoadingLocalOverride
+        if appContainer.featureFlags.isSideLoadingEnabled {
+            Section(header: Text("Side Loading")) {
+                let destination = SideLoadingView(
+                    manager: AppContainer.production().sideloadedBookManager
+                ).anyView()
+                row(title: "Side Loading", index: 11, selection: self.$selectedView, destination: destination)
+                    .accessibilityIdentifier("settings.row.sideLoading")
+            }
+        }
     }
 
     @ViewBuilder private var infoSection: some View {
@@ -391,15 +499,32 @@ struct TPPSettingsView: View {
             .accessibilityIdentifier(AccessibilityID.Settings.softwareLicensesButton)
     }
 
+    /// PP-4788: always-visible Advanced menu (no gesture required) hosting the
+    /// patron-facing support functions — Send Error Logs + Data & Reset — that
+    /// previously lived only in the gesture-gated Testing menu. Support can now
+    /// direct patrons here without walking them through the hidden long-press.
+    @ViewBuilder private var advancedSection: some View {
+        Section {
+            row(title: DisplayStrings.advanced, index: 7, selection: self.$selectedView,
+                destination: AppAdvancedSettingsView()
+                    .navigationBarTitle(Text(DisplayStrings.advanced))
+                    .anyView())
+                .accessibilityIdentifier(AccessibilityID.Settings.advancedButton)
+        }
+    }
+
     @ViewBuilder private var developerSettingsSection: some View {
         if AppContainer.production().settings.customMainFeedURL == nil && showDeveloperSettings {
             Section(header: Text(DisplayStrings.developerSettings).accessibilityHidden(true), footer: versionInfo) {
-                let viewController = TPPDeveloperSettingsTableViewController()
-
-                let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-                    .navigationBarTitle(Text(DisplayStrings.developerSettings))
-
-                row(title: DisplayStrings.developerSettings, index: 6, selection: self.$selectedView, destination: wrapper.anyView())
+                // PP-4788: the Testing screen is now SwiftUI (DeveloperSettingsView),
+                // replacing TPPDeveloperSettingsTableViewController. Still gated on the
+                // version-number long-press unlock (showDeveloperSettings) — unchanged.
+                // Engineering-tier sections only; the patron-facing Send Error Logs +
+                // Data & Reset now live in the always-visible Advanced menu below.
+                row(title: DisplayStrings.developerSettings, index: 6, selection: self.$selectedView,
+                    destination: DeveloperSettingsView()
+                        .navigationBarTitle(Text(DisplayStrings.developerSettings))
+                        .anyView())
             }
         }
     }
@@ -503,21 +628,16 @@ private struct LibraryRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                if isCurrent {
-                    Image(systemName: "checkmark.circle.fill")
-                        .resizable()
-                        .frame(width: 22, height: 22)
-                        .foregroundColor(.green)
-                } else {
-                    Image(systemName: "circle")
-                        .resizable()
-                        .frame(width: 22, height: 22)
-                        .foregroundColor(.secondary.opacity(0.4))
-                }
-            }
-            .frame(width: 28)
-            .accessibilityHidden(true)
+            // Single symbol whose glyph swaps circle <-> checkmark.circle.fill so
+            // the SF Symbol `.replace` effect can cross-fade the selection state.
+            Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
+                .resizable()
+                .frame(width: 22, height: 22)
+                .foregroundStyle(isCurrent ? Color.green : Color.secondary.opacity(0.4))
+                .contentTransition(.symbolEffect(.replace))
+                .accessibleAnimation(PalaceMotion.standard, value: isCurrent)
+                .frame(width: 28)
+                .accessibilityHidden(true)
 
             Image(uiImage: displayLogo)
                 .resizable()
@@ -532,7 +652,7 @@ private struct LibraryRowView: View {
                 if let subtitle = account.subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.footnote)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
             }
@@ -571,21 +691,25 @@ private struct LibraryRowView: View {
 
 /// AccountLogoDelegate forwarder used by `LibraryRowView` because SwiftUI
 /// `View` structs can't directly conform to ObjC delegate protocols.
-private final class LogoLoadProxy: NSObject, AccountLogoDelegate {
+@MainActor
+private final class LogoLoadProxy: NSObject, @preconcurrency AccountLogoDelegate {
     private let onUpdate: (UIImage) -> Void
     init(onUpdate: @escaping (UIImage) -> Void) {
         self.onUpdate = onUpdate
     }
+    // `Account` invokes this on the main thread (its logo fetch delivers via
+    // `DispatchQueue.main.async`), so the forwarding runs on the main actor
+    // without an extra hop.
     func logoDidUpdate(in account: Account, to newLogo: UIImage) {
-        DispatchQueue.main.async { [onUpdate] in
-            onUpdate(newLogo)
-        }
+        onUpdate(newLogo)
     }
 }
 
 /// Account.logoDelegate is held weakly. Park proxies here so a row's
 /// in-flight logo load isn't dropped when the proxy goes out of scope.
-private final class LogoProxyHolder {
+/// Lock-backed holder — `@unchecked Sendable` because all access to `proxies`
+/// is serialized through `lock`.
+private final class LogoProxyHolder: @unchecked Sendable {
     static let shared = LogoProxyHolder()
     private var proxies: [String: LogoLoadProxy] = [:]
     private let lock = NSLock()

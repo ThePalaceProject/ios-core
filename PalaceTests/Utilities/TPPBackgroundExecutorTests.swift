@@ -48,6 +48,7 @@ private class MockBackgroundWorkOwner: NSObject, NYPLBackgroundWorkOwner {
 
 // MARK: - Tests
 
+@MainActor
 final class TPPBackgroundExecutorTests: XCTestCase {
 
     func testExecutorCallsSetUpWorkItem() {

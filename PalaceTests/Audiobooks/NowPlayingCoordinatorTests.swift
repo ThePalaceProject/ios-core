@@ -325,7 +325,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
     // MARK: - Debouncing Tests
 
     /// SRS: AUDIO-005 -- Now Playing info updates correctly
-    func testUpdateNowPlaying_rapidUpdates_lastOneWins() {
+    func testUpdateNowPlaying_rapidUpdates_lastOneWins() async {
         // Send many updates rapidly
         for i in 0..<10 {
             coordinator.updateNowPlaying(
@@ -340,13 +340,11 @@ final class NowPlayingCoordinatorTests: XCTestCase {
         }
 
         // Production debounce schedules a `Task { try await Task.sleep(...) }`
-        // (NowPlayingCoordinator.swift L282-292). Tasks don't hop the main
-        // queue, so `drainMainQueue` would miss the resolution — poll the
-        // observable system signal instead.
-        awaitCondition(timeout: 5) {
-            let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
-            return (info?[MPMediaItemPropertyTitle] as? String) == "Chapter 9"
-        }
+        // (NowPlayingCoordinator.swift). Deterministically JOIN that debounce
+        // Task via the `_awaitPendingUpdateForTesting()` seam instead of polling
+        // `MPNowPlayingInfoCenter` against a fixed wall-clock deadline, which
+        // starves under CI oversubscription.
+        await coordinator._awaitPendingUpdateForTesting()
 
         let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
         let title = info?[MPMediaItemPropertyTitle] as? String

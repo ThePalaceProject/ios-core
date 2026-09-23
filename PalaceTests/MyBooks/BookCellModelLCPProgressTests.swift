@@ -19,6 +19,7 @@
 import Combine
 import XCTest
 import PalaceCatalog
+import PalaceBookModel
 @testable import Palace
 
 @MainActor

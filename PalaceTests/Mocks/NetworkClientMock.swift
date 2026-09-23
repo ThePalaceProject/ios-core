@@ -14,7 +14,11 @@ import PalaceNetwork
 
 /// Mock implementation of NetworkClient for isolated testing of network-dependent code.
 /// Thread-safe: all mutable state is protected by a lock for concurrent test scenarios.
-final class NetworkClientMock: NetworkClient {
+/// Test double whose mutable stubs are guarded by `lock` and configured on the
+/// test's serial flow; `@unchecked Sendable` documents that confinement (the
+/// inherited `NetworkClient: Sendable` requirement forbids plain mutable `var`s
+/// otherwise).
+final class NetworkClientMock: NetworkClient, @unchecked Sendable {
 
     private let lock = NSLock()
 

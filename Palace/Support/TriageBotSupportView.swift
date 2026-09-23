@@ -24,8 +24,13 @@ import TriageBotUI
 /// actually navigates here. If the factory returns nil at that moment, the
 /// user sees an explicit error state — not a disappeared Settings row.
 struct TriageBotSupportView: View {
+    /// Feature-flag read seam (Wave 1b), resolved from the environment and
+    /// handed to the factory so the bot's flag reads go through the injected
+    /// provider, not `.shared`.
+    @Environment(\.appContainer) private var appContainer
+
     var body: some View {
-        if let viewModel = TriageBotFactory.makeViewModel() as? TriageBotViewModel {
+        if let viewModel = TriageBotFactory.makeViewModel(featureFlags: appContainer.featureFlags) as? TriageBotViewModel {
             SupportChatView(viewModel: viewModel)
         } else {
             UnavailableView()
@@ -41,12 +46,12 @@ private struct UnavailableView: View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.largeTitle)
-                .foregroundColor(.orange)
+                .foregroundStyle(.orange)
             Text("Get Help is temporarily unavailable")
                 .font(.headline)
             Text("Please force-quit and reopen Palace, then try again. If the problem persists, email support@thepalaceproject.org.")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }

@@ -1,0 +1,8 @@
+# SYNTHETIC — hand-authored, all values FAKE. See Fixtures/README.md.
+2026-07-16T14:22:01Z [SignIn] basic-auth attempt for library "Morton Public Library"
+2026-07-16T14:22:01Z [Network] POST /patrons/me Authorization: Basic ZmFrZXVzZXI6ZmFrZXBhc3N3b3JkOTk5 Content-Type: application/json
+2026-07-16T14:22:01Z [SignIn] patron entered barcode: 21234000012345 pin: 4821
+2026-07-16T14:22:02Z [SignIn] free-text note: my pin is 4821 and it keeps failing
+2026-07-16T14:22:02Z [Network] 401 Unauthorized from https://circulation.example.org/patrons/me
+2026-07-16T14:22:03Z [SignIn] patron retried with password: hunter2-swordfish-fake
+2026-07-16T14:22:03Z [SignIn] account uuid ABCDEF12-3456-7890-ABCD-EF1234567890 patron patron-jane@example.com

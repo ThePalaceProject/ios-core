@@ -1,5 +1,7 @@
 import XCTest
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// Behavior tests for `HoldsReducer` — the pure-function core of
 /// HoldsViewModel's state machine. These tests exercise the reducer
@@ -12,7 +14,7 @@ final class HoldsReducerTests: XCTestCase {
     // MARK: - Fixtures
 
     private func makeEnv(
-        filter: @escaping (String, [TPPBook]) async -> [TPPBook] = { _, books in books }
+        filter: @escaping @Sendable (String, [TPPBook]) async -> [TPPBook] = { _, books in books }
     ) -> HoldsEnvironment {
         HoldsEnvironment(filterBooks: filter)
     }

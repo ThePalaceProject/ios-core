@@ -9,12 +9,15 @@
 //
 
 import XCTest
+import PalacePreferences
 import Combine
 @testable import PalaceCatalog
 @testable import Palace
+import PalaceBookRegistry
 
 // MARK: - AudiobookTimeEntry Tests
 
+@MainActor
 final class AudiobookTimeEntryTests: XCTestCase {
 
     // SRS: AudiobookTimeEntry stores all properties
@@ -93,6 +96,7 @@ final class AudiobookTimeEntryTests: XCTestCase {
 
 // MARK: - NotificationService.TokenData Tests
 
+@MainActor
 final class NotificationTokenDataTests: XCTestCase {
 
     // SRS: TokenData initializes with token and sets type
@@ -134,6 +138,7 @@ final class NotificationTokenDataTests: XCTestCase {
 
 // MARK: - NSNotification+TPP Tests
 
+@MainActor
 final class NSNotificationTPPTests: XCTestCase {
 
     // SRS: Notification.Name constants exist
@@ -147,7 +152,9 @@ final class NSNotificationTPPTests: XCTestCase {
         XCTAssertEqual(Notification.Name.TPPDidSignOut.rawValue, "TPPDidSignOut")
         XCTAssertEqual(Notification.Name.TPPIsSigningIn.rawValue, "TPPIsSigningIn")
         XCTAssertEqual(Notification.Name.TPPBookRegistryDidChange.rawValue, "TPPBookRegistryDidChange")
-        XCTAssertEqual(Notification.Name.TPPBookRegistryStateDidChange.rawValue, "TPPBookRegistryStateDidChange")
+        // .TPPBookRegistryStateDidChange was removed in swarm_8ce6f5ae WS3 (the
+        // registry dual-write kill) — its lifecycle/per-book signal moved to the
+        // registry's Combine publishers, so there is no longer a name to assert.
         XCTAssertEqual(Notification.Name.TPPBookProcessingDidChange.rawValue, "TPPBookProcessingDidChange")
         XCTAssertEqual(Notification.Name.TPPMyBooksDownloadCenterDidChange.rawValue, "TPPMyBooksDownloadCenterDidChange")
         XCTAssertEqual(Notification.Name.TPPBookDetailDidClose.rawValue, "TPPBookDetailDidClose")
@@ -171,6 +178,7 @@ final class NSNotificationTPPTests: XCTestCase {
 
 // MARK: - DPLAAudiobooks.DPLAError Tests
 
+@MainActor
 final class DPLAErrorTests: XCTestCase {
 
     // SRS: DPLAError requestError has readable description
@@ -198,6 +206,7 @@ final class DPLAErrorTests: XCTestCase {
 
 // MARK: - OPDSParser Tests
 
+@MainActor
 final class OPDSParserTests: XCTestCase {
 
     // SRS: OPDSParser.ParserError invalidXML has description

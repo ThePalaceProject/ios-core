@@ -7,7 +7,9 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class IntExtensionsTests: XCTestCase {
 
   /// `Int.ordinal()` follows English ordinal rules: 1st/2nd/3rd, then

@@ -26,6 +26,8 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+@testable import PalaceAuth
+import PalaceBookModel
 
 @MainActor
 final class BookReturnServiceContractTests: XCTestCase {
@@ -64,7 +66,8 @@ final class BookReturnServiceContractTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauth,
             userRetryTracker: retryTracker,
-            userAccountProvider: { [unowned self] in self.userAccount }
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
         )
         #else
         service = BookReturnService(
@@ -75,7 +78,8 @@ final class BookReturnServiceContractTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauth,
             userRetryTracker: retryTracker,
-            userAccountProvider: { [unowned self] in self.userAccount }
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
         )
         #endif
         service.delegate = purgeDelegate
@@ -130,9 +134,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         // out of scope for the unit-test snapshot.
         feedFetcher.stubbedError = PalaceError.parsing(.opdsFeedInvalid)
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "withRevokeURL_parsingErrorTreatedAsSuccess")
     }
@@ -144,9 +148,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         let book = Self.makeBook(identifier: "RET-NOURL", revokeURL: nil)
         registry.addBookStub(book, state: .downloadSuccessful)
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "withoutRevokeURL_skipsNetwork")
     }
@@ -170,12 +174,12 @@ final class BookReturnServiceContractTests: XCTestCase {
         feedFetcher.stubbedError = NSError(domain: "test", code: 401,
                                             userInfo: ["problemDocument": problemDoc])
 
-        let exp = expectation(description: "completion")
-        // The reauth path doesn't necessarily call completion if the
-        // recursive return doesn't fire — bail-out triggers
-        // announceReturnFailed + completion (line ~322 in service).
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 3.0)
+        // The reauth path completes when the recursive return bails out
+        // (no credentials restored) → announceReturnFailed + completion
+        // (line ~322 in service). We JOIN on that completion.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "authError_triggersReauth")
     }
@@ -192,9 +196,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         feedFetcher.stubbedError = NSError(domain: "test", code: 404,
                                             userInfo: ["problemDocument": problemDoc])
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "noActiveLoan_treatsAsSuccess")
     }
@@ -215,12 +219,174 @@ final class BookReturnServiceContractTests: XCTestCase {
         feedFetcher.stubbedError = NSError(domain: "test", code: 500,
                                             userInfo: ["problemDocument": problemDoc])
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "genericError_announcesFailure")
     }
+
+    // MARK: - Offline return -> enqueue (INV-3)
+
+    /// A genuine offline (`NSURLError`) revoke failure enqueues the return
+    /// and performs NO local cleanup. The contract must show the enqueue
+    /// and must NOT contain `localContent.deleteLocalContent`,
+    /// `registry.setState`, or `registry.removeBook` — the client stays
+    /// consistent with the server until the queued return is confirmed.
+    func test_returnBook_offlineError_enqueues_noLocalCleanup() async throws {
+        let book = Self.makeBook(identifier: "RET-OFFLINE",
+                                 revokeURL: URL(string: "http://example.com/revoke")!)
+        registry.addBookStub(book, state: .downloadSuccessful)
+
+        let log = self.log!
+        let offlineService = BookReturnService(
+            bookRegistry: registry,
+            localContentService: localContent,
+            opdsFeedService: feedFetcher,
+            downloadAnnouncementService: announce,
+            bookmarkDeletionLog: bookmarkLog,
+            reauthenticator: reauth,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { action in
+                log.record("queue.enqueue",
+                           args: ["type": action.type.rawValue, "bookId": action.bookID])
+            }
+        )
+        offlineService.delegate = purgeDelegate
+
+        feedFetcher.stubbedError = NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet)
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            offlineService.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
+
+        ContractSnapshot.assert(log, named: "offlineError_enqueues_noLocalCleanup")
+    }
+
+    // MARK: - Loan-term-limit cleanup (E1: distinct isLoanGone arm)
+
+    /// The `isLoanGone` predicate is `type == NoActiveLoan || detail
+    /// contains DetailLoanTermLimitReached`. `noActiveLoan_treatsAsSuccess`
+    /// pins the FIRST arm; this pins the SECOND — a problem doc whose *detail*
+    /// (not type) signals the loan term expired must ALSO clean up locally and
+    /// announce success. A mutant dropping the `||` detail arm would strand
+    /// the patron in a generic failure alert instead of a clean return.
+    func test_returnBook_loanTermLimitDetail_treatsAsSuccess_cleansUpLocally() async throws {
+        let book = Self.makeBook(identifier: "RET-LTL", revokeURL: URL(string: "http://example.com/revoke")!)
+        registry.addBookStub(book, state: .downloadSuccessful)
+
+        // Non-no-active-loan type, but detail carries the loan-term-limit marker.
+        let problemDoc = Self.makeProblemDoc(type: "https://example.com/expired",
+                                              detail: TPPProblemDocument.DetailLoanTermLimitReached)
+        feedFetcher.stubbedError = NSError(domain: "test", code: 403,
+                                           userInfo: ["problemDocument": problemDoc])
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
+
+        ContractSnapshot.assert(log, named: "loanTermLimitDetail_treatsAsSuccess_cleansUpLocally")
+    }
+
+    // MARK: - Coordinator-routed auth error (E1: AuthCoordinator fan-out)
+
+    /// swarm_66819d80 Module C route: when an `AuthCoordinator` is injected,
+    /// an invalid-credentials revoke failure dispatches through
+    /// `coordinator.refreshCredentialsIfNeeded(reason: .invalidCredentials)`
+    /// instead of the legacy `reauthenticator`. On coordinator SUCCESS the
+    /// service RETRIES the return (`returnBook` re-enters). We stage the retry
+    /// fetch to hit the parsing-as-success branch so the flow terminates with
+    /// a clean local cleanup — pinning the full outer+retry ordered contract.
+    func test_returnBook_coordinatorAuthError_success_retriesAndCompletes() async throws {
+        let book = Self.makeBook(identifier: "RET-COORD-OK",
+                                 revokeURL: URL(string: "http://example.com/revoke")!)
+        registry.addBookStub(book, state: .downloadSuccessful)
+
+        // Token mechanism + modal-succeeds → refreshCredentialsIfNeeded returns .success.
+        let (coordinator, _, _, _, _) = SpyAuthCoordinatorFactory.make(
+            mechanism: .token, stubModalResult: true)
+
+        // First fetch: 401 invalid-credentials → coordinator route.
+        // Second fetch (post-refresh retry): parsing-invalid → treat-as-success cleanup.
+        let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        let fetcher = SequencedFeedFetcher(errors: [
+            NSError(domain: "test", code: 401, userInfo: ["problemDocument": problemDoc]),
+            PalaceError.parsing(.opdsFeedInvalid)
+        ])
+
+        let coordinatorService = BookReturnService(
+            bookRegistry: registry,
+            localContentService: localContent,
+            opdsFeedService: fetcher,
+            downloadAnnouncementService: announce,
+            bookmarkDeletionLog: bookmarkLog,
+            reauthenticator: reauth,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            authCoordinator: coordinator,
+            offlineReturnEnqueuer: { _ in }
+        )
+        coordinatorService.delegate = purgeDelegate
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            coordinatorService.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
+
+        ContractSnapshot.assert(log, named: "coordinatorAuthError_success_retriesAndCompletes")
+    }
+
+    /// Coordinator FAILURE (user cancels the modal) → the service does NOT
+    /// retry; it announces failure and completes. No local cleanup, no
+    /// setState/removeBook — the loan is untouched because the return never
+    /// reached the server.
+    func test_returnBook_coordinatorAuthError_failure_announcesFailure() async throws {
+        let book = Self.makeBook(identifier: "RET-COORD-FAIL",
+                                 revokeURL: URL(string: "http://example.com/revoke")!)
+        registry.addBookStub(book, state: .downloadSuccessful)
+
+        // Token mechanism + modal-cancelled → refreshCredentialsIfNeeded returns .failure.
+        let (coordinator, _, _, _, _) = SpyAuthCoordinatorFactory.make(
+            mechanism: .token, stubModalResult: false)
+
+        let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        feedFetcher.stubbedError = NSError(domain: "test", code: 401,
+                                           userInfo: ["problemDocument": problemDoc])
+
+        let coordinatorService = BookReturnService(
+            bookRegistry: registry,
+            localContentService: localContent,
+            opdsFeedService: feedFetcher,
+            downloadAnnouncementService: announce,
+            bookmarkDeletionLog: bookmarkLog,
+            reauthenticator: reauth,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            authCoordinator: coordinator,
+            offlineReturnEnqueuer: { _ in }
+        )
+        coordinatorService.delegate = purgeDelegate
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            coordinatorService.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
+
+        ContractSnapshot.assert(log, named: "coordinatorAuthError_failure_announcesFailure")
+    }
+
+    // MARK: - DEFERRED (documented seam-gap, not faked)
+    //
+    // The FEATURE_DRM_CONNECTOR Adobe `returnLoan` fire-and-forget branch
+    // (`BookReturnService.swift` :301-314) is NOT pinned here: it runs on the
+    // real `AdobeDRMService.shared` singleton (no injected spy seam at this
+    // layer), its result is ignored except for an `NSLog`, and it emits NO
+    // call into the recorded registry/announce/localContent surface — there is
+    // no deterministic call-sequence contract to lock. Per Contract E's
+    // "inability to write the test IS the test feedback" guidance, this is
+    // recorded as a seam-gap rather than faked. Orchestrator note: drive the
+    // Adobe-DRM loan return on a sim (an Adept-fulfilled EPUB) to cover the
+    // returnLoan success/failure NSLog behavior end-to-end.
 
     // MARK: - Helpers
 
@@ -363,7 +529,7 @@ private final class SpyReauthRecorder: NSObject, Reauthenticator {
 
     func authenticateIfNeeded(_ user: TPPUserAccount,
                                usingExistingCredentials: Bool,
-                               authenticationCompletion: (() -> Void)?) {
+                               authenticationCompletion: (@Sendable () -> Void)?) {
         log.record("reauth.authenticateIfNeeded",
                    args: ["usingExistingCredentials": "\(usingExistingCredentials)"])
         // Fire completion synchronously so the service's retry-bail-out
@@ -386,5 +552,27 @@ private final class StubFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
         if let err = stubbedError { throw err }
         throw NSError(domain: "StubFeedFetcher", code: -999,
                       userInfo: [NSLocalizedDescriptionKey: "no stub configured"])
+    }
+}
+
+/// Feed fetcher that throws a pre-programmed sequence of errors, one per
+/// call. Lets the coordinator-retry contract stage the first fetch to fail
+/// with an auth error (→ coordinator route) and the retry fetch to hit the
+/// parsing-as-success branch (→ clean termination) so the recursive
+/// `returnBook` flow doesn't loop.
+private final class SequencedFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var errors: [Error]
+    private var index = 0
+
+    init(errors: [Error]) { self.errors = errors }
+
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
+        let err: Error = lock.withLock {
+            let e = index < errors.count ? errors[index] : errors.last!
+            index += 1
+            return e
+        }
+        throw err
     }
 }

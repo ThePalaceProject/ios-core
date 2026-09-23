@@ -1,0 +1,45 @@
+name: Cleanup PR caches
+
+# When a PR closes (merged or not), its DerivedData / test-history caches —
+# scoped to refs/pull/<N>/merge — become dead weight. The repo's Actions cache
+# is capped at 10 GiB and each DerivedData cache is ~1.9 GiB, so a handful of
+# stale PR caches push the repo over the cap and GitHub LRU-evicts caches that
+# ACTIVE branches still need (cold rebuilds). Proactively deleting a closed PR's
+# own caches means eviction hits dead entries first, keeping live branches warm.
+#
+# Delete-only + best-effort — this workflow can never fail a build; a delete that
+# 404s (already evicted) is ignored.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write   # required to delete caches
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete this PR's caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          echo "Looking for caches scoped to $PR_REF ..."
+          ids=$(gh cache list -R "$REPO" --limit 200 --json id,ref \
+                  --jq ".[] | select(.ref == \"$PR_REF\") | .id" 2>/dev/null || true)
+          if [ -z "$ids" ]; then
+            echo "No caches to clean for $PR_REF."
+            exit 0
+          fi
+          for id in $ids; do
+            if gh cache delete -R "$REPO" "$id" 2>/dev/null; then
+              echo "deleted cache $id"
+            else
+              echo "could not delete $id (already evicted?) — ignoring"
+            fi
+          done

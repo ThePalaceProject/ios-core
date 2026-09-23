@@ -8,6 +8,7 @@ import XCTest
 /// cannot uninstall it, so they instead reset the registry between
 /// assertions and use a freshly-allocated observer for the
 /// `testCaseDidFinish` direct-call assertions.
+@MainActor
 final class PalaceTestSetupObservationTests: XCTestCase {
 
     override func setUp() {

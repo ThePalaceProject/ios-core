@@ -29,32 +29,6 @@ validation, and recording it as such would defeat the purpose of the ledger.
 
 ---
 
-## 58413f8680a310ed6d98278687ab711e6be639c8 (fork: ThePalaceProject/swift-toolkit, 3.11.0 + fix-issue-579)
-
-- Validated against: Palace 3.2.4 (500), Moes Max (iPhone 17 Pro Max, iOS 26.6.1) and iPhone 17 Pro simulator, A1QA Test Library
-- Validated by: iOS maintainer
-- Date: 2026-09-03
-
-Pinned by revision rather than version because the streaming fix is not in any
-upstream Readium release. This is the pin the 3.9.0 entry below anticipated when
-it recorded LCP streaming as `fail` pending the unmerged `fix-issue-579` branch.
-
-| Path | Result | Evidence |
-|---|---|---|
-| Audiobook, LCP streaming | pass | Two Palace Marketplace LCP audiobooks borrowed on device with the flag on produced two 3 KB `.lcpl` licenses and **zero `.lcpa`** — the license alone is playable, which is the behaviour 3.9.0 recorded as broken. After SIGKILL and cold launch both records stayed `download-successful`; the other ten records in the same registry read `download-needed`, a control showing reconciliation ran, so the survivors are not an artifact of `load()` never firing. <!-- audit-verified --> |
-| Audiobook, LCP playback from local | pass | Full CI-parity suite green at this pin, including the LCP fulfillment and registry suites. Unchanged from 3.9.0: the `.lcpa`-on-disk path is untouched by the fork. |
-| Borrow | pass | Exercised on device as the precondition for the streaming rows above — both borrows completed and produced licenses. |
-| Download | pass | Full CI-parity suite green, including `LocalBookContentService` and `BookRegistrySync`. The fork changes no download code; the diff from the 3.2.3 toolkit base is two files and zero source lines. |
-| EPUB / PDF reader | not validated | The fork touches the LCP streaming path; the reader paths were not separately exercised on device for this hotfix. The suite is green, which is weaker evidence than a device pass. |
-| Audiobook, Findaway | not validated | Not exercised. Unchanged from the 3.9.0 entry. |
-| Audiobook, OverDrive | not validated | Not exercised on device. The F1/F2 download-durability fixes were deliberately NOT carried into this pin — they are already in the 3.3.0 toolkit. |
-
-**Audio playback itself was not verified by artifact.** The on-disk and registry
-evidence proves the streaming path is taken and survives relaunch; it says
-nothing about sound. A human ear on the device is still owed.
-
----
-
 ## 3.9.0
 
 - Validated against: Palace 3.2.3 (490), iPhone 17 Pro simulator (iOS 26.1), A1QA Test Library
@@ -78,3 +52,58 @@ pin now; it does not imply the paths were checked at the time.
 The next pin change is expected to be the one carrying the upstream #579 fix.
 That entry should confirm the LCP audiobook path specifically, and should be
 paired with restoring streaming in the app rather than only moving the pin.
+
+---
+
+## 3.11.0
+
+- Validated against: not yet validated
+- Validated by: not yet validated
+- Date: —
+
+Recorded when the gate arrived on `develop`, not when the pin moved. `main` is on
+3.9.0; `develop` moved to 3.11.0 in PR #1356 (PP-4848, crossing 3.10 and 3.11,
+merged to `develop` 2026-07-29), which predates this ledger and so recorded no
+money-path validation. This entry exists so the omission is visible in the ledger
+rather than absent from it — the gate reads the version heading, and an entry
+claiming validation nobody performed would defeat the ledger's only purpose.
+<!-- audit-verified -->
+
+**This pin has not shipped.** 3.11.0 is `develop`-only and reaches patrons no
+earlier than 3.3.0, so nothing below is a live patron-facing risk today. It is a
+release blocker for 3.3.0, not an incident.
+
+| Path | Result | Notes |
+|---|---|---|
+| EPUB, Adobe DRM | not validated | The pin-bump change reported a green build and an LCP-profile facade test; neither exercises this path. |
+| EPUB, LCP | not validated | The bump changed EPUB HREF fragment/query preservation and font CORS handling upstream — both squarely on this path, so it needs exercising before 3.3.0 ships. |
+| PDF, LCP | not validated | No structured validation against this pin. |
+| Audiobook, LCP | fail (streaming) / not validated (local) | Streaming from license measured as 0 bytes transferred on 3.11.0, the same as 3.9.0 — the upstream defect is unchanged by this bump (readium/swift-toolkit issue #579, still unmerged on `fix-issue-579`). Palace does not stream: since 3.2.3 build 492 the full `.lcpa` must be on disk before playback, so this does not block the path. Playback-from-local against a 3.11.0 build is NOT yet exercised. |
+| Audiobook, OverDrive | not validated | No structured validation against this pin. |
+| Audiobook, Findaway | not validated | No structured validation against this pin. |
+| Open-access EPUB | not validated | No structured validation against this pin. |
+
+Before 3.3.0 ships, this entry needs a real validation pass — at minimum the two
+paths the bump's own changelog touches (EPUB/LCP rendering, LCP audiobook
+playback-from-local) exercised against a 3.11.0 build, with results recorded here.
+Note the LCP device-ID moved to the Keychain in 3.10: that changes behaviour
+across delete/reinstall, so validation should include a reinstall cycle rather
+than a single install.
+
+## ThePalaceProject/swift-toolkit @ 58413f8680a310ed6d98278687ab711e6be639c8
+
+- Validated against: Palace 3.3.0 (494), iPhone Air simulator (iOS 26.1), A1QA Test Library
+- Validated by: engineering (agent-assisted), SoD-reviewed (architect + qa_test + blast_radius)
+- Date: 2026-08-14
+- Pin: `ThePalaceProject/swift-toolkit` fork = Readium 3.11.0 + the upstream `fix-issue-579` series (restores LCP audiobook chunked streaming-from-license). Pinned by **revision** (a fork branch, no semver version), gated behind `lcp_audiobook_streaming_enabled` (default OFF).
+
+| Path | Result | Notes |
+|---|---|---|
+| Audiobook, LCP (streaming) | pass, **amended by PP-5135** | Flag ON: fresh borrow → instant Listen → plays via on-demand chunked decryption. Verified live on the A1QA "Reign of Terror" (Palace Marketplace LCP audiobook). Relaunch durability pinned (reconcile keeps `.downloadSuccessful`).<br><br>**The original entry recorded "`.lcpa`: 0 bytes on disk" as the validated end state. That is no longer the intended behaviour.** The validation exercised playback while ONLINE and did not test the offline case, where 0 bytes on disk means the book cannot be opened at all — while the shelf reports it as Downloaded. Measured on device for PP-5135 (build 502): every borrowed LCP audiobook held its 2–3 KB `.lcpl` and no `.lcpa`, and the offline open dead-ended in `ReadiumStreamer.PublicationOpenError`. Streaming is now a fast START, not a replacement for the download: the archive also lands in the background (subject to connectivity and `downloadOnlyOnWiFi`), so "Downloaded" is true. Expect a non-zero `.lcpa` shortly after borrow. |
+| Audiobook, LCP (local / download-first) | pass | Flag OFF preserves today's download-first path byte-for-byte (unit + reconcile-table + fulfillment tests; full `.lcpa` lands, then Listen). |
+| EPUB, LCP | not validated | Not exercised by this change (streaming is audiobook-only); carries forward from the 3.11.0 base entry. |
+| EPUB, Adobe DRM | not validated | Unchanged by this fork (3.11.0 + audiobook streaming only). |
+| PDF, LCP | not validated | Unchanged. |
+| Audiobook, OverDrive / Findaway | not validated | Unaffected (non-LCP paths). |
+
+Known follow-up: the LCP resource-loader over-fetches (prefetches most of the book); time-to-first-audio win realized, storage win pending a read-ahead cap. Orthogonal to the flag; flag ships OFF.

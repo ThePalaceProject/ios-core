@@ -1,0 +1,77 @@
+#!/bin/bash
+#
+# post-commit hook for Palace iOS
+# - Git LFS support
+# - Optional Jira integration
+#
+
+# Git LFS (required)
+command -v git-lfs >/dev/null 2>&1 || { 
+  printf >&2 "\n%s\n\n" "This repository is configured for Git LFS but 'git-lfs' was not found on your path. If you no longer wish to use Git LFS, remove this hook by deleting the 'post-commit' file in the hooks directory (set by 'core.hookspath'; usually '.git/hooks')."
+  exit 2
+}
+git lfs post-commit "$@"
+
+# Jira Integration (optional)
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CONFIG_FILE="$REPO_ROOT/.jira-config"
+JIRA_SCRIPT="$REPO_ROOT/scripts/jira-integration.sh"
+
+# Skip if no config or script
+if [[ ! -f "$CONFIG_FILE" ]] || [[ ! -f "$JIRA_SCRIPT" ]]; then
+  exit 0
+fi
+
+source "$CONFIG_FILE"
+
+# Skip if auto-comment is disabled
+if [[ "$JIRA_AUTO_COMMENT" != "true" ]]; then
+  exit 0
+fi
+
+# Get the commit message
+COMMIT_MSG=$(git log -1 --format="%B")
+PROJECT_KEY="${JIRA_PROJECT_KEY:-PP}"
+
+# Extract the tickets this commit claims to WORK ON — the subject line and
+# explicit claiming trailers (Fixes/Closes/Ticket/Tickets) — NOT every key the
+# message happens to name.
+#
+# Grepping the whole body treated "that belongs to PP-5005" as work on PP-5005
+# and posted a machine comment on a design ticket owned by someone else. The
+# extraction lives in the tracked script so every checkout gets the same rule.
+TICKETS=$("$JIRA_SCRIPT" extract-worked-tickets "$COMMIT_MSG" 2>/dev/null)
+
+if [[ -n "$TICKETS" ]]; then
+  if [[ -t 1 ]]; then
+    echo ""
+    echo "🎫 Detected Jira tickets:"
+    while IFS= read -r ticket; do
+      echo "   - $ticket"
+    done <<< "$TICKETS"
+    echo ""
+    read -p "Add fix details to Jira for the first ticket? (y/N): " -n 1 -r
+    echo ""
+
+    FIRST_TICKET=$(echo "$TICKETS" | head -1)
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      "$JIRA_SCRIPT" interactive "$FIRST_TICKET"
+      # Still link the remaining tickets so the rest are cross-referenced.
+      while IFS= read -r ticket; do
+        [[ "$ticket" == "$FIRST_TICKET" ]] && continue
+        "$JIRA_SCRIPT" link-commit "$ticket" HEAD 2>/dev/null || true
+      done <<< "$TICKETS"
+    else
+      while IFS= read -r ticket; do
+        "$JIRA_SCRIPT" link-commit "$ticket" HEAD 2>/dev/null || true
+      done <<< "$TICKETS"
+    fi
+  else
+    # Non-interactive: link every ticket silently.
+    while IFS= read -r ticket; do
+      "$JIRA_SCRIPT" link-commit "$ticket" HEAD 2>/dev/null || true
+    done <<< "$TICKETS"
+  fi
+fi
+
+exit 0

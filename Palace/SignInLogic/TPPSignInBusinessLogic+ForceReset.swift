@@ -42,12 +42,53 @@ import Foundation
 import WebKit
 import PalaceLogging
 
+/// Lock-backed storage for the `forceResetUserDefaults` test seam. Swift 6
+/// `complete` mode rejects a bare `static var … = .standard` as "nonisolated
+/// global shared mutable state." `UserDefaults` is explicitly `@_nonSendable`,
+/// so it cannot be the generic state of an `OSAllocatedUnfairLock` (whose
+/// `withLock` closure is `@Sendable`). Instead, a documented `@unchecked
+/// Sendable` box guards a plain stored `UserDefaults` slot with a manual
+/// `NSLock` (no `@Sendable` closure crosses the boundary). The `@unchecked` is
+/// honest: EVERY read/write goes through `lock()`/`unlock()`, so there is no
+/// unsynchronized access — this is the documented lock-backed-carrier pattern
+/// `TPPReauthenticator` already uses, NOT `nonisolated(unsafe)` and NOT a bare
+/// `@unchecked` escape. The seam stays swappable from test setUp/tearDown while
+/// production reads it from nonisolated auth paths.
+private final class ForceResetDefaultsBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _defaults: UserDefaults = .standard
+    var defaults: UserDefaults {
+        get { lock.lock(); defer { lock.unlock() }; return _defaults }
+        set { lock.lock(); _defaults = newValue; lock.unlock() }
+    }
+}
+private let forceResetDefaultsBox = ForceResetDefaultsBox()
+
+/// Sendable carrier for the non-Sendable `() -> Void` `completion` closure
+/// captured by WebKit's `@Sendable` `removeData` completion closure (and the
+/// `DispatchQueue.main.async` inside it) in `performForceReset`. Boxing avoids
+/// marking `performForceReset(completion:)` `@Sendable` — which would ripple to
+/// the `Settings/` call site whose closure captures non-Sendable UI state (per
+/// the lane's RIPPLES §3). INVARIANT — the boxed closure is invoked exactly
+/// once, on the main queue (the `DispatchQueue.main.async` inside `removeData`'s
+/// completion). `performForceReset` is driven from the main-thread
+/// developer-settings VC. Mirrors `VoidWorkBox` in `AccountsManager`.
+private final class ForceResetCompletionBox: @unchecked Sendable {
+    let call: () -> Void
+    init(_ call: @escaping () -> Void) { self.call = call }
+}
+
 extension TPPSignInBusinessLogic {
 
     /// UserDefaults key for the one-shot "use ephemeral browser session for
     /// the next OIDC sign-in" flag. Set by `performForceReset(...)`. Read
     /// (and cleared) by the OIDC sign-in entry points.
-    public static let nextOIDCSessionEphemeralKey =
+    // `nonisolated`: an immutable key string read from nonisolated call sites
+    // outside SignInLogic — `TPPDeveloperSettingsTableViewController` and the
+    // reset test suites read it at nonisolated stored-property-initializer
+    // scope. Keeping it off the type's `@MainActor` isolation avoids rippling
+    // those sites.
+    nonisolated public static let nextOIDCSessionEphemeralKey =
         "PalaceForceReset.nextOIDCSessionEphemeral"
 
     /// `UserDefaults` backing store for the one-shot ephemeral-session
@@ -64,14 +105,30 @@ extension TPPSignInBusinessLogic {
     /// is the minimum-surface seam that lets both the static and
     /// instance call sites share one backing store.
     // PUBLIC_INTENT: swarm_cd181acd D-cleanup. Extension methods access UserDefaults via this property; static var is the only injectable seam (extensions can't have stored instance properties or init injection). Default `.standard` preserves all production callers.
-    public static var forceResetUserDefaults: UserDefaults = .standard
+    // Swift 6 `complete`: backed by the file-private `OSAllocatedUnfairLock`
+    // above (not `nonisolated(unsafe)`); the public get/set contract is
+    // unchanged so every existing caller and test seam works verbatim.
+    // `nonisolated`: backed by the file-private lock-box `ForceResetDefaultsBox`
+    // (already `@unchecked Sendable`, `OSAllocatedUnfairLock`-guarded), so it is
+    // thread-safe independent of actor isolation. The reset test suites read and
+    // restore it from nonisolated `setUp`/`tearDown`; keeping it off `@MainActor`
+    // preserves that seam without an actor hop.
+    nonisolated public static var forceResetUserDefaults: UserDefaults {
+        get { forceResetDefaultsBox.defaults }
+        set { forceResetDefaultsBox.defaults = newValue }
+    }
 
     /// Reads-and-clears the one-shot ephemeral-session flag. Returns true
     /// exactly once after `performForceReset` set it; subsequent reads
     /// return false until the next reset. The OIDC sign-in code calls this
     /// to decide whether to force `prefersEphemeralWebBrowserSession = true`
     /// for this single session, defeating Safari-shared-cookie reuse.
-    @objc public static func consumeNextOIDCSessionEphemeralFlag() -> Bool {
+    // `nonisolated`: reached from a nonisolated context — the OIDC redirect
+    // build in `BorrowOperation`/`TokenRefreshInterceptor` reads-and-clears the
+    // one-shot flag while assembling the `ASWebAuthenticationSession`. Backed by
+    // the thread-safe `forceResetUserDefaults` lock-box, so it is safe off
+    // `@MainActor`; the `@objc` surface is preserved for ObjC callers.
+    @objc nonisolated public static func consumeNextOIDCSessionEphemeralFlag() -> Bool {
         let value = forceResetUserDefaults.bool(forKey: nextOIDCSessionEphemeralKey)
         if value {
             forceResetUserDefaults.removeObject(forKey: nextOIDCSessionEphemeralKey)
@@ -88,6 +145,12 @@ extension TPPSignInBusinessLogic {
     ///   cleanup step has finished (or skipped). Always called exactly once.
     @objc public func performForceReset(completion: @escaping () -> Void) {
         Log.info(#file, "[RESET_ACCOUNT] start — libraryAccountID=\(libraryAccountID)")
+
+        // Swift 6 `complete`: box the non-Sendable `completion` for the step-6
+        // WebKit `removeData` `@Sendable` completion capture (see
+        // `ForceResetCompletionBox`). Keeps `completion` non-`@Sendable` so the
+        // `Settings/` caller doesn't ripple.
+        let completionBox = ForceResetCompletionBox(completion)
 
         // 1. Best-effort DELETE FCM token from CM. Don't gate any cleanup on
         //    the result — that's the bug Sign Out has when the patron's app
@@ -135,9 +198,11 @@ extension TPPSignInBusinessLogic {
 
         // 4. Network + URL caches. Catches any cached responses that might
         //    replay stale auth state on next request.
+        // N1: clear the executor's PRIVATE URLCache (feeds are served from it,
+        // not from `URLCache.shared`). Clearing the shared cache here left the
+        // stale/authenticated responses in the executor's own cache.
         AppContainer.production().networkExecutor.clearCache()
-        URLCache.shared.removeAllCachedResponses()
-        Log.info(#file, "[RESET_ACCOUNT] step 4 ok — networkExecutor cache + URLCache cleared")
+        Log.info(#file, "[RESET_ACCOUNT] step 4 ok — networkExecutor cache cleared")
 
         // 5. Set the one-shot ephemeral-session flag for the next OIDC
         //    sign-in. Defeats Safari-shared-cookie reuse that otherwise
@@ -147,6 +212,15 @@ extension TPPSignInBusinessLogic {
 
         // 6. WKWebsiteDataStore — ALL data types, unconditionally. This is
         //    the big one Sign Out gates on auth-type routing; reset doesn't.
+        //    `WKWebsiteDataStore.default()`/`.allWebsiteDataTypes()`/`.removeData`
+        //    are `@MainActor`-isolated. `performForceReset` is driven from the
+        //    main-thread developer-settings VC, so assert the isolation for the
+        //    `complete`-mode checker. The `removeData` completion-capture of the
+        //    non-Sendable `completion` param is boxed (`completionBox`) so the
+        //    `@Sendable` closure captures a Sendable carrier rather than the raw
+        //    closure — avoiding a `@Sendable` completion signature that would
+        //    ripple into the non-owned `Settings/` call site.
+        MainActor.assumeIsolated {
         let dataStore = WKWebsiteDataStore.default()
         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
         let epoch = Date(timeIntervalSince1970: 0)
@@ -154,8 +228,9 @@ extension TPPSignInBusinessLogic {
             Log.info(#file, "[RESET_ACCOUNT] step 6 ok — WKWebsiteDataStore wiped (all types, since epoch)")
             Log.info(#file, "[RESET_ACCOUNT] complete — patron should be returned to sign-in flow")
             DispatchQueue.main.async {
-                completion()
+                completionBox.call()
             }
+        }
         }
     }
 
@@ -175,32 +250,46 @@ extension TPPSignInBusinessLogic {
             Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no drmAuthorizer (likely -noDRM build)")
             return
         }
-        guard let licensor = userAccount.licensor else {
+        let licensor = userAccount.licensor
+        guard let attempt = AdobeDeauthorization.attempt(licensor: licensor,
+                                                         userID: userAccount.userID,
+                                                         deviceID: userAccount.deviceID) else {
             Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no licensor on userAccount (patron never activated)")
             return
         }
 
-        var licensorItems = (licensor["clientToken"] as? String)?
-            .replacingOccurrences(of: "\n", with: "")
-            .components(separatedBy: "|")
-        let tokenPassword = licensorItems?.last
-        licensorItems?.removeLast()
-        let tokenUsername = licensorItems?.joined(separator: "|")
-        let adobeUserID = userAccount.userID
-        let adobeDeviceID = userAccount.deviceID
+        // A token we cannot parse must NOT skip the call here. Reset Account
+        // exists to unwedge a patron whose Adobe state has gone bad, and the
+        // LOCAL activation clear — which RMSDK performs whatever the network
+        // answers — is the whole repair. Skipping would withhold it from
+        // precisely the malformed-token case this screen is for, while freeing
+        // no slot that was ever freeable.
+        if !attempt.canReleaseServerSlot {
+            Log.error(#file, "[RESET_ACCOUNT] step 2.5 — client token is unparseable; the server-side activation will NOT be released, but the local activation clear still runs (PP-3649). Token: \(AdobeClientToken.redacted(licensor?["clientToken"] as? String))")
+        } else if AdobeLicensorRefresh.isExpired(licensor) {
+            Log.error(#file, "[RESET_ACCOUNT] step 2.5 — licensor is past its expiry; the server-side activation will NOT be released (PP-3649)")
+        }
 
         Log.info(#file, "[RESET_ACCOUNT] step 2.5 — dispatching DRM deauthorize (fire-and-forget)")
 
         drmAuthorizer.deauthorize(
-            withUsername: tokenUsername,
-            password: tokenPassword,
-            userID: adobeUserID,
-            deviceID: adobeDeviceID
+            withUsername: attempt.username,
+            password: attempt.password,
+            userID: attempt.userID,
+            deviceID: attempt.deviceID
         ) { success, error in
-            // Non-success is expected for stuck patrons (E_DEACT_USER_MISMATCH
-            // or similar) — RMSDK still clears local activation, which is what
-            // matters for the next sign-in's clean re-activation.
-            Log.info(#file, "[RESET_ACCOUNT] step 2.5 — DRM deauthorize callback (success=\(success), error=\(error?.localizedDescription ?? "nil")). Local activation cleared regardless.")
+            // RMSDK clears the LOCAL activation either way, which is what makes
+            // the next sign-in re-activate cleanly. The server-side slot is a
+            // different thing and is not cleared by failing — so for a patron
+            // who reached here BECAUSE they hit the activation ceiling, a failed
+            // deauthorize means Reset Account spends another slot rather than
+            // recovering one. Log it where that is legible.
+            switch AdobeDeauthorization.outcome(success: success, error: error) {
+            case .freed:
+                Log.info(#file, "[RESET_ACCOUNT] step 2.5 — Adobe activation released")
+            case .notFreed(let reason):
+                Log.error(#file, "[RESET_ACCOUNT] step 2.5 — Adobe activation NOT released: \(reason). Local activation cleared regardless; the server-side slot stays consumed.")
+            }
         }
     }
 
@@ -266,6 +355,14 @@ extension TPPSignInBusinessLogic {
         //    authSurfaceHosts. Empty host set → nothing to clear (basic-auth
         //    library with no web surface); complete immediately.
         let hosts = Self.webHostsToClear(for: account)
+        // FLAGGED (non-owned caller signature): the `DispatchQueue.main.async`
+        // below captures the non-Sendable `completion` param into a `@Sendable`
+        // closure. Closing it requires `performScopedReset`/`performForceReset`/
+        // `removeScopedWebCookies` completions to be `@Sendable`, which ripples
+        // into their `Palace/Settings/` call site
+        // (`TPPDeveloperSettingsTableViewController` → `presentResetConfirmation`)
+        // — outside this module. Runtime-correct (hop lands on main); left
+        // pending that coordinated signature change.
         Self.removeScopedWebCookies(forHosts: hosts) {
             Log.info(#file, "[RESET_ACCOUNT scoped] complete — \(hosts.count) host(s) cleared; other libraries untouched")
             DispatchQueue.main.async { completion() }
@@ -275,7 +372,9 @@ extension TPPSignInBusinessLogic {
     /// Pure, testable computation of which hosts the scoped reset clears web
     /// cookies for: the active library's auth-surface hosts. Empty when the
     /// account is nil or has no web surface (cold launch / basic-auth library).
-    static func webHostsToClear(for account: Account?) -> Set<String> {
+    // `nonisolated`: pure host-set computation exercised directly by
+    // `ScopedResetTests` from a nonisolated context; touches no actor state.
+    nonisolated static func webHostsToClear(for account: Account?) -> Set<String> {
         account?.authSurfaceHosts ?? []
     }
 
@@ -288,14 +387,23 @@ extension TPPSignInBusinessLogic {
     // no-superpartner: thin WKHTTPCookieStore system-API wrapper; host-selection logic tested via hostMatches + webHostsToClear, empty-hosts no-op via performScopedReset.
     static func removeScopedWebCookies(forHosts hosts: Set<String>, completion: @escaping () -> Void) {
         guard !hosts.isEmpty else { completion(); return }
-        let cookieStore = WKWebsiteDataStore.default().httpCookieStore
-        cookieStore.getAllCookies { cookies in
-            let group = DispatchGroup()
-            for cookie in cookies where hostMatches(cookie.domain, hosts) {
-                group.enter()
-                cookieStore.delete(cookie) { group.leave() }
+        // `WKWebsiteDataStore.default().httpCookieStore` and the `WKHTTPCookieStore`
+        // methods are `@MainActor`-isolated. This static helper is only reached
+        // from `performScopedReset` on the main thread, so assert the isolation
+        // for the `complete`-mode checker. (The `getAllCookies` completion is
+        // `@Sendable` and still captures the non-Sendable `cookieStore` and
+        // `completion` — a separate, flagged item that needs a `@Sendable`
+        // completion signature rippling into the non-owned `Settings/` caller.)
+        MainActor.assumeIsolated {
+            let cookieStore = WKWebsiteDataStore.default().httpCookieStore
+            cookieStore.getAllCookies { cookies in
+                let group = DispatchGroup()
+                for cookie in cookies where hostMatches(cookie.domain, hosts) {
+                    group.enter()
+                    cookieStore.delete(cookie) { group.leave() }
+                }
+                group.notify(queue: .main) { completion() }
             }
-            group.notify(queue: .main) { completion() }
         }
     }
 
@@ -303,7 +411,7 @@ extension TPPSignInBusinessLogic {
     /// exact host, a leading-dot cookie domain (`.minotaur.example.org`), and a
     /// parent-domain cookie that covers the host. Does NOT match a sibling host
     /// under a shared parent (`gorgon.example.org` vs target `minotaur.example.org`).
-    static func hostMatches(_ cookieDomain: String, _ hosts: Set<String>) -> Bool {
+    nonisolated static func hostMatches(_ cookieDomain: String, _ hosts: Set<String>) -> Bool {
         let normalized = cookieDomain.hasPrefix(".")
             ? String(cookieDomain.dropFirst()).lowercased()
             : cookieDomain.lowercased()

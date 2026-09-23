@@ -13,6 +13,7 @@ import XCTest
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - BookCellModel Computed Property Tests
 
@@ -58,6 +59,52 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
     private func createModel(book: TPPBook, state: TPPBookState = .downloadSuccessful) -> BookCellModel {
         mockRegistry.addBook(book, state: state)
         return BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+    }
+
+    // MARK: - contentRequiredBeforePlayback (the shelf half-sheet's wait gate)
+    //
+    // `BookCellModel` presents the SAME half-sheet as `BookDetailViewModel`
+    // (`NormalBookCell` → `HalfSheetView(viewModel: model)`), so it must answer
+    // this for itself. It briefly inherited a `false` protocol default, which
+    // turned a required multi-gigabyte wait into a blank sheet on My Books.
+    //
+    // Tested here because review found this property uncovered — the fifth
+    // instance in one change of a pure rule being covered while the code
+    // computing its input was not. `palace_mutate` cannot generate the relevant
+    // mutant either (it does not mutate unary `!`), so nothing mechanical
+    // covers it.
+
+    func testContentRequiredBeforePlayback_isTrueWhenLCPStreamingIsOff() {
+        let book = createBook(title: "Streaming Off")
+        let model = createModel(book: book)
+        appContainer.downloadCenter.lcpStreamingEnabledProvider = { false }
+
+        XCTAssertTrue(model.contentRequiredBeforePlayback,
+                      "streaming OFF: the archive must land before playback, so the shelf sheet must show the wait")
+    }
+
+    func testContentRequiredBeforePlayback_isFalseWhenLCPStreamingIsOn() {
+        let book = createBook(title: "Streaming On")
+        let model = createModel(book: book)
+        appContainer.downloadCenter.lcpStreamingEnabledProvider = { true }
+
+        XCTAssertFalse(model.contentRequiredBeforePlayback,
+                       "streaming ON: the book plays from its license and the archive is a background prefetch")
+    }
+
+    /// Reads through the provider on every access, so a flag flip is observed
+    /// rather than captured at construction — `BookCellModel` is cached with a
+    /// 120s TTL, and a value snapshotted at init would go stale inside it.
+    func testContentRequiredBeforePlayback_tracksAFlagFlipOnAnExistingModel() {
+        let book = createBook(title: "Flip")
+        let model = createModel(book: book)
+
+        appContainer.downloadCenter.lcpStreamingEnabledProvider = { true }
+        XCTAssertFalse(model.contentRequiredBeforePlayback, "precondition")
+
+        appContainer.downloadCenter.lcpStreamingEnabledProvider = { false }
+        XCTAssertTrue(model.contentRequiredBeforePlayback,
+                      "a cached cell must not hold a stale flag read")
     }
 
     // MARK: - title / authors
@@ -419,6 +466,7 @@ final class BookCellStateComprehensiveTests: XCTestCase {
 
 /// Tests BookButtonMapper.map() for all state combinations.
 /// SRS: BookButtonMapper is the central mapping from registry state + availability to UI state.
+@MainActor
 final class BookButtonMapperViewModelTests: XCTestCase {
 
     func testMap_Downloading_ReturnsDownloadInProgress() {
@@ -913,8 +961,12 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         // Change state of OTHER book - should not affect this model
         mockRegistry.setState(.downloading, for: "other-book")
 
-        // Wait a moment for any potential (incorrect) propagation
-        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        // Deterministically flush the model's registry-state observer (which hops
+        // via `.receive(on: RunLoop.main)`) instead of guessing with a fixed sleep.
+        // Because the main queue is FIFO, once this no-op drains, the sink has
+        // already delivered — and correctly filtered out — the other-book emission.
+        // A fixed `Task.sleep` here starved under CI sim-clone oversubscription.
+        await drainMainQueueAsync()
 
         XCTAssertEqual(model.registryState, .downloadNeeded, "Should not react to other book's state changes")
     }

@@ -10,7 +10,10 @@
 //
 
 import Foundation
-import WebKit
+// `@preconcurrency` for the WebKit SDK's non-Sendable delegate value types
+// (`WKNavigationAction`, `WKNavigationResponse`) captured into the async cookie
+// `Task` hops below.
+@preconcurrency import WebKit
 import PalaceLogging
 
 @MainActor
@@ -26,55 +29,68 @@ final class SignInWebViewCoordinator: NSObject, WKNavigationDelegate {
 
     // MARK: - WKNavigationDelegate
 
-    nonisolated func webView(
+    // The current WebKit SDK annotates `WKNavigationDelegate` (and its
+    // `decisionHandler` blocks) `@MainActor` (`WK_SWIFT_UI_ACTOR`). A
+    // `nonisolated` witness with a non-`@MainActor` `decisionHandler` no longer
+    // matches that `@objc` requirement, so WebKit's `-respondsToSelector:` skips
+    // the policy delegate entirely and defaults to allowing every navigation —
+    // silently breaking universal-links interception (web-sheet sign-in never
+    // completes). Implement it as the `@MainActor` method the SDK expects and
+    // call `decisionHandler` synchronously; only the genuinely-async cookie
+    // fetch hops through a `Task`.
+    func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
     ) {
         let request = navigationAction.request
-        Task { @MainActor in
-            let decision = self.viewModel.decideAction(for: request)
-            switch decision {
-            case .allow:
-                decisionHandler(.allow)
+        let decision = viewModel.decideAction(for: request)
+        switch decision {
+        case .allow:
+            decisionHandler(.allow)
 
-            case .completeLogin(let destination):
-                decisionHandler(.cancel)
+        case .completeLogin(let destination):
+            decisionHandler(.cancel)
+            Task { @MainActor in
                 let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
                 self.viewModel.recordLoginCompletion(destinationURL: destination, cookies: cookies)
-
-            case .cancel, .bookFound, .problemFound:
-                // decideAction never returns these; defensive only.
-                decisionHandler(.allow)
             }
+
+        case .cancel, .bookFound, .problemFound:
+            // decideAction never returns these; defensive only.
+            decisionHandler(.allow)
         }
     }
 
-    nonisolated func webView(
+    func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse,
-        decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+        decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void
     ) {
+        // See the `navigationAction` method above: the current WebKit SDK's
+        // `@MainActor` `WKNavigationDelegate` requires an `@MainActor` witness, so
+        // this is a plain `@MainActor` method that calls `decisionHandler`
+        // synchronously; only the async cookie fetch hops through a `Task`.
         let mime = navigationResponse.response.mimeType
-        Task { @MainActor in
-            let decision = self.viewModel.decideResponse(mimeType: mime)
-            switch decision {
-            case .allow:
-                decisionHandler(.allow)
+        let decision = viewModel.decideResponse(mimeType: mime)
+        switch decision {
+        case .allow:
+            decisionHandler(.allow)
 
-            case .bookFound:
-                decisionHandler(.cancel)
+        case .bookFound:
+            decisionHandler(.cancel)
+            Task { @MainActor in
                 let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
                 self.viewModel.recordBookFound(cookies: cookies)
-
-            case .problemFound:
-                decisionHandler(.cancel)
-                self.viewModel.recordProblem(document: nil)
-
-            case .cancel, .completeLogin:
-                // decideResponse never returns these; defensive only.
-                decisionHandler(.allow)
             }
+
+        case .problemFound:
+            decisionHandler(.cancel)
+            viewModel.recordProblem(document: nil)
+
+        case .cancel, .completeLogin:
+            // decideResponse never returns these; defensive only.
+            decisionHandler(.allow)
         }
     }
 

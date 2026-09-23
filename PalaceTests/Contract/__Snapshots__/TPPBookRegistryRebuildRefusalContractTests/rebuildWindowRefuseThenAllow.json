@@ -1,0 +1,20 @@
+[
+  {
+    "args" : {
+      "authoritative" : "false",
+      "backupIntact" : "true",
+      "primaryPersisted" : "false",
+      "rebuildFlagCleared" : "false"
+    },
+    "method" : "emptySave"
+  },
+  {
+    "args" : {
+      "authoritative" : "true",
+      "backupIntact" : "false",
+      "primaryPersisted" : "true",
+      "rebuildFlagCleared" : "true"
+    },
+    "method" : "emptySave"
+  }
+]

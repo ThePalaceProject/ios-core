@@ -1,4 +1,5 @@
 import Foundation
+import PalaceBookModel
 
 /// Pure state for the borrow / download / return lifecycle as observed by
 /// `BookDetailViewModel`. Models the slice of VM state that mutates in

@@ -33,8 +33,11 @@ struct TPPReaderSettingsView: View {
         .background(
             Rectangle()
                 .edgesIgnoringSafeArea([.top]) // This extends background to cover popover triangle
-                .foregroundColor(Color(settings.backgroundColor))
+                .foregroundStyle(Color(settings.backgroundColor))
         )
+        // Cross-fade the whole panel (text + background colors) when the reader
+        // appearance changes (white / sepia / black) instead of hard-cutting.
+        .accessibleAnimation(PalaceMotion.standard, value: settings.appearanceIndex)
     }
 
     /// Set of font family buttons
@@ -74,7 +77,7 @@ struct TPPReaderSettingsView: View {
                 .font(.body)
                 .background(
                     Rectangle()
-                        .foregroundColor(Color(readerAppearance.associatedColors.backgroundColor))
+                        .foregroundStyle(Color(readerAppearance.associatedColors.backgroundColor))
                 )
 
                 if readerAppearance.propertyIndex != TPPReaderAppearance.allCases.last?.propertyIndex {
@@ -92,7 +95,7 @@ struct TPPReaderSettingsView: View {
                 settings.decreaseFontSize()
             } label: {
                 fontSizeText(size: 14)
-                    .foregroundColor(Color(settings.textColor))
+                    .foregroundStyle(Color(settings.textColor))
                     .imageScale(.large)
                     .opacity(imageOpacity(state: settings.canDecreaseFontSize))
             }
@@ -107,7 +110,7 @@ struct TPPReaderSettingsView: View {
                 settings.increaseFontSize()
             } label: {
                 fontSizeText(size: 20)
-                    .foregroundColor(Color(settings.textColor))
+                    .foregroundStyle(Color(settings.textColor))
                     .imageScale(.large)
                     .opacity(imageOpacity(state: settings.canIncreaseFontSize))
             }
@@ -134,7 +137,7 @@ struct TPPReaderSettingsView: View {
     var brightnessControl: some View {
         HStack(spacing: 0) {
             Image(systemName: "sun.min")
-                .foregroundColor(Color(settings.textColor))
+                .foregroundStyle(Color(settings.textColor))
                 .accessibilityHidden(true) // Slider provides accessibility
 
             Slider(
@@ -147,7 +150,7 @@ struct TPPReaderSettingsView: View {
 
             Image(systemName: "sun.max")
                 .imageScale(.large)
-                .foregroundColor(Color(settings.textColor))
+                .foregroundStyle(Color(settings.textColor))
                 .accessibilityHidden(true) // Slider provides accessibility
         }
         .padding()
@@ -174,7 +177,7 @@ struct SettingsButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundColor(Color(textColor ?? settings.textColor))
+            .foregroundStyle(Color(textColor ?? settings.textColor))
             .frame(minWidth: buttonHeight, maxWidth: .infinity, minHeight: buttonHeight)
             .contentShape(Rectangle())
     }

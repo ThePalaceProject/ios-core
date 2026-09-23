@@ -290,7 +290,11 @@ final class AuthDecisionPayloadTests: XCTestCase {
         XCTAssertEqual(fields["step"], "classifier.classified")
         XCTAssertEqual(fields["call_site"], "X/Y")
         XCTAssertEqual(fields["correlation_id"], "00000000-0000-0000-0000-000000000001")
-        XCTAssertNotNil(fields["timestamp_iso"], "timestamp_iso must always be present")
+        // Pin the EXACT ISO-8601 string (not just non-nil) so a regression in
+        // the per-call formatter's formatOptions [.withInternetDateTime,
+        // .withFractionalSeconds] is caught. timeIntervalSince1970: 0 → epoch.
+        XCTAssertEqual(fields["timestamp_iso"], "1970-01-01T00:00:00.000Z",
+            "timestamp must be ISO-8601 internet date-time WITH fractional seconds, in GMT")
     }
 
     func testDashboardFields_emitsAllPresentFields() {

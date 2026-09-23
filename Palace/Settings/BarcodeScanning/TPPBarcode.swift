@@ -28,9 +28,9 @@ private let maxBarcodeWidth: CGFloat = 414
         return nil
     }
 
-    static func presentScanner(withCompletion completion: @escaping (String?) -> Void) {
+    static func presentScanner(withCompletion completion: @escaping @Sendable (String?) -> Void) {
         AVCaptureDevice.requestAccess(for: .video) { granted in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 if granted {
                     let scannerVC = BarcodeScanner(completion: completion)
                     let navController = UINavigationController.init(rootViewController: scannerVC)
@@ -42,6 +42,7 @@ private let maxBarcodeWidth: CGFloat = 414
         }
     }
 
+    @MainActor
     private static func presentCameraPrivacyAlert() {
         let alertController = UIAlertController(
             title: DisplayStrings.cameraAccessDisabledTitle,

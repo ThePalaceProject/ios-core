@@ -14,7 +14,7 @@ struct ChatBubble: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
-                .foregroundColor(foreground)
+                .foregroundStyle(foreground)
                 .background(background)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .accessibilityLabel(sender == .bot ? "Support bot says \(text)" : "You said \(text)")

@@ -8,12 +8,14 @@
 //  Firebase Remote Config flags.
 //
 //  Visibility of the whole bot — Settings row, chat surface, anything —
-//  must be gated on `RemoteFeatureFlags.shared.isTriageBotEnabled` BEFORE
-//  this factory is called. Treat that flag as the master kill-switch.
+//  must be gated on `featureFlags.isTriageBotEnabled` (the injected
+//  FeatureFlagProviding seam) BEFORE this factory is called. Treat that
+//  flag as the master kill-switch.
 //
 
 import Foundation
 import PalaceLogging
+import PalaceFeatureFlags
 import TriageBotCore
 import TriageBotIOS
 
@@ -22,7 +24,7 @@ enum TriageBotFactory {
     /// Builds a fully-wired ViewModel for the active user. Returns nil if the
     /// bundled KB can't be loaded (degenerate; bot is unusable in that case).
     @MainActor
-    static func makeViewModel() -> Any? {
+    static func makeViewModel(featureFlags: FeatureFlagProviding) -> Any? {
         // Synchronous load via BundledCatalogSource.loadCatalogSync(). The
         // earlier semaphore-bridge implementation triggered iOS 26's "Hang
         // Risk" runtime fault and intermittently returned nil on force-quit
@@ -48,8 +50,12 @@ enum TriageBotFactory {
         // (today's behavior — no regression).
         let keyStore = AnthropicKeyStore()
         let bootstrappedKey = keyStore.bootstrapFromEnvironmentIfNeeded()
-        let aiEnabled = RemoteFeatureFlags.shared.isTriageBotAIFallbackEnabled
-            && bootstrappedKey != nil
+        // Inert-by-default invariant (flag AND key) lives in TriageBotAIWiring so
+        // it is unit-tested under `swift test`; see TriageBotAIWiringTests (PP-4810).
+        let aiEnabled = TriageBotAIWiring.aiWiring(
+            flagEnabled: featureFlags.isTriageBotAIFallbackEnabled,
+            keyPresent: bootstrappedKey != nil
+        )
 
         let fallbackClassifier: FallbackClassifier? = aiEnabled
             ? ClaudeFallbackClassifier(keyProvider: { keyStore.read() })
@@ -60,11 +66,18 @@ enum TriageBotFactory {
             aiFallbackEnabled: aiEnabled
         )
 
-        let contextProvider = DefaultIosContextProvider(
+        let fullContextProvider = DefaultIosContextProvider(
             palaceFields: { @Sendable in
                 await Self.currentPalaceFields()
             },
             logSubsystem: Bundle.main.bundleIdentifier
+        )
+        // PP-4809: honor the patron's "Include diagnostics" choice (default ON).
+        // OFF returns an app/OS/device-only snapshot without the full capture.
+        let contextProvider = DiagnosticsGatingContextProvider(
+            full: fullContextProvider,
+            minimal: { fullContextProvider.minimalSnapshot() },
+            preference: UserDefaultsDiagnosticsPreference()
         )
 
         // Gateway selection:
@@ -78,7 +91,7 @@ enum TriageBotFactory {
         //     internal fallback when canSendMail() returns false (sim without
         //     configured Mail account), so the demo never gets stuck.
         let gateway: TicketGateway
-        if RemoteFeatureFlags.shared.isTriageBotTicketSubmissionEnabled {
+        if featureFlags.isTriageBotTicketSubmissionEnabled {
             gateway = EmailTicketGateway(
                 supportEmail: "support@thepalaceproject.org",
                 fallback: ClipboardTicketGateway()
@@ -87,12 +100,44 @@ enum TriageBotFactory {
             gateway = ClipboardTicketGateway()
         }
 
-        let sink = OSLogTelemetrySink(subsystem: Bundle.main.bundleIdentifier ?? "palace", category: "triagebot")
+        // PP-4808/PP-4813: DEBUG-only failure injection. On a bare simulator
+        // canSendMail() is false, so the gateways above both resolve to the
+        // always-succeeding ClipboardTicketGateway — the error+retry UI (AC-8/9)
+        // was unreachable on-screen. When the "Force ticket submission failure"
+        // developer toggle (or `-TriageBotForceSubmitFailure 1`) is on, swap in a
+        // gateway that always throws `.transport`, landing on the real
+        // ErrorActionsCard path. Entirely inside `#if DEBUG` — release builds
+        // never see this override read or the forced gateway.
+        let effectiveGateway: TicketGateway
+        #if DEBUG
+        // Wave 1b exception E2: isTriageBotForceSubmitFailureEnabled is a
+        // DEBUG-only override deliberately kept OFF the FeatureFlagProviding
+        // protocol (a #if DEBUG requirement would fork the witness table across
+        // build configs) — read it off the concrete impl here.
+        if RemoteFeatureFlags.shared.isTriageBotForceSubmitFailureEnabled {
+            effectiveGateway = ForcedFailureTicketGateway(mode: .transport)
+        } else {
+            effectiveGateway = gateway
+        }
+        #else
+        effectiveGateway = gateway
+        #endif
+
+        // Telemetry sink: OSLog for local/dev visibility, Firebase Analytics in
+        // release builds (PP-4814). Both forward only enumerable id/count/enum
+        // parameters — FirebaseTriageTelemetrySink runs TelemetryContract so no
+        // free text can reach Analytics.
+        let sink: TelemetrySink
+        #if DEBUG
+        sink = OSLogTelemetrySink(subsystem: Bundle.main.bundleIdentifier ?? "palace", category: "triagebot")
+        #else
+        sink = FirebaseTriageTelemetrySink()
+        #endif
 
         return makeViewModel(
             reducer: reducer,
             contextProvider: contextProvider,
-            gateway: gateway,
+            gateway: effectiveGateway,
             sink: sink,
             fallbackClassifier: fallbackClassifier
         )
@@ -101,15 +146,22 @@ enum TriageBotFactory {
     // MARK: - Palace-specific field snapshot
 
     private static func currentPalaceFields() async -> DefaultIosContextProvider.PalaceFields {
-        let manager = await MainActor.run { AppContainer.production().accountsManager }
-        let account = manager.currentAccount
-
-        return DefaultIosContextProvider.PalaceFields(
-            libraryName: account?.name,
-            libraryUUID: account?.uuid,
-            distributor: nil,        // Phase 2: derive from catalog metadata
-            authType: nil            // Phase 2: derive from currentAuthentication
-        )
+        // Read `currentAccount` (main-actor state on the non-Sendable
+        // AccountsManager) INSIDE the MainActor hop and return only the
+        // already-`Sendable` PalaceFields snapshot. This keeps the
+        // non-Sendable AccountsManager from crossing the actor boundary —
+        // same values, same source, no behavior change.
+        return await MainActor.run { () -> DefaultIosContextProvider.PalaceFields in
+            let account = AppContainer.production().accountsManager.currentAccount
+            return DefaultIosContextProvider.PalaceFields(
+                libraryName: account?.name,
+                libraryUUID: account?.uuid,
+                distributor: nil,        // Phase 2: derive from catalog metadata
+                authType: nil,           // Phase 2: derive from currentAuthentication
+                // PP-4807: raw barcode — hashed by the redactor, omitted by default.
+                barcode: TPPUserAccount.sharedAccount().barcode
+            )
+        }
     }
 
 }
@@ -135,7 +187,9 @@ private extension TriageBotFactory {
             contextProvider: contextProvider,
             ticketGateway: gateway,
             telemetry: sink,
-            fallbackClassifier: fallbackClassifier
+            fallbackClassifier: fallbackClassifier,
+            // PP-4808: persist a failed ticket so it can be re-offered next open.
+            pendingDraftStore: UserDefaultsPendingDraftStore()
         )
     }
 }

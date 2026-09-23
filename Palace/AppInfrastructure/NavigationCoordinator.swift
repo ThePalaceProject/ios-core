@@ -3,6 +3,7 @@ import UIKit
 import PalaceAudiobookToolkit
 import ReadiumShared
 import PalaceLogging
+import PalaceBookModel
 
 /// High-level app routes for SwiftUI NavigationStack.
 /// Extend incrementally as new flows migrate to SwiftUI.
@@ -184,11 +185,21 @@ final class NavigationCoordinator: ObservableObject {
         pop()
     }
 
-    func popToRoot() {
+    /// Pops the entire stack back to the root.
+    ///
+    /// `animated: false` is for teardown the patron did not ask for — the
+    /// account-switch sweep, and being sent to a tab's root by the app while
+    /// arriving from another tab, where the tab transition hides the collapse.
+    /// A pop the patron can SEE happen animates: re-tapping the tab they are
+    /// already on, and being sent to the root of the tab they are already on.
+    /// (Until PP-5051 this flag existed for the tab-switch reset, which ran
+    /// concurrently with SwiftUI's cross-tab transition and tore; that reset is
+    /// gone.)
+    func popToRoot(animated: Bool = true) {
         guard !path.isEmpty else { return }
         isTopRouteAudio = false
         // Respect reduce motion accessibility setting
-        if UIAccessibility.isReduceMotionEnabled {
+        if !animated || UIAccessibility.isReduceMotionEnabled {
             path.removeLast(path.count)
         } else {
             withAnimation(.easeInOut) {

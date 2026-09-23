@@ -9,24 +9,80 @@
 import Foundation
 @testable import Palace
 
-class TPPRequestExecutorMock: TPPRequestExecuting {
-    var requestTimeout: TimeInterval = 60
+/// Transfers the non-Sendable completion across the `DispatchQueue.main.async`
+/// hop. Safe: it is called exactly once, on the main queue.
+private struct SendableResultCompletion: @unchecked Sendable {
+    let completion: (NYPLResult<Data>) -> Void
+}
+
+/// `@unchecked Sendable`: a test double whose mutable state is configured on the
+/// main thread during setup and only read during main-queue delivery — it is
+/// never mutated from multiple threads. The waiver documents that confinement.
+class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
+
+    private let lock = NSLock()
+
+    private var _requestTimeout: TimeInterval = 60
+    var requestTimeout: TimeInterval {
+        get { lock.withLock { _requestTimeout } }
+        set { lock.withLock { _requestTimeout = newValue } }
+    }
 
     // table of all mock response bodies for given URLs
-    var responseBodies = [URL: String]()
+    private var _responseBodies = [URL: String]()
+    var responseBodies: [URL: String] {
+        get { lock.withLock { _responseBodies } }
+        set { lock.withLock { _responseBodies = newValue } }
+    }
 
     /// When set, ALL requests will fail with this HTTP status code.
-    var forceFailureStatusCode: Int?
+    private var _forceFailureStatusCode: Int?
+    var forceFailureStatusCode: Int? {
+        get { lock.withLock { _forceFailureStatusCode } }
+        set { lock.withLock { _forceFailureStatusCode = newValue } }
+    }
 
     /// Every URL passed to `executeRequest`, in call order. Lets tests assert
     /// that a sign-in actually FIRED the credential request (e.g. the
     /// basic/token readiness-race regression where `logIn()` used to silently
     /// no-op before `/patrons/me` was ever requested).
-    private(set) var executedRequestURLs: [URL] = []
+    private var _executedRequestURLs: [URL] = []
+    /// Whether each executed request asked for a proactive token refresh,
+    /// keyed by URL. Recorded because the flag is not observable any other way:
+    /// it is consumed inside the executor, and a caller flipping it changes
+    /// which failure arm runs (`TPPNetworkExecutor:882-899` presents the
+    /// sign-in modal on a refresh 401) without changing any response a test
+    /// can see.
+    private(set) var tokenRefreshByURL: [URL: Bool] {
+        get { lock.withLock { _tokenRefreshByURL } }
+        set { lock.withLock { _tokenRefreshByURL = newValue } }
+    }
+    private var _tokenRefreshByURL: [URL: Bool] = [:]
+
+    private(set) var executedRequestURLs: [URL] {
+        get { lock.withLock { _executedRequestURLs } }
+        set { lock.withLock { _executedRequestURLs = newValue } }
+    }
+
+    /// Fired synchronously the instant `executeRequest` records a URL — the
+    /// deterministic JOIN seam for tests that need to wake the moment the
+    /// request actually fires, instead of polling `executedRequestURLs` on a
+    /// wall-clock deadline (which starves under CI parallel oversubscription
+    /// and times out even though the request DID fire). A test sets this to
+    /// `{ _ in expectation.fulfill() }` and `await`s that expectation.
+    private var _onExecuteRequest: (@Sendable (URLRequest) -> Void)?
+    var onExecuteRequest: (@Sendable (URLRequest) -> Void)? {
+        get { lock.withLock { _onExecuteRequest } }
+        set { lock.withLock { _onExecuteRequest = newValue } }
+    }
 
     /// Incremented in `reset()` so that stale GCD blocks from a previous
     /// test skip their completion callback.
-    private var generation: Int = 0
+    private var _generation: Int = 0
+    private var generation: Int {
+        get { lock.withLock { _generation } }
+        set { lock.withLock { _generation = newValue } }
+    }
 
     init() {
         // add here the responses of all the api calls whose flow you want to verify
@@ -38,6 +94,10 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
     func reset() {
         generation += 1
         executedRequestURLs.removeAll()
+        tokenRefreshByURL.removeAll()
+        // Drop any join hook so a stale closure can't fire a torn-down
+        // expectation on a later test's request.
+        onExecuteRequest = nil
     }
 
     func executeRequest(_ req: URLRequest,
@@ -46,11 +106,17 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
 
         if let reqURL = req.url {
             executedRequestURLs.append(reqURL)
+            tokenRefreshByURL[reqURL] = enableTokenRefresh
         }
+        // Join seam: notify AFTER recording, so a test woken by this callback
+        // reads a URL list that already contains this request.
+        onExecuteRequest?(req)
 
         let capturedGeneration = generation
+        let completionBox = SendableResultCompletion(completion: completion)
         DispatchQueue.main.async { [weak self] in
             guard let self, self.generation == capturedGeneration else { return }
+            let completion = completionBox.completion
 
             guard let url = req.url else {
                 completion(.failure(NSError(domain: "Unit tests: empty url",

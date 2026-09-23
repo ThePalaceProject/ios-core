@@ -19,6 +19,8 @@
 import Foundation
 import PalaceAudiobookToolkit
 import PalaceLogging
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// File-system lifecycle for downloaded book content.
 /// Non-final to allow test-only subclassing in `SpyLocalContentService`.
@@ -43,13 +45,13 @@ class LocalBookContentService {
     private let bookFileManager: BookFileManager
     private let fileManager: FileManager
     private let lcpContentFulfiller: LCPContentFulfilling
-    /// PP-4957: reads the LCP-audiobook-streaming feature flag. When ON, the
-    /// self-heal `.lcpa` re-download is skipped for an LCP audiobook — a
-    /// streaming book is intentionally content-absent and playable on its
-    /// license alone, so re-fetching the full archive would defeat streaming.
-    /// Injected so tests drive both flag states; production default reads the
-    /// shared flag (local override > Firebase remote, default `false`).
-    private let streamingEnabledProvider: () -> Bool
+    // PP-5135: this type deliberately holds NO streaming-flag seam. It used to,
+    // and read it to skip the self-heal `.lcpa` re-download while streaming was
+    // ON — which is what left every "Downloaded" LCP audiobook with no audio on
+    // disk and unplayable offline. The content fetch is now unconditional, so
+    // the flag is not merely unused here but unrepresentable, and the
+    // short-circuit cannot be reintroduced by a caller passing a provider.
+
     /// Per-instance so tests can drive the idle-expiry and heartbeat behaviour
     /// in milliseconds instead of waiting out the production window.
     private let inflightIdleTimeout: TimeInterval
@@ -68,6 +70,15 @@ class LocalBookContentService {
     /// real window — sleeps in this suite feed the documented parallel-clone
     /// starvation flakes.
     private let monotonicClock: () -> UInt64
+
+    /// Resolves the library the app is currently pointed at. Injectable because
+    /// the LIBRARY-SWITCH arm of the write guard is otherwise unreachable from a
+    /// test: `currentAccountId` is backed by `UserDefaults`, and driving it for
+    /// real would mean writing to the standard suite from a test. A mutation
+    /// survivor proved this wiring needed its own coverage — the pure rule was
+    /// tested while the code computing its input was not, which is the same
+    /// shape of hole as the leak this guard exists to close.
+    private let currentAccountIdProvider: () -> String?
 
     /// Progress/activity sink for the LCP content re-download. Assigned by
     /// `MyBooksDownloadCenter` after `init` because the reporter is created
@@ -121,6 +132,112 @@ class LocalBookContentService {
     /// timeout, so a stalled connection fails there first.
     static let inflightContentDownloadIdleTimeout: TimeInterval = 180
 
+    /// PP-5135: whether a BACKGROUND `.lcpa` fetch may start right now, given
+    /// connectivity and the patron's download preference.
+    ///
+    /// The archive is hundreds of megabytes. `downloadOnlyOnWiFi` is a setting
+    /// the patron actually set, and 3.2.x honoured it for this transfer — the
+    /// download-first path refuses at `DownloadStartReducer.reduceRegular`
+    /// (`.failWifi`). Re-introducing the fetch without this check would spend
+    /// their cellular data against that stated preference, which is a worse
+    /// defect than the one being fixed.
+    ///
+    /// Pure and static so every caller shares one rule and a flipped conditional
+    /// is caught by mutation testing. Offline returns false: there is nothing to
+    /// fetch, and the open path must not queue work that cannot run.
+    static func backgroundFetchAllowed(
+        isConnectedToNetwork: Bool,
+        isOnWiFi: Bool,
+        downloadOnlyOnWiFi: Bool
+    ) -> Bool {
+        guard isConnectedToNetwork else { return false }
+        if downloadOnlyOnWiFi && !isOnWiFi { return false }
+        return true
+    }
+
+    /// Whether a COMPLETED `.lcpa` fetch may still be written to disk for this
+    /// book — i.e. whether the patron still holds it.
+    ///
+    /// This closes a confirmed data-retention leak, not a hypothetical one.
+    /// The fetch is fire-and-forget by construction: `LCPContentFulfilling`
+    /// returns `Void` and its task handle is discarded, so a Return cannot
+    /// cancel an in-flight transfer (`BookRegistrySync` documents the same
+    /// thing — "cancel would report success while the transfer kept running").
+    /// The return cleanup therefore deletes the content and the download lands
+    /// AFTERWARDS and re-creates it.
+    ///
+    /// Measured on device (Moes Max, build 505), matched by SHA-256 of the book
+    /// identifier against the on-disk filename: two returned loans left
+    /// `.lcpa` archives of 0.48 GB and 1.07 GB in Application Support, and
+    /// NEITHER book was still present in the registry. 1.55 GB of DRM-protected
+    /// audio for books the patron had given back.
+    ///
+    /// Guarding the WRITE rather than adding cancellation is deliberate: it
+    /// closes every way a loan can end — return, expiry — at one point, instead
+    /// of racing each separately, and needs no cancellation machinery the
+    /// fulfiller cannot support.
+    ///
+    /// KNOWN BOUND, corrected in review rather than left overclaimed. This is
+    /// NOT the only writer. `LCPFulfillmentHandler` reaches
+    /// `BackgroundDownloadHandler.replaceBook`, a second `.lcpa` producer with
+    /// the same fire-and-forget shape and no such guard — reachable with LCP
+    /// streaming OFF, and always for LCP PDF/EPUB. So this NARROWS the orphan
+    /// window on the streaming path; it does not close it everywhere. An
+    /// earlier revision of this comment claimed "the single point where content
+    /// comes into existence", which was false.
+    ///
+    /// A library switch is deliberately NOT closed here — see
+    /// `accountUnchanged` below. The registry cannot answer for another
+    /// library, and guessing costs the patron a gigabyte.
+    ///
+    /// Exhaustive with no `default:` — the F-011 class-of-bug guard. A new
+    /// `TPPBookState` must be classified deliberately rather than defaulting
+    /// into "write the file".
+    static func mayStoreFetchedContent(
+        registryState: TPPBookState,
+        accountUnchanged: Bool
+    ) -> Bool {
+        // A LIBRARY SWITCH IS NOT A LOAN ENDING, and the registry cannot tell
+        // the difference. `bookRegistry.state(for:)` is scoped to the CURRENT
+        // account, so once the patron switches libraries it answers for a
+        // different library and reports `.unregistered` for a book account A
+        // still holds. Deleting on that answer destroys up to a gigabyte of
+        // content the patron is entitled to, recoverable only by switching back
+        // and waiting for `load()` reconciliation.
+        //
+        // When the account has moved we cannot judge the loan, so we WRITE. The
+        // destination is already account-pinned (`fileUrl(for:)`, which resolves the account internally), so
+        // the archive lands in the right library's directory either way, and
+        // this is exactly the pre-guard behaviour — it declines to close that
+        // sliver rather than closing it destructively. Retention is
+        // recoverable; deletion is not.
+        // KNOWN RESIDUAL, named rather than fixed: account identity cannot
+        // distinguish "same library, registry not yet reconciled" from "same
+        // library, book returned". A switch away and back mid-transfer, or a
+        // completion landing during `load()` after a switch back, reads
+        // `accountUnchanged == true` while the registry still answers
+        // `.unregistered`, and the fetch is discarded. Bounded and
+        // NON-destructive — the decline arm removes only the fulfiller's temp
+        // file, never `destURL` — so the cost is a wasted re-download, not lost
+        // content, and a later open re-arms the fetch.
+        guard accountUnchanged else { return true }
+
+        switch registryState {
+        // The loan is live and content belongs on the device.
+        case .downloadNeeded, .downloading, .downloadSuccessful, .used,
+             .downloadFailed, .SAMLStarted:
+            return true
+        // `.unregistered` is a returned or never-held book — this is the leak.
+        // `.returning` is the same loan a moment earlier: the cleanup is already
+        // in flight, so writing here re-creates exactly what it is deleting.
+        case .unregistered, .returning:
+            return false
+        // A hold is not a loan, and an unsupported book has nothing to play.
+        case .holding, .unsupported:
+            return false
+        }
+    }
+
     private static func monotonicNow() -> UInt64 {
         DispatchTime.now().uptimeNanoseconds
     }
@@ -134,17 +251,19 @@ class LocalBookContentService {
         inflightIdleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
         downloadCenterHasTransfer: ((String) -> Bool)? = nil,
         monotonicClock: (() -> UInt64)? = nil,
-        streamingEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled }
+        currentAccountIdProvider: (() -> String?)? = nil
     ) {
-        self.streamingEnabledProvider = streamingEnabledProvider
         self.inflightIdleTimeout = inflightIdleTimeout
         self.monotonicClock = monotonicClock ?? LocalBookContentService.monotonicNow
+        self.currentAccountIdProvider = currentAccountIdProvider ?? { [weak accountsManager] in
+            accountsManager?.currentAccountId
+        }
         self.downloadCenterHasTransfer = downloadCenterHasTransfer
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.bookFileManager = bookFileManager ?? BookFileManager(
             bookRegistry: bookRegistry,
-            accountsManager: accountsManager,
+            accountScope: AccountsManagerDownloadContextAdapter(accountsManager: accountsManager),
             fileManager: fileManager
         )
         self.fileManager = fileManager
@@ -340,15 +459,22 @@ class LocalBookContentService {
     func redownloadLCPContentFile(for book: TPPBook) {
         #if LCP
         guard LCPAudiobooks.canOpenBook(book) else { return }
-        // PP-4957: when streaming is ON, an LCP audiobook is intentionally
-        // content-absent and playable on its license alone — the self-heal must
-        // NOT re-fetch the `.lcpa`, or it would re-download the full archive that
-        // the streaming path exists to avoid. Flag OFF → the self-heal below is
-        // unchanged (today's download-first behavior).
-        if streamingEnabledProvider() {
-            Log.info(#file, "PP-4957 streaming ON — skipping self-heal .lcpa re-download for '\(book.title)'")
-            return
-        }
+        // PP-5135: this is deliberately NOT gated on the streaming flag.
+        //
+        // PP-4957 short-circuited here when streaming was ON, on the reasoning
+        // that a streaming LCP audiobook is "intentionally content-absent"
+        // because its `.lcpl` license alone makes it playable. That holds only
+        // while the device is online — and the same book is reported to the
+        // patron as Downloaded, so going offline (the whole point of
+        // downloading) left the open with no audio behind it and it dead-ended
+        // in `PublicationOpenError`. Measured on device for PP-5135: every
+        // borrowed LCP audiobook had its `.lcpl` and not one `.lcpa`.
+        //
+        // Streaming keeps its benefit — the patron starts playing immediately
+        // instead of waiting on a multi-gigabyte archive — because this fetch is
+        // a BACKGROUND transfer nobody blocks on. The guards below already make
+        // it safe to call unconditionally: it skips when the `.lcpa` is present,
+        // when the download center is transferring, and when a claim is held.
         guard let licenseURL = lcpLicenseURL(forBookIdentifier: book.identifier) else {
             Log.warn(#file, "📥 [LCP RE-DOWNLOAD] No license file found for '\(book.title)' — skipping")
             return
@@ -362,6 +488,10 @@ class LocalBookContentService {
         }
 
         let identifier = book.identifier
+        // Captured BEFORE the transfer starts so the completion can tell a
+        // returned loan (registry says gone, same library) apart from a library
+        // switch (registry is simply answering for someone else).
+        let accountAtFetchStart = currentAccountIdProvider()
 
         // Skip if the download center is already transferring this book. Its
         // fulfillment-handler transfer is invisible to the claim map below, so
@@ -411,6 +541,28 @@ class LocalBookContentService {
             }
             guard let localUrl else {
                 Log.error(#file, "📥 [LCP RE-DOWNLOAD] ❌ No local URL returned for '\(book.title)'")
+                return
+            }
+
+            // The patron may have returned the book while this multi-gigabyte
+            // transfer was in flight. Nothing cancelled it — nothing CAN — so
+            // this is the last point at which the content can be stopped from
+            // reaching disk. A `self` that has gone away answers `.unregistered`
+            // rather than defaulting to a write, because a service torn down
+            // mid-transfer cannot vouch for the loan either, so it takes the
+            // NON-DESTRUCTIVE arm below and the archive is written.
+            let currentState = self?.bookRegistry.state(for: identifier) ?? .unregistered
+            // Compared against the account captured BEFORE the transfer began.
+            // A `self` that has gone away cannot report an account either, so it
+            // answers "changed" and the write proceeds — the non-destructive arm.
+            let accountNow = self?.currentAccountIdProvider()
+            let accountUnchanged = (self != nil) && (accountNow == accountAtFetchStart)
+            guard LocalBookContentService.mayStoreFetchedContent(
+                registryState: currentState,
+                accountUnchanged: accountUnchanged
+            ) else {
+                try? fileManager.removeItem(at: localUrl)
+                Log.info(#file, "📥 [LCP RE-DOWNLOAD] '\(book.title)' is no longer held (state: \(currentState)) — discarding the fetched .lcpa instead of writing it to disk")
                 return
             }
 

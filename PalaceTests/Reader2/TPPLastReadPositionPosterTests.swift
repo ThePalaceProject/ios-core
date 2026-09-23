@@ -21,6 +21,7 @@ import ReadiumShared
 import PalaceCatalog
 import PalaceReadingPosition
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Spy PositionWriter
 
@@ -48,6 +49,10 @@ private actor SpyPositionWriter: PositionWriter {
     }
 }
 
+// Deliberately NOT @MainActor: the code under test is nonisolated and the
+// fixtures (Publication / TPPBook / factory) are non-Sendable — driving them
+// from a @MainActor test is a Swift 6 sending error, while from a
+// nonisolated test everything stays in one isolation domain. No UI here.
 final class TPPLastReadPositionPosterTests: XCTestCase {
 
     // MARK: - Properties
@@ -56,12 +61,18 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
     private var testBook: TPPBook!
     private var publication: Publication!
     private var spyWriter: SpyPositionWriter!
-    private var poster: TPPLastReadPositionPoster!
+    // `nonisolated(unsafe)`: the poster is a plain (nonisolated) class touched only
+    // serially across setUp→test→tearDown on the main thread, so awaiting its
+    // `awaitPendingWrites()` join seam must not be treated as sending a @MainActor
+    // property across an isolation boundary (Swift 6 "sending 'self.poster'" error).
+    nonisolated(unsafe) private var poster: TPPLastReadPositionPoster!
 
     // MARK: - Setup
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    // async setUp adopts the class's @MainActor isolation so the @MainActor
+    // createTestPublication() result is not returned to a nonisolated context.
+    override func setUp() async throws {
+        try await super.setUp()
 
         bookRegistryMock = TPPBookRegistryMock()
         testBook = createTestBook()
@@ -118,7 +129,10 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         bookRegistryMock.setLocation(nil, forIdentifier: testBook.identifier)
         poster.storeReadPosition(locator: locator)
 
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Join the actual write path deterministically. `shouldStore` rejects
+        // this locator so no Task is spawned; awaiting the (nil) pending task
+        // is a correct no-op that still asserts nothing was persisted.
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
 
         XCTAssertNil(bookRegistryMock.location(forIdentifier: testBook.identifier),
                      "Zero progression + no CSS selector must not persist locally")
@@ -139,7 +153,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         )
 
         poster.storeReadPosition(locator: locator)
-        try await Task.sleep(nanoseconds: 50_000_000)
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
 
         XCTAssertNotNil(bookRegistryMock.location(forIdentifier: testBook.identifier))
         let saved = await spyWriter.savedSnapshots
@@ -158,7 +172,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         )
 
         poster.storeReadPosition(locator: locator)
-        try await Task.sleep(nanoseconds: 50_000_000)
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
 
         // Local registry write
         XCTAssertNotNil(bookRegistryMock.location(forIdentifier: testBook.identifier))
@@ -183,7 +197,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         )
 
         poster.storeReadPosition(locator: locator)
-        try await Task.sleep(nanoseconds: 50_000_000)
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
 
         XCTAssertNotNil(bookRegistryMock.location(forIdentifier: testBook.identifier),
                         "Writer failures must not roll back the local registry write")
@@ -197,7 +211,8 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
 
         poster.storeReadPosition(locator: locator1)
         poster.storeReadPosition(locator: locator2)
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // Both spawned tasks are retained; drain BOTH before reading the spy.
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
 
         let saved = await spyWriter.savedSnapshots
         XCTAssertEqual(saved.count, 2,

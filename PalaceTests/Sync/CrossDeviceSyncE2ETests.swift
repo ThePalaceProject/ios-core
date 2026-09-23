@@ -21,7 +21,9 @@ import XCTest
 import ReadiumShared
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class CrossDeviceSyncE2ETests: XCTestCase {
 
     // MARK: - Test fixtures
@@ -36,8 +38,22 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     private var userAccount: TPPUserAccountMock!
     private var executorA: TPPNetworkExecutor!
     private var executorB: TPPNetworkExecutor!
+    /// Device A with no connectivity. NoNetworkURLProtocol answers every
+    /// request with NSURLErrorNotConnectedToInternet, and as of PP-4987 that
+    /// IS what `postAnnotation` sees — `TPPNetworkResponder` no longer
+    /// substitutes code 914 for it. The code is in `NetworkQueue.StatusCodes`,
+    /// so the write is queued for retry and, being pending rather than lost,
+    /// is not reported. The offline test below pins exactly that.
+    private var executorAOffline: TPPNetworkExecutor!
+
+    /// Installed for the whole suite because PP-4987 made the offline branch
+    /// reachable: without it, the offline test writes a durable row into the
+    /// app's REAL `simplified.db` in Application Support, which a later
+    /// reachability event could replay as a live POST.
+    private var offlineQueue: OfflineQueueSpy!
 
     private var savedExecutorOverride: TPPNetworkExecutor?
+    private var savedErrorLoggerOverride: ErrorLogging?
     private var savedAccountsOverride: TPPLibraryAccountsProvider?
     private var savedDeviceAccountsOverride: TPPUserAccountResolving?
     private var savedFirebaseDeviceOverride: String?
@@ -55,6 +71,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         savedDeviceAccountsOverride = AnnotationDevice.accountsManagerOverride
         savedFirebaseDeviceOverride = AnnotationDevice.firebaseDeviceIDOverride
         savedAnnotationsURLOverride = TPPAnnotations.annotationsURLOverride
+        savedErrorLoggerOverride = TPPAnnotations.errorLoggerOverride
 
         // Reset shared user-account state so credential writes here don't
         // leak across tests.
@@ -110,6 +127,14 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
             sessionConfiguration: configB
         )
 
+        let configOffline = URLSessionConfiguration.ephemeral
+        configOffline.protocolClasses = [NoNetworkURLProtocol.self]
+        executorAOffline = TPPNetworkExecutor(
+            credentialsProvider: nil,
+            cachingStrategy: .ephemeral,
+            sessionConfiguration: configOffline
+        )
+
         // Install the shared library/accounts override now so any read
         // through TPPAnnotations sees a sync-supporting library.
         TPPAnnotations.accountsManagerOverride = libraryAccount
@@ -120,6 +145,9 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         // (no signed-in library defaults), so without this override every
         // POST/GET path early-returns before hitting HTTPStubURLProtocol.
         TPPAnnotations.annotationsURLOverride = Self.baseURL
+
+        offlineQueue = OfflineQueueSpy()
+        TPPAnnotations.offlineQueueOverride = offlineQueue
     }
 
     override func tearDown() {
@@ -132,6 +160,13 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         AnnotationDevice.accountsManagerOverride = savedDeviceAccountsOverride
         AnnotationDevice.firebaseDeviceIDOverride = savedFirebaseDeviceOverride
         TPPAnnotations.annotationsURLOverride = savedAnnotationsURLOverride
+        // Restored here, not only via a per-test `defer`: a spy left installed
+        // silently swallows every annotation error report for the rest of the
+        // process, which no later test would attribute to this suite.
+        TPPAnnotations.errorLoggerOverride = savedErrorLoggerOverride
+        executorAOffline = nil
+        TPPAnnotations.offlineQueueOverride = nil
+        offlineQueue = nil
 
         HTTPStubURLProtocol.reset()
         backend?.clear()
@@ -162,6 +197,25 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         let prevDev = AnnotationDevice.firebaseDeviceIDOverride
         let prevAccountDeviceID = userAccount.deviceID
         TPPAnnotations.executorOverride = executorA
+        AnnotationDevice.firebaseDeviceIDOverride = Self.deviceA
+        userAccount.setDeviceID(Self.deviceA)
+        defer {
+            TPPAnnotations.executorOverride = prevExec
+            AnnotationDevice.firebaseDeviceIDOverride = prevDev
+            if let prev = prevAccountDeviceID {
+                userAccount.setDeviceID(prev)
+            }
+        }
+        return try block()
+    }
+
+    /// Device A, but with no connectivity. Same device tag as `asDeviceA`, so
+    /// anything that *does* reach the backend is still attributable to A.
+    private func asDeviceAOffline<T>(_ block: () throws -> T) rethrows -> T {
+        let prevExec = TPPAnnotations.executorOverride
+        let prevDev = AnnotationDevice.firebaseDeviceIDOverride
+        let prevAccountDeviceID = userAccount.deviceID
+        TPPAnnotations.executorOverride = executorAOffline
         AnnotationDevice.firebaseDeviceIDOverride = Self.deviceA
         userAccount.setDeviceID(Self.deviceA)
         defer {
@@ -309,6 +363,156 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// environment (no auth doc loaded, no credentials, etc.), the
     /// TPPAnnotations static methods early-return without touching the
     /// network. We skip rather than report a misleading pass.
+    // MARK: - PP-4965: what an offline device does to the other device
+
+    /// Device A loses connectivity. Its position write is handed to the offline
+    /// queue, so nothing reaches the server and device B correctly sees
+    /// nothing — but A must NOT report this as an error. Reporting it is what
+    /// made "Error posting annotation" the largest error in the app while the
+    /// writes themselves were fine.
+    func test_positionWrittenWhileDeviceAOffline_isInvisibleToB_andNotReportedAsAnError() async throws {
+        try skipIfSyncGateClosed()
+
+        let spy = ErrorLoggerSpy()
+        TPPAnnotations.errorLoggerOverride = spy   // also restored in tearDown
+
+        let selectorValue = epubSelectorValue(
+            href: "/chapter9.xhtml",
+            progressInChapter: 0.9,
+            progressInBook: 0.5,
+            title: "Chapter 9"
+        )
+        let postsBefore = backend.postCount
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            asDeviceAOffline {
+                TPPAnnotations.postReadingPosition(
+                    forBook: Self.bookID,
+                    selectorValue: selectorValue,
+                    motivation: .readingProgress
+                ) { _ in cont.resume() }
+            }
+        }
+
+        XCTAssertEqual(backend.postCount, postsBefore,
+                       "An offline write must never reach the server")
+        XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 0,
+                       "Backend must hold nothing after an offline write")
+        // PP-4987 HAS LANDED — this is the flip the expectation above was
+        // waiting for, and the assertions are now the correct ones.
+        //
+        // `TPPNetworkResponder` no longer replaces the transport error with a
+        // generic no-response code, so the NSURLError survives to
+        // `postAnnotation`, matches `NetworkQueue.StatusCodes`, and the write
+        // goes to the offline queue instead of being lost. A queued write is
+        // pending delivery, not a failure, so nothing is reported — which is
+        // the entire point of PP-4965's `.queuedForRetry` case, unreachable
+        // until now.
+        XCTAssertEqual(spy.loggedSummaries, [],
+                       "A write that was queued for retry must not be reported as an error — it is pending, not lost")
+        XCTAssertNil(spy.firstReportedNSError,
+                     "Nothing at all should be reported for a successfully queued write")
+
+        // The other half of the claim, and the one that makes the silence
+        // defensible: the write is PENDING, which means it must actually be in
+        // the queue. Asserting only the absence of a report would pass equally
+        // well if the position had simply evaporated.
+        XCTAssertEqual(offlineQueue.count, 1,
+                       "The offline write must be handed to the retry queue, not merely go unreported")
+        XCTAssertEqual(offlineQueue.enqueued.first?.updateID, Self.bookID,
+                       "A reading position keys on the book, so a later position supersedes this one")
+        // NOTE: deliberately NOT asserting the absence of an Authorization
+        // header here. The spy stands in FRONT of `NetworkQueue`, and
+        // production genuinely does hand a credential across that boundary —
+        // the strip happens inside `addRequest`, downstream of this point. An
+        // assertion here would be asserting a property that is false in
+        // production, and it only ever passed because this suite's executor
+        // has no token on a clean runner; it went red the moment a sibling
+        // test left one behind. The credential guarantee is pinned where it
+        // actually holds, against the persisted row, in
+        // NetworkQueueTests.testAddRequest_NeverPersistsTheCredential…
+
+        // B sees nothing, and that is correct: the write was never delivered.
+        let book = makeBook()
+        let seenByB: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .readingProgress
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
+            }
+        XCTAssertEqual(seenByB.count, 0,
+                       "Device B must not see a position that was never delivered")
+    }
+
+    /// The same position, written once A is back online, does reach B. This is
+    /// what makes the case above a delay rather than a loss.
+    ///
+    /// Note this re-posts directly rather than draining `TPPNetworkQueue` —
+    /// the queue's own retry behaviour is its responsibility and is covered by
+    /// its own suite. What is asserted here is the cross-device consequence:
+    /// an offline write followed by a connected write leaves B holding exactly
+    /// one annotation, A's, not two and not zero.
+    func test_positionRewrittenAfterDeviceAReconnects_reachesDeviceB() async throws {
+        try skipIfSyncGateClosed()
+
+        let selectorValue = epubSelectorValue(
+            href: "/chapter9.xhtml",
+            progressInChapter: 0.9,
+            progressInBook: 0.5,
+            title: "Chapter 9"
+        )
+
+        // Offline attempt — goes nowhere.
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            asDeviceAOffline {
+                TPPAnnotations.postReadingPosition(
+                    forBook: Self.bookID,
+                    selectorValue: selectorValue,
+                    motivation: .readingProgress
+                ) { _ in cont.resume() }
+            }
+        }
+        XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 0,
+                       "Precondition: the offline attempt must not have reached the server")
+
+        // Reconnected attempt — lands.
+        let hasServerId: Bool =
+            await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                asDeviceA {
+                    TPPAnnotations.postReadingPosition(
+                        forBook: Self.bookID,
+                        selectorValue: selectorValue,
+                        motivation: .readingProgress
+                    ) { response in cont.resume(returning: response?.serverId != nil) }
+                }
+            }
+        XCTAssertTrue(hasServerId, "The reconnected write must be accepted by the server")
+
+        let book = makeBook()
+        let seenByB: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .readingProgress
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
+            }
+        XCTAssertEqual(seenByB.count, 1,
+                       "B must end up with exactly one annotation — the offline attempt must not have left a duplicate")
+        XCTAssertEqual(seenByB.first?.device, Self.deviceA,
+                       "The delivered annotation must still be tagged to device A")
+    }
+
     private func skipIfSyncGateClosed() throws {
         guard TPPAnnotations.syncIsPossibleAndPermitted() else {
             throw XCTSkip("Sync gate closed in this environment (no credentials / library auth doc) — skipping E2E sync test")
@@ -320,7 +524,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// Device A writes a reading-progress annotation for an EPUB locator;
     /// device B retrieves it via the same shared backend. Verifies the full
     /// POST→GET protocol exchange, including device-tagging.
-    func test_positionWrittenOnDeviceA_readableOnDeviceB() throws {
+    func test_positionWrittenOnDeviceA_readableOnDeviceB() async throws {
         try skipIfSyncGateClosed()
 
         let selectorValue = epubSelectorValue(
@@ -333,19 +537,23 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         // A writes (the real TPPAnnotations.postListeningPosition wraps
         // postReadingPosition with motivation=.readingProgress and includes
         // device=Self.deviceA derived from AnnotationDevice.currentID()).
-        let postExp = expectation(description: "device A posts position")
-        asDeviceA {
-            TPPAnnotations.postReadingPosition(
-                forBook: Self.bookID,
-                selectorValue: selectorValue,
-                motivation: .readingProgress
-            ) { response in
-                XCTAssertNotNil(response, "Device A's POST should return an AnnotationResponse with a server ID")
-                XCTAssertNotNil(response?.serverId, "Server must assign an annotation ID")
-                postExp.fulfill()
+        // JOIN on the completion: AnnotationResponse is non-Sendable, so we
+        // project the two Sendable facts the assertions need (response
+        // presence + server-ID presence) inside the completion.
+        let postResult: (hasResponse: Bool, hasServerId: Bool) =
+            await withCheckedContinuation { (cont: CheckedContinuation<(Bool, Bool), Never>) in
+                asDeviceA {
+                    TPPAnnotations.postReadingPosition(
+                        forBook: Self.bookID,
+                        selectorValue: selectorValue,
+                        motivation: .readingProgress
+                    ) { response in
+                        cont.resume(returning: (response != nil, response?.serverId != nil))
+                    }
+                }
             }
-        }
-        wait(for: [postExp], timeout: 10.0)
+        XCTAssertTrue(postResult.hasResponse, "Device A's POST should return an AnnotationResponse with a server ID")
+        XCTAssertTrue(postResult.hasServerId, "Server must assign an annotation ID")
 
         // Verify the backend captured exactly one annotation tagged for device A.
         let stored = backend.allAnnotations(forBook: Self.bookID)
@@ -358,22 +566,24 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
 
         // B reads — same backend, but a different executor + a different
         // device ID. The reading-progress bookmark must come back parsed.
+        // JOIN on the completion: TPPReadiumBookmark is non-Sendable, so we
+        // project the Sendable facts the assertions check (type match + the
+        // four preserved fields) inside the completion.
         let book = makeBook()
-        let readExp = expectation(description: "device B reads position")
-        var readBack: Bookmark?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .readingProgress
-            ) { bookmarks in
-                readBack = bookmarks?.first
-                readExp.fulfill()
+        let readBack: ReadiumBookmarkProjection? =
+            await withCheckedContinuation { (cont: CheckedContinuation<ReadiumBookmarkProjection?, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .readingProgress
+                    ) { bookmarks in
+                        cont.resume(returning: ReadiumBookmarkProjection(bookmarks?.first))
+                    }
+                }
             }
-        }
-        wait(for: [readExp], timeout: 10.0)
 
-        let readiumBookmark = try XCTUnwrap(readBack as? TPPReadiumBookmark,
+        let readiumBookmark = try XCTUnwrap(readBack,
                                             "B must receive the same annotation as a TPPReadiumBookmark")
         XCTAssertEqual(readiumBookmark.href, "/chapter3.xhtml",
                        "Round-tripped bookmark must preserve href")
@@ -432,23 +642,25 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
                        TPPBookmarkSpec.Motivation.bookmark.rawValue)
 
         // B reads as an audiobook — the factory should hand back an
-        // `AudioBookmark`, not a Readium one.
+        // `AudioBookmark`, not a Readium one. JOIN on the completion:
+        // AudioBookmark is non-Sendable, so we project the Sendable facts the
+        // assertions check (type match + the two round-tripped fields) inside
+        // the completion.
         let book = makeBook(audiobook: true)
-        let readExp = expectation(description: "device B reads audiobook position")
-        var readBack: Bookmark?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .bookmark
-            ) { bookmarks in
-                readBack = bookmarks?.first
-                readExp.fulfill()
+        let readBack: AudioBookmarkProjection? =
+            await withCheckedContinuation { (cont: CheckedContinuation<AudioBookmarkProjection?, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .bookmark
+                    ) { bookmarks in
+                        cont.resume(returning: AudioBookmarkProjection(bookmarks?.first))
+                    }
+                }
             }
-        }
-        await fulfillment(of: [readExp], timeout: 10.0)
 
-        let audio = try XCTUnwrap(readBack as? AudioBookmark,
+        let audio = try XCTUnwrap(readBack,
                                   "B must receive the audiobook locator as an AudioBookmark")
         XCTAssertEqual(audio.readingOrderItem, "track-7.mp3",
                        "Audiobook reading-order item must round-trip")
@@ -460,7 +672,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
 
     /// User-initiated bookmark (motivation=.bookmark) on device A is fetched
     /// via the normal getServerBookmarks path on device B.
-    func test_bookmarkAddedOnDeviceA_visibleOnDeviceB() throws {
+    func test_bookmarkAddedOnDeviceA_visibleOnDeviceB() async throws {
         try skipIfSyncGateClosed()
 
         let selectorValue = epubSelectorValue(
@@ -485,15 +697,16 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
             device: Self.deviceA
         ))
 
-        let postExp = expectation(description: "device A posts bookmark")
-        var serverID: String?
-        asDeviceA {
-            TPPAnnotations.postBookmark(local, forBookID: Self.bookID) { response in
-                serverID = response?.serverId
-                postExp.fulfill()
+        // JOIN on the POST completion. serverId is a String? (Sendable), so we
+        // resume with it directly.
+        let serverID: String? =
+            await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+                asDeviceA {
+                    TPPAnnotations.postBookmark(local, forBookID: Self.bookID) { response in
+                        cont.resume(returning: response?.serverId)
+                    }
+                }
             }
-        }
-        wait(for: [postExp], timeout: 10.0)
 
         XCTAssertNotNil(serverID, "Server must return an annotation ID for the new bookmark")
         let storedAfterPost = backend.allAnnotations(forBook: Self.bookID)
@@ -504,24 +717,27 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
 
         // B reads the bookmark list — it must include A's bookmark and the
         // factory must surface it with the server-assigned annotation ID.
+        // JOIN on the completion: the [Bookmark] list is non-Sendable, so we
+        // project the Sendable facts (list nil-ness, count, and the first
+        // element's Readium projection) inside the completion.
         let book = makeBook()
-        let readExp = expectation(description: "device B reads bookmarks")
-        var bookmarksOnB: [Bookmark]?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .bookmark
-            ) { bookmarks in
-                bookmarksOnB = bookmarks
-                readExp.fulfill()
+        let readResult: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .bookmark
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
             }
-        }
-        wait(for: [readExp], timeout: 10.0)
 
-        let list = try XCTUnwrap(bookmarksOnB, "B's GET must return a non-nil bookmark list")
-        XCTAssertEqual(list.count, 1, "B should see exactly the bookmark A wrote")
-        let bookmark = try XCTUnwrap(list.first as? TPPReadiumBookmark)
+        XCTAssertTrue(readResult.wasNonNil, "B's GET must return a non-nil bookmark list")
+        XCTAssertEqual(readResult.count, 1, "B should see exactly the bookmark A wrote")
+        let bookmark = try XCTUnwrap(readResult.first,
+                                     "B's first bookmark must be a TPPReadiumBookmark")
         XCTAssertEqual(bookmark.annotationId, serverID,
                        "B's view of A's bookmark must carry the server-assigned annotation ID")
         // TPPBookLocation normalizes /chapter5.xhtml → chapter5.xhtml via
@@ -537,7 +753,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// Setup: device A posts a bookmark, then deletes it via its annotation
     /// ID. Device B fetches → list must be empty. Exercises the deletion
     /// half of the sync protocol end-to-end.
-    func test_bookmarkDeletedOnDeviceA_goneOnDeviceB() throws {
+    func test_bookmarkDeletedOnDeviceA_goneOnDeviceB() async throws {
         try skipIfSyncGateClosed()
 
         let selectorValue = epubSelectorValue(
@@ -561,29 +777,30 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
             device: Self.deviceA
         ))
 
-        // A creates it.
-        let postExp = expectation(description: "device A posts then deletes bookmark")
-        var serverID: String?
-        asDeviceA {
-            TPPAnnotations.postBookmark(local, forBookID: Self.bookID) { response in
-                serverID = response?.serverId
-                postExp.fulfill()
+        // A creates it. JOIN on the POST completion; serverId is Sendable.
+        let serverID: String? =
+            await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+                asDeviceA {
+                    TPPAnnotations.postBookmark(local, forBookID: Self.bookID) { response in
+                        cont.resume(returning: response?.serverId)
+                    }
+                }
             }
-        }
-        wait(for: [postExp], timeout: 10.0)
         let assignedID = try XCTUnwrap(serverID, "Setup precondition: POST must return a server ID")
         XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 1,
                        "Setup precondition: backend must have one annotation before delete")
 
-        // A deletes it via the same annotation ID the server returned.
-        let deleteExp = expectation(description: "device A deletes bookmark")
-        asDeviceA {
-            TPPAnnotations.deleteBookmark(annotationId: assignedID) { success in
-                XCTAssertTrue(success, "DELETE must report success for existing annotation")
-                deleteExp.fulfill()
+        // A deletes it via the same annotation ID the server returned. JOIN on
+        // the completion; `success` is a Bool (Sendable), resumed directly.
+        let deleteSucceeded: Bool =
+            await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                asDeviceA {
+                    TPPAnnotations.deleteBookmark(annotationId: assignedID) { success in
+                        cont.resume(returning: success)
+                    }
+                }
             }
-        }
-        wait(for: [deleteExp], timeout: 10.0)
+        XCTAssertTrue(deleteSucceeded, "DELETE must report success for existing annotation")
 
         XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 0,
                        "Backend must reflect the deletion immediately")
@@ -593,25 +810,25 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         TPPBookmarkDeletionLog.shared.logDeletion(annotationId: assignedID,
                                                   forBook: Self.bookID)
 
-        // B reads — list must be empty.
+        // B reads — list must be empty. JOIN on the completion; project the
+        // Sendable facts (nil-ness + count) since [Bookmark] is non-Sendable.
         let book = makeBook()
-        let readExp = expectation(description: "device B reads after delete")
-        var bookmarksOnB: [Bookmark]?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .bookmark
-            ) { bookmarks in
-                bookmarksOnB = bookmarks
-                readExp.fulfill()
+        let readResult: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .bookmark
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
             }
-        }
-        wait(for: [readExp], timeout: 10.0)
 
-        let list = try XCTUnwrap(bookmarksOnB, "B's GET must still return a non-nil list (empty page envelope)")
-        XCTAssertTrue(list.isEmpty,
-                      "B must not see the deleted bookmark — deletion is propagated through the shared backend")
+        XCTAssertTrue(readResult.wasNonNil, "B's GET must still return a non-nil list (empty page envelope)")
+        XCTAssertEqual(readResult.count, 0,
+                       "B must not see the deleted bookmark — deletion is propagated through the shared backend")
 
         // Cleanup: clear the deletion-log entry so we don't poison neighbouring
         // tests' UserDefaults state.
@@ -626,7 +843,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// authoritative source. On B's next sync, the bookmark for that
     /// annotation ID must reflect the server's value, not B's local copy.
     /// This pins the documented "server-wins on conflict" policy.
-    func test_annotationConflict_serverWins() throws {
+    func test_annotationConflict_serverWins() async throws {
         try skipIfSyncGateClosed()
 
         // B writes its own bookmark first.
@@ -650,15 +867,15 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
             device: Self.deviceB
         ))
 
-        let postExp = expectation(description: "device B posts initial bookmark")
-        var assignedID: String?
-        asDeviceB {
-            TPPAnnotations.postBookmark(localB, forBookID: Self.bookID) { response in
-                assignedID = response?.serverId
-                postExp.fulfill()
+        // JOIN on the POST completion; serverId is Sendable.
+        let assignedID: String? =
+            await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+                asDeviceB {
+                    TPPAnnotations.postBookmark(localB, forBookID: Self.bookID) { response in
+                        cont.resume(returning: response?.serverId)
+                    }
+                }
             }
-        }
-        wait(for: [postExp], timeout: 10.0)
         let id = try XCTUnwrap(assignedID, "Server must assign an annotation ID to B's bookmark")
 
         // Server-side authoritative record arrives (from another device, a
@@ -684,25 +901,26 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         backend.replace(id: id, with: canonical)
 
         // B's next sync must surface the server's canonical record, not its
-        // pre-conflict local copy.
+        // pre-conflict local copy. JOIN on the completion; project the
+        // Sendable facts (count + the first element's Readium projection)
+        // since [Bookmark] is non-Sendable.
         let book = makeBook()
-        let readExp = expectation(description: "device B re-reads after server overwrite")
-        var bookmarksOnB: [Bookmark]?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .bookmark
-            ) { bookmarks in
-                bookmarksOnB = bookmarks
-                readExp.fulfill()
+        let readResult: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .bookmark
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
             }
-        }
-        wait(for: [readExp], timeout: 10.0)
 
-        let list = try XCTUnwrap(bookmarksOnB)
-        XCTAssertEqual(list.count, 1, "Exactly one annotation ID exists; server-wins must not duplicate")
-        let bookmark = try XCTUnwrap(list.first as? TPPReadiumBookmark)
+        XCTAssertEqual(readResult.count, 1, "Exactly one annotation ID exists; server-wins must not duplicate")
+        let bookmark = try XCTUnwrap(readResult.first,
+                                     "B's first bookmark must be a TPPReadiumBookmark")
         XCTAssertEqual(bookmark.annotationId, id,
                        "Same annotation ID must persist — server-wins replaces value, not key")
         XCTAssertEqual(bookmark.href, "/chapter12.xhtml",
@@ -726,7 +944,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// shared backend and asserts BOTH the `.readingProgress` listening
     /// position AND the `.bookmark` are deleted for the returned book, while an
     /// unrelated OTHER book's bookmark is left untouched (scoping).
-    func test_deleteAllBookmarks_deletesUserBookmark_preservesAudiobookPosition_scopedToBook() throws {
+    func test_deleteAllBookmarks_deletesUserBookmark_preservesAudiobookPosition_scopedToBook() async throws {
         try skipIfSyncGateClosed()
 
         let otherBookID = "urn:uuid:cross-device-e2e-OTHER-book"
@@ -797,21 +1015,16 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         let restoreExecutor = holdDeviceAExecutor()
         defer { restoreExecutor() }
 
-        let completed = expectation(description: "deleteAllBookmarks completion (fire-and-forget)")
-        TPPAnnotations.deleteAllBookmarks(forBook: book) {
-            completed.fulfill()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPAnnotations.deleteAllBookmarks(forBook: book) { continuation.resume() }
         }
-        wait(for: [completed], timeout: 5.0)
 
-        // Deletions are fire-and-forget (GET then chained DELETEs). Give the
-        // chain a bounded window to run so we assert on a settled state rather
-        // than merely on "nothing has happened yet".
-        let deadline = Date().addingTimeInterval(3.0)
-        while Date() < deadline {
-            let tick = expectation(description: "settle tick")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { tick.fulfill() }
-            wait(for: [tick], timeout: 1.0)
-        }
+        // Deletions are fire-and-forget (GET then chained DELETEs), so the
+        // completion above proves nothing. Join the chain itself — this is what
+        // makes "the position was PRESERVED" a real assertion instead of one
+        // that a starved CI clone could pass simply by nothing having run yet
+        // (STARVE-001).
+        await TPPAnnotations._awaitDeletionChainForTesting()
 
         let remaining = backend.allAnnotations(forBook: Self.bookID)
 
@@ -849,7 +1062,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// `.readingProgress` reading place SURVIVES while the user `.bookmark` is
     /// still deleted. A regression that deletes ebook `.readingProgress` (or that
     /// removes the scoping guard) makes the reading place vanish and fails here.
-    func test_deleteAllBookmarks_ebook_preservesReadingProgress_stillDeletesBookmark() throws {
+    func test_deleteAllBookmarks_ebook_preservesReadingProgress_stillDeletesBookmark() async throws {
         try skipIfSyncGateClosed()
 
         let base = Self.baseURL.absoluteString  // ends in "annotations/"
@@ -893,19 +1106,15 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         let restoreExecutor = holdDeviceAExecutor()
         defer { restoreExecutor() }
 
-        let completed = expectation(description: "deleteAllBookmarks completion")
-        TPPAnnotations.deleteAllBookmarks(forBook: book) { completed.fulfill() }
-        wait(for: [completed], timeout: 5.0)
-
-        // Poll until the user bookmark is gone (bounded). The reading position
-        // must remain — so we wait for the set to shrink to exactly the progress
-        // annotation, not to empty.
-        let deadline = Date().addingTimeInterval(8.0)
-        while Date() < deadline && backend.allAnnotations(forBook: Self.bookID).contains(where: { $0.id == bookmarkID }) {
-            let tick = expectation(description: "poll tick")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { tick.fulfill() }
-            wait(for: [tick], timeout: 1.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPAnnotations.deleteAllBookmarks(forBook: book) { continuation.resume() }
         }
+        // `deleteAllBookmarks` completes IMMEDIATELY and deletes in the
+        // background, so join the chain itself. This replaces an 8s wall-clock
+        // poll that asserted on "whatever happened by the deadline" — under a
+        // starved CI clone that read as a pass with the DELETEs still in flight
+        // (STARVE-001).
+        await TPPAnnotations._awaitDeletionChainForTesting()
 
         let remaining = backend.allAnnotations(forBook: Self.bookID)
         XCTAssertFalse(remaining.contains { $0.id == bookmarkID },
@@ -930,7 +1139,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// forcing a deliberate re-record and a product conversation rather than a
     /// silent behavior change. See `deleteAllBookmarks` for why deletion was
     /// removed in build 490.
-    func test_deleteAllBookmarks_contract_deletesOnlyUserBookmark() throws {
+    func test_deleteAllBookmarks_contract_deletesOnlyUserBookmark() async throws {
         try skipIfSyncGateClosed()
 
         let base = Self.baseURL.absoluteString
@@ -973,16 +1182,15 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         let restoreExecutor = holdDeviceAExecutor()
         defer { restoreExecutor() }
 
-        let completed = expectation(description: "deleteAllBookmarks completion")
-        TPPAnnotations.deleteAllBookmarks(forBook: book) { completed.fulfill() }
-        wait(for: [completed], timeout: 5.0)
-
-        let deadline = Date().addingTimeInterval(8.0)
-        while Date() < deadline && !backend.allAnnotations(forBook: Self.bookID).isEmpty {
-            let tick = expectation(description: "poll tick")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { tick.fulfill() }
-            wait(for: [tick], timeout: 1.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPAnnotations.deleteAllBookmarks(forBook: book) { continuation.resume() }
         }
+        // Join the fire-and-forget chain so the snapshot below records the FULL
+        // set of DELETEs. The old 8s poll made the contract snapshot itself
+        // load-dependent: a starved clone would snapshot a partial set of IDs
+        // and either drift the baseline or lock in an incomplete contract
+        // (STARVE-001).
+        await TPPAnnotations._awaitDeletionChainForTesting()
 
         // Deterministic contract: the SORTED set of deleted annotation IDs.
         for id in deleted.sortedIDs {
@@ -999,4 +1207,64 @@ private final class DeletedIDCollector: @unchecked Sendable {
     private var ids: Set<String> = []
     func add(_ id: String) { lock.lock(); ids.insert(id); lock.unlock() }
     var sortedIDs: [String] { lock.lock(); defer { lock.unlock() }; return ids.sorted() }
+}
+
+// MARK: - Sendable projections
+//
+// `Bookmark`/`TPPReadiumBookmark`/`AudioBookmark` inherit from NSObject and are
+// NOT Sendable, and the annotation completions fire off-main while the
+// continuations are `@MainActor`. Rather than smuggle a non-Sendable object
+// across that isolation boundary (which trips Swift 6's "sending 'x' risks
+// causing data races"), each projection extracts the primitive, Sendable facts
+// the assertions check *inside* the completion (on its own isolation) and
+// resumes with those. The asserted facts are byte-identical to the originals.
+
+/// The Sendable facts a `TPPReadiumBookmark` assertion needs. `nil` when the
+/// bookmark was absent or not a `TPPReadiumBookmark`, mirroring the original
+/// `readBack as? TPPReadiumBookmark` unwrap.
+private struct ReadiumBookmarkProjection: Sendable {
+    let annotationId: String?
+    let href: String
+    let progressWithinChapter: Float
+    let progressWithinBook: Float
+    let device: String?
+
+    init?(_ bookmark: Bookmark?) {
+        guard let readium = bookmark as? TPPReadiumBookmark else { return nil }
+        self.annotationId = readium.annotationId
+        self.href = readium.href
+        self.progressWithinChapter = readium.progressWithinChapter
+        self.progressWithinBook = readium.progressWithinBook
+        self.device = readium.device
+    }
+}
+
+/// The Sendable facts an `AudioBookmark` assertion needs. `nil` when the
+/// bookmark was absent or not an `AudioBookmark`, mirroring the original
+/// `readBack as? AudioBookmark` unwrap.
+private struct AudioBookmarkProjection: Sendable {
+    let readingOrderItem: String?
+    let readingOrderItemOffsetMilliseconds: Int?
+
+    init?(_ bookmark: Bookmark?) {
+        guard let audio = bookmark as? AudioBookmark else { return nil }
+        self.readingOrderItem = audio.readingOrderItem
+        self.readingOrderItemOffsetMilliseconds = audio.readingOrderItemOffsetMilliseconds
+    }
+}
+
+/// The Sendable facts a `[Bookmark]?` list assertion needs: whether the list
+/// was non-nil, its element count, and the first element projected to a Readium
+/// bookmark (nil if absent or not a `TPPReadiumBookmark`). `first` mirrors the
+/// original `list.first as? TPPReadiumBookmark` unwrap.
+private struct BookmarkListProjection: Sendable {
+    let wasNonNil: Bool
+    let count: Int
+    let first: ReadiumBookmarkProjection?
+
+    init(_ bookmarks: [Bookmark]?) {
+        self.wasNonNil = bookmarks != nil
+        self.count = bookmarks?.count ?? 0
+        self.first = ReadiumBookmarkProjection(bookmarks?.first)
+    }
 }

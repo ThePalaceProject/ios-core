@@ -97,6 +97,59 @@ fi
 # Adjacency is warn-only at the hook layer too.
 run_m1_check "adjacency_staleness" "scripts/check-adjacency-staleness.py" || true
 
+# Repo rule: never commit code-signing info (team ID / provisioning profile) and
+# never add Automatic signing. Bash detector (not python), so invoked directly
+# rather than via run_m1_check. Diff-based — blocks NEW signing info only.
+if [[ -f "$REPO_ROOT_M1/scripts/check-no-committed-signing.sh" ]]; then
+  if ! _ns_out=$(bash "$REPO_ROOT_M1/scripts/check-no-committed-signing.sh" "$M1_DIFF" 2>&1); then
+    echo "$_ns_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
+# Repo rule: only commit docs that explain the code's what/why — never process/
+# generated artifacts (swarm transcripts, campaign scaffolding/contracts, generated
+# IR). Diff-based over STAGED added files. See scripts/check-doc-hygiene.sh.
+if [[ -f "$REPO_ROOT_M1/scripts/check-doc-hygiene.sh" ]]; then
+  if ! _dh_out=$( (cd "$REPO_ROOT_M1" && bash scripts/check-doc-hygiene.sh) 2>&1); then
+    echo "$_dh_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
+# DORMANT Wave 2b gate: PalaceBookRegistry/Sources package purity. Whole-tree
+# scan (not diff-based) but a no-op today — the package doesn't exist until
+# Wave 2b extracts it — so it's cheap to run unconditionally. See
+# scripts/check-bookregistry-package-purity.sh.
+if [[ -f "$REPO_ROOT_M1/scripts/check-bookregistry-package-purity.sh" ]]; then
+  if ! _br_out=$(bash "$REPO_ROOT_M1/scripts/check-bookregistry-package-purity.sh" 2>&1); then
+    echo "$_br_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
+# DORMANT Wave 3a gate: PalaceAccounts/Sources package purity. Whole-tree
+# scan (not diff-based) but a no-op today — the package doesn't exist until
+# Wave 3a extracts it — so it's cheap to run unconditionally. See
+# scripts/check-palaceaccounts-package-purity.sh.
+if [[ -f "$REPO_ROOT_M1/scripts/check-palaceaccounts-package-purity.sh" ]]; then
+  if ! _pa_out=$(bash "$REPO_ROOT_M1/scripts/check-palaceaccounts-package-purity.sh" 2>&1); then
+    echo "$_pa_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
+# DORMANT Wave 3b gate: PalaceDownloads/Sources package purity. Whole-tree
+# scan (not diff-based) but a no-op today — the package doesn't exist until
+# Wave 3b extracts it — so it's cheap to run unconditionally. See
+# scripts/check-palacedownloads-package-purity.sh.
+if [[ -f "$REPO_ROOT_M1/scripts/check-palacedownloads-package-purity.sh" ]]; then
+  if ! _pd_out=$(bash "$REPO_ROOT_M1/scripts/check-palacedownloads-package-purity.sh" 2>&1); then
+    echo "$_pd_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
 m1_enforce "$M1_FAIL"
 
 # Friendly nudge — non-blocking. Only print if anything is staged at all.

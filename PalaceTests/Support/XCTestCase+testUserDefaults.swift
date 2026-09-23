@@ -1,6 +1,17 @@
 import Foundation
 import XCTest
 
+/// Test-bundle sendability for `UserDefaults`.
+///
+/// `UserDefaults` is documented thread-safe, but this SDK does not declare it
+/// `Sendable`, so Swift 6 rejects handing a `UserDefaults` held on a
+/// `@MainActor` test into any nonisolated async service API ("sending
+/// 'self.userDefaults' risks causing data races"). The retroactive
+/// `@unchecked` conformance encodes the documented thread-safety once for the
+/// whole bundle instead of boxing every hand-off site. Remove if a future SDK
+/// declares the conformance.
+extension UserDefaults: @retroactive @unchecked Sendable {}
+
 /// Per-test `UserDefaults` isolation helper.
 ///
 /// Returns a `UserDefaults(suiteName:)` whose suite name encodes both the
@@ -53,19 +64,23 @@ extension XCTestCase {
     /// - Returns: a `UserDefaults` instance pointing at a unique suite
     ///   name. The caller does NOT need to clean up — the resetter
     ///   handles it.
-    func testUserDefaults(
+    /// `static`: this helper reads nothing from the test instance (the suite
+    /// name is fully UUID-derived), so making it static removes `self` as the
+    /// receiver. A nonisolated instance method invoked on a `@MainActor`,
+    /// non-`Sendable` test `self` forces the compiler to *send* `self`
+    /// ("sending 'self' risks causing data races"); an `@MainActor` variant
+    /// instead can't return its non-`Sendable` result to a nonisolated
+    /// `setUp()`. Only a receiver-free `static` satisfies BOTH caller kinds
+    /// the suite has (@MainActor `setUpWithError`/test methods AND nonisolated
+    /// plain `setUp()` overrides). Callers use `Self.testUserDefaults()`.
+    static func testUserDefaults(
         file: StaticString = #file,
         line: UInt = #line
     ) -> UserDefaults {
-        // Sanitize the test name so it forms a valid persistent-domain
-        // identifier. XCTest names look like `-[ClassName testMethod]`
-        // which is fine for UserDefaults, but the leading `-[` and
-        // trailing `]` are noisy in `defaults read` output.
-        let sanitizedTestName = self.name
-            .replacingOccurrences(of: "-[", with: "")
-            .replacingOccurrences(of: "]", with: "")
-            .replacingOccurrences(of: " ", with: "_")
-        let suiteName = "test-\(sanitizedTestName)-\(UUID().uuidString)"
+        // Suite name is UUID-derived — unique per call, no dependency on the
+        // test instance. (Previously prefixed with the sanitized test name for
+        // readability in `defaults read`; dropped so the helper can be static.)
+        let suiteName = "test-\(UUID().uuidString)"
 
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             XCTFail(

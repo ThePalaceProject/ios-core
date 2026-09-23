@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     // MARK: - Helpers
@@ -17,7 +18,7 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
     private func makeAnnouncer(
         voiceOverRunning: Bool = true,
         deduplicationInterval: TimeInterval = 2.0,
-        time: @escaping () -> Date = { Date() }
+        time: @escaping @Sendable () -> Date = { Date() }
     ) -> (TPPAccessibilityAnnouncementCenter, Announcements) {
         let store = Announcements()
         let announcer = TPPAccessibilityAnnouncementCenter(
@@ -34,7 +35,7 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
     private func makeExpectingAnnouncer(
         voiceOverRunning: Bool = true,
         deduplicationInterval: TimeInterval = 2.0,
-        time: @escaping () -> Date = { Date() },
+        time: @escaping @Sendable () -> Date = { Date() },
         expectedCount: Int,
         description: String
     ) -> (TPPAccessibilityAnnouncementCenter, Announcements, XCTestExpectation) {
@@ -58,7 +59,7 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
     private func makeNonFiringAnnouncer(
         voiceOverRunning: Bool = true,
         deduplicationInterval: TimeInterval = 2.0,
-        time: @escaping () -> Date = { Date() },
+        time: @escaping @Sendable () -> Date = { Date() },
         description: String
     ) -> (TPPAccessibilityAnnouncementCenter, Announcements, XCTestExpectation) {
         let store = Announcements()
@@ -192,7 +193,7 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     /// PP-3673: Updated search (re-run) produces a new announcement with new count.
     func testPP3673_searchRerun_announcesUpdatedResults() {
-        var currentTime = Date(timeIntervalSince1970: 1000)
+        let currentTime = LockIsolated<Date>(Date(timeIntervalSince1970: 1000))
         let expectation = expectation(description: "Two search announcements")
         expectation.expectedFulfillmentCount = 2
         var announcements: [String] = []
@@ -203,13 +204,13 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
                 expectation.fulfill()
             },
             isVoiceOverRunning: { true },
-            timeProvider: { currentTime },
+            timeProvider: { currentTime.value },
             deduplicationInterval: 2.0
         )
 
         announcer.announceSearchResults(query: "robots", count: 5)
         // Advance time past dedup window to ensure second announcement fires
-        currentTime = currentTime.addingTimeInterval(3.0)
+        currentTime.value = currentTime.value.addingTimeInterval(3.0)
         announcer.announceSearchResults(query: "robots", count: 10)
 
         wait(for: [expectation], timeout: 1.0)
@@ -315,17 +316,17 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     /// PP-3673: Identical messages within the deduplication window are suppressed.
     func testPP3673_deduplication_suppressesDuplicateWithinWindow() {
-        var currentTime = Date(timeIntervalSince1970: 1000)
+        let currentTime = LockIsolated<Date>(Date(timeIntervalSince1970: 1000))
         let (announcer, store, delivered) = makeExpectingAnnouncer(
             deduplicationInterval: 2.0,
-            time: { currentTime },
+            time: { currentTime.value },
             expectedCount: 1,
             description: "First announcement delivered"
         )
 
         announcer.announceError("Something went wrong.")
         // Same message, 0.5s later -- should be suppressed
-        currentTime = currentTime.addingTimeInterval(0.5)
+        currentTime.value = currentTime.value.addingTimeInterval(0.5)
         announcer.announceError("Something went wrong.")
 
         wait(for: [delivered], timeout: 1.0)
@@ -334,17 +335,17 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     /// PP-3673: Same message after deduplication window passes is allowed.
     func testPP3673_deduplication_allowsRepeatAfterWindowExpires() {
-        var currentTime = Date(timeIntervalSince1970: 1000)
+        let currentTime = LockIsolated<Date>(Date(timeIntervalSince1970: 1000))
         let (announcer, store, delivered) = makeExpectingAnnouncer(
             deduplicationInterval: 2.0,
-            time: { currentTime },
+            time: { currentTime.value },
             expectedCount: 2,
             description: "Both announcements delivered"
         )
 
         announcer.announceError("Something went wrong.")
         // Advance past dedup window
-        currentTime = currentTime.addingTimeInterval(3.0)
+        currentTime.value = currentTime.value.addingTimeInterval(3.0)
         announcer.announceError("Something went wrong.")
 
         wait(for: [delivered], timeout: 1.0)
@@ -353,16 +354,16 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     /// PP-3673: Different messages within the window are NOT suppressed.
     func testPP3673_deduplication_allowsDifferentMessages() {
-        var currentTime = Date(timeIntervalSince1970: 1000)
+        let currentTime = LockIsolated<Date>(Date(timeIntervalSince1970: 1000))
         let (announcer, store, delivered) = makeExpectingAnnouncer(
             deduplicationInterval: 2.0,
-            time: { currentTime },
+            time: { currentTime.value },
             expectedCount: 2,
             description: "Both different messages delivered"
         )
 
         announcer.announceError("Error A")
-        currentTime = currentTime.addingTimeInterval(0.1)
+        currentTime.value = currentTime.value.addingTimeInterval(0.1)
         announcer.announceError("Error B")
 
         wait(for: [delivered], timeout: 1.0)
@@ -371,10 +372,10 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     /// PP-3673: Rapid-fire identical messages result in only one announcement.
     func testPP3673_deduplication_rapidFireSameMessage_onlyOneAnnouncement() {
-        let currentTime = Date(timeIntervalSince1970: 1000)
+        let currentTime = LockIsolated<Date>(Date(timeIntervalSince1970: 1000))
         let (announcer, store, delivered) = makeExpectingAnnouncer(
             deduplicationInterval: 2.0,
-            time: { currentTime },
+            time: { currentTime.value },
             expectedCount: 1,
             description: "Only one announcement from rapid fire"
         )
@@ -389,10 +390,10 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     /// PP-3673: Deduplication applies across announcement types using same message text.
     func testPP3673_deduplication_crossMethod_sameText() {
-        let currentTime = Date(timeIntervalSince1970: 1000)
+        let currentTime = LockIsolated<Date>(Date(timeIntervalSince1970: 1000))
         let (announcer, store, delivered) = makeExpectingAnnouncer(
             deduplicationInterval: 2.0,
-            time: { currentTime },
+            time: { currentTime.value },
             expectedCount: 1,
             description: "Only one announcement for cross-method same text"
         )

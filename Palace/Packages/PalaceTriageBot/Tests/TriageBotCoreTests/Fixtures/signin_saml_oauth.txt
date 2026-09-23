@@ -1,0 +1,8 @@
+# SYNTHETIC — hand-authored, all values FAKE. See Fixtures/README.md.
+2026-07-16T14:25:10Z [SAML] web sign-in started for "Statewide Digital Library (SAML)"
+2026-07-16T14:25:11Z [SAML] Set-Cookie: simpleSAMLSessionID=FAKEsess-abc123def456; path=/; HttpOnly
+2026-07-16T14:25:11Z [SAML] Set-Cookie: PHPSESSID=FAKEphp789xyz001; path=/
+2026-07-16T14:25:12Z [OAuth] callback palace://oauth?access_token=ya29.FAKE-access-abcdef123&refresh_token=FAKE-refresh-zzz999&state=ok
+2026-07-16T14:25:12Z [OAuth] stored session: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmYWtlIn0.FAKEsigABCDEF
+2026-07-16T14:25:13Z [OAuth] raw id_token eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJmYWtlIn0.FAKEsigRS123
+2026-07-16T14:25:13Z [Network] x-api-key: sk-live-FAKEapikey123456

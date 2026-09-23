@@ -1,6 +1,7 @@
 import Foundation
 import PalaceLogging
 import PalaceNetwork
+import PalaceFeatureFlags
 
 public protocol CatalogAPI {
     func fetchFeed(at url: URL) async throws -> CatalogFeed?
@@ -11,13 +12,13 @@ public protocol CatalogAPI {
     func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
 }
 
-public final class DefaultCatalogAPI: CatalogAPI {
+public final class DefaultCatalogAPI: CatalogAPI, Sendable {
     public let client: NetworkClient
     public let parser: OPDSParser
-    private let featureFlags: FeatureFlagProvider
+    private let featureFlags: FeatureFlagProviding
     private let inflight = InflightFeedFetches()
 
-    public init(client: NetworkClient, parser: OPDSParser, featureFlags: FeatureFlagProvider) {
+    public init(client: NetworkClient, parser: OPDSParser, featureFlags: FeatureFlagProviding) {
         self.client = client
         self.parser = parser
         self.featureFlags = featureFlags
@@ -94,28 +95,20 @@ public final class DefaultCatalogAPI: CatalogAPI {
     }
 
     public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
-        return try await withCheckedThrowingContinuation { continuation in
-            TPPOpenSearchDescription.withURL(searchDescriptorURL, networkClient: client) { description in
-                guard let description = description else {
-                    continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load OpenSearch description"]))
-                    return
-                }
-
-                guard let searchResultURL = description.opdsURL(forSearchingString: query) else {
-                    continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"]))
-                    return
-                }
-
-                Task {
-                    do {
-                        let searchResults = try await self.fetchFeed(at: searchResultURL)
-                        continuation.resume(returning: searchResults)
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
+        // Straight async/await: `TPPOpenSearchDescription.withURL` is now an
+        // `async` function (was a completion-handler API), so the prior
+        // `withCheckedThrowingContinuation` bridge — which captured `self` and
+        // the continuation in a `@Sendable` closure and is an error under the
+        // Swift 6 language mode — is gone.
+        guard let description = await TPPOpenSearchDescription.withURL(searchDescriptorURL, networkClient: client) else {
+            throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load OpenSearch description"])
         }
+
+        guard let searchResultURL = description.opdsURL(forSearchingString: query) else {
+            throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"])
+        }
+
+        return try await fetchFeed(at: searchResultURL)
     }
 
     public func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
@@ -211,8 +204,22 @@ public final class DefaultCatalogAPI: CatalogAPI {
 actor InflightFeedFetches {
     private var tasks: [URL: Task<CatalogFeed?, Error>] = [:]
 
+    /// Hard ceiling on a single feed fetch.
+    ///
+    /// Without it, a wedged request — a stalled token refresh in the shared
+    /// network executor, or a trickle connection that defeats URLSession's
+    /// between-bytes timeout — would keep `tasks[url]` populated indefinitely.
+    /// Because every later caller for the same URL awaits that pinned entry,
+    /// one stuck fetch makes *all* future fetches of that feed hang until app
+    /// restart. The timeout abandons the wedged request, frees the dedup
+    /// entry, and surfaces an error the UI can recover from. Lane-more feeds
+    /// (`CatalogLaneMoreViewModel`) fetch through here directly and had no
+    /// other timeout, so this is also their backstop.
+    static let defaultTimeout: TimeInterval = 30
+
     func run(
         url: URL,
+        timeout: TimeInterval = InflightFeedFetches.defaultTimeout,
         _ work: @Sendable @escaping () async throws -> CatalogFeed?
     ) async throws -> CatalogFeed? {
         if let existing = tasks[url] {
@@ -220,7 +227,31 @@ actor InflightFeedFetches {
         }
         let task = Task<CatalogFeed?, Error> { try await work() }
         tasks[url] = task
-        defer { tasks.removeValue(forKey: url) }
-        return try await task.value
+        // Cancelling on every exit path frees the connection (via the
+        // cancellation-aware network client) for timed-out work; on the normal
+        // path the task has already finished and this is a no-op.
+        defer {
+            task.cancel()
+            tasks.removeValue(forKey: url)
+        }
+        return try await withFeedTimeout(seconds: timeout, task: task)
+    }
+
+    /// Races the in-flight fetch against a timeout. Whichever finishes first
+    /// wins; the loser is cancelled.
+    private func withFeedTimeout(
+        seconds: TimeInterval,
+        task: Task<CatalogFeed?, Error>
+    ) async throws -> CatalogFeed? {
+        try await withThrowingTaskGroup(of: CatalogFeed?.self) { group in
+            group.addTask { try await task.value }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut,
+                              userInfo: [NSLocalizedDescriptionKey: "Feed request timed out after \(seconds) seconds"])
+            }
+            defer { group.cancelAll() }
+            return try await group.next() ?? nil
+        }
     }
 }

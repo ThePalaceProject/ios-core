@@ -2,6 +2,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TPPXMLSwiftTests: XCTestCase {
 
   // MARK: - Parsing Valid XML

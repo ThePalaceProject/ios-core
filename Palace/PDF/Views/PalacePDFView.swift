@@ -11,6 +11,7 @@
 
 import PDFKit
 import UIKit
+import PalaceBookModel
 
 class PalacePDFView: PDFView {
 

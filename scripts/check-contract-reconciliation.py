@@ -113,6 +113,8 @@ def _strip_non_claim_regions(text: str) -> str:
     """
     out_lines: list[str] = []
     in_fence = False
+    in_anti_claims = False
+    anti_claims_level = 0
     for line in text.splitlines():
         stripped = line.lstrip()
         # Fence boundary
@@ -120,6 +122,28 @@ def _strip_non_claim_regions(text: str) -> str:
             in_fence = not in_fence
             continue
         if in_fence:
+            continue
+        # Anti-claims: a section stating what the change deliberately does NOT
+        # do. Parsing it inverts its meaning — "Does NOT remove the licensor
+        # guard" became `claim=REM args=('the',)` and false-blocked PP-5025 for
+        # five consecutive review rounds.
+        #
+        # This runs AFTER fence tracking on purpose. With the order reversed, a
+        # `#`-initial line inside a fenced block (a shell comment) terminated
+        # the region mid-fence, only one fence marker was consumed, `in_fence`
+        # inverted, and the rest of the document was silently swallowed — a
+        # false NEGATIVE, which is worse than the false positive being fixed.
+        heading = _HEADING.match(stripped)
+        if in_anti_claims:
+            # Only a heading at the SAME OR SHALLOWER level ends the region; a
+            # `### DRM` sub-heading inside `## Anti-claims` is still anti-claims.
+            if heading and len(heading.group(1)) <= anti_claims_level:
+                in_anti_claims = False   # fall through and process this heading
+            else:
+                continue
+        if heading and _ANTI_CLAIMS_HEADING.match(stripped):
+            in_anti_claims = True
+            anti_claims_level = len(heading.group(1))
             continue
         # Blockquote
         if stripped.startswith("> "):
@@ -140,6 +164,8 @@ def _strip_non_claim_regions(text: str) -> str:
     return "\n".join(out_lines)
 
 
+_HEADING = re.compile(r"^(#{1,6})\s")
+_ANTI_CLAIMS_HEADING = re.compile(r"^#{1,6}\s*anti-?claims\b", re.IGNORECASE)
 _BACKTICK_INLINE = re.compile(r"`[^`\n]+`")
 _DOUBLE_QUOTED = re.compile(r'"[^"\n]+"')
 _SINGLE_QUOTED = re.compile(r"'[^'\n]+'")

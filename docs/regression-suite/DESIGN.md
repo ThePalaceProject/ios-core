@@ -166,7 +166,7 @@ A nightly job runs all journeys on `develop` tip; stores artifacts at `.simdrive
 
 ## Replay-corpus seeding (Tier-3, future)
 
-Findings with severity `major` or `blocker` and a saved replay become permanent regression coverage at `.simdrive/replays/chaos/<finding-id>.yaml`. Wired into `chaos-replay-on-pr.yml` (referenced in CLAUDE.md but not yet present). Out of MVP.
+Findings with severity `major` or `blocker` and a saved replay become permanent regression coverage as a chaos replay. Both the replay corpus and the tooling are maintainer-local (`~/harness/palace-qa/`), not in this repository, and no CI workflow replays them. Out of MVP.
 
 ## Implementation order (phases delivered)
 

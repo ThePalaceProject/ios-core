@@ -8,6 +8,9 @@
 import XCTest
 @testable import Palace
 
+// Deliberately NOT @MainActor: the helpers under test are nonisolated async
+// APIs taking non-Sendable closures — driving them from a @MainActor test is
+// a Swift 6 sending error. Nothing here touches UI or main-actor state.
 final class MainActorHelpersTests: XCTestCase {
 
     // MARK: - runParallel Tests
@@ -225,7 +228,7 @@ final class MainActorHelpersTests: XCTestCase {
 
     func testBarrierExecutor_Modify_TransformsValue() async {
         let barrier = BarrierExecutor(initialValue: [1, 2, 3])
-        await barrier.modify { $0.append(4) }
+        await barrier.modify { @Sendable in $0.append(4) }
         let value = await barrier.read()
         XCTAssertEqual(value, [1, 2, 3, 4])
     }
@@ -233,7 +236,7 @@ final class MainActorHelpersTests: XCTestCase {
     // MARK: - withAsyncCallback Tests
 
     func testWithAsyncCallback_ConvertsCallbackToAsync() async {
-        let result = await withAsyncCallback { (completion: @escaping (String) -> Void) in
+        let result = await withAsyncCallback { @Sendable (completion: @escaping (String) -> Void) in
             DispatchQueue.global().async {
                 completion("done")
             }
@@ -244,7 +247,7 @@ final class MainActorHelpersTests: XCTestCase {
     // MARK: - withAsyncThrowingCallback Tests
 
     func testWithAsyncThrowingCallback_Success_ReturnsValue() async throws {
-        let result = try await withAsyncThrowingCallback { (completion: @escaping (Result<Int, Error>) -> Void) in
+        let result = try await withAsyncThrowingCallback { @Sendable (completion: @escaping (Result<Int, Error>) -> Void) in
             completion(.success(42))
         }
         XCTAssertEqual(result, 42)
@@ -254,7 +257,7 @@ final class MainActorHelpersTests: XCTestCase {
         struct TestError: Error {}
 
         do {
-            _ = try await withAsyncThrowingCallback { (completion: @escaping (Result<Int, Error>) -> Void) in
+            _ = try await withAsyncThrowingCallback { @Sendable (completion: @escaping (Result<Int, Error>) -> Void) in
                 completion(.failure(TestError()))
             }
             XCTFail("Should have thrown")

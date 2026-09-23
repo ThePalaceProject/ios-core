@@ -14,7 +14,12 @@ import PalaceLogging
 /// Adobe DRM Certificate structure.
 ///
 /// Includes only fields Palace checks to verify the certificate is not expired.
-@objc class AdobeCertificate: NSObject, Codable {
+///
+/// Swift 6 `complete`: `final` + `Sendable`. The only stored property is the
+/// immutable `let expireson: UInt?` (Sendable), so the value is deeply immutable
+/// and safe to share across concurrency domains — which is what lets the cached
+/// `static let defaultCertificate` be concurrency-safe. No subclasses exist.
+@objc final class AdobeCertificate: NSObject, Codable, Sendable {
 
     /// Certificate expiration date, seconds since UNIX epoch.
     ///
@@ -66,7 +71,11 @@ extension AdobeCertificate {
     }
 
     /// Default certificate for Palace app.
-    @objc static var defaultCertificate: AdobeCertificate? = {
+    ///
+    /// Swift 6 `complete`: `static let` (was `var`, never reassigned). Now that
+    /// `AdobeCertificate` is `Sendable`, this cached immutable value is
+    /// concurrency-safe to read from any thread.
+    @objc static let defaultCertificate: AdobeCertificate? = {
         let bundle: Bundle = (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil) ? Bundle(for: TPPAppDelegate.self) : Bundle.main
         guard let adobeCertUrl = bundle.url(forResource: "ReaderClientCert", withExtension: "sig"),
               let adobeCertData = try? Data(contentsOf: adobeCertUrl),
@@ -89,21 +98,85 @@ extension AdobeCertificate {
     /// Period of notification for expired Adobe DRM certificate
     fileprivate static let notificationPeriod: TimeInterval = 60 * 60
 
-    /// Last expired DRM certificate notification date
-    fileprivate static var notificationDate: Date?
+    /// Last expired DRM certificate notification date.
+    ///
+    /// Swift 6 `complete`: backed by a lock-backed `@unchecked Sendable` holder
+    /// instead of a bare mutable `static var` (which is not concurrency-safe).
+    /// `shouldNotifyAboutExpiration` may be evaluated from any thread that hits an
+    /// expired-cert branch, so the read-decide-write must be serialized.
+    fileprivate static let notificationDateHolder = DateHolder()
 
     /// Returns true every `notificationPeriod` time interval.
     ///
     /// Used to avoid showing expiration message every time the user opens the app with expired certificate.
     @objc static var shouldNotifyAboutExpiration: Bool {
-        if let notificationDate = notificationDate, -notificationDate.timeIntervalSinceNow < notificationPeriod {
-            return false
-        } else {
-            notificationDate = Date()
-            return true
-        }
+        // Perform the read-decide-write atomically under the holder's lock so two
+        // concurrent expired-cert checks can't both return `true` for the same window.
+        notificationDateHolder.notifyIfElapsed(period: notificationPeriod)
     }
 
+}
+
+/// Lock-backed holder for the expired-certificate notification timestamp.
+///
+/// Swift 6 `complete`: replaces the bare mutable `static var notificationDate`.
+/// `@unchecked Sendable` is honest here because the single mutable field is only
+/// ever touched inside `notifyIfElapsed`, which holds `lock` for the whole
+/// read-decide-write — so no unsynchronized access is possible. Precedent:
+/// `AdobeDRMService`'s lock-backed statics in this same file.
+private final class DateHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var date: Date?
+
+    /// Atomically returns `true` at most once per `period`, recording "now" on the
+    /// firing call. Mirrors the original `shouldNotifyAboutExpiration` semantics.
+    func notifyIfElapsed(period: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if let date, -date.timeIntervalSinceNow < period {
+            return false
+        }
+        date = Date()
+        return true
+    }
+}
+
+/// Lock-backed holder for the iPad-on-Mac static-destructor-bypass flags.
+///
+/// Swift 6 `complete`: replaces the two bare mutable `static var`s
+/// (`staticDestructorBypassRegistered`, `adobeDRMUsed`) and their `NSLock`.
+/// `@unchecked Sendable` is honest because both fields are only ever read or
+/// written inside a method that holds `lock` for the whole operation — there is no
+/// unsynchronized access. The `markRegisteredIfNeeded` closure runs while the lock
+/// is held, so the caller's decision sees a consistent `registered` snapshot and
+/// the flip is atomic with it.
+private final class BypassState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var registered = false
+    private var used = false
+
+    var adobeDRMUsed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return used
+    }
+
+    func setAdobeDRMUsed(_ value: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        used = value
+    }
+
+    /// Atomically evaluates `decide(currentRegisteredFlag)` and, if it returns
+    /// `true`, flips `registered` to `true` and returns `true` (meaning "you should
+    /// install now"). Returns `false` otherwise. One-shot install guard.
+    func markRegisteredIfNeeded(_ decide: (Bool) -> Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard decide(registered) else { return false }
+        registered = true
+        return true
+    }
 }
 
 // MARK: - Safe DRM Access
@@ -111,8 +184,15 @@ extension AdobeCertificate {
 /// Provides thread-safe access to Adobe DRM functionality.
 /// Wraps NYPLADEPT.sharedInstance() with defensive error handling to prevent crashes.
 /// Note: Named AdobeDRMService to avoid conflict with Obj-C AdobeDRMContainer (the decryption container)
+///
+/// Swift 6 `complete`: `@unchecked Sendable`. INVARIANT — all instance mutable
+/// state (`_adeptInstance`, `initializationAttempted`, `initializationFailed`) is
+/// accessed only under `lock`, and all mutable static state is owned by the
+/// `bypassState` lock-backed holder below. No unsynchronized shared mutation
+/// remains, which is what makes the `static let shared` singleton
+/// concurrency-safe.
 @objcMembers
-class AdobeDRMService: NSObject {
+class AdobeDRMService: NSObject, @unchecked Sendable {
 
     /// Singleton for safe DRM access
     static let shared = AdobeDRMService()
@@ -129,9 +209,27 @@ class AdobeDRMService: NSObject {
     /// Flag to track if initialization failed
     private var initializationFailed = false
 
+    /// Single-flight gate for on-demand device activation. Adobe's RMSDK is not
+    /// safe to call concurrently; this collapses racing borrows onto one
+    /// activation. See `AdobeActivationCoordinator` for the crash forensics
+    /// (PP-4952 / Crashlytics ed05e903). Internal rather than private so
+    /// concurrency tests can await the "all racers arrived" edge deterministically.
+    @nonobjc let activationCoordinator: AdobeActivationCoordinator
+
     private override init() {
+        self.activationCoordinator = AdobeActivationCoordinator()
         super.init()
     }
+
+    #if DEBUG
+    /// Test-only, and `#if DEBUG` on purpose: a second `AdobeDRMService` means a
+    /// second single-flight slot, which would silently defeat this entire fix.
+    /// Release builds get exactly one instance, `shared`.
+    @nonobjc init(activationCoordinator: AdobeActivationCoordinator) {
+        self.activationCoordinator = activationCoordinator
+        super.init()
+    }
+    #endif
 
     /// Prepare for app termination by clearing cached references.
     /// This helps prevent "recursive_mutex lock failed" crashes on Mac Catalyst
@@ -153,48 +251,31 @@ class AdobeDRMService: NSObject {
 
     // MARK: - iPad-on-Mac static-destructor bypass
 
-    /// Tracks whether the process-exit interceptor has been installed, so
-    /// repeated calls to `registerStaticDestructorBypassIfNeeded()` install it
-    /// at most once.
-    private static var staticDestructorBypassRegistered = false
-
-    /// Serializes the idempotency check + atexit registration + the
-    /// `adobeDRMUsed` flag.
-    private static let staticDestructorBypassLock = NSLock()
-
-    /// Set once Adobe DRM is being exercised at runtime this session. Marked at
-    /// `AdobeDRMContainer` construction in `AdobeDRMContentProtection.open` — the
-    /// sole `.adept` reader entry, which dominates every ungated RMSDK op
-    /// (decode / displayUntilDate license-read / init → `GPFile::lock`) that can
-    /// construct the faulting static `recursive_mutex`. Gates the watchdog-exit
-    /// interceptor install so we only bypass exit cleanup when there is actually
-    /// an Adobe dtor to outrun.
-    private static var adobeDRMUsed = false
+    /// Swift 6 `complete`: the two process-exit-bypass flags plus their lock are
+    /// consolidated into one lock-backed `@unchecked Sendable` holder instead of
+    /// bare mutable `static var`s (which are not concurrency-safe). The holder is
+    /// the single serialization domain for `registered` + `adobeDRMUsed`; every
+    /// read-decide-write below runs inside it, so the semantics are unchanged.
+    private static let bypassState = BypassState()
 
     /// Records that Adobe DRM is being exercised this session. Called when an
     /// `AdobeDRMContainer` is constructed (the broad reader-DRM umbrella).
     static func markAdobeDRMUsed() {
-        staticDestructorBypassLock.lock()
-        defer { staticDestructorBypassLock.unlock() }
-        adobeDRMUsed = true
+        bypassState.setAdobeDRMUsed(true)
     }
 
     /// Whether Adobe DRM has been exercised this session. The
     /// `applicationDidEnterBackground` install site consults this so the
     /// `_exit(0)` interceptor is only installed once an Adobe dtor exists.
     static var didUseAdobeDRMThisSession: Bool {
-        staticDestructorBypassLock.lock()
-        defer { staticDestructorBypassLock.unlock() }
-        return adobeDRMUsed
+        bypassState.adobeDRMUsed
     }
 
     /// Test-only: reset the session "DRM used" flag so the false→true contract
     /// can be asserted hermetically (the flag is otherwise set-once per process).
     /// Internal — not part of any production call path.
     static func resetAdobeDRMUsedForTesting() {
-        staticDestructorBypassLock.lock()
-        defer { staticDestructorBypassLock.unlock() }
-        adobeDRMUsed = false
+        bypassState.setAdobeDRMUsed(false)
     }
 
     /// Pure decision: should *this* call install the atexit interceptor now?
@@ -231,15 +312,18 @@ class AdobeDRMService: NSObject {
     /// Idempotent; no-op on iOS devices. End-to-end behavior (crash-at-exit) is
     /// not unit-testable — requires simdrive validation on a Mac host (CHECK 2).
     static func registerStaticDestructorBypassIfNeeded() {
-        staticDestructorBypassLock.lock()
-        defer { staticDestructorBypassLock.unlock() }
-
-        guard shouldRegisterStaticDestructorBypass(
-            isiOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac,
-            alreadyRegistered: staticDestructorBypassRegistered
-        ) else { return }
-
-        staticDestructorBypassRegistered = true
+        // Atomic check-and-set inside the holder's lock: the pure decision
+        // (`shouldRegisterStaticDestructorBypass`) runs against the currently-stored
+        // `registered` flag, and the flag is only flipped to `true` when the guard
+        // passes — so the `atexit` interceptor installs at most once even under
+        // concurrent callers.
+        let shouldInstall = bypassState.markRegisteredIfNeeded { alreadyRegistered in
+            shouldRegisterStaticDestructorBypass(
+                isiOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac,
+                alreadyRegistered: alreadyRegistered
+            )
+        }
+        guard shouldInstall else { return }
         _ = atexit { _exit(0) }
     }
 
@@ -316,10 +400,15 @@ class AdobeDRMService: NSObject {
     }
 
     /// Safely return a DRM loan.
+    // Swift 6 `complete`: `completion` is `@Sendable` because it is forwarded to
+    // `NYPLADEPT.returnLoan`, whose imported Obj-C block parameter is `@Sendable`
+    // (the DRM callback fires on a background RMSDK thread). The sole caller
+    // (`BookReturnService`) passes a closure that captures nothing non-Sendable, so
+    // this does not ripple.
     func returnLoan(_ fulfillmentId: String?,
                     userID: String?,
                     deviceID: String?,
-                    completion: @escaping (Bool, Error?) -> Void) {
+                    completion: @escaping @Sendable (Bool, Error?) -> Void) {
         guard let adept = adeptInstance else {
             Log.warn(#file, "Cannot return DRM loan - Adobe DRM not available")
             completion(false, NSError(domain: "AdobeDRM", code: -1, userInfo: [NSLocalizedDescriptionKey: "Adobe DRM not available"]))
@@ -346,70 +435,456 @@ class AdobeDRMService: NSObject {
     /// activation if needed. This is called at borrow time for Adobe DRM content
     /// instead of at login, to avoid burning activations unnecessarily.
     ///
+    /// - Parameter licensorGracePeriod: how long to wait for sign-in to write
+    ///   the Adobe licensor before failing. Defaults to `0` — no wait — so a
+    ///   caller cannot acquire a stall by accident. Only the borrow path opts
+    ///   in (see `BorrowOperation`); the read path and the fulfillment
+    ///   dispatcher hold user-visible state and must fail fast.
     /// - Throws: `PalaceError.drm` if activation fails or credentials are unavailable.
-    func ensureDeviceActivated() async throws {
-        let userAccount = AppContainer.production().accountsManager.currentUserAccount
+    func ensureDeviceActivated(licensorGracePeriod: TimeInterval = 0) async throws {
+        // `authorizer` is a closure, not a value: evaluating `adeptInstance`
+        // eagerly would initialise RMSDK *before* the availability and licensor
+        // guards, where develop returned first. Behaviour-preserving laziness.
+        try await ensureDeviceActivated(
+            authorizer: { self.adeptInstance },
+            userAccount: AppContainer.production().accountsManager.currentUserAccount,
+            isDRMAvailable: AdobeCertificate.isDRMAvailable,
+            licensorGracePeriod: licensorGracePeriod,
+            refreshLicensor: { await Self.freshLicensorFromProfileDocument() }
+        )
+    }
 
+    /// How long a borrow will wait for sign-in's profile-document leg to write
+    /// the Adobe licensor before giving up. Sized to cover the observed lag
+    /// (~13s between the borrow and the credential save on a real device) while
+    /// still failing in bounded time when the library genuinely has no Adobe
+    /// credentials.
+    static let defaultLicensorGracePeriod: TimeInterval = 15
+
+    /// Polling interval for `awaitLicensor`. Short enough that a borrow resumes
+    /// promptly once credentials land.
+    static let licensorPollInterval: TimeInterval = 0.1
+
+    /// Fetches the patron profile document and returns the Adobe licensor it
+    /// carries — a token minted seconds ago rather than at sign-in.
+    ///
+    /// The iOS counterpart of Android's `runPatronProfileRequest` inside
+    /// `BorrowACSM.adobeDeviceActivate`. Returns nil on any failure; the caller
+    /// falls back to the stored licensor rather than failing the borrow, since
+    /// a stored token may still be inside its hour.
+    static func freshLicensorFromProfileDocument() async -> [String: Any]? {
+        guard let account = AppContainer.production().accountsManager.currentAccount else {
+            return nil
+        }
+        return await boundedLicensor(timeout: profileDocumentTimeout) { done in
+            // `enableTokenRefresh: true`. This fetch is the whole point of the
+            // PP-3649 refresh, and the case it exists for — a session old
+            // enough that the stored licensor died — is also the case where the
+            // bearer token has expired. Sending it as-is earns a 401 and a
+            // fallback to the stale licensor, i.e. no refresh at all.
+            account.getProfileDocument(enableTokenRefresh: true) { document in
+                guard let drm = document?.drm?.first,
+                      let vendor = drm.vendor, !vendor.isEmpty,
+                      let clientToken = drm.clientToken, !clientToken.isEmpty else {
+                    done(nil)
+                    return
+                }
+                done(drm.licensor)
+            }
+        }.licensor
+    }
+
+    /// How long the borrow path will wait for the profile-document fetch before
+    /// giving up on a fresh licensor and activating with the stored one.
+    ///
+    /// Chosen against the executor's own budget rather than picked: a profile
+    /// request that is going to answer does so well inside this, and one that
+    /// is not going to answer must not be the thing that decides how long a
+    /// borrow takes.
+    static let profileDocumentTimeout: TimeInterval = 20
+
+    /// Awaits a callback-style licensor producer under a wall-clock deadline.
+    ///
+    /// Bounded because this sits on the BORROW path and OUTSIDE the activation
+    /// deadline below — `resolve` runs before `activationCoordinator.activate`,
+    /// so nothing downstream would ever have rescued it. `getProfileDocument`
+    /// hands its completion to `URLSession` via the executor, and this branch
+    /// has already shipped one ten-hour hang from an await with no bound; an
+    /// unresumed continuation here would wedge the borrow the same way, with
+    /// the added cruelty that the fallback it is guarding (activate with the
+    /// stored licensor) works perfectly well.
+    ///
+    /// A one-shot latch, NOT a task group. The note on `ensureDeviceActivated`
+    /// below records why the group cannot work: it awaits every child on scope
+    /// exit and `cancelAll()` is only cooperative, so a continuation nobody
+    /// resumes keeps the group — and the caller — suspended forever. Whichever
+    /// arrives first here, the producer's completion or the deadline, claims
+    /// the continuation and the caller genuinely unwinds.
+    /// - Returns: the licensor the producer supplied, and whether the DEADLINE
+    ///   is what released the await.
+    ///
+    ///   `timedOut` is returned rather than logged from inside the deadline task
+    ///   because "who won the latch" is the only interesting thing this function
+    ///   decides, and a decision that leaves the function only as a log line is
+    ///   a decision no test can assert. An earlier draft had the latch answer
+    ///   that question with a `Bool` return nobody outside consumed; mutation
+    ///   flipped it both ways with the suite green. Returning it moves the
+    ///   report to the caller, where it is observable.
+    static func boundedLicensor(
+        timeout: TimeInterval,
+        produce: @escaping (@escaping ([String: Any]?) -> Void) -> Void
+    ) async -> (licensor: [String: Any]?, timedOut: Bool) {
+        let box: LicensorBox = await withCheckedContinuation { (continuation: CheckedContinuation<LicensorBox, Never>) in
+            let once = OneShotValueContinuation(continuation)
+
+            let deadline = Task {
+                // Return rather than fall through on cancellation: `try?` would
+                // swallow the cancellation error and fire the timeout anyway,
+                // racing — and often beating — a fetch that actually answered.
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                } catch {
+                    return
+                }
+                // At-most-once: a fetch that lands in the microseconds after the
+                // sleep wakes wins the latch, and this call is then a no-op — so
+                // a successful refresh can never be reported as a timeout.
+                once.finish(nil, timedOut: true)
+            }
+
+            produce { licensor in
+                deadline.cancel()
+                once.finish(licensor, timedOut: false)
+            }
+        }
+        if box.timedOut {
+            Log.error(#file, "Adobe licensor refresh timed out after \(timeout)s — activating with the stored licensor (PP-3649)")
+        }
+        return (box.licensor, box.timedOut)
+    }
+
+    /// Reads `account.licensor`, and if it is absent, re-reads it until it
+    /// appears or `budget` is exhausted.
+    ///
+    /// Polling rather than observing deliberately: `TPPUserAccount.setLicensor`
+    /// writes without posting `notifyAccountDidChange()` (unlike its immediate
+    /// neighbour `setPatron`), so there is no change signal to await. Polling a
+    /// value that is only ever written once, under a bounded budget, is the
+    /// smaller change; adding a notification to that setter would alter what
+    /// every existing account observer sees.
+    static func awaitLicensor(_ account: AdobeActivationAccount,
+                              within budget: TimeInterval) async -> [String: Any]? {
+        if let licensor = account.licensor { return licensor }
+        guard budget > 0 else { return nil }
+
+        // Monotonic deadline, not accumulated nominal sleep. Summing the
+        // requested step sizes measures what we ASKED for; under load the
+        // actual elapsed time is longer, so a nominal budget silently overruns.
+        // `ContinuousClock` rather than `Date` so a clock adjustment mid-wait
+        // cannot stretch or collapse the budget.
+        let clock = ContinuousClock()
+        let started = clock.now
+        // `.components.seconds` alone truncates to whole seconds, which would
+        // make every sub-second arrival log "0.0s" — losing the one field
+        // diagnostic that measures this race — and leave `guard step > 0` dead.
+        func elapsedSeconds() -> TimeInterval {
+            let c = started.duration(to: clock.now).components
+            return Double(c.seconds) + Double(c.attoseconds) * 1e-18
+        }
+        while started.duration(to: clock.now) < .seconds(budget) {
+            do {
+                let remaining = budget - elapsedSeconds()
+                let step = min(licensorPollInterval, max(remaining, 0))
+                guard step > 0 else { break }
+                try await Task.sleep(nanoseconds: UInt64(step * 1_000_000_000))
+            } catch {
+                // Cancellation lands here. Returning immediately is the point:
+                // `try?` would swallow it and spin through every remaining step
+                // with a zero-duration sleep. No production caller cancels this
+                // today (all three sites are unstructured `Task {}` with no
+                // retained handle), so this is defence, not a live path.
+                return nil
+            }
+            if let licensor = account.licensor {
+                Log.info(#file, "Adobe licensor credentials arrived after \(String(format: "%.1f", elapsedSeconds()))s — proceeding with activation")
+                return licensor
+            }
+        }
+        return nil
+    }
+
+    /// Dependency-injected form of `ensureDeviceActivated()`. The no-argument
+    /// overload above is the only production call site and simply supplies the
+    /// live singletons; this is where the actual logic lives so the borrow-time
+    /// activation path can be exercised end-to-end in tests against
+    /// `TPPDRMAuthorizingMock` instead of the real RMSDK. Keeping the logic here
+    /// rather than in a helper means a test of this method is a test of what
+    /// production actually runs.
+    func ensureDeviceActivated(authorizer: @escaping @Sendable () -> TPPDRMAuthorizing?,
+                               userAccount: AdobeActivationAccount,
+                               isDRMAvailable: Bool,
+                               timeout: TimeInterval = AdobeActivationCoordinator.defaultTimeout,
+                               licensorGracePeriod: TimeInterval = 0,
+                               refreshLicensor: (() async -> [String: Any]?)? = nil) async throws {
         if let userID = userAccount.userID,
            let deviceID = userAccount.deviceID,
-           isUserAuthorized(userID, deviceID: deviceID) {
+           authorizer()?.isUserAuthorized(userID, withDevice: deviceID) == true {
             Log.info(#file, "Adobe device already activated — skipping activation")
             return
         }
 
-        guard AdobeCertificate.isDRMAvailable else {
+        guard isDRMAvailable else {
             Log.error(#file, "Adobe DRM not available — certificate missing or expired")
             throw PalaceError.drm(.noActivation)
         }
 
-        guard let licensor = userAccount.licensor,
+        // PP-5025. The licensor is written on the user-profile-document leg of
+        // sign-in, which can complete AFTER the auth gate releases a queued
+        // borrow — measured at 13 seconds late on a real device. Reading once
+        // and failing made that surface as a flat "Device not activated", which
+        // is indistinguishable from a genuine DRM fault and sent connector
+        // testing down the wrong path. Wait a bounded moment for credentials
+        // that are already on their way; a licensor that never arrives still
+        // fails below, so this defers the guard rather than removing it.
+        // PP-3649. The stored licensor is written once at sign-in and never
+        // updated; its short client token dies after 60 minutes, while
+        // activation now happens at first Adobe borrow — arbitrarily later.
+        // Re-mint before activating, as Android's BorrowACSM does. The
+        // grace-period read stays FIRST so the PP-5025 sign-in race is still
+        // handled for a licensor that has not landed yet.
+        let storedLicensor = await Self.awaitLicensor(userAccount, within: licensorGracePeriod)
+        let resolved = await AdobeLicensorRefresh.resolve(
+            stored: storedLicensor,
+            fetch: { await refreshLicensor?() }
+        )
+        if resolved.wasRefreshed, let fresh = resolved.licensor {
+            // `[String: Any]` is not Sendable; carry it across the hop in a
+            // read-only box, as BorrowErrorDictBox does for the same reason.
+            let box = LicensorBox(fresh)
+            await MainActor.run {
+                if let licensor = box.licensor { userAccount.setLicensor(licensor) }
+            }
+        }
+
+        guard let licensor = resolved.licensor,
               let vendor = licensor["vendor"] as? String, !vendor.isEmpty,
               let clientToken = licensor["clientToken"] as? String, !clientToken.isEmpty else {
             Log.error(#file, "No Adobe DRM licensor credentials stored — cannot activate")
             throw PalaceError.drm(.noActivation)
         }
 
-        var items = clientToken
-            .replacingOccurrences(of: "\n", with: "")
-            .components(separatedBy: "|")
-        let tokenPassword = items.last
-        items.removeLast()
-        let tokenUsername = (items as NSArray).componentsJoined(by: "|")
+        guard let token = AdobeClientToken.split(clientToken) else {
+            // Previously this could not fail: a token with no "|" produced an
+            // EMPTY username, which Adobe rejects as `authenticationFailed` —
+            // indistinguishable from a genuine credential rejection. That is
+            // one of the shapes hiding inside PP-3649's 25k events. Never log
+            // the token itself; its SHAPE is what is diagnostic.
+            Log.error(#file, "Adobe client token is malformed — cannot activate")
+            TPPErrorLogger.logError(
+                withCode: .invalidLicensor,
+                summary: "Adobe client token malformed (PP-3649)",
+                metadata: [
+                    "tokenLength": clientToken.count,
+                    "separatorCount": clientToken.filter { $0 == "|" }.count,
+                    "vendor": vendor
+                ]
+            )
+            throw PalaceError.drm(.noActivation)
+        }
+        let tokenUsername = token.username
+        let tokenPassword = token.password
 
-        Log.info(#file, "Performing on-demand Adobe device activation for borrow")
+        // SINGLE-FLIGHT (PP-4952 / Crashlytics ed05e903). Everything below this
+        // line enters Adobe's non-thread-safe C++ RMSDK. Concurrent borrows
+        // MUST NOT both get here — two simultaneous `authorize` calls corrupt
+        // RMSDK's shared heap and abort the process. The coordinator collapses
+        // racing callers onto one activation; the losers await its result.
+        //
+        // Note this is deliberately INSIDE the guards above: a coalesced caller
+        // still re-runs the `isUserAuthorized` fast path on its next borrow, so
+        // a successful activation short-circuits future callers entirely.
+        try await activationCoordinator.activate {
+            Log.info(#file, "Performing on-demand Adobe device activation for borrow")
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            guard let adept = self.adeptInstance else {
-                continuation.resume(throwing: PalaceError.drm(.noActivation))
-                return
-            }
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                // THE DEADLINE LIVES HERE, on the continuation, and nowhere else.
+                //
+                // Racing the work in a task group does NOT bound this: a group
+                // awaits its children on scope exit and `cancelAll()` is only
+                // cooperative, so a continuation RMSDK never resumes would keep
+                // the group — and therefore the single-flight slot — wedged
+                // forever, making every later borrow hang. A one-shot latch is
+                // what actually works: whichever arrives first, RMSDK's
+                // completion or the deadline, resumes exactly once and the
+                // awaiting task genuinely unwinds, so `inFlight` clears.
+                //
+                // TRADE-OFF, stated deliberately: after a timeout a later borrow
+                // may enter RMSDK while the original call is still notionally
+                // live. That is the same exposure `develop` had on every borrow,
+                // now narrowed to "only after a 90s wedge", and it is preferable
+                // to a permanently dead borrow button.
+                let once = OneShotContinuation(continuation)
 
-            adept.authorize(withVendorID: vendor,
-                            username: tokenUsername,
-                            password: tokenPassword) { success, error, deviceID, userID in
-                if success, let userID = userID, let deviceID = deviceID {
-                    Log.info(#file, "On-demand Adobe activation succeeded")
-                    TPPMainThreadRun.asyncIfNeeded {
-                        userAccount.setUserID(userID)
-                        userAccount.setDeviceID(deviceID)
+                let deadline = Task {
+                    // `try?` + fall-through would be a bug: cancelling this task
+                    // makes the sleep throw, `try?` would swallow it, and the
+                    // timeout would still fire — racing (and often beating) the
+                    // real completion, so a successful activation surfaces as a
+                    // spurious timeout. Return on cancellation instead.
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    } catch {
+                        return
                     }
-                    continuation.resume()
-                } else {
-                    let activationError = error ?? NSError(
-                        domain: "AdobeDRM",
-                        code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Adobe device activation failed"]
-                    )
-                    Log.error(#file, "On-demand Adobe activation failed: \(activationError.localizedDescription)")
+                    // Claim FIRST, report only if we won. This timeout is the
+                    // failure mode the design deliberately accepts, and an
+                    // accepted failure mode with no telemetry is an invisible
+                    // one — but reporting one for an activation that actually
+                    // succeeded is worse than silence.
+                    guard once.finish(throwing: PalaceError.drm(.adobeError)) else { return }
+                    Log.error(#file, "On-demand Adobe activation timed out after \(timeout)s — RMSDK never invoked the completion")
                     TPPErrorLogger.logError(
                         withCode: .invalidLicensor,
-                        summary: "On-demand Adobe device activation failed (PP-3649)",
-                        metadata: ["error": activationError.localizedDescription]
+                        summary: "On-demand Adobe device activation timed out (PP-4952)",
+                        metadata: ["timeoutSeconds": timeout]
                     )
-                    continuation.resume(throwing: PalaceError.drm(.authenticationFailed))
+                }
+
+                guard let adept = authorizer() else {
+                    deadline.cancel()
+                    once.finish(throwing: PalaceError.drm(.noActivation))
+                    return
+                }
+
+                adept.authorize(withVendorID: vendor,
+                                username: tokenUsername,
+                                password: tokenPassword) { success, error, deviceID, userID in
+                    deadline.cancel()
+                    if success, let userID = userID, let deviceID = deviceID {
+                        Log.info(#file, "On-demand Adobe activation succeeded")
+                        TPPMainThreadRun.asyncIfNeeded {
+                            userAccount.setUserID(userID)
+                            userAccount.setDeviceID(deviceID)
+                        }
+                        once.finish(throwing: nil)
+                    } else {
+                        let activationError = error ?? NSError(
+                            domain: "AdobeDRM",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: "Adobe device activation failed"]
+                        )
+                        Log.error(#file, "On-demand Adobe activation failed: \(activationError.localizedDescription)")
+                        // `localizedDescription` on a custom-domain NSError is
+                        // only "The operation couldn't be completed. (domain
+                        // error N.)" — which is why 25k PP-3649 events since
+                        // 3.0.0 carry no usable cause. ADEPT stashes Adobe's own
+                        // code under `originalCode`; record it, plus the domain
+                        // and code, so the next rollout can name the failure
+                        // mode instead of restating that one occurred.
+                        let ns = activationError as NSError
+                        var failureMetadata: [String: Any] = [
+                            "error": activationError.localizedDescription,
+                            "errorDomain": ns.domain,
+                            "errorCode": ns.code,
+                            "vendor": vendor
+                        ]
+                        if let originalCode = ns.userInfo[NYPLADEPTErrorOriginalCodeKey] {
+                            failureMetadata["adobeOriginalCode"] = originalCode
+                        }
+                        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError {
+                            failureMetadata["underlyingDomain"] = underlying.domain
+                            failureMetadata["underlyingCode"] = underlying.code
+                        }
+                        TPPErrorLogger.logError(
+                            withCode: .invalidLicensor,
+                            summary: "On-demand Adobe device activation failed (PP-3649)",
+                            metadata: failureMetadata
+                        )
+                        once.finish(throwing: PalaceError.drm(PalaceError.drmError(for: activationError)))
+                    }
                 }
             }
         }
+    }
+}
+
+/// Carries a non-Sendable `[String: Any]` licensor across a concurrency hop.
+///
+/// Read-only after construction, which is what makes the `@unchecked` sound.
+/// Same job as `BorrowErrorDictBox`, for the same reason.
+private final class LicensorBox: @unchecked Sendable {
+    let licensor: [String: Any]?
+    /// Whether the DEADLINE produced this box rather than the fetch. Carried
+    /// here so `boundedLicensor` can report it to its caller instead of the
+    /// deadline task logging in place.
+    let timedOut: Bool
+    init(_ licensor: [String: Any]?, timedOut: Bool = false) {
+        self.licensor = licensor
+        self.timedOut = timedOut
+    }
+}
+
+/// Resumes a non-throwing continuation exactly once.
+///
+/// Two producers race for it: `getProfileDocument`'s completion handler and the
+/// refresh deadline. A completion handler invoked twice, or a deadline that
+/// fires after the fetch landed, would resume a `CheckedContinuation` twice — a
+/// hard runtime trap, not a recoverable error. Sibling of `OneShotContinuation`
+/// below, which does the same job for the throwing activation path.
+private final class OneShotValueContinuation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<LicensorBox, Never>?
+
+    init(_ continuation: CheckedContinuation<LicensorBox, Never>) {
+        self.continuation = continuation
+    }
+
+    /// At-most-once. The loser's call is a silent no-op, which is what stops a
+    /// fetch that lands microseconds after the sleep wakes from being reported
+    /// as a timeout — false telemetry being worse than none.
+    func finish(_ value: [String: Any]?, timedOut: Bool) {
+        let c: CheckedContinuation<LicensorBox, Never>? = lock.withLock {
+            defer { continuation = nil }
+            return continuation
+        }
+        c?.resume(returning: LicensorBox(value, timedOut: timedOut))
+    }
+}
+
+/// Resumes a continuation exactly once, whoever gets there first.
+///
+/// Two producers race for it: RMSDK's completion block and the activation
+/// deadline. Resuming a `CheckedContinuation` twice is a hard runtime trap, so
+/// the at-most-once guarantee is load-bearing, not defensive styling. Mirrors
+/// `TPPOnceGuard`, used for the same reason in `boundedCompletion`.
+private final class OneShotContinuation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+
+    init(_ continuation: CheckedContinuation<Void, Error>) {
+        self.continuation = continuation
+    }
+
+    /// Returns `true` only if THIS call claimed the continuation. Callers whose
+    /// outcome is newsworthy (the deadline reporting a timeout) must check it:
+    /// if RMSDK completes in the microseconds after the sleep wakes, the
+    /// completion wins the latch and reporting a timeout anyway would file a
+    /// non-fatal for a successful activation — false telemetry is worse than
+    /// none.
+    @discardableResult
+    func finish(throwing error: Error?) -> Bool {
+        let claimed: CheckedContinuation<Void, Error>? = lock.withLock {
+            let c = continuation
+            continuation = nil
+            return c
+        }
+        guard let claimed else { return false }
+        if let error {
+            claimed.resume(throwing: error)
+        } else {
+            claimed.resume()
+        }
+        return true
     }
 }
 

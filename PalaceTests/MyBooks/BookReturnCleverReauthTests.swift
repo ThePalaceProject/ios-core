@@ -29,6 +29,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - BookReturnService broadening (site 4.10)
 
@@ -153,7 +154,7 @@ final class BookReturnCleverReauthTests: XCTestCase {
         return try XCTUnwrap(TPPProblemDocument.fromProblemResponseData(data))
     }
 
-    private func makeBookWithRevokeURL() -> TPPBook {
+    nonisolated private func makeBookWithRevokeURL() -> TPPBook {
         let identifier = "rev-\(UUID().uuidString)"
         let acquisitionURL = URL(string: "http://example.com/\(identifier)") ?? URL(fileURLWithPath: "/tmp/x")
         let revokeURL = URL(string: "http://example.com/\(identifier)/revoke") ?? URL(fileURLWithPath: "/tmp/x")

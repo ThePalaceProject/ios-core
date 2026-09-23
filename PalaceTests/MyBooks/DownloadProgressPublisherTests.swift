@@ -10,8 +10,8 @@ import XCTest
 import Combine
 @testable import Palace
 
-final class DownloadProgressPublisherTests: XCTestCase {
-
+@MainActor
+final class DownloadProgressPublisherCoreTests: XCTestCase {
     private var reporter: DownloadProgressReporter!
     private var cancellables: Set<AnyCancellable>!
 
@@ -179,11 +179,14 @@ final class DownloadProgressPublisherTests: XCTestCase {
             reporter.broadcastUpdate()
         }
 
-        // The publisher emits one notification immediately and schedules a
-        // single trailing broadcast at +0.5s. Poll until the trailing fires
-        // (count >= 2) rather than sleeping for a fixed window. Generous
-        // 5s timeout keeps the test resilient under loaded CI without
-        // disguising a real regression as flake.
+        // BOUNDED-TIMER (not fire-and-forget starvation): the publisher emits
+        // one notification immediately and schedules a single trailing
+        // broadcast via `DispatchQueue.main.asyncAfter(+0.5s)` — an intrinsic,
+        // by-design wall-clock delay that no join can collapse to zero.
+        // awaitCondition spins the main runloop, which fires that main-queue
+        // timer; a 0.5s timer under a 5s ceiling has ~10x headroom and is not
+        // the unbounded-async-work pattern that starves to executionTimeAllowance.
+        // Left as a bounded-timer wait.
         awaitCondition(timeout: 5.0) { notificationCount >= 2 }
         NotificationCenter.default.removeObserver(token)
 
@@ -407,7 +410,8 @@ final class DownloadProgressPublisherTests: XCTestCase {
 
         let settled = expectation(description: "edges delivered")
         DispatchQueue.main.async { settled.fulfill() }
-        wait(for: [settled], timeout: 5.0)
+        // Bounded wait, not a deadline poll: FIFO main-queue drain, not a poll — the fulfilling `DispatchQueue.main.async` is enqueued AFTER the work under test, so serial-queue ordering guarantees that work has already run.
+        wait(for: [settled], timeout: 5.0)  // STARVE-001-OK
 
         XCTAssertEqual(edges.map(\.1), [true, false],
                        "a cancelled transfer must publish its own release, or the bar never clears")
@@ -427,7 +431,8 @@ final class DownloadProgressPublisherTests: XCTestCase {
 
         let settled = expectation(description: "edges delivered")
         DispatchQueue.main.async { settled.fulfill() }
-        wait(for: [settled], timeout: 5.0)
+        // Bounded wait, not a deadline poll: FIFO main-queue drain, not a poll — the fulfilling `DispatchQueue.main.async` is enqueued AFTER the work under test, so serial-queue ordering guarantees that work has already run.
+        wait(for: [settled], timeout: 5.0)  // STARVE-001-OK
 
         XCTAssertEqual(edges.map(\.1), [true, false],
                        "expiring a dead transfer must also release the UI, not just reconciliation")
@@ -455,7 +460,8 @@ final class DownloadProgressPublisherTests: XCTestCase {
             if $0.0 == "sentinel" && !seenSentinel { seenSentinel = true; sentinel.fulfill() }
         }
         defer { watch.cancel(); reporter.clearLCPContentTransfer(for: "sentinel") }
-        wait(for: [sentinel], timeout: 5.0)
+        // Bounded wait, not a deadline poll: bounded — waits for a sentinel edge this test itself publishes through a PassthroughSubject with a live sink; delivery is synchronous, so the edge is guaranteed.
+        wait(for: [sentinel], timeout: 5.0)  // STARVE-001-OK
 
         XCTAssertEqual(edges.filter { $0.0 == "never-registered" }.count, 0,
                        "no registration, no edge — an unrelated cancel must not clear another book's cue")

@@ -43,6 +43,7 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class MockIsolationLintTests: XCTestCase {
 
   // MARK: - Resolution
@@ -57,7 +58,7 @@ final class MockIsolationLintTests: XCTestCase {
   /// retention, shared singletons without reset) exists in test classes
   /// that drive ViewModels and services.
   private static let palaceTestsRoot: URL = {
-    URL(fileURLWithPath: #file)
+    URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // MetaTests/
       .deletingLastPathComponent()  // PalaceTests/
   }()
@@ -299,6 +300,7 @@ final class MockIsolationLintTests: XCTestCase {
     import Combine
     import XCTest
 
+    @MainActor
     final class SyntheticInheritsTests: PalaceWiringTestCase {
         var cancellables: Set<AnyCancellable> = []
         func testSomething() {

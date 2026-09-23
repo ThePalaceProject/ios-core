@@ -7,30 +7,65 @@
 //
 
 import Foundation
-import ReadiumShared
+import PalaceLogging
+// Swift 6 `complete`: `Publication`, `Link`, and `Locator` are non-Sendable
+// Readium types captured by the `@Sendable` `Task` in `init` (and returned from
+// the `async` locator helpers). `@preconcurrency` is the honest ceiling until
+// Readium annotates these Sendable — matches the sibling Reader2 files.
+@preconcurrency import ReadiumShared
 
 typealias TPPReaderTOCLink = (level: Int, link: Link)
 
 /// This class captures the business logic related to the Table Of Contents
 /// for a given Readium 2 Publication.
+///
+/// Swift 6 `complete`: `@MainActor`-isolated. The `Task` in `init` mutates
+/// `tocElements`, and every consumer is already a `@MainActor` `UIViewController`
+/// (`TPPReaderPositionsVC`, `TPPBaseReaderViewController`). Isolating the class to
+/// the main actor makes the `init` `Task` inherit main isolation, so the
+/// `tocElements` write is race-free without a lock. The only nonisolated caller is
+/// the XCTestCase test (see RIPPLES.md).
+@MainActor
 class TPPReaderTOCBusinessLogic {
     var tocElements: [TPPReaderTOCLink] = []
     private let publication: Publication
     private let currentLocation: Locator? // for current chapter
 
+    /// Retains the TOC-load `Task` spawned in `init` so tests can JOIN the
+    /// actual load deterministically (`awaitTOCLoad()`) instead of polling a
+    /// wall-clock deadline, which starves under parallel oversubscription.
+    /// Behavior-identical in production: the Task is spawned and runs exactly
+    /// as before; we merely hold a reference to it.
+    private var tocLoadTask: Task<Void, Never>?
+
     init(r2Publication: Publication, currentLocation: Locator?) {
         self.publication = r2Publication
         self.currentLocation = currentLocation
 
-        Task {
+        tocLoadTask = Task {
             let tocResult = await publication.tableOfContents()
             switch tocResult {
             case .success(let toc):
                 self.tocElements = flatten(toc)
-            case .failure:
+            case .failure(let error):
+                // Without this, a genuinely failed or empty TOC is
+                // indistinguishable on screen from a regression of PP-5128
+                // (blank Contents), with nothing to tell them apart.
+                Log.error(#file, "Table of contents failed to load: \(error)")
                 return
             }
         }
+    }
+
+    /// Awaits the `init`-spawned TOC load. Returns once the load has finished
+    /// (success or failure); returns immediately if it already has.
+    ///
+    /// `TPPReaderPositionsVC` uses this to reload its table when the elements
+    /// land — the load cannot complete before the VC's first `reloadData()`,
+    /// because it is a main-actor job queued behind the turn that presents the
+    /// VC. Tests use it to JOIN the real work instead of polling `tocElements`.
+    func awaitTOCLoad() async {
+        await tocLoadTask?.value
     }
 
     private func flatten(_ links: [Link], level: Int = 0) -> [(level: Int, link: Link)] {

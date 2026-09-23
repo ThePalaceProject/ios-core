@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AccessibilityLabelTests: XCTestCase {
 
     // MARK: - Localized Strings Tests

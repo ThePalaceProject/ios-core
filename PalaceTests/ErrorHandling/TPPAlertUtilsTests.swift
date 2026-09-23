@@ -9,6 +9,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TPPAlertUtilsTests: XCTestCase {
 
     // MARK: - Hermetic teardown for alert-presentation tests
@@ -42,7 +43,7 @@ final class TPPAlertUtilsTests: XCTestCase {
     /// Spin the main run loop so any scheduled `asyncAfter` retry blocks fire
     /// now (against the about-to-be-released hierarchy) instead of bleeding
     /// into the next test.
-    private func drainMainRunLoop(_ seconds: TimeInterval) {
+    private nonisolated func drainMainRunLoop(_ seconds: TimeInterval) {
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
 

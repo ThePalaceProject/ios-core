@@ -40,6 +40,8 @@ import UIKit
 import ReadiumShared
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Spy registry (records bookmark-facing calls into a CallLog)
 
@@ -98,6 +100,9 @@ private final class RecordingBookmarkRegistry: NSObject, TPPBookRegistryProvider
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { inner.bookStatePublisher }
     var registryState: TPPBookRegistry.RegistryState { inner.registryState }
     var syncStatePublisher: AnyPublisher<Bool, Never> { inner.syncStatePublisher }
+    var registryStatePublisher: AnyPublisher<TPPBookRegistry.RegistryState, Never> { inner.registryStatePublisher }
+    var holdsDidChangePublisher: AnyPublisher<Void, Never> { inner.holdsDidChangePublisher }
+    func notifyHoldsChanged() { inner.notifyHoldsChanged() }
     var heldBooks: [TPPBook] { inner.heldBooks }
     var myBooks: [TPPBook] { inner.myBooks }
     var isSyncing: Bool { inner.isSyncing }
@@ -143,6 +148,7 @@ private final class NilCurrentAccountProvider: NSObject, TPPCurrentLibraryAccoun
 
 // MARK: - Tests
 
+@MainActor
 final class Reader2BookmarkContractTests: XCTestCase {
 
     private let bookIdentifier = "contract-reader2-bookmark-1"
@@ -150,8 +156,8 @@ final class Reader2BookmarkContractTests: XCTestCase {
     private var innerRegistry: TPPBookRegistryMock!
     private var registry: RecordingBookmarkRegistry!
     private var accountProvider: NilCurrentAccountProvider!
-    private var book: TPPBook!
-    private var publication: Publication!
+    nonisolated(unsafe) private var book: TPPBook!
+    nonisolated(unsafe) private var publication: Publication!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -345,7 +351,10 @@ final class Reader2BookmarkContractTests: XCTestCase {
 
     // MARK: - Fixture helpers
 
-    private func makeBook() -> TPPBook {
+    // `nonisolated` (mirrors `makePublication` below): `setUpWithError` is a
+    // nonisolated XCTestCase override, so calling an @MainActor (class-default)
+    // factory from it sends `self` to the main actor — Swift 6 "sending 'self'".
+    private nonisolated func makeBook() -> TPPBook {
         let url = URL(string: "https://test.example.com/book")!
         let acq = TPPOPDSAcquisition(
             relation: .generic,
@@ -383,7 +392,12 @@ final class Reader2BookmarkContractTests: XCTestCase {
         )
     }
 
-    private func makePublication() -> Publication {
+    // `nonisolated`: builds a non-Sendable Readium `Publication` from no
+    // instance state. Left `@MainActor` (class default), calling it from
+    // `setUpWithError` and returning the non-Sendable result across the
+    // actor boundary trips Swift 6 "sending 'self'" / non-Sendable-result.
+    // Same fix EPUBPositionTests.makeTestPublication uses.
+    private nonisolated func makePublication() -> Publication {
         let metadata = Metadata(title: "Test", languages: ["en"])
         let readingOrder = [
             Link(href: "/chapter1.xhtml", mediaType: .xhtml),

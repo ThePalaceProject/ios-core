@@ -14,6 +14,7 @@ import XCTest
 
 // MARK: - BeginningPositionPolicy
 
+@MainActor
 final class BeginningPositionPolicyTests: XCTestCase {
 
     func testIsAtBeginning_track0_time0_isBeginning() {
@@ -63,6 +64,7 @@ final class BeginningPositionPolicyTests: XCTestCase {
 
 // MARK: - AudiobookPositionPolicy (validator)
 
+@MainActor
 final class AudiobookPositionPolicyValidatorTests: XCTestCase {
 
     private let okTrackKey = "track-key-1"
@@ -183,6 +185,7 @@ final class AudiobookPositionPolicyValidatorTests: XCTestCase {
 
 // MARK: - ChapterChangeDetector
 
+@MainActor
 final class ChapterChangeDetectorTests: XCTestCase {
 
     func testDidChange_noPriorChapter_fires() {
@@ -237,6 +240,7 @@ final class ChapterChangeDetectorTests: XCTestCase {
 
 // MARK: - ChapterTOCNormalizer
 
+@MainActor
 final class ChapterTOCNormalizerTests: XCTestCase {
 
     func testIsOversubdivided_belowThreshold_returnsFalse() {
@@ -317,6 +321,7 @@ final class ChapterTOCNormalizerTests: XCTestCase {
 //     the `!`) reintroduces FINDING-D and fails Test 1 / Test 2.
 //   * Swapping the struct field assignments fails all four tests.
 
+@MainActor
 final class PlaybackOpenPolicyTests: XCTestCase {
 
     // Test 1 — FINDING-D regression guard: re-borrow of same book must
@@ -429,3 +434,152 @@ final class AudiobookPositionLoggerSpy: AudiobookPositionLogging {
 // (Banned test patterns / Coverage-only tests are banned). If we ever need to
 // pin the formatter, add a sink protocol to DefaultAudiobookPositionLogger and
 // test that protocol directly.
+
+// MARK: - ChapterNavigationPolicy (PP-5205)
+
+/// The chapter label is written from a CACHE that only position updates touch, so
+/// an explicit chapter tap changed nothing until the seek produced a position —
+/// leaving the label on the chapter just left while the chapter-scoped timecodes
+/// beside it, computed live off the player's position, already showed the new one.
+///
+/// Two rules with opposite answers on the same input, and the transition table is
+/// small enough to assert whole rather than sampled: {no hold, hold matches, hold
+/// mismatches} × {chapter changed, chapter unchanged}, plus the first-emit case.
+@MainActor
+final class ChapterNavigationPolicyTests: XCTestCase {
+
+    private let a = "track-a"
+    private let b = "track-b"
+
+    // MARK: reactiveUpdate — no hold in flight
+
+    func testReactiveUpdate_noHold_differentTrack_appliesAndReleases() {
+        XCTAssertEqual(
+            ChapterNavigationPolicy.reactiveUpdate(
+                navigationTargetTrackKey: nil,
+                currentKey: a, currentTitle: "Chapter 1",
+                newKey: b, newTitle: "Chapter 2"
+            ),
+            .applyAndRelease,
+            "ordinary playback rolling into the next track must still update the label"
+        )
+    }
+
+    func testReactiveUpdate_noHold_sameTrack_releasesWithoutPublishing() {
+        // ChapterChangeDetector keys on track change only, deliberately: an
+        // anthology's adjacent same-track chapters must not announce a crossing.
+        XCTAssertEqual(
+            ChapterNavigationPolicy.reactiveUpdate(
+                navigationTargetTrackKey: nil,
+                currentKey: a, currentTitle: "Chapter 1",
+                newKey: a, newTitle: "Chapter 2"
+            ),
+            .releaseHold
+        )
+    }
+
+    func testReactiveUpdate_noHold_firstEmit_appliesAndReleases() {
+        XCTAssertEqual(
+            ChapterNavigationPolicy.reactiveUpdate(
+                navigationTargetTrackKey: nil,
+                currentKey: nil, currentTitle: nil,
+                newKey: a, newTitle: "Chapter 1"
+            ),
+            .applyAndRelease,
+            "with no chapter displayed yet there is nothing to protect"
+        )
+    }
+
+    // MARK: reactiveUpdate — hold in flight, position is NOT the target
+
+    func testReactiveUpdate_heldForOtherTrack_ignoresTheTrackBeingLeft() {
+        XCTAssertEqual(
+            ChapterNavigationPolicy.reactiveUpdate(
+                navigationTargetTrackKey: b,
+                currentKey: b, currentTitle: "Chapter 42",
+                newKey: a, newTitle: "Chapter 18"
+            ),
+            .ignore,
+            "the old playhead still ticking must not pull the label back"
+        )
+    }
+
+    func testReactiveUpdate_heldForOtherTrack_ignoresEvenOnFirstEmit() {
+        // A nil currentKey makes ChapterChangeDetector fire unconditionally, so this
+        // cell is the one where a hold checked AFTER the change test would leak.
+        XCTAssertEqual(
+            ChapterNavigationPolicy.reactiveUpdate(
+                navigationTargetTrackKey: b,
+                currentKey: nil, currentTitle: nil,
+                newKey: a, newTitle: "Chapter 18"
+            ),
+            .ignore
+        )
+    }
+
+    // MARK: reactiveUpdate — hold in flight, position IS the target
+
+    func testReactiveUpdate_holdSatisfied_differentTrack_appliesAndReleases() {
+        XCTAssertEqual(
+            ChapterNavigationPolicy.reactiveUpdate(
+                navigationTargetTrackKey: b,
+                currentKey: a, currentTitle: "Chapter 18",
+                newKey: b, newTitle: "Chapter 42"
+            ),
+            .applyAndRelease
+        )
+    }
+
+    func testReactiveUpdate_holdSatisfied_alreadyDisplayed_releasesWithoutPublishing() {
+        // The common case after an optimistic publish: the label is already right,
+        // so the hold must end without re-emitting to CarPlay and the presenter.
+        XCTAssertEqual(
+            ChapterNavigationPolicy.reactiveUpdate(
+                navigationTargetTrackKey: b,
+                currentKey: b, currentTitle: "Chapter 42",
+                newKey: b, newTitle: "Chapter 42"
+            ),
+            .releaseHold
+        )
+    }
+
+    // MARK: selectionNeedsImmediatePublish
+
+    func testSelectionNeedsImmediatePublish_differentTrack_isTrue() {
+        XCTAssertTrue(ChapterNavigationPolicy.selectionNeedsImmediatePublish(
+            currentKey: a, currentTitle: "Chapter 18",
+            selectedKey: b, selectedTitle: "Chapter 42"
+        ))
+    }
+
+    func testSelectionNeedsImmediatePublish_sameTrackDifferentChapter_isTrue() {
+        // The divergence from ChapterChangeDetector, and the reason this is its own
+        // rule: within one track an anthology's rows are separate chapters. Reusing
+        // the reactive rule here would leave the label unchanged on a tap the patron
+        // just made, which reads as a tap that did nothing.
+        XCTAssertTrue(ChapterNavigationPolicy.selectionNeedsImmediatePublish(
+            currentKey: a, currentTitle: "Chapter 1",
+            selectedKey: a, selectedTitle: "Chapter 2"
+        ))
+        XCTAssertFalse(
+            ChapterChangeDetector.didChange(
+                oldKey: a, oldTitle: "Chapter 1", newKey: a, newTitle: "Chapter 2"
+            ),
+            "premise: the reactive rule does NOT fire here — that is what makes a separate rule necessary"
+        )
+    }
+
+    func testSelectionNeedsImmediatePublish_sameChapterTapped_isFalse() {
+        XCTAssertFalse(ChapterNavigationPolicy.selectionNeedsImmediatePublish(
+            currentKey: a, currentTitle: "Chapter 1",
+            selectedKey: a, selectedTitle: "Chapter 1"
+        ), "re-tapping the playing chapter must not re-announce it")
+    }
+
+    func testSelectionNeedsImmediatePublish_nothingDisplayedYet_isTrue() {
+        XCTAssertTrue(ChapterNavigationPolicy.selectionNeedsImmediatePublish(
+            currentKey: nil, currentTitle: nil,
+            selectedKey: a, selectedTitle: "Chapter 1"
+        ))
+    }
+}

@@ -14,6 +14,8 @@
 //
 
 import Foundation
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// Resolves the on-disk URL for a book download. Per-account, hashed
 /// identifier, LCP-aware file extension. Creates the content directory on
@@ -24,7 +26,11 @@ import Foundation
 class BookFileManager {
 
     private let bookRegistry: TPPBookRegistryProvider
-    private let accountsManager: AccountsManager
+    /// Account-scope read seam (god-class decomposition Wave 3, S2). Was the
+    /// concrete `AccountsManager`; now the Downloads-owned
+    /// `DownloadAccountScopeProviding` so this type carries no Accounts
+    /// dependency into PalaceDownloads at 3b. Only `currentAccountID` is read.
+    private let accountScope: any DownloadAccountScopeProviding
     private let fileManager: FileManager
     /// Test-only override for the per-account content directory lookup.
     /// Production passes nil so `contentDirectoryURL(_:)` resolves the
@@ -34,17 +40,27 @@ class BookFileManager {
     /// depending on a real per-account App Support directory. Semantics
     /// match the existing production return: nil means "no directory".
     private let directoryProvider: ((String?) -> URL?)?
+    /// Identifiers of side-loaded books, resolved on each read. Side-loaded
+    /// content is account-agnostic and is written under one fixed account
+    /// (`SideloadedBookRegistry.sideloadContentAccountID`); this provider lets
+    /// `fileUrl(for:account:)` pin a side-loaded id to that account so a
+    /// library switch cannot orphan its file. Production resolves it lazily
+    /// through `AppContainer` (same cycle-avoidance pattern as elsewhere);
+    /// tests inject a fixed set. See sideloading-plan.md R6.
+    private let sideloadedIdentifiersProvider: () -> Set<String>
 
     init(
         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
-        accountsManager: AccountsManager = AppContainer.production().accountsManager,
+        accountScope: any DownloadAccountScopeProviding = AppContainer.production().downloadAccountContext,
         fileManager: FileManager = .default,
-        directoryProvider: ((String?) -> URL?)? = nil
+        directoryProvider: ((String?) -> URL?)? = nil,
+        sideloadedIdentifiersProvider: @escaping () -> Set<String> = { AppContainer.production().sideloadedBookRegistry.identifiers }
     ) {
         self.bookRegistry = bookRegistry
-        self.accountsManager = accountsManager
+        self.accountScope = accountScope
         self.fileManager = fileManager
         self.directoryProvider = directoryProvider
+        self.sideloadedIdentifiersProvider = sideloadedIdentifiersProvider
     }
 
     // MARK: - File URL
@@ -53,14 +69,36 @@ class BookFileManager {
     /// under the current account. Returns nil if the book is unknown or the
     /// content directory can't be created.
     func fileUrl(for identifier: String) -> URL? {
-        fileUrl(for: identifier, account: accountsManager.currentAccountId)
+        fileUrl(for: identifier, account: accountScope.currentAccountID)
     }
 
     func fileUrl(for identifier: String, account: String?) -> URL? {
         guard let book = bookRegistry.book(forIdentifier: identifier) else {
             return nil
         }
-        return fileUrl(for: book, account: account)
+        // Component 4 (sideloading-plan.md R6): side-loaded books are
+        // account-agnostic — their file is written under one fixed account.
+        // If `currentAccount` (or the caller-supplied account) differs, the
+        // per-account path would resolve the wrong directory → nil → the
+        // reader can't open the book after a library switch. Pin the read to
+        // the same fixed account the import wrote to. This is the single read
+        // choke point every `fileUrl(for: identifier)` overload funnels
+        // through, so the reader path is fixed without touching
+        // MyBooksDownloadCenter.
+        //
+        // Perf: this method resolves EVERY book-file URL app-wide, so gate the
+        // provider call (NSLock + Set copy) behind the cheap "sideload-" prefix
+        // check. Side-loaded ids are minted with that prefix
+        // (`SideloadedBookManager.contentIdentifier`), so a normal id skips the
+        // lock entirely. The provider membership check is retained for
+        // prefixed ids as defense in depth (an id could carry the prefix
+        // without being registered). Coupling: this prefix MUST match the one
+        // `SideloadedBookManager.contentIdentifier` mints.
+        let resolvedAccount = (identifier.hasPrefix("sideload-")
+            && sideloadedIdentifiersProvider().contains(identifier))
+            ? SideloadedBookRegistry.sideloadContentAccountID
+            : account
+        return fileUrl(for: book, account: resolvedAccount)
     }
 
     /// Returns the file URL for a book, accepting the book directly instead

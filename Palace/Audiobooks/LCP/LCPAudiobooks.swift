@@ -15,8 +15,25 @@ import PalaceCatalog
 @preconcurrency import ReadiumStreamer
 @preconcurrency import ReadiumLCP
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
-@objc class LCPAudiobooks: NSObject {
+/// - Sendable invariant: instances are safe to share across concurrency
+///   domains (they are captured by the `@Sendable` closures
+///   `publicationCacheQueue.async`/`DispatchQueue.global().async` schedules,
+///   and by the decrypt/load `Task`s) because:
+///   1. Every stored dependency (`audiobookUrl`, `licenseUrl`,
+///      `assetRetriever`, `publicationOpener`, `httpClient`,
+///      `publicationCacheQueue`) is a `let` — immutable after `init`.
+///   2. Every piece of mutable state (`cachedPublication`,
+///      `currentPrefetchTask`, `isReleased`) is read and written ONLY through
+///      the serial `publicationCacheQueue` (`.sync`/`.async`). No mutable
+///      property is touched off that queue, so there is no unsynchronized
+///      shared mutation.
+///   `final` keeps the invariant intact — a subclass cannot add
+///   unsynchronized stored state. Hence `@unchecked Sendable` rather than a
+///   compiler-checked conformance (the Readium dependency types are not
+///   Sendable-audited).
+@objc final class LCPAudiobooks: NSObject, @unchecked Sendable {
 
     private static let expectedAcquisitionType = "application/vnd.readium.lcp.license.v1.0+json"
 
@@ -75,7 +92,7 @@ import PalaceCatalog
         )
     }
 
-    @objc func contentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> Void) {
+    @objc func contentDictionary(completion: @escaping @Sendable (_ json: NSDictionary?, _ error: NSError?) -> Void) {
         if isReleasedSnapshot() {
             DispatchQueue.main.async {
                 completion(nil, Self.releasedError())
@@ -84,8 +101,14 @@ import PalaceCatalog
         }
         DispatchQueue.global(qos: .userInitiated).async {
             self.loadContentDictionary { json, error in
+                // `NSDictionary` / `NSError` are not Sendable-audited, so
+                // capturing `json` / `error` into the `main.async` `@Sendable`
+                // closure trips `sending … risks data races`. Snapshot the pair
+                // into a Sendable carrier for the single main-thread hop; the
+                // values are freshly produced by the load and consumed once.
+                let resultBox = LCPContentResultBox(json: json, error: error)
                 DispatchQueue.main.async {
-                    completion(json, error)
+                    completion(resultBox.json, resultBox.error)
                 }
             }
         }
@@ -103,7 +126,7 @@ import PalaceCatalog
         )
     }
 
-    private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> Void) {
+    private func loadContentDictionary(completion: @escaping @Sendable (_ json: NSDictionary?, _ error: NSError?) -> Void) {
         if isReleasedSnapshot() {
             completion(nil, Self.releasedError())
             return
@@ -249,18 +272,51 @@ import PalaceCatalog
     }
 }
 
+/// This conformance is deliberately NOT isolated, and must stay that way.
+///
+/// `LCPStreamingProvider` inherits `DRMDecryptor`, so isolating the conformance
+/// isolates decryption too: `error: main actor-isolated conformance of
+/// 'LCPAudiobooks' to 'DRMDecryptor' cannot be used in nonisolated context`.
+/// Decryption legitimately runs off-main, and `getPublication()` is called from
+/// AVFoundation's resource-loader thread inside a polling loop in
+/// `LCPResourceLoaderDelegate`.
+///
+/// Two shapes were tried and both failed to compile — do not reintroduce them:
+///   1. `@MainActor` on `setupStreamingFor` alone → Swift then demands the whole
+///      conformance be isolated.
+///   2. `extension LCPAudiobooks: @MainActor LCPStreamingProvider` → the
+///      `DRMDecryptor` error above.
+///
+/// What works: a nonisolated witness satisfies the `@MainActor` requirement
+/// (the permissive direction), and the one statement touching main-actor state
+/// hops explicitly. See `setupStreamingFor` below.
 extension LCPAudiobooks: LCPStreamingProvider {
 
-    public func getPublication() -> Publication? {
+    nonisolated public func getPublication() -> Publication? {
         return publicationCacheQueue.sync {
             return cachedPublication
         }
     }
 
-    public func supportsStreaming() -> Bool {
+    nonisolated public func supportsStreaming() -> Bool {
         return true
     }
 
+    /// Nonisolated on purpose — see the note on the extension. This is a
+    /// nonisolated witness of a `@MainActor` protocol requirement, which Swift
+    /// allows because it is the permissive direction.
+    ///
+    /// It still runs on the main actor in practice, and the `assumeIsolated`
+    /// below depends on that. Two independent guarantees, not one:
+    ///   - the protocol requirement is `@MainActor`
+    ///     (`StreamingResourceProvider.swift`), so every protocol-dispatched
+    ///     caller is already there — compiler-enforced;
+    ///   - the sole PRODUCTION call site is `Audiobook.swift`'s
+    ///     `DynamicPlayerFactory.createPlayer`, itself `@MainActor`.
+    ///
+    /// Nothing enforces this for a *direct* Swift call on the concrete type, so
+    /// that would trap. Objective-C cannot reach it: extension members get no
+    /// implicit `@objc`, and this witnesses a plain Swift protocol.
     public func setupStreamingFor(_ player: Any) -> Bool {
         guard let streamingPlayer = player as? StreamingCapablePlayer else {
             return false
@@ -268,7 +324,18 @@ extension LCPAudiobooks: LCPStreamingProvider {
         if isReleasedSnapshot() {
             return false
         }
-        streamingPlayer.setStreamingProvider(self)
+        // `setStreamingProvider` is main-actor state on the player, but this
+        // conformance CANNOT be isolated: `LCPStreamingProvider` inherits
+        // `DRMDecryptor`, and isolating the conformance isolates that too —
+        // "main actor-isolated conformance ... cannot be used in nonisolated
+        // context", because decryption legitimately runs off-main.
+        //
+        // `assumeIsolated` is sound here rather than hopeful: the only call path
+        // is `AudiobookLoader` (@MainActor) -> finalizeBuild -> Audiobook.init ->
+        // DynamicPlayerFactory.createPlayer (@MainActor) -> here.
+        MainActor.assumeIsolated {
+            streamingPlayer.setStreamingProvider(self)
+        }
 
         let hasPublication = publicationCacheQueue.sync {
             return cachedPublication != nil
@@ -350,16 +417,24 @@ extension LCPAudiobooks {
 
     private func decryptWithPublication(_ publication: Publication, url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
         if let resource = publication.getResource(at: url.path) {
+            // The completion originates from the toolkit's `@objc public
+            // protocol DRMDecryptor` (off-limits submodule), so its parameter
+            // type cannot be annotated `@Sendable`. We must still hand it to a
+            // `DispatchQueue.main.async` closure (a strictly-`@Sendable`
+            // boundary) to deliver the result on main. Wrap it once, before
+            // entering the `Task`, so the `@Sendable` closures capture the
+            // Sendable box rather than the bare non-Sendable closure.
+            let completionBox = SendableDecryptCompletion(completion)
             Task {
                 do {
                     let data = try await resource.read().get()
                     try data.write(to: resultUrl, options: .atomic)
                     DispatchQueue.main.async {
-                        completion(nil)
+                        completionBox.fire(nil)
                     }
                 } catch {
                     DispatchQueue.main.async {
-                        completion(error)
+                        completionBox.fire(error)
                     }
                 }
             }
@@ -397,6 +472,49 @@ private extension Publication {
 
         return resource
     }
+}
+
+/// `Sendable` wrapper for a `DRMDecryptor.decrypt` completion closure.
+///
+/// The toolkit's `@objc public protocol DRMDecryptor` (in the off-limits
+/// `PalaceAudiobookToolkit` submodule) types the completion as a plain
+/// `(Error?) -> Void`, so it cannot be annotated `@Sendable` at the
+/// conformance site without diverging from the `@objc` requirement. This box
+/// lets the completion cross into the decrypt `Task`'s `DispatchQueue.main.async`
+/// hop (a strictly-`@Sendable` boundary) without a concurrency warning.
+///
+/// - Sendable invariant: `fire(_:)` forwards to the wrapped closure exactly
+///   once, always from a single `DispatchQueue.main.async` continuation in
+///   `decryptWithPublication` (success XOR failure) — never concurrently from
+///   two threads. The wrapped closure is otherwise opaque, hence `@unchecked`.
+private struct SendableDecryptCompletion: @unchecked Sendable {
+    private let completion: (Error?) -> Void
+
+    init(_ completion: @escaping (Error?) -> Void) {
+        self.completion = completion
+    }
+
+    func fire(_ error: Error?) {
+        completion(error)
+    }
+}
+
+/// `Sendable` carrier for the `(NSDictionary?, NSError?)` result of
+/// `loadContentDictionary`, used to cross the single `DispatchQueue.main.async`
+/// hop in `contentDictionary` without a `sending` diagnostic.
+///
+/// `NSDictionary` (the parsed LCP manifest) and `NSError` are `@objc` reference
+/// types the compiler does not treat as `Sendable`. Both are produced fresh by
+/// the load and only read once on the main thread, so boxing them makes the
+/// hand-off explicit rather than sending bare non-Sendable references.
+///
+/// - Sendable invariant: `json` / `error` are set once at init and only read
+///   thereafter — neither the manifest dictionary nor the error is mutated
+///   after boxing, so there is no shared mutation. The `@unchecked` waiver
+///   covers only the un-audited `@objc` payload types.
+private struct LCPContentResultBox: @unchecked Sendable {
+    let json: NSDictionary?
+    let error: NSError?
 }
 
 #endif

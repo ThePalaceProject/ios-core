@@ -1,6 +1,7 @@
 import Foundation
+import PalacePreferences
 
-protocol TPPAgeCheckValidationDelegate: AnyObject {
+protocol TPPAgeCheckValidationDelegate: AnyObject, Sendable {
     var minYear: Int { get }
     var currentYear: Int { get }
     var birthYearList: [Int] { get }
@@ -18,11 +19,19 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
                                             completion: ((Bool) -> Void)?)
 }
 
-@objc protocol TPPAgeCheckChoiceStorage {
+protocol TPPAgeCheckChoiceStorage: AnyObject {
     var userPresentedAgeCheck: Bool { get set }
 }
 
-@objcMembers final class TPPAgeCheck: NSObject, TPPAgeCheckValidationDelegate, TPPAgeCheckVerifying {
+@objcMembers final class TPPAgeCheck: NSObject, TPPAgeCheckValidationDelegate, TPPAgeCheckVerifying, @unchecked Sendable {
+    // @unchecked Sendable invariant: all mutable presentation state
+    // (`handlerList`, `isPresenting`) is read and written exclusively inside
+    // `serialQueue.async` blocks, which provide mutual exclusion. The remaining
+    // stored properties (`serialQueue`, `ageCheckChoiceStorage`, `minYear`,
+    // `currentYear`, `birthYearList`) are immutable `let`s. `ageCheckCompleted`
+    // is a delegate-protocol flag touched on the main thread during presentation.
+    // This resolves the 'capture of self in @Sendable closure' diagnostic on the
+    // serialQueue closures. No logic change.
 
     // Members
     private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier ?? "org.thepalaceproject.palace").ageCheck")
@@ -68,8 +77,17 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
         // is already loaded, work goes onto `serialQueue` immediately so
         // `didCompleteAgeCheck`'s serial-queue async sees the queued
         // handlers, not an empty `handlerList`.
+        // Carry the two non-Sendable captures (`userAccountProvider` — an
+        // `@objc protocol` — and the completion closure) in a single
+        // documented `@unchecked Sendable` box so the `@Sendable`
+        // `serialQueue.async` / `Task` closures below capture the Sendable
+        // carrier instead of the raw values. `accountDetails` is Sendable
+        // (Account.LoadState is a Sendable enum) and is passed directly.
+        let callbacks = AgeCheckCallbacks(userAccountProvider: userAccountProvider,
+                                          completion: completion)
+
         guard let currentAccount = currentLibraryAccountProvider.currentAccount else {
-            serialQueue.async { completion?(false) }
+            serialQueue.async { callbacks.completion?(false) }
             return
         }
 
@@ -78,8 +96,8 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
             serialQueue.async { [weak self] in
                 self?.continueAgeRequirementCheck(
                     accountDetails: accountDetails,
-                    userAccountProvider: userAccountProvider,
-                    completion: completion
+                    userAccountProvider: callbacks.userAccountProvider,
+                    completion: callbacks.completion
                 )
             }
         case .detailsFailed, .detailsEvicted:
@@ -90,21 +108,26 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
             // (`AccountsManager.driveCurrentAccountAuthDocIfNeeded`), but
             // for the consumer side a missing details payload is a
             // missing details payload regardless of why.
-            serialQueue.async { completion?(false) }
+            serialQueue.async { callbacks.completion?(false) }
         case .notLoaded, .basicInfoLoaded, .detailsLoading:
+            // Carry the non-Sendable `Account` across the `awaitReady()`
+            // await boundary in a documented box (same posture as
+            // `AgeCheckCallbacks`): the account is only read inside the
+            // Task via `awaitReady()`, never mutated concurrently here.
+            let accountBox = AgeCheckAccountBox(account: currentAccount)
             Task { [weak self] in
                 let accountDetails: AccountDetails
                 do {
-                    accountDetails = try await currentAccount.awaitReady()
+                    accountDetails = try await accountBox.account.awaitReady()
                 } catch {
-                    self?.serialQueue.async { completion?(false) }
+                    self?.serialQueue.async { callbacks.completion?(false) }
                     return
                 }
                 self?.serialQueue.async {
                     self?.continueAgeRequirementCheck(
                         accountDetails: accountDetails,
-                        userAccountProvider: userAccountProvider,
-                        completion: completion
+                        userAccountProvider: callbacks.userAccountProvider,
+                        completion: callbacks.completion
                     )
                 }
             }
@@ -205,3 +228,32 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
     }
     #endif
 }
+
+/// Carrier that transports the non-`Sendable` age-check callbacks across the
+/// `@Sendable` `serialQueue.async` / `Task` boundaries in
+/// `verifyCurrentAccountAgeRequirement`:
+///   - `userAccountProvider` is a `TPPUserAccountProvider`, an `@objc protocol`
+///     (NOT made Sendable — carried in the box instead), and
+///   - `completion` is a non-Sendable closure.
+///
+/// `@unchecked Sendable` invariant: the box is only ever unwrapped on
+/// `serialQueue` or the main actor — `userAccountProvider.needsAuth` is read and
+/// `completion` is invoked exclusively inside the serial-queue / main-actor
+/// blocks, never concurrently. Mirrors `SyncCallbacks` in `BookRegistrySync`.
+private struct AgeCheckCallbacks: @unchecked Sendable {
+    let userAccountProvider: TPPUserAccountProvider
+    let completion: ((Bool) -> Void)?
+}
+
+/// Carries the non-Sendable `Account` across the `awaitReady()` await
+/// boundary in `verifyCurrentAccountAgeRequirement`'s loading path.
+/// `@unchecked Sendable` invariant: the account is only read (via the
+/// async `awaitReady()` readiness gate) inside the Task; no mutable
+/// account state is touched concurrently from this call site.
+private struct AgeCheckAccountBox: @unchecked Sendable {
+    let account: Account
+}
+
+// Wave 1a: TPPSettings moved to PalacePreferences; the age-check storage
+// conformance re-attaches here beside the protocol it satisfies.
+extension TPPSettings: TPPAgeCheckChoiceStorage {}

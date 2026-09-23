@@ -62,7 +62,7 @@ struct EntryPointsSelectorView: View {
                 pendingIndex = selectionIndex
             }
         }
-        .onChange(of: selectionIndex) { idx in
+        .onChange(of: selectionIndex) { _, idx in
             guard entryPoints.indices.contains(idx) else { return }
             pendingIndex = idx
             // Debounce slight delay to avoid double reloads when tabs change
@@ -72,7 +72,7 @@ struct EntryPointsSelectorView: View {
                 }
             }
         }
-        .onChange(of: entryPoints.count) { _ in
+        .onChange(of: entryPoints.count) { _, _ in
             if let idx = entryPoints.firstIndex(where: { $0.active }) {
                 selectionIndex = idx
                 pendingIndex = idx

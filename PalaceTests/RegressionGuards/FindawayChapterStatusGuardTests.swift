@@ -17,6 +17,7 @@ import XCTest
 /// refactor that drops the strong ref pattern fails this suite.
 ///
 /// See PalaceTests/RegressionGuards/README.md for the full crash narrative.
+@MainActor
 final class FindawayChapterStatusGuardTests: XCTestCase {
 
     // MARK: - Documentation guard: reference-keeping pattern

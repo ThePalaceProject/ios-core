@@ -1,7 +1,15 @@
 import UIKit
 @testable import Palace
+import PalaceBookModel
 
-public final class MockImageCache: ImageCacheType {
+// `@unchecked Sendable`: `ImageCacheType` is now `Sendable` (Swift 6 Wave 1), so
+// its conformers must be. Honest — all backing dictionaries/counters are accessed
+// exclusively through the `sync { }` `NSLock` helper; `now` is a test-config knob
+// set before concurrent use. `final` keeps the assertion subclass-proof.
+// nonisolated: ImageCacheType moved into the Swift-6 PalaceBookModel package, which flips
+// a conformer's inferred isolation (see production ImageCache/ImageLoader). This double is
+// called off-main; explicit nonisolated keeps it off-main-safe (its own state, no MainActor API).
+public nonisolated final class MockImageCache: ImageCacheType, @unchecked Sendable {
     private var store: [String: UIImage] = [:]
     private var expirations: [String: Date] = [:]
 
@@ -74,6 +82,8 @@ public final class MockImageCache: ImageCacheType {
         // returns from the in-memory store the mock holds.
         for key in keys { _ = get(for: key) }
     }
+
+    public func evictDecodedImages() {}
 
     public func resetHistory() {
         sync {

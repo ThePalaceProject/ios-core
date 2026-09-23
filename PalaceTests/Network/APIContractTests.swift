@@ -36,6 +36,7 @@ enum TestFixture {
 
 // MARK: - OPDS 2 Feed Contract Tests
 
+@MainActor
 final class OPDS2FeedContractTests: XCTestCase {
 
     private func decodeFeed(from name: String) throws -> OPDS2Feed {
@@ -110,6 +111,7 @@ final class OPDS2FeedContractTests: XCTestCase {
 
 // MARK: - Problem Document Contract Tests
 
+@MainActor
 final class ProblemDocumentContractTests: XCTestCase {
 
     private var allProblems: [String: [String: Any]] = [:]
@@ -164,6 +166,7 @@ final class ProblemDocumentContractTests: XCTestCase {
 
 // MARK: - Authentication Document Contract Tests
 
+@MainActor
 final class AuthDocumentContractTests: XCTestCase {
 
     func testParseAuthDocument_ExtractsAllFields() throws {
@@ -201,6 +204,7 @@ final class AuthDocumentContractTests: XCTestCase {
 
 // MARK: - Annotation Contract Tests
 
+@MainActor
 final class AnnotationContractTests: XCTestCase {
 
     func testParseAnnotationContainer() throws {
@@ -246,6 +250,7 @@ final class AnnotationContractTests: XCTestCase {
 
 // MARK: - OPDS 1 Loans Feed Contract Tests
 
+@MainActor
 final class OPDS1LoansFeedContractTests: XCTestCase {
 
     private func parseFeed(from name: String) -> TPPOPDSFeed? {
@@ -340,6 +345,7 @@ final class OPDS1LoansFeedContractTests: XCTestCase {
 
 // MARK: - OPDS 1 Borrow Entry Contract Tests
 
+@MainActor
 final class OPDS1BorrowEntryContractTests: XCTestCase {
 
     func testParseBorrowEntry_AsSingleEntryFeed() {
@@ -413,6 +419,7 @@ final class OPDS1BorrowEntryContractTests: XCTestCase {
 
 // MARK: - Patron Profile Contract Tests
 
+@MainActor
 final class PatronProfileContractTests: XCTestCase {
 
     func testParsePatronProfile_ExtractsDRMInfo() throws {
@@ -477,6 +484,7 @@ final class PatronProfileContractTests: XCTestCase {
 
 // MARK: - OPDS 1 Hold Entries Contract Tests
 
+@MainActor
 final class OPDS1HoldEntriesContractTests: XCTestCase {
 
     private func parseHoldsFeed() -> TPPOPDSFeed? {
@@ -546,6 +554,7 @@ final class OPDS1HoldEntriesContractTests: XCTestCase {
 
 // MARK: - OPDS 1 Catalog Grouped Feed Contract Tests
 
+@MainActor
 final class OPDS1CatalogGroupedContractTests: XCTestCase {
 
     func testGroupedFeed_ParsesAsGroupedType() {
@@ -587,6 +596,7 @@ final class OPDS1CatalogGroupedContractTests: XCTestCase {
 
 // MARK: - Auth Document Variants Contract Tests
 
+@MainActor
 final class AuthDocumentVariantsContractTests: XCTestCase {
 
     func testSAMLAuthDocument_ParsesWithSAMLType() throws {
@@ -660,6 +670,7 @@ final class AuthDocumentVariantsContractTests: XCTestCase {
 
 // MARK: - OPDS 2 Search Results Contract Tests
 
+@MainActor
 final class OPDS2SearchResultsContractTests: XCTestCase {
 
     func testSearchResults_ParsesWithPagination() throws {
@@ -695,6 +706,7 @@ final class OPDS2SearchResultsContractTests: XCTestCase {
 
 // MARK: - OPDS 2 Empty Feed Contract Tests
 
+@MainActor
 final class OPDS2EmptyFeedContractTests: XCTestCase {
 
     func testEmptyFeed_ParsesWithZeroItems() throws {
@@ -709,6 +721,7 @@ final class OPDS2EmptyFeedContractTests: XCTestCase {
 
 // MARK: - OPDS 1 Revoke Response Contract Tests
 
+@MainActor
 final class OPDS1RevokeResponseContractTests: XCTestCase {
 
     func testRevokeResponse_ParsesAsSingleEntry() {
@@ -741,6 +754,7 @@ final class OPDS1RevokeResponseContractTests: XCTestCase {
 
 // MARK: - Annotation Post Response Contract Tests
 
+@MainActor
 final class AnnotationPostResponseContractTests: XCTestCase {
 
     func testAnnotationPostResponse_HasRequiredFields() throws {
@@ -765,6 +779,7 @@ final class AnnotationPostResponseContractTests: XCTestCase {
 
 // MARK: - OPDS 2 Borrow Response Contract Tests
 
+@MainActor
 final class OPDS2BorrowResponseContractTests: XCTestCase {
 
     func testBorrowResponse_ParsesPublicationMetadata() throws {

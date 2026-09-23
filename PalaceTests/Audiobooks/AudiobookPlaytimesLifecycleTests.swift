@@ -29,6 +29,7 @@ private func clearAudiobookTimeTrackerStore() {
     }
 }
 
+@MainActor
 final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 
     private var spyExecutor: SpyAudiobookNetworkExecutor!
@@ -93,16 +94,17 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         )
 
         sut.save(time: entry)
-        awaitCondition { self.sut.store.queue.count == 1 }
+        sut.syncQueue.sync {}   // barrier: `save` is a syncQueue.async(.barrier)
+        XCTAssertEqual(sut.store.queue.count, 1)
 
         sut.syncValues()
-        awaitCondition { self.spyExecutor.calls.count == 1 }
+        sut.syncQueue.sync {}          // barrier: the syncValues block dispatched the POST
+        spyExecutor.drainCompletions() // barrier: the POST completion ran removeSynchronizedEntries
 
         XCTAssertEqual(spyExecutor.calls.count, 1,
                        "Same-library entry must POST exactly once")
         XCTAssertEqual(spyExecutor.calls.first?.url, trackingURLA,
                        "POST must target the entry's tracking URL, not a foreign host")
-        awaitCondition { self.sut.store.queue.isEmpty }
         XCTAssertTrue(sut.store.queue.isEmpty,
                       "Successful sync must clear the queue")
     }
@@ -122,14 +124,15 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         )
 
         sut.save(time: entry)
-        awaitCondition { self.sut.store.queue.count == 1 }
+        sut.syncQueue.sync {}
+        XCTAssertEqual(sut.store.queue.count, 1)
 
         // Simulate user switching to library B — the production seam writes
         // currentAccountId. The provider closure reads through to the box.
         activeAccountIdBox.value = libraryB
 
         sut.syncValues()
-        drainMainQueue()
+        sut.syncQueue.sync {}   // barrier: the (skip) sync block runs to completion
 
         XCTAssertTrue(spyExecutor.calls.isEmpty,
                       "No POST may fire for a foreign-library entry — that is the Bug B regression")
@@ -155,12 +158,15 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
             duration: 42
         )
         sut.save(time: entryA1)
-        awaitCondition { self.sut.store.queue.count == 1 }
+        sut.syncQueue.sync {}
+        XCTAssertEqual(sut.store.queue.count, 1)
 
         // (b) sync — uploads, queue clears
         sut.syncValues()
-        awaitCondition { self.spyExecutor.calls.count == 1 && self.sut.store.queue.isEmpty }
+        sut.syncQueue.sync {}
+        spyExecutor.drainCompletions()
         XCTAssertEqual(spyExecutor.calls.count, 1, "First sync uploads cleanly")
+        XCTAssertTrue(sut.store.queue.isEmpty, "First sync clears the queue")
 
         // (c) switch to library B (the cross-host scenario the regression
         // describes — A1QA → Icarus)
@@ -177,20 +183,32 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
             duration: 30
         )
         sut.save(time: entryA2)
-        awaitCondition { self.sut.store.queue.count == 1 }
+        sut.syncQueue.sync {}
+        XCTAssertEqual(sut.store.queue.count, 1)
 
         // (e) sync — must NOT POST (foreign library)
         sut.syncValues()
-        drainMainQueue()
+        sut.syncQueue.sync {}
         XCTAssertEqual(spyExecutor.calls.count, 1,
                        "Sync under foreign library must not add a POST")
         XCTAssertEqual(sut.store.queue.count, 1,
                        "Foreign-library entry is retained")
 
-        // (f) switch BACK to library A, sync — the retained entry flushes
+        // (f) switch BACK to library A, sync — the retained entry flushes.
+        // Deterministic barriers instead of a wall-clock poll (the poll timed
+        // out under parallel-clone oversubscription, CI run 29805821296):
+        //   1. `syncQueue.sync {}` — waits for the `syncValues` block (which
+        //      dispatches the POST) to run to completion on the manager's
+        //      serial queue.
+        //   2. `drainCompletions()` — waits for the spy's success completion
+        //      (which calls `removeSynchronizedEntries`) to run on the spy's
+        //      serial completion queue.
+        // After both, the flush is fully observed, no matter how starved the
+        // cooperative/GCD pools are.
         activeAccountIdBox.value = libraryA
         sut.syncValues()
-        awaitCondition { self.spyExecutor.calls.count == 2 && self.sut.store.queue.isEmpty }
+        sut.syncQueue.sync {}
+        spyExecutor.drainCompletions()
 
         XCTAssertEqual(spyExecutor.calls.count, 2,
                        "Switch-back sync must flush the deferred entry — full write → reset → re-enter cycle through the production seam")
@@ -213,7 +231,8 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
             duration: 42
         )
         sut.save(time: entry)
-        awaitCondition { self.sut.store.queue.count == 1 }
+        sut.syncQueue.sync {}
+        XCTAssertEqual(sut.store.queue.count, 1)
 
         activeAccountIdBox.value = libraryB
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
@@ -244,11 +263,17 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
             duration: 42
         )
         sut.save(time: entry)
-        awaitCondition { self.sut.store.queue.count == 1 }
+        sut.syncQueue.sync {}
+        XCTAssertEqual(sut.store.queue.count, 1)
 
         activeAccountIdBox.value = libraryB
         sut.syncValues()
-        drainMainQueue()
+        // Deterministically wait for the sync block to finish on `syncQueue` —
+        // `drainMainQueue()` only drains main, NOT the queue where `syncValues`
+        // actually runs, so the two rapid syncs below could race on the serial
+        // queue (the flake). Per the `AudiobookDataManager.syncQueue` contract,
+        // tests may `syncQueue.sync {}` as a barrier.
+        sut.syncQueue.sync {}
         // First-pass sync (all cross-account) — must not hang, must not POST.
         XCTAssertTrue(spyExecutor.calls.isEmpty,
                       "All-cross-account sync POSTs nothing")
@@ -260,7 +285,11 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         // background-task counter or syncQueue.
         activeAccountIdBox.value = libraryA
         sut.syncValues()
-        awaitCondition { self.spyExecutor.calls.count == 1 }
+        // Barriers: the sync block dispatches the POST on `syncQueue`, and the
+        // spy runs its completion on its own serial queue — join both so
+        // `calls.count == 1` is exact, not a starvable poll.
+        sut.syncQueue.sync {}
+        spyExecutor.drainCompletions()
         XCTAssertEqual(spyExecutor.calls.count, 1,
                        "Subsequent same-account sync runs normally — proves prior all-skip path ended cleanly")
     }
@@ -285,11 +314,15 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
             duration: 42
         )
         sut.save(time: entry)
-        awaitCondition { self.sut.store.queue.count == 1 }
+        sut.syncQueue.sync {}
+        XCTAssertEqual(sut.store.queue.count, 1)
 
-        // Start a sync that will dispatch a POST but never complete.
+        // Start a sync that will dispatch a POST but never complete
+        // (autoRespondSuccess == false → the spy records the call but fires no
+        // completion). The syncQueue barrier guarantees the POST was dispatched.
         sut.syncValues()
-        awaitCondition { self.spyExecutor.calls.count == 1 }
+        sut.syncQueue.sync {}
+        XCTAssertEqual(spyExecutor.calls.count, 1)
 
         // Switch account mid-flight.
         activeAccountIdBox.value = libraryB
@@ -306,9 +339,12 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         spyExecutor.autoRespondSuccess = true
         activeAccountIdBox.value = libraryA
         sut.syncValues()
-        awaitCondition { self.spyExecutor.calls.count == 2 && self.sut.store.queue.isEmpty }
+        sut.syncQueue.sync {}
+        spyExecutor.drainCompletions()
         XCTAssertEqual(spyExecutor.calls.count, 2,
                        "Switch-back sync flushes the still-queued entry once normal responses resume")
+        XCTAssertTrue(sut.store.queue.isEmpty,
+                      "Switch-back sync empties the queue")
     }
 }
 
@@ -317,7 +353,20 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 /// Heap-allocated box so the closure injected as `currentAccountIdProvider`
 /// captures the same identity the test mutates. A struct + `inout` capture
 /// won't survive the closure boundary.
-private final class AccountIdBox {
-    var value: String?
-    init(value: String?) { self.value = value }
+///
+/// Thread-safe: `value` is written on the test's main thread but read inside
+/// `AudiobookDataManager.syncValues`'s background `syncQueue` block (and by the
+/// constructor's reachability-triggered sync). An `NSLock` closes that
+/// cross-thread data race — without it the read could observe a stale value
+/// under CI load, occasionally routing the switch-back sync down the
+/// cross-account skip path and hanging `awaitCondition`
+/// (`testPlaytimes_allCrossAccount_backgroundTaskStillEnds` flake).
+private final class AccountIdBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: String?
+    var value: String? {
+        get { lock.lock(); defer { lock.unlock() }; return _value }
+        set { lock.lock(); defer { lock.unlock() }; _value = newValue }
+    }
+    init(value: String?) { self._value = value }
 }

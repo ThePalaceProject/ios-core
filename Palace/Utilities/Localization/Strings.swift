@@ -8,6 +8,7 @@
 
 import Foundation
 import PalaceCatalog
+import PalaceBookModel
 
 struct Strings {
 
@@ -176,6 +177,13 @@ struct Strings {
         static let pauseAudiobook = NSLocalizedString("Pause", comment: "VoiceOver: Pause audiobook")
         static let skipBack30 = NSLocalizedString("Skip back 30 seconds", comment: "VoiceOver: Rewind audiobook 30 seconds")
         static let skipForward30 = NSLocalizedString("Skip forward 30 seconds", comment: "VoiceOver: Skip audiobook forward 30 seconds")
+        // PP-4712: dynamic skip labels reflecting the patron's configured interval.
+        static func skipBackSeconds(_ seconds: Int) -> String {
+            String.localizedStringWithFormat(NSLocalizedString("Skip back %d seconds", comment: "VoiceOver: Rewind audiobook by the configured interval"), seconds)
+        }
+        static func skipForwardSeconds(_ seconds: Int) -> String {
+            String.localizedStringWithFormat(NSLocalizedString("Skip forward %d seconds", comment: "VoiceOver: Skip audiobook forward by the configured interval"), seconds)
+        }
         static let dismissPlayer = NSLocalizedString("Dismiss player", comment: "VoiceOver: Done button on the full audiobook player, dismisses to the mini-player")
         // Accessibility - Audiobook mini-player (swarm_0b7616e7 Module D)
         static let nowPlayingLabelTitleAndAuthor = NSLocalizedString(
@@ -190,6 +198,67 @@ struct Strings {
             "Expands the full audiobook player",
             comment: "VoiceOver hint announced for the audiobook mini-player explaining that tapping expands the full player"
         )
+        // Accessibility - Audiobook mini-player dismiss + collapse
+        static let stopAudiobook = NSLocalizedString(
+            "Stop audiobook",
+            comment: "VoiceOver: X button on the audiobook mini-player. Stops playback, saves the position, and dismisses the player."
+        )
+        static let nowPlayingCompactLabel = NSLocalizedString(
+            "Now playing: %@",
+            comment: "VoiceOver: Accessibility label for the collapsed audiobook pill; %@ is the book title"
+        )
+        static let restoreAudiobookPlayerHint = NSLocalizedString(
+            "Shows the full audiobook player controls",
+            comment: "VoiceOver hint announced for the collapsed audiobook pill explaining that tapping restores the full mini-player"
+        )
+        // Accessibility + copy - Audiobook mini-player close confirmation (PP-4910)
+        static let closeAudiobookPlayer = NSLocalizedString(
+            "Close player",
+            comment: "VoiceOver: Close (X) control on the audiobook mini-player. Presents a confirmation before stopping playback."
+        )
+        static let stopPlaybackTitle = NSLocalizedString(
+            "Stop Playback?",
+            comment: "Title of the confirmation dialog shown when the patron closes the audiobook mini-player"
+        )
+        static let stopPlaybackMessage = NSLocalizedString(
+            "Are you sure you want to stop playing your audiobook and close the player?",
+            comment: "Body of the confirmation dialog shown when the patron closes the audiobook mini-player"
+        )
+        static let stopPlaybackCancel = NSLocalizedString(
+            "No, Cancel",
+            comment: "Dismisses the stop-playback confirmation, leaving playback and the mini-player unchanged"
+        )
+        static let stopPlaybackConfirm = NSLocalizedString(
+            "Yes, Stop",
+            comment: "Confirms the stop-playback dialog: stops playback and dismisses the mini-player"
+        )
+        // Accessibility - Audiobook full player (parity with toolkit AudiobookPlayerView)
+        static let bookCover = NSLocalizedString("Book cover", comment: "VoiceOver: Accessibility label for the audiobook cover art")
+        static let audiobookLoading = NSLocalizedString("Loading…", comment: "Shown over the audiobook player while the track buffers")
+        static let audiobookLoadErrorTitle = NSLocalizedString("A problem has occurred.", comment: "Title shown when the audiobook fails to load within the timeout")
+        static let audiobookLoadErrorMessage = NSLocalizedString("Please try again.", comment: "Message shown when the audiobook fails to load, prompting a retry")
+        static let audiobookRetry = NSLocalizedString("Retry", comment: "Button to retry loading an audiobook that timed out")
+        static let audiobookDownloading = NSLocalizedString("Downloading", comment: "Label under the audiobook download progress bar")
+        static let playbackSpeed = NSLocalizedString("Playback speed", comment: "VoiceOver: Label for the audiobook playback-speed control")
+        static let sleepTimer = NSLocalizedString("Sleep timer", comment: "VoiceOver: Label for the audiobook sleep-timer control")
+        static let airplay = NSLocalizedString("AirPlay", comment: "VoiceOver: Label for the audiobook AirPlay route picker")
+        static let addBookmark = NSLocalizedString("Add bookmark", comment: "VoiceOver: Label for the audiobook add-bookmark control")
+        static let bookmarkAdded = NSLocalizedString("Bookmark added", comment: "Toast shown after successfully adding an audiobook bookmark")
+        static let bookmarkAddFailed = NSLocalizedString("Could not add bookmark", comment: "Toast shown when adding an audiobook bookmark fails")
+        static let bookmarkAlreadyExists = NSLocalizedString("A bookmark has already been saved at this location.", comment: "Toast shown when a bookmark already exists at the current audiobook position")
+        static let bookmarkFailedToSave = NSLocalizedString("The bookmark couldn't be saved.", comment: "Toast shown when saving an audiobook bookmark fails to persist")
+        static let playbackPosition = NSLocalizedString("Playback position", comment: "VoiceOver: Label for the audiobook seek slider")
+        static let decreaseSpeed = NSLocalizedString("Decrease speed", comment: "VoiceOver: Label for the audiobook speed decrease stepper")
+        static let increaseSpeed = NSLocalizedString("Increase speed", comment: "VoiceOver: Label for the audiobook speed increase stepper")
+        static func timeElapsedLabel(_ time: String) -> String {
+            String(format: NSLocalizedString("Time elapsed: %@", comment: "VoiceOver: audiobook chapter elapsed time, %@ is a spoken duration"), time)
+        }
+        static func timeRemainingLabel(_ time: String) -> String {
+            String(format: NSLocalizedString("Time remaining: %@", comment: "VoiceOver: audiobook chapter remaining time, %@ is a spoken duration"), time)
+        }
+        static func playbackSpeedValue(_ label: String) -> String {
+            String(format: NSLocalizedString("Playback speed: %@", comment: "VoiceOver: current audiobook playback speed value, %@ is a rate like 1.5x"), label)
+        }
 
         // Accessibility - EPUB Reader (Full Keyboard Access)
         static let bookReader = NSLocalizedString("Book reader", comment: "VoiceOver: Accessibility label for the book reading area")
@@ -498,6 +567,13 @@ struct Strings {
         static let downloadOnlyOnWiFiDescription = NSLocalizedString("When enabled, books and audiobooks will only download over Wi-Fi. Downloads will be blocked on cellular data.", comment: "Description for Download Only on Wi-Fi setting")
         static let downloadRestrictedToWiFi = NSLocalizedString("Downloads are restricted to Wi-Fi in Settings. Connect to a Wi-Fi network or change your download settings to continue.", comment: "Alert message when download is blocked due to Wi-Fi only setting")
         static let wifiRequired = NSLocalizedString("Wi-Fi Required", comment: "Alert title when download is blocked due to Wi-Fi only setting")
+        static let playback = NSLocalizedString("Playback", comment: "Section header for audiobook playback settings")
+        static let skipForwardInterval = NSLocalizedString("Skip Forward", comment: "Label for the audiobook skip-forward interval setting")
+        static let skipBackInterval = NSLocalizedString("Skip Back", comment: "Label for the audiobook skip-back interval setting")
+        static let skipIntervalDescription = NSLocalizedString("How far the audiobook skip buttons jump. Set each direction independently; applies to all audiobooks.", comment: "Description under the audiobook skip-interval settings")
+        static func skipIntervalSeconds(_ seconds: Int) -> String {
+            String.localizedStringWithFormat(NSLocalizedString("%d seconds", comment: "Audiobook skip interval option, e.g. '30 seconds'"), seconds)
+        }
     }
 
     struct AccountDetail {
@@ -526,6 +602,24 @@ struct Strings {
         static let nextChapter = NSLocalizedString("Next Chapter", comment: "Accessibility label to go forward in the publication")
         static let read = NSLocalizedString("Read", comment: "Accessibility label to read current chapter")
         static let pageOf = NSLocalizedString("Page %d of ", value: "Page %d of ", comment: "States the page count out of total pages, i.e. `Page 1 of 20`")
+        static let navigatedToPage = NSLocalizedString("Page %@", value: "Page %@", comment: "VoiceOver announcement after navigating to a print page, e.g. `Page 12`")
+        static let whereAmI = NSLocalizedString("Where am I?", value: "Where am I?", comment: "VoiceOver custom action that announces the patron's current reading position without moving focus")
+        static let percentRead = NSLocalizedString("%d%% read", value: "%d%% read", comment: "VoiceOver position component stating how far through the book the patron is, e.g. `45% read`")
+        static let positionUnavailable = NSLocalizedString("Current position unavailable", value: "Current position unavailable", comment: "VoiceOver announcement when the current reading position cannot be determined")
+        // Footnotes (DAISY reading-420, PP-4531). VoiceOver speaks these labels on
+        // the inline EPUB elements so a non-visual reader knows a link is a note
+        // reference, hears the note, and can return to the reference.
+        static let footnoteReferenceNumbered = NSLocalizedString("Footnote %@", value: "Footnote %@", comment: "VoiceOver label for an inline footnote reference link with a marker, e.g. `Footnote 3`. VoiceOver appends `link` itself.")
+        static let footnoteReferenceGeneric = NSLocalizedString("Footnote reference", value: "Footnote reference", comment: "VoiceOver label for a footnote reference link with no readable marker")
+        static let footnoteContent = NSLocalizedString("Footnote", value: "Footnote", comment: "VoiceOver label prefix announced when focus reaches footnote content")
+        static let footnoteBacklink = NSLocalizedString("Back to reference", value: "Back to reference", comment: "VoiceOver label for the footnote return link (doc-backlink) that returns the reader to the reference")
+        // Block-by-block navigation (DAISY reading-810, PP-4533). The title of the
+        // VoiceOver custom rotor that steps through logical content blocks.
+        static let blockRotorTitle = NSLocalizedString("Blocks", value: "Blocks", comment: "VoiceOver rotor title for block-by-block reader navigation")
+        // Chapter scrubber (PP-5006). VoiceOver name for the drag-to-navigate
+        // track; its spoken VALUE is composed by TPPReaderPositionReport from
+        // strings the reader already ships.
+        static let readingPosition = NSLocalizedString("Reading position", value: "Reading position", comment: "VoiceOver label for the reader's drag-to-navigate position control")
     }
 
     struct TPPBarCode {
@@ -611,6 +705,12 @@ struct Strings {
     struct TPPReaderPositionsVC {
         static let contents = NSLocalizedString("Contents", comment: "")
         static let bookmarks = NSLocalizedString("Bookmarks", comment: "")
+        static let pages = NSLocalizedString("Pages", comment: "Title of the reader navigation tab listing the book's print pages")
+        static let goToPage = NSLocalizedString("Go to Page", comment: "Button and title for the prompt that jumps to a specific print page")
+        static let goToPageMessage = NSLocalizedString("Enter a page number", comment: "Message in the prompt asking which print page to navigate to")
+        static let pageNotFoundTitle = NSLocalizedString("Page Not Found", comment: "Alert title shown when an entered print page is not in the book")
+        static let pageNotFoundMessage = NSLocalizedString("No matching page was found in this book.", comment: "Alert message shown when an entered print page is not in the book")
+        static let pageRowAccessibility = NSLocalizedString("Page %@", value: "Page %@", comment: "VoiceOver label for a print page entry in the page list, e.g. `Page 12`")
     }
 
     struct TPPReaderTOCBusinessLogic {
@@ -657,6 +757,8 @@ struct Strings {
         static let sortBy = NSLocalizedString("Sort By:", comment: "")
         static let searchBooks = NSLocalizedString("Search My Books", comment: "")
         static let emptyViewMessage = NSLocalizedString("Visit the Catalog to\nadd books to My Books.", comment: "")
+        static let emptyViewTitle = NSLocalizedString("Your shelf is empty", comment: "Title of the My Books empty state shown when the patron has no books")
+        static let browseCatalog = NSLocalizedString("Browse the Catalog", comment: "Button on the My Books empty state that opens the catalog tab")
         static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for")
         static let addLibrary = NSLocalizedString("Add Library", comment: "Title of button to add a new library")
         static let accountSyncingAlertTitle = NSLocalizedString("Please wait", comment: "")
@@ -672,6 +774,12 @@ struct Strings {
         static let filter = NSLocalizedString("Filter", comment: "")
         static let sortBy = NSLocalizedString("Sort By", comment: "Header label for sort options")
         static let showResults = NSLocalizedString("SHOW RESULTS", comment: "Button to apply filters and show results")
+        // Offline state (PP-4578). Copy pending final design sign-off.
+        static let offlineTitle = NSLocalizedString("You're Offline", comment: "Title of the catalog offline state shown when the device has no internet connection")
+        static let offlineMessage = NSLocalizedString("The catalog isn't available without an internet connection, but your downloaded books are still here to read and listen to.", comment: "Explains that catalog browsing needs a connection while downloaded books remain available offline")
+        static let offlineGoToMyBooks = NSLocalizedString("Go to My Books", comment: "Button on the catalog offline state that takes the patron to their downloaded books")
+        static let emptyFeedTitle = NSLocalizedString("Nothing here yet", comment: "Title of the catalog empty state shown when a feed returns no books")
+        static let emptyFeedMessage = NSLocalizedString("This part of the catalog doesn't have any books right now. Check back later.", comment: "Body of the catalog empty state shown when a feed returns no books")
     }
 
     struct BookCell {
@@ -791,6 +899,7 @@ struct Strings {
 
     struct HoldsView {
         static let reservations = NSLocalizedString("Holds", comment: "Nav title for Holds tab")
+        static let emptyTitle = NSLocalizedString("No holds yet", comment: "Title of the Holds empty state shown when the patron has no reserved or held books")
         static let emptyMessage = NSLocalizedString("""
             When you reserve a book from the catalog, it will show up here. \
             Look here from time to time to see if your book is available to download.
@@ -819,6 +928,41 @@ struct Strings {
         static let retry = NSLocalizedString(
             "Retry",
             comment: "Button title in the streaming reader's offline / failed state — re-evaluates reachability and retries the load."
+        )
+    }
+
+    // Epic PP-4086: the app-rating sentiment gate. A lightweight pre-prompt
+    // asks how the patron feels before the native App Store review prompt;
+    // a positive answer routes to the system prompt, a negative one to a
+    // feedback email, and "Ask me later" defers.
+    struct AppRating {
+        static let sentimentTitle = NSLocalizedString(
+            "Are you enjoying The Palace Project?",
+            comment: "Title of the app-rating sentiment gate shown after a positive moment (finishing a book or borrowing)."
+        )
+        static let positive = NSLocalizedString(
+            "Yes, I love it!",
+            comment: "Sentiment-gate button; a positive response that leads to the native App Store rating prompt."
+        )
+        static let negative = NSLocalizedString(
+            "Not really",
+            comment: "Sentiment-gate button; a negative response that leads to a feedback option instead of the App Store."
+        )
+        static let askLater = NSLocalizedString(
+            "Ask me later",
+            comment: "Sentiment-gate button; defers the prompt and resets the cooldown."
+        )
+        static let feedbackTitle = NSLocalizedString(
+            "We're sorry to hear that. Would you like to share feedback?",
+            comment: "Follow-up shown after a negative sentiment-gate response, offering to open a feedback email."
+        )
+        static let feedbackConfirm = NSLocalizedString(
+            "Share feedback",
+            comment: "Feedback follow-up button; opens a pre-composed support email."
+        )
+        static let feedbackDecline = NSLocalizedString(
+            "No thanks",
+            comment: "Feedback follow-up button; dismisses without opening the feedback email."
         )
     }
 }

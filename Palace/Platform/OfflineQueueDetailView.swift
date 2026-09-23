@@ -93,7 +93,7 @@ struct OfflineQueueDetailView: View {
                     HStack {
                         ProgressView()
                         Text("Processing actions...")
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -148,7 +148,7 @@ struct OfflineQueueDetailView: View {
             if viewModel.pendingActions.isEmpty && viewModel.failedActions.isEmpty && !viewModel.isProcessing {
                 Section {
                     Text("No pending offline actions")
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
@@ -170,24 +170,24 @@ private struct OfflineActionRow: View {
 
             HStack {
                 Image(systemName: stateIcon)
-                    .foregroundColor(stateColor)
+                    .foregroundStyle(stateColor)
                     .font(.caption)
 
                 Text(stateDescription)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 if action.retryCount > 0 {
                     Text("(\(action.retryCount)/\(action.maxRetries) retries)")
                         .font(.caption2)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
 
             if let error = action.errorMessage, action.state == .failed {
                 Text(error)
                     .font(.caption2)
-                    .foregroundColor(.red)
+                    .foregroundStyle(.red)
             }
         }
         .padding(.vertical, 2)

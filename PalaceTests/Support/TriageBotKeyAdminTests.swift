@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TriageBotKeyAdminTests: XCTestCase {
 
     /// In-memory stand-in for `AnthropicKeyStore` so the admin logic is tested

@@ -13,9 +13,11 @@
 import XCTest
 import CryptoSwift
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Session Identifier Stability Tests
 
+@MainActor
 final class LCPSessionIdentifierTests: XCTestCase {
 
     /// Validates that sha256-based session identifiers are deterministic.
@@ -68,6 +70,7 @@ final class LCPSessionIdentifierTests: XCTestCase {
 
 // MARK: - Registry File Existence Validation Tests
 
+@MainActor
 final class LCPOrphanedDownloadRegistryTests: XCTestCase {
 
     private var tempDir: URL!

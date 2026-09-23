@@ -1,8 +1,9 @@
 import SwiftUI
 import UIKit
+import PalaceBookModel
 
 struct BookDetailView: View {
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appContainer) private var appContainer
 
@@ -27,7 +28,6 @@ struct BookDetailView: View {
     @State private var titleOpacity: CGFloat = 1.0
     @State private var dragOffset: CGFloat = 0
     @State private var imageBottomPosition: CGFloat = 400
-    @State private var pulseSkeleton: Bool = false
     @State private var lastBookIdentifier: String?
     @AccessibilityFocusState private var isTitleFocused: Bool
     @State private var initialLayoutComplete: Bool = false
@@ -72,14 +72,14 @@ struct BookDetailView: View {
                             .padding(.bottom, 100)
                             .background(GeometryReader { proxy in
                                 Color.clear
-                                    .onChange(of: proxy.frame(in: .global).minY) { newValue in
+                                    .onChange(of: proxy.frame(in: .global).minY) { _, newValue in
                                         updateHeaderHeight(for: newValue)
                                     }
                             })
                     }
                 }
                 .ignoresSafeArea(.container, edges: [.top, .bottom])
-                .onChange(of: viewModel.book.identifier) { newIdentifier in
+                .onChange(of: viewModel.book.identifier) { _, newIdentifier in
                     if lastBookIdentifier != newIdentifier {
                         lastBookIdentifier = newIdentifier
                         resetSampleToolbar()
@@ -111,9 +111,6 @@ struct BookDetailView: View {
                 viewModel.fetchRelatedBooks()
                 Task { await viewModel.hydrateMetadataIfNeeded() }
                 self.descriptionText = viewModel.book.summary ?? ""
-                accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                    pulseSkeleton = true
-                }
 
                 NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -135,21 +132,17 @@ struct BookDetailView: View {
                     headerColor = Color(newColor)
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
-                guard
-                    let info = note.userInfo as? [String: Any],
-                    let identifier = info["bookIdentifier"] as? String,
-                    identifier == viewModel.book.identifier,
-                    let raw = info["state"] as? Int,
-                    let newState = TPPBookState(rawValue: raw)
-                else { return }
+            .onReceive(viewModel.registry.bookStatePublisher.receive(on: RunLoop.main)) { identifier, newState in
+                // Migrated off `.TPPBookRegistryStateDidChange` to the registry's
+                // per-book `bookStatePublisher` (swarm_8ce6f5ae WS3).
+                guard identifier == viewModel.book.identifier else { return }
 
                 // Only handle critical state changes that require navigation
                 if newState == .unregistered {
                     if let coordinator = coordinator {
                         coordinator.pop()
                     } else {
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     }
                 }
                 // Ignore other state changes - they're handled by the ViewModel's publishers
@@ -164,7 +157,6 @@ struct BookDetailView: View {
                         viewModel.processingButtons.removeAll()
                     }
             }
-            .presentationDetents([.height(0), .height(300)])
             .alert(item: $viewModel.confirmationAlert) { alert in
                 if let secondaryTitle = alert.secondaryButtonTitle {
                     Alert(
@@ -216,7 +208,7 @@ struct BookDetailView: View {
                     if let coordinator = coordinator {
                         coordinator.pop()
                     } else {
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     }
                 }, label: {
                     HStack(spacing: 6) {
@@ -226,9 +218,14 @@ struct BookDetailView: View {
                         Text(Strings.Generic.back)
                             .palaceFont(.body)
                     }
-                    .foregroundColor(headerColor.isDark ? .white : .black)
+                    .foregroundStyle(headerColor.isDark ? .white : .black)
                 })
                 .accessibilityLabel(Strings.Generic.goBack)
+            }
+            // Flag-gated Help entry point (PP-4812). Vanishes with the triage-bot
+            // kill-switch via HelpEntryPointPolicy; monochrome per Palace chrome.
+            ToolbarItem(placement: .navigationBarTrailing) {
+                HelpButton(entryPoint: .bookDetail)
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -332,7 +329,7 @@ struct BookDetailView: View {
             .background(GeometryReader { _ in
                 Color.clear
                     .onAppear { updateImageBottomPosition() }
-                    .onChange(of: imageScale) { _ in updateImageBottomPosition() }
+                    .onChange(of: imageScale) { _, _ in updateImageBottomPosition() }
             })
     }
 
@@ -364,7 +361,7 @@ struct BookDetailView: View {
                     .padding(.top)
             }
         }
-        .foregroundColor(viewModel.isFullSize ? (headerColor.isDark ? .white : .black) : Color(UIColor.label))
+        .foregroundStyle(viewModel.isFullSize ? (headerColor.isDark ? .white : .black) : Color(UIColor.label))
         .accessibleAnimation(scaleAnimation, value: imageScale)
     }
 
@@ -393,12 +390,12 @@ struct BookDetailView: View {
                     .lineLimit(nil)
                     .multilineTextAlignment(.center)
                     .font(.subheadline)
-                    .foregroundColor(headerColor.isDark ? .white : .black)
+                    .foregroundStyle(headerColor.isDark ? .white : .black)
 
                 if let authors = viewModel.book.authors, !authors.isEmpty {
                     Text(authors)
                         .font(.caption)
-                        .foregroundColor(headerColor.isDark ? .white.opacity(0.8) : .black.opacity(0.8))
+                        .foregroundStyle(headerColor.isDark ? .white.opacity(0.8) : .black.opacity(0.8))
                 }
             }
             Spacer()
@@ -453,7 +450,7 @@ struct BookDetailView: View {
                         isExpanded.toggle()
                     }
                 }
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .padding(.bottom)
@@ -487,7 +484,7 @@ struct BookDetailView: View {
                                 if let url = lane.subsectionURL {
                                     NavigationLink(destination: CatalogLaneMoreView(url: url, appContainer: appContainer)) {
                                         Text(DisplayStrings.more.capitalized)
-                                            .foregroundColor(.primary)
+                                            .foregroundStyle(.primary)
                                     }
                                 }
                             }
@@ -507,10 +504,7 @@ struct BookDetailView: View {
                                             })
                                             .accessibilityLabel(bookAccessibilityLabel(for: book))
                                         } else {
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(Color.gray.opacity(0.25))
-                                                .frame(width: 100, height: 160)
-                                                .opacity(pulseSkeleton ? 0.6 : 1.0)
+                                            SkeletonCover(width: 100, height: 160)
                                         }
                                     }
                                 }
@@ -639,16 +633,22 @@ struct BookDetailView: View {
             .lineLimit(1)
     }
 
-    /// PP-4463: SERIES information row. Renders only when the book carries
-    /// both a series name and series URL (AC #2). The series name is wrapped
-    /// in a NavigationLink whose destination matches the existing series-lane
-    /// "More" affordance at the bottom of the screen — `CatalogLaneMoreView`
-    /// keyed on `book.seriesURL` — so the row is an alternate path to the
-    /// same list, not a new navigation paradigm (AC #4).
+    /// PP-4463 / PP-4775: SERIES information row. Three states, decided purely by
+    /// `BookDetailViewModel.seriesRowDisplay`:
+    ///   - `.link` — series name + a series-search URL (other books in the
+    ///     catalog): the name is a `NavigationLink` to `CatalogLaneMoreView`
+    ///     keyed on `book.seriesURL`, an alternate path to the same series lane.
+    ///   - `.plainText` — series name known but NO series URL (no other books in
+    ///     the catalog, PP-4775): the name is shown as static, non-tappable text
+    ///     with no `.isLink` trait, so VoiceOver reads it as plain text (AC #4).
+    ///   - `.hidden` — no series name: no row.
     @ViewBuilder
     private func seriesRow(book: TPPBook) -> some View {
-        if let seriesName = book.seriesName, !seriesName.isEmpty,
-           let seriesURL = book.seriesURL {
+        switch BookDetailViewModel.seriesRowDisplay(name: book.seriesName, url: book.seriesURL) {
+        case .hidden:
+            EmptyView()
+
+        case let .link(seriesName, seriesURL):
             HStack(alignment: .top, spacing: 10) {
                 infoLabel(label: DisplayStrings.series.uppercased())
                     .frame(minWidth: 100, alignment: .leading)
@@ -660,7 +660,7 @@ struct BookDetailView: View {
                         .lineLimit(nil)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                 }
                 .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLink)
             }
@@ -668,11 +668,61 @@ struct BookDetailView: View {
             .accessibilityLabel("\(DisplayStrings.series): \(seriesName)")
             .accessibilityAddTraits(.isLink)
             .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLabel)
+
+        case let .plainText(seriesName):
+            HStack(alignment: .top, spacing: 10) {
+                infoLabel(label: DisplayStrings.series.uppercased())
+                    .frame(minWidth: 100, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                // No NavigationLink, no underline, and no `.isLink` trait below —
+                // when the catalog has no other books in the series the name is
+                // informational only (PP-4775 AC #1 / #4).
+                Text(seriesName)
+                    .font(.subheadline)
+                    .lineLimit(nil)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(.primary)
+                    .accessibilityIdentifier(AccessibilityID.BookDetail.seriesPlainText)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(DisplayStrings.series): \(seriesName)")
+            .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLabel)
         }
     }
 
+    /// The web URL an INFORMATION value should link to, or `nil` when the value
+    /// is ordinary metadata and must render as text.
+    ///
+    /// The previous test was `URL(string: value)` plus
+    /// `UIApplication.shared.canOpenURL`, which is not a test at all for this
+    /// input. `URL(string:)` accepts almost any string, so "Adventure",
+    /// "English", "August 19, 2025" and a publisher imprint reading
+    /// "LONDON:  WALTER SCOTT, 14 PATERNOSTER SQUARE." all parsed as URLs and
+    /// were then handed to `canOpenURL` — which crosses to SpringBoard, is
+    /// rate-limited and privacy-gated, and refuses unknown schemes out loud
+    /// ("not allowed to query for scheme london"). That fired once per row per
+    /// re-render, on a screen with nine metadata rows.
+    ///
+    /// Every value reaching here comes from `infoRow`: format, audience,
+    /// category, language, narrators, duration, published date, publisher and
+    /// distributor. None is a URL field, so requiring a real web URL loses no
+    /// working link — and `http`/`https` are always openable, so no round-trip
+    /// to SpringBoard is needed to decide.
+    static func webURL(from value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host, !host.isEmpty
+        else {
+            return nil
+        }
+        return url
+    }
+
     @ViewBuilder private func infoValue(value: String) -> some View {
-        if let url = URL(string: value), UIApplication.shared.canOpenURL(url) {
+        if let url = Self.webURL(from: value) {
             Link(value, destination: url)
                 .font(.subheadline)
                 .underline()
@@ -743,6 +793,31 @@ struct BookDetailView: View {
 
         if !appContainer.samplePreviewManager.isShowingPreview(for: viewModel.book) || bookID != currentBookID {
             currentBookID = bookID
+        }
+    }
+
+    /// Whether a button press opens content (reader / player) rather than
+    /// acting on the half-sheet.
+    ///
+    /// PP-5059: this used to be implicit in a `switch` arm, and it was wrong —
+    /// `.read` and `.listen` shared the arm with the half-sheet-local actions,
+    /// so on iPad (`isFullSize`, no half-sheet) tapping Read did nothing at all.
+    /// The switch already carried an exhaustiveness guard, but exhaustiveness
+    /// only catches a NEW case; it cannot catch an existing case sitting in the
+    /// wrong arm. Pulled out as a value so the routing is asserted rather than
+    /// described in a comment.
+    /// The `.read` / `.listen` arm of `handleButtonAction` must mirror this.
+    /// It is kept as a separate value because a `case _ where` in the switch
+    /// would silently defeat the exhaustiveness guard that file relies on.
+    static func opensContentDirectly(_ button: BookButtonType) -> Bool {
+        switch button {
+        case .read, .listen:
+            return true
+        case .retry, .cancel, .returning, .close,
+             .sample, .audiobookSample, .readStreaming,
+             .download, .get, .reserve, .remove, .return,
+             .cancelHold, .manageHold:
+            return false
         }
     }
 
@@ -819,10 +894,27 @@ struct BookDetailView: View {
                 }
             }
 
-        case .read, .listen, .retry, .cancel, .returning, .close:
-            // read/listen open the reader, retry/cancel/returning/close are
-            // half-sheet-local actions — all share the same "toggle half-sheet"
-            // fallback. Listed explicitly to preserve exhaustive matching.
+        case .read, .listen:
+            // PP-5059: these OPEN the content — they are not half-sheet-local.
+            // They used to share the toggle below, and the comment claimed they
+            // "open the reader" while the code only flipped `showHalfSheet`. On
+            // iPhone that was survivable: the toggle presents the half-sheet,
+            // whose own Read/Listen calls `handleAction` (HalfSheetview), so the
+            // book opened one tap later. On iPad `isFullSize` is true and the
+            // half-sheet is not that path, so the toggle was a no-op and Read
+            // did nothing at all — no reader, no error, no state change.
+            //
+            // Dispatch async for the same reason HalfSheetview does: let any
+            // in-flight sheet dismissal finish before the reader presentation
+            // takes the screen.
+            viewModel.showHalfSheet = false
+            DispatchQueue.main.async {
+                viewModel.handleAction(for: buttonType)
+            }
+
+        case .retry, .cancel, .returning, .close:
+            // Genuinely half-sheet-local: these act on the sheet itself.
+            // Listed explicitly to preserve exhaustive matching.
             accessibleWithAnimation(.spring()) {
                 viewModel.showHalfSheet.toggle()
             }
@@ -877,7 +969,7 @@ struct BookDetailView: View {
                     if let coordinator = coordinator {
                         coordinator.pop()
                     } else {
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     }
                 }, label: {
                     HStack(spacing: 6) {
@@ -886,7 +978,7 @@ struct BookDetailView: View {
                         Text("Back")
                             .palaceFont(.body)
                     }
-                    .foregroundColor(headerColor.isDark ? .white : .black)
+                    .foregroundStyle(headerColor.isDark ? .white : .black)
                 })
                 .padding(.leading, 8)
                 .padding(.top, UIDevice.current.isIpad ? 8 : 0)
@@ -902,7 +994,7 @@ struct BookDetailView: View {
 private struct BookStateModifier: ViewModifier {
     @ObservedObject var viewModel: BookDetailViewModel
     @Binding var showHalfSheet: Bool
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) var dismiss
     @Environment(\.appContainer) private var appContainer
 
     private var coordinator: NavigationCoordinator? {
@@ -911,7 +1003,7 @@ private struct BookStateModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: viewModel.bookState) { _ in
+            .onChange(of: viewModel.bookState) { _, _ in
             }
     }
 }

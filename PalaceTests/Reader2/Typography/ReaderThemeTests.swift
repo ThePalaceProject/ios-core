@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ReaderThemeTests: XCTestCase {
 
     // MARK: - All Cases

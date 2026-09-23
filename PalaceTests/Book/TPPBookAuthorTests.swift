@@ -9,7 +9,9 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class TPPBookAuthorTests: XCTestCase {
 
     // MARK: - Initialization Tests

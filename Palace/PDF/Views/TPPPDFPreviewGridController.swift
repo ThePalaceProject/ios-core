@@ -128,14 +128,32 @@ class TPPPDFPreviewGridController: UICollectionViewController {
             } else {
                 cell.imageView.image = nil
             }
-            DispatchQueue.pdfThumbnailRenderingQueue.async {
-                let image: UIImage? = self.document?.preview(for: page)
-                if let image = image {
-                    self.previewCache.setObject(image, forKey: key)
-                }
-                if page == cell.pageNumber {
-                    DispatchQueue.main.async {
-                        cell.imageView.image = image
+            // Render the preview off the main thread, then update the cell back
+            // on main. `TPPPDFPreviewGridController` is a `UICollectionViewController`
+            // (implicitly `@MainActor`), so `self`, `cell`, and `previewCache` are
+            // main-actor-isolated. To cross the `@Sendable` render-queue boundary
+            // without touching main-actor state off-main, the non-Sendable
+            // `TPPPDFDocument` and the non-Sendable `cell` travel in
+            // `@unchecked Sendable` boxes (`PDFDocumentBox` / `PreviewCellBox`).
+            // `document.preview(for:)` is the only thing invoked off-main (a
+            // read-only PDFKit thumbnail render); the boxed cell is dereferenced
+            // ONLY inside the main hop. This preserves the previous behavior —
+            // background render, then main-thread cache-set + page-still-current
+            // guard + image assignment — while making the isolation sound.
+            if let document = document {
+                let documentBox = PDFDocumentBox(document)
+                let cellBox = PreviewCellBox(cell)
+                DispatchQueue.pdfThumbnailRenderingQueue.async {
+                    let image: UIImage? = documentBox.document.preview(for: page)
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        let cell = cellBox.cell
+                        if let image = image {
+                            self.previewCache.setObject(image, forKey: key)
+                        }
+                        if page == cell.pageNumber {
+                            cell.imageView.image = image
+                        }
                     }
                 }
             }
@@ -159,6 +177,26 @@ class TPPPDFPreviewGridController: UICollectionViewController {
         let indexPath = IndexPath(item: currentPage, section: 0)
         collectionView.scrollToItem(at: indexPath, at: .centeredVertically, animated: false)
     }
+}
+
+/// Sendable carrier that transports the non-Sendable `TPPPDFDocument` across the
+/// `@Sendable` background-render closure in `cellForItemAt`. Only
+/// `document.preview(for:)` — a read-only PDFKit thumbnail render — is called on
+/// `pdfThumbnailRenderingQueue`; the mutable `delegate`/search state on
+/// `TPPPDFDocument` is never touched off-main, so `@unchecked Sendable` is sound.
+/// Mirrors `ThumbnailProviderBox` in `PDFThumbnailStrip`.
+private final class PDFDocumentBox: @unchecked Sendable {
+    let document: TPPPDFDocument
+    init(_ document: TPPPDFDocument) { self.document = document }
+}
+
+/// Sendable carrier for the non-Sendable `TPPPDFPreviewGridCell` so the render
+/// closure can hand it back to the main-queue hop without capturing a UIKit view
+/// in a `@Sendable` background closure. The cell is dereferenced ONLY on the main
+/// thread (inside `DispatchQueue.main.async`), so `@unchecked Sendable` is sound.
+private final class PreviewCellBox: @unchecked Sendable {
+    let cell: TPPPDFPreviewGridCell
+    init(_ cell: TPPPDFPreviewGridCell) { self.cell = cell }
 }
 
 extension TPPPDFPreviewGridController: UICollectionViewDelegateFlowLayout {

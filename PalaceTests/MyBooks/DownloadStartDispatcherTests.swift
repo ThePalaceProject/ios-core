@@ -10,9 +10,12 @@
 //
 
 import XCTest
+import PalacePreferences
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class DownloadStartDispatcherTests: XCTestCase {
@@ -874,7 +877,7 @@ final class DownloadStartDispatcherTests: XCTestCase {
 // MARK: - SpyDispatcherDelegate
 
 @MainActor
-private final class SpyDispatcherDelegate: DownloadStartDispatcherDelegate {
+private final class SpyDispatcherDelegate: @preconcurrency DownloadStartDispatcherDelegate {
     let bookRegistry: TPPBookRegistryProvider
     init(registry: TPPBookRegistryProvider) { self.bookRegistry = registry }
 

@@ -1,6 +1,8 @@
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 class TPPBookSerializationTests: XCTestCase {
 
   // MARK: - Dictionary round-trip

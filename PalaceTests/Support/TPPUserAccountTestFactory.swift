@@ -90,7 +90,11 @@ struct TPPUserAccountTestFactory {
     /// < 10 ms on the main thread. `removeAll()` is keychain-bound, so we
     /// keep the tracked list short (one entry per test). Lock is held
     /// only across array snapshot — closures run outside the lock.
-    private final class Tracker {
+    /// `@unchecked Sendable`: the only mutable stored state (`minted`) is
+    /// guarded by `lock` — both `track` and `resetAll` acquire it before
+    /// touching the array. The compiler can't see the lock, but the type
+    /// guarantees it, so `static let shared` is safe across concurrency domains.
+    private final class Tracker: @unchecked Sendable {
         static let shared = Tracker()
 
         private let lock = NSLock()

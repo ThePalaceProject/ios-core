@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from palace_mutate import (
     any_tests_ran,
+    classify_test_outcome,
     compute_mutant_key,
     is_critical_path,
     count_critical_path_survivors,
@@ -25,6 +26,38 @@ from palace_mutate import (
     DEFAULT_FAST_FLAGS,
     CONSEQUENTIAL_OPS,
 )
+
+
+class ClassifyTestOutcome(unittest.TestCase):
+    """A timeout or a build-failure (no tests ran) must grade 'errored', not
+    'failed' — otherwise a wedged/uncompilable mutant inflates the kill rate."""
+
+    def test_tests_passed_isSurvived(self):
+        self.assertEqual(
+            classify_test_outcome(timed_out=False, tests_ran=True, succeeded=True),
+            "passed")
+
+    def test_tests_ran_and_failed_isKilled(self):
+        # A real test failure IS the mutant being caught.
+        self.assertEqual(
+            classify_test_outcome(timed_out=False, tests_ran=True, succeeded=False),
+            "failed")
+
+    def test_timeout_isErrored_notFailed(self):
+        # A wedged run is not a caught mutant — must not count as killed.
+        self.assertEqual(
+            classify_test_outcome(timed_out=True, tests_ran=False, succeeded=False),
+            "errored")
+        # Even if some output was captured before the hang, a timeout is errored.
+        self.assertEqual(
+            classify_test_outcome(timed_out=True, tests_ran=True, succeeded=False),
+            "errored")
+
+    def test_noTestsRan_isErrored_notFailed(self):
+        # Build failure / misconfiguration: zero tests executed — not a catch.
+        self.assertEqual(
+            classify_test_outcome(timed_out=False, tests_ran=False, succeeded=False),
+            "errored")
 
 
 class AnyTestsRan(unittest.TestCase):

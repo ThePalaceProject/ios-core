@@ -9,7 +9,17 @@
 import Foundation
 import PalaceLogging
 
-class MyBooksSimplifiedBearerToken {
+/// `@unchecked Sendable` (Swift 6 `complete`-mode): the token is handed to
+/// `refreshToken`'s completion from inside `URLSession`'s `@Sendable` dataTask
+/// closure, and is stored across the actor-isolated download-info tracking, so
+/// it must be `Sendable`. The stored properties are `var` for the two-phase
+/// construction the refresh path uses (build via the `simplifiedBearerToken`
+/// factory, then set `fulfillURL` before handing the token to the caller — see
+/// `refreshToken`). After that hand-off the token is treated as a value carrier
+/// and is not concurrently mutated: each fetch produces a fresh instance and
+/// publishes it exactly once. `final`, so the invariant can't be defeated by a
+/// subclass (no subclasses exist today).
+final class MyBooksSimplifiedBearerToken: @unchecked Sendable {
     var accessToken: String
     var expiration: Date
     var location: URL
@@ -46,7 +56,7 @@ class MyBooksSimplifiedBearerToken {
     /// - Parameters:
     ///   - fulfillURL: The CM fulfill URL that returns bearer token JSON.
     ///   - completion: Called with the new token on success, or nil on failure.
-    static func refreshToken(from fulfillURL: URL, completion: @escaping (MyBooksSimplifiedBearerToken?) -> Void) {
+    static func refreshToken(from fulfillURL: URL, completion: @escaping @Sendable (MyBooksSimplifiedBearerToken?) -> Void) {
         var request = URLRequest(url: fulfillURL)
         request.cachePolicy = .reloadIgnoringLocalCacheData
 

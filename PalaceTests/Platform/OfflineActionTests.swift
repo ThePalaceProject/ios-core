@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class OfflineActionTests: XCTestCase {
 
     // MARK: - Action Creation

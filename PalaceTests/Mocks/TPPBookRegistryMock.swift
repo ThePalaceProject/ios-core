@@ -2,19 +2,69 @@ import Foundation
 import Combine
 import UIKit
 @testable import Palace
+import PalaceBookModel
+@testable import PalaceBookRegistry
 
-class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
+/// `@unchecked Sendable`: `TPPBookRegistryProvider` is `Sendable` (so production
+/// consumers can capture the registry across concurrency domains), and this mock
+/// HONORS that contract: all mutable state (`_registry`, `_myBooks`, `_state`,
+/// `_isSyncing`, `_mockImages`, …) is guarded by a single `NSLock`, matching the
+/// thread-safety production `TPPBookRegistry` provides via its split-lock
+/// (ba4a03c69). Concurrency tests may legitimately share one instance across
+/// tasks/threads.
+///
+/// Locking rules (architect-reviewed, fix/sync-mock-race-segv-bookmark-keys):
+/// - Public methods take the lock EXACTLY ONCE and delegate any work shared
+///   between public entry points to private UNLOCKED `_`-prefixed helpers
+///   (`preloadData` → `_addGenericBookmark`). No public method calls another
+///   public method while holding the lock. `NSRecursiveLock` is deliberately
+///   not used — it would mask lock-ordering mistakes.
+/// - Combine `send(...)` and `NotificationCenter.post(...)` happen OUTSIDE the
+///   lock: a synchronous subscriber re-entering the mock must not deadlock.
+/// - Direct `registry`/`myBooks`/… property access (used single-threaded by
+///   many tests) goes through locked computed accessors; record-object
+///   mutation via that path (`mock.registry[id]?.state = …`) remains a
+///   single-threaded convenience — concurrent access must use the protocol
+///   methods, which mutate records under the lock.
+class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendable {
+
+    private let lock = NSLock()
 
     /// Records the libraryID(s) passed to `reset` so tests can assert the
     /// registry was reset for the expected (active) library only.
-    private(set) var resetCalledLibraryIDs: [String] = []
+    private var _resetCalledLibraryIDs: [String] = []
+    private(set) var resetCalledLibraryIDs: [String] {
+        get { lock.withLock { _resetCalledLibraryIDs } }
+        set { lock.withLock { _resetCalledLibraryIDs = newValue } }
+    }
 
     // MARK: - Publishers
     private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
     private let bookStateSubject = CurrentValueSubject<(String, TPPBookState), Never>(("", .unregistered))
-    var isSyncing: Bool = false
-    var myBooks: [TPPBook] = []
-    var state: TPPBookRegistry.RegistryState = .loaded
+
+    private var _isSyncing: Bool = false
+    var isSyncing: Bool {
+        get { lock.withLock { _isSyncing } }
+        set { lock.withLock { _isSyncing = newValue } }
+    }
+
+    private var _myBooks: [TPPBook] = []
+    var myBooks: [TPPBook] {
+        get { lock.withLock { _myBooks } }
+        set { lock.withLock { _myBooks = newValue } }
+    }
+
+    private var _state: TPPBookRegistry.RegistryState = .loaded
+    var state: TPPBookRegistry.RegistryState {
+        get { lock.withLock { _state } }
+        set {
+            lock.withLock { _state = newValue }
+            // Feed the lifecycle publisher OUTSIDE the lock (re-entrancy rule),
+            // mirroring production's `state` setter. Tests drive lifecycle-keyed
+            // observers by assigning `mock.state = .loaded`.
+            registryStateSubject.send(newValue)
+        }
+    }
     var registryState: TPPBookRegistry.RegistryState { state }
 
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
@@ -30,6 +80,23 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
         syncStateSubject.eraseToAnyPublisher()
     }
 
+    /// `PassthroughSubject` (not `CurrentValueSubject`) so tests get deterministic
+    /// emission counts: a subscriber sees ONLY the transitions driven after it
+    /// subscribes, with no seeded replay to confound the empty-registry hang guard.
+    private let registryStateSubject = PassthroughSubject<TPPBookRegistry.RegistryState, Never>()
+    var registryStatePublisher: AnyPublisher<TPPBookRegistry.RegistryState, Never> {
+        registryStateSubject.eraseToAnyPublisher()
+    }
+
+    private let holdsDidChangeSubject = PassthroughSubject<Void, Never>()
+    var holdsDidChangePublisher: AnyPublisher<Void, Never> {
+        holdsDidChangeSubject.eraseToAnyPublisher()
+    }
+
+    func notifyHoldsChanged() {
+        holdsDidChangeSubject.send(())
+    }
+
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
         completion?(nil, false)
     }
@@ -37,13 +104,19 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     func load() {}
 
     // MARK: - Mock Data Storage
-    var registry = [String: TPPBookRegistryRecord]()
-    private var processingBooks = Set<String>()
+    private var _registry = [String: TPPBookRegistryRecord]()
+    var registry: [String: TPPBookRegistryRecord] {
+        get { lock.withLock { _registry } }
+        set { lock.withLock { _registry = newValue } }
+    }
+    private var _processingBooks = Set<String>()
 
     var heldBooks: [TPPBook] {
-        registry.values
-            .filter { $0.state == .holding }
-            .map { $0.book }
+        lock.withLock {
+            _registry.values
+                .filter { $0.state == .holding }
+                .map { $0.book }
+        }
     }
 
     // MARK: - TPPBookRegistryProvider Methods
@@ -55,76 +128,91 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     }
 
     func setProcessing(_ processing: Bool, for bookIdentifier: String) {
-        if processing {
-            processingBooks.insert(bookIdentifier)
-        } else {
-            processingBooks.remove(bookIdentifier)
+        lock.withLock {
+            if processing {
+                _processingBooks.insert(bookIdentifier)
+            } else {
+                _processingBooks.remove(bookIdentifier)
+            }
         }
     }
 
     func processing(forIdentifier bookIdentifier: String) -> Bool {
-        processingBooks.contains(bookIdentifier)
+        lock.withLock { _processingBooks.contains(bookIdentifier) }
     }
 
     func state(for bookIdentifier: String?) -> TPPBookState {
         guard let bookIdentifier = bookIdentifier else { return .unregistered }
-        return registry[bookIdentifier]?.state ?? .unregistered
+        return lock.withLock { _registry[bookIdentifier]?.state ?? .unregistered }
     }
 
     func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark] {
-        return registry[identifier]?.readiumBookmarks ?? []
+        lock.withLock { _registry[identifier]?.readiumBookmarks ?? [] }
     }
 
     func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String) {
-        registry[identifier]?.location = location
+        lock.withLock { _registry[identifier]?.location = location }
     }
 
     func location(forIdentifier identifier: String) -> TPPBookLocation? {
-        return registry[identifier]?.location
+        lock.withLock { _registry[identifier]?.location }
     }
 
     func add(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
-        registry[identifier]?.readiumBookmarks?.append(bookmark)
+        lock.withLock { _registry[identifier]?.readiumBookmarks?.append(bookmark) }
     }
 
     func delete(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
-        registry[identifier]?.readiumBookmarks?.removeAll { $0 == bookmark }
+        lock.withLock { _registry[identifier]?.readiumBookmarks?.removeAll { $0 == bookmark } }
     }
 
     func replace(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
-        if let index = registry[identifier]?.readiumBookmarks?.firstIndex(of: oldBookmark) {
-            registry[identifier]?.readiumBookmarks?[index] = newBookmark
+        lock.withLock {
+            if let index = _registry[identifier]?.readiumBookmarks?.firstIndex(of: oldBookmark) {
+                _registry[identifier]?.readiumBookmarks?[index] = newBookmark
+            }
         }
     }
 
     func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation] {
-        return registry[bookIdentifier]?.genericBookmarks ?? []
+        lock.withLock { _registry[bookIdentifier]?.genericBookmarks ?? [] }
     }
 
     func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-        if let index = registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSimilarTo(location) }) {
-            registry[bookIdentifier]?.genericBookmarks?[index] = location
-        } else {
-            registry[bookIdentifier]?.genericBookmarks?.append(location)
+        lock.withLock {
+            if let index = _registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSimilarTo(location) }) {
+                _registry[bookIdentifier]?.genericBookmarks?[index] = location
+            } else {
+                _addGenericBookmark(location, forIdentifier: bookIdentifier)
+            }
         }
     }
 
     func preloadData(bookIdentifier: String, locations: [TPPBookLocation]) {
-        registry[bookIdentifier]?.genericBookmarks = []
-        locations.forEach { addGenericBookmark($0, forIdentifier: bookIdentifier) }
+        lock.withLock {
+            _registry[bookIdentifier]?.genericBookmarks = []
+            locations.forEach { _addGenericBookmark($0, forIdentifier: bookIdentifier) }
+        }
     }
 
     func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-        registry[bookIdentifier]?.genericBookmarks?.append(location)
+        lock.withLock { _addGenericBookmark(location, forIdentifier: bookIdentifier) }
+    }
+
+    /// Unlocked helper — callers MUST hold `lock`.
+    private func _addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+        _registry[bookIdentifier]?.genericBookmarks?.append(location)
     }
 
     func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-        registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) }
+        lock.withLock { _registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) } }
     }
 
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
-        if let index = registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSimilarTo(oldLocation) }) {
-            registry[bookIdentifier]?.genericBookmarks?[index] = newLocation
+        lock.withLock {
+            if let index = _registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSimilarTo(oldLocation) }) {
+                _registry[bookIdentifier]?.genericBookmarks?[index] = newLocation
+            }
         }
     }
 
@@ -137,42 +225,67 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
             readiumBookmarks: readiumBookmarks ?? [],
             genericBookmarks: genericBookmarks ?? []
         )
-        registry[book.identifier] = record
-        registrySubject.send(registry)
+        let snapshot: [String: TPPBookRegistryRecord] = lock.withLock {
+            _registry[book.identifier] = record
+            return _registry
+        }
+        // Subject sends + notification post OUTSIDE the lock (re-entrancy rule).
+        registrySubject.send(snapshot)
         bookStateSubject.send((book.identifier, state))
 
-        // Simulate Notification (if real registry sends one)
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        // Simulate Notification (the real registry sends one). Honor the
+        // production thread contract: every real poster of
+        // `.TPPBookRegistryDidChange` posts on the MAIN thread
+        // (BookRegistryStore / BookRegistrySync wrap the post in
+        // `DispatchQueue.main.async`). App-hosted tests have a live
+        // `MyBooksViewModel` whose `@MainActor` NotificationCenter observer
+        // asserts main-thread isolation (Swift 6) — posting off-main here
+        // crashed it (EXC_BREAKPOINT). Preserve identical synchronous timing for
+        // on-main callers (the vast majority of suites); only off-main callers
+        // (e.g. the async borrow path) defer to main, matching production.
+        if Thread.isMainThread {
+            NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        } else {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+            }
+        }
     }
 
     func removeBook(forIdentifier bookIdentifier: String) {
-        registry.removeValue(forKey: bookIdentifier)
-        registrySubject.send(registry)
+        let snapshot: [String: TPPBookRegistryRecord] = lock.withLock {
+            _registry.removeValue(forKey: bookIdentifier)
+            return _registry
+        }
+        registrySubject.send(snapshot)
     }
 
     func updateAndRemoveBook(_ book: TPPBook) {
-        registry[book.identifier]?.book = book
-        registry.removeValue(forKey: book.identifier)
-        registrySubject.send(registry)
+        let snapshot: [String: TPPBookRegistryRecord] = lock.withLock {
+            _registry[book.identifier]?.book = book
+            _registry.removeValue(forKey: book.identifier)
+            return _registry
+        }
+        registrySubject.send(snapshot)
     }
 
     func setState(_ state: TPPBookState, for bookIdentifier: String) {
-        registry[bookIdentifier]?.state = state
+        lock.withLock { _registry[bookIdentifier]?.state = state }
         bookStateSubject.send((bookIdentifier, state))
     }
 
     func book(forIdentifier bookIdentifier: String?) -> TPPBook? {
         guard let bookIdentifier = bookIdentifier else { return nil }
-        return registry[bookIdentifier]?.book
+        return lock.withLock { _registry[bookIdentifier]?.book }
     }
 
     func fulfillmentId(forIdentifier bookIdentifier: String?) -> String? {
         guard let bookIdentifier = bookIdentifier else { return nil }
-        return registry[bookIdentifier]?.fulfillmentId
+        return lock.withLock { _registry[bookIdentifier]?.fulfillmentId }
     }
 
     func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String) {
-        registry[bookIdentifier]?.fulfillmentId = fulfillmentId
+        lock.withLock { _registry[bookIdentifier]?.fulfillmentId = fulfillmentId }
     }
 
     func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
@@ -182,10 +295,14 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     // MARK: - Image Loading (for snapshot testing)
 
     /// Mock image storage for testing
-    var mockImages: [String: UIImage] = [:]
+    private var _mockImages: [String: UIImage] = [:]
+    var mockImages: [String: UIImage] {
+        get { lock.withLock { _mockImages } }
+        set { lock.withLock { _mockImages = newValue } }
+    }
 
     func cachedThumbnailImage(for book: TPPBook) -> UIImage? {
-        mockImages[book.identifier]
+        lock.withLock { _mockImages[book.identifier] }
     }
 
     func thumbnailImage(for book: TPPBook?, handler: @escaping (UIImage?) -> Void) {
@@ -194,7 +311,7 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
             return
         }
         // Return mock image or generate a placeholder
-        if let cached = mockImages[book.identifier] {
+        if let cached = lock.withLock({ _mockImages[book.identifier] }) {
             handler(cached)
         } else {
             // Return a system image as placeholder
@@ -203,37 +320,44 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     }
 
     func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping ([String: UIImage]) -> Void) {
-        var result: [String: UIImage] = [:]
-        for book in books {
-            if let img = mockImages[book.identifier] {
-                result[book.identifier] = img
+        let result: [String: UIImage] = lock.withLock {
+            var images: [String: UIImage] = [:]
+            for book in books {
+                if let img = _mockImages[book.identifier] {
+                    images[book.identifier] = img
+                }
             }
+            return images
         }
         handler(result)
     }
 
     func updatedBookMetadata(_ book: TPPBook) -> TPPBook? {
-        return registry[book.identifier]?.book
+        lock.withLock { _registry[book.identifier]?.book }
     }
 
     /// Helper to set a mock image for testing
     func setMockImage(_ image: UIImage, for bookIdentifier: String) {
-        mockImages[bookIdentifier] = image
+        lock.withLock { _mockImages[bookIdentifier] = image }
     }
 }
 
 extension TPPBookRegistryMock: TPPBookRegistrySyncing {
     // MARK: - Syncing
     func reset(_ libraryAccountUUID: String) {
-        resetCalledLibraryIDs.append(libraryAccountUUID)
-        isSyncing = false
-        registry.removeAll()
+        lock.withLock {
+            _resetCalledLibraryIDs.append(libraryAccountUUID)
+            _isSyncing = false
+            _registry.removeAll()
+        }
     }
 
     func sync() {
-        isSyncing = true
-        // Mock completes synchronously - no delay needed for tests
-        isSyncing = false
+        lock.withLock {
+            _isSyncing = true
+            // Mock completes synchronously - no delay needed for tests
+            _isSyncing = false
+        }
     }
 
     func save() {

@@ -19,21 +19,31 @@
 //  TEST STRATEGY:
 //
 //  These tests verify the gate's contract at the awaitReady level via
-//  libraryMock's account. The production AccountsManager singleton may
-//  or may not have a currentAccount in a unit-test environment (depends
-//  on which other tests ran first); when it does, we exercise the full
-//  migrated production path. When it does NOT, we still verify the
-//  awaitReady contract that the migrated production code consumes — so
-//  a regression at the production site that drops the gate would be
-//  caught by the gate-level assertions in AccountStateMachineTests +
-//  the production-path assertions here.
+//  libraryMock's account — they pin the HELPER (`Account.awaitReady`), not the
+//  caller that consumes it.
+//
+//  ⚠️ SCOPE LIMIT — read before trusting these to catch a regression. This file
+//  once claimed "a regression at the production site that drops the gate would be
+//  caught" here. That was FALSE, and it cost us a shipped regression: the Wave 3 S2
+//  seam extraction moved the readiness await behind
+//  `AccountScopeProviding.loansURL` and dropped `timeout:`, and every test in this
+//  file stayed green because none of them call the production path. My Books went
+//  back to spinning forever (HelpSpot #18619, #18624).
+//
+//  A test that constructs its own `Account` and awaits it directly can NEVER prove
+//  what the production caller does. The producer-level guards live in
+//  `BookRegistrySyncTimeoutSeamTests` (the engine passes a finite bound) and
+//  `AccountScopeAdapterTests` (the adapter honors it). Keep them in sync with any
+//  change here.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import XCTest
 @testable import Palace
+@testable import PalaceBookRegistry
 
+@MainActor
 final class BookRegistrySyncReadinessTests: XCTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
@@ -82,7 +92,14 @@ final class BookRegistrySyncReadinessTests: XCTestCase {
             resolved.fulfill()
         }
 
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Give the awaiter Task real scheduling opportunities to run up to its
+        // suspension point inside `awaitReady()`, then confirm it is STILL
+        // parked (blocked on the gate, not cancelled or early-resolved). A
+        // bounded `Task.yield()` loop replaces the old fixed 50ms
+        // `Task.sleep`: the awaiter suspends on a continuation until
+        // `_setState`, so once scheduled it provably cannot progress without
+        // the transition below — no wall-clock nap to starve under CI load.
+        for _ in 0..<20 { await Task.yield() }
         XCTAssertFalse(awaiterTask.isCancelled, "Gate must block awaiter, not cancel it")
 
         account._setState(.detailsLoaded(realDetails))

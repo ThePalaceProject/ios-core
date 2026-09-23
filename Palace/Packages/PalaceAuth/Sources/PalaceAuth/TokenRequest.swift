@@ -10,7 +10,7 @@ import Foundation
 import PalaceLogging
 import PalaceCatalog
 
-@objcMembers public class TokenResponse: NSObject, Codable {
+@objcMembers public class TokenResponse: NSObject, Codable, @unchecked Sendable { // : all stored properties are immutable `let`s
     @objc public let accessToken: String
     public let tokenType: String
     @objc public let expiresIn: Int
@@ -28,7 +28,10 @@ import PalaceCatalog
     }
 }
 
-@objcMembers public class TokenRequest: NSObject {
+// `Sendable`: immutable value-typed `let` storage only; the Task in
+// `execute(completion:)` captures `self` to drive the async POST. `final` makes
+// the checked conformance sound (no subclasses exist).
+@objcMembers public final class TokenRequest: NSObject, Sendable {
     public let url: URL
     public let username: String
     public let password: String
@@ -189,7 +192,7 @@ import PalaceCatalog
 }
 
 extension TokenRequest {
-    @objc public func execute(completion: @escaping (TokenResponse?, Error?) -> Void) {
+    @objc public func execute(completion: @escaping @Sendable (TokenResponse?, Error?) -> Void) {
         Task {
             let result = await execute()
             switch result {

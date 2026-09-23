@@ -51,7 +51,6 @@ public enum AccessibilityID {
         // Navigation
         public static let navigationBar = "catalog.navigationBar"
         public static let searchButton = "catalog.searchButton"
-        public static let accountButton = "catalog.accountButton"
         public static let libraryLogo = "catalog.libraryLogo"
 
         // Content
@@ -59,6 +58,8 @@ public enum AccessibilityID {
         public static let loadingIndicator = "catalog.loadingIndicator"
         public static let errorView = "catalog.errorView"
         public static let retryButton = "catalog.retryButton"
+        public static let offlineStateView = "catalog.offlineStateView"
+        public static let goToMyBooksButton = "catalog.goToMyBooksButton"
 
         // Lanes/Sections
         public static func lane(_ index: Int) -> String { "catalog.lane.\(index)" }
@@ -145,6 +146,10 @@ public enum AccessibilityID {
         public static let distributorLabel = "bookDetail.distributorLabel"
         public static let seriesLabel = "bookDetail.seriesLabel"
         public static let seriesLink = "bookDetail.seriesLink"
+        /// PP-4775: series row rendered as static (non-tappable) text when the
+        /// catalog has no other books in the series. Distinct from `seriesLink`
+        /// so QA / simdrive can assert the non-link state.
+        public static let seriesPlainText = "bookDetail.seriesPlainText"
         public static let relatedBooksSection = "bookDetail.relatedBooksSection"
     }
 

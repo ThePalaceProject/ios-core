@@ -36,6 +36,10 @@ final class InertNoOpURLProtocol: URLProtocol {
 
 // MARK: - Tests
 
+// Deliberately NOT @MainActor: BackgroundDownloadHandler is nonisolated and
+// non-Sendable — awaiting its async APIs on a @MainActor-held reference is a
+// Swift 6 sending error, while from a nonisolated test everything stays in
+// one isolation domain. Nothing here touches UI or main-actor state.
 final class BackgroundDownloadHandlerTests: XCTestCase {
 
     private var handler: BackgroundDownloadHandler!
@@ -325,6 +329,9 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
 
         // Simulate first bytes (bytesWritten == totalBytesWritten)
         // Note: This test exercises the progress path without MIME type (no real response)
+        // Swift 6: capture the (now `@unchecked Sendable`) handler locally so
+        // awaiting its nonisolated `async` method doesn't send `self.handler`.
+        let handler = handler!
         await handler.handleDownloadProgress(
             for: book,
             task: task,
@@ -346,6 +353,9 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
         let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
 
         // Should not crash and handler state must remain consistent
+        // Swift 6: capture the (now `@unchecked Sendable`) handler locally so
+        // awaiting its nonisolated `async` method doesn't send `self.handler`.
+        let handler = handler!
         await handler.handleDownloadProgress(
             for: book,
             task: task,

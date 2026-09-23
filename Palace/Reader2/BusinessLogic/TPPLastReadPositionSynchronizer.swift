@@ -9,14 +9,22 @@
 import Foundation
 import PalaceLogging
 import PalaceReadingPosition
+import PalaceBookRegistry
 @preconcurrency import ReadiumShared
+import PalaceBookModel
 
 /// A front-end to the position-load path that resolves cross-device read
 /// position conflicts. The remote fetch is delegated to a `PositionWriter`;
 /// the conflict-resolution rule (same-device-no-precedence, equal-location
 /// no-op) stays in this class because it's EPUB-specific and not part of
 /// the writer's contract.
-class TPPLastReadPositionSynchronizer {
+///
+/// - Note: `@unchecked Sendable` is safe here: the class holds only immutable
+///   (`let`) references and adds no mutable state of its own. `bookRegistry` and
+///   `positionWriter` are thread-safe service objects. This lets `self` be
+///   captured by the main-thread alert/continuation `@Sendable` closures in
+///   `presentNavigationAlert` without crossing a Sendable boundary.
+final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
     typealias DisplayStrings = Strings.TPPLastReadPositionSynchronizer
 
     private let bookRegistry: TPPBookRegistryProvider
@@ -52,15 +60,23 @@ class TPPLastReadPositionSynchronizer {
               book: TPPBook,
               drmDeviceID: String?,
               completion: @escaping () -> Void) {
+        // Swift 6 `complete`: box the non-Sendable `() -> Void` completion so the
+        // `@Sendable` `Task` captures a Sendable carrier. We box rather than mark
+        // the param `@Sendable` because the `ReaderModule` caller closure
+        // captures non-Sendable main-actor values (`formatModule`,
+        // `navigationController`); `@Sendable` would ripple onto that call site.
+        // INVARIANT — the boxed closure runs only on the main thread (via
+        // `TPPMainThreadRun.asyncIfNeeded`).
+        let completionBox = VoidCompletionBox(completion)
         Task {
             await sync(for: publication, book: book, drmDeviceID: drmDeviceID)
             TPPMainThreadRun.asyncIfNeeded {
-                completion()
+                completionBox.call()
             }
         }
     }
 
-    func sync(for publication: Publication,
+    func sync(for publication: sending Publication,
               book: TPPBook,
               drmDeviceID: String?) async {
         let serverLocator = await syncReadPosition(for: book, drmDeviceID: drmDeviceID, publication: publication)
@@ -117,9 +133,12 @@ class TPPLastReadPositionSynchronizer {
                                         publication: Publication,
                                         book: TPPBook,
                                         completion: @escaping () -> Void) {
+        // Swift 6 `complete`: box the non-Sendable `() -> Void` completion for the
+        // `@Sendable` `Task` capture, matching `sync(for:book:drmDeviceID:completion:)`.
+        let completionBox = VoidCompletionBox(completion)
         Task {
             await presentNavigationAlert(for: serverLocator, publication: publication, book: book)
-            completion()
+            completionBox.call()
         }
     }
 
@@ -166,8 +185,30 @@ class TPPLastReadPositionSynchronizer {
                 alert.addAction(stayAction)
                 alert.addAction(moveAction)
 
-                topVC.present(alert, animated: true)
+                // Present through the coordinator-waiting primitive so the prompt
+                // is never presented into an in-flight push/modal transition — the
+                // fe741015 CA-commit race. `safelyPresent` re-walks to the settled
+                // topmost and waits on the transition coordinator, recursing until
+                // the presenter is settled rather than dropping on contention, so
+                // the continuation — resumed only by the alert's actions — resumes
+                // on every path where a presenter still exists. (The one non-
+                // resuming path is the app root being torn down mid-transition,
+                // which the earlier raw present would have crashed on outright.)
+                // Replaces a hand-rolled coordinator-wait whose `else`
+                // (nil-coordinator) branch still presented raw.
+                TPPPresentationUtils.safelyPresent(alert, animated: true)
             }
         }
     }
+}
+
+/// Sendable carrier for a non-Sendable `() -> Void` completion closure captured
+/// by the `@Sendable` `Task`s in `TPPLastReadPositionSynchronizer`. Boxing
+/// avoids rippling `@Sendable` onto the `sync(...completion:)` signature, whose
+/// `ReaderModule` caller closure captures non-Sendable main-actor values.
+/// INVARIANT — the boxed closure runs only on the main thread (via
+/// `TPPMainThreadRun.asyncIfNeeded` / the alert-action continuation).
+private final class VoidCompletionBox: @unchecked Sendable {
+    let call: () -> Void
+    init(_ call: @escaping () -> Void) { self.call = call }
 }

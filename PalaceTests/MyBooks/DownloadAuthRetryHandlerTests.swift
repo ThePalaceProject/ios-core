@@ -17,6 +17,7 @@ import XCTest
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class DownloadAuthRetryHandlerTests: XCTestCase {
@@ -120,7 +121,7 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
     /// Faked task that lets tests inject an HTTPURLResponse + originalRequest.
     /// The handler only reads `task.response` and `task.originalRequest`, so
     /// stubbing those satisfies the surface.
-    final class FakeURLSessionDownloadTask: URLSessionDownloadTask {
+    final class FakeURLSessionDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
         private let _response: URLResponse?
         private let _originalRequest: URLRequest?
         private let _taskIdentifier: Int

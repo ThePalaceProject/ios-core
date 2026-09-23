@@ -277,6 +277,7 @@ final class TPPReaderSettingsTests: XCTestCase {
 
 // MARK: - TPPReaderPreferencesLoad Tests
 
+@MainActor
 final class TPPReaderPreferencesLoadTests: XCTestCase {
 
     func testTPPReaderPreferencesLoad_returnsValidPreferences() {
@@ -313,6 +314,7 @@ final class TPPReaderPreferencesLoadTests: XCTestCase {
 
 // MARK: - Reader Appearance Tests
 
+@MainActor
 final class TPPReaderAppearanceTests: XCTestCase {
 
     func testBlackOnWhite_hasCorrectPropertyIndex() {
@@ -356,6 +358,7 @@ final class TPPReaderAppearanceTests: XCTestCase {
 
 // MARK: - Reader Font Tests
 
+@MainActor
 final class TPPReaderFontTests: XCTestCase {
 
     func testOriginal_hasCorrectPropertyIndex() {

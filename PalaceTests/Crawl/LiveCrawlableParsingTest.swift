@@ -7,6 +7,7 @@ import PalaceCatalog
 ///
 /// Uses an ephemeral URLSession that bypasses globally-registered URL protocols
 /// (including NoNetworkURLProtocol) so the hermetic test layer does not block it.
+@MainActor
 final class LiveCrawlableParsingTest: XCTestCase {
 
     /// Ephemeral session that bypasses NoNetworkURLProtocol.

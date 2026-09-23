@@ -5,6 +5,7 @@ import PalaceCatalog
 /// Tests for OPDS acquisition path resolution,
 /// TPPOPDSFeed/Entry/Link parsing from test XML resources,
 /// and dictionary roundtrip serialization.
+@MainActor
 final class OPDSAcquisitionPathExpandedTests: XCTestCase {
 
   // MARK: - Feed Parsing from Bundle Resources

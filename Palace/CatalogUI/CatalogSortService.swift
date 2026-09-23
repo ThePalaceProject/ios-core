@@ -1,4 +1,5 @@
 import Foundation
+import PalaceBookModel
 
 /// Service responsible for catalog sorting operations
 class CatalogSortService {

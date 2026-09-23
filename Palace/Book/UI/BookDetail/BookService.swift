@@ -3,6 +3,8 @@ import SwiftUI
 import Combine
 import PalaceAudiobookToolkit
 import PalaceLogging
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// Dispatches book-open requests to the right reader/player. Owns only the
 /// EPUB and PDF paths directly; audiobook opens delegate to
@@ -16,14 +18,26 @@ import PalaceLogging
 /// publicationOpener.open() to hang after a few back-to-back audiobook opens.
 /// See AudiobookLoader + AudiobookSessionManager for the new ownership model.
 enum BookService {
-    private static var openingBooks = Set<String>()
+    // Main-actor-confined: every mutation already happens on the main thread
+    // (callers are `@MainActor` view models; the safety-release and dispatch
+    // hops run on `DispatchQueue.main`). Isolating the lock to the main actor
+    // documents that invariant and clears the nonisolated-global-mutable-state
+    // warning without changing the threading.
+    @MainActor private static var openingBooks = Set<String>()
 
     /// Safety cap: if the open pipeline never reports completion (hang, timeout,
     /// unhandled throw inside a Task), releasing after this window prevents the
     /// lock from latching permanently and silently swallowing every retry.
     private static let openLockSafetyRelease: TimeInterval = 30
 
-    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry, onFinish: (() -> Void)? = nil) {
+    /// - parameter onLoadingShellPresented: audiobook-only early hook — fired the
+    ///   moment the morphing player's loading shell is presented (before the
+    ///   PP-4542 content-download wait) so a presenting caller can dismiss its
+    ///   transient UI (BookDetail half-sheet) immediately rather than after full
+    ///   playback readiness. Nil for EPUB/PDF/streaming (they present promptly and
+    ///   rely on `onFinish`). fix/audiobook-first-open-hang.
+    @MainActor
+    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry, audiobookSession: AudiobookSessionManaging? = nil, onFinish: (() -> Void)? = nil, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
         guard !openingBooks.contains(book.identifier) else {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
             onFinish?()
@@ -34,18 +48,25 @@ enum BookService {
         scheduleOpenLockSafetyRelease(for: book.identifier)
         let resolvedBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
 
-        dispatchOpen(resolvedBook, onFinish: onFinish)
+        dispatchOpen(resolvedBook, audiobookSession: audiobookSession, onFinish: onFinish, onLoadingShellPresented: onLoadingShellPresented)
     }
 
+    @MainActor
     private static func scheduleOpenLockSafetyRelease(for identifier: String) {
         DispatchQueue.main.asyncAfter(deadline: .now() + openLockSafetyRelease) {
-            if openingBooks.remove(identifier) != nil {
-                Log.warn(#file, "⏱️ Open lock for \(identifier) auto-released after \(Int(openLockSafetyRelease))s — pipeline never reported completion")
+            // Runs on the main queue; `assumeIsolated` bridges the non-isolated
+            // dispatch closure to the main actor so the `openingBooks` access is
+            // statically safe without altering the existing timing behavior.
+            MainActor.assumeIsolated {
+                if openingBooks.remove(identifier) != nil {
+                    Log.warn(#file, "⏱️ Open lock for \(identifier) auto-released after \(Int(openLockSafetyRelease))s — pipeline never reported completion")
+                }
             }
         }
     }
 
-    private static func dispatchOpen(_ book: TPPBook, onFinish: (() -> Void)?) {
+    @MainActor
+    private static func dispatchOpen(_ book: TPPBook, audiobookSession: AudiobookSessionManaging? = nil, onFinish: (() -> Void)?, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
         switch book.defaultBookContentType {
         case .epub:
             Task { @MainActor in
@@ -67,12 +88,17 @@ enum BookService {
             // stops the previous session (releasing its DRM decryptor) before
             // loading the new audiobook — the ordering invariant that prevents
             // a stale LCP Publication from hanging publicationOpener.open().
+            let session = audiobookSession ?? AppContainer.production().audiobookSession
             Task { @MainActor in
                 defer {
                     openingBooks.remove(book.identifier)
                     onFinish?()
                 }
-                _ = await AppContainer.production().audiobookSession.openAudiobook(book, startPlaying: true)
+                _ = await session.openAudiobook(
+                    book,
+                    startPlaying: true,
+                    onLoadingShellPresented: onLoadingShellPresented
+                )
             }
         case .streamingHTML:
             // PP-4161: streaming-HTML titles route through NavigationCoordinator
@@ -86,6 +112,9 @@ enum BookService {
                 if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                     coordinator.store(book: book)
                     coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+                } else {
+                    // PP-5022 — surface the failure instead of finishing silently.
+                    ReaderService.presentUnreachableReaderAlert(for: book, source: "BookService.streamingHTML")
                 }
             }
         default:
@@ -95,39 +124,26 @@ enum BookService {
     }
 
     @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        // LCP-protected PDFs go through Readium's PDFNavigator — no temp
-        // extract, pages stream on demand via the shared httpServer. Use
-        // hasLCPAcquisition (walks all acquisitions + indirect chains)
-        // rather than canOpenBook so OPDS-Catalog-wrapped LCP PDFs (where
-        // the LCP MIME is a sibling acquisition rather than the default)
-        // get routed correctly. Defer `completion?()` until the
-        // publication opens — LCP open is async (~1–3s) and the caller
-        // typically holds a loading indicator on this completion.
-        #if LCP
-        if LCPPDFs.hasLCPAcquisition(book) {
-            AppContainer.production().readerService.openPDF(book) {
-                completion?()
-            }
-            return
+        // Single PDF seam: `ReaderService.openPDF` gates LCP vs plain
+        // internally. LCP-protected PDFs stream through Readium's
+        // publication-open + disk-extract pipeline; plain (non-LCP) PDFs use
+        // PDFKit's `PDFDocument(url:)` mmap path. Routing lives in one place
+        // (ReaderService) so BookDetail, My Books, and the Continue-reading
+        // card can't drift apart — the Continue card previously bypassed this
+        // gate and failed to open plain PDFs. `completion` fires once the open
+        // has been dispatched (immediately for plain; after the async
+        // publication open for LCP — the caller typically holds a loading
+        // indicator on it).
+        AppContainer.production().readerService.openPDF(book) {
+            completion?()
         }
-        #endif
-
-        // Plain (non-LCP) PDFs keep the PDFKit path: PDFDocument(url:) mmaps
-        // the file and pages in on demand without the HTTP-server hop.
-        guard let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else { completion?(); return }
-        let metadata = TPPPDFDocumentMetadata(with: book)
-        let document = TPPPDFDocument(url: url)
-        if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
-            coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
-            coordinator.push(.pdf(BookRoute(id: book.identifier)))
-        }
-        completion?()
     }
 
     /// Shown when an audiobook open fails. Invoked by
     /// `AudiobookSessionManager` after a loader failure, and by the PP-3707
     /// retry path below.
-    static func showAudiobookTryAgainError(book: TPPBook? = nil, onFinish: (() -> Void)? = nil) {
+    @MainActor
+  static func showAudiobookTryAgainError(book: TPPBook? = nil, onFinish: (() -> Void)? = nil) {
         Log.warn(#file, "⚠️ [ERROR ALERT] Showing 'An error was encountered while trying to open this book' alert to user")
 
         let error = NSError(
@@ -193,30 +209,55 @@ enum BookService {
 
         Log.info(#file, "  📡 Fetching manifest from bearer token location: \(token.location.host ?? "unknown")")
 
+        // Box `completion` so the `@Sendable` `dataTask` handler captures a
+        // Sendable carrier rather than the raw non-Sendable `([String: Any]?) ->
+        // Void` closure. Boxing (vs. marking the parameter `@Sendable`) keeps this
+        // static func's public signature unchanged — `@Sendable`ing it would
+        // ripple onto the `BearerTokenManifestFetching` protocol and both its
+        // production and test conformers in `Palace/Audiobooks/`. INVARIANT: the
+        // completion is invoked exactly once, on the URLSession delegate queue,
+        // per request — a single-consumer handoff, no shared mutation. Mirrors
+        // `ImageCompletionBox` / `SyncCallbacks`.
+        let completionBox = ManifestCompletionBox(completion)
         let task = session.dataTask(with: request) { data, response, error in
             if let error = error {
                 Log.error(#file, "  ❌ Network error fetching manifest via bearer token: \(error.localizedDescription)")
-                completion(nil)
+                completionBox.completion(nil)
                 return
             }
             guard let data = data, !data.isEmpty else {
                 Log.error(#file, "  ❌ No data received from bearer token manifest fetch")
-                completion(nil)
+                completionBox.completion(nil)
                 return
             }
             if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
                 Log.error(#file, "  ❌ Bearer token manifest fetch failed with HTTP \(httpResponse.statusCode)")
-                completion(nil)
+                completionBox.completion(nil)
                 return
             }
             guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
                 Log.error(#file, "  ❌ Failed to parse bearer token manifest as JSON")
-                completion(nil)
+                completionBox.completion(nil)
                 return
             }
             Log.info(#file, "  ✅ Successfully fetched manifest via bearer token (\(data.count) bytes)")
-            completion(json)
+            completionBox.completion(json)
         }
         task.resume()
     }
+}
+
+/// Sendable carrier for `fetchManifestWithBearerToken`'s non-Sendable
+/// `([String: Any]?) -> Void` completion, so the `@Sendable` URLSession
+/// `dataTask` handler can capture it under Swift 6 `complete` mode without
+/// forcing `@Sendable` onto the public parameter (which would ripple onto the
+/// `BearerTokenManifestFetching` protocol in `Palace/Audiobooks/`).
+///
+/// `@unchecked Sendable` invariant: `completion` is stored once and invoked
+/// exactly once, on the URLSession delegate queue, for a single request — a
+/// one-shot single-consumer handoff, never mutated or shared. Mirrors
+/// `ImageCompletionBox`.
+private final class ManifestCompletionBox: @unchecked Sendable {
+    let completion: ([String: Any]?) -> Void
+    init(_ completion: @escaping ([String: Any]?) -> Void) { self.completion = completion }
 }

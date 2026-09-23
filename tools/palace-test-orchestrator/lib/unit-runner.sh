@@ -3,6 +3,19 @@
 # unit-runner.sh - Unit test execution for Palace iOS
 #
 
+# This library is `source`d by bin/palace-test, which sets `set -euo pipefail`.
+# It must not DEPEND on inheriting that: sourced from anywhere else, an
+# unprotected pipeline would report `tee`'s status and a failed test run would
+# read as a pass. Setting it here makes the file self-sufficient, which was the
+# real (latent) defect — the `|| exit_code=$?` capture below was already correct
+# under the actual entry point.
+#
+# The capture must stay `|| ...` rather than a bare pipeline plus PIPESTATUS:
+# `run_unit_tests` is called BARE on the `unit` path, so errexit is live inside
+# the function and a bare failing pipeline kills the script AT the pipeline —
+# skipping parse_xcresult and the failure report, exactly when they are needed.
+set -o pipefail
+
 run_unit_tests() {
   echo "========================================"
   echo "  Palace Unit Tests"

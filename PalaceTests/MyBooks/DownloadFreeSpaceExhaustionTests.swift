@@ -28,6 +28,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 private let freeSpaceTestSession: URLSession = {
     let config = URLSessionConfiguration.ephemeral
@@ -56,7 +57,7 @@ final class DownloadFreeSpaceExhaustionTests: XCTestCase {
         diskBudget = DiskBudgetManager(
             bookRegistry: registry,
             accountsManager: AppContainer.production().accountsManager,
-            bookFileManager: BookFileManager(bookRegistry: registry, accountsManager: AppContainer.production().accountsManager),
+            bookFileManager: BookFileManager(bookRegistry: registry),
             fileManager: .default
         )
     }

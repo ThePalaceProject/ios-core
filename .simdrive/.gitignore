@@ -1,6 +1,0 @@
-# SpecterQA — persona files may contain credential references
-.simdrive/_archive/personas/
-
-# Historical PP-4020 test-run evidence (untracked, kept on disk only)
-.simdrive/_archive/evidence/
-.simdrive/_archive/products/

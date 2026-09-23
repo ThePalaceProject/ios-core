@@ -1,5 +1,6 @@
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 /// Tests cross-device bookmark and reading position sync logic.
 ///
@@ -11,6 +12,7 @@ import XCTest
 /// - Bookmark specs serialize correct device IDs
 /// - Server responses parse both devices' bookmarks
 /// - Conflict resolution logic handles all edge cases
+@MainActor
 final class CrossDeviceBookmarkSyncTests: XCTestCase {
 
     private let deviceA = "urn:uuid:device-A-test-001"

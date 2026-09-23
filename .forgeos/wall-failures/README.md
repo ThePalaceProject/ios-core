@@ -47,7 +47,8 @@ Each blocked finding becomes a permanent system improvement. After ~5-10 swarms,
 3. **Same session:** propose a permanent fix — a contract clause, orchestrator check, implementer constraint, hook, gate, or test pattern that would have prevented it.
 4. **Same session:** submit the lesson to the ForgeOS ADR ledger so it's discoverable via `forge_list_adrs` + reviewer agents, not just by grep:
    ```bash
-   python3 scripts/forgeos-submit-wall-failure.py .forgeos/wall-failures/<entry>.md
+   # maintainer-only; extracted from this repo 2026-08-26 (needs a ForgeOS instance)
+   python3 ~/harness/stacks/ios/forgeos/forgeos-submit-wall-failure.py .forgeos/wall-failures/<entry>.md
    # optional: --area <topic-specific area> if the failure is auth/audiobooks/etc.,
    #          --changeset <cs_xxxxxxxx> if you have an active changeset to attach to
    ```

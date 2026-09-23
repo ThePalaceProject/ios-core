@@ -3,6 +3,7 @@ import Combine
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
+import PalaceBookModel
 
 /// Refactored, streamlined catalog lane view that delegates business logic to ViewModel
 struct CatalogLaneMoreView: View {
@@ -31,7 +32,8 @@ struct CatalogLaneMoreView: View {
             title: title,
             url: url,
             bookRegistry: appContainer.bookRegistry,
-            bookCellModelCache: appContainer.bookCellModelCache
+            bookCellModelCache: appContainer.bookCellModelCache,
+            api: appContainer.catalogAPI
         ))
     }
 
@@ -69,7 +71,6 @@ struct CatalogLaneMoreView: View {
         .task { await viewModel.load(coordinator: coordinator) }
         .onAppear {
             Log.debug(#file, "🟢 CatalogLaneMoreView.onAppear() - Appearing")
-            setupCoordinator()
             setupAccount()
         }
         .onReceive(accountChangePublisher) { _ in
@@ -82,8 +83,7 @@ struct CatalogLaneMoreView: View {
             Log.debug(#file, "🔴 CatalogLaneMoreView.onDisappear() - Being dismissed")
             appContainer.samplePreviewManager.close()
         }
-        .onReceive(registryChangePublisher) { note in
-            let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
+        .onReceive(registryChangePublisher) { changedId in
             viewModel.applyRegistryUpdates(changedIdentifier: changedId)
         }
         .onReceive(downloadProgressPublisher) { changedId in
@@ -116,9 +116,12 @@ struct CatalogLaneMoreView: View {
             .eraseToAnyPublisher()
     }
 
-    private var registryChangePublisher: AnyPublisher<Notification, Never> {
-        NotificationCenter.default
-            .publisher(for: .TPPBookRegistryStateDidChange)
+    private var registryChangePublisher: AnyPublisher<String, Never> {
+        // Migrated off `.TPPBookRegistryStateDidChange` to the registry's per-book
+        // `bookStatePublisher` (swarm_8ce6f5ae WS3); emit the changed identifier so
+        // the lane refreshes just that row.
+        appContainer.bookRegistry.bookStatePublisher
+            .map { $0.0 }
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }
@@ -132,12 +135,6 @@ struct CatalogLaneMoreView: View {
     }
 
     // MARK: - Setup Helpers
-
-    private func setupCoordinator() {
-        if appContainer.navigationCoordinatorHub.coordinator == nil {
-            appContainer.navigationCoordinatorHub.coordinator = coordinator
-        }
-    }
 
     private func setupAccount() {
         let account = appContainer.accountsManager.currentAccount
@@ -175,13 +172,15 @@ struct CatalogLaneMoreView: View {
     // MARK: - Navigation
 
     private func presentBookDetail(_ book: TPPBook) {
-        setupCoordinator()
+        // PP-5022 — pushes go through the `@EnvironmentObject` coordinator, i.e.
+        // the stack actually hosting this view. This view is reached from
+        // `BookDetailView` on EVERY tab, so it must never assert a tab identity
+        // to the hub; `NavigationHostView` is the only authority on that.
         coordinator.store(book: book)
         coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
     }
 
     private func presentLaneMore(title: String, url: URL) {
-        setupCoordinator()
         coordinator.push(.catalogLaneMore(title: title, url: url))
     }
 
@@ -233,10 +232,10 @@ struct CatalogLaneMoreView: View {
                         }, label: {
                             HStack {
                                 Image(systemName: facet.active ? "largecircle.fill.circle" : "circle")
-                                    .foregroundColor(.primary)
+                                    .foregroundStyle(.primary)
                                     .accessibilityHidden(true)
                                 Text(facet.title)
-                                    .foregroundColor(.primary)
+                                    .foregroundStyle(.primary)
                                 Spacer()
                             }
                             .padding(.vertical, 12)
@@ -256,13 +255,7 @@ struct CatalogLaneMoreView: View {
     @ViewBuilder
     private var searchSection: some View {
         CatalogSearchView(
-            repository: CatalogRepository(
-                api: DefaultCatalogAPI(
-                    client: URLSessionNetworkClient(),
-                    parser: OPDSParser(),
-                    featureFlags: RemoteFeatureFlags.shared
-                )
-            ),
+            repository: appContainer.catalogRepository,
             baseURL: { viewModel.url },
             books: viewModel.allBooks,
             onBookSelected: presentBookDetail
@@ -317,7 +310,7 @@ private extension CatalogLaneMoreView {
             if viewModel.isApplyingFilters {
                 Text("Filtering...")
                     .palaceFont(size: 12)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.trailing, 12)
@@ -347,8 +340,13 @@ private extension CatalogLaneMoreView {
     }
 
     func errorView(_ errorMessage: String) -> some View {
-        Text(errorMessage)
-            .padding()
+        ContentUnavailableView {
+            Label(Strings.Generic.error, systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(errorMessage)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity)
     }
 
     @ViewBuilder

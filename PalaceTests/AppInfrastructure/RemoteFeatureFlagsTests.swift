@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class RemoteFeatureFlagsTests: XCTestCase {
 
     override func tearDown() {
@@ -160,6 +161,32 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         }
     }
 
+    /// The case the `Task.sleep` test above CANNOT reproduce: `Task.sleep` honors
+    /// cancellation, so a task-group `withTimeout` unblocks when it cancels the
+    /// child. The real Firebase `fetchAndActivate()` ignores cancellation — and a
+    /// task-group implementation re-awaits that child at scope exit, so the bound
+    /// silently fails to fire (the 120s `testFetchIfNeeded_doesNotCrash` hang).
+    /// This drives an operation that never completes AND ignores cancellation:
+    /// `withTimeout` must still return promptly on the timeout, orphaning it.
+    func testWithTimeout_boundsANonCancellableHangingOperation() async {
+        let start = Date()
+        do {
+            _ = try await FirebaseManager.withTimeout(seconds: 0.2) { () async throws -> Bool in
+                // Never resumes, and does not observe cancellation — mirrors the
+                // non-cancellable Firebase fetch.
+                await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+                return true
+            }
+            XCTFail("withTimeout must throw when a non-cancellable operation exceeds the bound")
+        } catch is FirebaseManager.RemoteConfigFetchTimeout {
+            let elapsed = Date().timeIntervalSince(start)
+            XCTAssertLessThan(elapsed, 2.0,
+                              "withTimeout must bound a NON-cancellable hang (the real Firebase case) by orphaning it, got \(elapsed)s")
+        } catch {
+            XCTFail("Expected RemoteConfigFetchTimeout, got \(type(of: error)): \(error)")
+        }
+    }
+
     /// A fast operation must return its value, NOT be falsely timed out —
     /// kills a mutant that always throws / always loses the race.
     func testWithTimeout_returnsResultOfFastOperation() async throws {
@@ -167,5 +194,175 @@ final class RemoteFeatureFlagsTests: XCTestCase {
             42
         }
         XCTAssertEqual(value, 42, "withTimeout must return the operation's result when it completes within the bound")
+    }
+
+    // MARK: - In-App Playback Navigation (Firebase-gated, default OFF)
+    //
+    // The in-app playback-nav feature is OFF by default and enabled via
+    // Firebase Remote Config (the team turns it on — globally or via a staged
+    // rollout — without shipping a build). Precedence: local dev override
+    // (QA) > Firebase Remote Config (registered default false).
+
+    /// Fresh, isolated UserDefaults suite so the local-override key can't bleed
+    /// across tests or into `.standard`.
+    private func makeInAppNavFlags() -> (flags: RemoteFeatureFlags, suite: UserDefaults, name: String) {
+        let name = "test.inAppPlaybackNav.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        return (RemoteFeatureFlags(defaults: suite), suite, name)
+    }
+
+    /// No local override and no Firebase server value (the unit-test state):
+    /// the feature is OFF and reflects the Remote Config flag rather than a
+    /// hardcoded constant. Reverting the getter to `return true` (the prior GA
+    /// behavior) fails the first assertion.
+    func testInAppPlaybackNav_noOverride_followsRemoteConfig() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        // Asserts the RELATIONSHIP, not an absolute. The previous version
+        // asserted `XCTAssertFalse`, which silently assumed Firebase returns
+        // false — true on CI (no Remote Config) but NOT on a simulator whose
+        // container has a warm cache from running the real app, and not once
+        // `in_app_playback_nav_enabled` is switched on in production. It began
+        // failing locally the moment the flag went live, which is the wrong
+        // signal: the getter was correct, the assumption was not.
+        XCTAssertEqual(flags.isInAppPlaybackNavEnabled,
+                       flags.isFeatureEnabled(.inAppPlaybackNavEnabled),
+                       "Without a local override, the getter must reflect the Remote Config flag, not a constant")
+    }
+
+    /// A local override of `true` forces the feature ON regardless of the OFF
+    /// default — QA/dev can preview the in-app player before the rollout.
+    /// Kills a mutant that ignores the override and returns the (false in tests)
+    /// Remote Config value.
+    func testInAppPlaybackNav_localOverrideTrue_forcesOn() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(true, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+        XCTAssertTrue(flags.isInAppPlaybackNavEnabled,
+                      "A local override of true must force the feature ON")
+    }
+
+    /// A local override of `false` no longer forces the feature OFF when
+    /// Firebase has it ON — see `resolveRemoteWinsOptIn` below for the full
+    /// table. With Firebase OFF (the unit-test state) a `false` override still
+    /// resolves OFF, so this pins the remote-OFF half of the contract.
+    func testInAppPlaybackNav_localOverrideFalse_withRemoteOff_staysOff() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(false, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+        XCTAssertEqual(flags.isInAppPlaybackNavEnabled,
+                       flags.isFeatureEnabled(.inAppPlaybackNavEnabled),
+                       "An override of false must be INERT — the result still follows Remote Config, never below it")
+    }
+
+    // MARK: - Precedence table (pure, exhaustive)
+    //
+    // The accessor reads Firebase through `FirebaseManager.shared`, which a unit
+    // test cannot set to `true` — so the row that actually matters (remote ON +
+    // a stale local `false`) is unreachable through `isInAppPlaybackNavEnabled`.
+    // The decision is therefore a pure function and every cell of remote × local
+    // is asserted here. Scenarios would leave the same hole the old contract hid
+    // in: a QA device pinned `false` silently opted itself out of the rollout and
+    // read as "the rollout is broken".
+    //
+    // Contract: Firebase ON wins outright; a local override can only ENABLE.
+
+    func testResolveRemoteWinsOptIn_remoteOn_beatsEveryLocalValue() {
+        XCTAssertTrue(RemoteFeatureFlags.resolveRemoteWinsOptIn(remote: true, localOverride: nil),
+                      "remote ON + no override → ON")
+        XCTAssertTrue(RemoteFeatureFlags.resolveRemoteWinsOptIn(remote: true, localOverride: true),
+                      "remote ON + override true → ON")
+        XCTAssertTrue(RemoteFeatureFlags.resolveRemoteWinsOptIn(remote: true, localOverride: false),
+                      "remote ON + STALE override false → ON. A local opt-out must not silently remove a device from the rollout")
+    }
+
+    func testResolveRemoteWinsOptIn_remoteOff_localMayEnableOnly() {
+        XCTAssertFalse(RemoteFeatureFlags.resolveRemoteWinsOptIn(remote: false, localOverride: nil),
+                       "remote OFF + no override → OFF (the shipped default)")
+        XCTAssertTrue(RemoteFeatureFlags.resolveRemoteWinsOptIn(remote: false, localOverride: true),
+                      "remote OFF + override true → ON. QA can still preview ahead of the rollout")
+        XCTAssertFalse(RemoteFeatureFlags.resolveRemoteWinsOptIn(remote: false, localOverride: false),
+                       "remote OFF + override false → OFF")
+    }
+
+    /// The registered production default is OFF — pins the Firebase-gated
+    /// posture so a regression to on-by-default is caught.
+    func testInAppPlaybackNav_featureFlagDefault_isOff() {
+        XCTAssertFalse(RemoteFeatureFlags.FeatureFlag.inAppPlaybackNavEnabled.defaultValue,
+                       "in-app playback nav default must be OFF — Firebase Remote Config turns it on")
+    }
+
+    // MARK: - Continuation Cards (Firebase-gated, default OFF, independent flag)
+    //
+    // The Continue Reading/Listening hero rows are gated by their OWN flag,
+    // split from in-app playback nav so the cards and the mini-player roll out
+    // independently. Same posture: default OFF, Firebase enables, local override
+    // wins.
+
+    func testContinuationCards_noOverride_defaultsOff() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        XCTAssertFalse(flags.isContinuationCardsEnabled,
+                       "Absent a local override or Firebase value, continuation cards must default OFF")
+        XCTAssertEqual(flags.isContinuationCardsEnabled,
+                       flags.isFeatureEnabled(.continuationCardsEnabled),
+                       "Without a local override, the getter must reflect the Remote Config flag, not a constant")
+    }
+
+    func testContinuationCards_localOverrideTrue_forcesOn() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(true, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey)
+        XCTAssertTrue(flags.isContinuationCardsEnabled,
+                      "A local override of true must force the continuation cards ON")
+    }
+
+    /// Renamed with the precedence change: an override of `false` no longer
+    /// *forces* anything, it simply fails to enable. With Firebase OFF (the
+    /// unit-test state) the result is still OFF — the remote-ON row is covered
+    /// by the pure table above, which is the only place it is reachable.
+    func testContinuationCards_localOverrideFalse_withRemoteOff_staysOff() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(false, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey)
+        XCTAssertEqual(flags.isContinuationCardsEnabled,
+                       flags.isFeatureEnabled(.continuationCardsEnabled),
+                       "An override of false must be INERT — the result still follows Remote Config, never below it")
+    }
+
+    func testContinuationCards_featureFlagDefault_isOff() {
+        XCTAssertFalse(RemoteFeatureFlags.FeatureFlag.continuationCardsEnabled.defaultValue,
+                       "continuation cards default must be OFF — Firebase Remote Config turns it on")
+    }
+
+    /// The split's core guarantee: the two flags are independent. Forcing the
+    /// continuation cards ON while forcing in-app playback nav OFF (and vice
+    /// versa) must be honored — one does not leak into the other. A mutant that
+    /// re-pointed either getter at the wrong override key fails here.
+    func testFlags_continuationAndInAppNav_areIndependent() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(true, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey)
+        suite.set(false, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+        XCTAssertTrue(flags.isContinuationCardsEnabled,
+                      "continuation ON must not be suppressed by in-app-nav OFF")
+        XCTAssertEqual(flags.isInAppPlaybackNavEnabled,
+                       flags.isFeatureEnabled(.inAppPlaybackNavEnabled),
+                       "in-app-nav override false stays inert and independent of continuation ON")
+
+        suite.set(false, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey)
+        suite.set(true, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+        XCTAssertEqual(flags.isContinuationCardsEnabled,
+                       flags.isFeatureEnabled(.continuationCardsEnabled),
+                       "continuation override false stays inert and independent of in-app-nav ON")
+        XCTAssertTrue(flags.isInAppPlaybackNavEnabled,
+                      "in-app-nav ON must not be suppressed by continuation OFF")
     }
 }

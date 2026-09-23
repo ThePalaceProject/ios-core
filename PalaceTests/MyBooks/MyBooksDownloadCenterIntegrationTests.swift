@@ -13,6 +13,7 @@ import XCTest
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - MockURLProtocol for Network Mocking
 
@@ -21,10 +22,18 @@ import PalaceCatalog
 class MockURLProtocol: URLProtocol {
 
     /// Handler closure that provides mock responses for requests
-    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data?))?
+    private static let _requestHandler = LockIsolated<((URLRequest) throws -> (HTTPURLResponse, Data?))?>(nil)
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data?))? {
+        get { _requestHandler.value }
+        set { _requestHandler.value = newValue }
+    }
 
     /// Track all requests made during tests
-    static var capturedRequests: [URLRequest] = []
+    private static let _capturedRequests = LockIsolated<[URLRequest]>([])
+    static var capturedRequests: [URLRequest] {
+        get { _capturedRequests.value }
+        set { _capturedRequests.value = newValue }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool {
         // Intercept all requests in tests
@@ -83,6 +92,7 @@ enum MockNetworkError: Error {
 
 /// Integration tests for DownloadCoordinator actor.
 /// Tests real concurrency behavior and state management.
+@MainActor
 final class DownloadCoordinatorIntegrationTests: XCTestCase {
 
     // MARK: - Concurrency Tests
@@ -146,7 +156,13 @@ final class DownloadCoordinatorIntegrationTests: XCTestCase {
             // Complete first 5
             for i in 0..<5 {
                 group.addTask {
-                    // Small delay to ensure starts happen first
+                    // NOT-A-DEADLINE-POLL: this 10ms sleep is an intra-task-group
+                    // ordering nudge (let the 10 registerStart tasks land before
+                    // these completions), not a wall-clock wait on fire-and-forget
+                    // work. The enclosing `await withTaskGroup` joins every child
+                    // task, so there is no starvable timeout that fails under
+                    // oversubscription — a late sleep only shifts interleaving, and
+                    // the actor serializes the final count. Left as-is.
                     try? await Task.sleep(nanoseconds: 10_000_000)
                     await coordinator.registerCompletion(identifier: "book-\(i)")
                 }
@@ -292,6 +308,7 @@ final class DownloadCoordinatorIntegrationTests: XCTestCase {
 // MARK: - Download State Machine Integration Tests
 
 /// Tests for download state transitions using real MyBooksDownloadCenter behavior patterns.
+@MainActor
 final class DownloadStateMachineIntegrationTests: XCTestCase {
 
     private var mockBookRegistry: TPPBookRegistryMock!
@@ -627,6 +644,7 @@ final class DownloadStateMachineIntegrationTests: XCTestCase {
 // MARK: - Download Queue Integration Tests
 
 /// Tests for download queue management logic.
+@MainActor
 final class DownloadQueueIntegrationTests: XCTestCase {
 
     func testMaxConcurrentDownloads_limitsActiveDownloads() async {
@@ -707,6 +725,7 @@ final class DownloadQueueIntegrationTests: XCTestCase {
 // MARK: - Rights Management Detection Tests
 
 /// Tests for MIME type to rights management detection.
+@MainActor
 final class RightsManagementDetectionTests: XCTestCase {
 
     func testMimeType_adobeAdept_detectsAdobeRights() {
@@ -786,8 +805,8 @@ final class RightsManagementDetectionTests: XCTestCase {
 /// `DownloadProgressPublisherCoreTests`. A `-only-testing:` run aimed at the
 /// publisher's own suite silently selected these two tests instead and reported a
 /// mutant as surviving when it was never exercised.
+@MainActor
 final class MyBooksDownloadCenterProgressPublishingTests: XCTestCase {
-
     private var cancellables: Set<AnyCancellable> = []
 
     override func tearDown() {
@@ -856,6 +875,7 @@ final class MyBooksDownloadCenterProgressPublishingTests: XCTestCase {
 // MARK: - File URL Generation Tests
 
 /// Tests for book content file URL generation.
+@MainActor
 final class FileURLGenerationTests: XCTestCase {
 
     func testFileUrl_epubBook_hasEpubExtension() {
@@ -910,6 +930,7 @@ final class FileURLGenerationTests: XCTestCase {
 // MARK: - Redirect Handling Integration Tests
 
 /// Integration tests for download redirect handling.
+@MainActor
 final class RedirectHandlingIntegrationTests: XCTestCase {
 
     func testRedirect_httpsToHttp_blockedForSecurity() {
@@ -981,6 +1002,7 @@ final class RedirectHandlingIntegrationTests: XCTestCase {
 // MARK: - Error Recovery Tests
 
 /// Tests for download error handling and retry logic.
+@MainActor
 final class DownloadErrorRecoveryTests: XCTestCase {
 
     private var mockBookRegistry: TPPBookRegistryMock!
@@ -1040,6 +1062,7 @@ final class DownloadErrorRecoveryTests: XCTestCase {
 // MARK: - Concurrent Book State Management Tests
 
 /// Tests for managing multiple book downloads concurrently.
+@MainActor
 final class ConcurrentBookStateTests: XCTestCase {
 
     private var mockBookRegistry: TPPBookRegistryMock!
@@ -1126,6 +1149,7 @@ final class ConcurrentBookStateTests: XCTestCase {
 // MARK: - Disk Budget Tests
 
 /// Tests for content disk budget management.
+@MainActor
 final class DiskBudgetTests: XCTestCase {
 
     func testDiskSpace_available_returnsPositiveValue() {

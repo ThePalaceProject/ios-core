@@ -8,7 +8,9 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 class BookPreviewTests: XCTestCase {
     func testEpubBookPreviewExtraction() throws {
         let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]

@@ -19,9 +19,7 @@ private final class MockFeedPreloader: CatalogFeedPreloading, @unchecked Sendabl
     var urlsThatShouldFail: Set<URL> = []
 
     func preloadFeed(from url: URL) async throws {
-        lock.lock()
-        _preloadedURLs.append(url)
-        lock.unlock()
+        lock.withLock { _preloadedURLs.append(url) }
         if urlsThatShouldFail.contains(url) {
             throw URLError(.notConnectedToInternet)
         }
@@ -30,6 +28,7 @@ private final class MockFeedPreloader: CatalogFeedPreloading, @unchecked Sendabl
 
 // MARK: - Tests
 
+@MainActor
 final class CatalogPreloaderTests: XCTestCase {
 
     // Bound every test to 30s using XCTest's built-in mechanism. The

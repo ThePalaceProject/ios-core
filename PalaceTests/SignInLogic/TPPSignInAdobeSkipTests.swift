@@ -9,6 +9,7 @@ import XCTest
 @testable import Palace
 
 /// SRS: DRM-001 - Adobe DRM activation skip logic prevents burning device activations
+@MainActor
 final class TPPSignInAdobeSkipTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

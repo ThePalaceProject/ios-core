@@ -31,6 +31,7 @@ private class MockAuthentication: NSObject {
 
 // MARK: - Tests
 
+@MainActor
 final class UserAccountValidationTests: XCTestCase {
 
     private var usernameField: UITextField!

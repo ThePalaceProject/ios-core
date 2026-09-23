@@ -9,6 +9,8 @@
 import Foundation
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - BackgroundDownloadHandlerDelegate
 
@@ -19,6 +21,11 @@ protocol BackgroundDownloadHandlerDelegate: AnyObject {
     var progressReporter: DownloadProgressReporter { get }
     var bookRegistry: TPPBookRegistryProvider { get }
     var userAccount: TPPUserAccount { get }
+    /// Resolves a specific account by its captured id. PP-4978: follow-up work on
+    /// a download must use the account the download STARTED under, which is not
+    /// necessarily `userAccount` (the current one) after a library switch.
+    /// `MyBooksDownloadCenter` already implements this — no new production code.
+    func userAccount(forCapturedId capturedAccountId: String) -> TPPUserAccount
     var tokenInterceptor: TokenRefreshInterceptor { get }
 
     func handleDownloadCompletion(session: URLSession, task: URLSessionDownloadTask, location: URL) async
@@ -37,7 +44,17 @@ protocol BackgroundDownloadHandlerDelegate: AnyObject {
 /// - Progress updates and MIME type detection
 /// - OPDS entry response parsing
 /// - File move/replace/validation after download
-final class BackgroundDownloadHandler: NSObject {
+/// - Sendable invariant (Swift 6 `complete`-mode): the handler has exactly one
+///   stored member, `weak var delegate`, assigned once at init (or via the
+///   owner during construction) and never reassigned outside that window
+///   (weak-ref reads + ARC zeroing are atomic). The `async` methods
+///   (`handleDownloadProgress`, the OPDS-response handlers) touch only the
+///   actor-serialized state reached *through* the delegate's `stateManager` and
+///   local values, so awaiting them from a `@MainActor` caller does not race.
+///   Mirrors the `DownloadStartCoordinator` / `DownloadTaskLifecycleService`
+///   invariant. `@unchecked` only because the delegate existential is not
+///   itself `Sendable`.
+final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
 
     // MARK: - Properties
 
@@ -163,6 +180,26 @@ final class BackgroundDownloadHandler: NSObject {
                     await stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: info)
                 }
             } else if AppContainer.production().accountsManager.currentUserAccount.isTokenRefreshRequired() {
+                // The DECISION still reads the current library's staleness. The
+                // CREDENTIALS are correct — PP-4986 stamps this download's task in
+                // `MyBooksDownloadCenter.persistStartedTaskRecord`, so the retry
+                // rebuild authenticates as the library the download started under
+                // regardless of what is selected now. This is a wrong-TRIGGER bug:
+                // a refresh can fire for the wrong library's staleness, or fail to
+                // fire for the right one's.
+                //
+                // (An earlier revision of this comment made that same claim BEFORE
+                // the stamp existed, when it was false and this site still leaked.
+                // It is true now because the download half landed, not because the
+                // wording improved.)
+                //
+                // Fixing the trigger means redirecting to
+                // `startedForAccount(for:delegate:)` at :296 — two lines — but the
+                // arm is unreachable in a test while the refresh is read from
+                // `AppContainer.production()` here, so it needs an injected seam
+                // first. Deliberately deferred: the seam is a composition-root
+                // change on a critical path, and the residual no longer leaks
+                // credentials.
                 NSLog("Authentication might be needed after all")
                 AppContainer.production().networkExecutor.refreshTokenAndResume(task: task)
                 return
@@ -213,6 +250,53 @@ final class BackgroundDownloadHandler: NSObject {
         return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
     }
 
+    /// The account whose credentials a download's re-issued request should use —
+    /// the account it was STARTED under, not whichever is current now.
+    ///
+    /// Resolved from the durable started-task record, keyed by book id.
+    ///
+    /// KNOWN BOUND on that record, stated because it is the premise this rests on:
+    /// it is written at download start AND rewritten on each transfer-retry
+    /// re-issue (`persistStartedTaskRecord`, called from `addDownloadTask` and
+    /// from the retry path), and `DownloadTaskPersistence.record` upserts by book
+    /// id. So a transfer retry that happens AFTER a library switch overwrites the
+    /// captured account with the then-current one, and this resolver would then
+    /// return that. It is a narrowing, not a guarantee: the record is the best
+    /// available approximation of "the account this download started under", not a
+    /// true capture of it. Closing that needs the retry to preserve the original
+    /// account, which is out of scope here.
+    ///
+    /// Degrades to `delegate.userAccount` — today's
+    /// behaviour — when there is no record or its account is empty, so this can
+    /// only ever narrow the set of requests carrying the wrong library's
+    /// credential via THOSE ARMS — never widen it. Scoped deliberately: the
+    /// retry bound above admits one narrow widening sequence (start under A,
+    /// switch to B, transient retry rewrites the record to B, switch back to A,
+    /// re-issue then resolves B where today's current-account read would have
+    /// resolved A). Two switches plus an intervening retry, against a defect
+    /// that fires on one switch — strongly narrowing on net, but not an
+    /// absolute. The start path writes
+    /// `account: currentAccountID ?? ""`, so the empty case is real, not defensive.
+    ///
+    /// Same two-hop shape as the challenge-side resolver PP-4969 added; keyed by
+    /// book rather than task because a re-issued task has no record of its own.
+    ///
+    /// Takes the delegate rather than reading `self.delegate`: every call site has
+    /// already unwrapped it, so there is no nil arm to invent a fallback for — and
+    /// the fallback an earlier draft used reached `AppContainer.production()` from
+    /// a collaborator, which is the composition-root rule this project holds.
+    func startedForAccount(for book: TPPBook, delegate: BackgroundDownloadHandlerDelegate) -> TPPUserAccount {
+        guard let startedAccountID = delegate.stateManager
+            .persistedRecords()
+            .first(where: { $0.bookID == book.identifier })?
+            .account,
+            !startedAccountID.isEmpty
+        else {
+            return delegate.userAccount
+        }
+        return delegate.userAccount(forCapturedId: startedAccountID)
+    }
+
     /// Shared follow-up step for both OPDS-entry XML and OPDS2 JSON publication
     /// paths. Given a book whose `defaultAcquisition` resolves to a direct
     /// content URL (not another opds-catalog), this swaps the original task
@@ -252,7 +336,10 @@ final class BackgroundDownloadHandler: NSObject {
         let newRights = detectRightsManagement(from: acquisition.type)
 
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
-        if let token = delegate.userAccount.authToken {
+        // PP-4978: the account this download STARTED under. Keyed on
+        // `originalBook` because the record was written under it at download start;
+        // the follow-up may carry an updated book.
+        if let token = startedForAccount(for: originalBook, delegate: delegate).authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -265,6 +352,31 @@ final class BackgroundDownloadHandler: NSObject {
 
         await stateManager.bookIdentifierToDownloadInfo.set(updatedBook.identifier, value: downloadInfo)
         await stateManager.taskIdentifierToBook.set(newTask.taskIdentifier, value: updatedBook)
+
+        // PP-5023: durably record the task this path starts. Until it did, the
+        // task was invisible to launch reconciliation's contested-URL guard,
+        // which is computed from persisted records alone — so another book whose
+        // record named this same URL saw exactly one live task on it and adopted
+        // THIS download, receiving a file for a title the patron never asked for.
+        //
+        // `inheritingFrom: originalBook` because the record was written under the
+        // original at download start, and this re-registers under a book parsed
+        // from the server's OPDS entry whose identifier can differ. Ordered before
+        // the removal below so the account is read while the source record exists.
+        stateManager.persistReissuedTask(
+            bookID: updatedBook.identifier,
+            taskIdentifier: newTask.taskIdentifier,
+            downloadURL: acquisitionURL,
+            inheritingFrom: originalBook.identifier,
+            stampingAccountOn: newTask)
+
+        if originalBook.identifier != updatedBook.identifier {
+            // The superseded record names a task that no longer exists, under a
+            // book no longer downloading under that id. Leaving it is not inert:
+            // it is a record that can adopt some other book's live task on its
+            // URL, which is this ticket's own defect pointed the other way.
+            stateManager.removePersistedRecord(for: originalBook.identifier)
+        }
 
         newTask.resume()
         Log.info(#file, "Started follow-up download task \(newTask.taskIdentifier) for \(updatedBook.identifier)")

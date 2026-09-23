@@ -72,33 +72,58 @@ final class AdversarialChaosTests: XCTestCase {
 
     // MARK: - LocalClassifier degenerate cases
 
-    /// Chaos-qa F-002 (2026-05-29) regression: when a user's text overlaps
-    /// exactly ONE keyword with a KI, the local classifier must NOT
-    /// confidently suggest — single keyword overlap is not enough signal.
-    /// Escalating routes the case to the AI fallback (Claude) which has
-    /// semantic context to either confirm or reject. Before this rule,
-    /// "my library account keeps asking me to log in" matched KI-004
-    /// wrong-library at confidence 0.33 via the single token "my library",
-    /// misdirecting an auth complaint to demo-collection guidance.
-    func testClassifier_singleKeywordMatch_escalates_F002_regression() {
-        let kb = KnowledgeBase(catalog: KBCatalog(version: "test", updatedAt: "x", entries: [
+    /// Chaos-qa F-002 (2026-05-29) regression: an auth complaint whose ONLY
+    /// overlap with the wrong-library entry is the weak token "my library" must
+    /// not be handed demo-collection guidance. The original defect was
+    /// "my library account keeps asking me to log in" matching KI-004 at
+    /// confidence 0.33 on that one token.
+    ///
+    /// The guard is that weak evidence cannot carry a suggestion by itself —
+    /// "my library" lives in `corroborating_keywords`, so it sharpens a real
+    /// match but can never be one. (This previously asserted the same property
+    /// via a COUNT floor of two matches. The fixture had drifted to the input
+    /// "I think I'm using the wrong library", which matches the decisive phrase
+    /// "wrong library" — a case where suggesting is the RIGHT answer, so it no
+    /// longer described F-002. Restored to the defect's actual shape.)
+    func testClassifier_weakKeywordMatchAlone_escalates_F002_regression() {
+        let result = LocalClassifier().classify(
+            userText: "my library account keeps asking me to log in",
+            category: .library,
+            knowledgeBase: Self.wrongLibraryKB
+        )
+        XCTAssertEqual(result.decision, .escalate,
+            "A lone weak-keyword match must escalate, not confidently misroute an auth complaint")
+    }
+
+    /// The other half of the same contract, and the reason the count floor had to
+    /// go: a patron who writes the one decisive phrase gets the workaround. Under
+    /// the old ≥2-match rule this escalated, which is what left QA unable to reach
+    /// any troubleshooting steps (PP-4865).
+    func testClassifier_singleStrongKeywordMatch_suggests() {
+        let result = LocalClassifier().classify(
+            userText: "I think I'm using the wrong library",
+            category: .library,
+            knowledgeBase: Self.wrongLibraryKB
+        )
+        XCTAssertEqual(result.decision, .suggest(entryId: "KI-WRONG-LIB"),
+            "One decisive phrase is sufficient evidence — this is how patrons actually write")
+    }
+
+    /// Shared so both halves are scored against the identical entry; the only
+    /// variable between them is the strength of the keyword the patron hit.
+    private static let wrongLibraryKB = KnowledgeBase(
+        catalog: KBCatalog(version: "test", updatedAt: "x", entries: [
             KBEntry(
                 id: "KI-WRONG-LIB",
                 category: .library,
                 status: .userError,
-                symptomKeywords: ["wrong library", "demo books", "bookshelf"],
+                symptomKeywords: ["wrong library", "demo books"],
+                corroboratingKeywords: ["my library", "bookshelf"],
                 userFacingWorkaround: "...",
                 confidenceThreshold: 0.1
             )
-        ]))
-        let result = LocalClassifier().classify(
-            userText: "I think I'm using the wrong library",
-            category: .library,
-            knowledgeBase: kb
-        )
-        XCTAssertEqual(result.decision, .escalate,
-            "Single keyword match must escalate — surfaces to AI fallback, not a confident wrong suggestion")
-    }
+        ])
+    )
 
     func testClassifier_emptyKB_returnsEscalate() {
         let kb = KnowledgeBase(catalog: KBCatalog(version: "empty", updatedAt: "2026-05-28", entries: []))

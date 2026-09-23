@@ -3,7 +3,11 @@ import Foundation
 /**
  Represents a Problem Document, outlined in https://tools.ietf.org/html/rfc7807
  */
-@objcMembers public class TPPProblemDocument: NSObject, Codable {
+// Sendable: `final` + every stored property is an immutable `let` of a Sendable
+// value type (String?/Int?). The APIs that return mutable shapes
+// (`dictionaryValue`, `stringValue`) are computed and build fresh values per call.
+// NSObject is an allowed superclass for a checked Sendable conformance.
+@objcMembers public final class TPPProblemDocument: NSObject, Codable, Sendable {
     public static let TypeNoActiveLoan =
         "http://librarysimplified.org/terms/problem/no-active-loan"
     public static let TypeLoanAlreadyExists =

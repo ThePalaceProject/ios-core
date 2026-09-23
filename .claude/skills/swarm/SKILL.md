@@ -595,9 +595,9 @@ done
 # test method that contains BOTH `handleAction(for: .get)` (or the
 # cell-side `callDelegate(for: .get)`) AND the new content-type literal
 # in the same method body.
-if git diff --cached -- 'Palace/Book/Models/TPPContentType.swift' 'Palace/Book/Models/TPP*.swift' 2>/dev/null | grep -qE "^\+\s*case\s+\w+"; then
+if git diff --cached -- 'Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPContentType.swift' 'Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPP*.swift' 2>/dev/null | grep -qE "^\+\s*case\s+\w+"; then
   # New TPPBookContentType case added — find it and verify integration test exists.
-  NEW_CT_CASES=$(git diff --cached -- 'Palace/Book/Models/TPPContentType.swift' 2>/dev/null | grep -oE "^\+\s*case\s+\w+" | sed -E 's/^\+\s*case\s+//' | sort -u)
+  NEW_CT_CASES=$(git diff --cached -- 'Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPContentType.swift' 2>/dev/null | grep -oE "^\+\s*case\s+\w+" | sed -E 's/^\+\s*case\s+//' | sort -u)
   for case_name in $NEW_CT_CASES; do
     # Look for staged test files referencing both .get handleAction AND the new case literal.
     if ! git diff --cached --name-only | grep "PalaceTests/.*Tests\.swift$" | xargs grep -l "handleAction(for: \.get)\|callDelegate(for: \.get)" 2>/dev/null | xargs grep -l "\.${case_name}\b" 2>/dev/null >/dev/null; then
@@ -702,7 +702,7 @@ mcp__forgeos__forge_submit_evidence:
       - { option: "<rejected option>", rejected_because: "<reason>" }
 ```
 
-Each contract becomes one ADR. Submit them serially. If the contract bundles multiple decisions (e.g., A: protocol shape + B: lifecycle ownership), split into two submissions. The architect's contract titles + acceptance criteria are usually directly usable as `decision` + `consequences` after trimming. Skip wall-failures here — they go through `scripts/forgeos-submit-wall-failure.py` separately per `.forgeos/wall-failures/README.md` workflow step 4.
+Each contract becomes one ADR. Submit them serially. If the contract bundles multiple decisions (e.g., A: protocol shape + B: lifecycle ownership), split into two submissions. The architect's contract titles + acceptance criteria are usually directly usable as `decision` + `consequences` after trimming. Skip wall-failures here — they go through `~/harness/stacks/ios/forgeos/forgeos-submit-wall-failure.py` separately per `.forgeos/wall-failures/README.md` workflow step 4.
 
 Write `.forgeos/swarms/<swarm_id>/outcome.md` with: status, modules touched, files changed, tests added, reviewer verdicts (both rounds if any), total agent count, lessons learned, **list of wall-failure entries created and their `applied_in` status**, and **list of ADR ids submitted with the modules they cover** (`adr_<8hex>` for each contract). The outcome.md ADR list is the human-readable counterpart to the ForgeOS ledger entries.
 

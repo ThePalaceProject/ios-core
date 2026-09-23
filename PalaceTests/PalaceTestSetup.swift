@@ -25,7 +25,11 @@ class PalaceTestSetup: NSObject {
     /// our retain, ARC drops the observer immediately after
     /// `addTestObserver(_:)` returns and `testCaseDidFinish(_:)` never
     /// fires. This `static var` retain is load-bearing.
-    private static var observer: PalaceSingletonResetObserver?
+    private static let _observer = LockIsolated<PalaceSingletonResetObserver?>(nil)
+    private static var observer: PalaceSingletonResetObserver? {
+        get { _observer.value }
+        set { _observer.value = newValue }
+    }
 
     override init() {
         super.init()
@@ -42,6 +46,15 @@ class PalaceTestSetup: NSObject {
         if let existing = observer { return existing }
 
         NoNetworkURLProtocol.enable()
+
+        // #3 hermeticity: `NoNetworkURLProtocol.enable()` (above) registers the
+        // stub for `URLSession.shared`, but the SHARED `TPPNetworkExecutor` builds
+        // its own `URLSession(configuration:)`, which consults only
+        // `config.protocolClasses` — so `AccountsManager.fallbackDirectRefresh`
+        // (and any executor GET) would escape to the real
+        // `registry.palaceproject.io` in tests. Install the stub onto the
+        // executor's config via AppContainer's non-DEBUG test seam.
+        AppContainer.testExecutorProtocolClasses = [NoNetworkURLProtocol.self]
 
         // swarm_4b64e4e0 Wave 1d fix — pin the
         // `deferInitialLoadCatalogsForTesting` flag to `true` BEFORE any test
@@ -67,11 +80,39 @@ class PalaceTestSetup: NSObject {
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
 
+        // PP-4957: pin the LCP-audiobook-streaming flag OFF for the whole test
+        // run. MyBooksDownloadCenter / LCPFulfillmentHandler / AudiobookSessionManager
+        // default their streaming provider to `RemoteFeatureFlags.shared`, whose
+        // value in the test host is otherwise non-deterministic (FirebaseManager
+        // state + prior-run `.standard` residue) — which flaked the download-first
+        // reconcile / fulfillment tests on unlucky shuffles. Streaming tests inject
+        // their own provider (bypassing `.shared`) and are unaffected. Re-pinned
+        // after every test by the registered resetter below.
+        UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+
         let obs = PalaceSingletonResetObserver()
         XCTestObservationCenter.shared.addTestObserver(obs)
         observer = obs
 
         registerBuiltInResetters()
+
+        // #3 (cont.): the host Palace app has ALREADY built the cached
+        // `AppContainer` (and its network executor) during app launch — which
+        // happened BEFORE this test-bundle principal class loaded and set
+        // `testExecutorProtocolClasses` above. So that launch-built executor does
+        // NOT have NoNetworkURLProtocol installed; without a rebuild, the FIRST
+        // test in any run (which has no prior `_resetForTesting` to rebuild the
+        // graph) would use it and escape to the real network. Rebuild the cached
+        // graph now, with the seam set, so EVERY test (including the first) gets
+        // an executor routed through the stub. Subsequent per-test
+        // `_resetForTesting` calls keep it. Runs on the main thread (principal
+        // class load). NON-#if-DEBUG on purpose: the test build uses a config
+        // WITHOUT `DEBUG` defined (PalaceTests' `SWIFT_ACTIVE_COMPILATION_CONDITIONS`
+        // is `LCP FEATURE_OVERDRIVE`), so a `#if DEBUG` guard here would compile
+        // out and skip the rebuild — measured: the executor then keeps the
+        // launch-built session with no stub. `_rebuildCachedForTestProtocols()`
+        // is a plain internal seam (no #if DEBUG), reachable via @testable import.
+        AppContainer._rebuildCachedForTestProtocols()
 
         return obs
     }
@@ -90,6 +131,35 @@ class PalaceTestSetup: NSObject {
     private static func registerBuiltInResetters() {
         let registry = SingletonResetRegistry.shared
 
+        // Purge the on-disk catalog/auth caches after EVERY test — not just
+        // `PalaceWiringTestCase` subclasses (which do their own purge). A test that
+        // flips `deferInitialLoadCatalogsForTesting` back to `false` (e.g.
+        // AppContainerResetTests) lets the background `loadCatalogs` write the
+        // ~1142-account bundled catalog to `accounts_catalog_<hash>.json`. If that
+        // file survives the boundary, the NEXT test's `preloadAccountsFromDiskCacheSync`
+        // parses all 1142 under CPU starvation, holding the `accountSetsLock` barrier
+        // long enough to hang a later `performRead` (`account(uuid:)`) to the 120s
+        // execution allowance — the AccountsManager-suite lock-jam flakes that hit
+        // even Accounts-unrelated PRs. Registered FIRST so the stale file is gone
+        // before `AppContainer._resetForTesting` recreates + preloads. Mirrors the
+        // prefix list `AccountsManager.clearCache()` uses at runtime.
+        registry.register("AccountsDiskCache.purge") {
+            let prefixes = [
+                "library_list_", "accounts_catalog_", "accounts_catalog_metadata_",
+                "authentication_document_", "crawl_state_",
+            ]
+            let fm = FileManager.default
+            guard let appSupport = try? fm.url(for: .applicationSupportDirectory,
+                                               in: .userDomainMask,
+                                               appropriateFor: nil, create: false),
+                  let files = try? fm.contentsOfDirectory(at: appSupport,
+                                                          includingPropertiesForKeys: nil)
+            else { return }
+            for file in files where prefixes.contains(where: { file.lastPathComponent.hasPrefix($0) }) {
+                try? fm.removeItem(at: file)
+            }
+        }
+
         registry.register("AppContainer._resetForTesting") {
             #if DEBUG
             // Module B's `Palace/AppInfrastructure/AppContainer.swift`
@@ -103,6 +173,27 @@ class PalaceTestSetup: NSObject {
             MainActor.assumeIsolated {
                 AppContainer._resetForTesting()
             }
+            #endif
+        }
+
+        // Drain EVERY live AccountsManager's background work at the boundary —
+        // not just the shared one AppContainer recreates. The root of the
+        // order-dependent Accounts-suite flakes is a pending `DispatchQueue.main.async`
+        // auth-doc drive (from `preloadAccountsFromDiskCacheSync`'s deferred
+        // `driveCurrentAccountAuthDocIfNeeded()`) enqueued at EVERY AccountsManager
+        // init — including foreign instances built by test helpers. It is NOT a
+        // Task, so `cancelBackgroundWork()` can't stop it; left un-flushed it fires
+        // on a later runloop turn INSIDE the next test and writes a fixture library
+        // UUID's `.detailsLoading`/`.detailsFailed` into it. `cancelAndDrainBackgroundWork`
+        // (invoked per live instance by `_drainAllLiveInstancesForTesting`) PUMPS
+        // the main run loop (bounded) so every such pending hop fires NOW, inside
+        // the boundary — after `AppContainer._resetForTesting` above (so the
+        // just-recreated shared instance is included) and BEFORE the store reset
+        // below (so any flushed late-write is then wiped). This is the missing wire:
+        // the drain existed but ran only in one bespoke test, never per-boundary.
+        registry.register("AccountsManager._drainAllLiveInstancesForTesting") {
+            #if DEBUG
+            AccountsManager._drainAllLiveInstancesForTesting()
             #endif
         }
 
@@ -120,6 +211,54 @@ class PalaceTestSetup: NSObject {
 
         registry.register("URLSession._resetStubbedSession") {
             URLSession._resetStubbedSession()
+        }
+
+        // Restore ImageCache.shared's processing queue after every test.
+        // ImageCacheContinuationTests suspends the shared queue; without this
+        // fallback a mid-suspend abort would leave it suspended and hang every
+        // later getAsync — a whole-suite test-isolation hazard.
+        registry.register("ImageCache._resetForTesting") {
+            ImageCache.shared._resetForTesting()
+        }
+
+        // Clear the process-global MockBackend config after every test.
+        // `MockBackendTestHelper.activate(...)` sets these statics in setUp
+        // and clears them in the test's own tearDown; a test that aborts
+        // before tearDown leaks an `activeScenario`, and `canInit(with:)`
+        // (gated on `activeScenario != nil`) then intercepts EVERY later
+        // request — serving fixtures / canned 401s and corrupting
+        // network-dependent tests. This is the un-reset twin of the
+        // registered `HTTPStubURLProtocol.removeAllHandlers`. Pure,
+        // synchronous clear (no `MockBackendService.shared.deactivate()`,
+        // which would recreate the session on the MainActor).
+        //
+        // NOT `#if DEBUG`-gated: the PalaceTests target does not define
+        // DEBUG (its compilation conditions are "LCP FEATURE_OVERDRIVE").
+        // The protocol's `#if DEBUG` gate is on the *Palace* module, which
+        // the test bundle links via `@testable import Palace` after Palace
+        // is built in Debug — so these statics are always visible here.
+        // `MockBackendTestHelper` already references them unconditionally.
+        registry.register("MockBackendURLProtocol._resetForTesting") {
+            MockBackendURLProtocol.activeScenario = nil
+            MockBackendURLProtocol.scopedHost = nil
+            MockBackendURLProtocol.fixtureDirectoryPath = nil
+            MockBackendURLProtocol.fixtureBundle = .main
+        }
+
+        // Clear the process-global Chaos fault plan after every test. A
+        // ChaosURLProtocol test that aborts before tearDown leaves a leaked
+        // `_plan`, which then faults later requests. `reset()` is a fast,
+        // synchronous clear that also invalidates any leaked chaos sessions.
+        registry.register("ChaosURLProtocol.reset") {
+            ChaosURLProtocol.reset()
+        }
+
+        // PP-4957: re-pin the LCP-audiobook-streaming flag OFF after every test,
+        // so a test that flips it (e.g. the DeveloperSettings toggle) cannot leak
+        // an ON value into the next test's default streaming providers. See the
+        // bootstrap-time pin above for the rationale.
+        registry.register("RemoteFeatureFlags.lcpStreamingOverride.pinOff") {
+            UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
         }
     }
 }
@@ -203,9 +342,12 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
         let delta = post - pre
         lastObservedDeltaForTesting = delta
         if delta > 0 {
+            // Swift 6: capture the name (Sendable String) so the runActivity
+            // closure doesn't send the non-Sendable `testCase` across a boundary.
+            let testCaseName = testCase.name
             XCTContext.runActivity(named: "NotificationCenter observer leak (\(delta) net adds)") { activity in
                 let attachment = XCTAttachment(string:
-                    "Test \(testCase.name) added \(delta) NotificationCenter.default observer(s) without paired remove. " +
+                    "Test \(testCaseName) added \(delta) NotificationCenter.default observer(s) without paired remove. " +
                     "Pre=\(pre), Post=\(post). Route through an injected NotificationCenter or call " +
                     "removeObserver in tearDown."
                 )
@@ -234,9 +376,10 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
 
     /// Returns the current observer count from `NotificationCenter.default`
     /// when reachable. Best-effort — returns nil if the runtime-private
-    /// API is unavailable. Audit-only — used solely for delta warnings,
-    /// never as a hard assertion.
-    private static func sampleObserverCount() -> Int? {
+    /// API is unavailable. Audit-only — used for delta warnings here and by
+    /// `PalaceTestCase`'s per-test observer-leak gate (warn-only until the
+    /// false-positive audit clears promotion to a hard XCTFail).
+    static func sampleObserverCount() -> Int? {
         // The implementation uses a `debugDescription` parse — the
         // `debugDescription` of NSNotificationCenter contains a line of
         // the form `<NSNotificationCenter: 0x...> observers: <N>` on

@@ -22,13 +22,32 @@ protocol ScriptEvaluating: AnyObject {
     )
 }
 
-extension WKWebView: ScriptEvaluating {
+// `@preconcurrency`: `WKWebView` is `@MainActor` while `ScriptEvaluating` is
+// nonisolated, so the conformance crosses actor isolation. The protocol is only
+// ever used from `@MainActor` sites (the VC below, and `@MainActor` tests), so
+// the preconcurrency conformance is sound.
+extension WKWebView: @preconcurrency ScriptEvaluating {
     func evaluate(
         _ javaScript: String,
         completion: ((Any?, Error?) -> Void)?
     ) {
-        evaluateJavaScript(javaScript, completionHandler: completion)
+        // `evaluateJavaScript(_:completionHandler:)` expects a `@Sendable`
+        // handler. Box the non-Sendable `completion` so the `@Sendable` closure
+        // captures only the (Sendable) box; the boxed closure is invoked once,
+        // on the main actor (where the handler fires), never concurrently.
+        let box = ScriptCompletionBox(completion)
+        evaluateJavaScript(javaScript) { result, error in
+            box.call?(result, error)
+        }
     }
+}
+
+/// Sendable carrier for the non-Sendable JS completion handler so it can cross
+/// into the `@Sendable` `evaluateJavaScript` completion boundary. Invoked once,
+/// on the main actor, never concurrently — so `@unchecked Sendable` is sound.
+private final class ScriptCompletionBox: @unchecked Sendable {
+    let call: ((Any?, Error?) -> Void)?
+    init(_ call: ((Any?, Error?) -> Void)?) { self.call = call }
 }
 
 /// UIKit shell for the streaming reader. The SwiftUI surface area uses

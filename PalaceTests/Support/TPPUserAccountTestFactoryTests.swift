@@ -15,6 +15,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPUserAccountTestFactoryTests: XCTestCase {
 
     override func setUpWithError() throws {

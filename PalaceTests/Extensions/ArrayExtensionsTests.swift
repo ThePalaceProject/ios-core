@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ArrayExtensionsTests: XCTestCase {
 
   // MARK: - Safe Subscript Getter

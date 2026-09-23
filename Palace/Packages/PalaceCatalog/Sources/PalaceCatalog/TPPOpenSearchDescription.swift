@@ -18,33 +18,39 @@ import PalaceNetwork
   /// `AppContainer.production().networkExecutor`. Callers now pass a
   /// `NetworkClient` explicitly (typically the app target's
   /// `networkExecutor` exposed via `AppContainer`).
+  /// Returns `nil` on any failure (network error, unparseable XML, or XML that
+  /// is not a valid OpenSearch description); failures are logged at the call
+  /// site here rather than surfaced as thrown errors to preserve the prior
+  /// completion-handler contract.
+  ///
+  /// Rewritten from a completion-handler signature to `async` during the Swift 6
+  /// strict-concurrency migration: the old form captured a non-`Sendable`
+  /// `(TPPOpenSearchDescription?) -> Void` closure inside a `Task`, which is an
+  /// error under the Swift 6 language mode. Hopping back to the caller via
+  /// `await` instead of `MainActor.run { completionHandler(...) }` removes the
+  /// `@Sendable` capture entirely.
   public static func withURL(
     _ url: URL,
-    networkClient: NetworkClient,
-    completionHandler: @escaping (TPPOpenSearchDescription?) -> Void
-  ) {
-    Task {
-      do {
-        let request = NetworkRequest(method: .GET, url: url)
-        let response = try await networkClient.send(request)
+    networkClient: NetworkClient
+  ) async -> TPPOpenSearchDescription? {
+    do {
+      let request = NetworkRequest(method: .GET, url: url)
+      let response = try await networkClient.send(request)
 
-        guard let xml = TPPXML.xml(withData: response.data) else {
-          Log.log("TPPOpenSearchDescription: Failed to parse data as XML.")
-          await MainActor.run { completionHandler(nil) }
-          return
-        }
-
-        guard let description = TPPOpenSearchDescription(xml: xml) else {
-          Log.log("TPPOpenSearchDescription: Failed to interpret XML as OpenSearch description document.")
-          await MainActor.run { completionHandler(nil) }
-          return
-        }
-
-        await MainActor.run { completionHandler(description) }
-      } catch {
-        Log.log("TPPOpenSearchDescription: Network error: \(error)")
-        await MainActor.run { completionHandler(nil) }
+      guard let xml = TPPXML.xml(withData: response.data) else {
+        Log.log("TPPOpenSearchDescription: Failed to parse data as XML.")
+        return nil
       }
+
+      guard let description = TPPOpenSearchDescription(xml: xml) else {
+        Log.log("TPPOpenSearchDescription: Failed to interpret XML as OpenSearch description document.")
+        return nil
+      }
+
+      return description
+    } catch {
+      Log.log("TPPOpenSearchDescription: Network error: \(error)")
+      return nil
     }
   }
 

@@ -11,6 +11,8 @@
 
 import XCTest
 import PalaceCatalog
+import PalaceBookModel
+import PalacePreferences
 @testable import Palace
 
 @MainActor
@@ -158,8 +160,85 @@ final class BookDetailLCPContentProgressTests: XCTestCase {
                        "real transfer progress must reach the bar after the reset")
     }
 
-    /// End-to-end through the decision the view actually renders.
-    func testCueIsVisibleForTheWholeContentDownload() async {
+    // MARK: - contentRequiredBeforePlayback wiring
+    //
+    // Added because review found the SAME hole for a FOURTH time in this change:
+    // a pure rule covered while the code computing its input was not. Every
+    // `resolve` call in the suite passed this argument as a literal, so dropping
+    // the `!` in `BookDetailViewModel` inverted the streaming-OFF fix and the
+    // whole suite stayed green. The seam's own doc comment claimed it existed
+    // "so a test can drive both flag states"; none did.
+
+    func testContentRequiredBeforePlayback_isTrueWhenStreamingIsOff() {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let vm = makeViewModel(for: book)
+        vm.downloadCenter.lcpStreamingEnabledProvider = { false }
+
+        XCTAssertTrue(vm.contentRequiredBeforePlayback,
+                      "streaming OFF means the archive must land before the book opens — the patron IS waiting")
+    }
+
+    func testContentRequiredBeforePlayback_isFalseWhenStreamingIsOn() {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let vm = makeViewModel(for: book)
+        vm.downloadCenter.lcpStreamingEnabledProvider = { true }
+
+        XCTAssertFalse(vm.contentRequiredBeforePlayback,
+                       "streaming ON means the book plays from its license and the archive is a prefetch")
+    }
+
+    /// End to end through the real property rather than a literal: streaming OFF
+    /// plus a live content transfer must still show the bar for a playable book.
+    func testCue_streamingOff_showsTheBarForAPlayableBook_drivenByTheViewModel() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let vm = makeViewModel(for: book)
+        vm.downloadCenter.lcpStreamingEnabledProvider = { false }
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
+        await waitUntil { vm.isDownloadingLCPContent }
+
+        let cue = HalfSheetProgressCue.resolve(
+            isBorrowProcessing: vm.isBorrowProcessing,
+            downloadProgress: vm.downloadProgress,
+            bookState: .downloadSuccessful,
+            buttonState: .downloadSuccessful,
+            isDownloadingLCPContent: vm.isDownloadingLCPContent,
+            contentRequiredBeforePlayback: vm.contentRequiredBeforePlayback
+        )
+
+        XCTAssertEqual(cue, .downloading,
+                       "streaming OFF: the patron cannot play until this lands, so the bar is the only signal")
+    }
+
+    /// End-to-end through the decision the view actually renders, for the case
+    /// where the patron is genuinely waiting: the archive is still required
+    /// before playback, so the book has not resolved to an open affordance.
+    func testCueIsVisibleForTheWholeContentDownload_whileTheBookIsNotYetPlayable() async {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let vm = makeViewModel(for: book)
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
+        await waitUntil { vm.isDownloadingLCPContent }
+
+        let cue = HalfSheetProgressCue.resolve(
+            isBorrowProcessing: vm.isBorrowProcessing,
+            downloadProgress: vm.downloadProgress,
+            bookState: .downloadNeeded,
+            buttonState: .downloadNeeded,
+            isDownloadingLCPContent: vm.isDownloadingLCPContent,
+            contentRequiredBeforePlayback: false
+        )
+
+        XCTAssertEqual(cue, .downloading,
+                       "the sheet must show a bar while the archive transfers — the silence is what patrons read as failure")
+    }
+
+    /// The same live flag, once the book is playable. With PP-4957 streaming on,
+    /// `.downloadSuccessful` renders Listen and the archive is a background
+    /// prefetch for offline use, so the sheet must NOT draw a bar beside a
+    /// button that already works. Drives the real published flag rather than a
+    /// literal so the view-model wiring and the cue are pinned together.
+    func testCueIsIdleOnceTheBookIsPlayable_evenWhileTheArchiveStillTransfers() async {
         let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
         let vm = makeViewModel(for: book)
 
@@ -171,10 +250,11 @@ final class BookDetailLCPContentProgressTests: XCTestCase {
             downloadProgress: vm.downloadProgress,
             bookState: .downloadSuccessful,
             buttonState: .downloadSuccessful,
-            isDownloadingLCPContent: vm.isDownloadingLCPContent
+            isDownloadingLCPContent: vm.isDownloadingLCPContent,
+            contentRequiredBeforePlayback: false
         )
 
-        XCTAssertEqual(cue, .downloading,
-                       "the sheet must show a bar while the archive transfers — the silence is what patrons read as failure")
+        XCTAssertEqual(cue, .idle,
+                       "the patron can already listen — a determinate bar here tells them to wait for nothing")
     }
 }

@@ -1,13 +1,37 @@
 import UIKit
 import Combine
-import ReadiumShared
+import PalaceBookRegistry
+// `@preconcurrency`: ReadiumShared is not Sendable-audited upstream; its
+// `Publication`, `Link`, and `Locator` cross `await` boundaries into this
+// `@MainActor` type (TOC/positions loads, sync, locator conversion). Matches the
+// established convention in `TPPBaseReaderViewController`, `ReaderModule`,
+// `TPPLastReadPositionSynchronizer`, etc. Honest ceiling until Readium annotates.
+@preconcurrency import ReadiumShared
 import PalaceLogging
+import PalaceBookModel
 #if LCP
 import ReadiumLCP
 #endif
 
+/// `@MainActor`-isolated: every instance method already hopped to the main
+/// actor (all `open*` / `release*` / present* entry points were annotated
+/// `@MainActor`), and all mutable stored state (`redownloadObservers`,
+/// `openGenerationByBookId`, `openInFlightBookIds`, …) is touched only from
+/// those methods. Hoisting the annotation to the type makes that isolation
+/// explicit, makes `self` a `Sendable` main-actor reference so the
+/// `Task.detached` decrypt/extract closures no longer trigger `sending self`
+/// under `complete` checking, and lets `AppContainer` hold `readerService`
+/// as a `Sendable` member. The two `static` helpers that run off the main
+/// actor (`residentMemoryMB`, `ms`) are marked `nonisolated` so the
+/// background decrypt loop can still read them.
+@MainActor
 final class ReaderService {
-    init() {}
+    /// `nonisolated` so the composition root
+    /// (`AppContainer._buildCachedAppContainer()`, which runs off the main
+    /// actor on the first `production()` caller's thread) can construct the
+    /// service without a `MainActor.assumeIsolated` hop. The initializer
+    /// stores nothing and touches no main-actor state.
+    nonisolated init() {}
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
 
@@ -27,6 +51,26 @@ final class ReaderService {
     private var openGenerationByBookId: [String: Int] = [:]
     private var openInFlightBookIds: Set<String> = []
 
+    /// Weak box so a torn-down stack cannot be revived by this bookkeeping.
+    private struct WeakCoordinator {
+        weak var value: NavigationCoordinator?
+    }
+
+    /// The navigation stack each in-flight open pushed onto.
+    ///
+    /// PP-5022 — a completion must act on the stack the open TARGETED, never on
+    /// whatever happens to be visible when it lands. An LCP open runs for
+    /// seconds or minutes; the patron can back out of the loading view (which
+    /// restores the tab bar) and change tabs while the extract is still going.
+    /// Before tab-scoped resolution, re-resolving at completion was an ordering
+    /// accident that usually landed on the right stack; afterwards it is
+    /// RELIABLY the wrong one. Concretely, `abortRunawayOpen` would pop a route
+    /// the patron had just pushed on the visible tab, and `handOffExtractedPDF`
+    /// would clear the pending flag on the wrong stack — stranding the original
+    /// tab under a loading overlay that never resolves.
+    private var openCoordinatorByBookId: [String: WeakCoordinator] = [:]
+
+    @MainActor
     private func topPresenter() -> UIViewController? {
         guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
             Log.warn(#file, "No root view controller available — cannot present reader")
@@ -50,13 +94,19 @@ final class ReaderService {
         // coordinator after the NEW open already started.
         openGenerationByBookId[identifier, default: 0] += 1
         openInFlightBookIds.remove(identifier)
+        // PP-5022 — tear down on the stack the open TARGETED when one was
+        // recorded; fall back to the visible stack for callers that never went
+        // through `openLCPPDF` (the reader view's own dismiss, where the two
+        // are the same object anyway).
+        let target = openCoordinatorByBookId[identifier]?.value
+            ?? AppContainer.production().navigationCoordinatorHub.coordinator
+        openCoordinatorByBookId.removeValue(forKey: identifier)
         // Only clear the progress reporter if it was tracking this book.
         // A back-out from book A shouldn't wipe a parallel open for B.
         if LCPPDFOpenProgress.shared.bookIdentifier == identifier {
             LCPPDFOpenProgress.shared.finish()
         }
-        AppContainer.production().navigationCoordinatorHub.coordinator?
-            .removeReadiumPDF(forBookId: identifier)
+        target?.removeReadiumPDF(forBookId: identifier)
     }
 
     @MainActor
@@ -76,46 +126,107 @@ final class ReaderService {
         openEPUBInternal(book, isRetry: false)
     }
 
-    /// Opens an LCP-protected PDF through the Readium pipeline:
-    /// `AssetRetriever` + `PublicationOpener` → `Publication` served by
-    /// `httpServer` → `PDFNavigatorViewController`. No temp-extract step.
+    /// PDF open entry point for every caller (BookDetail, My Books, and the
+    /// Continue-reading card). Routes on encryption:
+    ///   - LCP-protected PDFs → `openLCPPDF` (Readium publication open +
+    ///     chunked disk extract → PDFKit).
+    ///   - Plain (non-LCP) PDFs → `openPlainPDF` (PDFKit `PDFDocument(url:)`
+    ///     mmap, no publication/extract hop).
     ///
-    /// The route is pushed IMMEDIATELY so the reader view appears with
-    /// its own loading state — the publication open + TOC pre-load run
-    /// asynchronously in the background, and the reader view re-renders
-    /// when the publication lands. This is intentional: LCP open on large
-    /// Marketplace containers involves hundreds of synchronous AES decrypt
-    /// calls (visible in `TPPLCPClient.swift: Successfully decrypted ...`
-    /// logs) and can take 30-60s. Holding the user on the book detail
-    /// page during that window makes the app feel frozen.
+    /// Gating lives here rather than only in `BookService.presentPDF` so that
+    /// EVERY caller stays correct through a single seam. The Continue-reading
+    /// card called this method directly while it was LCP-only, so tapping a
+    /// plain downloaded PDF (an open-access title) drove it through the LCP
+    /// extract pipeline and failed with a spurious "unable to open" alert.
     ///
-    /// `onFinish` fires once the route has been pushed (or the open has
-    /// failed and an alert is queued). It does NOT wait for the
-    /// publication itself — callers that want to clear a button spinner
-    /// can do so as soon as the reader appears.
-    /// LCP PDF open flow — **disk-extract architecture**.
-    ///
-    /// Previously this route handed an LCP-encrypted `Publication`
-    /// directly to Readium's `PDFNavigatorViewController`, which did
-    /// random-access reads on the encrypted stream. The device log
-    /// captured 841,570 decrypts in 10s with ~9 KB retained per call
-    /// (residentMB 1.8 → 2.8 GB), guaranteed OOM on anything bigger
-    /// than a one-page PDF.
-    ///
-    /// The new path streams the decrypted PDF ONCE through Readium's
-    /// `Resource.stream(consume:)` into a temp .pdf on disk, then
-    /// renders with PDFKit (`TPPPDFReaderView`) which mmaps the file
-    /// and pages in on demand. ~25k linear decrypts for a 50MB book
-    /// instead of ~800k random-access ones, with the Readium
-    /// publication released the instant extraction completes.
-    ///
-    /// Cached extract on disk → re-opens skip the decrypt entirely.
+    /// The shared prologue — `bookOpenTracker.recordOpened` +
+    /// `stopActiveAudiobookSessionIfNeeded()` — runs for BOTH routes, matching
+    /// `openEPUB` and audiobook opens: opening a reader is a content switch, so
+    /// it records recency and stops any playing audiobook regardless of PDF
+    /// encryption. NOTE: plain PDFs opened from BookDetail/My Books previously
+    /// bypassed this method and did neither; routing them through the single
+    /// seam intentionally unifies that behavior.
     @MainActor
     func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
         // Polish-phase (in-app-nav-polish-2026-06-01) — see openEPUB.
         AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
         Self.stopActiveAudiobookSessionIfNeeded()
+
+        switch Self.pdfOpenRoute(for: book) {
+        case .lcp:
+            openLCPPDF(book, onFinish: onFinish)
+        case .plain:
+            openPlainPDF(book, onFinish: onFinish)
+        }
+    }
+
+    /// Which PDF-open pipeline a book routes to. `openPDF` dispatches on this;
+    /// pulled out as a pure `nonisolated static` so the routing decision — the
+    /// exact seam the Continue-card regression turned on — is unit-testable
+    /// without the singleton-coupled open machinery.
+    enum PDFOpenRoute: Equatable { case lcp, plain }
+
+    /// Route a PDF by encryption. LCP-protected PDFs (including Marketplace
+    /// shapes where the LCP MIME is nested/sibling — see `hasLCPAcquisition`)
+    /// take the Readium extract pipeline; everything else is a plain PDFKit
+    /// open. In a non-LCP (open-source) build there is no LCP path, so every
+    /// PDF is `.plain`.
+    nonisolated static func pdfOpenRoute(for book: TPPBook) -> PDFOpenRoute {
+        #if LCP
+        return LCPPDFs.hasLCPAcquisition(book) ? .lcp : .plain
+        #else
+        return .plain
+        #endif
+    }
+
+    /// Plain (non-LCP) PDF open. `PDFDocument(url:)` mmaps the file and pages
+    /// in on demand — no up-front RAM cost for a large textbook, no
+    /// synchronous main-thread read of the whole file (PR #852). Shared by
+    /// BookDetail, My Books, and the Continue-reading card.
+    private func openPlainPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+        guard let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else {
+            Log.error(#file, "[PDF] no on-disk file for \(book.identifier) — cannot open plain PDF")
+            onFinish?()
+            return
+        }
+        let metadata = TPPPDFDocumentMetadata(with: book)
+        let document = TPPPDFDocument(url: url)
+        guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
+            Self.presentUnreachableReaderAlert(for: book, source: "openPlainPDF")
+            onFinish?()
+            return
+        }
+        coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
+        coordinator.push(.pdf(BookRoute(id: book.identifier)))
+        onFinish?()
+    }
+
+    /// LCP-protected PDF open. Opens the Readium publication, extracts the
+    /// decrypted PDF to disk (chunked, off-main), then hands the on-disk file
+    /// to PDFKit. Only reached for books with an LCP acquisition. The route is
+    /// pushed immediately with a loading state; `onFinish` fires once the route
+    /// is pushed (or the open fails and an alert is queued), NOT once the
+    /// publication lands.
+    ///
+    /// Disk-extract (rather than serving the encrypted publication straight to
+    /// Readium's `PDFNavigatorViewController`) is deliberate: random-access
+    /// reads on the encrypted stream logged ~841k AES decrypts in 10s (~9 KB
+    /// retained each, residentMB 1.8 → 2.8 GB) and OOM'd on anything past a
+    /// one-page PDF. Streaming the decrypted bytes once to a temp `.pdf` then
+    /// mmapping with PDFKit is ~25k linear decrypts for a 50 MB book, and the
+    /// Readium publication is released the instant extraction completes. A
+    /// cached on-disk extract lets re-opens skip the decrypt entirely.
+    private func openLCPPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
         guard let presenter = topPresenter() else { onFinish?(); return }
+
+        // PP-5022 — resolve the destination stack BEFORE taking out any
+        // bookkeeping. There is nothing to unwind if we bail here, and the
+        // patron is told rather than left with a button that did nothing.
+        guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
+            Self.presentUnreachableReaderAlert(for: book, source: "openLCPPDF")
+            onFinish?()
+            return
+        }
 
         if openInFlightBookIds.contains(book.identifier) {
             Log.info(#file, "[PERF] [LCP-PDF] open coalesced — already in flight for \(book.identifier)")
@@ -142,10 +253,10 @@ final class ReaderService {
             object: nil
         )
 
-        let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
-        coordinator?.store(book: book)
-        coordinator?.markReadiumPDFPending(forBookId: book.identifier)
-        coordinator?.push(.pdf(BookRoute(id: book.identifier)))
+        openCoordinatorByBookId[book.identifier] = WeakCoordinator(value: coordinator)
+        coordinator.store(book: book)
+        coordinator.markReadiumPDFPending(forBookId: book.identifier)
+        coordinator.push(.pdf(BookRoute(id: book.identifier)))
         Log.info(#file, "[PERF] [LCP-PDF] T1 route pushed (+\(Self.ms(since: openStartedAt))ms)")
         onFinish?()
 
@@ -192,9 +303,8 @@ final class ReaderService {
             case .success(let publication):
                 Task { @MainActor in
                     guard let self else { return }
-                    let currentGeneration = self.openGenerationByBookId[book.identifier, default: 0]
-                    guard currentGeneration == generation else {
-                        Log.info(#file, "[PERF] [LCP-PDF] stale openBook completion ignored for \(book.identifier) (gen=\(generation) current=\(currentGeneration))")
+                    guard !self.isSupersededOpen(forBookIdentifier: book.identifier, generation: generation) else {
+                        Log.info(#file, "[PERF] [LCP-PDF] stale openBook completion ignored for \(book.identifier) (gen=\(generation))")
                         return
                     }
                     Log.info(#file, "[PERF] [LCP-PDF] T2 publication opened (+\(Self.ms(since: openStartedAt))ms total, libraryService.openBook=\(libraryOpenElapsedMs)ms)")
@@ -226,8 +336,7 @@ final class ReaderService {
                             await MainActor.run {
                                 // Stale-completion guard again — user
                                 // may have backed out during extract.
-                                let cur = self.openGenerationByBookId[bookIdentifier, default: 0]
-                                guard cur == generation else {
+                                guard !self.isSupersededOpen(forBookIdentifier: bookIdentifier, generation: generation) else {
                                     Log.info(#file, "[PERF] [LCP-PDF] stale extract completion ignored for \(bookIdentifier)")
                                     return
                                 }
@@ -254,16 +363,76 @@ final class ReaderService {
             case .failure(let error):
                 Task { @MainActor in
                     guard let self else { return }
-                    self.openInFlightBookIds.remove(book.identifier)
-                    self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
-                    coordinator?.removeReadiumPDF(forBookId: book.identifier)
-                    if let path = coordinator?.path, path.count > 0 {
-                        coordinator?.path.removeLast()
+                    // Stale-completion guard, matching the success arm: a failure
+                    // from a SUPERSEDED open must not tear down the open that
+                    // replaced it. Without this the cleanup below would pop the
+                    // newer open's route.
+                    guard !self.isSupersededOpen(forBookIdentifier: book.identifier, generation: generation) else {
+                        Log.info(#file, "[PERF] [LCP-PDF] stale openBook failure ignored for \(book.identifier) (gen=\(generation))")
+                        return
                     }
+                    // Same ownership rule as `abortRunawayOpen`: this arm has the
+                    // identical back-out-then-push window, so it must not pop
+                    // unconditionally either. Pop first — `removeReadiumPDF`
+                    // clears the flag that decides it.
+                    self.popRouteIfStillOwned(forBookIdentifier: book.identifier, on: coordinator)
+                    self.openInFlightBookIds.remove(book.identifier)
+                    self.openCoordinatorByBookId.removeValue(forKey: book.identifier)
+                    self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
+                    coordinator.removeReadiumPDF(forBookId: book.identifier)
                     LCPPDFOpenProgress.shared.finish()
                 }
             }
         }
+    }
+
+    /// True when a completion belongs to an open that has since been superseded.
+    ///
+    /// Every LCP-PDF open takes a generation number, and `releaseReadiumPDF`
+    /// bumps it on teardown. A completion that fires after a back-out-and-reopen
+    /// therefore carries a stale generation, and acting on it would land the OLD
+    /// open's publication — or the OLD open's cleanup — on top of the new one.
+    /// All three async completion points (publication opened, extract finished,
+    /// open failed) ask this same question.
+    func isSupersededOpen(forBookIdentifier identifier: String, generation: Int) -> Bool {
+        openGenerationByBookId[identifier, default: 0] != generation
+    }
+
+    /// Pops the route an LCP-PDF open pushed — but ONLY when that route is still
+    /// the one `coordinator` is showing for this book.
+    ///
+    /// PP-5022 — an LCP open runs for seconds or minutes and its completions are
+    /// async. The patron can back out of the loading view (which restores the tab
+    /// bar) and push something else on the same stack before the open finishes.
+    /// An unconditional `path.removeLast()` at that point removes THEIR screen,
+    /// not ours. `isReadiumPDFPending` is the ownership question: it is set when
+    /// this open pushed the route and cleared when the route goes away.
+    ///
+    /// It is a PROXY, not a proof: `NavigationPath`'s elements cannot be read
+    /// back, so there is no way to ask what is actually on top — the codebase
+    /// answers the identical problem with a side flag elsewhere
+    /// (`isTopRouteAudio` / `popIfTopRouteAudio`). The flag is ALSO cleared by
+    /// `markReadiumPDFFirstPageRendered`, so it goes false once page 1 renders
+    /// while the route is still on screen. Both callers here run strictly before
+    /// any render — the abort only fires while the open is still in progress, and
+    /// the failure arm precedes extraction — so the proxy holds for them. A
+    /// caller added after first-page render would silently decline to pop. That
+    /// is the safe direction to be wrong in, but it is not "true exactly while
+    /// the route is ours", so check this before adding a third caller.
+    ///
+    /// Must be called BEFORE any teardown that clears the pending flag.
+    /// Takes the coordinator explicitly rather than reading the in-flight map so
+    /// the decision is exercisable without driving a real Readium open.
+    @discardableResult
+    func popRouteIfStillOwned(forBookIdentifier identifier: String,
+                              on coordinator: NavigationCoordinator?) -> Bool {
+        guard let coordinator,
+              coordinator.isReadiumPDFPending(for: BookRoute(id: identifier)),
+              coordinator.path.count > 0 else {
+            return false
+        }
+        coordinator.path.removeLast()
+        return true
     }
 
     /// Stores the extracted on-disk PDF into the coordinator's plain-PDF
@@ -274,9 +443,12 @@ final class ReaderService {
     private func handOffExtractedPDF(at url: URL, for book: TPPBook, openStartedAt: Date) {
         let document = TPPPDFDocument(url: url)
         let metadata = TPPPDFDocumentMetadata(with: book)
-        let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
+        // The stack this open targeted — NOT whatever is visible now. See
+        // `openCoordinatorByBookId`.
+        let coordinator = openCoordinatorByBookId[book.identifier]?.value
         coordinator?.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
         coordinator?.removeReadiumPDF(forBookId: book.identifier)  // clears pending + drops any Readium publication leftovers
+        openCoordinatorByBookId.removeValue(forKey: book.identifier)
         openInFlightBookIds.remove(book.identifier)
         LCPPDFOpenProgress.shared.finish()
         Log.info(#file, "[PERF] [LCP-PDF] T4 PDFKit handoff (+\(Self.ms(since: openStartedAt))ms total)")
@@ -349,7 +521,7 @@ final class ReaderService {
     /// Console log after a test run produces a per-stage breakdown
     /// without needing Instruments / WDA. Cheap rounded integer so
     /// the log line stays compact.
-    private static func ms(since start: Date) -> Int {
+    nonisolated private static func ms(since start: Date) -> Int {
         Int(Date().timeIntervalSince(start) * 1000)
     }
 
@@ -368,11 +540,12 @@ final class ReaderService {
     /// a clean alert).
     @MainActor
     private func abortRunawayOpen(for book: TPPBook) {
+        // Pop BEFORE teardown: `releaseReadiumPDF` clears the pending flag that
+        // answers "is this route still ours", and it drops the targeted-stack
+        // entry this needs to read.
+        popRouteIfStillOwned(forBookIdentifier: book.identifier,
+                             on: openCoordinatorByBookId[book.identifier]?.value)
         releaseReadiumPDF(forBookIdentifier: book.identifier)
-        let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
-        if let path = coordinator?.path, path.count > 0 {
-            coordinator?.path.removeLast()
-        }
         guard let top = topPresenter() else { return }
         let alert = UIAlertController(
             title: NSLocalizedString("Unable to open book", comment: ""),
@@ -380,7 +553,14 @@ final class ReaderService {
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
-        top.present(alert, animated: true)
+        // Route through the coordinator-waiting guarded presenter instead of a raw
+        // present() on `top`: this fires from an async open-completion during a
+        // reader push, exactly when presenting raw hits the fe741015 CA-commit
+        // race (a deferred throw the synchronous ObjC catcher cannot trap).
+        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
+                                                     viewController: top,
+                                                     animated: true,
+                                                     completion: nil)
         TPPErrorLogger.logError(
             withCode: .lcpDRMFulfillmentFail,
             summary: "LCP PDF open aborted due to runaway decrypt",
@@ -393,7 +573,7 @@ final class ReaderService {
         )
     }
 
-    static func residentMemoryMB() -> Int {
+    nonisolated static func residentMemoryMB() -> Int {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
         let result = withUnsafeMutablePointer(to: &info) {
@@ -541,7 +721,7 @@ final class ReaderService {
                 }
             }
 
-        AppContainer.production().downloadCenter.startDownload(for: book)
+        AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
     }
 
     @MainActor
@@ -555,6 +735,39 @@ final class ReaderService {
     private func showContentProtectionError(for error: LibraryServiceError) {
         let alert = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
         TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+    }
+
+    /// PP-5022 — the last resort when an open cannot reach a navigation stack.
+    ///
+    /// After the tab-scoped hub fix this is close to unreachable: it needs the
+    /// selected tab's `NavigationHostView` to have never appeared. It exists
+    /// because the defect this ticket fixed was not that the open failed — opens
+    /// fail all the time and say so — but that it failed INVISIBLY, leaving a
+    /// normal-looking button that swallowed every tap. Any path that cannot
+    /// present must end here rather than in a `return`.
+    ///
+    /// `source` is for the log only; the patron sees the same alert whichever
+    /// caller could not present.
+    @MainActor
+    static func presentUnreachableReaderAlert(for book: TPPBook, source: String) {
+        Log.error(#file, "No navigation stack available — cannot present reader for \(book.identifier) (\(source))")
+        TPPErrorLogger.logError(
+            withCode: .appLogicInconsistency,
+            summary: "Reader could not be presented — no navigation stack",
+            metadata: [
+                "bookTitle": book.title,
+                "bookIdentifier": book.identifier,
+                "source": source
+            ]
+        )
+        let alert = TPPAlertUtils.alert(
+            title: NSLocalizedString("Unable to open book", comment: ""),
+            message: Strings.Error.unknownRequestError
+        )
+        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
+                                                     viewController: nil,
+                                                     animated: true,
+                                                     completion: nil)
     }
 
     // MARK: - View Controller Creation (for SwiftUI integration)

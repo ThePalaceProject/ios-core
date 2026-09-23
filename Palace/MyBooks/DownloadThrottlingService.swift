@@ -38,9 +38,31 @@ protocol DownloadThrottlingServiceDelegate: AnyObject {
 /// Concurrency policy for the download center. Suspends non-audiobook tasks
 /// when over the cap, resumes suspended tasks when under it, and re-applies
 /// the cap whenever the app becomes active again.
-final class DownloadThrottlingService {
+///
+/// - Sendable invariant (Swift 6 `complete`-mode): the stored dependencies
+///   (`stateManager`, `notificationCenter`) are `let` bound at init. `weak var
+///   delegate` is assigned exactly once during owner (`MyBooksDownloadCenter`)
+///   construction (weak-ref reads + ARC zeroing are atomic). The only other
+///   mutable member, `didBecomeActiveObserver`, is written only in
+///   `setupNetworkMonitoring` (invoked once, on the main thread, during owner
+///   wiring) and read in `deinit` — a single-threaded lifecycle, never touched
+///   from the `Task { }` hops. Those hops touch only the actor-serialized
+///   `stateManager.downloadCoordinator` / `SafeDictionary` members and the
+///   `URLSessionTask` suspend/resume API (thread-safe). `@unchecked` only
+///   because the stored service types are not themselves `Sendable`.
+final class DownloadThrottlingService: @unchecked Sendable {
 
     weak var delegate: DownloadThrottlingServiceDelegate?
+
+    /// Handle to the most recent Task spawned by `limitActiveDownloads(max:)`
+    /// (including the app-became-active observer path). That method applies
+    /// its suspend/resume policy inside a fire-and-forget `Task { }`; retaining
+    /// the handle lets tests `await lastLimitActiveDownloadsTask?.value` to
+    /// join the policy deterministically after driving the notification-based
+    /// observer, instead of polling task suspend/resume counts against a
+    /// deadline. Behavior is unchanged: the same Task is created and runs
+    /// exactly as before; only a reference is now kept.
+    private(set) var lastLimitActiveDownloadsTask: Task<Void, Never>?
 
     private let stateManager: DownloadStateManager
     private let notificationCenter: NotificationCenter
@@ -72,12 +94,17 @@ final class DownloadThrottlingService {
     func limitActiveDownloads(max: Int) {
         stateManager.maxConcurrentDownloads = max
 
-        Task { [weak self] in
+        lastLimitActiveDownloadsTask = Task { [weak self] in
             await self?.limitActiveDownloadsAsync(max: max)
         }
     }
 
-    private func limitActiveDownloadsAsync(max: Int) async {
+    /// Async body of `limitActiveDownloads`. `internal` (not `private`) so
+    /// callers already inside an `async` context — and tests — can `await`
+    /// the suspend/resume + pending-pump to completion deterministically
+    /// instead of polling for the delegate's schedule call. Behavior is
+    /// unchanged; only the access level widened.
+    func limitActiveDownloadsAsync(max: Int) async {
         let allInfo = await stateManager.bookIdentifierToDownloadInfo.values()
         let running = allInfo.compactMap { $0.downloadTask }.filter { $0.state == .running }
         let suspended = allInfo.compactMap { $0.downloadTask }.filter { $0.state == .suspended }
@@ -117,7 +144,11 @@ final class DownloadThrottlingService {
         }
     }
 
-    private func pauseAllDownloadsAsync() async {
+    /// Async body of `pauseAllDownloads`. `internal` (not `private`) so
+    /// callers already inside an `async` context — and tests — can `await` the
+    /// suspend fan-out to completion deterministically instead of polling.
+    /// Behavior is unchanged; only the access level widened.
+    func pauseAllDownloadsAsync() async {
         let allInfo = await stateManager.bookIdentifierToDownloadInfo.values()
         for info in allInfo {
             if let book = await stateManager.taskIdentifierToBook.get(info.downloadTask.taskIdentifier),

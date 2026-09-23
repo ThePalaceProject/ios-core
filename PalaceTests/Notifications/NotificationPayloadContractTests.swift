@@ -30,6 +30,7 @@ private enum NotificationFixture {
 
 // MARK: - NotificationEventType Contract Tests
 
+@MainActor
 final class NotificationEventTypeContractTests: XCTestCase {
 
     /// The CM backend defines exactly 4 event types in NotificationType (StrEnum).
@@ -102,6 +103,7 @@ final class NotificationEventTypeContractTests: XCTestCase {
 
 // MARK: - Notification Payload Structure Contract Tests
 
+@MainActor
 final class NotificationPayloadContractTests: XCTestCase {
 
     private var payloads: [String: [String: Any]] = [:]

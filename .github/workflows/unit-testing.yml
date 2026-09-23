@@ -1,5 +1,13 @@
 name: Unit Tests
-on: [ pull_request, workflow_dispatch ]
+on:
+  pull_request:
+    # Skip the full macOS build/test job for changes that cannot regress runtime
+    # behavior. scripts/** is deliberately NOT ignored — the test invocation lives
+    # there. Mirrors verify-pr.sh's docs-only fast-path.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
 concurrency:
   group: unit-tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -11,6 +19,10 @@ jobs:
 
   build-and-test:
     runs-on: macos-15
+    # Cap the whole job. The test step has its own 60-min bound, but the ~15
+    # post-processing steps (xcresult parse, snapshot find, Pages deploy) are
+    # unbounded — a hang there could otherwise burn the 360-min default.
+    timeout-minutes: 90
     permissions:
       contents: write
       pull-requests: write
@@ -26,13 +38,13 @@ jobs:
         run: xcodebuild -version
         
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           
       - name: Cache Swift packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .build
@@ -43,32 +55,54 @@ jobs:
             ${{ runner.os }}-spm-
             
       - name: Cache Xcode DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          # Key on the branch name + run number so each run has a unique key
-          # (always saves) but restores from the latest cache for this branch.
-          # We deliberately do NOT key on pbxproj — every file-add edit
-          # invalidated the entire cache, forcing ~50min cold rebuilds that
-          # blew the job timeout before tests could even start.
-          key: ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}-${{ github.run_number }}
+          # Key on the branch name only (NOT run_number). A run_number suffix made
+          # every run save a fresh ~1.8 GiB cache that never key-hit again, so the
+          # repo blew GitHub's 10 GiB cache cap and LRU-evicted the warm caches —
+          # producing 25-46 min cold rebuilds. Branch-only keying updates ONE cache
+          # per branch in place (actions/cache skips save on an exact key hit, so
+          # this warms once then reuses). We deliberately do NOT key on pbxproj —
+          # every file-add edit would invalidate the whole cache.
+          # Tradeoff: within a long-lived branch the cache isn't re-saved (exact
+          # hit skips save), and develop's base cache freezes at its first snapshot
+          # — a dedicated develop-push cache-warm job is the proper follow-up. Even
+          # frozen, a weeks-old DerivedData saves most recompilation vs a cold run.
+          key: ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}
           restore-keys: |
-            ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}-
-            ${{ runner.os }}-deriveddata-develop-
+            ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}
+            ${{ runner.os }}-deriveddata-develop
             ${{ runner.os }}-deriveddata-
             
       - name: Cache Test History
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .test-history
-          key: test-history-${{ github.head_ref || github.ref_name }}-${{ github.run_number }}
+          key: test-history-${{ github.head_ref || github.ref_name }}
           restore-keys: |
-            test-history-${{ github.head_ref || github.ref_name }}-
-            test-history-develop-
+            test-history-${{ github.head_ref || github.ref_name }}
+            test-history-develop
             test-history-
             
+      # Fast, DRM-free gate for the PalaceTriageBot SPM package. Runs the
+      # UIKit-free Core tests (TriageBotCore) via `swift test` before the ~40min
+      # app build+test, so a broken package reddens the board in seconds instead
+      # of blocking behind the full xcodebuild run. Targets that import UIKit
+      # (TriageBotIOS / parts of TriageBotUI) do not build under macOS
+      # `swift test` and are exercised by the app build; this step is Core-only.
+      - name: Run PalaceTriageBot package tests
+        run: swift test --package-path Palace/Packages/PalaceTriageBot
+
+      # The package suite above runs RedactionCorpusTests, but a deny-list guard
+      # is only worth its ability to fail. --self-test disables redaction to prove
+      # the guard goes red on an un-redacted corpus, catching a guard that has
+      # silently stopped guarding. Build products are warm from the step above.
+      - name: Verify TriageBot redaction leak gate
+        run: bash scripts/triage-corpus-check.sh --self-test
+
       - name: Checkout Certificates
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -95,11 +129,31 @@ jobs:
       - name: Run Palace unit tests
         id: tests
         timeout-minutes: 60
-        run: ./scripts/xcode-test-optimized.sh
+        # tee to a log so the @objc-witness-drift gate below can scan the build
+        # warnings. `set -o pipefail` is set EXPLICITLY here: GitHub's default
+        # bash shell does NOT enable pipefail, so `cmd | tee` returns tee's exit
+        # 0 and masks a non-zero exit from the script — which is how a failing
+        # build passed as a green step even after the script correctly exited 1
+        # (the third masking layer). With pipefail, the pipeline's status is the
+        # script's, so `steps.tests.outcome` reflects a real failure and the
+        # "Fail if tests failed" gate fires.
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/xcode-test-optimized.sh 2>&1 | tee build-output.log
         env:
           BUILD_CONTEXT: ci
         continue-on-error: true
-          
+
+      # Fails the job when a build warning shows an `@objc` optional-protocol
+      # method that "nearly matches" its requirement by the same name — i.e. the
+      # method silently is NOT the delegate witness and the callback is skipped
+      # at runtime (the Xcode-26.2 WKNavigationDelegate sign-in break, #1205).
+      # Benign different-name nearly-matches (e.g. CarPlay) are ignored.
+      - name: Guard against @objc witness drift (silent delegate skip)
+        if: always()
+        run: scripts/check-objc-witness-nearly-matches.sh build-output.log
+
       - name: Find Test Results
         if: always()
         id: find_results
@@ -278,6 +332,7 @@ jobs:
           
       - name: Generate Test Reports
         if: always()
+        continue-on-error: true
         run: |
           mkdir -p test-report
           
@@ -307,6 +362,7 @@ jobs:
           
       - name: Generate GitHub Step Summary
         if: always()
+        continue-on-error: true
         run: |
           TESTS="${{ steps.parse_results.outputs.tests }}"
           PASSED="${{ steps.parse_results.outputs.passed }}"
@@ -453,7 +509,8 @@ jobs:
             fi
           fi
 
-          # E2E journey coverage moved to chaos-replay-on-pr.yml (simdrive). See docs/architecture/.
+          # These paths are excluded from the ratio. They are NOT covered by any CI
+          # job: E2E/chaos runs locally via scripts/verify-pr.sh --simdrive/--chaos.
 
           # Coverage context note
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -461,7 +518,7 @@ jobs:
           echo "> can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, AppDelegate/SceneDelegate " >> $GITHUB_STEP_SUMMARY
           echo "> lifecycle (see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ " >> $GITHUB_STEP_SUMMARY
           echo "> logic is tested, not that we shipped less UI. Total coverage is kept for continuity. " >> $GITHUB_STEP_SUMMARY
-          echo "> The excluded paths are covered by simdrive E2E journeys (see \`chaos-replay-on-pr.yml\`)." >> $GITHUB_STEP_SUMMARY
+          echo "> The excluded paths are NOT covered by any CI job. They are exercised only if a maintainer opts in locally (\`scripts/verify-pr.sh --simdrive --chaos\`), which needs a booted simulator and a QA harness that is not in this repo — so on a contributor's clone, and on every CI run, nothing exercises them." >> $GITHUB_STEP_SUMMARY
           
           # History/Trends
           if [ -n "$NEW_FAILURES" ] || [ -n "$FIXED_TESTS" ] || [ -n "$FLAKY_TESTS" ] || [ -n "$TEST_COUNT_CHANGE" ]; then
@@ -538,7 +595,8 @@ jobs:
           
       - name: Upload Test Report
         if: always()
-        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
         with:
           name: test-report
           path: test-report/
@@ -547,7 +605,8 @@ jobs:
           
       - name: Upload Test Data JSON
         if: always()
-        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
         with:
           name: test-data
           path: |
@@ -558,24 +617,57 @@ jobs:
           
       - name: Upload Snapshot Failures
         if: steps.snapshots.outputs.found == 'true'
-        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
         with:
           name: snapshot-failures
           path: snapshot-failures/
           retention-days: 14
           if-no-files-found: ignore
           
+      # `continue-on-error` because failing to ARCHIVE results is not the same
+      # as failing tests, and the board must not say otherwise. This step uploads
+      # the .xcresult bundle, which Xcode is still finalizing and which contains
+      # filenames the artifact uploader trips over; it has failed with
+      # `ENOENT ... stat '.../Data/data.0~...'` on four separate branches in two
+      # days while the run's own tally read zero failures (PP-4988).
+      #
+      # The pass/fail gate is unaffected: `Fail if tests failed` keys on the test
+      # STEP's outcome, so a genuine test failure still turns the board red. What
+      # this stops is a green test run being reported as a failure because an
+      # archive could not be saved — which trains everyone to ignore red, and is
+      # how a broken commit gate shipped here once before.
       - name: Upload Test Results
         if: steps.find_results.outputs.found == 'true'
-        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        id: upload_results
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: ${{ steps.find_results.outputs.path }}
           retention-days: 14
           if-no-files-found: ignore
+
+      # Make the distinct outcome visible without opening the log: the tests ran
+      # and passed, but their archive could not be saved. Previously this was
+      # indistinguishable from a test failure on the checks list.
+      - name: Note if results could not be archived
+        if: always() && steps.upload_results.outcome == 'failure'
+        run: |
+          echo "::warning title=Test results not archived::The tests ran and their result is reported above, but the .xcresult artifact could not be uploaded. This does NOT mean a test failed. See PP-4988."
+          {
+            echo "### ⚠️ Test results were not archived"
+            echo
+            echo "The suite ran and its pass/fail verdict stands. Only the downloadable"
+            echo "\`.xcresult\` artifact failed to upload, so the interactive report and"
+            echo "Xcode-openable bundle are missing for this run."
+            echo
+            echo "This is tracked as **PP-4988** and is not a test failure."
+          } >> "$GITHUB_STEP_SUMMARY"
           
       - name: Deploy Report to GitHub Pages
         if: always()
+        continue-on-error: true
         id: deploy_report
         run: |
           # Create report directory structure
@@ -652,9 +744,13 @@ jobs:
           destination_dir: test-reports
           keep_files: true
           
+      # Same principle as the artifact upload above: failing to POST a summary
+      # comment is not a test failure. Seen reddening a board on
+      # fix/pp-4971-rate-aware-time-remaining while the suite itself was green.
       - name: Post PR Comment with Results
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        continue-on-error: true
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -714,25 +810,42 @@ jobs:
               }
               body += `**${tests} tests** | **${passed} passed** | **${failed} failed** | **${skipped} skipped** | ⏱️ ${duration} | 📊 ${passRate}${coverageDisplay}\n\n`;
               
-              // Class breakdown table — collapsed by default. Per-class
-              // rows are valuable when triaging a failure but noise on a
-              // green PR. Reviewers click through to expand.
+              // Full per-class matrix — ALWAYS collapsed, never dumped open
+              // (pr-report-contract.md §1, decision-first). ~900 green rows are
+              // noise a reviewer must not scroll past; failures are surfaced
+              // separately below. Skipped column added so an all-skipped class
+              // reconciles instead of rendering as a false-green `7|0|0`;
+              // ⚠️ flags any row where passed+failed+skipped != total.
               if (classSummary && classSummary.trim()) {
                 const classLines = classSummary.trim().split('\n').filter(l => l.split('|')[0]);
-                const failedClasses = classLines.filter(l => l.split('|')[3] !== '0').length;
+                const failedClasses = classLines.filter(l => (l.split('|')[3] || '0') !== '0').length;
                 const summaryLabel = failedClasses > 0
-                  ? `<strong>Tests by Class</strong> — ${classLines.length} classes, <strong>${failedClasses} with failures</strong>`
-                  : `<strong>Tests by Class</strong> — ${classLines.length} classes (click to expand)`;
-                body += `<details${failedClasses > 0 ? ' open' : ''}>\n<summary>${summaryLabel}</summary>\n\n`;
-                body += `| Class | Tests | Passed | Failed | Duration |\n`;
-                body += `|-------|-------|--------|--------|----------|\n`;
+                  ? `<strong>All ${classLines.length} classes</strong> — ${failedClasses} with failures (full matrix)`
+                  : `<strong>All ${classLines.length} classes</strong> (full matrix — click to expand)`;
+                body += `<details>\n<summary>${summaryLabel}</summary>\n\n`;
+                body += `| Class | Tests | Passed | Failed | Skipped | Duration |\n`;
+                body += `|-------|-------|--------|--------|---------|----------|\n`;
                 classLines.forEach(line => {
-                  const [cls, total, pass, fail, dur] = line.split('|');
-                  const icon = fail === '0' ? '✅' : '❌';
+                  // 6-field format (cls|total|pass|fail|skip|dur); tolerate the
+                  // legacy 5-field (cls|total|pass|fail|dur) during rollout.
+                  const parts = line.split('|');
+                  const cls = parts[0];
+                  const total = parts[1] || '0';
+                  const pass = parts[2] || '0';
+                  const fail = parts[3] || '0';
+                  const hasSkip = parts.length >= 6;
+                  const skip = hasSkip ? (parts[4] || '0') : '0';
+                  const dur = hasSkip ? parts[5] : (parts[4] || '-');
+                  const reconciles = (parseInt(pass) + parseInt(fail) + parseInt(skip)) === parseInt(total);
+                  const icon = parseInt(fail) > 0 ? '❌' : (reconciles ? '✅' : '⚠️');
                   const failCell = fail === '0' ? fail : `**${fail}**`;
-                  body += `| ${icon} ${cls} | ${total} | ${pass} | ${failCell} | ${dur} |\n`;
+                  body += `| ${icon} ${cls} | ${total} | ${pass} | ${failCell} | ${skip} | ${dur} |\n`;
                 });
-                body += `\n</details>\n\n`;
+                body += `\n`;
+                if (reportUrl) {
+                  body += `📊 Full interactive matrix: **[report](${reportUrl})**\n`;
+                }
+                body += `</details>\n\n`;
               }
             } else {
               if (testOutcome === 'success') {
@@ -747,10 +860,16 @@ jobs:
               }
             }
             
-            // Failed tests details
+            // Failing detail — OPEN when red so the reviewer lands on the
+            // actionable rows, not the collapsed matrix (contract §1).
             if (failedTests && failedTests.trim()) {
-              body += `<details>\n<summary><strong>Failed Tests (click to expand)</strong></summary>\n\n`;
+              body += `<details open>\n<summary>❌ <strong>Failed tests</strong></summary>\n\n`;
               body += '```\n' + failedTests.trim() + '\n```\n';
+              // Names only — parse-xcresult emits identifiers, not messages.
+              // Inlining the failure message + first stack frame is a tracked
+              // Obligation (pr-report-contract.md gap #3); until then, the
+              // interactive report carries the detail.
+              body += `\n_Names only — open the interactive report above for messages + stack frames._\n`;
               body += `</details>\n\n`;
             }
             
@@ -777,36 +896,42 @@ jobs:
               }
             }
 
-            // E2E journey coverage moved to chaos-replay-on-pr.yml (simdrive). See docs/architecture/.
+            // These paths are excluded from the ratio and are NOT covered by any CI
+            // job: E2E/chaos runs locally via scripts/verify-pr.sh --simdrive/--chaos.
 
             body += `> **Why two coverage numbers?** Testable coverage subtracts files that `;
             body += `can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, lifecycle `;
             body += `(see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ logic is tested, `;
             body += `not that we shipped less UI. Total coverage is kept for continuity. `;
-            body += `The excluded paths are covered by simdrive E2E journeys (see \`chaos-replay-on-pr.yml\`).\n\n`;
+            body += `The excluded paths are **not covered by any CI job**. They are exercised only if a maintainer opts in locally (\`scripts/verify-pr.sh --simdrive --chaos\`), which needs a booted simulator and a QA harness that is not in this repo — so on a contributor's clone, and on every CI run, nothing exercises them.\n\n`;
             
-            // Trends
-            if (newFailures || fixedTests || flakyTests || testCountChange) {
-              body += `### 📈 Trends\n\n`;
-              
+            // What changed vs. base — the orchestrator's first question
+            // (contract §1). Delta-or-silent: this whole section renders only
+            // when the .test-history cache hits (populating deltas). When it's
+            // empty the section is silent by design, not a green claim — the
+            // develop cache-warm job that makes deltas reliable is a tracked
+            // Obligation (pr-report-contract.md gap #4).
+            if ((newFailures && newFailures.trim()) || (fixedTests && fixedTests.trim()) || (flakyTests && flakyTests.trim()) || testCountChange) {
+              body += `### 📈 What changed vs. base\n\n`;
+
               if (testCountChange) {
-                body += `Test count change: **${testCountChange}**\n\n`;
+                body += `Test count: **${testCountChange}**\n\n`;
               }
-              
+
               if (newFailures && newFailures.trim()) {
-                body += `<details>\n<summary>⚠️ <strong>New Failures</strong></summary>\n\n`;
+                body += `<details open>\n<summary>⚠️ <strong>New failures</strong> — passing on base, failing on this branch</summary>\n\n`;
                 body += '```\n' + newFailures.trim() + '\n```\n';
                 body += `</details>\n\n`;
               }
-              
+
               if (fixedTests && fixedTests.trim()) {
-                body += `<details>\n<summary>✅ <strong>Fixed Tests</strong></summary>\n\n`;
+                body += `<details>\n<summary>✅ <strong>Fixed</strong> — failing on base, passing on this branch</summary>\n\n`;
                 body += '```\n' + fixedTests.trim() + '\n```\n';
                 body += `</details>\n\n`;
               }
-              
+
               if (flakyTests && flakyTests.trim()) {
-                body += `<details>\n<summary>⚡ <strong>Flaky Tests Detected</strong></summary>\n\n`;
+                body += `<details>\n<summary>⚡ <strong>Flaky</strong> — inconsistent across recent runs</summary>\n\n`;
                 body += '```\n' + flakyTests.trim() + '\n```\n';
                 body += `</details>\n\n`;
               }
@@ -818,12 +943,14 @@ jobs:
               body += `Download the **snapshot-failures** artifact to view visual differences.\n\n`;
             }
             
-            // Links section
+            // Links + provenance. The counts above are produced by THIS CI run
+            // parsing the xcresult — not author-attested (contract §2,§3).
             body += `---\n`;
             if (reportUrl) {
               body += `🔗 **[Interactive HTML Report](${reportUrl})** | `;
             }
             body += `**[CI Run Details](${runUrl})**\n\n`;
+            body += `_Counts above were produced by this CI run's xcresult parse — reproduce via the run link._\n\n`;
             
             // Artifacts table
             body += `<details>\n<summary>📦 <strong>Downloadable Artifacts</strong></summary>\n\n`;

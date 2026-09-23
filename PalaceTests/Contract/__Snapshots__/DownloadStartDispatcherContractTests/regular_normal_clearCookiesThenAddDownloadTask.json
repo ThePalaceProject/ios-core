@@ -1,0 +1,15 @@
+[
+  {
+    "args" : {
+
+    },
+    "method" : "clearAndSetCookies"
+  },
+  {
+    "args" : {
+      "bookId" : "DSD-NORMAL",
+      "hasURL" : "true"
+    },
+    "method" : "addDownloadTask"
+  }
+]

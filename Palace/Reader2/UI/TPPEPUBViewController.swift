@@ -1,8 +1,10 @@
 import UIKit
 import SwiftUI
-import ReadiumShared
-import ReadiumNavigator
+@preconcurrency import ReadiumShared
+@preconcurrency import ReadiumNavigator
 import GameController
+import PalaceLogging
+import PalaceBookModel
 
 class TPPEPUBViewController: TPPBaseReaderViewController {
     /// Tap handling is performed by Readium's input observer system:
@@ -12,7 +14,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     override var usesInputObserversForTapHandling: Bool { true }
 
     var popoverUserconfigurationAnchor: UIBarButtonItem?
-    private let systemUserInterfaceStyle: UIUserInterfaceStyle
     private let searchButton: UIBarButtonItem
     private var preferences: EPUBPreferences
     private let navigationHub: NavigationCoordinatorHub
@@ -21,9 +22,30 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     private var keyboardInput: GCKeyboardInput?
     private var keyboardConnectObserver: NSObjectProtocol?
     private var keyboardDisconnectObserver: NSObjectProtocol?
+
+    /// Owns the edge-tap / keyboard page-turn adapter for this controller's lifetime.
+    ///
+    /// `bind(to:)` registers closures that capture the adapter **weakly**, so the
+    /// navigator's observer list does NOT keep it alive. Binding a temporary
+    /// (`DirectionalNavigationAdapter(...).bind(to:)`) therefore deallocates it the
+    /// moment `init` returns, every subsequent edge tap hits `guard let self` and
+    /// returns `false`, and the event falls through to the `.tap` observer below —
+    /// which toggles the toolbar instead of turning the page.
+    ///
+    /// That is not hypothetical: Readium 3.7 captured `[self, ...]` strongly, so the
+    /// unowned temporary survived by accident. 3.9 changed it to `[weak self, ...]`
+    /// and edge-tap paging died silently in Palace 3.2.0 — no compile error, no
+    /// warning, no failing test. This property is the ownership that was always
+    /// required; do not inline it back into the call site.
+    private var directionalNavigationAdapter: DirectionalNavigationAdapter?
     private var isShiftPressed = false
     private lazy var keyboardNavigationHandler = KeyboardNavigationHandler(navigable: self)
     private var lastChapterHREF: String?
+
+    /// App-rating (PP-4088): guards the end-of-book completion trigger so it
+    /// fires at most once per reader session, even as locator changes keep
+    /// arriving while the patron lingers on the final page.
+    private var didFireRatingCompletion = false
 
     /// The location the EPUB navigator's CONSTRUCTOR should restore to.
     ///
@@ -52,7 +74,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
          forSample: Bool = false,
          navigationHub: NavigationCoordinatorHub = AppContainer.production().navigationCoordinatorHub) throws {
 
-        self.systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
         self.preferences = preferences
         self.navigationHub = navigationHub
 
@@ -106,7 +127,9 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         // Keyboard events arrive via Readium's JavaScript bridge (keyboard.js captures
         // keydown in WKWebView, calls preventDefault, forwards via messageHandlers).
         // This matches Readium's TestApp configuration.
-        DirectionalNavigationAdapter(
+        // Retained in `directionalNavigationAdapter` — binding alone does NOT keep
+        // it alive (see that property's note).
+        let edgeTapAdapter = DirectionalNavigationAdapter(
             pointerPolicy: DirectionalNavigationAdapter.PointerPolicy(
                 types: [.touch],
                 edges: .horizontal,
@@ -114,7 +137,9 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
                 horizontalEdgeThresholdPercent: 0.2
             ),
             animatedTransition: true
-        ).bind(to: navigator)
+        )
+        edgeTapAdapter.bind(to: navigator)
+        directionalNavigationAdapter = edgeTapAdapter
 
         // Readium key observer — handles keys NOT covered by DirectionalNavigationAdapter
         // (e.g. Escape for toolbar toggle). Arrow/space events are consumed by
@@ -170,11 +195,38 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     /// These appear in the Tab-Z menu when Full Keyboard Access is enabled,
     /// providing an alternative to arrow keys which FKA consumes.
     private func configureAccessibilityActions() {
+        // "Where am I?" position report (DAISY nav-310, PP-4527): a VoiceOver
+        // affordance that re-orients a non-visual reader without moving focus or
+        // reading position. Exposed to both VoiceOver and FKA users; never a
+        // visible control.
+        let whereAmIAction = makeWhereAmIAction()
+
         if UIAccessibility.isVoiceOverRunning {
-            // Let VoiceOver access the underlying WKWebView content directly.
+            // Let VoiceOver access the underlying WKWebView content directly. A
+            // custom ACTION on this container is NOT reachable while VoiceOver
+            // focuses web content (the PP-4527 bug), but custom ROTORS on the
+            // container ARE reachable — so the reader affordances are exposed as
+            // rotors, not actions. The keyboard (FKA) branch below still uses
+            // whereAmIAction (Tab-Z reaches container custom actions).
             navigator.view.isAccessibilityElement = false
             navigator.view.accessibilityLabel = nil
             navigator.view.accessibilityCustomActions = nil
+
+            // "Where am I?" is reached by MAGIC TAP, not a rotor. A container
+            // rotor is not listed while VoiceOver is focused on web content —
+            // measured on device across three native carriers — so it only ever
+            // appeared after an unrelated text selection, and a rotor is a
+            // navigation CATEGORY rather than a command anyway: selecting it just
+            // speaks its own name, which is indistinguishable from the feature
+            // answering. That ambiguity is what made this read as working in June.
+            var rotors: [UIAccessibilityCustomRotor] = []
+            if Self.customRotorActionsEnabled {
+                // PP-4533 block navigation keeps its rotor — stepping BY block is
+                // what a rotor is for. Its reachability has the same defect and is
+                // tracked on that ticket.
+                rotors.append(makeBlockRotor())
+            }
+            navigator.view.accessibilityCustomRotors = rotors
             return
         }
 
@@ -215,9 +267,281 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             }
         )
 
-        navigator.view.accessibilityCustomActions = [nextPageAction, previousPageAction, toggleToolbarAction]
+        navigator.view.accessibilityCustomActions = [nextPageAction, previousPageAction, toggleToolbarAction, whereAmIAction]
     }
 
+    /// The "Where am I?" custom action. Activating it reports the current
+    /// position via a VoiceOver announcement and returns immediately — it never
+    /// calls `navigator.go(...)`, so focus and reading position are unchanged.
+    private func makeWhereAmIAction() -> UIAccessibilityCustomAction {
+        UIAccessibilityCustomAction(
+            name: Strings.TPPBaseReaderViewController.whereAmI,
+            actionHandler: { [weak self] _ in
+                self?.announceCurrentPosition()
+                return true
+            }
+        )
+    }
+
+
+
+    /// Build the position report from the current location and speak it via a
+    /// VoiceOver announcement. Reports section + print page + percentage when
+    /// available; a title with no page-list still reports section + percentage
+    /// (nav-310 AC: the absence of a page number does not error).
+    private func announceCurrentPosition() {
+        let locator = navigator.currentLocation
+        Task { @MainActor in
+            let report = TPPReaderPositionReport.announcement(
+                section: await self.currentSection(for: locator),
+                pageLabel: await self.currentPrintPageLabel(),
+                totalProgression: locator?.locations.totalProgression
+            )
+            self.speak(report)
+        }
+    }
+
+    /// Post the report so VoiceOver actually says it.
+    ///
+    /// A plain-`String` `.announcement` is DISCARDED when VoiceOver is already
+    /// speaking, and after activating a control it always is — it is busy
+    /// announcing the control. On device that surfaced as the report being
+    /// replaced by whatever VoiceOver was saying. Queuing makes it wait its turn.
+    private func speak(_ report: String) {
+        // Device passes are the only way to verify this end to end, and VoiceOver
+        // speech is not capturable. Log what was composed so a run produces
+        // readable evidence rather than a recollection of what was heard.
+        Log.info(#file, "PP-4527 position report: \(report)")
+        // HIGH priority, not "queue". Queuing makes the report wait behind
+        // whatever VoiceOver is already saying — and after activating a button it
+        // is always mid-sentence announcing that button, so the report was
+        // composed correctly and never heard (measured on device: the log showed
+        // "Chapter 3 …, Page 97, 43% read" while the patron heard only
+        // "Where am I?"). A patron who deliberately asked where they are should
+        // get the answer immediately, interrupting the control's own label.
+        let announcement = NSAttributedString(
+            string: report,
+            attributes: [.accessibilitySpeechAnnouncementPriority: UIAccessibilityPriority.high]
+        )
+        UIAccessibility.post(notification: .announcement, argument: announcement)
+    }
+
+    /// The section the patron is in, derived from the nearest preceding
+    /// table-of-contents entry (AC), NOT from `locator.title`.
+    ///
+    /// `Locator.title` is populated only when the locator came from a nav link,
+    /// so it is nil for anyone who simply read their way here — which is everyone
+    /// this feature is for.
+    private func currentSection(for locator: Locator?) async -> String? {
+        guard let locator else { return nil }
+        guard let toc = try? await publication.tableOfContents().get() else {
+            return locator.title
+        }
+
+        let readingOrder = publication.readingOrder
+        func index(of href: AnyURL) -> Int? {
+            readingOrder.firstIndex { $0.url().removingFragment().isEquivalentTo(href) }
+        }
+        guard let currentIndex = index(of: locator.href.removingFragment()) else {
+            return locator.title
+        }
+
+        var entries: [TPPReaderSectionResolver.Entry] = []
+        // `Link` is ambiguous here — Palace defines one too.
+        func flatten(_ links: [ReadiumShared.Link]) {
+            for link in links {
+                let url = link.url()
+                if let resourceIndex = index(of: url.removingFragment()) {
+                    entries.append(
+                        TPPReaderSectionResolver.Entry(
+                            title: link.title ?? "",
+                            resourceIndex: resourceIndex,
+                            // A fragment means the entry starts partway into the
+                            // resource, but the nav doc does not say where; the
+                            // ordering below only needs it to sort after the
+                            // resource-level entry.
+                            progression: url.fragment == nil ? nil : 0.0
+                        )
+                    )
+                }
+                flatten(link.children)
+            }
+        }
+        flatten(toc)
+
+        return TPPReaderSectionResolver.section(
+            in: entries,
+            resourceIndex: currentIndex,
+            progression: locator.locations.progression ?? 0.0
+        ) ?? locator.title
+    }
+
+    /// The print page the patron is on, read from the rendered chapter's
+    /// page-break markers.
+    ///
+    /// NOT from `publication.pageList` + `locate()`: that locator never carries
+    /// `totalProgression`, so the old comparison had nothing to match and the
+    /// page component never appeared for any title at any position.
+    private func currentPrintPageLabel() async -> String? {
+        let bounds = navigator.view.bounds
+        let js = TPPReaderPageBreakLocator.collectCandidatesJavaScript()
+        let result = await epubNavigator.evaluateJavaScript(js)
+        // The axis comes from the document itself. `preferences.scroll` reported
+        // false while the markers were spread vertically over 39,000pt, so it
+        // does not describe the layout the rects are measured in.
+        let collection = TPPReaderPageBreakLocator.parseCollection(try? result.get())
+        let candidates = collection.candidates
+        let scrolled = !collection.horizontal
+        // The web view reports positions in viewport coordinates, so the extent
+        // to compare against is the navigator view's own bound on that axis.
+        // No page-list fallback. One was tried and removed: resolving to the
+        // RESOURCE can only ever name a chapter's first page, so it reported
+        // "Page 151" at the top of chapter 4 and "Page 63" anywhere in chapter 3
+        // — confidently wrong rather than merely coarse, and a patron who cites a
+        // page they are not on is worse off than one told no page at all. The AC
+        // allows the component to be absent: "the absence of a page number does
+        // not error".
+        return TPPReaderPageBreakLocator.nearestPreceding(
+            in: candidates,
+            scrolled: scrolled,
+            viewportExtent: scrolled ? bounds.height : bounds.width
+        )
+    }
+
+
+
+    /// Two-finger double-tap anywhere in the reader reports the position.
+    ///
+    /// This is the mechanism the story actually asks for: "exposed only to
+    /// VoiceOver users ... it is not a visible control", with "any visible,
+    /// non-screen-reader UI" out of scope. A magic tap is a GESTURE, so nothing
+    /// is added to the interface at all.
+    ///
+    /// It is also the only thing that reaches a reading patron. VoiceOver routes
+    /// magic tap to the app wherever focus is, INCLUDING inside the WKWebView's
+    /// web-content AX tree — the boundary that makes both a container custom
+    /// action (#1098) and a container custom rotor (#1109) unreachable while
+    /// reading. Measured on device 2026-09-18 across three native carriers.
+    override func accessibilityPerformMagicTap() -> Bool {
+        announceCurrentPosition()
+        return true
+    }
+
+
+    /// Annotate inline EPUB footnote elements (`doc-noteref` / `doc-footnote` /
+    /// `doc-backlink`) in the rendered WKWebView with VoiceOver `aria-label`s so a
+    /// non-visual reader knows a link is a note reference, hears the note, and can
+    /// return to the reference (DAISY reading-420, PP-4531). Additive and
+    /// idempotent; runs after the chapter has had a moment to render and bails if
+    /// the chapter changed again in the meantime.
+    private func annotateFootnotesForVoiceOver() {
+        let href = lastChapterHREF
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard self.lastChapterHREF == href else { return }
+            let result = await self.epubNavigator.evaluateJavaScript(
+                TPPReaderFootnoteAccessibility.annotationJavaScript()
+            )
+            // PP-4531 observability: the injected aria-labels live in the Readium
+            // WKWebView's web-AX, which host-AX / simdrive CANNOT inspect on the
+            // simulator (verified 2026-06-23). Emit a log of the labelled-element
+            // count + the VoiceOver state so the injection is verifiable
+            // end-to-end via log capture (CI / host-AX), since neither the DOM
+            // labels nor VoiceOver focus-speech surface to the host AX bridge.
+            let value = try? result.get()
+            let labelled = (value as? Int) ?? (value as? NSNumber)?.intValue ?? -1
+            Log.info(#file, "PP-4531 injected aria-labels on \(labelled) noteref/footnote/backlink elements, VoiceOver=\(UIAccessibility.isVoiceOverRunning)")
+        }
+    }
+
+    /// Mark the logical block elements (paragraphs, headings, list items, quotes …)
+    /// in the rendered WKWebView as atomic VoiceOver stops so a non-visual reader
+    /// can step through content one block at a time via the "Blocks" rotor (DAISY
+    /// reading-810, PP-4533). Additive and idempotent; runs after the chapter has
+    /// had a moment to render and bails if the chapter changed again in the
+    /// meantime. Mirrors `annotateFootnotesForVoiceOver()` from PP-4531.
+    private func annotateBlocksForVoiceOver() {
+        let href = lastChapterHREF
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard self.lastChapterHREF == href else { return }
+            let result = await self.epubNavigator.evaluateJavaScript(
+                TPPReaderBlockNavigation.annotationJavaScript()
+            )
+            // PP-4533 observability: the injected block marks live in the Readium
+            // WKWebView's web-AX, which host-AX / simdrive CANNOT inspect on the
+            // simulator. Emit the marked-block count + VoiceOver state so the
+            // injection is verifiable end-to-end via log capture (CI / host-AX),
+            // since neither the DOM marks nor VoiceOver focus surface to the host
+            // AX bridge.
+            let value = try? result.get()
+            let n = (value as? Int) ?? (value as? NSNumber)?.intValue ?? -1
+            Log.info(#file, "PP-4533 block-nav marked \(n) blocks for VoiceOver, VoiceOver=\(UIAccessibility.isVoiceOverRunning)")
+        }
+    }
+
+    /// Whether the app's custom-rotor actions are enabled. Read synchronously from
+    /// the persisted `AccessibilityPreferences` (same store `AccessibilityService`
+    /// loads) so the gate is available inside the synchronous accessibility
+    /// configuration path; defaults to the `.default` value (on) when unset.
+    private static var customRotorActionsEnabled: Bool {
+        guard
+          let data = UserDefaults.standard.data(forKey: AccessibilityPreferences.storageKey),
+          let prefs = try? JSONDecoder().decode(AccessibilityPreferences.self, from: data)
+        else {
+          return AccessibilityPreferences.default.customRotorActionsEnabled
+        }
+        return prefs.customRotorActionsEnabled
+    }
+
+    /// A VoiceOver custom rotor that walks the marked logical blocks (see
+    /// `annotateBlocksForVoiceOver()`) forward / back. Each `itemSearchBlock`
+    /// invocation focuses the next / previous `[data-pp-block]` in the DOM and, on
+    /// a move, posts `.layoutChanged` so VoiceOver re-reads from the new focus.
+    /// Returns nil at the chapter's block boundary (DAISY reading-810, PP-4533).
+    private func makeBlockRotor() -> UIAccessibilityCustomRotor {
+        UIAccessibilityCustomRotor(
+            name: Strings.TPPBaseReaderViewController.blockRotorTitle
+        ) { [weak self] predicate in
+            guard let self = self else { return nil }
+            let forward = predicate.searchDirection == .next
+            let result = self.evaluateBlockMove(forward: forward)
+            guard result else { return nil }
+            UIAccessibility.post(notification: .layoutChanged, argument: self.navigator.view)
+            return UIAccessibilityCustomRotorItemResult(
+                targetElement: self.navigator.view,
+                targetRange: nil
+            )
+        }
+    }
+
+    /// Synchronously evaluate the focus-walk JS and report whether focus moved.
+    /// The rotor's `itemSearchBlock` is synchronous, so this blocks briefly on the
+    /// WKWebView evaluation; the JS itself is a cheap DOM walk.
+    private func evaluateBlockMove(forward: Bool) -> Bool {
+        let js = TPPReaderBlockNavigation.nextBlockJavaScript(forward: forward)
+        let semaphore = DispatchSemaphore(value: 0)
+        var moved = false
+        var movedTag = ""
+        Task { @MainActor in
+            let result = await self.epubNavigator.evaluateJavaScript(js)
+            let value = try? result.get()
+            // Non-null tag name string means it focused a block.
+            if let tag = value as? String, !tag.isEmpty {
+                moved = true
+                movedTag = tag
+            }
+            semaphore.signal()
+        }
+        // Bounded wait so a stalled web view never hangs the AX thread.
+        _ = semaphore.wait(timeout: .now() + 1.0)
+        // PP-4533 observability: the focus-walk happens inside the WKWebView,
+        // which host-AX/simdrive can't inspect — so log each step's outcome so
+        // the step execution is verifiable via log capture (the marking-log
+        // pattern). Fires per rotor step.
+        Log.info(#file, "PP-4533 block-nav step forward=\(forward) moved=\(moved) tag=\(movedTag)")
+        return moved
+    }
     override func voiceOverStatusDidChange() {
         super.voiceOverStatusDidChange()
         configureAccessibilityActions()
@@ -244,6 +568,15 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         manualNavigationPending = false
         lastChapterHREF = newHREF
 
+        // App-rating primary trigger (PP-4088): reaching the end of the book is
+        // a positive moment. Fire once; the gate appears only if eligible.
+        if !didFireRatingCompletion,
+           let progression = locator.locations.totalProgression,
+           progression >= 0.99 {
+          didFireRatingCompletion = true
+          AppContainer.production().ratingPromptPresenter.noteBookCompleted()
+        }
+
         guard UIAccessibility.isVoiceOverRunning, isChapterChange else { return }
 
         // Readium's accessibilityScroll navigates but never posts
@@ -251,6 +584,15 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         // so VoiceOver's "Read All" continues into the new chapter.
         let status = locator.title.flatMap { $0.isEmpty ? nil : $0 } ?? "Page changed"
         UIAccessibility.post(notification: .pageScrolled, argument: status)
+
+        // Label inline footnotes (doc-noteref/doc-footnote/doc-backlink) for
+        // VoiceOver on every chapter render — manual turns AND Read-All — so a
+        // non-visual reader hits semantic note references throughout (PP-4531).
+        annotateFootnotesForVoiceOver()
+        // Mark logical content blocks for VoiceOver on every chapter render —
+        // manual turns AND Read-All — so the "Blocks" rotor can step through the
+        // whole chapter (DAISY reading-810, PP-4533).
+        annotateBlocksForVoiceOver()
 
         // For manual page turns only (toolbar buttons, keyboard, edge taps),
         // use JavaScript to focus the first content element so VoiceOver
@@ -428,7 +770,14 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.configureKeyboardInput()
+            // Swift 6 `complete`: the observer block is a nonisolated `@Sendable`
+            // closure, but `queue: .main` guarantees it is delivered on the main
+            // thread, so accessing the `@MainActor` members (`configureKeyboardInput`,
+            // `keyboardInput`) is provably safe. `MainActor.assumeIsolated` asserts
+            // that invariant without a hop — behavior unchanged. (Not a `deinit`.)
+            MainActor.assumeIsolated {
+                self?.configureKeyboardInput()
+            }
         }
 
         keyboardDisconnectObserver = NotificationCenter.default.addObserver(
@@ -436,8 +785,12 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.keyboardInput?.keyChangedHandler = nil
-            self?.keyboardInput = nil
+            // See the connect-observer note above: `queue: .main` makes the
+            // `@MainActor` teardown provably main-isolated.
+            MainActor.assumeIsolated {
+                self?.keyboardInput?.keyChangedHandler = nil
+                self?.keyboardInput = nil
+            }
         }
 
         configureKeyboardInput()
@@ -522,7 +875,13 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         let appearance = TPPConfiguration.defaultAppearance()
         navigationController?.navigationBar.isTranslucent = false
         navigationController?.navigationBar.setAppearance(appearance)
-        navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
+        // Restore the window to `.unspecified` so the app FOLLOWS the system
+        // light/dark setting again. Previously this reset to a CONCRETE style
+        // (`.light`/`.dark`) captured at reader-open, which pinned the window —
+        // after opening/closing a book once, the app stopped switching when the
+        // user changed the system appearance. `.unspecified` re-enables dynamic
+        // system following.
+        navigationController?.navigationBar.forceUpdateAppearance(style: .unspecified)
         navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
         tabBarController?.tabBar.tintColor = TPPConfiguration.iconColor()
     }
@@ -573,7 +932,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     }
 }
 
-extension TPPEPUBViewController: EPUBSearchDelegate {
+extension TPPEPUBViewController: @preconcurrency EPUBSearchDelegate {
     func didSelect(location: ReadiumShared.Locator) {
 
         presentedViewController?.dismiss(animated: true) { [weak self] in
@@ -596,7 +955,7 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
 }
 
 // MARK: - TPPReaderSettingsDelegate
-extension TPPEPUBViewController: TPPReaderSettingsDelegate {
+extension TPPEPUBViewController: @preconcurrency TPPReaderSettingsDelegate {
     func getUserPreferences() -> EPUBPreferences {
         return preferences
     }
@@ -619,6 +978,7 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
         // Update label colors to match theme
         positionLabel.textColor = textColor.withAlphaComponent(0.7)
         bookTitleLabel.textColor = textColor.withAlphaComponent(0.7)
+        chapterScrubber?.apply(textColor: textColor, backgroundColor: backgroundColor)
     }
 }
 
@@ -681,7 +1041,7 @@ extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
     }
 }
 
-extension TPPEPUBViewController: DecorableNavigator {
+extension TPPEPUBViewController: @preconcurrency DecorableNavigator {
     func apply(decorations: [Decoration], in group: String) {
         guard let navigator = navigator as? DecorableNavigator else { return }
         navigator.apply(decorations: decorations, in: group)
@@ -723,9 +1083,15 @@ extension TPPEPUBViewController: DecorableNavigator {
 }
 
 public extension DecorableNavigator {
+    // Swift 6 `targeted`: the previous body wrapped the work in
+    // `await MainActor.run { self.apply(...) }`, which captured `self`
+    // (`Self: DecorableNavigator`, a non-Sendable Readium protocol) in the
+    // `@Sendable` `MainActor.run` closure. Annotating the method `@MainActor`
+    // and calling `apply` directly is behavior-preserving — the body already
+    // only did main-actor work, the method is still `async` and awaitable from
+    // any context — while removing the non-Sendable capture.
+    @MainActor
     func applyDecorationsAsync(_ decorations: [Decoration], in group: String) async {
-        await MainActor.run {
-            self.apply(decorations: decorations, in: group)
-        }
+        apply(decorations: decorations, in: group)
     }
 }

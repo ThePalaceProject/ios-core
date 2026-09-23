@@ -205,6 +205,18 @@ private let nullString = "null"
     case problemDocAvailable = 912
     case malformedURL = 913
     case invalidOrNoHTTPResponse = 914
+    /// A response body exceeded `TPPNetworkResponder.maxResponseBodyBytes` and
+    /// was refused before buffering the whole payload into a single `Data`
+    /// (PP-4769, crash 898c0776 — `__DataStorage.init` OOM under memory
+    /// pressure). The task is cancelled and its completion fails cleanly.
+    case responseTooLarge = 915
+    /// A write handed to the offline retry queue was NOT persisted — the
+    /// database connection was unavailable, or the insert threw. Reported
+    /// because `TPPAnnotations` deliberately stops reporting a write once it
+    /// is queued (PP-4965); if the queue then drops it, the loss would be
+    /// completely silent. Queueing only earns that silence if it actually
+    /// took the write (PP-4987).
+    case offlineQueueWriteFailed = 916
 
     // DRM
     case epubDecodingError = 1000
@@ -449,6 +461,7 @@ private let nullString = "null"
     /**
      Report when user launches the app.
      */
+    @MainActor
     class func logNewAppLaunch() {
         var metadata = [String: Any]()
         addAccountInfoToMetadata(&metadata)
@@ -489,11 +502,31 @@ private let nullString = "null"
     // ----------------------------------------------------------------------------
     // MARK: - Image Loading Errors
 
-    /// Throttle state: tracks the last time a non-fatal was recorded per host
+    /// Lock-backed holder for the per-key image-error throttle timestamps.
+    /// Replaces the previous bare `static var lastImageErrorReport` +
+    /// `imageErrorReportLock` pair (a Swift 6 nonisolated-global-mutable-state
+    /// error) with an encapsulated `NSLock`-guarded store. The lock preserves
+    /// the exact throttle semantics of the prior inline critical section, so
+    /// `@unchecked Sendable` is sound (all mutation is serialized by `lock`).
+    private final class ImageErrorThrottle: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lastReport: [String: Date] = [:]
+
+        func shouldReport(key: String, interval: TimeInterval, now: Date) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if let last = lastReport[key], now.timeIntervalSince(last) < interval {
+                return false
+            }
+            lastReport[key] = now
+            return true
+        }
+    }
+
+    /// Throttle state: tracks the last time a non-fatal was recorded per key
     /// to avoid flooding Crashlytics during mass failure events (e.g., a dead
     /// image host affecting every book in a swimlane).
-    private static var lastImageErrorReport: [String: Date] = [:]
-    private static let imageErrorReportLock = NSLock()
+    private static let imageErrorThrottle = ImageErrorThrottle()
     private static let imageErrorReportInterval: TimeInterval = 60
 
     /// Records a host-level image loading failure as a non-fatal error in
@@ -532,15 +565,7 @@ private let nullString = "null"
     }
 
     private class func shouldReportImageError(key: String) -> Bool {
-        let now = Date()
-        imageErrorReportLock.lock()
-        defer { imageErrorReportLock.unlock() }
-        if let lastReport = lastImageErrorReport[key],
-           now.timeIntervalSince(lastReport) < imageErrorReportInterval {
-            return false
-        }
-        lastImageErrorReport[key] = now
-        return true
+        imageErrorThrottle.shouldReport(key: key, interval: imageErrorReportInterval, now: Date())
     }
 
     // ----------------------------------------------------------------------------

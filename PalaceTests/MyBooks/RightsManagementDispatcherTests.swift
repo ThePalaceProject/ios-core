@@ -14,7 +14,9 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
+@MainActor
 final class RightsManagementDispatcherTests: XCTestCase {
 
     private var stateManager: DownloadStateManager!
@@ -291,7 +293,7 @@ private final class SpyDelegate: RightsManagementDispatcherDelegate {
     }
 }
 
-private final class StubDownloadTask: URLSessionDownloadTask {
+private final class StubDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
 
     init(taskIdentifier: Int) {

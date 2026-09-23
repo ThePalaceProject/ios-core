@@ -45,7 +45,9 @@ struct KBMatchCard: View {
             // Secondary actions row. Single line, tight chips. Only shown
             // when there ARE secondary actions to take.
             HStack(spacing: BotUI.Spacing.small) {
-                if entry.fixedInVersion != nil {
+                if KBMatchActionPolicy.showsNotifyMeOnFix(
+                    entryHasFixVersion: entry.fixedInVersion != nil
+                ) {
                     BotUI.SecondaryChip(title: "Notify me", systemImage: "bell.fill") {
                         onAction(.notifyMe)
                     }
@@ -63,30 +65,44 @@ struct KBMatchCard: View {
                 onAction(.dismiss)
             }
             .font(.footnote)
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
         }
         .padding(BotUI.Spacing.cardPadding)
         .background(BotUI.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: BotUI.cardCornerRadius, style: .continuous))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Known issue match: \(entry.id)")
+        // Was "Known issue match: <id>" — factually wrong for a how-to or a
+        // generic ladder, and it read an internal id aloud. Announce what the
+        // card actually claims, in the same words a sighted patron sees.
+        .accessibilityLabel(badgePresentation.label)
+    }
+
+    /// Badge presentation. The DECISION lives in TriageBotCore so it can be
+    /// tested — this target is behind `canImport(UIKit)` and macOS
+    /// `swift test` never sees it. Here we only map a semantic badge to its
+    /// presentation, and reuse the label for VoiceOver.
+    private var badgePresentation: (label: String, symbol: String, color: Color) {
+        let badge = KBMatchBadgePolicy.badge(for: entry)
+        // Text comes from Core (`KBMatchBadge.label`) so it is testable and the
+        // port shares it; only the symbol and colour are decided here.
+        let (symbol, color): (String, Color) = {
+            switch badge {
+            case .fixedIn:               return ("checkmark.seal.fill", .green)
+            case .knownIssueFixComing:   return ("wrench.and.screwdriver.fill", .orange)
+            case .knownIssueWorkaround:  return ("exclamationmark.triangle.fill", .orange)
+            case .setupMixUp:            return ("info.circle.fill", .blue)
+            case .byDesign:              return ("info.circle", .gray)
+            case .tracked:               return ("tag.fill", .gray)
+            case .howTo:                 return ("questionmark.circle.fill", .blue)
+            // A generic ladder, not an answer — must not read as one.
+            case .narrowingDown:         return ("arrow.triangle.branch", .gray)
+            }
+        }()
+        return (badge.label, symbol, color)
     }
 
     @ViewBuilder private var statusBadge: some View {
-        let (label, symbol, color): (String, String, Color) = {
-            switch entry.status {
-            case .fixedIn:
-                return ("Fixed in \(entry.fixedInVersion ?? "next release")", "checkmark.seal.fill", .green)
-            case .open:
-                if let version = entry.fixedInVersion {
-                    return ("Known issue — fix coming in \(version)", "wrench.and.screwdriver.fill", .orange)
-                }
-                return ("Known issue — workaround available", "exclamationmark.triangle.fill", .orange)
-            case .userError: return ("Likely a setup mix-up", "info.circle.fill", .blue)
-            case .wontfix: return ("By design", "info.circle", .gray)
-            case .duplicateOf: return ("Tracked", "tag.fill", .gray)
-            }
-        }()
+        let (label, symbol, color) = badgePresentation
         Label {
             Text(label)
                 .font(.caption.weight(.semibold))
@@ -94,7 +110,7 @@ struct KBMatchCard: View {
             Image(systemName: symbol)
                 .font(.caption.weight(.semibold))
         }
-        .foregroundColor(color)
+        .foregroundStyle(color)
         .lineLimit(2)
     }
 }

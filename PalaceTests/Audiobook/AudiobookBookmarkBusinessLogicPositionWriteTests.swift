@@ -15,6 +15,7 @@ import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
 import PalaceReadingPosition
+import PalaceBookModel
 
 // MARK: - Spy
 
@@ -64,11 +65,10 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
     }
 
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
-        lock.lock()
-        _savedSnapshots.append(snapshot)
-        let result = _saveResult
-        let hook = _onSave
-        lock.unlock()
+        let (result, hook) = lock.withLock { () -> (SaveOutcome, (() -> Void)?) in
+            _savedSnapshots.append(snapshot)
+            return (_saveResult, _onSave)
+        }
 
         hook?()  // race-window injection: tests can mutate registry between SUT's local-save and post-save guard
 
@@ -83,19 +83,17 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
     }
 
     func load(for bookID: String) async throws -> PositionSnapshot? {
-        lock.lock(); defer { lock.unlock() }
-        return _loadResult
+        return lock.withLock { _loadResult }
     }
 
     func cancel(for bookID: String) async {
-        lock.lock()
-        _cancelledBookIDs.append(bookID)
-        lock.unlock()
+        lock.withLock { _cancelledBookIDs.append(bookID) }
     }
 }
 
 // MARK: - Tests
 
+@MainActor
 final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
     private let bookIdentifier = "spy-book-1"
@@ -180,18 +178,20 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         TrackPosition(track: tracks.tracks[trackIndex], timestamp: time, tracks: tracks)
     }
 
-    /// Wait briefly for the SUT's detached Task (which awaits the spy
-    /// writer) to drain. The spy resolves synchronously, but the Task hop
-    /// is asynchronous; we poll the completion handler instead of sleeping.
+    /// Deterministically drain the SUT's position-write `Task` by JOINING the
+    /// actual work unit via `_awaitPositionWriteForTesting()` — not by polling a
+    /// wall-clock deadline. The prior `wait(for:timeout:)` variant starved under
+    /// CI sim-clone oversubscription (the detached Task may not be scheduled
+    /// within the fixed timeout). Awaiting the Task's value guarantees the
+    /// completion closure has already fired (it is invoked synchronously inside
+    /// the Task before it returns), so `captured` is populated on return.
     @discardableResult
-    private func saveAndWait(position: TrackPosition, timeout: TimeInterval = 2.0) -> String? {
-        let exp = expectation(description: "saveListeningPosition completes")
+    private func saveAndWait(position: TrackPosition) async -> String? {
         var captured: String? = nil
         sut.saveListeningPosition(at: position) { result in
             captured = result
-            exp.fulfill()
         }
-        wait(for: [exp], timeout: timeout)
+        await sut._awaitPositionWriteForTesting()
         return captured
     }
 
@@ -216,11 +216,11 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
     // MARK: - 2. Delegation to PositionWriter
 
-    func testSaveListeningPosition_delegatesNetworkSaveToPositionWriter() {
+    func testSaveListeningPosition_delegatesNetworkSaveToPositionWriter() async {
         spyWriter.saveResult = .success("server-abc")
         let position = position(trackIndex: 1, time: 100.0)
 
-        let returned = saveAndWait(position: position)
+        let returned = await saveAndWait(position: position)
 
         XCTAssertEqual(spyWriter.savedSnapshots.count, 1,
                        "Writer.save MUST be called exactly once")
@@ -242,14 +242,14 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
     // MARK: - 3. Writer throttled → local still committed
 
-    func testSaveListeningPosition_writerThrottled_localStillCommitted() {
+    func testSaveListeningPosition_writerThrottled_localStillCommitted() async {
         // Writer returns nil — simulating throttled/queued state. The local
         // save must already be in place; the registry write does not depend
         // on the writer's outcome.
         spyWriter.saveResult = .throttled
         let position = position(trackIndex: 2, time: 200.0)
 
-        let returned = saveAndWait(position: position)
+        let returned = await saveAndWait(position: position)
 
         XCTAssertNotNil(mockRegistry.location(forIdentifier: bookIdentifier),
                         "Local registry must be written even when writer queues")
@@ -261,12 +261,12 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
     // MARK: - 4. Writer error → completion called with nil, no crash
 
-    func testSaveListeningPosition_writerError_doesNotCrash_completionCalledWithError() {
+    func testSaveListeningPosition_writerError_doesNotCrash_completionCalledWithError() async {
         struct WriterError: Error {}
         spyWriter.saveResult = .failure(WriterError())
         let position = position(trackIndex: 1, time: 50.0)
 
-        let returned = saveAndWait(position: position)
+        let returned = await saveAndWait(position: position)
 
         XCTAssertNotNil(mockRegistry.location(forIdentifier: bookIdentifier),
                         "Local registry must be preserved when writer throws")
@@ -301,7 +301,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
     /// "no post after cancel" semantics are pinned in RemotePositionWriterTests).
     func testSaveThenCancel_routesBothThroughWriter_sameBook() async {
         spyWriter.saveResult = .throttled
-        _ = saveAndWait(position: position(trackIndex: 1, time: 10.0))
+        _ = await saveAndWait(position: position(trackIndex: 1, time: 10.0))
         XCTAssertEqual(spyWriter.savedSnapshots.count, 1,
                        "Save must have reached the writer (throttled)")
 
@@ -327,7 +327,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
     /// lines 117–125: "Strict zero is correct"). The input below uses
     /// `time: 0` to match the strict-zero contract. A `time: 5.0` input
     /// would (correctly) bypass the guard under the new predicate.
-    func testIsAtBeginning_preservedAfterMigration_doesNotOverwriteValidPosition() throws {
+    func testIsAtBeginning_preservedAfterMigration_doesNotOverwriteValidPosition() async throws {
         // Arrange: pre-seed a "later track" position in the registry that
         // a stale beginning-of-book save must NOT clobber. The chapter
         // string is parsed by the predicate at lines 87-89 of the SUT —
@@ -371,7 +371,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         // to strict-zero by swarm_f3b9b087 P0 #4; any positive time
         // bypasses the guard under the new predicate.
         let beginningPosition = position(trackIndex: 0, time: 0)
-        let returned = saveAndWait(position: beginningPosition)
+        let returned = await saveAndWait(position: beginningPosition)
 
         // Assert: writer was called (local-save-first ordering preserved),
         // but the registry location is the ORIGINAL later-track bookmark —
@@ -398,12 +398,15 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
     // MARK: - 6. Timestamp-newer race-check preserved (swarm_f3b9b087 #4)
 
     /// Pin the swarm_f3b9b087 P0 #4 race-check predicate: when a save's
-    /// timestamp is older than the current local timestamp by more than
-    /// the 1.0-second window (the implementation passes `with: 1.0` to
-    /// `String.isDate(_:moreRecentThan:with:)`), the post-save commit MUST
-    /// be suppressed so a stale upload result cannot overwrite a fresh
-    /// local position.
-    func testTimestampNewerRace_preservedAfterMigration_keepsLocal() throws {
+    /// timestamp is genuinely OLDER than the current local timestamp, the
+    /// post-save commit MUST be suppressed so a stale upload result cannot
+    /// overwrite a fresh local position.
+    ///
+    /// Note this seeds local at +1 hour — "well outside any grace window" —
+    /// so it passes under any tolerance and never exercises the boundary.
+    /// `testTimestampTie_sameSecondStamp_commitsTheSavedPosition` covers the
+    /// boundary, which is the case that actually occurs in the field.
+    func testTimestampNewerRace_preservedAfterMigration_keepsLocal() async throws {
         // The sentTimestamp the SUT sets is `Date().iso8601` at the moment
         // of the save call. To make the post-save guard fire, the
         // "fresh local" registry entry must carry a timestamp NEWER than
@@ -467,7 +470,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         )
 
         let stalePosition = position(trackIndex: 0, time: 5.0)
-        let returned = saveAndWait(position: stalePosition)
+        let returned = await saveAndWait(position: stalePosition)
 
         // Assert: completion received the server ID (post-save flow did
         // run) but the registry retains the fresh-local bookmark — the
@@ -484,5 +487,87 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
                        "Fresh-local annotationId MUST survive a stale upload result")
         XCTAssertEqual(finalBookmark.chapter, "chapter-2",
                        "Fresh-local chapter MUST survive a stale upload result")
+    }
+
+    // MARK: - 7. Timestamp TIE — the case that actually happens in production
+
+    /// The race check above seeds local at +1 hour, "well outside any grace
+    /// window", so it passes whatever tolerance the call site uses and never
+    /// touches the boundary. This test pins the boundary, and the boundary is
+    /// not an edge case here — it is the ONLY case observed in the field.
+    ///
+    /// `lastSavedTimeStamp` is ISO8601 at SECOND granularity ("2026-08-13T15:30:52Z",
+    /// no fractional part). A save round-trips in well under a second, so the
+    /// local and sent stamps land in the same second and compare EQUAL. A
+    /// 37-minute locked-screen run on device produced 10 post-save resolutions
+    /// and all 10 were equal-timestamp ties.
+    ///
+    /// The call site's intent, per its own comment, is to protect local "from
+    /// being overwritten by a STALE upload result" — stale meaning older. A tie
+    /// is not stale, so the position we just successfully saved must be
+    /// committed. Passing a 1.0s grace window inverted that: `d1 + 1.0 > d2` is
+    /// unconditionally true when `d1 == d2`, so every tie took the "local is
+    /// newer" branch and discarded the save.
+    func testTimestampTie_sameSecondStamp_commitsTheSavedPosition() async throws {
+        // Local carries a stamp from the SAME SECOND as the one the SUT will
+        // send — which is what production always produces.
+        let tieTimestamp = ISO8601DateFormatter().string(from: Date())
+        let tieLocal = AudioBookmark(
+            type: .locatorAudioBookTime,
+            version: 1,
+            timeStamp: tieTimestamp,
+            annotationId: "ann-tie-local",
+            readingOrderItem: "track-2",
+            readingOrderItemOffsetMilliseconds: 30_000,
+            chapter: "chapter-2",
+            title: "Chapter 2",
+            part: nil,
+            time: 30
+        )
+        guard let tieLocation = tieLocal.toTPPBookLocation() else {
+            XCTFail("Failed to build tie-local TPPBookLocation")
+            return
+        }
+
+        final class TieWriter: PositionWriter, @unchecked Sendable {
+            let onSave: () -> Void
+            init(onSave: @escaping () -> Void) { self.onSave = onSave }
+            func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
+                onSave()
+                return "server-tie-id"
+            }
+            func load(for bookID: String) async throws -> PositionSnapshot? { nil }
+            func cancel(for bookID: String) async {}
+        }
+        let tieWriter = TieWriter { [weak self] in
+            self?.mockRegistry.setLocation(tieLocation,
+                                           forIdentifier: self?.bookIdentifier ?? "")
+        }
+        sut = AudiobookBookmarkBusinessLogic(
+            book: fakeBook,
+            registry: mockRegistry,
+            annotationsManager: mockAnnotations,
+            positionWriter: tieWriter
+        )
+
+        // trackIndex 0 with a non-zero time is deliberately NOT "at beginning"
+        // (BeginningPositionPolicy is strict-zero), so the later guard cannot be
+        // what answers this test.
+        let returned = await saveAndWait(position: position(trackIndex: 0, time: 5.0))
+
+        XCTAssertEqual(returned, "server-tie-id",
+                       "Completion should still receive the server ID")
+        guard let finalLocation = mockRegistry.location(forIdentifier: bookIdentifier),
+              let dict = finalLocation.locationStringDictionary(),
+              let finalBookmark = AudioBookmark.create(locatorData: dict) else {
+            XCTFail("Final registry state missing or malformed")
+            return
+        }
+        XCTAssertEqual(
+            finalBookmark.annotationId, "server-tie-id",
+            "An EQUAL timestamp is not a stale upload. The position that was just saved "
+                + "must be committed; keeping local here is how a real reading position "
+                + "(observed: 331s into track 003) was discarded in favour of track=0."
+        )
     }
 }

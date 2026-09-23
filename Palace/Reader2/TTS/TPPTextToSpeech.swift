@@ -1,8 +1,18 @@
 import Combine
 import Foundation
-import ReadiumNavigator
-import ReadiumShared
+// Swift 6 `complete`: Readium's `Navigator`, `Publication`, `Locator`, and
+// `Decoration` are not `Sendable`; this `@MainActor` view model holds the
+// navigator, applies decorations, and drives `navigator.go(to:)` across
+// `await` boundaries. `@preconcurrency` is the honest ceiling until Readium
+// annotates these types.
+@preconcurrency import ReadiumNavigator
+@preconcurrency import ReadiumShared
 
+/// `@MainActor` — an `ObservableObject` that publishes `isPlaying` /
+/// `playingUtterance` to SwiftUI and drives the (main-actor) navigator and
+/// speech synthesizer. Isolating it keeps the Combine sinks below (which mutate
+/// published state and call the navigator) on-actor.
+@MainActor
 class TPPTextToSpeech: ObservableObject {
 
     private let publication: Publication

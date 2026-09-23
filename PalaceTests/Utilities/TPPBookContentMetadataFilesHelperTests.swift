@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPBookContentMetadataFilesHelperTests: XCTestCase {
 
     // MARK: - Directory for Account
