@@ -661,8 +661,16 @@ extension TPPAppDelegate {
         // preconfigurator carries no state of its own (the applied fingerprint
         // lives in `UserDefaults`), and building it inside AppContainer's own
         // init would re-enter `AppContainer.production()`'s lock.
+        // PP-5070 is behind a flag, default OFF. A device with no managed
+        // configuration behaves identically either way, so this does not
+        // protect unmanaged patrons from the feature's EFFECTS — it protects
+        // them from its TIMING, because the feature changes the first-run path
+        // that every new install takes, and that path has not yet been
+        // exercised on a real cold launch.
         let preconfigurator = ManagedLibraryPreconfigurator.production()
-        let decision = preconfigurator.applyIfNeeded()
+        let decision = AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled
+            ? preconfigurator.applyIfNeeded()
+            : .noConfiguration
         let start = managedPreconfigurationStart ?? Date()
         managedPreconfigurationStart = start
 
@@ -746,6 +754,9 @@ extension TPPAppDelegate {
     /// the moment it succeeds.
     private func retryManagedPreconfigurationWhenRegistryChanges() {
         guard managedRegistryRetryObserver == nil else { return }
+        guard AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled else {
+            return
+        }
         managedRegistryRetryObserver = NotificationCenter.default.addObserver(
             forName: .TPPCatalogDidLoad,
             object: nil,
@@ -781,6 +792,11 @@ extension TPPAppDelegate {
     /// and takes it away again if a configuration turns up.
     private func startWatchingForManagedLibraryConfiguration() {
         guard managedLibraryWatcher == nil else { return }
+        // Flag OFF means no observer is registered at all, rather than one that
+        // wakes and decides to do nothing.
+        guard AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled else {
+            return
+        }
         let watcher = ManagedLibraryConfigurationWatcher(
             defaults: .standard,
             preconfigurator: ManagedLibraryPreconfigurator.production()

@@ -132,6 +132,21 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { overrideDefaults.set(sideLoadingEnabled, forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey) }
     }
 
+    /// Local override for MDM library pre-selection (PP-5070). Defaults OFF,
+    /// and the Firebase flag is global rather than per-device, so this toggle is
+    /// the intended QA switch — exactly as with side loading above, whose
+    /// override shipped in 3.3.0 with no writer and left the feature
+    /// unreachable. The row rendering this is in the Feature Flags section.
+    @Published var managedLibraryConfigurationEnabled: Bool {
+        didSet {
+            overrideDefaults.set(
+                managedLibraryConfigurationEnabled,
+                forKey: RemoteFeatureFlags.managedLibraryConfigurationLocalOverrideKey
+            )
+            refreshManagedLibraryStatus()
+        }
+    }
+
     // MARK: - Library Registry Debugging
 
     /// Bare host, or a full https:// URL. Mirrors
@@ -215,11 +230,13 @@ final class DeveloperSettingsViewModel: ObservableObject {
         self.appRatingForceEligible = featureFlags.isAppRatingForceEligible
         self.chapterScrubberEnabled = featureFlags.isChapterScrubberEnabled
         self.sideLoadingEnabled = featureFlags.isSideLoadingEnabled
+        self.managedLibraryConfigurationEnabled = featureFlags.isManagedLibraryConfigurationEnabled
 
         self.customRegistryInput = settings.customLibraryRegistryServer ?? ""
         self.managedLibraryStatus = ManagedLibraryDebugOverride.statusDescription(
             preconfigurator: .production(),
-            defaults: .standard
+            defaults: .standard,
+            featureEnabled: featureFlags.isManagedLibraryConfigurationEnabled
         )
 
         self.badgeLoggingEnabled = debugSettings.isBadgeLoggingEnabled
@@ -394,7 +411,8 @@ final class DeveloperSettingsViewModel: ObservableObject {
     func refreshManagedLibraryStatus() {
         managedLibraryStatus = ManagedLibraryDebugOverride.statusDescription(
             preconfigurator: .production(),
-            defaults: .standard
+            defaults: .standard,
+            featureEnabled: featureFlags.isManagedLibraryConfigurationEnabled
         )
     }
 

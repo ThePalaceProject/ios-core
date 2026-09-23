@@ -145,6 +145,8 @@ struct DeveloperSettingsView: View {
             DevToggleRow(title: "LCP Audiobook Streaming", isOn: $viewModel.lcpAudiobookStreamingEnabled)
             DevToggleRow(title: "EPUB Chapter Scrubber", isOn: $viewModel.chapterScrubberEnabled)
             DevToggleRow(title: "Side Loading", isOn: $viewModel.sideLoadingEnabled)
+            DevToggleRow(title: "MDM Library Pre-selection",
+                         isOn: $viewModel.managedLibraryConfigurationEnabled)
             DevToggleRow(title: "Force Rating Prompt Eligible", isOn: $viewModel.appRatingForceEligible)
             DevActionRow(title: "Trigger Rating Prompt Now", color: .blue) {
                 viewModel.triggerRatingPromptNow()

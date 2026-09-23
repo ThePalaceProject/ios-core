@@ -154,14 +154,19 @@ enum ManagedLibraryDebugOverride {
 
     /// One-line human summary of what the app currently sees, for the read-out.
     static func statusDescription(preconfigurator: ManagedLibraryPreconfigurator,
-                                  defaults: UserDefaults) -> String {
+                                  defaults: UserDefaults,
+                                  featureEnabled: Bool) -> String {
         let source: String
         switch provenance(defaults: defaults) {
         case .absent:       source = "none"
         case .debugAuthored: source = "set here"
         case .external:     source = "set by MDM"
         }
-        return "\(source) · \(describe(preconfigurator.inspect()))"
+        // The flag state leads, because a tester looking at a configuration
+        // that is present and correct while the launch path ignores it would
+        // otherwise go hunting for a bug that is a switch.
+        let gate = featureEnabled ? "" : "FEATURE OFF · "
+        return "\(gate)\(source) · \(describe(preconfigurator.inspect()))"
     }
 
     /// Plain-language rendering of a decision. Says what the app will DO, not

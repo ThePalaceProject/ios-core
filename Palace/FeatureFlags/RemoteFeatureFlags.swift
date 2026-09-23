@@ -349,6 +349,34 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         return isFeatureEnabled(.sideLoadingEnabled)
     }
 
+    /// UserDefaults override letting QA or a developer force MDM library
+    /// pre-selection on or off without a Firebase round-trip. Settable from the
+    /// Testing screen's Feature Flags section. Falls through to Remote Config
+    /// when nil.
+    static let managedLibraryConfigurationLocalOverrideKey =
+        "RemoteFeatureFlags.managedLibraryConfigurationLocalOverride"
+
+    /// Whether deploy-time library pre-selection from an MDM's Managed App
+    /// Configuration is enabled (PP-5070 / PP-5217).
+    ///
+    /// **Defaults OFF.** A device with no managed configuration behaves
+    /// identically either way, so this is not protecting unmanaged patrons from
+    /// the feature's effects — it is protecting them from its TIMING. The
+    /// feature changes the first-run path, which every new install takes, and
+    /// that path has not yet been exercised on a real cold launch.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (dev-menu toggle / QA)
+    ///   2. Firebase Remote Config (default `false`)
+    var isManagedLibraryConfigurationEnabled: Bool {
+        if let override = defaults.object(
+            forKey: Self.managedLibraryConfigurationLocalOverrideKey
+        ) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.managedLibraryConfigurationEnabled)
+    }
+
     /// UserDefaults override that lets QA / a developer force LCP audiobook
     /// streaming on or off without a Firebase round-trip. Settable from
     /// `TPPDeveloperSettingsTableViewController`. Falls through to the Remote
