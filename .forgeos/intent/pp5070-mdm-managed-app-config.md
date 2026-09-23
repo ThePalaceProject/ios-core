@@ -74,11 +74,82 @@ Registry facts established before writing any code (all measured, not assumed):
 
 ## Files in scope
 
-- `Palace/AppInfrastructure/ManagedAppConfiguration.swift` (new — parse + decide, pure)
-- `Palace/AppInfrastructure/ManagedLibraryPreconfigurator.swift` (new — apply)
-- `Palace/AppInfrastructure/TPPAppDelegate.swift` (wiring, one call site)
+The first five were the spike's scope. Everything after them is the branch
+outgrowing "throwaway prototype" — see "Scope grew, deliberately" below, which
+says why each group exists rather than leaving the list to speak for itself.
+
+The parse-and-apply core:
+
+- `Palace/AppInfrastructure/ManagedAppConfiguration.swift` (new — parse, pure)
+- `Palace/AppInfrastructure/ManagedLibraryPreconfigurator.swift` (new — decide and apply)
+- `Palace/AppInfrastructure/TPPAppDelegate.swift` (wiring)
+
+Handling a configuration that does not arrive on time, or at all:
+
+- `Palace/AppInfrastructure/ManagedLibraryConfigurationWatcher.swift` (new — a
+  configuration arriving after the launch decision)
+- `Palace/AppInfrastructure/FirstRunFlowStep.swift` (new — the picker decision
+  lifted out of app startup so it can be tested at all)
+- `Palace/AppInfrastructure/ManagedLibraryDiagnostics.swift` (new — reporting a
+  configuration we could not use, once per value)
+
+Exercising it without an MDM, which is the only way anyone could test this
+before a test MDM exists:
+
+- `Palace/AppInfrastructure/ManagedLibraryDebugOverride.swift` (new)
+- `Palace/AppInfrastructure/ManagedLibraryTestingGuide.swift` (new)
+- `Palace/Settings/DeveloperSettings/ManagedLibraryTestingInfoView.swift` (new)
+- `Palace/Settings/DeveloperSettings/DeveloperSettingsView.swift`
+- `Palace/Settings/DeveloperSettings/DeveloperSettingsViewModel.swift`
+- `Palace/Settings/DeveloperSettings/DeveloperSettingsRows.swift`
+
+The feature flag, so none of this reaches a patron until we say so:
+
+- `Palace/FeatureFlags/RemoteFeatureFlags.swift`
+- `Palace/AppInfrastructure/FirebaseManager.swift`
+- `Palace/Packages/PalaceFeatureFlags/Sources/PalaceFeatureFlags/PalaceFeatureFlag.swift`
+- `Palace/Packages/PalaceFeatureFlags/Sources/PalaceFeatureFlags/FeatureFlagProviding.swift`
+
+Tests:
+
 - `PalaceTests/AppInfrastructure/ManagedAppConfigurationTests.swift` (new)
 - `PalaceTests/AppInfrastructure/ManagedLibraryPreconfiguratorTests.swift` (new)
+- `PalaceTests/AppInfrastructure/ManagedLibraryLaunchStepTests.swift` (new)
+- `PalaceTests/AppInfrastructure/ManagedLibraryMultipleTests.swift` (new)
+- `PalaceTests/AppInfrastructure/ManagedLibraryConfigurationWatcherTests.swift` (new)
+- `PalaceTests/AppInfrastructure/ManagedLibraryDebugOverrideTests.swift` (new)
+- `PalaceTests/AppInfrastructure/ManagedLibraryTestingGuideTests.swift` (new)
+- `PalaceTests/AppInfrastructure/ManagedLibraryFeatureFlagTests.swift` (new)
+- `PalaceTests/AppInfrastructure/ManagedLibraryDiagnosticsTests.swift` (new)
+- `PalaceTests/AppInfrastructure/ManagedLibraryDiagnosticReportingTests.swift` (new)
+- `PalaceTests/AppInfrastructure/FirstRunFlowStepTests.swift` (new)
+- `scripts/mdm-first-launch.sh` (new — drives a genuine first launch)
+
+## Scope grew, deliberately, and this records why
+
+The intent above describes a throwaway prototype. What is on the branch is not
+throwaway, and pretending otherwise in this file would be the drift the gate
+exists to catch. Three things drove it, each a hole the prototype opened rather
+than a feature anyone asked for:
+
+The bounded wait (recorded below) turned out to be a cliff rather than a grace
+period: when it expired the configuration was dropped for good. Hence the retry
+after the picker appears.
+
+Nothing promises the configuration is present before first launch. A prototype
+that reads once therefore fails on exactly the launch the feature is for. Hence
+the watcher — and hence `FirstRunFlowStep`, because once there were three
+reasons to re-enter the picker decision, a decision with no tests at all and a
+history of stacking four pickers (PP-4329) was no longer acceptable to leave
+tangled in app startup.
+
+A mistyped identifier produced a log line and nothing else, so "we set it up and
+nothing happened" could not be answered without the device in hand. Hence the
+diagnostics.
+
+The feature flag is what makes shipping this rather than discarding it safe: it
+defaults off, so the launch path for every existing Palace user is unchanged
+until someone turns it on deliberately.
 
 ## Not done
 
