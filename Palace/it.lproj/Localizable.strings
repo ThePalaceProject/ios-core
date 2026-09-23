@@ -684,6 +684,9 @@
 
 "Keep Hold" = "Mantieni la prenotazione";
 
+/* VoiceOver hint for the audiobook minimize control, distinguishing it from Close, which stops playback */
+"Keeps playing and returns you to the app" = "Continua la riproduzione e torna all’app";
+
 /* Book detail metadata label for the work's language */
 "Language" = "Lingua";
 
@@ -739,6 +742,9 @@
 
 /* Reader page margin width */
 "Medium" = "Medio";
+
+/* VoiceOver: Grab handle at the top of the full audiobook player. Collapses the player to the mini-bar WITHOUT stopping playback. */
+"Minimize player" = "Riduci il lettore";
 
 "Missing book" = "Libro non trovato";
 
