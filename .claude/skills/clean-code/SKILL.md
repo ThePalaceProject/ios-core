@@ -1,12 +1,12 @@
 ---
 name: clean-code
-description: Audit staged or branch-scoped code for clean-code violations before commit/PR — DRY/duplication, dead code, premature abstraction, fluff tests, banned patterns (force unwraps, GCD where async exists, useless comments), and copy-paste drift. Use when about to commit code, when the harness pre-commit hook reports findings, when a subagent finishes an implementation, when the user says "clean code review", "check for duplication", "review my diff", "is this clean", or whenever you've just written non-trivial code and want a second pass. Auto-invoked by the pre-commit hook when static detectors find candidates.
+description: Audit staged or branch-scoped code for clean-code violations before commit/PR — DRY/duplication, dead code, premature abstraction, fluff tests, banned patterns (force unwraps, GCD where async exists, useless comments), and copy-paste drift. Use when about to commit code, when the pre-commit hook reports findings, when a subagent finishes an implementation, when the user says "clean code review", "check for duplication", "review my diff", "is this clean", or whenever you've just written non-trivial code and want a second pass. Auto-invoked by the pre-commit hook when static detectors find candidates.
 tools: Bash, Read, Edit, Grep, Glob, Agent
 ---
 
 # /clean-code — production-code hygiene review
 
-You audit the in-flight code for clean-code violations and (when authorized) fix the obvious ones. Designed to be invoked **before** committing — by the main agent, by subagents, or by the harness pre-commit hook flagging static-detector findings.
+You audit the in-flight code for clean-code violations and (when authorized) fix the obvious ones. Designed to be invoked **before** committing — by the main agent, by subagents, or by the pre-commit hook flagging static-detector findings.
 
 Your judgment matters here. The static detectors catch literal patterns; you catch the things that need a reader to interpret intent (premature abstraction, fluff tests, useless comments). Be honest. Approving sloppy code defeats the purpose.
 
@@ -109,7 +109,7 @@ Before approving a chunk that looks "new," `grep` the codebase for the same conc
 
 ### J. Skeptic-pass greps — MANDATORY (run literally)
 
-These are derived from wall-failure catalogs (`.forgeos/wall-failures/` in projects that have them — Palace iOS does as of PR #1018). Each grep catches a class of "looks correct but isn't" failure that the other categories miss. Run them on every diff. Block on FAIL.
+These are derived from wall-failure catalogs (`.forgeos/wall-failures/` in projects that have them — Palace iOS does as of PR #1018). Each grep catches a class of "looks correct but isn't" failure that the other categories miss. Run them on every diff. Block on FAIL. <!-- leak-ok: .forgeos/wall-failures/ is TRACKED in this repo (40 files); the path resolves on a clean clone -->
 
 **J1. SUT instantiation in named test files** (catches fake-test-instantiation — when a test class names a service it never constructs)
 
@@ -153,7 +153,7 @@ git diff --cached -U500 | \
 
 **J4. Scope-deferral protocol compliance** (catches silent partial-shipping)
 
-If the diff is partial relative to the user's original task, the commit body MUST include a `**Scope:**` / `**Not done:**` / `**Deferred:**` stanza. The harness pre-commit hook enforces this for ≥50 prod LOC; J4 reinforces for smaller diffs that are still task-partial.
+If the diff is partial relative to the user's original task, the commit body MUST include a `**Scope:**` / `**Not done:**` / `**Deferred:**` stanza. The pre-commit hook enforces this for ≥50 prod LOC; J4 reinforces for smaller diffs that are still task-partial.
 
 ```bash
 # For any task-partial diff: check that the commit body has the deferral stanza
@@ -171,11 +171,11 @@ git diff --cached --name-only | grep -E "<critical-path-pattern>" && \
   echo "WARN J5: critical-path change without mutation evidence"
 ```
 
-These greps mirror the swarm Phase 4.5 skeptic pass — they're applied here so single-agent commits get the same protection regardless of whether the work came through /swarm.
+These greps are the skeptic pass, applied to every diff so a single-agent commit gets the same protection a multi-agent review would give it.
 
 ### J.5 Universal rigor scripts (M1 floor)
 
-Run before declaring audit complete. These are the universal floor — every diff, regardless of size or path, passes through them. They wrap the wave-1-4 manual-review findings into machine-checkable form so single-agent commits get the same protection /swarm and /rigorous-fix get.
+Run before declaring audit complete. These are the universal floor — every diff, regardless of size or path, passes through them. They wrap manual-review findings into machine-checkable form, so a single-agent commit gets the same protection a full multi-reviewer pass would give it.
 
 ```bash
 python3 scripts/check-contract-reconciliation.py --quiet ; CR_EXIT=$?
@@ -190,9 +190,9 @@ Block-on-FAIL rules (exit 1 means a real finding):
 - `check-adjacency-staleness.py` exit 1 → **WARN-ONLY**. Adjacent docs/tests stale relative to the change; surface to user but don't block.
 - `check-intent-recorded.py` exit 1 → **BLOCK only when added prod-LOC ≥ 10**. Smaller diffs skip the intent requirement.
 
-For diffs ≥10 prod LOC under `Palace/`, also spawn the `forge-blast-radius-reviewer` agent as an advisory pass (no SoD denial — /clean-code is single-author, the reviewer is read-only). Use `Agent` with `subagent_type: "forge-blast-radius-reviewer"` and pass the changeset / branch / worktree inputs from the current session. Read the verdict; if BLOCKED, surface the top finding alongside your own audit summary.
+For diffs ≥10 prod LOC under `Palace/`, an advisory blast-radius pass (API surface, call-site census, downstream effects) is worth running if a reviewer agent for it is configured in this environment. It is OPTIONAL and read-only — this skill is single-author, so there is no SoD denial. If no such agent is available, do the same pass yourself against the checklist above and say so in the summary; do not block on its absence.
 
-This `J.5` floor was added 2026-05-28 as the universal-rigor remediation derived from waves 1-4 (M1 swarm `swarm_M1_83be56fc`). Without it, every commit went through /clean-code's J1-J5 greps but the 4 wave-derived scripts and the blast-radius reviewer ran only when the author opted into /swarm or /rigorous-fix.
+This `J.5` floor was added 2026-05-28 as the universal-rigor remediation derived from waves 1-4 (M1 swarm `swarm_M1_83be56fc`). Without it, every commit went through the J1-J5 greps but the 4 wave-derived scripts ran only when the author opted into a heavier review path.
 
 ## 4. Report
 

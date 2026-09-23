@@ -154,3 +154,14 @@ Signing.local.xcconfig
 # historical ones live at tag archive/forgeos-swarms-2026-08-24. See
 # .forgeos/README.md.
 .forgeos/swarms/
+
+# Private maintainer skills/agents. These instruct an agent to call ForgeOS MCP
+# tools, /forge-review and forge-* reviewers that DO NOT EXIST on a clean clone.
+# Unlike a shell script, a skill is markdown — it cannot check `command -v` and
+# degrade; it just runs partway and fails confusingly. They live in ~/harness and
+# ~/.claude instead. See scripts/check-contributor-surface.py CHECK C.
+.claude/skills/swarm/
+.claude/skills/rigorous-fix/
+.claude/skills/forge-review/
+.claude/skills/intent/
+.claude/agents/forge-blast-radius-reviewer.md
