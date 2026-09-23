@@ -12,6 +12,30 @@ import FirebaseAnalytics
 import PalaceLogging
 import PalaceFeatureFlags
 
+/// The slice of `FirebaseManager` that `RemoteFeatureFlags` actually consumes.
+///
+/// This exists so a test can PIN the Remote Config side the way it already pins
+/// `UserDefaults`. Before it, every flag getter that fell through its local
+/// override read `FirebaseManager.shared` — a dependency no test could reach —
+/// so a test asserting a flag's default was really asserting whatever Remote
+/// Config value that machine happened to hold. That passes on CI's fresh
+/// simulators, which never fetch, and fails on any device that has run the app
+/// since the flag was switched on (PP-5224).
+///
+/// `FirebaseManager` is `final`, so a protocol is the only available seam.
+protocol RemoteConfigProviding: Sendable {
+    func fetchAndActivateRemoteConfig() async -> Bool
+    func getBoolValue(forKey key: FirebaseManager.RemoteConfigKey, checkingDeviceSpecific: Bool) -> Bool
+    func getDoubleValue(forKey key: FirebaseManager.RemoteConfigKey) -> Double
+    func isEnhancedLoggingEnabled() -> Bool
+    func getDeviceInfo() -> [String: String]
+    func setUserPropertiesForTargeting()
+}
+
+/// Conformance only — every member already exists with these signatures, so
+/// this adds no behaviour and changes no threading.
+extension FirebaseManager: RemoteConfigProviding {}
+
 /// Remote feature flags using Firebase Remote Config.
 ///
 /// NOTE: This class delegates all Firebase RemoteConfig access to FirebaseManager
@@ -38,6 +62,30 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// across tests. There is NO fallback once injected.
     private let defaults: UserDefaults
 
+    /// Remote Config backing store, injected for the same reason `defaults` is:
+    /// a flag getter that falls through its local override reads THIS, so a test
+    /// that pins only `defaults` is still at the mercy of the machine's fetched
+    /// Remote Config state. Tests pass a stub; there is NO fallback once injected.
+    private let injectedRemoteConfig: RemoteConfigProviding?
+
+    /// Resolves `FirebaseManager.shared` LAZILY, on first read, and this is
+    /// load-bearing rather than stylistic.
+    ///
+    /// `RemoteFeatureFlags.shared` is constructed by `AppContainer.production()`
+    /// inside `applicationDidFinishLaunching`, which runs BEFORE
+    /// `FirebaseApp.configure()`. Binding `FirebaseManager.shared` as a default
+    /// ARGUMENT instead moves that touch to construction time, where
+    /// `FirebaseManager.init` reaches `+[FIRRemoteConfig remoteConfig]` and
+    /// Firebase throws `FIRAppNotConfigured` — the app terminates on launch for
+    /// every user. That is not hypothetical: it is what the first draft of this
+    /// change did, and the test host crashed before a single test ran.
+    ///
+    /// Keep the resolution here, in the getter. Do not "simplify" it back into
+    /// a default argument.
+    private var remoteConfig: RemoteConfigProviding {
+        injectedRemoteConfig ?? FirebaseManager.shared
+    }
+
     // MARK: - Feature Flag Keys
 
     /// Wave 1b: the typed flag surface moved to the PalaceFeatureFlags leaf
@@ -53,8 +101,13 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// own `UserDefaults(suiteName:)` to isolate override-key state.
     /// Access stays `internal` (not `public`) — production code uses
     /// `.shared`; only the test target needs the seam.
-    init(defaults: UserDefaults = .standard) {
+    /// `remoteConfig` defaults to `nil`, NOT to `FirebaseManager.shared` — see
+    /// the `remoteConfig` property for why binding the singleton here crashes
+    /// the app on launch.
+    init(defaults: UserDefaults = .standard,
+         remoteConfig: RemoteConfigProviding? = nil) {
         self.defaults = defaults
+        self.injectedRemoteConfig = remoteConfig
     }
 
     // MARK: - Setup
@@ -69,7 +122,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// Fetch and activate remote config.
     @discardableResult
     func fetchAndActivate() async -> Bool {
-        let success = await FirebaseManager.shared.fetchAndActivateRemoteConfig()
+        let success = await remoteConfig.fetchAndActivateRemoteConfig()
 
         lock.withLock { lastFetchTime = Date() }
 
@@ -96,7 +149,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     func isFeatureEnabled(_ feature: FeatureFlag) -> Bool {
         // Delegate to FirebaseManager for thread-safe access
         if let managerKey = feature.managerKey {
-            return FirebaseManager.shared.getBoolValue(
+            return remoteConfig.getBoolValue(
                 forKey: managerKey,
                 checkingDeviceSpecific: feature.supportsDeviceSpecificOverride
             )
@@ -104,7 +157,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
 
         // For device-specific flags, check via FirebaseManager
         if feature == .enhancedErrorLogging {
-            return FirebaseManager.shared.isEnhancedLoggingEnabled()
+            return remoteConfig.isEnhancedLoggingEnabled()
         }
 
         // Fallback to default
@@ -435,7 +488,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// threshold). `minBooksCompleted` is allowed to be as low as 1, never 0,
     /// so a positive-only guard is correct for every threshold here.
     private func positiveIntOrFallback(_ key: FirebaseManager.RemoteConfigKey, _ fallback: Int) -> Int {
-        let value = FirebaseManager.shared.getDoubleValue(forKey: key)
+        let value = remoteConfig.getDoubleValue(forKey: key)
         return value > 0 ? Int(value) : fallback
     }
 
@@ -443,12 +496,12 @@ final class RemoteFeatureFlags: @unchecked Sendable {
 
     /// Get device info for Firebase targeting.
     func getDeviceInfo() -> [String: String] {
-        FirebaseManager.shared.getDeviceInfo()
+        remoteConfig.getDeviceInfo()
     }
 
     /// Set user properties for Firebase targeting.
     func setUserPropertiesForTargeting() {
-        FirebaseManager.shared.setUserPropertiesForTargeting()
+        remoteConfig.setUserPropertiesForTargeting()
     }
 }
 

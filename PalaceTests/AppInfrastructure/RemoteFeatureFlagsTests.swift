@@ -225,25 +225,74 @@ final class RemoteFeatureFlagsTests: XCTestCase {
 
     /// Fresh, isolated UserDefaults suite so the local-override key can't bleed
     /// across tests or into `.standard`.
-    private func makeInAppNavFlags() -> (flags: RemoteFeatureFlags, suite: UserDefaults, name: String) {
-        let name = "test.inAppPlaybackNav.\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: name)!
-        return (RemoteFeatureFlags(defaults: suite), suite, name)
+    /// Pins the Remote Config side so a test asserts the CODE's behaviour rather
+    /// than whatever flag state the machine happens to hold. Before this seam
+    /// existed, a flag getter falling through its local override read
+    /// `FirebaseManager.shared`, which no test could reach — so "defaults off"
+    /// was really "this machine never fetched Remote Config" (PP-5224).
+    private struct StubRemoteConfig: RemoteConfigProviding {
+        var bools: [FirebaseManager.RemoteConfigKey: Bool] = [:]
+        var doubles: [FirebaseManager.RemoteConfigKey: Double] = [:]
+        var enhancedLogging = false
+
+        func fetchAndActivateRemoteConfig() async -> Bool { true }
+        func getBoolValue(forKey key: FirebaseManager.RemoteConfigKey,
+                          checkingDeviceSpecific: Bool) -> Bool {
+            bools[key] ?? false
+        }
+        func getDoubleValue(forKey key: FirebaseManager.RemoteConfigKey) -> Double {
+            doubles[key] ?? 0
+        }
+        func isEnhancedLoggingEnabled() -> Bool { enhancedLogging }
+        func getDeviceInfo() -> [String: String] { [:] }
+        func setUserPropertiesForTargeting() {}
     }
 
-    /// No local override and no Firebase server value (the unit-test state):
-    /// the feature is OFF and reflects the Remote Config flag rather than a
-    /// hardcoded constant. Reverting the getter to `return true` (the prior GA
-    /// behavior) fails the first assertion.
-    func testInAppPlaybackNav_noOverride_defaultsOff() {
-        let (flags, suite, name) = makeInAppNavFlags()
+    /// `remote` defaults to an all-false stub, which is the posture the existing
+    /// callers assumed — but now it is PINNED by the test rather than inherited
+    /// from the machine.
+    private func makeInAppNavFlags(
+        remote: StubRemoteConfig = StubRemoteConfig()
+    ) -> (flags: RemoteFeatureFlags, suite: UserDefaults, name: String) {
+        let name = "test.inAppPlaybackNav.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        return (RemoteFeatureFlags(defaults: suite, remoteConfig: remote), suite, name)
+    }
+
+    /// No local override, Remote Config says OFF: the feature is OFF.
+    ///
+    /// PP-5224: this assertion used to depend on ambient state. The test pinned
+    /// the override in a throwaway suite, then the getter read
+    /// `FirebaseManager.shared` — so it passed on CI's fresh simulators (which
+    /// never fetch) and failed on any machine that had run the app since
+    /// `in_app_playback_nav_enabled` was switched on. The Remote Config value is
+    /// now pinned, so this asserts the code rather than the machine.
+    func testInAppPlaybackNav_noOverride_remoteOff_isOff() {
+        let (flags, suite, name) = makeInAppNavFlags(
+            remote: StubRemoteConfig(bools: [.inAppPlaybackNavEnabled: false])
+        )
         defer { suite.removePersistentDomain(forName: name) }
 
         XCTAssertFalse(flags.isInAppPlaybackNavEnabled,
-                       "Absent a local override or Firebase value, in-app playback nav must default OFF (Firebase-gated)")
+                       "Absent a local override, an OFF Remote Config value must read OFF")
         XCTAssertEqual(flags.isInAppPlaybackNavEnabled,
                        flags.isFeatureEnabled(.inAppPlaybackNavEnabled),
                        "Without a local override, the getter must reflect the Remote Config flag, not a constant")
+    }
+
+    /// No local override, Remote Config says ON: the feature is ON.
+    ///
+    /// This is the case the old test could not express at all — the rolled-out
+    /// production posture. Without it, a getter hardcoded to `return false`
+    /// would have passed the whole suite.
+    func testInAppPlaybackNav_noOverride_remoteOn_isOn() {
+        let (flags, suite, name) = makeInAppNavFlags(
+            remote: StubRemoteConfig(bools: [.inAppPlaybackNavEnabled: true])
+        )
+        defer { suite.removePersistentDomain(forName: name) }
+
+        XCTAssertTrue(flags.isInAppPlaybackNavEnabled,
+                      "Absent a local override, an ON Remote Config value must read ON — this is the shipped rollout state")
     }
 
     /// A local override of `true` forces the feature ON regardless of the OFF
@@ -259,15 +308,22 @@ final class RemoteFeatureFlagsTests: XCTestCase {
                       "A local override of true must force the feature ON")
     }
 
-    /// A local override of `false` forces the legacy player even if Firebase
-    /// would enable the feature. Kills the prior hardcoded `return true`.
-    func testInAppPlaybackNav_localOverrideFalse_forcesOff() {
-        let (flags, suite, name) = makeInAppNavFlags()
+    /// A local override of `false` forces the legacy player even when Remote
+    /// Config says ON.
+    ///
+    /// Remote Config is pinned ON here deliberately. With it ambient-false, as
+    /// before, this test could not tell "the override won" from "Remote Config
+    /// happened to be false too" — the precedence it names was never actually
+    /// exercised.
+    func testInAppPlaybackNav_localOverrideFalse_beatsRemoteOn() {
+        let (flags, suite, name) = makeInAppNavFlags(
+            remote: StubRemoteConfig(bools: [.inAppPlaybackNavEnabled: true])
+        )
         defer { suite.removePersistentDomain(forName: name) }
 
         suite.set(false, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
         XCTAssertFalse(flags.isInAppPlaybackNavEnabled,
-                       "A local override of false must force the feature OFF (legacy toolkit player)")
+                       "A local override of false must beat an ON Remote Config value (legacy toolkit player)")
     }
 
     /// The registered production default is OFF — pins the Firebase-gated
@@ -284,15 +340,48 @@ final class RemoteFeatureFlagsTests: XCTestCase {
     // independently. Same posture: default OFF, Firebase enables, local override
     // wins.
 
-    func testContinuationCards_noOverride_defaultsOff() {
-        let (flags, suite, name) = makeInAppNavFlags()
+    /// PP-5224: this test carried the SAME defect as the in-app-nav one and was
+    /// passing only because `continuation_cards_enabled` has not been switched
+    /// on yet — the identical failure waiting for its own rollout, not a
+    /// different one. Remote Config is pinned now.
+    func testContinuationCards_noOverride_remoteOff_isOff() {
+        let (flags, suite, name) = makeInAppNavFlags(
+            remote: StubRemoteConfig(bools: [.continuationCardsEnabled: false])
+        )
         defer { suite.removePersistentDomain(forName: name) }
 
         XCTAssertFalse(flags.isContinuationCardsEnabled,
-                       "Absent a local override or Firebase value, continuation cards must default OFF")
+                       "Absent a local override, an OFF Remote Config value must read OFF")
         XCTAssertEqual(flags.isContinuationCardsEnabled,
                        flags.isFeatureEnabled(.continuationCardsEnabled),
                        "Without a local override, the getter must reflect the Remote Config flag, not a constant")
+    }
+
+    /// The rolled-out posture for the cards — previously inexpressible.
+    func testContinuationCards_noOverride_remoteOn_isOn() {
+        let (flags, suite, name) = makeInAppNavFlags(
+            remote: StubRemoteConfig(bools: [.continuationCardsEnabled: true])
+        )
+        defer { suite.removePersistentDomain(forName: name) }
+
+        XCTAssertTrue(flags.isContinuationCardsEnabled,
+                      "Absent a local override, an ON Remote Config value must read ON")
+    }
+
+    /// The two flags were split so they roll out independently. Turning one on
+    /// in Remote Config must not drag the other with it — a real risk, since
+    /// both read the same provider through the same code path.
+    func testContinuationCardsAndInAppNav_rollOutIndependently() {
+        let (flags, suite, name) = makeInAppNavFlags(
+            remote: StubRemoteConfig(bools: [.inAppPlaybackNavEnabled: true,
+                                             .continuationCardsEnabled: false])
+        )
+        defer { suite.removePersistentDomain(forName: name) }
+
+        XCTAssertTrue(flags.isInAppPlaybackNavEnabled,
+                      "in-app nav ON must not be affected by the cards flag")
+        XCTAssertFalse(flags.isContinuationCardsEnabled,
+                       "cards OFF must survive in-app nav being ON — the flags were split to roll out independently")
     }
 
     func testContinuationCards_localOverrideTrue_forcesOn() {
