@@ -55,11 +55,11 @@ final class ManagedLibraryReviewFixesTests: XCTestCase {
     func testAReportNeverCarriesAPayloadKeyWeDoNotOwn() {
         // A school's MDM sends its own keys alongside ours, which is ordinary
         // and entirely their business.
-        setManaged([
+        setManaged(ForeignPayloadCanary.injected(into: [
             "defaultLibraryId": goodId,
             "districtStudentIdentifier": "student-88421",
             "internalNotes": "Ms Okafor's cart, room 12"
-        ])
+        ]))
 
         ManagedLibraryDiagnostics.reportIfNeeded(
             decision: .unresolved, waitHasExpired: true,
@@ -67,7 +67,9 @@ final class ManagedLibraryReviewFixesTests: XCTestCase {
         )
 
         let sent = reporter.reported.map { "\($0.summary) \($0.detail)" }.joined(separator: " ")
-        XCTAssertFalse(sent.isEmpty, "the run must actually report, or this proves nothing")
+        ForeignPayloadCanary.assertReportedAndAbsent(from: sent)
+        // The named values too, because a canary proves the general property
+        // and these are what a school would actually be upset to find.
         for foreign in ["districtStudentIdentifier", "student-88421", "internalNotes", "Okafor", "room 12"] {
             XCTAssertFalse(sent.contains(foreign),
                            "'\(foreign)' is the MDM's, not ours, and reached a report: \(sent)")

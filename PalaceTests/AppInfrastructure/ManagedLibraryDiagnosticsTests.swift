@@ -263,21 +263,41 @@ final class ManagedLibraryDiagnosticsTests: XCTestCase {
         XCTAssertFalse(notFound.isEmpty)
     }
 
-    func testTheReportCarriesNoPatronIdentity() {
-        // Configuration keys and library identifiers are values an administrator
-        // typed from a document we wrote. Nothing here may carry a person.
+    func testTheDetailNeverEchoesTheComparisonIdentity() {
+        // The unit-level form of "nothing that isn't ours".
+        //
+        // At this level there is no payload, so provenance cannot be witnessed
+        // — the end-to-end version of this property lives in
+        // `ManagedLibraryReviewFixesTests`, which drives a real managed
+        // dictionary carrying a foreign value. What IS checkable here is the
+        // structural invariant underneath it: the identity is the comparison
+        // value, the detail is the reported value, and the first must never
+        // become the second. That is precisely the edit that leaked the whole
+        // MDM payload to Crashlytics.
+        //
+        // An earlier version of this test asserted the detail contained no "@",
+        // "barcode", "password", "token" or "pin". It passed throughout the
+        // period the code was forwarding the entire foreign payload, because no
+        // fixture ever contained a value we did not own. A list of words you
+        // thought of can only catch leaks you predicted.
+        let identity = "identity-that-must-never-be-reported-4b91"
+
         let reported = [
-            diagnose(.unresolved, fingerprint: valueA),
-            diagnose(.noConfiguration, warnings: ["defaultLibraryId is not a UUID: 'oops'"])
+            ManagedLibraryDiagnostics.diagnostic(
+                for: .unresolved, warnings: [], waitHasExpired: true,
+                configuredValue: valueA, identity: identity, lastReportedIdentity: nil
+            ),
+            ManagedLibraryDiagnostics.diagnostic(
+                for: .noConfiguration, warnings: ["defaultLibraryId is not a UUID: 'oops'"],
+                waitHasExpired: true,
+                configuredValue: valueA, identity: identity, lastReportedIdentity: nil
+            )
         ].compactMap { $0 }
 
-        XCTAssertEqual(reported.count, 2)
+        XCTAssertEqual(reported.count, 2, "both cases must report, or this proves nothing")
         for d in reported {
-            let text = "\(d.summary) \(d.detail)".lowercased()
-            for forbidden in ["@", "barcode", "password", "token", "pin"] {
-                XCTAssertFalse(text.contains(forbidden),
-                               "'\(forbidden)' must never reach a report: \(text)")
-            }
+            XCTAssertFalse("\(d.summary) \(d.detail)".contains(identity),
+                           "the comparison identity reached the report: \(d.detail)")
         }
     }
 
