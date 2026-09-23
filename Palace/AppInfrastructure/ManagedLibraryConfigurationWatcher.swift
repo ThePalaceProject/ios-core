@@ -66,19 +66,21 @@ final class ManagedLibraryConfigurationWatcher {
         if let token { notificationCenter.removeObserver(token) }
     }
 
-    /// Begins watching. `onApplied` fires only when a configuration actually
-    /// took effect, so a caller can dismiss a library picker it has already put
-    /// on screen.
+    /// Begins watching. `onDecision` fires for every configuration change the
+    /// watcher acts on, so the caller can both dismiss a picker it has already
+    /// put on screen AND keep trying when the configuration is real but not yet
+    /// actionable. Map the decision with
+    /// `ManagedLibraryPreconfigurator.watchAction(for:)`.
     ///
     /// Idempotent: calling twice does not stack observers.
-    func start(onApplied: @escaping (ManagedLibraryDecision) -> Void) {
+    func start(onDecision: @escaping (ManagedLibraryDecision) -> Void) {
         guard token == nil else { return }
         token = notificationCenter.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: defaults,
             queue: .main
         ) { [weak self] _ in
-            self?.reevaluate(onApplied: onApplied)
+            self?.reevaluate(onDecision: onDecision)
         }
     }
 
@@ -89,7 +91,7 @@ final class ManagedLibraryConfigurationWatcher {
 
     /// The filter, then the apply. Exposed for tests so the decision can be
     /// driven without posting notifications.
-    func reevaluate(onApplied: (ManagedLibraryDecision) -> Void) {
+    func reevaluate(onDecision: (ManagedLibraryDecision) -> Void) {
         let fingerprint = preconfigurator.currentConfiguration?.fingerprint
         guard fingerprint != lastSeenFingerprint else { return }
         lastSeenFingerprint = fingerprint
@@ -110,8 +112,9 @@ final class ManagedLibraryConfigurationWatcher {
 
         let decision = preconfigurator.applyIfNeeded()
         Log.info(#file, "Managed configuration changed after launch: \(decision)")
-        if case .apply = decision {
-            onApplied(decision)
-        }
+        // Reported whatever it is. A configuration that arrives before the
+        // registry has loaded is NOT a dead end — the caller needs to know so it
+        // can keep listening, which is the case this callback used to drop.
+        onDecision(decision)
     }
 }

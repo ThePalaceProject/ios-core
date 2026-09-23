@@ -786,12 +786,25 @@ extension TPPAppDelegate {
             preconfigurator: ManagedLibraryPreconfigurator.production()
         )
         managedLibraryWatcher = watcher
-        watcher.start { [weak self] _ in
+        watcher.start { [weak self] decision in
             guard let self else { return }
-            self.hasPresentedFirstRunFlow = true
-            guard let picker = self.presentedFirstRunPicker else { return }
-            self.presentedFirstRunPicker = nil
-            picker.dismiss(animated: true)
+            switch ManagedLibraryPreconfigurator.watchAction(for: decision) {
+            case .dismissPicker:
+                self.hasPresentedFirstRunFlow = true
+                self.disarmManagedRegistryRetry()
+                guard let picker = self.presentedFirstRunPicker else { return }
+                self.presentedFirstRunPicker = nil
+                picker.dismiss(animated: true)
+            case .keepTrying:
+                // A configuration arrived but the registry cannot resolve it
+                // yet. Without this the app would drop it on the floor: the
+                // launch-time retry is armed only when a configuration was
+                // pending as the picker went up, and in this case there was
+                // none to be pending.
+                self.retryManagedPreconfigurationWhenRegistryChanges()
+            case .doNothing:
+                break
+            }
         }
     }
 

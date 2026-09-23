@@ -281,6 +281,46 @@ final class ManagedLibraryPreconfigurator {
     }
 }
 
+/// What the caller should do when the watcher reports a decision AFTER launch.
+///
+/// A separate concern from `ManagedLibraryLaunchStep`, which answers the
+/// question at launch. This answers it once the picker may already be on
+/// screen, where the options are different: take the picker away, keep trying,
+/// or leave well alone.
+enum ManagedLibraryWatchAction: Equatable {
+    /// A library became current. Any picker on screen is now wrong.
+    case dismissPicker
+    /// A configuration is real but not yet actionable. Keep listening for the
+    /// registry rather than treating a slow network as a verdict.
+    case keepTrying
+    /// Nothing to act on.
+    case doNothing
+}
+
+extension ManagedLibraryPreconfigurator {
+
+    /// Pure mapping from a post-launch decision to what the caller should do.
+    ///
+    /// Extracted so the rule is testable: it would otherwise live inside
+    /// `TPPAppDelegate`, which has no test seam, and this is the rule that
+    /// decides whether a student keeps staring at a library picker.
+    static func watchAction(for decision: ManagedLibraryDecision) -> ManagedLibraryWatchAction {
+        switch decision {
+        case .apply:
+            return .dismissPicker
+        case .registryNotLoaded, .unresolved:
+            // The configuration is real; the app just cannot act on it yet.
+            // `.unresolved` is included deliberately — on a cold launch the
+            // registry the app starts from is a build-time snapshot that may
+            // not contain the configured library at all, so "not found" and
+            // "not loaded yet" are the same situation seen a moment apart.
+            return .keepTrying
+        case .noConfiguration, .alreadyApplied:
+            return .doNothing
+        }
+    }
+}
+
 /// What the launch path should do next, given a pre-configuration decision.
 ///
 /// Separated from `TPPAppDelegate` so the bounded wait is assertable without

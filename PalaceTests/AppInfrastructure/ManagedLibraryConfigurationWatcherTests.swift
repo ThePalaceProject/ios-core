@@ -107,24 +107,28 @@ final class ManagedLibraryConfigurationWatcherTests: XCTestCase {
         XCTAssertNil(ManagedAppConfiguration.libraryPreconfiguration(defaults: defaults))
 
         setConfiguration(lower)
-        var applied: [ManagedLibraryDecision] = []
-        watcher.reevaluate { applied.append($0) }
+        var decisions: [ManagedLibraryDecision] = []
+        watcher.reevaluate { decisions.append($0) }
 
-        XCTAssertEqual(applied, [.apply(uuid: lower)])
+        XCTAssertEqual(decisions, [.apply(uuid: lower)])
         XCTAssertEqual(selected, [lower])
     }
 
-    func testCallerIsToldOnlyWhenALibraryActuallyBecameCurrent() {
-        // The caller uses this to take the picker away. Firing when nothing was
-        // applied would dismiss a picker the patron still needs.
+    func testAnUnresolvableConfiguration_IsReportedButDoesNotDismissThePicker() {
+        // The caller is told, because a configuration it cannot act on YET is
+        // not a dead end — it needs to keep listening. What it must not do is
+        // treat that as grounds to take away a picker the patron still needs,
+        // and that distinction lives in `watchAction`, not in the callback.
         registry.accounts = []   // nothing resolves
         let watcher = makeWatcher()
 
         setConfiguration(lower)
-        var applied: [ManagedLibraryDecision] = []
-        watcher.reevaluate { applied.append($0) }
+        var decisions: [ManagedLibraryDecision] = []
+        watcher.reevaluate { decisions.append($0) }
 
-        XCTAssertEqual(applied, [], "unresolved must not dismiss the picker")
+        XCTAssertEqual(decisions, [.unresolved], "reported, so the caller can keep trying")
+        XCTAssertEqual(ManagedLibraryPreconfigurator.watchAction(for: .unresolved), .keepTrying,
+                       "and the rule says keep trying, not dismiss the picker")
         XCTAssertEqual(selected, [])
     }
 
@@ -201,10 +205,10 @@ final class ManagedLibraryConfigurationWatcherTests: XCTestCase {
         XCTAssertEqual(selected, [lower])
 
         setConfiguration(nil)
-        var applied: [ManagedLibraryDecision] = []
-        watcher.reevaluate { applied.append($0) }
+        var decisions: [ManagedLibraryDecision] = []
+        watcher.reevaluate { decisions.append($0) }
 
-        XCTAssertEqual(applied, [], "removal is not an apply")
+        XCTAssertEqual(decisions, [], "removal reports nothing at all")
         XCTAssertEqual(selected, [lower], "the library stays selected")
     }
 
@@ -221,6 +225,61 @@ final class ManagedLibraryConfigurationWatcherTests: XCTestCase {
         watcher.reevaluate { _ in }
 
         XCTAssertEqual(selected, [lower, middle])
+    }
+
+    // MARK: - What the caller should do with each decision
+    //
+    //  decision          │ action
+    //  ──────────────────┼───────────────
+    //   apply            │ dismissPicker
+    //   registryNotLoaded│ keepTrying
+    //   unresolved       │ keepTrying
+    //   noConfiguration  │ doNothing
+    //   alreadyApplied   │ doNothing
+
+    func testWatchAction_AppliedLibraryTakesThePickerAway() {
+        XCTAssertEqual(
+            ManagedLibraryPreconfigurator.watchAction(for: .apply(uuid: lower)),
+            .dismissPicker
+        )
+    }
+
+    func testWatchAction_AConfigurationTheAppCannotActOnYet_KeepsTrying() {
+        // This is the hole that prompted the rule. A configuration arriving
+        // before the registry has loaded used to be dropped entirely: the
+        // launch-time retry is armed only when a configuration was pending as
+        // the picker went up, and in this case there was none to be pending.
+        for decision in [ManagedLibraryDecision.registryNotLoaded, .unresolved] {
+            XCTAssertEqual(
+                ManagedLibraryPreconfigurator.watchAction(for: decision),
+                .keepTrying,
+                "\(decision) must keep the app listening"
+            )
+        }
+    }
+
+    func testWatchAction_NothingToActOn_DoesNothing() {
+        // An unmanaged install must not arm observers or dismiss anything.
+        for decision in [ManagedLibraryDecision.noConfiguration, .alreadyApplied] {
+            XCTAssertEqual(
+                ManagedLibraryPreconfigurator.watchAction(for: decision),
+                .doNothing,
+                "\(decision) must cost an unmanaged install nothing"
+            )
+        }
+    }
+
+    func testWatchAction_NeverDismissesThePickerWithoutASelectedLibrary() {
+        // The invariant behind the table: only a library actually becoming
+        // current may take the picker away from a patron.
+        for decision: ManagedLibraryDecision in [.noConfiguration, .alreadyApplied,
+                                                 .registryNotLoaded, .unresolved] {
+            XCTAssertNotEqual(
+                ManagedLibraryPreconfigurator.watchAction(for: decision),
+                .dismissPicker,
+                "\(decision) must not dismiss the picker"
+            )
+        }
     }
 
     // MARK: - Observer hygiene
@@ -243,15 +302,15 @@ final class ManagedLibraryConfigurationWatcherTests: XCTestCase {
         let watcher = ManagedLibraryConfigurationWatcher(
             defaults: defaults, preconfigurator: preconfigurator, notificationCenter: center
         )
-        var applyCount = 0
-        watcher.start { _ in applyCount += 1 }
-        watcher.start { _ in applyCount += 1 }
+        var decisionCount = 0
+        watcher.start { _ in decisionCount += 1 }
+        watcher.start { _ in decisionCount += 1 }
 
         setConfiguration(lower)
         center.post(name: UserDefaults.didChangeNotification, object: defaults)
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
 
-        XCTAssertEqual(applyCount, 1, "a second start must not stack a second observer")
+        XCTAssertEqual(decisionCount, 1, "a second start must not stack a second observer")
         watcher.stop()
     }
 
