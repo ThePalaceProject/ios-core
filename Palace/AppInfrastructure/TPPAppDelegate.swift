@@ -43,6 +43,16 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// One deadline check per launch, not one per deferred attempt.
     private var hasScheduledManagedPreconfigurationDeadline = false
 
+    /// PP-5070 — the library picker while it is on screen, so a managed
+    /// configuration that arrives AFTER we gave up waiting can take it away
+    /// again rather than leaving a student staring at a list of hundreds.
+    private weak var presentedFirstRunPicker: UIViewController?
+
+    /// PP-5070 — notices a configuration that lands, or changes, after launch.
+    /// Held for the app's lifetime; it filters cheaply and does nothing at all
+    /// on an unmanaged install.
+    private var managedLibraryWatcher: ManagedLibraryConfigurationWatcher?
+
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
@@ -136,6 +146,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            self.startWatchingForManagedLibraryConfiguration()
             self.presentFirstRunFlowIfNeeded()
         }
     }
@@ -703,7 +714,33 @@ extension TPPAppDelegate {
         // re-entry from a notification fired during the present sees
         // the guard.
         hasPresentedFirstRunFlow = true
+        presentedFirstRunPicker = nav
         top.present(nav, animated: true)
+    }
+
+    /// PP-5070 — starts watching for a managed configuration that arrives after
+    /// the launch decision was already made.
+    ///
+    /// Apple does not promise the configuration is present before first launch,
+    /// and if it is not, the picker goes up and the first-run flow marks itself
+    /// done. Rather than delay the picker for every unmanaged install on the
+    /// chance a configuration might be coming — which would penalise almost
+    /// every Palace user for one partner's benefit — the app shows it on time
+    /// and takes it away again if a configuration turns up.
+    private func startWatchingForManagedLibraryConfiguration() {
+        guard managedLibraryWatcher == nil else { return }
+        let watcher = ManagedLibraryConfigurationWatcher(
+            defaults: .standard,
+            preconfigurator: ManagedLibraryPreconfigurator.production()
+        )
+        managedLibraryWatcher = watcher
+        watcher.start { [weak self] _ in
+            guard let self else { return }
+            self.hasPresentedFirstRunFlow = true
+            guard let picker = self.presentedFirstRunPicker else { return }
+            self.presentedFirstRunPicker = nil
+            picker.dismiss(animated: true)
+        }
     }
 
     /// Re-arms the `.TPPCatalogDidLoad` observer so `presentFirstRunFlowIfNeeded`
