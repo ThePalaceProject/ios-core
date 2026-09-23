@@ -274,9 +274,17 @@ final class LibraryRegistryCrawler: @unchecked Sendable {
             )
 
             // Serialize
-            let meta = feedMetadata ?? OPDS2CatalogsFeed.Metadata(
-                adobe_vendor_id: nil,
-                title: "Palace Library Registry"
+            // PP-5191 RULE: `numberOfItems` is NEVER carried forward from cache — it
+            // always comes from the response just fetched. `feedMetadata` here is the
+            // CACHED feed's metadata, so inheriting it would republish a stale total.
+            // On the deletion-reconcile path that is fatal in the quiet direction: a
+            // genuine 1457 -> 1400 shrink would emit count 1400 against a declared
+            // 1457, read as PARTIAL, and be refused by INV-2 forever — deletions never
+            // reconciling, and rendering as "there were no deletions".
+            let meta = OPDS2CatalogsFeed.Metadata(
+                adobe_vendor_id: feedMetadata?.adobe_vendor_id,
+                title: feedMetadata?.title ?? "Palace Library Registry",
+                numberOfItems: firstPage.metadata.numberOfItems
             )
             guard let serialized = LibraryCatalogMerger.serializeAsCatalogsFeed(
                 publications: mergeResult.publications,
@@ -327,9 +335,13 @@ final class LibraryRegistryCrawler: @unchecked Sendable {
             saveCrawlState(state)
 
             // Serialize first page as a partial catalog for immediate display
+            // PP-5191: carry the declared total so a page-1 feed is identifiable as
+            // PARTIAL once it reaches disk. Dropping it here is what made a 100-row
+            // page and a 1457-row crawl indistinguishable to every later reader.
             let meta = OPDS2CatalogsFeed.Metadata(
                 adobe_vendor_id: page.metadata.adobe_vendor_id,
-                title: page.metadata.title
+                title: page.metadata.title,
+                numberOfItems: page.metadata.numberOfItems
             )
             guard let serialized = LibraryCatalogMerger.serializeAsCatalogsFeed(
                 publications: page.catalogs,
@@ -364,7 +376,13 @@ final class LibraryRegistryCrawler: @unchecked Sendable {
             state.lastCrawlAppVersion = currentAppVersion
             saveCrawlState(state)
 
-            let meta = feedMetadata ?? OPDS2CatalogsFeed.Metadata(adobe_vendor_id: nil, title: "Palace Library Registry")
+            // PP-5191 RULE: declared total from the freshly-fetched first page, never
+            // from the cached `feedMetadata`.
+            let meta = OPDS2CatalogsFeed.Metadata(
+                adobe_vendor_id: feedMetadata?.adobe_vendor_id,
+                title: feedMetadata?.title ?? "Palace Library Registry",
+                numberOfItems: firstPage.metadata.numberOfItems
+            )
             guard let serialized = LibraryCatalogMerger.serializeAsCatalogsFeed(
                 publications: firstPage.catalogs,
                 metadata: meta
@@ -402,14 +420,29 @@ final class LibraryRegistryCrawler: @unchecked Sendable {
                 }
             }
 
+            // PP-5191 shrink vector 2. Page offsets are derived from the server's
+            // declared `numberOfItems`. If the server UNDER-reports it, too few
+            // offsets are computed, no child task throws, and this would merge with
+            // `isFullCrawl: true` and stamp `lastFullCrawlDate` — publishing a short
+            // list as an authoritative full crawl, under a "pagination complete" log.
+            // A crawl that did not reach its own declared total is not a full crawl.
+            let declaredTotal = firstPage.metadata.numberOfItems
+            let reachedDeclaredTotal = declaredTotal.map { allPublications.count >= $0 } ?? true
+
             // Merge with existing
             let mergeResult = LibraryCatalogMerger.merge(
                 existing: existingPublications,
                 updates: allPublications,
-                isFullCrawl: true
+                isFullCrawl: reachedDeclaredTotal
             )
 
-            let meta = feedMetadata ?? OPDS2CatalogsFeed.Metadata(adobe_vendor_id: nil, title: "Palace Library Registry")
+            // PP-5191 RULE: declared total from the freshly-fetched first page, never
+            // from the cached `feedMetadata`.
+            let meta = OPDS2CatalogsFeed.Metadata(
+                adobe_vendor_id: feedMetadata?.adobe_vendor_id,
+                title: feedMetadata?.title ?? "Palace Library Registry",
+                numberOfItems: firstPage.metadata.numberOfItems
+            )
             guard let serialized = LibraryCatalogMerger.serializeAsCatalogsFeed(
                 publications: mergeResult.publications,
                 metadata: meta
@@ -419,7 +452,11 @@ final class LibraryRegistryCrawler: @unchecked Sendable {
 
             let completedAt = nowProvider()
             state.lastSuccessfulCrawlDate = completedAt
-            state.lastFullCrawlDate = completedAt
+            if reachedDeclaredTotal {
+                state.lastFullCrawlDate = completedAt
+            } else {
+                Log.error(#file, "Pagination ended short of the declared total (\(allPublications.count) of \(declaredTotal.map(String.init) ?? "unknown")) — NOT recording a full crawl, so deletion reconciliation stays pending")
+            }
             state.lastCrawlAppVersion = currentAppVersion
             saveCrawlState(state)
 
@@ -546,6 +583,31 @@ final class LibraryRegistryCrawler: @unchecked Sendable {
 
     private var stateFileURL: URL {
         stateDirectory.appendingPathComponent("crawl_state_\(hash).json")
+    }
+
+    /// PP-5191. Clear the completed-crawl markers so the NEXT `crawl()` takes the
+    /// FULL branch rather than the incremental one.
+    ///
+    /// Called after a partial page is merged into the cache. Without it the merge
+    /// trades one bug for another: the cache becomes `bundled ∪ page1`, and an
+    /// incremental refresh PRESERVES what it finds, so build-time bundled rows
+    /// (libraries since deleted, catalog URLs since changed) would be promoted into
+    /// the live cache and survive up to the 7-day full-crawl interval. Before this
+    /// change those rows were clobbered within ~260ms, so the staleness is new and
+    /// belongs to the fix.
+    ///
+    /// `orderModifiedFacetURL` is deliberately PRESERVED — it is a discovered
+    /// capability of the feed, not a record of work done, and re-discovering it costs
+    /// a round trip. Only the two "we have completed a crawl" timestamps are cleared.
+    ///
+    /// Best-effort: `saveCrawlState` swallows its write error, so a failure here
+    /// renders as "no full crawl needed". Accepted — it fails open to today's
+    /// behaviour rather than to a worse state.
+    func requireFullCrawlOnNextRun() {
+        var state = loadCrawlState()
+        state.lastSuccessfulCrawlDate = nil
+        state.lastFullCrawlDate = nil
+        saveCrawlState(state)
     }
 
     private func loadCrawlState() -> CrawlState {

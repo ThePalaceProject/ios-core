@@ -112,8 +112,8 @@ struct DeveloperSettingsView: View {
 
     @ViewBuilder private var featureFlagsSection: some View {
         Section(header: Text("Feature Flags")) {
-            DevToggleRow(title: "In-App Playback Navigation", isOn: $viewModel.inAppPlaybackNavEnabled)
-            DevToggleRow(title: "Continuation Cards", isOn: $viewModel.continuationCardsEnabled)
+            DevToggleRow(title: "In-App Playback Nav (force on)", isOn: $viewModel.inAppPlaybackNavEnabled)
+            DevToggleRow(title: "Continuation Cards (force on)", isOn: $viewModel.continuationCardsEnabled)
             DevToggleRow(title: "LCP Audiobook Streaming", isOn: $viewModel.lcpAudiobookStreamingEnabled)
             DevToggleRow(title: "EPUB Chapter Scrubber", isOn: $viewModel.chapterScrubberEnabled)
             DevToggleRow(title: "Side Loading", isOn: $viewModel.sideLoadingEnabled)

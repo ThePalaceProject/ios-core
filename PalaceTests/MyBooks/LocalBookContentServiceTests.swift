@@ -237,11 +237,239 @@ final class LocalBookContentServiceTests: XCTestCase {
         return book
     }
 
+    // MARK: - Post-return content leak (the write guard)
+    //
+    // CONFIRMED ON DEVICE, not theorised. Moes Max, build 505: two returned
+    // loans left `.lcpa` archives of 0.48 GB and 1.07 GB in Application
+    // Support. Each on-disk filename is SHA-256 of the book identifier, and
+    // both mapped to books that were NOT in the registry at all — 1.55 GB of
+    // DRM audio for loans the patron had given back.
+    //
+    // The cause is structural: the fetch is fire-and-forget (`LCPContentFulfilling`
+    // returns Void, handle discarded) so a Return cannot cancel it. The cleanup
+    // deletes the content, then the transfer completes and re-creates it.
+
+    /// The whole table. `TPPBookState` is finite, so every case is asserted
+    /// rather than the two or three anyone thought to write down.
+    func testMayStoreFetchedContent_overTheWholeStateTable() {
+        let mayStore: [TPPBookState] = [
+            .downloadNeeded, .downloading, .downloadSuccessful, .used,
+            .downloadFailed, .SAMLStarted
+        ]
+        let mustNotStore: [TPPBookState] = [
+            .unregistered, .returning, .holding, .unsupported
+        ]
+
+        for state in mayStore {
+            XCTAssertTrue(
+                LocalBookContentService.mayStoreFetchedContent(registryState: state, accountUnchanged: true),
+                "a live loan must still receive its archive — failed at \(state)"
+            )
+        }
+        for state in mustNotStore {
+            XCTAssertFalse(
+                LocalBookContentService.mayStoreFetchedContent(registryState: state, accountUnchanged: true),
+                "content must never be written for a book the patron does not hold — failed at \(state)"
+            )
+        }
+
+        // Set equality, not a count sum. `count + count == allCases.count` is
+        // satisfiable by a duplicate in one list plus an omission in the other,
+        // so it can report "all classified" while a state is unlisted — the
+        // exact shape of hole this assertion exists to catch.
+        XCTAssertEqual(
+            Set(mayStore).union(mustNotStore),
+            Set(TPPBookState.allCases),
+            "every TPPBookState must be classified — an unlisted case is how content-writing defaults get in"
+        )
+        XCTAssertTrue(
+            Set(mayStore).isDisjoint(with: Set(mustNotStore)),
+            "a state cannot be both writable and not"
+        )
+    }
+
+    /// A LIBRARY SWITCH IS NOT A LOAN ENDING. `bookRegistry.state(for:)` is
+    /// scoped to the CURRENT account, so after a switch it answers for a
+    /// different library and reports `.unregistered` for a book account A still
+    /// holds. Deleting on that answer destroys up to a gigabyte of content the
+    /// patron is entitled to — strictly worse than the retention this guard
+    /// exists to stop, because retention is recoverable and deletion is not.
+    ///
+    /// Found in review, not by me: the first revision of this guard read the
+    /// registry unconditionally.
+    func testMayStoreFetchedContent_whenTheAccountChangedMidTransfer_writesAnyway() {
+        for state in TPPBookState.allCases {
+            XCTAssertTrue(
+                LocalBookContentService.mayStoreFetchedContent(
+                    registryState: state,
+                    accountUnchanged: false
+                ),
+                "after a library switch the registry cannot judge this loan, so the non-destructive arm must win — failed at \(state)"
+            )
+        }
+    }
+
+    /// The guard must still bite when the account has NOT moved, or the fix
+    /// above would disable the leak fix entirely.
+    func testMayStoreFetchedContent_sameAccount_stillRefusesAReturnedBook() {
+        XCTAssertFalse(
+            LocalBookContentService.mayStoreFetchedContent(
+                registryState: .unregistered,
+                accountUnchanged: true
+            ),
+            "same library, book gone from the registry — this is the returned-loan leak and it must still be refused"
+        )
+    }
+
+    /// WIRING for the library-switch arm — the pure-rule tests above cannot
+    /// reach it, and a mutation survivor proved that gap: flipping
+    /// `(self != nil) && (accountNow == accountAtFetchStart)` to `||` makes
+    /// `accountUnchanged` always true, silently deleting the protection, and the
+    /// whole suite stayed green. The rule was covered; the code computing its
+    /// input was not.
+    ///
+    /// Drives the real completion path with the library moving mid-transfer and
+    /// the book absent from the (now other library's) registry — the exact shape
+    /// that would otherwise delete a held book's archive.
+    func testFetchCompletingAfterALibrarySwitch_writesRatherThanDeleting() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        var account = "library-A"
+        let service = makeService(fulfiller: fulfiller,
+                                  currentAccountIdProvider: { account })
+
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the transfer must have started")
+
+        // The patron switches libraries. The registry now answers for library B
+        // and reports this book as absent — which is NOT a return.
+        account = "library-B"
+        registry.setState(.unregistered, for: book.identifier)
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("switch-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "a library switch is not a loan ending — deleting here destroys a gigabyte the patron still holds"
+        )
+    }
+
+    /// The same wiring with the library UNCHANGED must still refuse, or the fix
+    /// above would disable the leak guard entirely rather than narrow it.
+    func testFetchCompletingWithoutASwitch_stillRefusesAReturnedBook() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller,
+                                  currentAccountIdProvider: { "library-A" })
+
+        service.redownloadLCPContentFile(for: book)
+        registry.setState(.unregistered, for: book.identifier)
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("noswitch-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "same library, book gone — this is the returned-loan leak and it must still be refused"
+        )
+    }
+
+    /// THE DEVICE SEQUENCE, end to end: the fetch is in flight, the patron
+    /// returns the book, and only then does the transfer complete. The archive
+    /// must not reach disk.
+    ///
+    /// Drives the real completion path rather than the pure rule, because the
+    /// leak was never in the rule — it was that nothing consulted one.
+    func testFetchCompletingAfterTheBookIsReturned_doesNotWriteTheArchive() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the transfer must have started")
+
+        // The patron returns the book while the archive is still transferring.
+        registry.setState(.unregistered, for: book.identifier)
+
+        // The transfer, which nothing could cancel, now completes.
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("leak-guard-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil),
+                                    "precondition: the content destination must resolve")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "a returned book must not receive its archive — this is the 1.55 GB measured on device"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: tempURL.path),
+            "the fetched file must be discarded, not merely left unmoved — otherwise it leaks in the temp directory instead"
+        )
+    }
+
+    /// The other half, so the guard cannot be satisfied by simply never writing:
+    /// a loan that is still held DOES receive its archive.
+    func testFetchCompletingWhileTheBookIsStillHeld_writesTheArchive() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the transfer must have started")
+
+        registry.setState(.downloadSuccessful, for: book.identifier)
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("held-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "a live loan must still get its archive — a guard that blocks every write would pass the leak test and break offline playback"
+        )
+    }
+
+    /// `.returning` is the same loan a moment earlier — the return is committed
+    /// and its cleanup is in flight, so a write here re-creates precisely what
+    /// that cleanup is deleting. This is the state the half-sheet shows while
+    /// the Return confirmation is up.
+    func testFetchCompletingWhileTheBookIsReturning_doesNotWriteTheArchive() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+        registry.setState(.returning, for: book.identifier)
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("returning-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destURL.path),
+            "the cleanup for this return is already running — writing here is what re-created the orphan"
+        )
+    }
+
     private func makeService(
         fulfiller: SpyLCPContentFulfiller,
         reporter: SpyProgressReporter? = nil,
         idleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
-        clock: FakeClock? = nil
+        clock: FakeClock? = nil,
+        currentAccountIdProvider: (() -> String?)? = nil
     ) -> LocalBookContentService {
         let service = LocalBookContentService(
             bookRegistry: registry,
@@ -249,7 +477,8 @@ final class LocalBookContentServiceTests: XCTestCase {
             bookFileManager: bookFileManager,
             lcpContentFulfiller: fulfiller.fulfill,
             inflightIdleTimeout: idleTimeout,
-            monotonicClock: clock.map { c in { c.now } }
+            monotonicClock: clock.map { c in { c.now } },
+            currentAccountIdProvider: currentAccountIdProvider
         )
         service.contentDownloadReporter = reporter
         return service

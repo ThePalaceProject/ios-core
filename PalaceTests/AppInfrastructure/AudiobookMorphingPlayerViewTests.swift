@@ -158,11 +158,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// A loaded player shows no overlay — regardless of the other flags.
     func testLoadingOverlayState_loadedIsHidden() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: true, isDownloading: false, loadingTimedOut: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: true, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: false),
             .hidden,
             "A loaded, non-downloading player has no loading overlay")
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: true, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, forceSkeletons: false),
             .hidden,
             "Once loaded, neither a lingering download flag nor a stale timeout resurrects the overlay")
     }
@@ -175,11 +175,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// (or falls through to `.skeleton`) before `isDownloading`.
     func testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: false),
             .downloading,
             "An in-flight download shows the determinate downloading state, not the shimmer skeleton")
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: true, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, forceSkeletons: false),
             .downloading,
             "A download in flight is healthy progress — it must win over a fired load timeout, never the error overlay")
     }
@@ -188,7 +188,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// the error+retry. Kills dropping the `loadingTimedOut` branch.
     func testLoadingOverlayState_timeoutWithoutDownloadIsLoadError() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true, hasStartedPlayback: false, forceSkeletons: false),
             .loadError,
             "A stalled, non-downloading load that fired the 30s timer shows the load-error overlay")
     }
@@ -198,11 +198,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// skeleton even over a loaded/downloading player so it can be inspected.
     func testLoadingOverlayState_skeletonDefaultAndForceOverride() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: false),
             .skeleton,
             "The brief pre-download load window is the shimmer skeleton")
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: false, forceSkeletons: true),
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: true),
             .skeleton,
             "forceSkeletons is the QA inspection override — it wins over every other flag")
     }
@@ -367,6 +367,240 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         XCTAssertEqual(
             V.wholeBookRemainingText(bookTimeRemaining: -120, rate: .normalTime),
             "0 min remaining"
+        )
+    }
+
+    // MARK: - PP-5205: a mid-session track change must not take over the screen
+
+    private typealias Overlay = V.LoadingOverlayState
+
+    private func state(
+        loaded: Bool, downloading: Bool, timedOut: Bool, started: Bool, force: Bool = false
+    ) -> Overlay {
+        V.loadingOverlayState(
+            isLoaded: loaded, isDownloading: downloading,
+            loadingTimedOut: timedOut, hasStartedPlayback: started, forceSkeletons: force
+        )
+    }
+
+    /// THE REGRESSION. Selecting a later chapter is a cross-track seek, which
+    /// `LCPStreamingPlayer:204` answers by dropping `isLoaded`. Before this fix that
+    /// produced `.downloading` — a full-screen panel replacing a playing book.
+    func testMidSessionTrackChange_doesNotTakeOverTheScreen() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: true, timedOut: false, started: true),
+            .awaitingReload,
+            "A chapter seek on a book already playing must leave the player on screen. `.downloading` here is PP-5205: the patron sees a Downloading panel and hears the audio stop on a book they were listening to."
+        )
+    }
+
+    /// The cell that must NOT change — the overlay exists for this window.
+    func testPrePlayback_stillShowsTheDownloadingPanel() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: true, timedOut: false, started: false),
+            .downloading,
+            "Before playback begins the patron IS blocked and waiting; a silent screen is what this state exists to prevent."
+        )
+    }
+
+    /// The cell that separates this design from the one that returned `.hidden`.
+    /// `loadingTimedOut` is only ever armed from a not-usable state's `.onAppear`, so
+    /// `.hidden` would render EmptyView, never arm, and make `.loadError` unreachable
+    /// for the whole session — a dead player behind working-looking chrome.
+    func testStalledMidSessionPlayer_stillReachesTheLoadError() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: false, timedOut: true, started: true),
+            .loadError,
+            "The latch suppresses the TAKEOVER, never the failure path. If this returns anything else, a genuinely dead mid-session player shows the patron no error and no Retry."
+        )
+    }
+
+    func testTimeoutBeatsTheLatch_evenWhileDownloading() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: true, timedOut: true, started: true),
+            .loadError,
+            "Mid-session a fired timeout outranks the latch — the latch suppresses the takeover, never the failure."
+        )
+    }
+
+    /// The pre-playback rule this fix must NOT disturb: a healthy multi-minute
+    /// download outranks the 30s timeout, so a slow download never shows an error.
+    /// An earlier revision reordered the checks globally and broke exactly this.
+    func testPrePlayback_downloadStillOutranksTheTimeout() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: true, timedOut: true, started: false),
+            .downloading,
+            "Pre-playback, a download in flight is healthy progress — it must not surface as a load error."
+        )
+    }
+
+    func testLoadedPlayer_showsNothing_regardlessOfSessionPhase() {
+        for started in [true, false] {
+            XCTAssertEqual(state(loaded: true, downloading: true, timedOut: true, started: started), .hidden)
+        }
+    }
+
+    /// Full enumeration: 2^4 input combinations at `forceSkeletons: false`, plus the
+    /// override. States x events, not sampled scenarios — CLAUDE.md's rule exists
+    /// because the cell that ships is the one nobody sampled.
+    func testLoadingOverlayState_fullTable() {
+        var seen: [Overlay: Int] = [:]
+        for loaded in [true, false] {
+            for downloading in [true, false] {
+                for timedOut in [true, false] {
+                    for started in [true, false] {
+                        let got = state(loaded: loaded, downloading: downloading, timedOut: timedOut, started: started)
+                        let want: Overlay
+                        if loaded { want = .hidden }
+                        else if started { want = timedOut ? .loadError : .awaitingReload }
+                        else if downloading { want = .downloading }
+                        else if timedOut { want = .loadError }
+                        else { want = .skeleton }
+                        XCTAssertEqual(got, want,
+                                       "cell (loaded:\(loaded) downloading:\(downloading) timedOut:\(timedOut) started:\(started))")
+                        seen[got, default: 0] += 1
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(seen.count, 5, "every state must be reachable from some cell — an unreachable state is dead code pretending to be a guard: \(seen)")
+        XCTAssertEqual(seen.values.reduce(0, +), 16)
+    }
+
+    func testForceSkeletonsOverridesEveryCell() {
+        for loaded in [true, false] {
+            for started in [true, false] {
+                XCTAssertEqual(
+                    state(loaded: loaded, downloading: true, timedOut: true, started: started, force: true),
+                    .skeleton,
+                    "the QA inspection override must win everywhere, or it cannot inspect the state it exists to inspect"
+                )
+            }
+        }
+    }
+
+    /// The arming rule is what closes F1, so it is asserted rather than left inside a
+    /// `.onChange` closure where nothing could reach it.
+    func testArmingSet_awaitingReloadArmsTheTimer() {
+        XCTAssertTrue(V.stateArmsLoadTimeout(.awaitingReload),
+                      "F1: if `.awaitingReload` stops arming, `.loadError` becomes unreachable for the rest of the session and a dead player shows the patron nothing.")
+        XCTAssertTrue(V.stateArmsLoadTimeout(.skeleton))
+        XCTAssertTrue(V.stateArmsLoadTimeout(.downloading))
+        XCTAssertFalse(V.stateArmsLoadTimeout(.hidden),
+                       "a loaded player must CANCEL, not arm — otherwise a completed seek leaves a live timer that fires against healthy state")
+        XCTAssertFalse(V.stateArmsLoadTimeout(.loadError),
+                       "already surfaced; re-arming would stack a second error")
+    }
+
+    /// Every state is covered by the arming rule — a state added later without a
+    /// decision here silently inherits `false` and takes its failure path with it.
+    /// PP-5205 round 3. `loadingTimedOut` is a LATCH, and nothing cleared it when the
+    /// player recovered on its own — only arming and Retry did. A stall that fired the
+    /// 30s timer and then came good left it true, and the mid-session arm reads it
+    /// BEFORE `isDownloading` (unlike the pre-playback arm, where a healthy download
+    /// masks it), so the next cross-track seek painted a full-screen error over a
+    /// working player.
+    ///
+    /// Exactly one state may clear it. `.loadError` must NOT, or the error flickers
+    /// off the instant it appears; the arming states must not, because they already
+    /// reset it on arm; `.hidden` is the only one that means the player is usable
+    /// again.
+    func testTimeoutLatchIsClearedByExactlyOneState() {
+        let clearing = V.LoadingOverlayState.allCases.filter(V.stateClearsTimeoutLatch)
+        XCTAssertEqual(clearing, [.hidden],
+                       "only reaching `.hidden` — i.e. the player became usable — may drop a fired timeout latch")
+    }
+
+    func testTimeoutLatch_isNotClearedByTheErrorStateItself() {
+        // Separated from the table above so the failure message names the consequence:
+        // clearing here would make the error unreadable, one frame long.
+        XCTAssertFalse(V.stateClearsTimeoutLatch(.loadError),
+                       "clearing the latch on `.loadError` would flicker the error off the frame it appeared")
+    }
+
+    /// The defect this closes, stated as the state machine sees it: a stale latch plus
+    /// a mid-session seek is an error screen over a healthy player.
+    func testLoadingOverlayState_staleLatchMidSession_wouldPaintErrorOverAWorkingPlayer() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true,
+                                  hasStartedPlayback: true, forceSkeletons: false),
+            .loadError,
+            "premise: mid-session, a true latch goes straight to the error — which is why the latch must be cleared on recovery"
+        )
+        XCTAssertTrue(V.stateClearsTimeoutLatch(.hidden),
+                      "and recovery is `.hidden`, so that is where the latch has to be dropped")
+    }
+
+    /// The combination, as one table. The two predicates above are now derived from
+    /// this, so they cannot disagree with it — and a sixth state is a compile error
+    /// in `loadTimeoutAction`, not a silently-inherited default.
+    func testLoadTimeoutAction_fullTable() {
+        let expected: [V.LoadingOverlayState: V.LoadTimeoutAction] = [
+            .skeleton: .arm,
+            .downloading: .arm,
+            .awaitingReload: .arm,
+            .hidden: .cancelAndClearLatch,
+            .loadError: .cancel,
+        ]
+        XCTAssertEqual(expected.count, V.LoadingOverlayState.allCases.count,
+                       "a state was added — give it a row here deliberately")
+        for state in V.LoadingOverlayState.allCases {
+            XCTAssertEqual(V.loadTimeoutAction(for: state), expected[state],
+                           "wrong timer action for \(state)")
+        }
+    }
+
+    func testArmingSet_coversEveryState() {
+        // `allCases`, NOT a hand-written array. The previous version listed the five
+        // states by hand, so a sixth added later would have been absent from both the
+        // list and the expectation and this test would have kept passing — the exact
+        // silent inheritance its own name warns about.
+        let all = V.LoadingOverlayState.allCases
+        XCTAssertEqual(all.count, 5, "a state was added or removed — decide its arming membership deliberately")
+        let arming = all.filter(V.stateArmsLoadTimeout)
+        XCTAssertEqual(Set(arming), Set([.skeleton, .downloading, .awaitingReload]),
+                       "arming set changed — confirm the new membership is deliberate, because this is the rule that keeps `.loadError` reachable")
+    }
+
+}
+
+// MARK: - PP-5205 — the chapter name and the timecodes share one observed source
+
+/// The name between the two chapter timecodes now reads `progress.chapterTitle`,
+/// the same observed object the timecodes read, so the three cannot disagree about
+/// which chapter is displayed and cannot repaint on different ticks. It previously
+/// read `AudiobookSessionManager.currentChapter` — a cache on an object this view
+/// does not observe (`audiobookSession` is a plain `let`), written only from
+/// position events, which during a seek have stopped.
+///
+/// Only the FALLBACK is a decision, and it is the one that can regress: inverting
+/// it pins the book's title over every chapter name for the whole session.
+@MainActor
+final class AudiobookMorphingPlayerChapterTitleTests: XCTestCase {
+
+    func testChapterDisplayTitle_prefersTheChapterName() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.chapterDisplayTitle(
+                chapterTitle: "Chapter 42", bookTitle: "The Eye of the Bedlam Bride"
+            ),
+            "Chapter 42"
+        )
+    }
+
+    func testChapterDisplayTitle_beforeTheFirstTick_showsTheBookTitle() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.chapterDisplayTitle(
+                chapterTitle: "", bookTitle: "The Eye of the Bedlam Bride"
+            ),
+            "The Eye of the Bedlam Bride",
+            "a blank row reads as a broken player, not as one still loading"
+        )
+    }
+
+    func testChapterDisplayTitle_withNeither_isEmptyRatherThanPlaceholder() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.chapterDisplayTitle(chapterTitle: "", bookTitle: nil),
+            ""
         )
     }
 }

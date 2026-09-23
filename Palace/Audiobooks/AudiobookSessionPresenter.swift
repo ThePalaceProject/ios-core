@@ -122,6 +122,40 @@ class AudiobookSessionPresenter: ObservableObject {
     /// download-bar visibility. Reset to false on `clearActiveSession()`.
     @Published private(set) var isDownloading: Bool = false
 
+    /// Whether audio has begun at least once for THIS session. Latched — it
+    /// never returns to false while the session lives — and reset only by
+    /// `clearActiveSession()`.
+    ///
+    /// Exists because the live `isPlaying` is the wrong question for the
+    /// download bar: it drops on every pause, so gating on it would re-summon a
+    /// progress bar on a book the patron has been listening to for twenty
+    /// minutes, which reads as though pausing broke something. "Has this ever
+    /// played" is the durable fact. See `AudiobookDownloadProgressPolicy`.
+    @Published private(set) var hasStartedPlayback: Bool = false
+
+    /// Progress (0…1) of the `.lcpa` ARCHIVE fetch for the current book, or
+    /// `nil` when no archive fetch is running.
+    ///
+    /// ONE optional rather than a `Bool` beside a `Double`, so "the bar is up
+    /// but has no number" is unrepresentable. Review caught exactly that: the
+    /// first cut summoned the bar off a flag while the view still rendered
+    /// `overallDownloadProgress`, which is mirrored ONLY from the toolkit
+    /// playback model. Post-bind the toolkit knows nothing about this network
+    /// fetch, so the bar would have sat frozen at 0% for a 0.7–1 GB transfer —
+    /// the same defect family (progress UI describing the wrong thing) as the
+    /// one being fixed.
+    ///
+    /// Distinct from `isDownloading`, which the toolkit also raises for local
+    /// track decryption out of an archive already on disk. Sourced from the
+    /// download centre signals the half-sheet already consumes, so both
+    /// surfaces agree on what "still downloading" means. Reset by
+    /// `clearActiveSession()`.
+    @Published private(set) var archiveProgress: Double?
+
+    /// Whether the `.lcpa` archive is still coming down. Derived, never stored
+    /// separately — see `archiveProgress`.
+    var isFetchingArchive: Bool { archiveProgress != nil }
+
     /// Latest transient toast (bookmark-added / playback error), mirrored from
     /// the toolkit playback model's `$toastMessage` (empty string normalized to
     /// `nil`). Reset to nil on `clearActiveSession()`.
@@ -179,10 +213,87 @@ class AudiobookSessionPresenter: ObservableObject {
 
     // MARK: - Init
 
-    init(sessionManager: AudiobookSessionManaging) {
+    /// - Parameters:
+    ///   - archiveTransferPublisher: emits `(bookIdentifier, isActive)` as the
+    ///     `.lcpa` network fetch starts and stops. Optional so the ~40 test
+    ///     construction sites keep working unchanged; when nil the player
+    ///     simply never learns about archive fetches, which is the pre-existing
+    ///     behaviour rather than a new failure mode. (An earlier revision also
+    ///     claimed a CarPlay construction site. There is none — the CarPlay
+    ///     bridge resolves the container's already-wired presenter. Corrected
+    ///     in review rather than left overclaimed.)
+    ///   - isArchiveTransferActive: seed for a presenter created MID-transfer.
+    ///     Total rather than optional — an inert `{ _ in false }` default says
+    ///     the same thing as nil while removing the `?? false` branch review
+    ///     found surviving mutation.
+    ///     Opening a book already downloading is the common path — the measured
+    ///     archives all run past three minutes — and without the seed the bar
+    ///     stays hidden until the next publisher edge, which may never come.
+    init(
+        sessionManager: AudiobookSessionManaging,
+        archiveTransferPublisher: AnyPublisher<(String, Bool), Never>? = nil,
+        archiveProgressPublisher: AnyPublisher<(String, Double), Never>? = nil,
+        isArchiveTransferActive: @escaping (String) -> Bool = { _ in false }
+    ) {
         self.sessionManager = sessionManager
+        self.archiveTransferPublisher = archiveTransferPublisher
+        self.archiveProgressPublisher = archiveProgressPublisher
+        self.isArchiveTransferActive = isArchiveTransferActive
         subscribeToSessionState()
         subscribeToAppLifecycle()
+        subscribeToArchiveTransfers()
+    }
+
+    private let archiveTransferPublisher: AnyPublisher<(String, Bool), Never>?
+    private let archiveProgressPublisher: AnyPublisher<(String, Double), Never>?
+    private let isArchiveTransferActive: (String) -> Bool
+
+    /// Mirrors the archive fetch for whichever book is currently bound.
+    /// Filtered on `currentBook` at DELIVERY time rather than captured at
+    /// subscribe time: the presenter outlives individual sessions, so a
+    /// subscription pinned to one identifier would report a stale book's
+    /// transfer onto the next one.
+    private func subscribeToArchiveTransfers() {
+        archiveTransferPublisher?
+            .receive(on: RunLoop.main)
+            .sink { [weak self] update in
+                guard let self, update.0 == self.currentBook?.identifier else { return }
+                // Rising edge keeps any progress already seen; falling edge is
+                // the ONLY thing that clears the bar.
+                if update.1 {
+                    self.archiveProgress = self.archiveProgress ?? 0
+                } else {
+                    // A falling edge can be stale — enqueued before a seed that
+                    // found the transfer live. The synchronous query is
+                    // authoritative, so let it veto the clear.
+                    let stillActive = self.isArchiveTransferActive(update.0)
+                    self.archiveProgress = stillActive ? (self.archiveProgress ?? 0) : nil
+                }
+            }
+            .store(in: &cancellables)
+
+        archiveProgressPublisher?
+            .receive(on: RunLoop.main)
+            .sink { [weak self] update in
+                guard let self, update.0 == self.currentBook?.identifier else { return }
+                // Progress alone must NOT summon the bar: the same publisher
+                // carries ordinary (non-LCP) download progress, and raising the
+                // archive bar on it would put the player bar back on transfers
+                // this policy exists to keep quiet. Only an active transfer,
+                // or the seed, opens that door.
+                guard self.archiveProgress != nil else { return }
+                self.archiveProgress = max(0, min(1, update.1))
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Seeds `isFetchingArchive` for a book bound mid-transfer. Called when a
+    /// session binds, because the publisher only speaks on edges.
+    private func seedArchiveTransferState(for identifier: String) {
+        // `?? 0` not `= 0`: `adoptBook` seeds TWICE per open, and a bar that
+        // already climbed during the pre-bind wait must not snap back to 0%.
+        // Mirrors the rising edge, which preserves for the same reason.
+        archiveProgress = isArchiveTransferActive(identifier) ? (archiveProgress ?? 0) : nil
     }
 
     // MARK: - Public API (open for spying)
@@ -216,6 +327,24 @@ class AudiobookSessionPresenter: ObservableObject {
     /// placeholder rather than a stale cover from a prior session — though the
     /// manager's pre-open `stopPlayback` has already cleared it.
     func presentLoadingShell(for book: TPPBook, coverImage: UIImage?) {
+        // Clear the playback latch here — UNCONDITIONALLY, at the session
+        // boundary — mirroring the manager's own unconditional reset of
+        // `hasEverStartedPlayback` when an open begins.
+        //
+        // An earlier revision reset it in `adoptBook` on identifier change, and
+        // that never fired for the case it was written for: a same-book re-open
+        // takes `stopPlayback(dismissPhoneUI: !isSameBook)`, which skips
+        // `clearActiveSession()`, so `currentBook` survives and the identifier
+        // compares EQUAL. The latch then persisted into the new session and
+        // suppressed the content-wait bar in exactly the window
+        // `showDownloadProgress` exists for — the "reads as hung" symptom that
+        // fix/audiobook-first-open-hang fixed. Two reviewers caught it, and the
+        // test written to prove the fix had pinned the broken behaviour.
+        //
+        // This is the right seam because it marks a new OPEN. A bare
+        // `adoptBook` (cover refresh mid-session) still leaves a live latch
+        // alone, which is the property the identifier guard was reaching for.
+        hasStartedPlayback = false
         adoptBook(book)
         adoptCoverImage(coverImage)
         presentOnFirstOpen()
@@ -304,8 +433,15 @@ class AudiobookSessionPresenter: ObservableObject {
         progress.chapterOffset = 0
         progress.chapterTimeLeft = 0
         progress.chapterProgress = 0
+        // PP-5205: the NAME belongs to the same set as the offsets above. Its
+        // predecessor was nilled by `AudiobookSessionManager` at teardown, so this
+        // list never had to carry it; moving the source without moving the reset
+        // would have shown book A's chapter beside book B's zeroed timecodes.
+        progress.chapterTitle = ""
         overallDownloadProgress = 0
         isDownloading = false
+        archiveProgress = nil
+        hasStartedPlayback = false
         toastMessage = nil
         playbackModelCancellables.removeAll()
     }
@@ -323,6 +459,7 @@ class AudiobookSessionPresenter: ObservableObject {
     /// `pushSessionToPresenter`).
     func adoptBook(_ book: TPPBook) {
         self.currentBook = book
+        seedArchiveTransferState(for: book.identifier)
     }
 
     /// Adopts the toolkit playback model for the current session. Called
@@ -423,6 +560,9 @@ class AudiobookSessionPresenter: ObservableObject {
                 let playing: Bool
                 if case .playing = state { playing = true } else { playing = false }
                 if self.isPlaying != playing { self.isPlaying = playing }
+                // Latch on the rising edge only; never cleared here, so a pause
+                // or a track boundary cannot take it back down.
+                if playing && !self.hasStartedPlayback { self.hasStartedPlayback = true }
             }
             .store(in: &cancellables)
     }
@@ -494,6 +634,8 @@ class AudiobookSessionPresenter: ObservableObject {
                 if let model = model {
                     self.progress.chapterOffset = model.chapterPlayheadOffset
                     self.progress.chapterTimeLeft = model.chapterTimeLeft
+                    // Same tick as the offsets, by construction — see `chapterTitle`.
+                    self.progress.chapterTitle = model.currentChapterTitle
                     // CHAPTER-relative scrubber progress. The toolkit slider is
                     // chapter-scoped: seekWithSlider seeks chapterStart + value *
                     // chapterDuration. `playbackProgress` above is BOOK-relative
@@ -613,6 +755,16 @@ final class AudiobookPlaybackProgress: ObservableObject {
     /// model's `chapterPlayheadOffset` / `chapterTimeLeft` on each position tick.
     @Published var chapterOffset: TimeInterval = 0
     @Published var chapterTimeLeft: TimeInterval = 0
+
+    /// The chapter NAME, mirrored from the toolkit model on the SAME tick as the
+    /// offsets above — deliberately, and this is the whole point of it living here.
+    ///
+    /// The player used to render the name from `AudiobookSessionManager.currentChapter`,
+    /// a cache written only from position events, while the timecodes beside it were
+    /// computed live. One fact, two readers, two latencies: choosing a chapter left
+    /// the name a seek behind the times printed next to it (PP-5205). Sharing a
+    /// writer is what makes that disagreement unrepresentable, rather than fixed.
+    @Published var chapterTitle: String = ""
 
     /// CHAPTER-relative scrubber progress (0…1 within the current chapter),
     /// mirrors the toolkit's `AudiobookPlaybackModel.playbackProgress`

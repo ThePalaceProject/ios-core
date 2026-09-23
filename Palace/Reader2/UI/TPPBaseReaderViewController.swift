@@ -824,6 +824,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     private var isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
 
+
     @objc func voiceOverStatusDidChange() {
         let isRunning = UIAccessibility.isVoiceOverRunning
         // Avoids excessive settings refresh when the status didn't change.

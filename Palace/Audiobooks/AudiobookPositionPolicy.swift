@@ -15,6 +15,13 @@
 
 import Foundation
 import PalaceLogging
+// `ChapterNavigationPolicy` calls ONE toolkit static — a pure String comparison
+// (`positionUpdateIsForNavigationTarget`). That is the deliberate exception to this
+// file's toolkit-free rule, which exists so its policies need no Audiobook /
+// TrackPosition / Chapter fixtures to test; a static over two Strings costs a test
+// nothing. Importing rather than restating it keeps ONE copy of the navigation-hold
+// rule across the two players, which is the mistake that put PP-5205 in both.
+import PalaceAudiobookToolkit
 
 // MARK: - Beginning-position predicate
 
@@ -295,5 +302,72 @@ public struct DefaultAudiobookPositionLogger: AudiobookPositionLogging {
             return "\(prefix): \(reason)"
         }
         return "\(prefix): \(reason) \(ctxString)"
+    }
+}
+
+
+// MARK: - Chapter navigation (PP-5205)
+
+/// How an EXPLICIT chapter selection interacts with the reactive chapter cache.
+///
+/// `AudiobookSessionManager.currentChapter` is a cache written only from position
+/// updates, so a chapter tap used to change nothing until the seek produced a
+/// position. While the seek settled, the player's chapter label named the chapter
+/// the patron had just left, beside chapter-scoped timecodes that had already moved
+/// to the new one — they are computed live off the player's position, and that
+/// prefers the seek target. Reported on build 509 as "you land on the previous
+/// chapter and then it switches."
+///
+/// Two rules, deliberately separate, because the reactive and explicit paths want
+/// opposite answers on the same input.
+enum ChapterNavigationPolicy {
+
+    /// What a reactive chapter update may do, given an in-flight explicit selection.
+    enum ReactiveUpdate: Equatable {
+        /// A position for some OTHER track while a selection is in flight — the old
+        /// playhead still ticking. Change nothing, and keep holding.
+        case ignore
+        /// The selection landed on the chapter already displayed. Release the hold,
+        /// publish nothing.
+        case releaseHold
+        /// Apply the new chapter and release any hold.
+        case applyAndRelease
+    }
+
+    static func reactiveUpdate(
+        navigationTargetTrackKey: String?,
+        currentKey: String?,
+        currentTitle: String?,
+        newKey: String,
+        newTitle: String
+    ) -> ReactiveUpdate {
+        guard AudiobookPlaybackModel.positionUpdateIsForNavigationTarget(
+            incomingTrackKey: newKey,
+            navigationTargetTrackKey: navigationTargetTrackKey
+        ) else {
+            return .ignore
+        }
+        return ChapterChangeDetector.didChange(
+            oldKey: currentKey,
+            oldTitle: currentTitle,
+            newKey: newKey,
+            newTitle: newTitle
+        ) ? .applyAndRelease : .releaseHold
+    }
+
+    /// Whether tapping a table-of-contents row must publish a chapter change now.
+    ///
+    /// Deliberately NOT `ChapterChangeDetector.didChange`. That rule suppresses
+    /// same-track / different-title pairs so an anthology does not announce a
+    /// crossing mid-track — correct when the signal is a playhead drifting forward,
+    /// and wrong here: the patron tapped a different row, and a label that does not
+    /// move reads as a tap that did nothing.
+    static func selectionNeedsImmediatePublish(
+        currentKey: String?,
+        currentTitle: String?,
+        selectedKey: String,
+        selectedTitle: String
+    ) -> Bool {
+        currentKey != selectedKey || currentTitle != selectedTitle
     }
 }
