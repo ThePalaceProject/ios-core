@@ -39,11 +39,18 @@ class PalaceTestSetup: NSObject {
     /// Idempotent. Safe to call from a custom test entry point or a unit
     /// test that needs to verify bootstrap state. Real entry is the
     /// principal-class `init()` above.
+    ///
+    /// A repeat call still re-registers the built-in resetters (registration is
+    /// idempotent by name), so a test that emptied the registry can restore
+    /// them by calling this — which is what several tearDowns already do.
     @discardableResult
     static func bootstrap() -> PalaceSingletonResetObserver {
         bootstrapLock.lock()
         defer { bootstrapLock.unlock() }
-        if let existing = observer { return existing }
+        if let existing = observer {
+            registerBuiltInResetters()
+            return existing
+        }
 
         NoNetworkURLProtocol.enable()
 
@@ -117,7 +124,11 @@ class PalaceTestSetup: NSObject {
         return obs
     }
 
-    /// Built-in resetter list. Order matters: AppContainer is rebuilt
+    /// Built-in resetter list. Idempotent: every entry is registered by name,
+    /// so calling this again overwrites in place and never reorders. The
+    /// observer calls it at every test boundary, which is what keeps a test
+    /// that empties the registry from disabling cleanup for the rest of the
+    /// process. Order matters: AppContainer is rebuilt
     /// FIRST so subsequent resetters see a clean graph; the static
     /// resetters then clear residue that may have been written via
     /// direct singleton mutation in the just-finished test.
@@ -128,7 +139,7 @@ class PalaceTestSetup: NSObject {
     /// exists when the bundle loads (which is also when the closure
     /// would first run), the registry resolves. The `#if DEBUG` guard
     /// matches the symbol's own gate.
-    private static func registerBuiltInResetters() {
+    static func registerBuiltInResetters() {
         let registry = SingletonResetRegistry.shared
 
         // Purge the on-disk catalog/auth caches after EVERY test — not just
@@ -331,6 +342,11 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
                   testCase.name, poolProbe.latencyMs, poolProbe.completed ? "true" : "false")
         }
 
+        // Re-assert the built-ins before running them. Suites that observe the
+        // registry in isolation empty it, and a tearDown that tries to restore
+        // it can be skipped by a failure. Without this, one such test turns off
+        // every built-in cleanup for the rest of the test process.
+        PalaceTestSetup.registerBuiltInResetters()
         SingletonResetRegistry.shared.invokeAll()
 
         guard let pre = preCount, let post = Self.sampleObserverCount() else {
