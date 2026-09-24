@@ -691,6 +691,11 @@ public final class AudiobookSessionManager: ObservableObject {
     /// out → alert). Internal so the recovery test can assert the guard.
     var awaitingContentDownloadBookIds = Set<String>()
 
+    /// PP-5242: the content source of the bound audiobook, captured at bind for
+    /// the playback-failure record, and the repeat filter for that record.
+    private var boundContentSource: (bookId: String, source: AudiobookContentSource)?
+    private var playbackFailureDeduplicator = PlaybackFailureRecordDeduplicator()
+
     /// Loader factory — recovery seam (WS-3). The default closure is
     /// byte-equivalent to the inline `AudiobookLoader(forceRefulfill:)` it
     /// replaces, so production behavior is unchanged. `private(set)` so only
@@ -1422,6 +1427,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.manager = newManager
         self.audiobook = loaded.audiobook
         self.decryptor = loaded.decryptor
+        self.boundContentSource = (book.identifier, Self.contentSourceForBinding(book: book, decryptor: loaded.decryptor))
         self.playbackModel = loaded.playbackModel
         self.currentChapters = Self.normalizedChapters(
             for: loaded.audiobook.tableOfContents
@@ -2056,47 +2062,6 @@ public final class AudiobookSessionManager: ObservableObject {
     ///     → .wifiRequired (refusing to burn their cell data against their
     ///     stated preference, and surfacing the same "connect to Wi-Fi or
     ///     change settings" alert the download path uses)
-    /// Builds a Crashlytics-ready NSError describing an audiobook playback
-    /// failure, with all available context (typed error code, HTTP status,
-    /// track URL, book id, position). Pure — straight-line unit testable
-    /// without spinning up the audiobook stack. `nonisolated` because no
-    /// app/state is read; lets tests call it off the MainActor.
-    nonisolated static func buildPlaybackFailureRecord(error: Error?, position: TrackPosition?, bookId: String?) -> NSError {
-        var userInfo: [String: Any] = [
-            "bookId": bookId ?? "unknown",
-            "trackTitle": position?.track.title ?? "unknown",
-            "trackPosition": position.map { "\($0.timestamp)" } ?? "unknown",
-        ]
-        if let trackUrl = position?.track.urls?.first?.absoluteString {
-            userInfo["trackUrl"] = trackUrl
-        }
-        if let nsError = error as NSError? {
-            userInfo["underlyingDomain"] = nsError.domain
-            userInfo["underlyingCode"] = nsError.code
-            for (key, value) in nsError.userInfo {
-                let stringKey = key as String
-                guard ["httpStatusCode", "trackKey", "url"].contains(stringKey) else { continue }
-                userInfo[stringKey] = value
-            }
-        }
-        let message = "Audiobook playback failed: \(error?.localizedDescription ?? "no underlying error")"
-        userInfo[NSLocalizedDescriptionKey] = message
-        return NSError(
-            domain: "org.thepalaceproject.palace.audiobookPlayback",
-            code: (error as NSError?)?.code ?? -1,
-            userInfo: userInfo
-        )
-    }
-
-    /// Records the playback-failure NSError to PalaceLogging + Crashlytics
-    /// non-fatal sink. Thin wrapper over `buildPlaybackFailureRecord` so the
-    /// pure construction is independently testable.
-    static func recordPlaybackFailure(error: Error?, position: TrackPosition?, bookId: String?) {
-        let nonFatal = buildPlaybackFailureRecord(error: error, position: position, bookId: bookId)
-        Log.error(#file, "Recording audiobook playback non-fatal: \(nonFatal)")
-        FirebaseManager.shared.logError(nonFatal)
-    }
-
     static func networkValidationError(
         bookState: TPPBookState,
         isConnectedToNetwork: Bool,
@@ -2286,7 +2251,14 @@ public final class AudiobookSessionManager: ObservableObject {
             // produced no Crashlytics record at all — the issue was
             // invisible to ops. Now every playback failure includes the
             // underlying error code, HTTP status, track URL, and book id.
-            Self.recordPlaybackFailure(error: error, position: position, bookId: bookId)
+            // PP-5242: repeats of the same failure within a minute are not
+            // re-sent; see `PlaybackFailureRecordDeduplicator`.
+            let contentSource = boundContentSource.flatMap { $0.bookId == bookId ? $0.source : nil } ?? .unknown
+            if let record = Self.playbackFailureRecordToSend(
+                error: error, position: position, bookId: bookId, contentSource: contentSource,
+                deduplicator: &playbackFailureDeduplicator, now: Date()) {
+                Self.sendPlaybackFailureRecord(record)
+            }
 
             switch recovery {
             case .samlReauth:
