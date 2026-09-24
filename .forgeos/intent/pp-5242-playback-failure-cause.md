@@ -28,6 +28,13 @@ Counts are inflated by repeat reports of the same failure.
 - A failure with the same (bookId, domain, code) as one seen within the previous
   60 seconds is not recorded again.
 
+- The audiobook open-failure non-fatal (`BookService.showAudiobookTryAgainError`)
+  gains `loadError`, `contentSource`, and the cause fields of the error the load
+  error carries, built by the same helper as the playback record. Its domain and
+  code are unchanged.
+- The five audiobook-fulfillment log sites that passed `book.loggableDictionary`
+  unapplied (OverDrive x2, LCP x3) now call it.
+
 ## Anti-claims
 
 - Existing record keys, domain and code are unchanged.
@@ -40,3 +47,6 @@ Counts are inflated by repeat reports of the same failure.
 - Palace/Audiobooks/AudiobookSessionManager.swift
 - PalaceTests/Audiobook/AudiobookPlaybackFailureRecordTests.swift (new)
 - Palace.xcodeproj/project.pbxproj
+- Palace/Book/UI/BookDetail/BookService.swift
+- Palace/MyBooks/OverdriveDownloadHandler.swift
+- Palace/MyBooks/LCPFulfillmentHandler.swift
