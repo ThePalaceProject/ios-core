@@ -35,6 +35,43 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     private var firstRunFlowObserver: NSObjectProtocol?
     private var hasPresentedFirstRunFlow = false
 
+    /// PP-5070 — when the first pre-configuration attempt of a launch began.
+    /// Bounds the wait for a managed install's configured library to appear in
+    /// the registry (see `ManagedLibraryPreconfigurator.registryWaitLimit`).
+    /// Keyed to the configuration, not to the launch: an MDM can change the
+    /// value while the app is starting, and the new one must get its own grace
+    /// period rather than inheriting the old one's elapsed time.
+    private var managedWaitClock = ManagedLibraryWaitClock()
+
+    /// Whether MDM library pre-selection is on.
+    ///
+    /// Computed, not stored: the flag is remote and can go off mid-session, and
+    /// the watcher's callback depends on seeing that. One locator read behind a
+    /// name, rather than four `AppContainer.production()` calls scattered
+    /// through the launch path — the composition root is the right place for a
+    /// service lookup, and one of them is enough.
+    private var managedLibraryConfigurationEnabled: Bool {
+        AppContainer.production().featureFlags.isManagedLibraryConfigurationEnabled
+    }
+
+    /// One deadline check per launch, not one per deferred attempt.
+    private var hasScheduledManagedPreconfigurationDeadline = false
+
+    /// PP-5070 — the library picker while it is on screen, so a managed
+    /// configuration that arrives AFTER we gave up waiting can take it away
+    /// again rather than leaving a student staring at a list of hundreds.
+    private weak var presentedFirstRunPicker: UIViewController?
+
+    /// PP-5070 — notices a configuration that lands, or changes, after launch.
+    /// Held for the app's lifetime; it filters cheaply and does nothing at all
+    /// on an unmanaged install.
+    private var managedLibraryWatcher: ManagedLibraryConfigurationWatcher?
+
+    /// PP-5070 — armed ONLY when the picker was shown while a managed
+    /// configuration was still pending, so a registry that arrives after the
+    /// wait expired can still be honoured. Unmanaged installs never arm it.
+    private var managedRegistryRetryObserver: NSObjectProtocol?
+
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
@@ -128,6 +165,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            self.startWatchingForManagedLibraryConfiguration()
             self.presentFirstRunFlowIfNeeded()
         }
     }
@@ -586,50 +624,118 @@ func shouldSkipStaticDestructorsOnExit(isiOSAppOnMac: Bool) -> Bool {
 // MARK: - First Run Flow
 extension TPPAppDelegate {
     private func presentFirstRunFlowIfNeeded() {
-        // PP-4329: idempotency — once we've presented the picker this
-        // launch, any further .TPPCatalogDidLoad posts (the main catalog
-        // load triggers up to 8 of them in worst-case fallback paths)
-        // must NOT re-present. Without this guard, a fresh install on
-        // iOS 26.4.2 stacked 4 TPPAccountList modals.
-        guard !hasPresentedFirstRunFlow else { return }
-
         let accountsManager = AppContainer.production().accountsManager
-        // Defer until accounts have loaded to avoid false negatives on currentAccount
-        if !accountsManager.accountsHaveLoaded {
-            // PP-4329: remove the previous deferred observer (if any)
-            // before adding a new one — otherwise observers accumulate
-            // every time this method re-enters itself.
-            if let token = firstRunFlowObserver {
-                NotificationCenter.default.removeObserver(token)
-                firstRunFlowObserver = nil
-            }
-            firstRunFlowObserver = NotificationCenter.default.addObserver(
-                forName: .TPPCatalogDidLoad,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                // Registered with `queue: .main`; `assumeIsolated` to call the
-                // `@MainActor` `presentFirstRunFlowIfNeeded()` without a re-hop.
-                MainActor.assumeIsolated {
-                    self?.presentFirstRunFlowIfNeeded()
-                }
-            }
-            accountsManager.loadCatalogs(completion: nil)
+
+        // PP-5220: the decision itself is `FirstRunFlowDecision.step`, a pure
+        // function with its own tests. Everything below is the machinery that
+        // carries state in and acts on the answer — deliberately kept free of
+        // decisions of its own, because this method cannot be reached from a
+        // test and anything decided here is decided untested.
+        //
+        // The managed step is evaluated first because it is the only input that
+        // requires work (reading the configuration and resolving it), and the
+        // pure function takes its RESULT rather than the means of getting it.
+        let managedStep = managedLibraryLaunchStep(accountsHaveLoaded: accountsManager.accountsHaveLoaded)
+
+        switch FirstRunFlowDecision.step(
+            hasPresented: hasPresentedFirstRunFlow,
+            catalogHasLoaded: accountsManager.accountsHaveLoaded,
+            managedStep: managedStep,
+            hasCurrentAccount: accountsManager.currentAccountId != nil
+        ) {
+        case .alreadyHandled:
+            return
+        case .waitForCatalog:
+            deferFirstRunFlowUntilCatalogLoads(accountsManager: accountsManager)
+            return
+        case .librarySelected:
+            hasPresentedFirstRunFlow = true
+            return
+        case .waitForManagedLibrary:
+            deferFirstRunFlowUntilRegistryChanges()
+            return
+        case .nothingToDo:
+            clearFirstRunFlowObserver()
+            return
+        case .presentPicker:
+            clearFirstRunFlowObserver()
+            presentLibraryPicker(accountsManager: accountsManager)
             return
         }
+    }
 
-        // We're past the deferred-load state; remove the observer so the
-        // remaining 7 possible .TPPCatalogDidLoad posts from the same
-        // load cycle don't re-fire this method.
+    /// Evaluates the managed-configuration arm, including its bounded wait.
+    /// Returns `.presentPicker` (meaning "nothing to say") when the catalog has
+    /// not loaded yet, so the pure decision sees a single consistent shape.
+    private func managedLibraryLaunchStep(accountsHaveLoaded: Bool) -> ManagedLibraryLaunchStep {
+        guard accountsHaveLoaded else { return .presentPicker }
+        guard managedLibraryConfigurationEnabled else {
+            return .presentPicker
+        }
+
+        let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
+        let elapsed = managedWaitClock.elapsed(
+            for: ManagedAppConfiguration.configurationIdentity(defaults: .standard)
+        )
+        let step = ManagedLibraryPreconfigurator.launchStep(for: decision, elapsed: elapsed)
+
+        // PP-5221 — tell ourselves when a school's configuration is wrong,
+        // because otherwise the only signal is a ticket saying "we set it up
+        // and nothing happened". Bounded twice over: silent until the registry
+        // wait has expired, since before that an unresolved library is the
+        // ordinary cold-launch state, and at most once per configuration value,
+        // so one misconfigured device does not file a report a day forever.
+        // Inside the feature-flag guard above, so an unmanaged install reports
+        // nothing and pays nothing.
+        ManagedLibraryDiagnostics.reportIfNeeded(
+            decision: decision,
+            waitHasExpired: elapsed >= ManagedLibraryPreconfigurator.registryWaitLimit,
+            defaults: .standard,
+            reporter: ManagedLibraryCrashlyticsReporter()
+        )
+        // The wait expired with a configuration still pending: show the picker
+        // but keep trying, because a school network in the morning outlasts any
+        // timeout worth setting.
+        if step == .presentPicker, decision == .unresolved || decision == .registryNotLoaded {
+            retryManagedPreconfigurationWhenRegistryChanges()
+        }
+        return step
+    }
+
+    private func clearFirstRunFlowObserver() {
         if let token = firstRunFlowObserver {
             NotificationCenter.default.removeObserver(token)
             firstRunFlowObserver = nil
         }
+    }
 
-        // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
-        let needsAccount = (accountsManager.currentAccountId == nil)
-        guard needsAccount else { return }
+    /// The pre-existing wait for the library list, unchanged in behaviour.
+    private func deferFirstRunFlowUntilCatalogLoads(accountsManager: AccountsManager) {
+        legacyDeferFirstRunFlow(accountsManager: accountsManager)
+    }
 
+    private func legacyDeferFirstRunFlow(accountsManager: AccountsManager) {
+        // PP-4329: remove the previous deferred observer (if any) before adding
+        // a new one — otherwise observers accumulate every time this method
+        // re-enters itself, which is how a fresh install on iOS 26.4.2 ended up
+        // with four stacked TPPAccountList modals.
+        clearFirstRunFlowObserver()
+        firstRunFlowObserver = NotificationCenter.default.addObserver(
+            forName: .TPPCatalogDidLoad,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Registered with `queue: .main`; `assumeIsolated` to call the
+            // `@MainActor` `presentFirstRunFlowIfNeeded()` without a re-hop.
+            MainActor.assumeIsolated {
+                self?.presentFirstRunFlowIfNeeded()
+            }
+        }
+        accountsManager.loadCatalogs(completion: nil)
+    }
+
+    /// Presents the library picker. Reached only when the decision says so.
+    private func presentLibraryPicker(accountsManager: AccountsManager) {
         guard let top = topViewController() else { return }
 
         var nav: UINavigationController!
@@ -649,6 +755,10 @@ extension TPPAppDelegate {
 
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
             nav?.dismiss(animated: true)
+            // The patron has chosen. Stop trying to apply a pending managed
+            // configuration over the top of their choice.
+            self?.disarmManagedRegistryRetry()
+            self?.presentedFirstRunPicker = nil
             // Allow a future cold launch with no account to present again,
             // but on the current launch we're done.
             self?.hasPresentedFirstRunFlow = true
@@ -659,7 +769,132 @@ extension TPPAppDelegate {
         // re-entry from a notification fired during the present sees
         // the guard.
         hasPresentedFirstRunFlow = true
+        presentedFirstRunPicker = nav
         top.present(nav, animated: true)
+    }
+
+    /// PP-5070 — keeps trying to honour a pending configuration after the
+    /// picker has already been presented.
+    ///
+    /// Armed only when a configuration was pending as the picker went up, so an
+    /// unmanaged install never registers this observer at all. Disarms itself
+    /// the moment it succeeds.
+    private func retryManagedPreconfigurationWhenRegistryChanges() {
+        guard managedRegistryRetryObserver == nil else { return }
+        guard managedLibraryConfigurationEnabled else {
+            return
+        }
+        managedRegistryRetryObserver = NotificationCenter.default.addObserver(
+            forName: .TPPCatalogDidLoad,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
+                guard case .apply = decision else { return }
+                self.disarmManagedRegistryRetry()
+                guard let picker = self.presentedFirstRunPicker else { return }
+                self.presentedFirstRunPicker = nil
+                picker.dismiss(animated: true)
+            }
+        }
+    }
+
+    private func disarmManagedRegistryRetry() {
+        if let token = managedRegistryRetryObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        managedRegistryRetryObserver = nil
+    }
+
+    /// PP-5070 — starts watching for a managed configuration that arrives after
+    /// the launch decision was already made.
+    ///
+    /// Apple does not promise the configuration is present before first launch,
+    /// and if it is not, the picker goes up and the first-run flow marks itself
+    /// done. Rather than delay the picker for every unmanaged install on the
+    /// chance a configuration might be coming — which would penalise almost
+    /// every Palace user for one partner's benefit — the app shows it on time
+    /// and takes it away again if a configuration turns up.
+    private func startWatchingForManagedLibraryConfiguration() {
+        guard managedLibraryWatcher == nil else { return }
+        // Flag OFF means no observer is registered at all, rather than one that
+        // wakes and decides to do nothing.
+        guard managedLibraryConfigurationEnabled else {
+            return
+        }
+        let watcher = ManagedLibraryConfigurationWatcher(
+            defaults: .standard,
+            preconfigurator: ManagedLibraryPreconfigurator.production()
+        )
+        managedLibraryWatcher = watcher
+        watcher.start { [weak self] decision in
+            guard let self else { return }
+            // Re-checked here, not only when the observer was installed. The
+            // flag is remote, so it can go off mid-session — and an observer
+            // that keeps acting after the feature was turned off is the kind
+            // of switch that does not switch anything.
+            guard managedLibraryConfigurationEnabled else {
+                return
+            }
+            // A configuration arriving late can be just as wrong as one present
+            // at launch. Without this the launch path is the only place that
+            // reports, so a school that pushed a typo after the app was already
+            // open would hear nothing back.
+            ManagedLibraryDiagnostics.reportIfNeeded(
+                decision: decision,
+                waitHasExpired: self.managedWaitClock.elapsed(
+                    for: ManagedAppConfiguration.configurationIdentity(defaults: .standard)
+                ) >= ManagedLibraryPreconfigurator.registryWaitLimit,
+                defaults: .standard,
+                reporter: ManagedLibraryCrashlyticsReporter()
+            )
+            switch ManagedLibraryPreconfigurator.watchAction(for: decision) {
+            case .dismissPicker:
+                self.hasPresentedFirstRunFlow = true
+                self.disarmManagedRegistryRetry()
+                guard let picker = self.presentedFirstRunPicker else { return }
+                self.presentedFirstRunPicker = nil
+                picker.dismiss(animated: true)
+            case .keepTrying:
+                // A configuration arrived but the registry cannot resolve it
+                // yet. Without this the app would drop it on the floor: the
+                // launch-time retry is armed only when a configuration was
+                // pending as the picker went up, and in this case there was
+                // none to be pending.
+                self.retryManagedPreconfigurationWhenRegistryChanges()
+            case .doNothing:
+                break
+            }
+        }
+    }
+
+    /// Re-arms the `.TPPCatalogDidLoad` observer so `presentFirstRunFlowIfNeeded`
+    /// runs again when the registry changes, and schedules one deadline check so
+    /// a device whose network never delivers a further load still reaches the
+    /// picker instead of sitting on an empty catalog forever.
+    private func deferFirstRunFlowUntilRegistryChanges() {
+        if let token = firstRunFlowObserver {
+            NotificationCenter.default.removeObserver(token)
+            firstRunFlowObserver = nil
+        }
+        firstRunFlowObserver = NotificationCenter.default.addObserver(
+            forName: .TPPCatalogDidLoad,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.presentFirstRunFlowIfNeeded()
+            }
+        }
+
+        guard !hasScheduledManagedPreconfigurationDeadline else { return }
+        hasScheduledManagedPreconfigurationDeadline = true
+        let delay = ManagedLibraryPreconfigurator.registryWaitLimit + 0.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.presentFirstRunFlowIfNeeded()
+        }
     }
 
     private func switchToCatalogTab() {

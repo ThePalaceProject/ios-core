@@ -52,6 +52,20 @@ public enum PalaceFeatureFlag: String, Sendable {
     /// non-DEBUG, so the feature is turned on explicitly by the dev-menu
     /// toggle rather than by build configuration.
     case sideLoadingEnabled = "side_loading_enabled"
+    /// Gates deploy-time library pre-selection from an MDM's Managed App
+    /// Configuration (PP-5070 / PP-5217): reading
+    /// `com.apple.configuration.managed` at launch, watching it for changes,
+    /// and selecting the library a school configured.
+    ///
+    /// **Default OFF.** The feature only ever acts on a device whose MDM has
+    /// supplied a configuration, so an unmanaged install is unaffected either
+    /// way — but it changes the FIRST-RUN path, which every new install takes,
+    /// and that path has not yet been exercised on a real cold launch. Off
+    /// until it has.
+    ///
+    /// Precedence: UserDefaults local override (dev-menu toggle) > Firebase
+    /// remote (default false).
+    case managedLibraryConfigurationEnabled = "managed_library_configuration_enabled"
     /// Master kill-switch for the app-rating prompt feature (Epic PP-4086).
     /// Default ON; set to false in Remote Config to suppress the prompt
     /// entirely regardless of engagement state.

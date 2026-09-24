@@ -1254,6 +1254,8 @@ run_phase35_detector "auth_challenge_async_form" "check-auth-challenge-async-for
   "No completion-handler-form auth-challenge delegate callback (PP-4895 ClangImporter @MainActor-poisoning risk)" "diff"
 run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" \
   "No NSKeyedUnarchiver.unarchiveObject(with:) — raises uncatchably on a corrupt archive" "diff"
+run_phase35_detector "opaque_blob_egress" "check-opaque-blob-egress.py" "block" \
+  "No opaque payload reaches an external sink"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"

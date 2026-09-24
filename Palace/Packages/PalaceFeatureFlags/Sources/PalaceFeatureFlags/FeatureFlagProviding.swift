@@ -40,4 +40,8 @@ public protocol FeatureFlagProviding: AnyObject, Sendable {
     /// PP-5006 prototype: the EPUB reader's drag-to-navigate chapter scrubber.
     /// Local Testing-menu override only — no remote flag behind it.
     var isChapterScrubberEnabled: Bool { get }
+    /// PP-5070 / PP-5217: deploy-time library pre-selection from an MDM's
+    /// Managed App Configuration. Default OFF — it changes the first-run path,
+    /// which every new install takes.
+    var isManagedLibraryConfigurationEnabled: Bool { get }
 }
