@@ -243,7 +243,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     private(set) var lastNetworkLossFailureTask: Task<Void, Never>?
     let memoryPressureMonitor: MemoryPressureMonitor
     let bookmarkDeletionLog: TPPBookmarkDeletionLog
-    let deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor
+    let deviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring
     let opdsFeedService: OPDSFeedService
     let debugSettings: DebugSettings
     let settings: TPPSettings
@@ -398,7 +398,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         reachability: Reachability = AppContainer.production().reachability,
         memoryPressureMonitor: MemoryPressureMonitor = .shared,
         bookmarkDeletionLog: TPPBookmarkDeletionLog = .shared,
-        deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor = .shared,
+        deviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring = DeviceSpecificErrorMonitor.shared,
         opdsFeedService: OPDSFeedService = OPDSFeedService(),
         debugSettings: DebugSettings = DebugSettings(),
         settings: TPPSettings = TPPSettings(),
@@ -1860,7 +1860,7 @@ extension MyBooksDownloadCenter {
         let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
 
         var dict: [String: Any] = metadata ?? [:]
-        dict["book"] = book.loggableDictionary
+        dict["book"] = book.loggableDictionary()
         dict["rightsManagement"] = rights
         dict["taskOriginalRequest"] = downloadTask.originalRequest?.loggableString
         dict["taskCurrentRequest"] = downloadTask.currentRequest?.loggableString
