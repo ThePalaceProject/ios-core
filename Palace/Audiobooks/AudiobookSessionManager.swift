@@ -943,7 +943,10 @@ public final class AudiobookSessionManager: ObservableObject {
                                 }
                             }
                         } else {
-                            BookService.showAudiobookTryAgainError(book: book, onFinish: nil)
+                            // PP-5242: carry the load error's cause into the open-failure report.
+                            let failureMetadata = Self.openFailureMetadata(
+                                loadError: loadError, contentSource: Self.contentSourceForOpen(book: book))
+                            BookService.showAudiobookTryAgainError(book: book, failureMetadata: failureMetadata, onFinish: nil)
                         }
                         continuation.resume(returning: .failure(sessionError))
                     }
@@ -2253,7 +2256,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // underlying error code, HTTP status, track URL, and book id.
             // PP-5242: repeats of the same failure within a minute are not
             // re-sent; see `PlaybackFailureRecordDeduplicator`.
-            let contentSource = boundContentSource.flatMap { $0.bookId == bookId ? $0.source : nil } ?? .unknown
+            let contentSource = Self.contentSource(bound: boundContentSource, failingBookId: bookId)
             if let record = Self.playbackFailureRecordToSend(
                 error: error, position: position, bookId: bookId, contentSource: contentSource,
                 deduplicator: &playbackFailureDeduplicator, now: Date()) {

@@ -181,24 +181,7 @@ extension AudiobookSessionManager {
         if let secondsSincePreviousFailureForBook {
             userInfo["msSincePreviousFailureForBook"] = Int((secondsSincePreviousFailureForBook * 1000).rounded())
         }
-        if let nsError = error as NSError? {
-            userInfo["underlyingDomain"] = nsError.domain
-            userInfo["underlyingCode"] = nsError.code
-            for (key, value) in nsError.userInfo {
-                let stringKey = key as String
-                guard ["httpStatusCode", "trackKey", "url"].contains(stringKey) else { continue }
-                userInfo[stringKey] = value
-            }
-            var underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
-            var level = 1
-            while let current = underlying, level <= maxUnderlyingErrorDepth {
-                let suffix = level == 1 ? "" : "\(level)"
-                userInfo["underlyingErrorDomain\(suffix)"] = current.domain
-                userInfo["underlyingErrorCode\(suffix)"] = current.code
-                underlying = current.userInfo[NSUnderlyingErrorKey] as? NSError
-                level += 1
-            }
-        }
+        userInfo.merge(errorCauseFields(error)) { _, cause in cause }
         let message = "Audiobook playback failed: \(error?.localizedDescription ?? "no underlying error")"
         userInfo[NSLocalizedDescriptionKey] = message
         return NSError(
@@ -206,6 +189,64 @@ extension AudiobookSessionManager {
             code: (error as NSError?)?.code ?? -1,
             userInfo: userInfo
         )
+    }
+
+    /// The cause fields shared by the playback-failure record and the
+    /// open-failure metadata: `underlyingDomain`/`underlyingCode` for `error`
+    /// itself, the allow-listed `httpStatusCode`/`trackKey`/`url` from its
+    /// userInfo, and `underlyingErrorDomain`/`underlyingErrorCode` (then `…2`,
+    /// `…3`) for its `NSUnderlyingError` chain. Empty for a nil error.
+    nonisolated static func errorCauseFields(_ error: Error?) -> [String: Any] {
+        guard let nsError = error as NSError? else { return [:] }
+        var fields: [String: Any] = [
+            "underlyingDomain": nsError.domain,
+            "underlyingCode": nsError.code,
+        ]
+        for (key, value) in nsError.userInfo {
+            let stringKey = key as String
+            guard ["httpStatusCode", "trackKey", "url"].contains(stringKey) else { continue }
+            fields[stringKey] = value
+        }
+        var underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        var level = 1
+        while let current = underlying, level <= maxUnderlyingErrorDepth {
+            let suffix = level == 1 ? "" : "\(level)"
+            fields["underlyingErrorDomain\(suffix)"] = current.domain
+            fields["underlyingErrorCode\(suffix)"] = current.code
+            underlying = current.userInfo[NSUnderlyingErrorKey] as? NSError
+            level += 1
+        }
+        return fields
+    }
+
+    /// Metadata for the open-failure non-fatal logged by
+    /// `BookService.showAudiobookTryAgainError`. That report keeps its fixed
+    /// domain and code (existing grouping); this adds which loader step failed
+    /// (`loadError`), the content source, and the cause fields of the error the
+    /// step carried. `underlyingDomain`/`underlyingCode` here describe that
+    /// carried error, since the load error itself is a Swift enum with no
+    /// useful domain.
+    nonisolated static func openFailureMetadata(
+        loadError: AudiobookLoadError,
+        contentSource: AudiobookContentSource
+    ) -> [String: Any] {
+        var metadata = errorCauseFields(loadError.underlyingError)
+        metadata["loadError"] = loadError.caseName
+        metadata["contentSource"] = contentSource.rawValue
+        if case .factoryFailed(let manifestType?) = loadError {
+            metadata["manifestType"] = manifestType
+        }
+        return metadata
+    }
+
+    /// The content source to record for a failure of `failingBookId`: the bound
+    /// source when it belongs to that book, `.unknown` otherwise.
+    nonisolated static func contentSource(
+        bound: (bookId: String, source: AudiobookContentSource)?,
+        failingBookId: String
+    ) -> AudiobookContentSource {
+        guard let bound, bound.bookId == failingBookId else { return .unknown }
+        return bound.source
     }
 
     /// The record to send for this failure, or `nil` when it repeats one seen
@@ -245,7 +286,21 @@ extension AudiobookSessionManager {
     /// background mid-session (PP-5135), and a check at failure time would then
     /// label a streaming failure as local.
     static func contentSourceForBinding(book: TPPBook, decryptor: AnyObject?) -> AudiobookContentSource {
-        let hasDecryptor = PlaybackOpenPolicy.decideForLoad(decryptor: decryptor).bypassReadinessGate
+        contentSource(for: book, isLCP: PlaybackOpenPolicy.decideForLoad(decryptor: decryptor).bypassReadinessGate)
+    }
+
+    /// Content source for an audiobook that failed to open, so no decryptor
+    /// exists. Uses the same LCP test the open path's content gate uses
+    /// (`LCPAudiobooks.canOpenBook`) and the same `.lcpa` file-exists test.
+    static func contentSourceForOpen(book: TPPBook) -> AudiobookContentSource {
+#if LCP
+        return contentSource(for: book, isLCP: LCPAudiobooks.canOpenBook(book))
+#else
+        return contentSource(for: book, isLCP: false)
+#endif
+    }
+
+    private static func contentSource(for book: TPPBook, isLCP hasDecryptor: Bool) -> AudiobookContentSource {
 #if FEATURE_OVERDRIVE
         let overdriveKey: String? = OverdriveDistributorKey
 #else
@@ -263,5 +318,35 @@ extension AudiobookSessionManager {
     static func sendPlaybackFailureRecord(_ nonFatal: NSError) {
         Log.error(#file, "Recording audiobook playback non-fatal: \(nonFatal)")
         FirebaseManager.shared.logError(nonFatal)
+    }
+}
+
+
+// MARK: - Load error description
+
+extension AudiobookLoadError {
+    /// The case name without its payload, e.g. `lcpDecryptionFailed`.
+    var caseName: String {
+        Mirror(reflecting: self).children.first?.label ?? String(describing: self)
+    }
+
+    /// The error a case carries, if any.
+    var underlyingError: Error? {
+        switch self {
+        case .tokenRefreshFailed(let error),
+             .lcpDecryptionFailed(let error),
+             .licenseDownloadFailed(let error):
+            return error
+        case .licenseSaveFailed(let error),
+             .manifestDecodingFailed(let error):
+            return error
+        case .vendorKeyUpdateFailed(let error):
+            return error
+        case .cancelled, .missingCredentialsForTokenRefresh, .lcpNotAvailable,
+             .lcpInstantiationFailed, .missingFulfillURL, .missingContentDirectory,
+             .manifestFetchFailed, .manifestParseFailed, .manifestSerializationFailed,
+             .factoryFailed:
+            return nil
+        }
     }
 }

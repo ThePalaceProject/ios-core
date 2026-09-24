@@ -111,7 +111,7 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             TPPErrorLogger.logError(error, summary: "Error renaming LCP license file", metadata: [
                 "fileUrl": fileUrl.absoluteString,
                 "licenseUrl": licenseUrl.absoluteString,
-                "book": book.loggableDictionary
+                "book": book.loggableDictionary()
             ])
             alertPresenter.failDownloadWithAlert(for: book, withMessage: error.localizedDescription)
             return
@@ -177,7 +177,7 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             if let error = error {
                 let summary = "\(String(describing: book.distributor)) LCP license fulfillment error"
                 TPPErrorLogger.logError(error, summary: summary, metadata: [
-                    "book": book.loggableDictionary,
+                    "book": book.loggableDictionary(),
                     "licenseURL": licenseUrl.absoluteString,
                     "localURL": localUrl?.absoluteString ?? "N/A"
                 ])
@@ -354,7 +354,7 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             try fileManager.copyItem(at: sourceLicenseUrl, to: streamingLicenseUrl)
         } catch {
             TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [
-                "book": book.loggableDictionary,
+                "book": book.loggableDictionary(),
                 "sourceLicenseUrl": sourceLicenseUrl.absoluteString,
                 "targetLicenseUrl": streamingLicenseUrl.absoluteString
             ])

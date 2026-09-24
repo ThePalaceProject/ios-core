@@ -38,9 +38,13 @@ enum BookService {
 
     /// Shown when an audiobook open fails. Invoked by
     /// `AudiobookSessionManager` after a loader failure, and by the PP-3707
-    /// retry path below.
+    /// retry path below. `failureMetadata` is added to the non-fatal's metadata.
     @MainActor
-  static func showAudiobookTryAgainError(book: TPPBook? = nil, onFinish: (() -> Void)? = nil) {
+  static func showAudiobookTryAgainError(
+    book: TPPBook? = nil,
+    failureMetadata: [String: Any] = [:],
+    onFinish: (() -> Void)? = nil
+  ) {
         Log.warn(#file, "⚠️ [ERROR ALERT] Showing 'An error was encountered while trying to open this book' alert to user")
 
         let error = NSError(
@@ -54,7 +58,10 @@ enum BookService {
         TPPErrorLogger.logError(
             error,
             summary: "Audiobook failed to open - showing try again error",
-            metadata: ["user_message": Strings.Error.tryAgain]
+            // PP-5242: the cause, loader step and content source from the
+            // session manager (`openFailureMetadata`). The error above keeps its
+            // fixed domain/code so the existing Crashlytics grouping holds.
+            metadata: failureMetadata.merging(["user_message": Strings.Error.tryAgain]) { _, fixed in fixed }
         )
 
         // Offer retry for audiobook open failures (may be transient)

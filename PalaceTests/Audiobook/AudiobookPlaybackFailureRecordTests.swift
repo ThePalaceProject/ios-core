@@ -256,6 +256,12 @@ final class PlaybackFailureRecordDeduplicatorTests: XCTestCase {
         XCTAssertTrue(dedupe.evaluate(bookId: "a", domain: "d2", code: 1, at: t0.addingTimeInterval(1)).shouldRecord)
     }
 
+    func testPreviousFailureExactlyOneWindowAgo_DoesNotSetTheInterval() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        _ = dedupe.evaluate(bookId: "a", domain: "d", code: 1, at: t0)
+        XCTAssertNil(dedupe.evaluate(bookId: "a", domain: "d", code: 2, at: t0.addingTimeInterval(window)).secondsSincePreviousFailureForBook)
+    }
+
     func testPreviousFailureOfAnotherBook_DoesNotSetTheInterval() {
         var dedupe = PlaybackFailureRecordDeduplicator()
         _ = dedupe.evaluate(bookId: "a", domain: "d", code: 1, at: t0)
@@ -438,5 +444,91 @@ final class AudiobookContentSourceTests: XCTestCase {
 
     func testBearerTokenAudiobook_IsOpenAccess() {
         XCTAssertEqual(classify(book(type: DistributorType.BearerToken.rawValue)), .openAccess)
+    }
+}
+
+// MARK: - Open failures
+
+/// The open-failure non-fatal (`BookService.showAudiobookTryAgainError`) is a
+/// fixed domain/code with no cause. These pin the metadata the session manager
+/// now hands it: which loader step failed, the error that step carried, and the
+/// content source.
+final class AudiobookOpenFailureMetadataTests: XCTestCase {
+
+    private func metadata(_ error: AudiobookLoadError, source: AudiobookContentSource = .lcpStreamed) -> [String: Any] {
+        AudiobookSessionManager.openFailureMetadata(loadError: error, contentSource: source)
+    }
+
+    func testLoadErrorWithoutPayload_RecordsItsCaseName() {
+        XCTAssertEqual(metadata(.manifestFetchFailed)["loadError"] as? String, "manifestFetchFailed")
+        XCTAssertEqual(metadata(.lcpInstantiationFailed)["loadError"] as? String, "lcpInstantiationFailed")
+    }
+
+    func testLoadErrorWithPayload_RecordsTheCaseNameWithoutThePayload() {
+        let error = AudiobookLoadError.lcpDecryptionFailed(underlying: NSError(domain: "x", code: 1))
+        XCTAssertEqual(metadata(error)["loadError"] as? String, "lcpDecryptionFailed")
+    }
+
+    func testContentSource_IsRecorded() {
+        XCTAssertEqual(metadata(.manifestParseFailed, source: .findaway)["contentSource"] as? String, "findaway")
+    }
+
+    func testUnderlyingErrorAndItsChain_AreRecorded() {
+        let root = NSError(domain: NSOSStatusErrorDomain, code: -12873)
+        let cause = NSError(domain: "ReadiumLCP", code: 7, userInfo: [NSUnderlyingErrorKey: root, "httpStatusCode": 403])
+        let info = metadata(.lcpDecryptionFailed(underlying: cause))
+
+        XCTAssertEqual(info["underlyingDomain"] as? String, "ReadiumLCP")
+        XCTAssertEqual(info["underlyingCode"] as? Int, 7)
+        XCTAssertEqual(info["httpStatusCode"] as? Int, 403)
+        XCTAssertEqual(info["underlyingErrorDomain"] as? String, NSOSStatusErrorDomain)
+        XCTAssertEqual(info["underlyingErrorCode"] as? Int, -12873)
+    }
+
+    func testEveryCaseThatCarriesAnError_ExposesIt() {
+        let e = NSError(domain: "cause", code: 42)
+        let carrying: [AudiobookLoadError] = [
+            .tokenRefreshFailed(underlying: e),
+            .lcpDecryptionFailed(underlying: e),
+            .licenseDownloadFailed(underlying: e),
+            .licenseSaveFailed(underlying: e),
+            .vendorKeyUpdateFailed(underlying: e),
+            .manifestDecodingFailed(underlying: e),
+        ]
+        for error in carrying {
+            XCTAssertEqual(metadata(error)["underlyingCode"] as? Int, 42, "\(error) must expose its underlying error")
+        }
+    }
+
+    func testCaseWithNilUnderlying_RecordsNoCause() {
+        let info = metadata(.tokenRefreshFailed(underlying: nil))
+        XCTAssertNil(info["underlyingDomain"])
+        XCTAssertNil(info["underlyingCode"])
+    }
+
+    func testCaseWithoutAnError_RecordsNoCause() {
+        XCTAssertNil(metadata(.missingFulfillURL)["underlyingDomain"])
+    }
+
+    func testFactoryFailure_RecordsTheManifestType() {
+        XCTAssertEqual(metadata(.factoryFailed(manifestType: "findaway"))["manifestType"] as? String, "findaway")
+        XCTAssertNil(metadata(.factoryFailed(manifestType: nil))["manifestType"])
+    }
+}
+
+// MARK: - Bound content source lookup
+
+final class BoundContentSourceLookupTests: XCTestCase {
+
+    func testFailureForTheBoundBook_UsesTheBoundSource() {
+        XCTAssertEqual(AudiobookSessionManager.contentSource(bound: ("a", .lcpLocal), failingBookId: "a"), .lcpLocal)
+    }
+
+    func testFailureForAnotherBook_IsUnknown() {
+        XCTAssertEqual(AudiobookSessionManager.contentSource(bound: ("a", .lcpLocal), failingBookId: "b"), .unknown)
+    }
+
+    func testNothingBound_IsUnknown() {
+        XCTAssertEqual(AudiobookSessionManager.contentSource(bound: nil, failingBookId: "a"), .unknown)
     }
 }
