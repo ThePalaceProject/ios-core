@@ -48,6 +48,15 @@ struct LoadedAudiobook {
     let audiobook: Audiobook
     let decryptor: DRMDecryptor?
     let playbackModel: AudiobookPlaybackModel
+    /// PP-4963 position instrumentation for this session.
+    ///
+    /// This struct does NOT own it — `AudiobookBookmarkBusinessLogic` does, and
+    /// that object is retained by `AudiobookManager.bookmarkDelegate` for the
+    /// life of the session. This field is a handle so `issueFirstPlay` can
+    /// evaluate the restore gap; an earlier draft treated it as the owner, and
+    /// because `bind` destructures this struct and drops it, the recorder
+    /// deallocated seconds after first play and the instrument recorded nothing.
+    let positionTrace: AudiobookPositionTraceRecorder
 }
 
 @MainActor
@@ -411,8 +420,20 @@ final class AudiobookLoader {
         manager.skipForwardInterval = skipSettings.forwardTimeInterval
         manager.skipBackInterval = skipSettings.backTimeInterval
 
-        let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
+        // PP-4963: watch the save path against the playback clock, so a locked
+        // listen that stops saving becomes an event instead of an absence.
+        // The liveness signal is taken from `player.positionPublisher` rather
+        // than from anything the runloop feeds — see the recorder's `observe`.
+        //
+        // The recorder is handed to the bookmark logic rather than held here:
+        // that object is retained by `manager.bookmarkDelegate`, and the
+        // session manager retains the manager, so the trace survives for the
+        // whole listening session. Held any other way it died with this
+        // function and the instrument recorded nothing.
+        let positionTrace = AudiobookPositionTraceRecorder(bookID: book.identifier)
+        let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book, positionTrace: positionTrace)
         manager.bookmarkDelegate = bookmarkLogic
+        positionTrace.observe(positionPublisher: manager.audiobook.player.positionPublisher)
 
         manager.playbackCompletionHandler = { [weak book, weak manager] in
             guard let book = book, let manager = manager else { return }
@@ -433,7 +454,8 @@ final class AudiobookLoader {
             manager: manager,
             audiobook: audiobook,
             decryptor: decryptor,
-            playbackModel: playbackModel
+            playbackModel: playbackModel,
+            positionTrace: positionTrace
         )))
     }
 

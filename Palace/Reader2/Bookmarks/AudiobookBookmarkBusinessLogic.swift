@@ -62,11 +62,17 @@ import PalaceBookModel
     private var deletedBookmarkIds = Set<String>()
 
     @objc convenience init(book: TPPBook) {
+        self.init(book: book, positionTrace: nil)
+    }
+
+    /// Production entry point that also wires the PP-4963 trace.
+    convenience init(book: TPPBook, positionTrace: AudiobookPositionTraceRecorder?) {
         self.init(
             book: book,
             registry: AppContainer.production().bookRegistry,
             annotationsManager: TPPAnnotationsWrapper(),
-            positionWriter: nil
+            positionWriter: nil,
+            positionTrace: positionTrace
         )
     }
 
@@ -74,8 +80,10 @@ import PalaceBookModel
         book: TPPBook,
         registry: TPPBookRegistryProvider,
         annotationsManager: AnnotationsManager,
-        positionWriter: PositionWriter? = nil
+        positionWriter: PositionWriter? = nil,
+        positionTrace: AudiobookPositionTraceRecorder? = nil
     ) {
+        self.positionTrace = positionTrace
         self.book = book
         self.registry = registry
         self.annotationsManager = annotationsManager
@@ -104,6 +112,22 @@ import PalaceBookModel
         }
     }
 
+    /// PP-4963 position trace. Notified on every LOCAL position write, which is
+    /// the event the instrumentation needs and the one nothing else records —
+    /// a successful save leaves no trace in Crashlytics, so its absence during
+    /// a locked listen is invisible without this.
+    ///
+    /// A `let` injected at init rather than a settable property, for two
+    /// reasons. It keeps this class's `@unchecked Sendable` waiver honest — the
+    /// INVARIANT block above says no unsynchronized mutable state crosses the
+    /// closure boundaries, and a settable `var` would have made that false. And
+    /// it is what keeps the recorder ALIVE: this object is retained by
+    /// `AudiobookManager.bookmarkDelegate`, which the session manager retains
+    /// for the life of the session, so the trace outlives first play. Held
+    /// weakly, or hung off the `LoadedAudiobook` struct, it deallocated seconds
+    /// after playback began and no verdict ever fired.
+    private let positionTrace: AudiobookPositionTraceRecorder?
+
     // MARK: - Remote-write cancellation (3.2.3 Cause 2)
 
     /// Cancels any pending throttled remote listening-position write for this
@@ -130,6 +154,10 @@ import PalaceBookModel
         }
         registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
         Log.debug(#file, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
+        // PP-4963: the LOCAL write is what decides whether the patron keeps
+        // their place, so the trace is notified here rather than after the
+        // annotation post below (whose failures are a separate defect).
+        positionTrace?.noteSave(at: Date())
 
         // Delegate the network write to the unified PositionWriter. Throttling,
         // queue management, and background-task lifetime now live in one place
@@ -721,6 +749,10 @@ import PalaceBookModel
             registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
             Log.warn(#file, "⚠️ Registry doesn't support sync save, using async fallback")
         }
+        // PP-4963: the termination path is a save like any other, and leaving
+        // it out would make a session that only ever saved on termination look
+        // as though it had never saved at all.
+        positionTrace?.noteSave(at: Date())
     }
 
     // Swift 6 `complete`: `action` is `@Sendable` because it is captured by the
