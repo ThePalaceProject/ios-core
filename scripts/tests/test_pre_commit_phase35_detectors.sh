@@ -194,6 +194,62 @@ if [ "$MOCK_CLEAN_EXIT" -ne 0 ]; then
   exit 1
 fi
 
+# --- Assert 8: OPAQUE_BLOB_EGRESS fires on its fixture, and clears on the fix ---
+# (PR #1508) A whole MDM-supplied payload was interpolated into a Crashlytics
+# report. The fixture is that line verbatim; the clean arm is the narrower
+# replacement, which an earlier looser predicate wrongly flagged — so this
+# asserts BOTH directions, not just that something blocked.
+mkdir -p Palace/AppInfrastructure
+cat > Palace/AppInfrastructure/Leaky.swift <<'EOF'
+import Foundation
+enum Leaky {
+    static func report(fingerprint: String) -> String {
+        TPPErrorLogger.logError(
+            withCode: .appLogicInconsistency,
+            summary: "Managed library configuration names an unknown library",
+            metadata: ["detail": "configuration \(fingerprint) resolved to no library"]
+        )
+        return ""
+    }
+}
+EOF
+git add Palace
+set +e
+EGRESS_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+EGRESS_EXIT=$?
+set -e
+if [ "$EGRESS_EXIT" -eq 0 ] || ! echo "$EGRESS_OUT" | grep -q "OPAQUE_BLOB_EGRESS\|opaque-blob-egress"; then
+  echo "FAIL: opaque-blob-egress violation did not block (exit $EGRESS_EXIT)"
+  echo "$EGRESS_OUT" | sed 's/^/    /'
+  exit 1
+fi
+# Clean path: report a value we own, named narrowly → must pass.
+cat > Palace/AppInfrastructure/Leaky.swift <<'EOF'
+import Foundation
+enum Leaky {
+    static func report(configuredValue: String) -> String {
+        TPPErrorLogger.logError(
+            withCode: .appLogicInconsistency,
+            summary: "Managed library configuration names an unknown library",
+            metadata: ["detail": "configured library \(configuredValue) is not in the registry"]
+        )
+        return ""
+    }
+}
+EOF
+git add Palace
+set +e
+EGRESS_CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+EGRESS_CLEAN_EXIT=$?
+set -e
+if echo "$EGRESS_CLEAN_OUT" | grep -q "OPAQUE_BLOB_EGRESS"; then
+  echo "FAIL: opaque-blob-egress blocked the narrower replacement — it would punish the fix"
+  echo "$EGRESS_CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+rm -rf Palace/AppInfrastructure/Leaky.swift
+git add -A Palace 2>/dev/null || true
+
 # --- Assert 7: AUTH_CHALLENGE_ASYNC_FORM detector fires on its fixture ---
 # (PP-4895) An authentication-challenge delegate callback written in the
 # completion-handler form must block: the Xcode 26.2 ClangImporter can leave it
@@ -246,8 +302,9 @@ if [ "$ACF_CLEAN_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: 7 assertions — hook blocks violations, identifies detector, honors both"
+echo "PASS: 8 assertions — hook blocks violations, identifies detector, honors both"
 echo "      bypass envvars, passes a clean diff (no detector spuriously blocks),"
-echo "      and the unsynchronized-sendable-mock + auth-challenge-async-form"
-echo "      detectors each fire on a violation and clean-pass on the fix."
+echo "      and the unsynchronized-sendable-mock, auth-challenge-async-form and"
+echo "      opaque-blob-egress detectors each fire on a violation and clean-pass"
+echo "      on the fix."
 exit 0

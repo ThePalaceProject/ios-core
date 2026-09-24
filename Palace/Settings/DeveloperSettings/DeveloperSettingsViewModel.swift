@@ -132,11 +132,36 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { overrideDefaults.set(sideLoadingEnabled, forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey) }
     }
 
+    /// Local override for MDM library pre-selection (PP-5070). Defaults OFF,
+    /// and the Firebase flag is global rather than per-device, so this toggle is
+    /// the intended QA switch — exactly as with side loading above, whose
+    /// override shipped in 3.3.0 with no writer and left the feature
+    /// unreachable. The row rendering this is in the Feature Flags section.
+    @Published var managedLibraryConfigurationEnabled: Bool {
+        didSet {
+            overrideDefaults.set(
+                managedLibraryConfigurationEnabled,
+                forKey: RemoteFeatureFlags.managedLibraryConfigurationLocalOverrideKey
+            )
+            refreshManagedLibraryStatus()
+        }
+    }
+
     // MARK: - Library Registry Debugging
 
     /// Bare host, or a full https:// URL. Mirrors
     /// `TPPSettings.customLibraryRegistryServer`.
     @Published var customRegistryInput: String
+
+    // MARK: - MDM Managed App Configuration (PP-5070)
+
+    /// Identifier or catalog URL to push as a stand-in MDM payload.
+    @Published var managedLibraryInput: String = ""
+
+    /// One-line read-out of what the app currently sees. Refreshed after each
+    /// action rather than computed per render, so reading the screen cannot
+    /// itself walk the registry on every SwiftUI pass.
+    @Published var managedLibraryStatus: String = ""
 
     // MARK: - Badge Testing (DEBUG)
 
@@ -205,8 +230,14 @@ final class DeveloperSettingsViewModel: ObservableObject {
         self.appRatingForceEligible = featureFlags.isAppRatingForceEligible
         self.chapterScrubberEnabled = featureFlags.isChapterScrubberEnabled
         self.sideLoadingEnabled = featureFlags.isSideLoadingEnabled
+        self.managedLibraryConfigurationEnabled = featureFlags.isManagedLibraryConfigurationEnabled
 
         self.customRegistryInput = settings.customLibraryRegistryServer ?? ""
+        self.managedLibraryStatus = ManagedLibraryDebugOverride.statusDescription(
+            preconfigurator: .production(),
+            defaults: .standard,
+            featureEnabled: featureFlags.isManagedLibraryConfigurationEnabled
+        )
 
         self.badgeLoggingEnabled = debugSettings.isBadgeLoggingEnabled
         self.testHoldsConfiguration = debugSettings.testHoldsConfiguration
@@ -314,6 +345,75 @@ final class DeveloperSettingsViewModel: ObservableObject {
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         presenter.present(alert, animated: true, completion: nil)
+    }
+
+    // MARK: - MDM Managed App Configuration actions (PP-5070)
+
+    /// Writes the entered value into the real `com.apple.configuration.managed`
+    /// key, then runs the production apply path and reports what it did.
+    ///
+    /// Applying immediately rather than asking the tester to relaunch is
+    /// deliberate: the launch-path call site and this one share the same
+    /// `applyIfNeeded()`, so a result here is a result about production
+    /// behaviour, and a relaunch is still available to exercise the ORDERING
+    /// (bundled snapshot first, network crawl second) that only a cold start
+    /// produces.
+    func applyManagedLibraryConfiguration(from presenter: UIViewController) {
+        let outcome = ManagedLibraryDebugOverride.write(raw: managedLibraryInput, defaults: .standard)
+        switch outcome {
+        case .rejected(let reason):
+            refreshManagedLibraryStatus()
+            presentAlert(title: "Not a valid configuration value", message: reason, from: presenter)
+        case .refusedExternal:
+            refreshManagedLibraryStatus()
+            presentAlert(
+                title: "This device is really managed",
+                message: "A configuration is already present from an MDM. Refusing to overwrite it.",
+                from: presenter)
+        case .written(_, let warnings):
+            let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
+            refreshManagedLibraryStatus()
+            let detail = ManagedLibraryDebugOverride.describe(decision)
+            presentAlert(
+                title: "Configuration applied",
+                message: warnings.isEmpty
+                    ? detail
+                    : detail + "\n\nDropped:\n" + warnings.joined(separator: "\n"),
+                from: presenter)
+        }
+    }
+
+    /// Removes a configuration this screen wrote. Leaves a real one alone.
+    func clearManagedLibraryConfiguration(from presenter: UIViewController) {
+        let cleared = ManagedLibraryDebugOverride.clear(defaults: .standard)
+        managedLibraryInput = ""
+        refreshManagedLibraryStatus()
+        presentAlert(
+            title: cleared ? "Configuration cleared" : "Nothing cleared",
+            message: cleared
+                ? "The managed configuration this screen wrote has been removed."
+                : "The configuration present came from an MDM, not from here.",
+            from: presenter)
+    }
+
+    /// Forgets the applied fingerprint so the same value can be tested again
+    /// without reinstalling the app.
+    func forgetManagedLibraryFingerprint(from presenter: UIViewController) {
+        ManagedLibraryDebugOverride.forgetAppliedFingerprint(defaults: .standard)
+        refreshManagedLibraryStatus()
+        presentAlert(title: "Ready to re-apply",
+                     message: "The next attempt will apply the configuration again.",
+                     from: presenter)
+    }
+
+    /// Re-reads the status line. Called after every action so the read-out can
+    /// never lag the state it describes.
+    func refreshManagedLibraryStatus() {
+        managedLibraryStatus = ManagedLibraryDebugOverride.statusDescription(
+            preconfigurator: .production(),
+            defaults: .standard,
+            featureEnabled: featureFlags.isManagedLibraryConfigurationEnabled
+        )
     }
 
     // MARK: - Library Registry Debugging actions

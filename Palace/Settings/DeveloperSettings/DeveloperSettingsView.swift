@@ -41,6 +41,7 @@ struct DeveloperSettingsView: View {
                 triageBotSection
                 featureFlagsSection
                 libraryRegistryDebuggingSection
+                managedAppConfigurationSection
                 developerToolsSection
                 pushNotificationTestingSection
                 #if DEBUG
@@ -64,6 +65,33 @@ struct DeveloperSettingsView: View {
     private func present(_ action: (UIViewController) -> Void) {
         guard let vc = DeveloperSettingsPresenter.topViewController() else { return }
         action(vc)
+    }
+
+    // MARK: - MDM Managed App Configuration (PP-5070)
+
+    /// Stands in for an MDM by writing the REAL `com.apple.configuration.managed`
+    /// key, so everything downstream is the production path. Gated by
+    /// `showEngineeringTools` (DEBUG + simulator + TestFlight) rather than
+    /// `#if DEBUG`, which would remove it from the build QA uses on hardware.
+    @ViewBuilder private var managedAppConfigurationSection: some View {
+        Section(
+            header: Text("MDM Managed App Configuration"),
+            footer: Text("Writes the same UserDefaults key an MDM writes, so this exercises the real pre-selection path. Apply runs it now; relaunch to exercise cold-start ordering.")
+        ) {
+            DevManagedLibraryRow(
+                input: $viewModel.managedLibraryInput,
+                status: viewModel.managedLibraryStatus,
+                onApply: { present { viewModel.applyManagedLibraryConfiguration(from: $0) } },
+                onForget: { present { viewModel.forgetManagedLibraryFingerprint(from: $0) } },
+                onClear: { present { viewModel.clearManagedLibraryConfiguration(from: $0) } }
+            )
+            NavigationLink {
+                ManagedLibraryTestingInfoView()
+            } label: {
+                Text("How this works")
+                    .palaceFont(.body)
+            }
+        }
     }
 
     // MARK: - Library Settings
@@ -117,6 +145,8 @@ struct DeveloperSettingsView: View {
             DevToggleRow(title: "LCP Audiobook Streaming", isOn: $viewModel.lcpAudiobookStreamingEnabled)
             DevToggleRow(title: "EPUB Chapter Scrubber", isOn: $viewModel.chapterScrubberEnabled)
             DevToggleRow(title: "Side Loading", isOn: $viewModel.sideLoadingEnabled)
+            DevToggleRow(title: "MDM Library Pre-selection",
+                         isOn: $viewModel.managedLibraryConfigurationEnabled)
             DevToggleRow(title: "Force Rating Prompt Eligible", isOn: $viewModel.appRatingForceEligible)
             DevActionRow(title: "Trigger Rating Prompt Now", color: .blue) {
                 viewModel.triggerRatingPromptNow()
