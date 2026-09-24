@@ -48,6 +48,10 @@ struct LoadedAudiobook {
     let audiobook: Audiobook
     let decryptor: DRMDecryptor?
     let playbackModel: AudiobookPlaybackModel
+    /// PP-4963 position instrumentation for this session. Held here because
+    /// this is the only place the bookmark logic, the manager and the player
+    /// all exist together, and it must outlive the loader.
+    let positionTrace: AudiobookPositionTraceRecorder
 }
 
 @MainActor
@@ -414,6 +418,16 @@ final class AudiobookLoader {
         let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
         manager.bookmarkDelegate = bookmarkLogic
 
+        // PP-4963: watch the save path against the playback clock, so a locked
+        // listen that stops saving becomes an event instead of an absence.
+        // The liveness signal is taken from `player.positionPublisher` rather
+        // than from anything the runloop feeds — see the recorder's `observe`.
+        let positionTrace = AudiobookPositionTraceRecorder(bookID: book.identifier)
+        bookmarkLogic.positionSaveObserver = { [weak positionTrace] savedAt in
+            positionTrace?.noteSave(at: savedAt)
+        }
+        positionTrace.observe(positionPublisher: manager.audiobook.player.positionPublisher)
+
         manager.playbackCompletionHandler = { [weak book, weak manager] in
             guard let book = book, let manager = manager else { return }
             if let firstTrack = manager.audiobook.tableOfContents.allTracks.first {
@@ -433,7 +447,8 @@ final class AudiobookLoader {
             manager: manager,
             audiobook: audiobook,
             decryptor: decryptor,
-            playbackModel: playbackModel
+            playbackModel: playbackModel,
+            positionTrace: positionTrace
         )))
     }
 

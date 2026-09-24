@@ -169,6 +169,13 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { debugSettings.isBadgeLoggingEnabled = badgeLoggingEnabled }
     }
 
+    /// PP-4963 — per-book local position trace. Off by default; see
+    /// `DebugSettings.isAudiobookPositionTraceEnabled` for why this is not the
+    /// triage-bot diagnostics toggle.
+    @Published var audiobookPositionTraceEnabled: Bool {
+        didSet { debugSettings.isAudiobookPositionTraceEnabled = audiobookPositionTraceEnabled }
+    }
+
     @Published var testHoldsConfiguration: DebugSettings.TestHoldsConfiguration {
         didSet { debugSettings.testHoldsConfiguration = testHoldsConfiguration }
     }
@@ -240,6 +247,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         )
 
         self.badgeLoggingEnabled = debugSettings.isBadgeLoggingEnabled
+        self.audiobookPositionTraceEnabled = debugSettings.isAudiobookPositionTraceEnabled
         self.testHoldsConfiguration = debugSettings.testHoldsConfiguration
         self.simulatedBorrowError = debugSettings.simulatedBorrowError
         self.simulatedSyncFailure = debugSettings.simulatedSyncFailure

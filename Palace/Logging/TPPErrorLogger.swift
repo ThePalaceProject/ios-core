@@ -162,6 +162,14 @@ private let nullString = "null"
     /// across a background → foreground transition. Indicates the toolkit
     /// timer or position publisher has regressed.
     case audiobookNowPlayingDry = 403
+    /// PP-4963 — position saves went quiet while the playback clock showed
+    /// audio still running. Carries the dry duration and the app state, never
+    /// book or patron identity.
+    case audiobookPositionSaveDry = 404
+    /// PP-4963 — the position restored on open sits behind the last position
+    /// the playback clock observed, or the recorded position could not be
+    /// located in the loaded manifest.
+    case audiobookPositionRestoreGap = 405
 
     // ereader
     case nilCFI = 500

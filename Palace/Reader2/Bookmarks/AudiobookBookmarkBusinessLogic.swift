@@ -104,6 +104,16 @@ import PalaceBookModel
         }
     }
 
+    /// PP-4963 position trace. Fires on every LOCAL position write, which is
+    /// the event the instrumentation needs and the one nothing else records —
+    /// a successful save leaves no trace in Crashlytics, so its absence during
+    /// a locked listen is invisible without this.
+    ///
+    /// Written once at session wiring (`AudiobookLoader`) before any save can
+    /// occur, and read from whatever thread the player saves on; the closure
+    /// itself is responsible for its own isolation.
+    var positionSaveObserver: (@Sendable (Date) -> Void)?
+
     // MARK: - Remote-write cancellation (3.2.3 Cause 2)
 
     /// Cancels any pending throttled remote listening-position write for this
@@ -130,6 +140,10 @@ import PalaceBookModel
         }
         registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
         Log.debug(#file, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
+        // PP-4963: the LOCAL write is what decides whether the patron keeps
+        // their place, so the trace is notified here rather than after the
+        // annotation post below (whose failures are a separate defect).
+        positionSaveObserver?(Date())
 
         // Delegate the network write to the unified PositionWriter. Throttling,
         // queue management, and background-task lifetime now live in one place
@@ -721,6 +735,10 @@ import PalaceBookModel
             registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
             Log.warn(#file, "⚠️ Registry doesn't support sync save, using async fallback")
         }
+        // PP-4963: the termination path is a save like any other, and leaving
+        // it out would make a session that only ever saved on termination look
+        // as though it had never saved at all.
+        positionSaveObserver?(Date())
     }
 
     // Swift 6 `complete`: `action` is `@Sendable` because it is captured by the

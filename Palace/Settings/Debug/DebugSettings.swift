@@ -79,6 +79,7 @@ final class DebugSettings: @unchecked Sendable {
         static let badgeLoggingEnabled = "debug.badgeLoggingEnabled"
         static let testHoldsConfiguration = "debug.testHoldsConfiguration"
         static let syncFailureType = "debug.syncFailureType"
+        static let audiobookPositionTrace = "debug.audiobookPositionTrace"
     }
 
     // MARK: - Simulated Error Types
@@ -285,6 +286,24 @@ final class DebugSettings: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Keys.badgeLoggingEnabled) }
     }
 
+    // MARK: - Audiobook Position Trace (PP-4963)
+
+    /// Whether the audiobook position trace writes its per-book local log.
+    ///
+    /// Default OFF, and deliberately not the triage-bot diagnostics toggle
+    /// (which defaults ON): the trace appends a line and touches the log
+    /// directory on every position save, roughly every five seconds of
+    /// playback. That is the right cost for a deliberate measurement run and
+    /// the wrong one to impose on every patron listening to a book.
+    ///
+    /// The fleet-side Crashlytics detector is NOT gated on this — it emits at
+    /// most one event per foreground return, carries no book or patron
+    /// identity, and is what actually answers PP-4963 at scale.
+    var isAudiobookPositionTraceEnabled: Bool {
+        get { defaults.bool(forKey: Keys.audiobookPositionTrace) }
+        set { defaults.set(newValue, forKey: Keys.audiobookPositionTrace) }
+    }
+
     // MARK: - Test Holds Configuration
 
     enum TestHoldsConfiguration: Int, CaseIterable {
@@ -466,6 +485,7 @@ final class DebugSettings: @unchecked Sendable {
         simulatedBorrowError = .none
         simulatedSyncFailure = .none
         isBadgeLoggingEnabled = false
+        isAudiobookPositionTraceEnabled = false
         testHoldsConfiguration = .none
     }
 

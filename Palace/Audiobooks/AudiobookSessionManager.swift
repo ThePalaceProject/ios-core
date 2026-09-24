@@ -1082,16 +1082,8 @@ public final class AudiobookSessionManager: ObservableObject {
         Log.debug(#file, "Skipping to chapter: '\(chapter.title)'")
     }
 
-    /// Default skip interval (seconds) used by `skipBack()` / `skipForward()`.
-    /// Palace standardizes on 30s in both directions to match the SF Symbols
-    /// `gobackward.30` / `goforward.30` glyphs the mini-player + full player
-    /// chrome render. Exposed `internal static` so the polish-phase mini-
-    /// player tests can pin the value without dragging the toolkit's
-    /// `DefaultAudiobookManager.skipTimeInterval` (which is `internal`) into
-    /// the assertion.
-    static let defaultSkipInterval: TimeInterval = 30
-
-    /// Skips the playhead backward by `defaultSkipInterval` seconds.
+    /// Skips the playhead backward by the patron's configured back interval
+    /// (PP-4712).
     /// Wraps the toolkit's `Player.skipPlayhead(_:)` async signature
     /// (`Player.swift:108`) in a `Task { @MainActor in ... }` boundary so the
     /// sync `AudiobookSessionManaging` protocol surface stays simple — same
@@ -1114,7 +1106,8 @@ public final class AudiobookSessionManager: ObservableObject {
         Log.debug(#file, "Skipping back \(interval)s")
     }
 
-    /// Skips the playhead forward by `defaultSkipInterval` seconds. See
+    /// Skips the playhead forward by the patron's configured forward interval
+    /// (PP-4712). See
     /// `skipBack()` for the async-boundary rationale.
     public func skipForward() {
         guard let manager = manager else {
@@ -1603,6 +1596,12 @@ public final class AudiobookSessionManager: ObservableObject {
     @MainActor
     private func issueFirstPlay(for book: TPPBook, loaded: LoadedAudiobook, initialPosition: TrackPosition) {
         Log.debug(#file, "Opening '\(book.title)' at: track=\(initialPosition.track.key), timestamp=\(initialPosition.timestamp)")
+
+        // PP-4963: measure where we opened against the last position the
+        // playback clock saw. Observation only — the position being opened at
+        // has already been decided by `resolveInitialPosition` and is not
+        // altered by what this finds.
+        loaded.positionTrace.evaluateRestoreGap(restoredPosition: initialPosition, in: loaded.audiobook.tableOfContents)
 
         // F-011 fix (PR #990 toolkit overhaul regression): await the
         // toolkit's player-coordinator-ready signal BEFORE issuing the
