@@ -33,6 +33,8 @@ final class TPPBookmarkDeletionLogTests: XCTestCase {
 
     override func tearDown() {
         deletionLog.clearAllDeletions(forBook: testBookId)
+        // Writes are asynchronous; let them land before the suite is wiped.
+        deletionLog._waitForPendingWritesForTesting()
         deletionLog = nil
         super.tearDown()
     }
@@ -191,5 +193,87 @@ final class TPPBookmarkDeletionLogTests: XCTestCase {
         let pendingDeletions = deletionLog.pendingDeletions(forBook: testBookId)
         XCTAssertEqual(pendingDeletions.count, iterations,
                        "All concurrent writes should succeed")
+    }
+
+    // MARK: - Persistence must not hold the queue (hang regression)
+
+    /// A write whose persistence cannot finish until a reader has returned.
+    ///
+    /// `UserDefaults.set` posts `didChangeNotification` synchronously, and an
+    /// observer registered with `queue: .main` makes that post wait for the
+    /// main thread. When the main thread is the one calling
+    /// `pendingDeletions` (`queue.sync`), a barrier that persists while it
+    /// still holds the queue waits on main while main waits on the barrier.
+    /// This stand-in blocks `set` until the test releases it, which models
+    /// that wait without depending on which observer happens to be installed.
+    private final class GatedDefaults: UserDefaults {
+        let writeEntered = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        private let armed = LockIsolated(false)
+
+        func arm() { armed.value = true }
+
+        override func set(_ value: Any?, forKey defaultName: String) {
+            if armed.value {
+                armed.value = false
+                writeEntered.signal()
+                // Bounded so a regression unwinds instead of wedging the host.
+                _ = release.wait(timeout: .now() + 10)
+            }
+            super.set(value, forKey: defaultName)
+        }
+    }
+
+    func testPendingDeletions_whilePersistenceIsBlocked_returnsWithoutWaitingForTheWrite() throws {
+        let suite = "test-gated-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(GatedDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let bookId = testBookId
+        let log = TPPBookmarkDeletionLog(defaults: defaults)
+        defaults.arm()
+
+        log.logDeletion(annotationId: testAnnotationId, forBook: testBookId)
+        XCTAssertEqual(defaults.writeEntered.wait(timeout: .now() + 5), .success,
+                       "Precondition: the write reached persistence")
+
+        // Read from another thread so a regression fails this test on a
+        // timeout instead of blocking the test's own thread.
+        let readerDone = DispatchSemaphore(value: 0)
+        let result = LockIsolated<Set<String>?>(nil)
+        DispatchQueue.global().async {
+            result.value = log.pendingDeletions(forBook: bookId)
+            readerDone.signal()
+        }
+        let outcome = readerDone.wait(timeout: .now() + 2)
+
+        // Unblock persistence either way, then join the reader so nothing
+        // outlives the test.
+        defaults.release.signal()
+        if outcome == .timedOut { _ = readerDone.wait(timeout: .now() + 15) }
+
+        XCTAssertEqual(outcome, .success,
+                       "A reader must not wait for a UserDefaults write to finish — that wait deadlocks when the write needs the reader's thread")
+        XCTAssertEqual(result.value, [testAnnotationId],
+                       "The reader must see the committed mutation even though it is not yet persisted")
+    }
+
+    func testPersistedLog_reloadsInANewInstance() throws {
+        let suite = "test-reload-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let otherBook = "other-book"
+
+        let log = TPPBookmarkDeletionLog(defaults: defaults)
+        log.logDeletion(annotationId: testAnnotationId, forBook: testBookId)
+        log.logDeletion(annotationId: testAnnotationId2, forBook: testBookId)
+        log.logDeletion(annotationId: testAnnotationId, forBook: otherBook)
+        log.clearDeletion(annotationId: testAnnotationId, forBook: testBookId)
+        log.clearAllDeletions(forBook: otherBook)
+        log._waitForPendingWritesForTesting()
+
+        let reloaded = TPPBookmarkDeletionLog(defaults: defaults)
+        XCTAssertEqual(reloaded.pendingDeletions(forBook: testBookId), [testAnnotationId2],
+                       "The last write must win — persistence has to keep the order of the mutations")
+        XCTAssertTrue(reloaded.pendingDeletions(forBook: otherBook).isEmpty)
     }
 }
