@@ -87,15 +87,19 @@ class PalaceTestSetup: NSObject {
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
 
-        // PP-4957: pin the LCP-audiobook-streaming flag OFF for the whole test
-        // run. MyBooksDownloadCenter / LCPFulfillmentHandler / AudiobookSessionManager
+        // PP-4957: pin the LCP-audiobook-streaming flag for the whole test run.
+        // MyBooksDownloadCenter / LCPFulfillmentHandler / AudiobookSessionManager
         // default their streaming provider to `RemoteFeatureFlags.shared`, whose
         // value in the test host is otherwise non-deterministic (FirebaseManager
         // state + prior-run `.standard` residue) — which flaked the download-first
         // reconcile / fulfillment tests on unlucky shuffles. Streaming tests inject
         // their own provider (bypassing `.shared`) and are unaffected. Re-pinned
         // after every test by the registered resetter below.
-        UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        //
+        // The value comes from `PALACE_TEST_LCP_STREAMING` (`on`|`off`, default
+        // `off`). Production runs the flag ON; CI runs the flag consumers' suites a
+        // second time with `on` so an ON-only regression is not hidden by the pin.
+        LCPStreamingTestPin.apply(LCPStreamingTestPin.selected, to: .standard)
 
         let obs = PalaceSingletonResetObserver()
         XCTestObservationCenter.shared.addTestObserver(obs)
@@ -264,12 +268,12 @@ class PalaceTestSetup: NSObject {
             ChaosURLProtocol.reset()
         }
 
-        // PP-4957: re-pin the LCP-audiobook-streaming flag OFF after every test,
-        // so a test that flips it (e.g. the DeveloperSettings toggle) cannot leak
-        // an ON value into the next test's default streaming providers. See the
-        // bootstrap-time pin above for the rationale.
-        registry.register("RemoteFeatureFlags.lcpStreamingOverride.pinOff") {
-            UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        // PP-4957: re-pin the LCP-audiobook-streaming flag to the selected value
+        // after every test, so a test that flips it (e.g. the DeveloperSettings
+        // toggle) cannot leak into the next test's default streaming providers.
+        // See the bootstrap-time pin above for the rationale.
+        registry.register("RemoteFeatureFlags.lcpStreamingOverride.pin") {
+            LCPStreamingTestPin.apply(LCPStreamingTestPin.selected, to: .standard)
         }
     }
 }
@@ -304,6 +308,11 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
     func testCaseWillStart(_ testCase: XCTestCase) {
         // MISSING-001-OK: XCTestObservation callback, not a test method.
         preCount = Self.sampleObserverCount()
+        // Pin the LCP-streaming flag at the start of every test as well as in the
+        // after-each-test resetter, so the value a test starts with does not
+        // depend on what ran at the previous boundary (e.g. a later-registered
+        // resetter, or a registry a suite emptied mid-test).
+        LCPStreamingTestPin.apply(LCPStreamingTestPin.selected, to: .standard)
     }
 
     func testCaseDidFinish(_ testCase: XCTestCase) {
@@ -416,4 +425,40 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
     private static let observerCountRegex: NSRegularExpression? = {
         return try? NSRegularExpression(pattern: #"observers:\s*(\d+)"#)
     }()
+}
+
+// MARK: - LCPStreamingTestPin
+
+/// Selects the value `PalaceTestSetup` pins `lcp_audiobook_streaming_enabled`
+/// to, from the `PALACE_TEST_LCP_STREAMING` environment variable.
+///
+/// `xcodebuild` forwards it to the test host when set with the runner prefix:
+/// `TEST_RUNNER_PALACE_TEST_LCP_STREAMING=on xcodebuild test …`.
+enum LCPStreamingTestPin {
+    static let environmentKey = "PALACE_TEST_LCP_STREAMING"
+
+    /// `nil` (unset) selects off. Anything other than `on`/`off` returns `nil`,
+    /// so a misspelt value cannot quietly run an ON leg with the flag off.
+    static func parse(_ raw: String?) -> Bool? {
+        guard let raw else { return false }
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "on": return true
+        case "off": return false
+        default: return nil
+        }
+    }
+
+    /// Read once per process. An unrecognised value stops the run at bootstrap
+    /// rather than testing the wrong flag state.
+    static let selected: Bool = {
+        let raw = ProcessInfo.processInfo.environment[environmentKey]
+        guard let value = parse(raw) else {
+            fatalError("\(environmentKey) must be 'on' or 'off' (got '\(raw ?? "")')")
+        }
+        return value
+    }()
+
+    static func apply(_ enabled: Bool, to defaults: UserDefaults) {
+        defaults.set(enabled, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+    }
 }

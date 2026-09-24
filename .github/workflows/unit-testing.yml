@@ -22,8 +22,9 @@ jobs:
     # Cap the whole job. The test step has its own bound (see below), but the
     # ~15 post-processing steps (xcresult parse, snapshot find, Pages deploy)
     # are unbounded — a hang there could otherwise burn the 360-min default.
-    # 105 = the test step's 75 plus the ~15 of post-processing, plus slack.
-    timeout-minutes: 105
+    # 105 = the test step's 75 plus the ~15 of post-processing, plus slack;
+    # +25 for the streaming-ON leg's own bound.
+    timeout-minutes: 130
     permissions:
       contents: write
       pull-requests: write
@@ -159,6 +160,134 @@ jobs:
         env:
           BUILD_CONTEXT: ci
         continue-on-error: true
+
+      # R7a: production runs `lcp_audiobook_streaming_enabled` ON, and the step
+      # above runs every test with it pinned OFF (PalaceTests/PalaceTestSetup.swift).
+      # This leg re-runs the flag consumers' suites with PALACE_TEST_LCP_STREAMING=on
+      # against the products the step above built.
+      #
+      # Which suites: every Palace/ file that reads the flag (the census below)
+      # names a type — the file name up to any `+Extension` suffix. The leg runs
+      # every XCTestCase class in a PalaceTests file that mentions one of those
+      # types or the flag itself. The list is derived at run time, so a new
+      # consumer joins the leg without editing this file.
+      #
+      # How the leg proves it tested something:
+      #   * the derived class list is non-empty and every class on it appears in
+      #     the result bundle (xcodebuild ignores an -only-testing name that
+      #     matches nothing, so a misspelt or renamed class would otherwise be
+      #     dropped without a sign);
+      #   * LCPStreamingTestPinTests' ON-leg canary PASSED. It skips unless the
+      #     variable reached the test host, so a skip means the leg ran OFF.
+      #
+      # Serial on purpose: the leg is ~1,100 tests and ~30 s of test time, so
+      # simulator clones would cost more than they save, and several of these
+      # classes are load-sensitive (see ISOLATED_SERIAL_TESTS in
+      # scripts/xcode-test-optimized.sh).
+      #
+      # To exclude a test that fails because production behaves differently
+      # under ON, add one line per test to ON_SKIP_ARGS, naming its ticket:
+      #   `-skip-testing:PalaceTests/<Class>/<test>  # PP-<n>: <why>`
+      # None are excluded today.
+      - name: Run LCP-streaming flag consumers' suites with the flag ON
+        id: tests_streaming_on
+        if: ${{ !cancelled() }}
+        timeout-minutes: 25
+        shell: bash
+        env:
+          BUILD_CONTEXT: ci
+          TEST_RUNNER_PALACE_TEST_LCP_STREAMING: 'on'
+        run: |
+          set -euo pipefail
+
+          DECLARATIONS='Palace/FeatureFlags/RemoteFeatureFlags.swift|Palace/Packages/PalaceFeatureFlags/Sources/PalaceFeatureFlags/PalaceFeatureFlag.swift'
+          # `|| true` on the grep stages: under pipefail a stage that matches
+          # nothing would end the step with no message; the empty-list checks
+          # below report that case instead.
+          CONSUMERS=$({ grep -rlE 'isLCPAudiobookStreamingEnabled|lcpStreamingEnabledProvider' Palace --include='*.swift' || true; } \
+            | { grep -vxE "$DECLARATIONS" || true; } | LC_ALL=C sort)
+          TYPES=()
+          for f in $CONSUMERS; do
+            t=$(basename "$f" .swift); t=${t%%+*}
+            if ! grep -qE "(class|struct|enum|actor|extension)[[:space:]]+${t}\b" "$f"; then
+              echo "::error file=$f::reads the streaming flag, but declares no type named '$t'; the ON leg derives suites from the file name"
+              exit 1
+            fi
+            TYPES+=("$t")
+          done
+          [ ${#TYPES[@]} -gt 0 ] || { echo "::error::flag census found no consumers"; exit 1; }
+          UNIQUE=()
+          while IFS= read -r t; do UNIQUE+=("$t"); done < <(printf '%s\n' "${TYPES[@]}" | LC_ALL=C sort -u)
+          TYPES=("${UNIQUE[@]}")
+          echo "Consumer types: ${TYPES[*]}"
+
+          PATTERN="\\b($(IFS='|'; echo "${TYPES[*]}"))\\b|isLCPAudiobookStreamingEnabled|lcpStreamingEnabledProvider|lcpAudiobookStreamingLocalOverrideKey|LCPStreamingTestPin"
+          CLASSES=$({ grep -rlE "$PATTERN" PalaceTests --include='*.swift' || true; } \
+            | { xargs grep -hE '^[[:space:]]*(@MainActor[[:space:]]+)?((final|private|fileprivate|internal)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*(XCTestCase|PalaceTestCase|PalaceWiringTestCase)\b' || true; } \
+            | sed -E 's/.*class[[:space:]]+([A-Za-z0-9_]+).*/\1/' | LC_ALL=C sort -u)
+          echo "$CLASSES" | grep -qx 'LCPStreamingTestPinTests' || { echo "::error::derived class list lacks LCPStreamingTestPinTests"; exit 1; }
+          echo "ON leg: $(echo "$CLASSES" | wc -l | tr -d ' ') classes"
+          ONLY_ARGS=()
+          for c in $CLASSES; do ONLY_ARGS+=("-only-testing:PalaceTests/$c"); done
+          ON_SKIP_ARGS=(
+          )
+
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
+            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
+          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+
+          RESULT="$RUNNER_TEMP/TestResults-streaming-on.xcresult"
+          rm -rf "$RESULT"
+          set +e
+          xcodebuild test-without-building \
+            -project Palace.xcodeproj \
+            -scheme Palace \
+            -destination "id=$SIMULATOR_ID" \
+            -configuration Debug \
+            -resultBundlePath "$RESULT" \
+            "${ONLY_ARGS[@]}" \
+            ${ON_SKIP_ARGS[@]+"${ON_SKIP_ARGS[@]}"} \
+            -retry-tests-on-failure -test-iterations 3 \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 300 \
+            -parallel-testing-enabled NO
+          XCB_EXIT=$?
+          set -e
+          [ -d "$RESULT" ] || { echo "::error::the ON leg produced no result bundle"; exit 1; }
+
+          xcrun xcresulttool get test-results tests --path "$RESULT" > "$RUNNER_TEMP/streaming-on-tests.json"
+          EXPECTED="$CLASSES" python3 - "$RUNNER_TEMP/streaming-on-tests.json" <<'PY'
+          import json, os, sys
+          nodes = json.load(open(sys.argv[1]))["testNodes"]
+          suites, canary = set(), []
+          def walk(n):
+              if n.get("nodeType") == "Test Suite":
+                  suites.add(n.get("name"))
+              if n.get("nodeType") == "Test Case" and n.get("name", "").startswith("testOnLegCanary_EnvironmentReachedTheHost"):
+                  canary.append(n.get("result"))
+              for c in n.get("children", []):
+                  walk(c)
+          for n in nodes:
+              walk(n)
+          expected = set(os.environ["EXPECTED"].split())
+          missing = sorted(expected - suites)
+          if missing:
+              sys.exit(f"::error::ON leg did not run: {', '.join(missing)}")
+          if canary != ["Passed"]:
+              sys.exit(f"::error::ON-leg canary result {canary}; PALACE_TEST_LCP_STREAMING did not reach the test host, so the leg ran OFF")
+          print(f"ON leg ran all {len(expected)} expected suites; canary passed")
+          PY
+          exit $XCB_EXIT
+        continue-on-error: true
+
+      - name: Upload streaming-ON results
+        if: steps.tests_streaming_on.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-streaming-on
+          path: ${{ runner.temp }}/TestResults-streaming-on.xcresult
+          retention-days: 7
 
       # Fails the job when a build warning shows an `@objc` optional-protocol
       # method that "nearly matches" its requirement by the same name — i.e. the
@@ -1008,7 +1137,7 @@ jobs:
             }
           
       - name: Fail if tests failed
-        if: steps.tests.outcome == 'failure'
+        if: steps.tests.outcome == 'failure' || steps.tests_streaming_on.outcome == 'failure'
         run: exit 1
 
   # Note: The AccessLint GitHub Action handles PR comments and artifact upload automatically
