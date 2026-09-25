@@ -1,0 +1,8 @@
+[
+  {
+    "line_text": "return gap > 0 ? .behind(seconds: gap) : .ahead(seconds: -gap)",
+    "original": ">",
+    "mutated": ">=",
+    "reason": "Provably equivalent: gap == 0 is unreachable at this line. The band is `max(0, tolerance)` so it is never negative, and the preceding guard only falls through when `abs(gap) > band` — which for a non-negative band means abs(gap) > 0, so gap != 0 on every input that reaches here. `>` and `>=` therefore agree everywhere reachable. The clamp exists for this reason and is itself pinned by two tests; see the argument in the source comment directly above the line."
+  }
+]

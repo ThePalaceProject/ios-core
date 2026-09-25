@@ -249,7 +249,8 @@ final class AudiobookPositionTraceSeamTests: XCTestCase {
         AudiobookPositionTraceRecorder.crashlyticsSaveReport(
             .dry(seconds: 10_800),
             context: PositionTraceContext(applicationStateAtLastTick: "background",
-                                          tickGapCount: 0, longestTickGap: 0),
+                                          tickGapCount: 0, longestTickGap: 0,
+                                          clockRegressionCount: 0),
             emit: { code, _, _ in codes.append(code) }
         )
         XCTAssertEqual(codes, [.audiobookPositionSaveDry])
@@ -264,7 +265,8 @@ final class AudiobookPositionTraceSeamTests: XCTestCase {
         AudiobookPositionTraceRecorder.crashlyticsSaveReport(
             .tickGap(seconds: 10_800),
             context: PositionTraceContext(applicationStateAtLastTick: "background",
-                                          tickGapCount: 1, longestTickGap: 10_800),
+                                          tickGapCount: 1, longestTickGap: 10_800,
+                                          clockRegressionCount: 0),
             emit: { code, _, _ in codes.append(code) }
         )
         XCTAssertEqual(codes, [.audiobookPositionTickGap],
@@ -281,7 +283,8 @@ final class AudiobookPositionTraceSeamTests: XCTestCase {
         AudiobookPositionTraceRecorder.crashlyticsSaveReport(
             .tickGap(seconds: 10_800),
             context: PositionTraceContext(applicationStateAtLastTick: "background",
-                                          tickGapCount: 7, longestTickGap: 10_800),
+                                          tickGapCount: 7, longestTickGap: 10_800,
+                                          clockRegressionCount: 0),
             emit: { _, _, metadata in payloads.append(metadata ?? [:]) }
         )
         let payload = try XCTUnwrap(payloads.first)
@@ -290,9 +293,15 @@ final class AudiobookPositionTraceSeamTests: XCTestCase {
                        "without the count, a pause and a stall are the same event")
         XCTAssertEqual(payload["longestTickGapSeconds"] as? Double, 10_800)
 
-        // A patron's position in a book is a library record and must not leave
-        // the device. Scanned rather than spot-checked, so a field added later
-        // has to answer this too.
+        // Scoped claim: THIS payload carries no book or patron identity.
+        //
+        // Not an end-to-end privacy guarantee, and the assertion should not be
+        // read as one — it sits above `TPPErrorLogger.addAccountInfoToMetadata`,
+        // which attaches account name, UUID and catalog URLs to every event,
+        // and Crashlytics carries a global md5(barcode) user id. Both are
+        // pre-existing and shared with shipped code 403. What this pins is that
+        // the trace itself adds nothing identifying, including any field added
+        // here later.
         let rendered = payload.map { "\($0.key)=\($0.value)" }.joined(separator: " ").lowercased()
         for forbidden in ["book", "title", "isbn", "barcode", "patron", "track", "identifier"] {
             XCTAssertFalse(rendered.contains(forbidden),

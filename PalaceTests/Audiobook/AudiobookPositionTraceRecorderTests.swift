@@ -305,6 +305,126 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         XCTAssertEqual(since, 5, accuracy: 1)
     }
 
+    /// A backwards clock step must not turn a pause into a health claim.
+    ///
+    /// The monotonic clamp added for a single out-of-order tick broke this: a
+    /// sustained backwards step holds the reference AHEAD of now for the
+    /// step's duration, so a pause ending in that shadow measures a negative
+    /// gap, opens no stretch, keeps the stale save, and the verdict resolves
+    /// toward health. Measured against a control — the same ten-minute pause
+    /// reports `.tickGap(605)` on a steady clock and reported `.saving(0.0)`
+    /// across a thirty-minute step. `.saving` never reaches the fleet, so that
+    /// was a silent false negative of the kind this instrument exists to avoid.
+    func testSustainedBackwardsClockStep_isReportedNotMeasuredThrough() {
+        let recorder = makeRecorder()
+        driveLivePlayback(recorder, for: 60)
+        recorder.noteSave(at: clock)
+        driveLivePlayback(recorder, for: 60)
+
+        advance(-1800)
+        driveLivePlayback(recorder, for: 60)
+        advance(600)
+        driveLivePlayback(recorder, for: 5)
+
+        recorder.applicationDidBecomeActive()
+
+        guard case let .clockRegressed(by)? = reported.first else {
+            return XCTFail(
+                "a reference ahead of now cannot measure anything, so the "
+                + "regression is the verdict — got \(reported)"
+            )
+        }
+        XCTAssertGreaterThan(by, 0, "the regression carries how far back the clock went")
+        XCTAssertGreaterThan(reportedContexts.first?.clockRegressionCount ?? 0, 0,
+                             "and the clamp must leave a trace; a silent clamp is a "
+                             + "guard whose refusal reads as success")
+    }
+
+    /// The control: the same pause on a steady clock is still a tick gap, so
+    /// the regression case cannot be swallowing every pause.
+    func testControl_samePauseOnASteadyClock_isStillATickGap() {
+        let recorder = makeRecorder()
+        driveLivePlayback(recorder, for: 60)
+        recorder.noteSave(at: clock)
+        driveLivePlayback(recorder, for: 60)
+
+        advance(600)
+        driveLivePlayback(recorder, for: 5)
+
+        recorder.applicationDidBecomeActive()
+
+        guard case .tickGap? = reported.first else {
+            return XCTFail("a pause with no clock step is a tick gap, got \(reported)")
+        }
+        XCTAssertEqual(reportedContexts.first?.clockRegressionCount, 0)
+    }
+
+    /// A clock that steps FORWARD and is then corrected BACK.
+    ///
+    /// Review found this reachable on the tip that introduced the clamp: the
+    /// forward step stamps `lastTickAt` in the future, the clamp pins it there
+    /// for the excursion, and `sinceLastTick` goes negative — so the
+    /// `.playbackStale` guard never fires and a session whose playback STOPPED
+    /// is measured as live. Measured there as `.dry(190)` on the ungated 404
+    /// signal: an affirmative finding the instrument had not earned, which is
+    /// the one outcome `.tickGap`, `.playbackStale` and `.markerUnresolvable`
+    /// all exist to prevent.
+    ///
+    /// It is reported rather than measured through. `.clockRegressed` is not
+    /// `.playbackStale` — the stale reading is the one a steady clock would
+    /// have produced, and it is lost here. That is the honest trade: this
+    /// session's intervals are unusable, and saying so beats reporting either
+    /// of the two readings that could be wrong.
+    func testForwardClockStepThenCorrection_isReportedNotMeasuredThrough() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 5)
+        advance(300)                                        // clock jumps forward
+        recorder.notePlaybackTick(trackKey: "a", timestamp: 305, at: clock)
+        advance(-295)                                       // and is corrected back
+        recorder.noteSave(at: clock)
+        driveLivePlayback(recorder, for: 5)                 // plays a little, then stops
+        advance(185)                                        // patron foregrounds much later
+
+        recorder.applicationDidBecomeActive()
+
+        if case .dry = reported.first {
+            XCTFail(
+                "a reference stamped in the future makes every interval wrong; "
+                + "reporting a dry window from it is an unearned finding on the "
+                + "ungated signal — got \(reported)"
+            )
+        }
+        guard case .clockRegressed? = reported.first else {
+            return XCTFail("expected the regression to be reported, got \(reported)")
+        }
+    }
+
+    /// The E-recovery path: a gap-born stretch earns its health back.
+    ///
+    /// The policy decides this on a hand-built stretch; nothing showed the
+    /// RECORDER can produce one. Closes the resume -> save -> keep playing ->
+    /// foreground scenario, which is three cells of the table at once.
+    func testGapBornStretch_thatThenSaves_reportsSaving() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 30)
+        advance(600)                            // a gap opens a new stretch
+        driveLivePlayback(recorder, for: 20)
+        recorder.noteSave(at: clock)            // which then saves
+        driveLivePlayback(recorder, for: 5)
+
+        recorder.applicationDidBecomeActive()
+
+        guard case let .saving(since)? = reported.first else {
+            return XCTFail(
+                "a stretch that has saved has evidence of its own and no longer "
+                + "depends on how it began — got \(reported)"
+            )
+        }
+        XCTAssertEqual(since, 5, accuracy: 1)
+    }
+
     // MARK: - The instrument must not agree with itself
 
     /// If a save also refreshed the last-live marker, the restore gap would be
@@ -555,7 +675,8 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         AudiobookPositionTraceRecorder.crashlyticsSaveReport(
             .dry(seconds: 10_800),
             context: PositionTraceContext(applicationStateAtLastTick: "background",
-                                          tickGapCount: 0, longestTickGap: 0),
+                                          tickGapCount: 0, longestTickGap: 0,
+                                          clockRegressionCount: 0),
             emit: { _, _, metadata in captured = metadata ?? [:] }
         )
 
@@ -586,7 +707,8 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
             .playbackStale(sinceLastTick: 900),
             .saving(sinceLastSave: 5),
             .dry(seconds: 10_800),
-            .tickGap(seconds: 10_800)
+            .tickGap(seconds: 10_800),
+            .clockRegressed(by: 1_800)
         ]
 
         for verdict in samples {
@@ -601,13 +723,16 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
                 expected = .audiobookPositionSaveDry
             case .tickGap:
                 expected = .audiobookPositionTickGap
+            case .clockRegressed:
+                expected = .audiobookPositionClockRegressed
             }
 
             var codes: [TPPErrorCode] = []
             AudiobookPositionTraceRecorder.crashlyticsSaveReport(
                 verdict,
                 context: PositionTraceContext(applicationStateAtLastTick: "active",
-                                              tickGapCount: 0, longestTickGap: 0),
+                                              tickGapCount: 0, longestTickGap: 0,
+                                              clockRegressionCount: 0),
                 emit: { code, _, _ in codes.append(code) }
             )
             XCTAssertEqual(codes, expected.map { [$0] } ?? [],

@@ -81,6 +81,16 @@ enum PositionSaveVerdict: Equatable {
     /// (that `positionPublisher` survives a locked screen) failing out loud
     /// rather than passing as health.
     case tickGap(seconds: TimeInterval)
+    /// The device clock moved backwards between the last tick and this check,
+    /// so the tick reference sits AHEAD of `now`.
+    ///
+    /// Every interval this policy computes is measured from that reference, so
+    /// once it is ahead of the present none of them mean anything: a quiet
+    /// window reads short, a pause reads as no gap at all, and the verdict
+    /// resolves toward health. Reporting the regression is the only honest
+    /// answer, and it is a finding in its own right — the sessions it marks
+    /// are the ones whose other numbers cannot be trusted.
+    case clockRegressed(by: TimeInterval)
 }
 
 /// What the recorder observed alongside a verdict, carried to the fleet.
@@ -95,6 +105,14 @@ struct PositionTraceContext: Equatable {
     let applicationStateAtLastTick: String
     let tickGapCount: Int
     let longestTickGap: TimeInterval
+    /// How many ticks arrived with a timestamp earlier than the reference.
+    ///
+    /// The recorder clamps its reference forward so one out-of-order tick
+    /// cannot manufacture a gap, and a clamp that leaves no trace is a guard
+    /// whose refusal renders as success. This is that trace: a session with a
+    /// non-zero count had its clock move under it, and its other numbers
+    /// should be read with that in mind.
+    let clockRegressionCount: Int
 }
 
 /// What the playback clock observed during ONE continuous stretch of playback.
@@ -163,9 +181,10 @@ struct PlaybackStretch: Equatable {
 ///
 /// The decision is a total function over five reachable cells:
 ///
-///   | stretch | tick fresh | quiet > dryThreshold | saved | gap  | verdict          |
-///   |---------|------------|----------------------|-------|------|------------------|
-///   | nil     | —          | —                    | —     | —    | `.noPlayback`    |
+///   | stretch | tick fresh | quiet > dryThreshold | saved | gap  | verdict           |
+///   |---------|------------|----------------------|-------|------|-------------------|
+///   | nil     | —          | —                    | —     | —    | `.noPlayback`     |
+///   | present | reference ahead of now            | —     | —    | `.clockRegressed` |
 ///   | present | no         | —                    | —     | —    | `.playbackStale` |
 ///   | present | yes        | yes                  | —     | —    | `.dry`           |
 ///   | present | yes        | no                   | yes   | —    | `.saving`        |
@@ -207,6 +226,21 @@ enum PositionSaveDryPolicy {
         }
 
         let sinceLastTick = now.timeIntervalSince(stretch.lastTickAt)
+
+        // Checked FIRST, because every branch below measures from a reference
+        // this makes meaningless. A negative interval means the reference is
+        // ahead of `now`: the clock stepped back, or the recorder clamped the
+        // reference forward and the clock has not caught up.
+        //
+        // Falling through instead is what made a clamped reference dangerous.
+        // A ten-minute pause that reports `.tickGap(605)` on a steady clock
+        // reported `.saving(0.0)` across a thirty-minute backwards step —
+        // measured — which is an affirmative health claim, and `.saving` never
+        // reaches the fleet, so it is a silent one.
+        if sinceLastTick < 0 {
+            return .clockRegressed(by: -sinceLastTick)
+        }
+
         if sinceLastTick > tickFreshness {
             // Playback had already stopped when we looked. This deliberately
             // forgoes a real dry window that ENDED before foreground return

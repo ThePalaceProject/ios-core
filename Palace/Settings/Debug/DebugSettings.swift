@@ -23,7 +23,19 @@ import PalaceBookModel
 /// a wrapper box. (Not a bare `@unchecked` — this comment is the documented invariant.)
 final class DebugSettings: @unchecked Sendable {
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+
+    /// Injectable ONLY so the purge-on-off join can be tested.
+    ///
+    /// That join is the sole enforcement of a patron-data claim this file
+    /// makes twice, on a screen reachable in App Store builds via the
+    /// version-number long-press. With `UserDefaults.standard` hard-coded it
+    /// could not be driven without writing to the real domain, so deleting
+    /// the `if !newValue` arm left every test green. Production keeps the
+    /// default and is unchanged.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     // MARK: - Skeleton Verification (QA / dev only)
 
@@ -497,5 +509,4 @@ final class DebugSettings: @unchecked Sendable {
         testHoldsConfiguration = .none
     }
 
-    init() {}
 }

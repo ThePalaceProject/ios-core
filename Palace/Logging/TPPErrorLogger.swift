@@ -177,6 +177,11 @@ private let nullString = "null"
     /// the hypothesis under test. Carries the gap duration, never book or
     /// patron identity.
     case audiobookPositionTickGap = 406
+    /// PP-4963 — the device clock moved backwards under a session, so the
+    /// intervals the trace measured for it cannot be trusted. Its own code so
+    /// those sessions can be excluded from the aggregate rather than quietly
+    /// diluting it.
+    case audiobookPositionClockRegressed = 407
 
     // ereader
     case nilCFI = 500

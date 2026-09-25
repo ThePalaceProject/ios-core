@@ -190,6 +190,7 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     /// separates the two causes of a gap ACROSS the fleet, which is the
     /// question PP-4963 has to answer and no single session can.
     private var tickGapCount: Int = 0
+    private var clockRegressionCount: Int = 0
     private var longestTickGap: TimeInterval = 0
 
     private var cancellables = Set<AnyCancellable>()
@@ -305,6 +306,7 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         // Recording the gap on the stretch lets the policy decline to make a
         // health claim it has not earned, instead of guessing.
         let gap = stretch.map { date.timeIntervalSince($0.lastTickAt) }
+        if let gap, gap < 0 { clockRegressionCount += 1 }
         let isResume = gap.map { $0 > Self.tickFreshnessWindow } ?? true
         if isResume {
             if let gap {
@@ -328,6 +330,11 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
                 // result is a spurious `.tickGap` on a session that never
                 // stopped playing, produced by the clock rather than by
                 // anything the patron did.
+                // Clamped forward, and COUNTED. A single out-of-order tick
+                // must not manufacture a gap, but a clamp that leaves no
+                // trace is a guard whose refusal renders as success — and a
+                // sustained backwards step holds the reference ahead of now,
+                // which `PositionSaveDryPolicy` now declines to measure from.
                 lastTickAt: max(current.lastTickAt, date),
                 lastSaveAt: current.lastSaveAt,
                 precededByGap: current.precededByGap
@@ -396,7 +403,8 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         let context = PositionTraceContext(
             applicationStateAtLastTick: lastObservedAppState,
             tickGapCount: tickGapCount,
-            longestTickGap: longestTickGap
+            longestTickGap: longestTickGap,
+            clockRegressionCount: clockRegressionCount
         )
         lock.unlock()
 
@@ -522,6 +530,7 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
             "applicationStateAtLastTick": context.applicationStateAtLastTick,
             "tickGapCount": context.tickGapCount,
             "longestTickGapSeconds": context.longestTickGap,
+            "clockRegressionCount": context.clockRegressionCount,
             "ticket": "PP-4963"
         ]
         switch verdict {
@@ -536,6 +545,12 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
                 .audiobookPositionTickGap,
                 "Playback tick stream went quiet; save health unknown (PP-4963)",
                 shared.merging(["gapSeconds": seconds]) { _, new in new }
+            )
+        case let .clockRegressed(by):
+            emit(
+                .audiobookPositionClockRegressed,
+                "Device clock moved backwards under a trace session (PP-4963)",
+                shared.merging(["regressedBySeconds": by]) { _, new in new }
             )
         case .noPlayback, .playbackStale, .saving:
             return
