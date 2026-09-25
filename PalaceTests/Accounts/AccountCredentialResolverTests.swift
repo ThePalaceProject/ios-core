@@ -126,11 +126,15 @@ fileprivate final class IdBox: @unchecked Sendable {
 }
 
 /// Records distinct object identities seen across concurrent `userAccount(for:)` calls.
+/// Keeps every instance alive: a freed duplicate's address can be reused by the next
+/// allocation, which would make two instances read as one.
 fileprivate final class InstanceSink: @unchecked Sendable {
     private let lock = NSLock()
     private var seen = Set<ObjectIdentifier>()
+    private var retained: [TPPUserAccount] = []
     func record(_ account: TPPUserAccount) {
         lock.lock(); defer { lock.unlock() }
+        retained.append(account)
         seen.insert(ObjectIdentifier(account))
     }
     var distinctCount: Int { lock.lock(); defer { lock.unlock() }; return seen.count }
