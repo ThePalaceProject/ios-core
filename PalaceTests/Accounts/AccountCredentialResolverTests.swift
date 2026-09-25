@@ -97,6 +97,23 @@ final class AccountCredentialResolverTests: XCTestCase {
         XCTAssertEqual(sink.distinctCount, 1,
                        "check-build-insert under one lock span must yield a single cached instance per UUID")
     }
+
+    /// Concurrent FIRST fresh-install resolutions must all return one placeholder. The
+    /// placeholder is created on first use; creating it outside `userAccountsLock` lets
+    /// racing readers each build and return their own instance.
+    func testCurrentUserAccount_concurrentFirstFreshInstallReads_singlePlaceholder() {
+        for round in 0..<50 {
+            let resolver = AccountCredentialResolver(currentAccountIdProvider: { nil })
+            let sink = InstanceSink()
+
+            DispatchQueue.concurrentPerform(iterations: 16) { _ in
+                sink.record(resolver.currentUserAccount)
+            }
+            XCTAssertEqual(sink.distinctCount, 1,
+                           "round \(round): concurrent first reads built more than one placeholder")
+            if sink.distinctCount != 1 { return }
+        }
+    }
 }
 
 // MARK: - Test doubles
