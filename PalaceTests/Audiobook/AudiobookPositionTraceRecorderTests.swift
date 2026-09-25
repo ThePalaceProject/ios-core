@@ -223,6 +223,88 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         XCTAssertEqual(sinceLastTick, 900, accuracy: 1)
     }
 
+    /// Resume out of an UNSAVED stretch — the remaining gap-bookkeeping cell.
+    ///
+    /// The covered resume case came out of a stretch that had saved. Out of an
+    /// unsaved one there is no save to drop, so the only thing the new stretch
+    /// inherits is the gap, and the verdict must still decline to claim health.
+    func testResumeOutOfAnUnsavedStretch_stillReportsTheGap() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 30)   // a stretch that never saves
+        advance(600)
+        driveLivePlayback(recorder, for: 5)    // resumed
+
+        recorder.applicationDidBecomeActive()
+
+        guard case let .tickGap(gap)? = reported.first else {
+            return XCTFail(
+                "a stretch opened by a gap has earned no health claim whether or "
+                + "not its predecessor saved — got \(reported)"
+            )
+        }
+        XCTAssertEqual(gap, 605, accuracy: 1)
+    }
+
+    /// A tick arriving out of order, or after the wall clock steps backwards.
+    ///
+    /// The policy clamps its quiet window with `max(0, …)`; the recorder
+    /// clamps nothing, so a negative interval reaches the stretch bookkeeping.
+    /// It must not be counted as a gap — a backwards clock is not evidence
+    /// that playback stopped — and it must not produce a negative verdict.
+    func testOutOfOrderTick_isNotCountedAsAGap() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 60)
+        advance(-30)                            // clock steps backwards
+        recorder.notePlaybackTick(trackKey: "a", timestamp: 61, at: clock)
+        advance(30)
+        driveLivePlayback(recorder, for: 5)
+
+        recorder.applicationDidBecomeActive()
+
+        XCTAssertEqual(reportedContexts.first?.tickGapCount, 0,
+                       "a backwards clock step is not a tick-stream gap; counting "
+                       + "it would make every NTP correction look like a stall")
+        if case let .dry(seconds)? = reported.first {
+            XCTAssertGreaterThanOrEqual(seconds, 0, "no negative dry window")
+        }
+        if case let .tickGap(seconds)? = reported.first {
+            XCTAssertGreaterThanOrEqual(seconds, 0, "no negative gap")
+        }
+    }
+
+    /// Foregrounding twice reports twice, and the second report is not a
+    /// stale copy of the first.
+    ///
+    /// The verdict is computed per call rather than cached, and nothing
+    /// asserted that: a cached first verdict would keep reporting a resolved
+    /// finding for the rest of the session, inflating the fleet count from one
+    /// session.
+    func testRepeatedForegroundReturns_reportEachTimeFromCurrentState() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 200)   // no saves yet — dry
+        recorder.applicationDidBecomeActive()
+
+        guard case .dry? = reported.first else {
+            return XCTFail("precondition: a 200s unsaved stretch is dry, got \(reported)")
+        }
+
+        recorder.noteSave(at: clock)            // the save lands
+        driveLivePlayback(recorder, for: 5)
+        recorder.applicationDidBecomeActive()
+
+        XCTAssertEqual(reported.count, 2, "each foreground return produces a verdict")
+        guard case let .saving(since)? = reported.last else {
+            return XCTFail(
+                "the second verdict must reflect the save, not repeat the first — "
+                + "got \(reported)"
+            )
+        }
+        XCTAssertEqual(since, 5, accuracy: 1)
+    }
+
     // MARK: - The instrument must not agree with itself
 
     /// If a save also refreshed the last-live marker, the restore gap would be

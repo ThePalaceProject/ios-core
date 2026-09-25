@@ -320,7 +320,15 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         } else if let current = stretch {
             stretch = PlaybackStretch(
                 startedAt: current.startedAt,
-                lastTickAt: date,
+                // NEVER backwards. A tick delivered out of order, or after the
+                // wall clock steps back (an NTP correction mid-playback), would
+                // otherwise regress the reference — and the next ordinary tick
+                // would then measure its gap from that earlier point, read as a
+                // resume, open a new stretch and drop the save with it. The
+                // result is a spurious `.tickGap` on a session that never
+                // stopped playing, produced by the clock rather than by
+                // anything the patron did.
+                lastTickAt: max(current.lastTickAt, date),
                 lastSaveAt: current.lastSaveAt,
                 precededByGap: current.precededByGap
             )
