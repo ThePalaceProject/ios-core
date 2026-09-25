@@ -304,6 +304,13 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     func _inflightAuthDocContainsForTesting(uuid: String) -> Bool {
         authDocLoader._inflightAuthDocContainsForTesting(uuid: uuid)
     }
+
+    /// The loader's `isTornDown` binding; release binds `{ false }` (the flag is DEBUG-only).
+    fileprivate static func tornDownProbe(_ owner: AccountsManagerOwnerRef) -> @Sendable () -> Bool {
+        { owner.manager?._explicitCancelCalled ?? true }
+    }
+    #else
+    fileprivate static func tornDownProbe(_ owner: AccountsManagerOwnerRef) -> @Sendable () -> Bool { { false } }
     #endif
 
     // The owned-crawl-task registry, its spawn/first-run-tracking, the XCTest join
@@ -370,16 +377,11 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
         // `owner`, which is bound right after `super.init()` — before the preload and
         // the background load below can call them.
         let owner = AccountsManagerOwnerRef()
-        #if DEBUG
-        let torn: @Sendable () -> Bool = { owner.manager?._explicitCancelCalled ?? true }
-        #else
-        let torn: @Sendable () -> Bool = { false }
-        #endif
         self.authDocLoader = AuthDocumentLoader(
             accountStateStore: switchDependencies.accountStateStore,
             currentAccountProvider: { owner.manager?.currentAccount },
             signedInStateProvider: { owner.manager?.currentUserAccount },
-            isTornDown: torn
+            isTornDown: AccountsManager.tornDownProbe(owner)
         )
         self.credentialResolver = AccountCredentialResolver(currentAccountIdProvider: { owner.manager?.currentAccountId })
         super.init()
