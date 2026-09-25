@@ -22,7 +22,15 @@ extension AccountsManager {
     /// `loadingHandlersQueue.sync`. Enough of them exhaust the dispatch worker
     /// pool, so the barriers they wait on never get a thread. A manager built
     /// after this call registers normally.
+    ///
+    /// Runtime-gated to XCTest as well as compiled only in DEBUG: DEBUG also
+    /// covers simulator, developer and TestFlight builds, where unsubscribing
+    /// the live manager would stop it following the beta toggle. Same gate as
+    /// `AppContainer._resetForTesting()`, the only production-side caller.
     static func _drainAllLiveInstancesForTesting() {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil else {
+            return
+        }
         let snapshot = _liveInstancesForTesting.snapshot()
         for m in snapshot {
             NotificationCenter.default.removeObserver(m, name: .TPPUseBetaDidChange, object: nil)
