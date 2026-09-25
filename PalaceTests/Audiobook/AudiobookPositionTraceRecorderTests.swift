@@ -161,6 +161,68 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         }
     }
 
+    /// Every save in a stretch moves the window, not just the first.
+    ///
+    /// Review found nothing drove two `noteSave` calls inside one live
+    /// stretch: gating the update on `current.lastSaveAt == nil` — freezing
+    /// the clock after a stretch's first save — left all 67 tests green. The
+    /// only two-save test had no stretch at all, so both saves were dropped
+    /// and it could not see this.
+    ///
+    /// Production saves land about every five seconds, so a frozen clock makes
+    /// a perfectly healthy three-hour listen report `.dry(10800)` on the
+    /// ungated fleet signal — the instrument manufacturing the finding it
+    /// exists to test for, which is the worst outcome available here.
+    func testSecondSaveInAStretch_movesTheWindowForward() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 60)
+        recorder.noteSave(at: clock)               // first save
+
+        // Keep playing well past the dry threshold, then save again. If only
+        // the first save counted, this window is 210s and reads as dry.
+        driveLivePlayback(recorder, for: 200)
+        recorder.noteSave(at: clock)               // second save
+        driveLivePlayback(recorder, for: 10)
+
+        recorder.applicationDidBecomeActive()
+
+        guard case let .saving(since)? = reported.first else {
+            return XCTFail(
+                "saves kept pace with playback, so this is not a finding — got "
+                + "\(reported), which is the first save being measured against "
+                + "the whole stretch"
+            )
+        }
+        XCTAssertEqual(since, 10, accuracy: 1,
+                       "the window is measured from the LATEST save, not the first")
+    }
+
+    /// `.playbackStale` had no recorder-side test — it was produced only by
+    /// hand-built stretches in the policy tests, so nothing checked that the
+    /// recorder ever reaches it.
+    ///
+    /// It is the cell that keeps the instrument honest about a session that
+    /// ENDED: playback stopped before the check, which explains a quiet save
+    /// window on its own and must not be reported as a dry one.
+    func testForegroundReturn_afterPlaybackStopped_reportsStaleNotDry() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 60)
+        recorder.noteSave(at: clock)
+        advance(900)                                // playback stopped: no ticks
+
+        recorder.applicationDidBecomeActive()
+
+        guard case let .playbackStale(sinceLastTick)? = reported.first else {
+            return XCTFail(
+                "playback had already stopped, which explains the quiet window "
+                + "without a defect — got \(reported)"
+            )
+        }
+        XCTAssertEqual(sinceLastTick, 900, accuracy: 1)
+    }
+
     // MARK: - The instrument must not agree with itself
 
     /// If a save also refreshed the last-live marker, the restore gap would be
