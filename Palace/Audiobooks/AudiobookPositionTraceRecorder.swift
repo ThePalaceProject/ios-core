@@ -160,15 +160,13 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     private let now: () -> Date
 
     private let lock = NSLock()
-    private var sessionStartedAt: Date
-    private var lastTickAt: Date?
-    private var lastSaveAt: Date?
+    /// The current stretch of playback, or nil before the first tick. One
+    /// value rather than four loose dates: see `PlaybackStretch` for why the
+    /// save must be scoped to the stretch that contains it.
+    private var stretch: PlaybackStretch?
     private var lastMarkerWriteAt: Date = .distantPast
     /// App state as seen by the most recent playback tick. See `notePlaybackTick`.
     private var lastObservedAppState: String = "unknown"
-    /// When playback was first observed. Used as the dry-window reference when
-    /// no save has happened yet — see `PositionSaveDryPolicy.evaluate`.
-    private var firstTickAt: Date?
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -207,7 +205,6 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
             AudiobookFileLogger.shared.logEvent(forBookId: bookID, event: line)
         }
         self.now = now
-        self.sessionStartedAt = now()
     }
 
     // MARK: - Signals in
@@ -217,7 +214,17 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     /// post is a separate defect and is deliberately not what this measures.
     func noteSave(at date: Date) {
         lock.lock()
-        lastSaveAt = date
+        // A save belongs to the stretch it happened in. With no stretch there
+        // is no playback to measure it against, and the verdict is
+        // `.noPlayback` regardless — so there is nowhere to put it and nothing
+        // lost by not inventing a home.
+        if let current = stretch {
+            stretch = PlaybackStretch(
+                startedAt: current.startedAt,
+                lastTickAt: current.lastTickAt,
+                lastSaveAt: date
+            )
+        }
         let state = lastObservedAppState
         lock.unlock()
 
@@ -241,16 +248,21 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         let state = Self.applicationStateName()
 
         lock.lock()
-        // A gap longer than the freshness window means playback stopped and
-        // restarted; the dry window must be measured from the RESUME, not from
-        // the original first tick. Without this a short opening burst, a long
-        // pause, and a foreground return just after resuming reported
-        // `.dry(hours)` for a healthy session.
-        if let previous = lastTickAt, date.timeIntervalSince(previous) > Self.tickFreshnessWindow {
-            firstTickAt = date
+        // A gap longer than the freshness window is a RESUME, so it starts a
+        // new stretch — which drops the previous stretch's save with it. That
+        // is the point: a save from before a three-hour pause is not evidence
+        // about the stretch that just began, and comparing against it reported
+        // a dry window for a healthy session.
+        let isResume = stretch.map { date.timeIntervalSince($0.lastTickAt) > Self.tickFreshnessWindow } ?? true
+        if isResume {
+            stretch = PlaybackStretch(startedAt: date, lastTickAt: date, lastSaveAt: nil)
+        } else if let current = stretch {
+            stretch = PlaybackStretch(
+                startedAt: current.startedAt,
+                lastTickAt: date,
+                lastSaveAt: current.lastSaveAt
+            )
         }
-        lastTickAt = date
-        if firstTickAt == nil { firstTickAt = date }
         lastObservedAppState = state
         let shouldWriteMarker = date.timeIntervalSince(lastMarkerWriteAt) >= Self.markerWriteInterval
         if shouldWriteMarker {
@@ -288,13 +300,7 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         let at = now()
 
         lock.lock()
-        let verdict = PositionSaveDryPolicy.evaluate(
-            now: at,
-            sessionStartedAt: sessionStartedAt,
-            lastTickAt: lastTickAt,
-            lastSaveAt: lastSaveAt,
-            firstTickAt: firstTickAt
-        )
+        let verdict = PositionSaveDryPolicy.evaluate(now: at, stretch: stretch)
         let state = lastObservedAppState
         lock.unlock()
 

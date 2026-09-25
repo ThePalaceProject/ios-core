@@ -18,183 +18,148 @@ import XCTest
 
 final class PositionSaveDryPolicyTests: XCTestCase {
 
-    /// Fixed clock. Every case is expressed as an offset from this so a cell
-    /// reads as its position in the table, not as arithmetic.
+    /// Fixed clock. Every case is an offset from this so a cell reads as its
+    /// position in the table, not as arithmetic.
     private let now = Date(timeIntervalSince1970: 1_000_000)
     private let threshold: TimeInterval = 120
     private let freshness: TimeInterval = 10
 
     private func evaluate(
-        sessionAge: TimeInterval,
-        lastTickAge: TimeInterval?,
-        lastSaveAge: TimeInterval?
+        startedAgo: TimeInterval? = nil,
+        lastTickAgo: TimeInterval? = nil,
+        lastSaveAgo: TimeInterval? = nil
     ) -> PositionSaveVerdict {
-        PositionSaveDryPolicy.evaluate(
-            now: now,
-            sessionStartedAt: now.addingTimeInterval(-sessionAge),
-            lastTickAt: lastTickAge.map { now.addingTimeInterval(-$0) },
-            lastSaveAt: lastSaveAge.map { now.addingTimeInterval(-$0) },
-            dryThreshold: threshold,
-            tickFreshness: freshness
+        let stretch = startedAgo.map { started in
+            PlaybackStretch(
+                startedAt: now.addingTimeInterval(-started),
+                lastTickAt: now.addingTimeInterval(-(lastTickAgo ?? started)),
+                lastSaveAt: lastSaveAgo.map { now.addingTimeInterval(-$0) }
+            )
+        }
+        return PositionSaveDryPolicy.evaluate(
+            now: now, stretch: stretch,
+            dryThreshold: threshold, tickFreshness: freshness
         )
     }
 
-    // MARK: - No playback signal at all
+    // MARK: - Cell 1 — no stretch
 
     /// The instrument must be able to report that it learned nothing. If a
     /// missing liveness signal collapsed into `.dry`, an inert recorder would
     /// manufacture the exact finding the ticket is looking for.
-    func testNoTicks_withNoSaves_reportsNoPlayback_notDry() {
-        XCTAssertEqual(
-            evaluate(sessionAge: 3600, lastTickAge: nil, lastSaveAge: nil),
-            .noPlayback
-        )
+    func testNoStretch_reportsNoPlayback_notDry() {
+        XCTAssertEqual(evaluate(), .noPlayback)
     }
 
-    func testNoTicks_withRecentSave_reportsNoPlayback() {
-        XCTAssertEqual(
-            evaluate(sessionAge: 3600, lastTickAge: nil, lastSaveAge: 1),
-            .noPlayback
-        )
-    }
+    // MARK: - Cell 2 — stretch present, ticks stale
 
-    // MARK: - Playback stopped before the check
-
-    /// Audio that stopped an hour ago explains a dry save window by itself.
-    /// Reporting `.dry` here would flood the fleet with every paused session.
-    func testStaleTicks_withAncientSave_reportsPlaybackStale() {
-        guard case let .playbackStale(sinceLastTick) =
-                evaluate(sessionAge: 7200, lastTickAge: 3600, lastSaveAge: 3600) else {
+    func testStaleTicks_reportPlaybackStale() {
+        guard case let .playbackStale(since) =
+                evaluate(startedAgo: 7200, lastTickAgo: 3600, lastSaveAgo: 3600) else {
             return XCTFail("expected .playbackStale")
         }
-        XCTAssertEqual(sinceLastTick, 3600, accuracy: 0.001)
+        XCTAssertEqual(since, 3600, accuracy: 0.001)
     }
 
-    func testTickExactlyAtFreshnessBoundary_countsAsLive_notStale() {
-        // `> freshness` is stale; exactly AT the boundary is still live.
-        let verdict = evaluate(sessionAge: 7200, lastTickAge: freshness, lastSaveAge: 3600)
-        XCTAssertNotEqual(verdict, .noPlayback)
-        guard case .dry = verdict else {
-            return XCTFail("a tick exactly at the freshness boundary is live, so a 1h-old save is dry; got \(verdict)")
+    func testTickExactlyAtFreshnessBoundary_countsAsLive() {
+        guard case .dry = evaluate(startedAgo: 7200, lastTickAgo: freshness, lastSaveAgo: 3600) else {
+            return XCTFail("a tick exactly at the boundary is live, so an old save is dry")
         }
     }
 
     func testTickJustPastFreshnessBoundary_isStale() {
         guard case .playbackStale = evaluate(
-            sessionAge: 7200,
-            lastTickAge: freshness + 0.001,
-            lastSaveAge: 3600
-        ) else {
-            return XCTFail("expected .playbackStale just past the boundary")
+            startedAgo: 7200, lastTickAgo: freshness + 0.001, lastSaveAgo: 3600
+        ) else { return XCTFail("expected .playbackStale just past the boundary") }
+    }
+
+    // MARK: - Cell 3 — live, quiet window within threshold
+
+    func testRecentSave_reportsSaving() {
+        guard case let .saving(since) =
+                evaluate(startedAgo: 3600, lastTickAgo: 0.25, lastSaveAgo: 5) else {
+            return XCTFail("expected .saving")
+        }
+        XCTAssertEqual(since, 5, accuracy: 0.001)
+    }
+
+    func testSaveExactlyAtDryThreshold_isNotYetDry() {
+        guard case .saving = evaluate(startedAgo: 3600, lastTickAgo: 0.25, lastSaveAgo: threshold) else {
+            return XCTFail("exactly at the threshold must not be dry")
         }
     }
 
-    // MARK: - The defect: playback live, saves quiet
+    /// A young stretch that has not saved yet is measured from its own start,
+    /// so opening a book and glancing at it is not a finding.
+    func testYoungStretchWithNoSave_reportsSaving() {
+        guard case let .saving(since) = evaluate(startedAgo: 5, lastTickAgo: 0.25) else {
+            return XCTFail("a 5s-old stretch has not had time to save")
+        }
+        XCTAssertEqual(since, 5, accuracy: 0.001)
+    }
 
-    func testLiveTicks_withSaveOlderThanThreshold_reportsDry() {
+    /// Wall-clock can step backwards. A save that appears to be in the future
+    /// must not read as a huge dry window, and the clamp is asserted by VALUE —
+    /// `palace_mutate` has no operator for `max()`.
+    func testFutureDatedSave_reportsSaving_clampedToZero() {
+        guard case let .saving(since) =
+                evaluate(startedAgo: 3600, lastTickAgo: 0.25, lastSaveAgo: -50) else {
+            return XCTFail("a future-dated save is clock skew, not a dry window")
+        }
+        XCTAssertEqual(since, 0, accuracy: 0.001, "clamped, not reported raw")
+    }
+
+    // MARK: - Cell 4 — live, quiet window past threshold
+
+    func testLiveTicksWithOldSave_reportsDry() {
         guard case let .dry(seconds) =
-                evaluate(sessionAge: 10_900, lastTickAge: 0.25, lastSaveAge: 10_800) else {
+                evaluate(startedAgo: 10_900, lastTickAgo: 0.25, lastSaveAgo: 10_800) else {
             return XCTFail("expected .dry")
         }
         XCTAssertEqual(seconds, 10_800, accuracy: 0.001,
                        "the reported duration is the patron-visible loss window")
     }
 
-    /// A session that has been playing longer than the threshold and has NEVER
-    /// saved is the worst case, not an exempt one. Falling back to session
-    /// start keeps a never-saved session from reading as healthy.
-    func testLiveTicks_withNoSaveEver_andOldSession_reportsDry() {
-        guard case let .dry(seconds) =
-                evaluate(sessionAge: 600, lastTickAge: 0.25, lastSaveAge: nil) else {
-            return XCTFail("expected .dry for a long session that never saved")
-        }
-        XCTAssertEqual(seconds, 600, accuracy: 0.001)
-    }
-
-    func testLiveTicks_withNoSaveEver_butYoungSession_reportsSaving() {
-        guard case .saving = evaluate(sessionAge: 5, lastTickAge: 0.25, lastSaveAge: nil) else {
-            return XCTFail("a 5s-old session has not had time to save yet")
-        }
-    }
-
-    /// A session that has ticked but not yet saved must be measured from when
-    /// PLAYBACK began, not from when the session object was constructed.
-    /// Measuring from session start counted setup time as a dry window, so a
-    /// foreground return shortly after opening a book emitted a false `.dry`
-    /// on the ungated fleet signal.
-    func testNoSaveYet_isMeasuredFromFirstTick_notSessionStart() {
-        let verdict = PositionSaveDryPolicy.evaluate(
-            now: now,
-            sessionStartedAt: now.addingTimeInterval(-600),
-            lastTickAt: now,
-            lastSaveAt: nil,
-            firstTickAt: now.addingTimeInterval(-10),
-            dryThreshold: threshold,
-            tickFreshness: freshness
-        )
-        guard case let .saving(sinceLastSave) = verdict else {
-            return XCTFail("playback started 10s ago and has not saved yet — not dry: \(verdict)")
-        }
-        XCTAssertEqual(sinceLastSave, 10, accuracy: 0.001)
-    }
-
-    /// But a session that has been PLAYING past the threshold without saving is
-    /// still the worst case, and must still report dry.
-    func testLongPlaybackWithNoSaveEver_isStillDry() {
-        guard case let .dry(seconds) = PositionSaveDryPolicy.evaluate(
-            now: now,
-            sessionStartedAt: now.addingTimeInterval(-7200),
-            lastTickAt: now,
-            lastSaveAt: nil,
-            firstTickAt: now.addingTimeInterval(-600),
-            dryThreshold: threshold,
-            tickFreshness: freshness
-        ) else {
-            return XCTFail("10 minutes of playback with no save is the worst case")
-        }
-        XCTAssertEqual(seconds, 600, accuracy: 0.001)
-    }
-
-    // MARK: - Healthy cadence
-
-    func testLiveTicks_withRecentSave_reportsSaving() {
-        guard case let .saving(sinceLastSave) =
-                evaluate(sessionAge: 3600, lastTickAge: 0.25, lastSaveAge: 5) else {
-            return XCTFail("expected .saving")
-        }
-        XCTAssertEqual(sinceLastSave, 5, accuracy: 0.001)
-    }
-
-    func testSaveExactlyAtDryThreshold_isNotYetDry() {
-        // `> threshold` is dry; exactly AT the threshold is still saving.
-        guard case .saving = evaluate(sessionAge: 3600, lastTickAge: 0.25, lastSaveAge: threshold) else {
-            return XCTFail("exactly at the threshold must not be dry")
-        }
-    }
-
     func testSaveJustPastDryThreshold_isDry() {
         guard case .dry = evaluate(
-            sessionAge: 3600,
-            lastTickAge: 0.25,
-            lastSaveAge: threshold + 0.001
-        ) else {
-            return XCTFail("just past the threshold must be dry")
-        }
+            startedAgo: 3600, lastTickAgo: 0.25, lastSaveAgo: threshold + 0.001
+        ) else { return XCTFail("just past the threshold must be dry") }
     }
 
-    /// Wall-clock can step backwards (NTP, timezone, manual set). A save that
-    /// appears to be in the future must not read as an enormous dry window.
-    func testSaveTimestampInTheFuture_reportsSaving_withAClampedZeroInterval() {
-        guard case let .saving(sinceLastSave) =
-                evaluate(sessionAge: 3600, lastTickAge: 0.25, lastSaveAge: -50) else {
-            return XCTFail("a future-dated save is clock skew, not a 50s dry window")
+    /// A long stretch that never saved is the worst case, not an exempt one.
+    func testLongStretchWithNoSaveEver_reportsDry() {
+        guard case let .dry(seconds) = evaluate(startedAgo: 600, lastTickAgo: 0.25) else {
+            return XCTFail("ten minutes of playback with no save is the defect")
         }
-        // The VALUE matters, not just the case. Without this the `max(0, ...)`
-        // clamp could be dropped and `.saving(sinceLastSave: -50)` would ship —
-        // a negative age no reader would expect. palace_mutate cannot see it
-        // either; it has no operator for `max()`.
-        XCTAssertEqual(sinceLastSave, 0, accuracy: 0.001,
-                       "a negative interval is clamped to zero, not reported raw")
+        XCTAssertEqual(seconds, 600, accuracy: 0.001)
+    }
+
+    // MARK: - The scale mismatch this type exists to prevent
+
+    /// A patron plays a minute, pauses three hours, resumes, unlocks 3s later.
+    /// The resume starts a NEW stretch, so the save that froze before the
+    /// pause is not in scope and cannot be measured against.
+    ///
+    /// Under the previous `lastSaveAt ?? firstTickAt ?? sessionStartedAt`
+    /// chain this reported `.dry(10803)` — a routine gesture manufacturing the
+    /// finding, on the ungated fleet signal.
+    func testResumeAfterLongPause_isNotReportedDry() {
+        guard case let .saving(since) = evaluate(startedAgo: 3, lastTickAgo: 0) else {
+            return XCTFail("a fresh stretch after a pause is not a dry window")
+        }
+        XCTAssertEqual(since, 3, accuracy: 0.001,
+                       "measured from the stretch that is actually playing")
+    }
+
+    /// And the discrimination that must survive it: one continuous stretch
+    /// whose saves died at 60s is still dry. If this ever goes green next to
+    /// the test above, the instrument has stopped detecting.
+    func testContinuousStretchWithDeadSaves_isStillDry() {
+        guard case let .dry(seconds) =
+                evaluate(startedAgo: 10_800, lastTickAgo: 0, lastSaveAgo: 10_740) else {
+            return XCTFail("three hours of playback with saves dead at 60s IS the defect")
+        }
+        XCTAssertEqual(seconds, 10_740, accuracy: 0.001)
     }
 }
 

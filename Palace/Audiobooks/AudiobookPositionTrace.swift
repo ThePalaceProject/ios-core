@@ -48,6 +48,43 @@ enum PositionSaveVerdict: Equatable {
     case dry(seconds: TimeInterval)
 }
 
+/// What the playback clock observed during ONE continuous stretch of playback.
+///
+/// This type exists to make a defect class unrepresentable rather than
+/// reconciled. The three facts the verdict needs — when this stretch began,
+/// when it was last alive, and when a save was last seen — used to be three
+/// independent `Date?`s on three different scales, combined by a precedence
+/// chain at read time:
+///
+///   `lastSaveAt ?? firstTickAt ?? sessionStartedAt`
+///
+/// `lastSaveAt` is frozen while paused, because its only writer is gated on
+/// `isPlaying`. `firstTickAt` tracked the current stretch. `sessionStartedAt`
+/// tracked the whole session. Reading them in precedence order silently mixed
+/// scales: a patron who played a minute, paused three hours, resumed and
+/// unlocked was measured against the save that froze before the pause, and the
+/// instrument reported a three-hour dry window for a perfectly healthy
+/// session — on the UNGATED fleet signal, from a routine gesture.
+///
+/// Scoping the save to the stretch that contains it removes the mismatch at
+/// the source. A new stretch starts with no save, so a save from a previous
+/// stretch cannot be compared against this one; there is nothing left to
+/// reconcile, and no `max()` to get wrong. `sessionStartedAt` disappeared
+/// entirely — it was only ever a fallback for a case that cannot occur.
+struct PlaybackStretch: Equatable {
+    /// First tick of THIS stretch. A resume after a gap starts a new one.
+    let startedAt: Date
+    /// Most recent tick. Freshness is measured from here.
+    let lastTickAt: Date
+    /// Most recent save observed WITHIN this stretch; nil until one lands.
+    let lastSaveAt: Date?
+
+    /// The point the dry window is measured from. Both candidates are
+    /// stretch-scoped, so this is a same-scale choice rather than a
+    /// cross-scale reconciliation.
+    var lastSignOfLife: Date { lastSaveAt ?? startedAt }
+}
+
 /// Decides, on foreground return, whether position saves went quiet WHILE
 /// playback was still live.
 ///
@@ -67,6 +104,18 @@ enum PositionSaveVerdict: Equatable {
 /// silent exactly when the defect fires, and its silence would then read as
 /// `.noPlayback` — the instrument would quietly report the absence of a defect
 /// it had merely lost the ability to see.
+///
+/// The decision is a total function over four reachable cells:
+///
+///   | stretch | tick freshness      | quiet window   | verdict          |
+///   |---------|---------------------|----------------|------------------|
+///   | nil     | —                   | —              | `.noPlayback`    |
+///   | present | > tickFreshness     | —              | `.playbackStale` |
+///   | present | <= tickFreshness    | <= dryThreshold| `.saving`        |
+///   | present | <= tickFreshness    | > dryThreshold | `.dry`           |
+///
+/// Four cells, each with its boundary. That is the whole state space — which
+/// is the point of taking a `PlaybackStretch?` rather than five loose dates.
 enum PositionSaveDryPolicy {
 
     /// Comfortably above any legitimate cadence: the throttle saves every ~5s
@@ -76,23 +125,21 @@ enum PositionSaveDryPolicy {
     static let defaultDryThreshold: TimeInterval = 120
 
     /// `positionPublisher` emits ~4×/s while audio plays, so 10s of silence
-    /// means playback genuinely stopped rather than merely stuttered.
+    /// means playback genuinely stopped rather than merely stuttered. Also the
+    /// rule that ends a stretch: a larger gap is a resume, not a continuation.
     static let defaultTickFreshness: TimeInterval = 10
 
     static func evaluate(
         now: Date,
-        sessionStartedAt: Date,
-        lastTickAt: Date?,
-        lastSaveAt: Date?,
-        firstTickAt: Date? = nil,
+        stretch: PlaybackStretch?,
         dryThreshold: TimeInterval = defaultDryThreshold,
         tickFreshness: TimeInterval = defaultTickFreshness
     ) -> PositionSaveVerdict {
-        guard let lastTickAt else {
+        guard let stretch else {
             return .noPlayback
         }
 
-        let sinceLastTick = now.timeIntervalSince(lastTickAt)
+        let sinceLastTick = now.timeIntervalSince(stretch.lastTickAt)
         if sinceLastTick > tickFreshness {
             // Playback had already stopped when we looked. This deliberately
             // forgoes a real dry window that ENDED before foreground return
@@ -103,17 +150,9 @@ enum PositionSaveDryPolicy {
             return .playbackStale(sinceLastTick: sinceLastTick)
         }
 
-        // A session that has never saved is the worst case, not an exempt one,
-        // so it is measured from a fallback rather than skipped.
-        //
-        // The fallback is the FIRST TICK, not session start. Measuring from
-        // session start counts time before playback began, so a foreground
-        // return landing between session construction and the first save
-        // reported `.dry` for a session that had simply not started saving yet
-        // — a false positive on the ungated fleet signal, which is exactly the
-        // signal this exists to keep clean.
-        let reference = lastSaveAt ?? firstTickAt ?? sessionStartedAt
-        let quietFor = now.timeIntervalSince(reference)
+        // A stretch that has not saved yet is measured from its own start, so
+        // "never saved" is the worst case rather than an exempt one.
+        let quietFor = now.timeIntervalSince(stretch.lastSignOfLife)
 
         // A negative interval is wall-clock skew (NTP step, manual clock
         // change), not a dry window.

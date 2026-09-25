@@ -175,11 +175,10 @@ final class AudiobookPositionTraceSeamTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_010_800) }
         )
 
-        recorder.notePlaybackTick(trackKey: "k", timestamp: 0,
-                                  at: Date(timeIntervalSince1970: 1_000_000))
-        recorder.noteSave(at: Date(timeIntervalSince1970: 1_000_000))
-        recorder.notePlaybackTick(trackKey: "k", timestamp: 10_800,
-                                  at: Date(timeIntervalSince1970: 1_010_800))
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        recorder.notePlaybackTick(trackKey: "k", timestamp: 0, at: start)
+        recorder.noteSave(at: start)
+        driveLivePlayback(recorder, from: start, for: 10_800)
 
         recorder.applicationDidBecomeActive()
 
@@ -208,11 +207,10 @@ final class AudiobookPositionTraceSeamTests: XCTestCase {
             notificationCenter: center
         )
 
-        recorder.notePlaybackTick(trackKey: "k", timestamp: 0,
-                                  at: Date(timeIntervalSince1970: 1_000_000))
-        recorder.noteSave(at: Date(timeIntervalSince1970: 1_000_000))
-        recorder.notePlaybackTick(trackKey: "k", timestamp: 10_800,
-                                  at: Date(timeIntervalSince1970: 1_010_800))
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        recorder.notePlaybackTick(trackKey: "k", timestamp: 0, at: start)
+        recorder.noteSave(at: start)
+        driveLivePlayback(recorder, from: start, for: 10_800)
 
         center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
 
@@ -321,6 +319,26 @@ final class AudiobookPositionTraceSeamTests: XCTestCase {
 
 /// Minimal store for the seam tests. Deliberately not the UserDefaults-backed
 /// production one — these assert wiring, not persistence.
+/// A CONTINUOUS chain of playback ticks from `start` over `seconds`.
+///
+/// Two ticks `seconds` apart do not describe a long session: a gap wider than
+/// `tickFreshnessWindow` is a RESUME, opening a new `PlaybackStretch` with no
+/// save and a `startedAt` at the second tick — so the quiet window is zero and
+/// the verdict is `.saving` however long the session actually ran. An unbroken
+/// chain is the only shape that measures a dry window, and it is what real
+/// playback produces (roughly four ticks a second).
+private func driveLivePlayback(_ recorder: AudiobookPositionTraceRecorder,
+                               from start: Date,
+                               for seconds: TimeInterval,
+                               trackKey: String = "k") {
+    var elapsed: TimeInterval = 0
+    while elapsed < seconds {
+        elapsed = min(elapsed + 5.0, seconds)
+        recorder.notePlaybackTick(trackKey: trackKey, timestamp: elapsed,
+                                  at: start.addingTimeInterval(elapsed))
+    }
+}
+
 private final class InMemoryMarkerStore: LastLivePositionMarkerStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var markers: [String: LastLivePositionMarker] = [:]

@@ -79,6 +79,28 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
 
     // MARK: - The save clock must actually be recorded
 
+    /// A CONTINUOUS chain of playback ticks spanning `seconds`, spaced well
+    /// inside the freshness window.
+    ///
+    /// Two ticks `seconds` apart would measure something else entirely. A gap
+    /// wider than `tickFreshnessWindow` is a RESUME: it opens a new
+    /// `PlaybackStretch` whose `lastSaveAt` is nil and whose `startedAt` is the
+    /// second tick, so the quiet window collapses to zero and the verdict is
+    /// `.saving` no matter how long the session ran. Only an unbroken chain
+    /// describes three hours of continuous locked playback — which is also the
+    /// honest shape, since real playback ticks about four times a second.
+    private func driveLivePlayback(_ recorder: AudiobookPositionTraceRecorder,
+                                   for seconds: TimeInterval,
+                                   trackKey: String = "a") {
+        var elapsed: TimeInterval = 0
+        while elapsed < seconds {
+            let step = min(5.0, seconds - elapsed)
+            advance(step)
+            elapsed += step
+            recorder.notePlaybackTick(trackKey: trackKey, timestamp: elapsed, at: clock)
+        }
+    }
+
     /// THE test the first draft was missing. Deleting `lastSaveAt = date` from
     /// `noteSave` left all 33 tests green, because the two tests that looked
     /// like they covered it were confounded: one called `noteSave` at exactly
@@ -162,6 +184,49 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         XCTAssertEqual(store.writeCount, 1, "a tick just short of the interval is absorbed")
     }
 
+    // MARK: - The scale mismatch, from the recorder's side
+
+    /// `PlaybackStretch` makes the scale mismatch unrepresentable only if the
+    /// recorder actually OPENS a new stretch when playback resumes. Nothing
+    /// asserted that it does: `PositionSaveDryPolicyTests`
+    /// `.testResumeAfterLongPause_isNotReportedDry` hands the policy a fresh
+    /// stretch it built by hand, so it passes just as well against a recorder
+    /// that never creates one. Deleting the gap check
+    /// (`isResume = stretch == nil`) left all 57 tests green — the units were
+    /// pinned and the wiring between them was not, which is the same join every
+    /// earlier round of this change turned up.
+    ///
+    /// A patron plays a minute, saves, pauses three hours — the position
+    /// publisher emits nothing at all while paused — resumes, and unlocks
+    /// three seconds later. If the gap does not end the stretch, the save that
+    /// froze before the pause is still in scope and the quiet window is the
+    /// whole pause: `.dry` for a healthy session, on the ungated fleet signal,
+    /// produced by a routine gesture.
+    func testResumeAfterALongPause_opensANewStretch_andIsNotReportedDry() {
+        let recorder = makeRecorder()
+        driveLivePlayback(recorder, for: 60)
+        recorder.noteSave(at: clock)
+
+        advance(10_800)
+        recorder.notePlaybackTick(trackKey: "a", timestamp: 60, at: clock)
+        for second in 1...3 {
+            advance(1)
+            recorder.notePlaybackTick(trackKey: "a", timestamp: 60 + Double(second), at: clock)
+        }
+
+        recorder.applicationDidBecomeActive()
+
+        guard case let .saving(since)? = reported.first else {
+            return XCTFail(
+                "a resume after a pause must open a new stretch — got \(reported), "
+                + "which is the pre-pause save being measured across the pause"
+            )
+        }
+        XCTAssertEqual(since, 3, accuracy: 0.001,
+                       "measured from the resumed stretch, not from the save that "
+                       + "froze when playback stopped three hours earlier")
+    }
+
     // MARK: - The default-off gate
 
     /// The marker records where a patron was in a book, which is a library
@@ -185,8 +250,7 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         let recorder = makeRecorder(diagnosticsEnabled: false)
         recorder.notePlaybackTick(trackKey: "a", timestamp: 0, at: clock)
         recorder.noteSave(at: clock)
-        advance(10_800)
-        recorder.notePlaybackTick(trackKey: "a", timestamp: 10_800, at: clock)
+        driveLivePlayback(recorder, for: 10_800)
 
         recorder.applicationDidBecomeActive()
 
@@ -202,8 +266,7 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         recorder.notePlaybackTick(trackKey: "a", timestamp: 0, at: clock)
         recorder.noteSave(at: clock)
 
-        advance(10_800)
-        recorder.notePlaybackTick(trackKey: "a", timestamp: 10_800, at: clock)
+        driveLivePlayback(recorder, for: 10_800)
 
         recorder.applicationDidBecomeActive()
 
