@@ -72,11 +72,11 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
 ///     (Wave 3 / 3a-4), which owns its own queues/locks; the hub holds it as a `lazy var`.
 ///   - the auth-document fetch state (single-flight map + lock)  → moved to the
 ///     injected `AuthDocumentLoader` (Wave 3 / 3a-3), which owns its own `NSLock`; the
-///     hub holds the loader as a `lazy var` and no longer names that state.
+///     hub holds the loader as a `let` built in `init` and no longer names that state.
 ///   - the per-account credential state (`userAccounts` cache + its lock,
 ///     `lastKnownCurrentUserAccount`, `noAccountPlaceholder`)  → moved to the injected
 ///     `AccountCredentialResolver` (Wave 3 / 3a-5), which owns their `NSLock`/lazy
-///     synchronization; the hub holds it as a `lazy var`.
+///     synchronization; the hub holds it as a `let` built in `init`.
 ///   - `crawlScheduler`  → immutable `Sendable` `let` bound once from `init`, passed
 ///     into the load collaborator.
 ///   - `isAccountSwitching`  → storage moved into the lock-backed
@@ -84,9 +84,8 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
 ///     set/get is serialized by the holder's own `NSLock`; the public
 ///     `private(set) var` computed accessor preserves every call site and the
 ///     value/timing verbatim (see property below).
-///   - `networkExecutor`  → `lazy var`, resolved exactly once from an
-///     already-constructed dependency (inside the background load path after
-///     `AppContainer` finishes constructing) and immutable thereafter — write-once.
+///   - `networkExecutor`  → computed; resolved through the injected provider on
+///     each use (never during init), so the hub stores nothing for it.
 ///   - `_explicitCancelCalled`  → `#if DEBUG` test-only; compiled out of release. Set by
 ///     the hub cancel/drain facades BEFORE delegating to the load collaborator (so the
 ///     3a-3 `AuthDocumentLoader.isTornDown` binding stays byte-identical).
@@ -156,30 +155,19 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// Wave 3 S3 — account-switch cleanup collaborators injected as a frozen bundle (spy-observable);
     /// the concrete executor TYPE edge is now inverted behind `AccountNetworking` too (3a precondition).
     private let switchDeps: AccountSwitchDependencies
-    /// Lazy-resolved through the injected provider to break the singleton init cycle:
+    /// Resolved through the injected provider on every use, never during init:
     /// AccountsManager is constructed inline by AppContainer._cached's initializer, so
-    /// we cannot resolve the executor during init. First accessed *after* AppContainer
-    /// finishes constructing; resolved exactly once, then cached here.
-    private lazy var networkExecutor: any AccountNetworking = switchDeps.networkExecutorProvider()
+    /// resolving the executor during init re-enters that lock. Not cached here — a
+    /// cached `lazy var` has no lock, and the provider already returns the container's
+    /// single executor (the same per-use resolution `AccountRegistryLoader` does).
+    private var networkExecutor: any AccountNetworking { switchDeps.networkExecutorProvider() }
     /// Per-account auth-document fetch + state-machine collaborator (Wave 3 / 3a-3).
-    /// A `lazy var` (not a `let` default arg like `registryStore`) because its provider
-    /// closures capture `self`, so it can't be resolved before `super.init()`; first
-    /// access is post-init (the earliest drive is the preload / background `loadCatalogs`),
-    /// exactly like `networkExecutor`. The `isTornDown` binding is `#if DEBUG` (reads the
-    /// DEBUG-only `_explicitCancelCalled`); release binds `{ false }` so the DRM build compiles.
-    private lazy var authDocLoader: AuthDocumentLoader = {
-        #if DEBUG
-        let torn: @Sendable () -> Bool = { [weak self] in self?._explicitCancelCalled ?? true }
-        #else
-        let torn: @Sendable () -> Bool = { false }
-        #endif
-        return AuthDocumentLoader(
-            accountStateStore: switchDeps.accountStateStore,
-            currentAccountProvider: { [weak self] in self?.currentAccount },
-            signedInStateProvider: { [weak self] in self?.currentUserAccount },
-            isTornDown: torn
-        )
-    }()
+    /// Built in `init` before `super.init()`, with its provider closures reading the
+    /// manager through `AccountsManagerOwnerRef`, so it exists before any path can reach
+    /// it: its single-flight map is per instance, and first access is concurrent on a
+    /// cold launch. The `isTornDown` binding is `#if DEBUG` (reads the DEBUG-only
+    /// `_explicitCancelCalled`); release binds `{ false }` so the DRM build compiles.
+    private let authDocLoader: AuthDocumentLoader
     /// Injectable background-crawl spawn seam (see `CatalogCrawlScheduler`).
     /// Immutable `Sendable` `let`; `.production` by default, recording under test.
     private let crawlScheduler: CrawlTaskScheduler
@@ -377,7 +365,25 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
         self.registryStore = registryStore
         self.settings = TPPSettings()
         self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: settings)
+        // Build the auth-doc + credential collaborators here, not lazily on first use:
+        // first use is concurrent on a cold launch. They reach the manager through
+        // `owner`, which is bound right after `super.init()` — before the preload and
+        // the background load below can call them.
+        let owner = AccountsManagerOwnerRef()
+        #if DEBUG
+        let torn: @Sendable () -> Bool = { owner.manager?._explicitCancelCalled ?? true }
+        #else
+        let torn: @Sendable () -> Bool = { false }
+        #endif
+        self.authDocLoader = AuthDocumentLoader(
+            accountStateStore: switchDependencies.accountStateStore,
+            currentAccountProvider: { owner.manager?.currentAccount },
+            signedInStateProvider: { owner.manager?.currentUserAccount },
+            isTornDown: torn
+        )
+        self.credentialResolver = AccountCredentialResolver(currentAccountIdProvider: { owner.manager?.currentAccountId })
         super.init()
+        owner.manager = self
         // Seed the registry store's current hash (was the hub's `accountSet` stored
         // property, now owned by the store — Wave 3 / 3a-2). Written on the store's
         // barrier; the synchronous `preloadAccountsFromDiskCacheSync` read below
@@ -651,12 +657,11 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// the account-switch nil window, and the fresh-install placeholder moved to the
     /// injected `AccountCredentialResolver`, which owns the F-034/F-016 invariants. The
     /// hub keeps the `@objc TPPUserAccountResolving` witnesses below as thin facades.
-    /// `lazy var` because the provider closure captures `self` (the authDocLoader
-    /// precedent); `currentAccountIdProvider` is a LIVE read (not a snapshot) so the
-    /// ride-out observes the transient nil window in real time.
-    private lazy var credentialResolver = AccountCredentialResolver(
-        currentAccountIdProvider: { [weak self] in self?.currentAccountId }
-    )
+    /// Built in `init` before `super.init()` (the authDocLoader precedent): two resolvers
+    /// would each cache their own `TPPUserAccount` per UUID (F-034).
+    /// `currentAccountIdProvider` is a LIVE read (not a snapshot) so the ride-out
+    /// observes the transient nil window in real time.
+    private let credentialResolver: AccountCredentialResolver
 
     /// Returns a library-scoped `TPPUserAccount` instance (facade → `credentialResolver`).
     func userAccount(for libraryUUID: String) -> TPPUserAccount {
