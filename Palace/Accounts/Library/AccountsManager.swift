@@ -173,8 +173,9 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     private let crawlScheduler: CrawlTaskScheduler
     /// Catalog LOAD orchestration + owned background-crawl + drain collaborator
     /// (Wave 3 / 3a-4). A `lazy var` (not a `let` default arg) because its provider
-    /// closures capture `self`; first access is post-init (the preload / background
-    /// `loadCatalogs`), exactly like `authDocLoader`. Orchestrates registryCache /
+    /// closures capture `self`; first access is normally the synchronous preload in
+    /// `init`. Unlike `authDocLoader` it stays lazy: the `.TPPUseBetaDidChange`
+    /// observer registered before that preload can reach it first. Orchestrates registryCache /
     /// registryStore / authDocLoader (via the injected drive/fetch closures).
     private lazy var registryLoader: AccountRegistryLoader = AccountRegistryLoader(
         registryCache: registryCache,
@@ -306,11 +307,11 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     }
 
     /// The loader's `isTornDown` binding; release binds `{ false }` (the flag is DEBUG-only).
-    fileprivate static func tornDownProbe(_ owner: AccountsManagerOwnerRef) -> @Sendable () -> Bool {
+    static func tornDownProbe(_ owner: AccountsManagerOwnerRef) -> @Sendable () -> Bool {
         { owner.manager?._explicitCancelCalled ?? true }
     }
     #else
-    fileprivate static func tornDownProbe(_ owner: AccountsManagerOwnerRef) -> @Sendable () -> Bool { { false } }
+    static func tornDownProbe(_ owner: AccountsManagerOwnerRef) -> @Sendable () -> Bool { { false } }
     #endif
 
     // The owned-crawl-task registry, its spawn/first-run-tracking, the XCTest join

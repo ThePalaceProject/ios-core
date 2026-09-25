@@ -114,4 +114,37 @@ final class AccountsManagerCollaboratorInitRaceTests: PalaceWiringTestCase {
             }
         }
     }
+
+    // MARK: - Owner reference
+
+    /// The collaborators hold the owner box and the manager holds the collaborators, so
+    /// the box must not retain the manager: a strong reference here is a cycle that
+    /// keeps every `AccountsManager` alive.
+    func testOwnerRef_doesNotKeepItsObjectAlive() {
+        let ref = LockedWeakRef<NSObject>()
+        autoreleasepool {
+            let object = NSObject()
+            ref.manager = object
+            XCTAssertTrue(ref.manager === object, "a bound owner must be readable")
+        }
+        XCTAssertNil(ref.manager, "the owner box kept its object alive after the last owner released it")
+    }
+
+    /// Unbound (or deallocated) owner: the loader must treat itself as torn down, so a
+    /// completion arriving after the manager is gone writes no account state.
+    func testTornDownProbe_withNoManager_reportsTornDown() {
+        let probe = AccountsManager.tornDownProbe(AccountsManagerOwnerRef())
+        XCTAssertTrue(probe())
+    }
+
+    func testTornDownProbe_withLiveManager_reportsTornDownOnlyAfterCancel() {
+        let manager = makeFreshAccountsManager(defaults: Self.testUserDefaults())
+        let owner = AccountsManagerOwnerRef()
+        owner.manager = manager
+        let probe = AccountsManager.tornDownProbe(owner)
+
+        XCTAssertFalse(probe(), "a live manager that was never cancelled is not torn down")
+        manager.cancelBackgroundWork()
+        XCTAssertTrue(probe(), "cancelBackgroundWork() must mark the loader torn down")
+    }
 }

@@ -22,11 +22,15 @@ import Foundation
 /// Reads before the bind (and after the manager is deallocated) return `nil`,
 /// which matches the `[weak self]` closures this replaces. The lock makes the
 /// bind-then-read ordering explicit rather than relying on the init sequence.
-final class AccountsManagerOwnerRef: @unchecked Sendable {
-    private let lock = NSLock()
-    private weak var _manager: AccountsManager?
+typealias AccountsManagerOwnerRef = LockedWeakRef<AccountsManager>
 
-    var manager: AccountsManager? {
+/// Lock-guarded weak reference. Generic so its weak semantics can be tested with a
+/// plain object; `AccountsManager` instances are retained by the test fixture.
+final class LockedWeakRef<Object: AnyObject>: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var _manager: Object?
+
+    var manager: Object? {
         get { lock.lock(); defer { lock.unlock() }; return _manager }
         set { lock.lock(); defer { lock.unlock() }; _manager = newValue }
     }
