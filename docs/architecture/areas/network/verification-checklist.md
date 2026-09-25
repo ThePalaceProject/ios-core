@@ -3,7 +3,7 @@ name: network-verification-checklist
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-05-28
+last_refresh: 2026-09-23
 freshness_window: 180d
 owners: [network]
 description: Per-area verification reference; refresh before next swarm/rigorous-fix
@@ -17,7 +17,7 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 
 **Purpose:** the architect's first deliverable on ANY swarm or /rigorous-fix in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Without it, every new initiative re-discovers the same surface (the auth area's PR #1018 architect produced ~1,000 lines of recon docs that should have started from a baseline like this — and the network slice of that recon is what this file captures).
 
-**Last refresh:** 2026-05-28 (post PR #1018 / swarm_66819d80 — see `docs/architecture/areas/auth/verification-checklist.md` for the paired auth surface).
+**Last refresh:** 2026-09-23 (Section 7b, the decode seam — PR #1462 / PP-5202). Prior: 2026-05-28 (post PR #1018 / swarm_66819d80 — see `docs/architecture/areas/auth/verification-checklist.md` for the paired auth surface).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
 
 ---
@@ -185,6 +185,88 @@ Domain / contract:
 
 ---
 
+## 7b. Problem-document DECODE seam (added 2026-09-23, PR #1462)
+
+Sections 1–7 cover auth-error *classification* over an **already-parsed** problem document.
+They say nothing about how the document gets parsed, and that gap shipped a sign-in regression.
+This section covers the decode itself.
+
+**Two parse paths, different contracts. Know which one you are on.**
+
+| | `TPPProblemDocument.fromData` | `TPPProblemDocument.fromProblemResponseData` |
+|---|---|---|
+| behavior | **throws** on any malformed member | never throws; returns `nil` only if nothing is extractable |
+| mechanism | `JSONDecoder` + `.convertFromSnakeCase` | tries `fromData`, falls back to `JSONSerialization` + `as?` casts |
+| callers | `TPPNetworkResponder.swift:825` (**sign-in**), `TPPProblemDocument+Localized.swift:11` (`try?`) | OPDS feed, `TPPUserFriendlyError`, `TokenRequest`, `OPDSParser`, `DownloadCompletionParser`, `LoanRenewalService` |
+
+**The throwing contract is load-bearing — do NOT make `fromData` lenient.** Callers rely on the
+throw to tell "this is a problem document" from "this is some other JSON." A never-throwing
+`fromData` would manufacture bogus problem documents out of unrelated response bodies.
+`fromProblemResponseData` already exists for callers that want leniency. Pinned by
+`ProblemDocumentTests.testProblemDocument_fromData_otherMembersStayStrict` and the three
+`XCTAssertThrowsError` assertions at `TPPBookLocationTests.swift:253-260`.
+
+**Declaring a new member on `TPPProblemDocument` is a breaking change to every strict caller.**
+Synthesized `Codable` throws `typeMismatch` on a present-but-wrong-typed value and aborts the
+WHOLE decode, so a member that was previously an ignored unknown key becomes able to discard the
+entire document. On the sign-in path the responder's `catch` arm returns an `NSError` with no
+problem document, `userFacingSignInError` receives `nil`, and the patron is told their password
+is wrong. Before adding a member, decide explicitly whether it may cost the document. PR #1462's
+`show_title` decided NO and decodes inside a `do`/`catch`; the five RFC 7807 members decided YES
+(pre-existing, deliberately unchanged).
+
+**The `CodingKeys` trap.** `fromData` sets `.convertFromSnakeCase`, which rewrites the incoming
+key BEFORE `CodingKeys` matching. A case spelled `showTitle = "show_title"` therefore matches
+**nothing**, silently — the feature is deleted with no throw and no log, and it passes any test
+that only asserts the document decoded. Keep `CodingKeys` raw values camelCase. **Not gated yet** — a detector for this class is
+designed and written but deliberately split into its own PR (see the wall-failure entry's
+"Detector script — QUEUED" section for the matching rule and the false-positive trap). Until it
+lands, this is a review-time check. Full forensic:
+`.forgeos/wall-failures/2026-09-23-pr1462-snakecase-codingkeys.md`.
+
+**No custom `encode(to:)` — deliberately.** `init(from:)` keys on the POST-strategy camelCase
+name, so the synthesized encoder round-trips through a plain `JSONDecoder`. A hand-written
+encoder emitting `show_title` would break that: the flag would survive a `.convertFromSnakeCase`
+decoder and be silently lost by every other one, including the existing round-trip test at
+`TPPBookLocationTests.swift:451`. Both round trips are pinned in `ProblemDocumentTests`.
+
+**KNOWN DEBT — the two paths diverge only when a SECOND member is also malformed.** Measured
+against the shipped code, not reasoned about:
+
+```
+{"title":"T","detail":"D","show_title":0}                 fromData: true   fromProblemResponseData: true
+{"title":"T","detail":"D","status":"403","show_title":0}  fromData: THREW  fromProblemResponseData: false
+```
+
+`show_title: 0` **alone** no longer diverges, because after this fix `fromData` stops throwing,
+so `fromProblemResponseData`'s `try? fromData` succeeds and its `JSONSerialization` fallback is
+never entered. The fallback is only reached when something ELSE in the body is fatal — and there
+`as? Bool` bridges `NSNumber(0)` to `false`, so the lenient path suppresses the title while the
+strict path would have shown it. Reconciling means changing `fromDictionary`'s public contract,
+which was out of scope for a sign-in fix. Not user-visible today: the circulation manager sends a
+real JSON boolean.
+
+(An earlier draft of this section claimed the two paths diverged on `show_title: 0` on its own.
+That was wrong — it described the code BEFORE the fix. Caught in qa review by measuring.)
+
+**Two testing rules this incident produced.** PR #1462 shipped eight well-formed-JSON
+`show_title` tests and none of them could see the bug, for two separate reasons:
+1. A test helper that takes the well-formed Swift type cannot produce the malformed body —
+   `Bool?` cannot express `"false"` or `0`. The four sign-in tests were fenced out by their own
+   helper's signature. Where a member has a wire type, the helper must accept a RAW literal.
+   See `TPPSignInBusinessLogicTests.blockedByPolicyDocument(showTitleLiteral:)`.
+2. The four decode tests used inline JSON literals and could have written the malformed body
+   at any time — that half was simply missing coverage. **When you add a typed member to a
+   decoded model, the wrong-type row is not an edge case; it is the row that decides whether
+   the member can cost you the whole document.**
+
+**Related wall, same end-user harm.** `scripts/check-nserror-problemdoc-preservation.py`
+(PP-3956 / PR #935) catches an `NSError` re-wrap that DROPS the document downstream. This
+section covers the document never being constructed. Both end with the patron told their
+password is wrong. Check both when triaging that report.
+
+---
+
 ## 8. Architect's pre-swarm checklist (what to verify before writing a new contract)
 
 Before any new swarm or /rigorous-fix in this area, the architect should:
@@ -204,6 +286,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
+| 2026-09-23 | /rigorous-fix, PR #1462 (PP-5202) | Added Section 7b — the problem-document DECODE seam. Sections 1–7 covered classification over an already-parsed document and were silent on parsing; that gap shipped a sign-in regression where a wrong-typed `show_title` discarded the whole document and a blocked patron was told their password was wrong. Section 7b documents the two parse paths and their different contracts, the `.convertFromSnakeCase` CodingKeys trap and its detector, the no-custom-encoder decision, and the strict/lenient `0` disagreement as known debt. |
 | 2026-05-28 | swarm rigor meta-improvement (chore/swarm-rigor-meta-improvement) | Initial baseline. Mirrors the auth area's `verification-checklist.md` structure. Migration status in Section 1 reflects the swarm_66819d80 design baseline (commit f9e57f7f5 on swarm/swarm_66819d80-scaffold); develop tip still calls `indicatesAuthenticationNeedsRefresh` directly until that swarm lands on develop. |
 
 ---

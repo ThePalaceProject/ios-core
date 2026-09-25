@@ -260,6 +260,154 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         XCTAssertEqual(message, "Too many attempts.")
     }
 
+    // MARK: - Server-suppressed title (patron blocking rules)
+    //
+    // A library can configure its patron-blocking-rule message to display
+    // without the standard title (the message often redirects the patron to a
+    // different library, where "Blocked by library policy." is unwanted
+    // framing). The manager signals this with `show_title: false` on the
+    // problem document; this layer must honor it without dropping the message.
+
+    private func blockedByPolicyDocument(showTitle: Bool?) throws -> TPPProblemDocument {
+        var members = """
+        "type": "http://librarysimplified.org/terms/problem/credentials-blocked-by-policy",
+        "title": "Blocked by library policy.",
+        "status": 403,
+        "detail": "Please sign in at your local library instead."
+        """
+        if let showTitle {
+            members += ",\n\"show_title\": \(showTitle)"
+        }
+        return try TPPProblemDocument.fromData(Data("{\(members)}".utf8))
+    }
+
+    func testUserFacingSignInError_ShowTitleFalse_SuppressesTitleAndKeepsMessage() throws {
+        let error = NSError(domain: "TPPErrorDomain", code: 403)
+        let problemDoc = try blockedByPolicyDocument(showTitle: false)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: problemDoc)
+
+        // Empty — not nil — is how this layer says "render no title": a nil
+        // title means "no server info" and falls back to "Login Failed" in
+        // AccountDetailViewModel, which is the framing we are removing.
+        XCTAssertEqual(title, "")
+        XCTAssertNotNil(title, "nil would fall back to the client's own 'Login Failed' title.")
+        XCTAssertEqual(message, "Please sign in at your local library instead.",
+                       "The library's configured message must still display in full.")
+    }
+
+    func testUserFacingSignInError_ShowTitleAbsent_KeepsServerTitle() throws {
+        let error = NSError(domain: "TPPErrorDomain", code: 403)
+        let problemDoc = try blockedByPolicyDocument(showTitle: nil)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: problemDoc)
+
+        XCTAssertEqual(title, "Blocked by library policy.",
+                       "Without the flag, behavior is unchanged from today.")
+        XCTAssertEqual(message, "Please sign in at your local library instead.")
+    }
+
+    func testUserFacingSignInError_ShowTitleTrue_KeepsServerTitle() throws {
+        let error = NSError(domain: "TPPErrorDomain", code: 403)
+        let problemDoc = try blockedByPolicyDocument(showTitle: true)
+
+        let (title, _) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: problemDoc)
+
+        XCTAssertEqual(title, "Blocked by library policy.")
+    }
+
+    /// Same body as `blockedByPolicyDocument`, but the flag is written as a RAW
+    /// JSON literal so a test can send a wrong-typed one. `Bool?` cannot express
+    /// `"false"` or `0`, which is precisely why the original tests could not see
+    /// this failure.
+    private func blockedByPolicyDocument(showTitleLiteral: String) throws -> TPPProblemDocument {
+        let body = """
+        {
+        "type": "http://librarysimplified.org/terms/problem/credentials-blocked-by-policy",
+        "title": "Blocked by library policy.",
+        "status": 403,
+        "detail": "Please sign in at your local library instead.",
+        "show_title": \(showTitleLiteral)
+        }
+        """
+        return try TPPProblemDocument.fromData(Data(body.utf8))
+    }
+
+    // A server that spells the flag wrong must cost the patron NOTHING. Declaring
+    // `showTitle: Bool?` made a wrong-typed `show_title` abort the whole decode;
+    // TPPNetworkResponder's catch arm then hands this layer a nil document, and
+    // the fall-through below reports invalid credentials — telling a blocked
+    // patron their password is wrong and dropping the library's message.
+    //
+    // These are the only tests here that exercise that harm end to end; the
+    // decode-table tests in ProblemDocumentTests prove the document survives, but
+    // only these prove the PATRON sees the right thing.
+
+    // One test per wire shape, NOT a loop over the four. Pre-fix, `fromData`
+    // throws on the FIRST literal and the `try` escapes the loop, so three of
+    // the four rows would never be exercised at exactly the moment they matter.
+    // `scripts/ci-test-history.py` also keys on the method name, so rows hidden
+    // inside one method are invisible to the project's own flake forensics.
+
+    private func assertLibraryMessageSurvives(showTitleLiteral: String,
+                                              file: StaticString = #filePath,
+                                              line: UInt = #line) throws {
+        let error = NSError(domain: "TPPErrorDomain", code: 403)
+        let problemDoc = try blockedByPolicyDocument(showTitleLiteral: showTitleLiteral)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(
+            for: error, problemDocument: problemDoc)
+
+        XCTAssertEqual(message, "Please sign in at your local library instead.",
+                       "The library's message must reach the patron.", file: file, line: line)
+        XCTAssertNotEqual(message, Strings.Error.invalidCredentialsErrorMessage,
+                          "A blocked patron must never be told their password is wrong.",
+                          file: file, line: line)
+        XCTAssertEqual(title, "Blocked by library policy.",
+                       "An unreadable flag means `absent`, so the server's title still shows.",
+                       file: file, line: line)
+    }
+
+    func testUserFacingSignInError_ShowTitleQuotedFalse_ShowsLibraryMessage() throws {
+        try assertLibraryMessageSurvives(showTitleLiteral: "\"false\"")
+    }
+
+    func testUserFacingSignInError_ShowTitleQuotedTrue_ShowsLibraryMessage() throws {
+        try assertLibraryMessageSurvives(showTitleLiteral: "\"true\"")
+    }
+
+    func testUserFacingSignInError_ShowTitleZero_ShowsLibraryMessage() throws {
+        try assertLibraryMessageSurvives(showTitleLiteral: "0")
+    }
+
+    func testUserFacingSignInError_ShowTitleOne_ShowsLibraryMessage() throws {
+        try assertLibraryMessageSurvives(showTitleLiteral: "1")
+    }
+
+    func testUserFacingSignInError_NilProblemDocument_ReportsInvalidCredentials() {
+        // The control for the test above: this is what the patron saw when the
+        // decode threw. It documents WHY losing the document is severe, and it
+        // pins the fall-through so the test above cannot pass by accident if
+        // userFacingSignInError's precedence ever changes.
+        let error = NSError(domain: "TPPErrorDomain", code: 403)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(
+            for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.invalidCredentialsErrorTitle)
+        XCTAssertEqual(message, Strings.Error.invalidCredentialsErrorMessage)
+    }
+
+    func testUserFacingSignInError_ShowTitleFalse_DoesNotSuppressNonDocumentErrors() {
+        // The flag lives on the problem document; a connectivity failure with
+        // no document must keep its own title rather than inheriting suppression.
+        let error = urlError(NSURLErrorNotConnectedToInternet)
+
+        let (title, _) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.networkUnavailableErrorTitle)
+    }
+
     func testIsNetworkConnectivityError_OnlyRecognizesURLErrorDomain() {
         XCTAssertTrue(TPPSignInBusinessLogic.isNetworkConnectivityError(urlError(NSURLErrorNotConnectedToInternet)))
         XCTAssertTrue(TPPSignInBusinessLogic.isNetworkConnectivityError(urlError(NSURLErrorCannotFindHost)))
