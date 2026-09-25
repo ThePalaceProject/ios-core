@@ -111,6 +111,47 @@ if echo "$PERDET_OUT" | grep -q "FOREIGN_HOST_401_SCOPING.*BLOCK"; then
   exit 1
 fi
 
+# --- Assert 4b: the SNAKECASE_CODINGKEYS detector is wired and fires ---
+# CLAUDE.md rule #4(b): a new detector does not land until its WIRING is tested
+# end to end, not just its pytest. Stages the class it catches — a CodingKey case
+# whose raw value is snake_case in a file whose decoder sets
+# .convertFromSnakeCase, which the strategy rewrites BEFORE matching, so the case
+# can never match. Silent: no throw, no crash, no log. (PP-5234 / PR #1462.)
+git rm -q --cached Palace/Violation.swift
+rm -f Palace/Violation.swift
+cat > Palace/SnakeKeys.swift <<'EOF'
+import Foundation
+
+struct Doc: Codable {
+    let showTitle: Bool?
+    private enum CodingKeys: String, CodingKey {
+        case showTitle = "show_title"
+    }
+    static func fromData(_ data: Data) throws -> Doc {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return try d.decode(Doc.self, from: data)
+    }
+}
+EOF
+git add Palace/SnakeKeys.swift
+set +e
+SCK_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+SCK_EXIT=$?
+set -e
+if [ "$SCK_EXIT" -eq 0 ]; then
+  echo "FAIL: hook returned exit 0 for a staged snake_case-CodingKeys violation"
+  echo "$SCK_OUT" | sed 's/^/    /'
+  exit 1
+fi
+if ! echo "$SCK_OUT" | grep -q "SNAKECASE_CODINGKEYS\|snakecase-codingkeys"; then
+  echo "FAIL: hook blocked but did not identify SNAKECASE_CODINGKEYS as the firing detector"
+  echo "$SCK_OUT" | sed 's/^/    /'
+  exit 1
+fi
+git rm -q --cached Palace/SnakeKeys.swift
+rm -f Palace/SnakeKeys.swift
+
 # --- Assert 5: a CLEAN (non-violating) diff passes ALL detectors with exit 0 ---
 # Regression guard for the LCP-detector wiring bug (2026-06-08). The hook
 # passed `--diff` to check-lcp-acquisition-recursive.py, which only accepts
@@ -119,8 +160,6 @@ fi
 # content. Asserts 1-4 only ever staged a violating diff, so they stayed green
 # while the hook was broken. A clean diff MUST pass: any detector invoked with
 # an interface it rejects errors out and reddens this assertion.
-git rm -q --cached Palace/Violation.swift
-rm -f Palace/Violation.swift
 cat > Palace/Clean.swift <<'EOF'
 import Foundation
 
@@ -307,4 +346,6 @@ echo "      bypass envvars, passes a clean diff (no detector spuriously blocks),
 echo "      and the unsynchronized-sendable-mock, auth-challenge-async-form and"
 echo "      opaque-blob-egress detectors each fire on a violation and clean-pass"
 echo "      on the fix."
+echo "      snakecase-codingkeys fires on a violation here; its clean path is"
+echo "      covered by assert 5 and by scripts/tests/test_check_snakecase_codingkeys.py."
 exit 0
