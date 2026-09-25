@@ -302,6 +302,7 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
     internal var lastObservedDeltaForTesting: Int?
 
     func testCaseWillStart(_ testCase: XCTestCase) {
+        // MISSING-001-OK: XCTestObservation callback, not a test method.
         preCount = Self.sampleObserverCount()
     }
 
