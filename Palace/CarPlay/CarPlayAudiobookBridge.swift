@@ -59,7 +59,10 @@ enum CarPlayAuthHelper {
     /// single-timeout policy, no additional withTimeout wrapping here.
     static func isAuthenticated(accountsManager: AccountsManager = AppContainer.production().accountsManager) async -> Bool {
         guard let account = accountsManager.currentAccount else {
-            return false
+            // Shares the audiobook gate's policy rather than restating it — CarPlay
+            // cannot present a sign-in UI, so a divergence here strands a signed-in
+            // patron on the head unit with no route to recovery.
+            return AudiobookSessionManager.missingRegistryRowAuthFallback(libraryID: accountsManager.currentAccountId, hasStoredCredentials: accountsManager.currentUserAccount.hasCredentials())
         }
 
         let details: AccountDetails

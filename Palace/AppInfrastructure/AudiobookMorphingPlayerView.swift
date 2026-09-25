@@ -83,9 +83,28 @@ struct AudiobookMorphingPlayerView: View {
     /// matchedGeometry morph, not this appear animation.
     @State private var hasAppeared = false
 
-    /// Loading-timeout state: while `!isLoaded`, a 30s timer arms; on expiry we
-    /// flip to the error+retry overlay (mirrors toolkit `loadingTimedOut`).
+    /// Loading-timeout state: on expiry we flip to the error+retry overlay
+    /// (mirrors toolkit `loadingTimedOut`).
+    ///
+    /// The timer is armed by `applyLoadTimeoutArming(for:)`, from BOTH the `.onAppear`
+    /// and the `.onChange` of `loadingOverlayCurrentState` — the states that represent
+    /// "player not usable yet" arm it, the rest cancel it. NOT by any hook on
+    /// `isLoaded`.
+    /// This comment previously claimed "while `!isLoaded`, a 30s timer arms", which no
+    /// code implements: there is no `.onChange(of:)`/`.task`/`.onReceive` on `isLoaded`
+    /// anywhere in this file. That prose is what sent PP-5205's first analysis down the
+    /// wrong path, so it is corrected rather than deleted.
     @State private var loadingTimedOut = false
+
+    /// PP-5205 (F13): the 30s timer, held so a re-arm can CANCEL the prior one.
+    ///
+    /// It used to be a bare `DispatchQueue.main.asyncAfter` with no handle, so every
+    /// re-entry stacked another live timer — the "repeats every time" in the report.
+    /// The toolkit fixed this identical bug one layer down and is the model here:
+    /// `LCPStreamingPlayer` holds `loadTimeoutWorkItem` and cancels it on re-arm
+    /// (`:214`), with the comment "rapid re-presentations stack multiple timers".
+    @State private var loadTimeoutWorkItem: DispatchWorkItem?
+
 
     /// Transient toast (bookmark-added / playback error), mirroring the toolkit's
     /// `bookmarkAddedToastView` + `showToast` delay behavior.
@@ -524,7 +543,7 @@ struct AudiobookMorphingPlayerView: View {
             // edges; the title (subheadline) defines the row height as before, and
             // its horizontal padding keeps it clear of the times.
             ZStack {
-                Text(audiobookSession.currentChapter?.title ?? presenter.currentBook?.title ?? "")
+                Text(chapterDisplayTitle)
                     .font(.subheadline).fontWeight(.semibold)
                     .lineLimit(1).truncationMode(.tail)
                     .padding(.horizontal, 64)
@@ -749,7 +768,26 @@ struct AudiobookMorphingPlayerView: View {
 
     @ViewBuilder
     private var downloadBar: some View {
-        if presenter.isDownloading {
+        // Gated on the PURE policy rather than `presenter.isDownloading` alone:
+        // for LCP that flag stays true through track decryption, which the
+        // streaming player does not wait for, so the bar used to sit beside
+        // working transport controls describing background plumbing. See
+        // `AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar`.
+        if AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar(
+            isDownloading: presenter.isDownloading,
+            hasStartedPlayback: presenter.hasStartedPlayback,
+            isFetchingArchive: presenter.isFetchingArchive
+        ) {
+            // The number must describe the SAME transfer the bar was summoned
+            // for. `overallDownloadProgress` is mirrored only from the toolkit
+            // playback model (per-track decryption); during an archive fetch no
+            // track download is running, so it reads ~0 and the bar would sit
+            // frozen for minutes. `archiveProgress` is the `.lcpa` fetch's own
+            // number, non-nil exactly when that fetch is what is running.
+            let barProgress = AudiobookDownloadProgressPolicy.barProgress(
+                archiveProgress: presenter.archiveProgress,
+                overallDownloadProgress: presenter.overallDownloadProgress
+            )
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill")
@@ -759,13 +797,13 @@ struct AudiobookMorphingPlayerView: View {
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.primary.opacity(0.15)).frame(height: 4)
                             Capsule().fill(Color.accentColor)
-                                .frame(width: max(4, geo.size.width * CGFloat(presenter.overallDownloadProgress)), height: 4)
-                                .animation(.easeInOut(duration: 0.3), value: presenter.overallDownloadProgress)
+                                .frame(width: max(4, geo.size.width * CGFloat(barProgress)), height: 4)
+                                .animation(.easeInOut(duration: 0.3), value: barProgress)
                         }
                         .frame(maxHeight: .infinity)
                     }
                     .frame(height: 4)
-                    Text("\(Int(presenter.overallDownloadProgress * 100))%")
+                    Text("\(Int(barProgress * 100))%")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                         .frame(width: 34, alignment: .trailing)
@@ -777,7 +815,7 @@ struct AudiobookMorphingPlayerView: View {
             }
             .transition(.opacity)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(Strings.Generic.audiobookDownloading), \(Int(presenter.overallDownloadProgress * 100))%")
+            .accessibilityLabel("\(Strings.Generic.audiobookDownloading), \(Int(barProgress * 100))%")
         }
     }
 
@@ -788,7 +826,7 @@ struct AudiobookMorphingPlayerView: View {
     /// mutation-testable function (`loadingOverlayState`) instead of a tangle of
     /// view-side `if`s — matching the `nonisolated static` predicate pattern used
     /// across the audiobook session code.
-    enum LoadingOverlayState: Equatable {
+    enum LoadingOverlayState: Equatable, CaseIterable {
         /// Player is loaded — no overlay.
         case hidden
         /// Content is still downloading (the pre-bind PP-4542 `.lcpa` wait, or a
@@ -804,6 +842,18 @@ struct AudiobookMorphingPlayerView: View {
         /// whether content is downloading (or the toolkit is buffering a
         /// locally-present book). Also the QA `forceSkeletons` inspection state.
         case skeleton
+        /// PP-5205: mid-session the player is momentarily not loaded — a cross-track
+        /// seek, or iOS evicting the AVPlayer buffer on backgrounding. Draw NOTHING:
+        /// the player underneath keeps its transport controls live. The load timer is
+        /// still armed, so a genuine stall reaches `.loadError`.
+        ///
+        /// No spinner, deliberately. One was tried on-device and read as unexplained
+        /// chrome beside working controls — it cannot say what it is waiting for, and
+        /// for a downloaded book the honest answer ("re-queueing this track from
+        /// streaming to local") is not something to put in front of a patron. If the
+        /// wait is long enough to need explaining, that is the toolkit's lazy requeue
+        /// to fix, not a spinner to add.
+        case awaitingReload
     }
 
     /// Pure decision for which loading presentation to show. Kept free of view
@@ -816,17 +866,101 @@ struct AudiobookMorphingPlayerView: View {
     /// determinate downloading state (BEFORE the load-error check, so a slow
     /// download never trips the 30s error); a timed-out non-downloading load
     /// shows the error; everything else is the transient skeleton.
+    /// PP-5205: `hasStartedPlayback` has NO default. A `= false` would let the call
+    /// site compile unchanged and silently preserve the defect.
+    ///
+    /// Once playback has begun in this session, `isLoaded == false` means "changing
+    /// tracks" or "buffer evicted", NOT "no player yet" —
+    /// `LCPStreamingPlayer.play(at:)` drops it on every cross-track seek (`:204`,
+    /// "Only show loading state for heavy operations"), and
+    /// `AudiobookSessionPresenter:601` records iOS doing the same on backgrounding.
+    /// Taking over the screen there replaced a playing book with a Downloading
+    /// panel and read as though the audio had broken.
+    ///
+    /// Latched, not live: `isPlaying` would re-summon the takeover on every pause —
+    /// the same mistake `AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar`
+    /// documents one layer down and already avoids.
+    ///
+    /// `.awaitingReload` rather than `.hidden` is load-bearing. `loadingTimedOut` is
+    /// armed only while the overlay state is a not-usable one, so returning `.hidden`
+    /// would render `EmptyView`, never arm the timer, and make `.loadError`
+    /// UNREACHABLE for the rest of the session — a dead player behind working-looking
+    /// chrome, with no error and no Retry. The latch suppresses the takeover; it must
+    /// never suppress the failure path.
     nonisolated static func loadingOverlayState(
         isLoaded: Bool,
         isDownloading: Bool,
         loadingTimedOut: Bool,
+        hasStartedPlayback: Bool,
         forceSkeletons: Bool
     ) -> LoadingOverlayState {
         if forceSkeletons { return .skeleton }
         guard !isLoaded else { return .hidden }
+
+        // MID-SESSION. Never take over the screen — but a genuine stall must still
+        // reach the error, or the latch would hide the failure as well as the
+        // takeover. Kept as its own branch rather than a reordering: an earlier
+        // revision moved the timeout check above `isDownloading` globally and broke
+        // the pre-playback rule that a healthy multi-minute download must not trip
+        // the 30s error. `testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout`
+        // caught it.
+        if hasStartedPlayback {
+            return loadingTimedOut ? .loadError : .awaitingReload
+        }
+
+        // PRE-PLAYBACK — unchanged. The patron is genuinely blocked here, and a
+        // download in flight is healthy progress that outranks the timeout.
         if isDownloading { return .downloading }
         if loadingTimedOut { return .loadError }
         return .skeleton
+    }
+
+    /// Which states arm the load-error timer: the ones meaning "the player is not
+    /// usable yet". Pure so the table can assert it — an arming rule that lives only
+    /// inside a `.onChange` closure cannot be enumerated, and the cell that matters
+    /// (`.awaitingReload` DOES arm) is the one that closes PP-5205's F1 hole.
+    nonisolated static func stateArmsLoadTimeout(_ state: LoadingOverlayState) -> Bool {
+        loadTimeoutAction(for: state) == .arm
+    }
+
+    /// Arms the 30s load-error timer, cancelling any prior one.
+    ///
+    /// Single arming site for every "player not usable yet" state, so `.skeleton` and
+    /// `.awaitingReload` cannot drift apart — the drift being that one of them stops
+    /// arming and `.loadError` silently becomes unreachable from that state.
+    ///
+    /// PP-5205 (F13): the prior timer is CANCELLED. This was a bare `asyncAfter` with
+    /// no handle, so each re-entry stacked another live timer; with `.awaitingReload`
+    /// arming on every mid-session track change, stacking would have become the
+    /// dominant behaviour rather than an edge case.
+    ///
+    /// The fire-time predicate re-reads live state on purpose: a seek that completes
+    /// normally in 1-3s leaves `isLoaded == true`, so `shouldSurfaceLoadTimeout`
+    /// returns false and no error is shown. The timer is a backstop for a genuine
+    /// stall, not a deadline on the seek.
+    @MainActor
+    private func armLoadTimeout() {
+        loadingTimedOut = false
+        loadTimeoutWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            if Self.shouldSurfaceLoadTimeout(
+                isLoaded: audiobookSession.isLoaded,
+                isDownloading: presenter.isDownloading
+            ) {
+                loadingTimedOut = true
+            }
+        }
+        loadTimeoutWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: work)
+
+    }
+
+    /// Cancels both timers. Called when the state leaves the arming set — notably on
+    /// reaching `.hidden`, i.e. the seek completed, which is the common case.
+    @MainActor
+    private func cancelLoadTimeout() {
+        loadTimeoutWorkItem?.cancel()
+        loadTimeoutWorkItem = nil
     }
 
     /// Whether the 30s load-error timer, once fired, should actually surface the
@@ -870,59 +1004,154 @@ struct AudiobookMorphingPlayerView: View {
         isBound ? sessionRate : fallback
     }
 
-    @ViewBuilder
-    private var loadingOverlay: some View {
-        switch Self.loadingOverlayState(
+    /// PP-5205 (A1): the state is bound ONCE and arming is keyed on it via
+    /// `.onChange`, not scattered through the case bodies.
+    ///
+    /// Arming is a property of WHICH STATE we are in, not of which branch happened to
+    /// draw — which is what the `loadingTimedOut` doc comment always claimed. Per-case
+    /// `.onAppear` would duplicate reset + arm + cancel across `.skeleton` and
+    /// `.awaitingReload` and re-open "which branch cancelled it, and did disappear
+    /// precede appear".
+    ///
+    /// Keyed on the ENUM rather than `!isLoaded`: the enum already folds in
+    /// `forceSkeletons` and a fired timeout, so `.downloading` stays suppressed without
+    /// re-deriving the guard.
+    ///
+    /// Caveat, recorded so it is not "fixed" later: `isLoaded` is NOT `@Published`
+    /// (`AudiobookSessionManager:1176` — the view re-reads it on `isPlaying`/position
+    /// ticks), so arm/cancel lands on the next render tick rather than the instant of
+    /// the flip. That is acceptable ONLY because the fire-time predicate re-reads live
+    /// state and self-disarms; publishing `isLoaded` to "fix" the latency would change
+    /// behaviour this design depends on.
+    private var loadingOverlayCurrentState: LoadingOverlayState {
+        Self.loadingOverlayState(
             isLoaded: audiobookSession.isLoaded,
             isDownloading: presenter.isDownloading,
             loadingTimedOut: loadingTimedOut,
+            hasStartedPlayback: presenter.hasStartedPlayback,
             forceSkeletons: DebugSettings.forceSkeletons
-        ) {
+        )
+    }
+
+    @ViewBuilder
+    private var loadingOverlayContent: some View {
+        switch loadingOverlayCurrentState {
         case .hidden:
             EmptyView()
         case .downloading:
             playerDownloadingOverlay
         case .loadError:
             ZStack {
-                Color.black.opacity(0.5).ignoresSafeArea()
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40)).foregroundStyle(.yellow)
-                    Text(Strings.Generic.audiobookLoadErrorTitle)
-                        .foregroundStyle(.white).font(.headline)
-                    Text(Strings.Generic.audiobookLoadErrorMessage)
-                        .foregroundStyle(.white).multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                    Button {
-                        loadingTimedOut = false
-                        audiobookSession.play()
-                    } label: {
-                        Text(Strings.Generic.audiobookRetry)
-                            .fontWeight(.semibold).foregroundStyle(.black)
-                            .padding(.horizontal, 32).padding(.vertical, 10)
-                            .background(Color.white).cornerRadius(8)
-                    }
+            Color.black.opacity(0.5).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 40)).foregroundStyle(.yellow)
+                Text(Strings.Generic.audiobookLoadErrorTitle)
+                    .foregroundStyle(.white).font(.headline)
+                Text(Strings.Generic.audiobookLoadErrorMessage)
+                    .foregroundStyle(.white).multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                Button {
+                    loadingTimedOut = false
+                    audiobookSession.play()
+                } label: {
+                    Text(Strings.Generic.audiobookRetry)
+                        .fontWeight(.semibold).foregroundStyle(.black)
+                        .padding(.horizontal, 32).padding(.vertical, 10)
+                        .background(Color.white).cornerRadius(8)
                 }
             }
+            }
             .accessibilityElement(children: .contain)
-        case .skeleton:
+            case .skeleton:
             playerLoadingSkeleton
-                .onAppear {
-                    // Arm the 30s timeout; reset on (re)appear (mirrors toolkit).
-                    // Suppressed while a download is in flight (see
-                    // `shouldSurfaceLoadTimeout`) so a healthy multi-minute
-                    // content download can't false-trip the load-error overlay.
-                    loadingTimedOut = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-                        if Self.shouldSurfaceLoadTimeout(
-                            isLoaded: audiobookSession.isLoaded,
-                            isDownloading: presenter.isDownloading
-                        ) {
-                            loadingTimedOut = true
-                        }
-                    }
-                }
+            case .awaitingReload:
+            // PP-5205: draw nothing. The player underneath stays on screen with its
+            // transport controls live, which is the whole point. A spinner was tried
+            // on-device and read as unexplained chrome beside working controls.
+            EmptyView()
         }
+    }
+
+    private var loadingOverlay: some View {
+        loadingOverlayContent
+            // BOTH hooks, and the pair is the fix. `.onChange` does not fire for the
+            // value a view is BORN with, and a cold open is born in `.skeleton` —
+            // `isLoaded` is false while `manager == nil`, nothing is downloading,
+            // nothing has played. With arming on `.onChange` alone a player that
+            // stalls on first open never armed the timer at all, so `.loadError`
+            // was unreachable for the whole session: a dead player behind
+            // working-looking chrome, no error, no Retry. Which is verbatim the
+            // failure `.awaitingReload` exists to prevent, reintroduced one layer up
+            // by the refactor that centralised arming.
+            //
+            // It shipped past 36 green tests because `stateArmsLoadTimeout` is a pure
+            // function tested in isolation and nothing tested the WIRING. The state
+            // it would have been asked about was correct; it was never asked.
+            .onAppear { applyLoadTimeoutArming(for: loadingOverlayCurrentState) }
+            .onChange(of: loadingOverlayCurrentState) { applyLoadTimeoutArming(for: $0) }
+    }
+
+    /// The single arming decision, so the birth hook and the transition hook cannot
+    /// drift apart — the way they did when only one of them existed.
+    private func applyLoadTimeoutArming(for state: LoadingOverlayState) {
+        switch Self.loadTimeoutAction(for: state) {
+        case .arm:
+            armLoadTimeout()
+        case .cancel:
+            cancelLoadTimeout()
+        case .cancelAndClearLatch:
+            cancelLoadTimeout()
+            loadingTimedOut = false
+        }
+    }
+
+    /// What reaching `state` must do to the load-error timer and its latch.
+    ///
+    /// One TOTAL function rather than two predicates consulted in sequence. The
+    /// sequence version had a real hole: a reviewer pointed out that deleting the
+    /// latch-clearing line left every test green, because each predicate was asserted
+    /// in isolation and nothing asserted how they COMBINE. A `switch` over this makes
+    /// the combination exhaustive at compile time, and a sixth state a build error
+    /// rather than a silently-inherited default — which is trap 12's shape appearing
+    /// inside trap 12's own fix.
+    enum LoadTimeoutAction: Equatable { case arm, cancel, cancelAndClearLatch }
+
+    nonisolated static func loadTimeoutAction(for state: LoadingOverlayState) -> LoadTimeoutAction {
+        switch state {
+        // Not usable yet: arm. `armLoadTimeout` resets the latch itself.
+        case .skeleton, .downloading, .awaitingReload:
+            return .arm
+        // The player became usable, so a latched failure is genuinely over.
+        case .hidden:
+            return .cancelAndClearLatch
+        // Cancel, but KEEP the latch — clearing here would flicker the error off the
+        // frame it appeared on.
+        case .loadError:
+            return .cancel
+        }
+    }
+
+    /// Whether reaching `state` means the previous failure is OVER, so the latched
+    /// `loadingTimedOut` must not survive into the next seek.
+    ///
+    /// `loadingTimedOut` is a latch: armed-false, set true by the 30s timer, and
+    /// otherwise cleared only by Retry. Nothing cleared it when the player RECOVERED
+    /// on its own. A stall that fired the timer and then came good left the flag
+    /// true, and because the mid-session arm reads it BEFORE `isDownloading` — unlike
+    /// the pre-playback arm, where a healthy download masks it — the very next
+    /// cross-track seek painted a full-screen error over a player that was working.
+    ///
+    /// `.hidden` only. Clearing inside `cancelLoadTimeout` would also clear on the
+    /// transition INTO `.loadError`, which would flicker the error off the instant it
+    /// appeared; `.hidden` is the one state that means `isLoaded`, i.e. the player is
+    /// usable again and the failure it latched is genuinely over.
+    ///
+    /// Note for anyone extending the 16-cell `loadingOverlayState` table: the latch's
+    /// PERSISTENCE is a fifth dimension that table does not carry, which is why this
+    /// is a separate rule with its own assertions rather than another cell.
+    nonisolated static func stateClearsTimeoutLatch(_ state: LoadingOverlayState) -> Bool {
+        loadTimeoutAction(for: state) == .cancelAndClearLatch
     }
 
     /// Determinate "Downloading…" state shown while the `.lcpa` content is still
@@ -1373,6 +1602,31 @@ struct AudiobookMorphingPlayerView: View {
     /// seek scrubber so its thumb position matches `seekWithSlider`'s chapter scale.
     private var chapterProgressClamped: Double {
         progress.chapterProgress.isFinite ? min(max(progress.chapterProgress, 0), 1) : 0
+    }
+
+    /// The chapter name shown between the two timecodes.
+    ///
+    /// Reads `progress`, the SAME observed object the timecodes read, so the three
+    /// cannot disagree about which chapter is being shown and cannot repaint on
+    /// different ticks. It used to read `audiobookSession.currentChapter` — a cache
+    /// on an object this view does not even observe (`audiobookSession` is a plain
+    /// `let`), written only from position events. Choosing a chapter therefore left
+    /// the name a seek behind the times beside it, and repainted only when something
+    /// ELSE published — which during a seek, with the player paused and the position
+    /// stream silent, is nothing (PP-5205).
+    private var chapterDisplayTitle: String {
+        Self.chapterDisplayTitle(
+            chapterTitle: progress.chapterTitle,
+            bookTitle: presenter.currentBook?.title
+        )
+    }
+
+    /// The fallback rule, pulled out so it can fail a test. Before a playback model
+    /// has published anything there is no chapter name, and a blank row reads as a
+    /// broken player rather than as a player that is still loading — so the book's
+    /// own title stands in until the first tick.
+    nonisolated static func chapterDisplayTitle(chapterTitle: String, bookTitle: String?) -> String {
+        chapterTitle.isEmpty ? (bookTitle ?? "") : chapterTitle
     }
 
     /// Chapter-relative elapsed timecode (seconds from the start of the current

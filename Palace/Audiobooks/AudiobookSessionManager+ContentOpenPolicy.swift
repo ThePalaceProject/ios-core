@@ -143,6 +143,38 @@ extension AudiobookSessionManager {
     /// resolves through the live `currentAccountId`, which a library switch moves —
     /// and keeping that at the call site lets this decision be driven over its
     /// whole input table without a fixture.
+    /// PP-5191: what a MISSING REGISTRY ROW means for an auth verdict.
+    ///
+    /// Sibling of `offlineAuthFallback` below, and the same distinction one step
+    /// earlier. A nil `currentAccount` means the library registry has no row for the
+    /// selected library — the app cannot say "which library is this, and how does it
+    /// authenticate". It does NOT mean the patron is signed out: `currentAccountId` is
+    /// still set and the credentials are still in the keychain, which is why HelpSpot
+    /// 19030 reads "It shows that I am logged in" while this gate refused a book the
+    /// patron had just borrowed.
+    ///
+    /// The registry answers the library question; the keychain answers the identity
+    /// question. `hasStoredCredentials` needs no network and is what is actually being
+    /// asked here.
+    ///
+    /// Monotonic: with no stored credentials this returns false exactly as before, so a
+    /// genuinely signed-out patron is unaffected. The caller must source the credential
+    /// read from `currentUserAccount` — never `TPPUserAccount.sharedAccount()` — so the
+    /// `lastKnownCurrentUserAccount` ride-out covers the transient nil window during a
+    /// library switch.
+    ///
+    /// Lives here rather than inline in `AudiobookSessionManager` because that hub is
+    /// under the Wave 0 LOC freeze: fixes land by extracting into a collaborator, not by
+    /// growing the hub.
+    /// `nonisolated` because both callers are: `CarPlayAuthHelper.isAuthenticated` is a
+    /// nonisolated static, and the enclosing type is `@MainActor`, which would otherwise
+    /// inherit onto this static and make the CarPlay call site a cross-actor hop. The
+    /// body is pure — a log line and a passthrough — so it holds no actor state.
+    nonisolated static func missingRegistryRowAuthFallback(libraryID: String?, hasStoredCredentials: Bool) -> Bool {
+        Log.warn(#file, "isUserAuthenticated: no registry row for \(libraryID ?? "nil") — falling back to stored credentials: hasCredentials=\(hasStoredCredentials)")
+        return hasStoredCredentials
+    }
+
     static func offlineAuthFallback(error: Error, hasStoredCredentials: Bool) -> Bool {
         if case AccountLoadError.evicted = error { return false }
         return hasStoredCredentials
