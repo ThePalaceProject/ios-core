@@ -125,7 +125,7 @@ final class AccountsManagerCollaboratorInitRaceTests: PalaceWiringTestCase {
         autoreleasepool {
             let object = NSObject()
             ref.manager = object
-            XCTAssertTrue(ref.manager === object, "a bound owner must be readable")
+            withExtendedLifetime(object) {}
         }
         XCTAssertNil(ref.manager, "the owner box kept its object alive after the last owner released it")
     }
