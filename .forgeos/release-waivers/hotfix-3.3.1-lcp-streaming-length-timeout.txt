@@ -1,0 +1,22 @@
+# Waivers for hotfix/3.3.1-lcp-streaming-length-timeout (3.3.1, build 511).
+#
+# 3.3.1 is a deliberately narrow fast-follow hotfix carrying one fix: PP-5240
+# (streamed LCP audiobooks failing at chapter start on slow connections). It
+# moves only the audiobook toolkit pin (to a toolkit branch holding PP-5240 and
+# nothing else) and bumps the version.
+#
+# The nine entries below are crash/critical-path fixes that live on develop and
+# are held for 3.4.0. The owner confirmed on 2026-09-25 to keep 3.3.1 to PP-5240
+# only and waive all nine. That is the same decision made on 2026-09-23 for this
+# exact set ("3.3.0 is already out the door, we will get those in the next
+# release"). They reach main with release/3.4.0, cut from develop.
+
+e7cb3fb2a   held for 3.4.0 — EPUB edge-tap paging + blank Library line (#1457)
+8694fa746   held for 3.4.0 — OIDC presentation anchor could not host a sheet (#1459)
+3ac01dcc0   held for 3.4.0 — expired token sent to /patrons/me/ (#1453)
+a6ae8e2ef   held for 3.4.0 — Adobe licensor refresh before activation (PP-3649, PP-5118) (#1465)
+54212bf4f   held for 3.4.0 — purge decrypted chapters when a loan ends outside the app (PP-5127) (#1471)
+5958e9235   held for 3.4.0 — downloaded LCP audiobook had no audio (PP-5135)
+850643b41   held for 3.4.0 — extract the LCP open-policy cluster (PP-5135)
+d31f2212a   held for 3.4.0 — resolve the background .lcpa fetch's library once (PP-5145)
+14b195b02   held for 3.4.0 — player minimize non-drag path for assistive tech
