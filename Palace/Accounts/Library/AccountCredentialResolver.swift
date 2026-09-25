@@ -30,8 +30,8 @@
 //
 //  `@unchecked Sendable` invariant: the only mutable state is `userAccounts` and
 //  `lastKnownCurrentUserAccount`, read/written exclusively under `userAccountsLock`
-//  (an immutable `NSLock`); `noAccountPlaceholder` is a `lazy var` resolved at most
-//  once on the fresh-install path and immutable thereafter (write-once);
+//  (an immutable `NSLock`); `noAccountPlaceholder` is a `lazy var` read only under
+//  that same lock, so it is built at most once and immutable thereafter;
 //  `currentAccountIdProvider` is an immutable `let` reading the internally
 //  thread-safe `UserDefaults` live on every call.
 //
@@ -113,9 +113,10 @@ final class AccountCredentialResolver: @unchecked Sendable {
             userAccountsLock.unlock()
             return account
         }
+        // The placeholder is a `lazy var`: build it inside the lock so concurrent
+        // first reads cannot each build (and return) their own instance.
         userAccountsLock.lock()
-        let last = lastKnownCurrentUserAccount
-        userAccountsLock.unlock()
-        return last ?? noAccountPlaceholder
+        defer { userAccountsLock.unlock() }
+        return lastKnownCurrentUserAccount ?? noAccountPlaceholder
     }
 }

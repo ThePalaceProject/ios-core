@@ -97,6 +97,23 @@ final class AccountCredentialResolverTests: XCTestCase {
         XCTAssertEqual(sink.distinctCount, 1,
                        "check-build-insert under one lock span must yield a single cached instance per UUID")
     }
+
+    /// Concurrent FIRST fresh-install resolutions must all return one placeholder. The
+    /// placeholder is created on first use; creating it outside `userAccountsLock` lets
+    /// racing readers each build and return their own instance.
+    func testCurrentUserAccount_concurrentFirstFreshInstallReads_singlePlaceholder() {
+        for round in 0..<50 {
+            let resolver = AccountCredentialResolver(currentAccountIdProvider: { nil })
+            let sink = InstanceSink()
+
+            DispatchQueue.concurrentPerform(iterations: 16) { _ in
+                sink.record(resolver.currentUserAccount)
+            }
+            XCTAssertEqual(sink.distinctCount, 1,
+                           "round \(round): concurrent first reads built more than one placeholder")
+            if sink.distinctCount != 1 { return }
+        }
+    }
 }
 
 // MARK: - Test doubles
@@ -109,11 +126,15 @@ fileprivate final class IdBox: @unchecked Sendable {
 }
 
 /// Records distinct object identities seen across concurrent `userAccount(for:)` calls.
+/// Keeps every instance alive: a freed duplicate's address can be reused by the next
+/// allocation, which would make two instances read as one.
 fileprivate final class InstanceSink: @unchecked Sendable {
     private let lock = NSLock()
     private var seen = Set<ObjectIdentifier>()
+    private var retained: [TPPUserAccount] = []
     func record(_ account: TPPUserAccount) {
         lock.lock(); defer { lock.unlock() }
+        retained.append(account)
         seen.insert(ObjectIdentifier(account))
     }
     var distinctCount: Int { lock.lock(); defer { lock.unlock() }; return seen.count }
