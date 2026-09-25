@@ -44,7 +44,7 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
     private var clock = Date(timeIntervalSince1970: 1_000_000)
     private var store: SpyMarkerStore!
     private var reported: [PositionSaveVerdict] = []
-    private var reportedStates: [String] = []
+    private var reportedContexts: [PositionTraceContext] = []
     private var gapsReported: [PositionRestoreGapVerdict] = []
     /// Collected instead of written. The previous draft left `fileLog`
     /// defaulted, so every test drove the real `AudiobookFileLogger.shared` —
@@ -56,16 +56,16 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
     private func makeRecorder(diagnosticsEnabled: Bool = true) -> AudiobookPositionTraceRecorder {
         store = SpyMarkerStore()
         reported = []
-        reportedStates = []
+        reportedContexts = []
         gapsReported = []
         logLines = []
         return AudiobookPositionTraceRecorder(
             bookID: "book-1",
             markerStore: store,
             diagnosticsEnabled: { diagnosticsEnabled },
-            reportSaveVerdict: { [weak self] verdict, state in
+            reportSaveVerdict: { [weak self] verdict, context in
                 self?.reported.append(verdict)
-                self?.reportedStates.append(state)
+                self?.reportedContexts.append(context)
             },
             reportGapVerdict: { [weak self] in self?.gapsReported.append($0) },
             fileLog: { [weak self] in self?.logLines.append($0) },
@@ -266,6 +266,62 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         }
     }
 
+    /// The gap counters are what let the fleet separate an overnight pause
+    /// from an overnight stall, and nothing asserted either of them: review
+    /// found `tickGapCount += 1` -> `-= 1` survived the whole suite.
+    ///
+    /// Also pins the app state observed at the last TICK rather than at
+    /// foreground return, where it is `.active` by definition and would be a
+    /// constant dressed as a measurement.
+    func testVerdictContext_countsEveryGapAndKeepsTheLongest() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 30)          // stretch 1
+        advance(600)                                  // gap 1 — ten minutes
+        driveLivePlayback(recorder, for: 30)          // stretch 2
+        advance(10_800)                               // gap 2 — three hours
+        driveLivePlayback(recorder, for: 30)          // stretch 3
+        advance(120)                                  // gap 3 — two minutes
+        driveLivePlayback(recorder, for: 30)          // stretch 4
+
+        recorder.applicationDidBecomeActive()
+
+        let context = reportedContexts.first
+        XCTAssertEqual(context?.tickGapCount, 3,
+                       "three gaps opened three stretches; a count that drifts "
+                       + "makes a choppy session and a clean one look alike")
+        // 10_805, not 10_800: `driveLivePlayback` advances one stride before
+        // its first tick, so the measured gap is the pause plus that stride.
+        XCTAssertEqual(context?.longestTickGap ?? 0, 10_805, accuracy: 1,
+                       "the worst gap is the one that distinguishes a stall, so "
+                       + "the later two-minute gap must not replace it")
+
+        // `applicationStateAtLastTick` is deliberately NOT asserted here. In a
+        // test host the app is `.active` when the tick is recorded and
+        // `.active` again at foreground return, so an assertion would pass
+        // whichever of the two the code sampled — it cannot tell them apart,
+        // which is the only thing worth checking about that field.
+    }
+
+    /// Only the LARGEST gap is kept, asserted in the order that would hide a
+    /// bug: the big gap first, then a small one. `max` replaced by an
+    /// unconditional assignment passes the test above and fails this one.
+    func testVerdictContext_keepsTheLargestGap_notTheMostRecent() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 30)
+        advance(10_800)
+        driveLivePlayback(recorder, for: 30)
+        advance(60)
+        driveLivePlayback(recorder, for: 30)
+
+        recorder.applicationDidBecomeActive()
+
+        XCTAssertEqual(reportedContexts.first?.longestTickGap ?? 0, 10_805, accuracy: 1,
+                       "a three-hour gap followed by a one-minute gap must still "
+                       + "report three hours; the recent one is not the worst one")
+    }
+
     // MARK: - The default-off gate
 
     /// The marker records where a patron was in a book, which is a library
@@ -354,7 +410,8 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         var captured: [String: Any] = [:]
         AudiobookPositionTraceRecorder.crashlyticsSaveReport(
             .dry(seconds: 10_800),
-            stateAtLastTick: "background",
+            context: PositionTraceContext(applicationStateAtLastTick: "background",
+                                          tickGapCount: 0, longestTickGap: 0),
             emit: { _, _, metadata in captured = metadata ?? [:] }
         )
 
@@ -368,18 +425,50 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         }
     }
 
-    /// Only findings leave the device. A healthy session emitting an event
-    /// would bury the signal under every paused session in the install base.
-    func testCrashlyticsPayload_isSilentForHealthyVerdicts() {
-        var emitted = 0
-        for verdict in [PositionSaveVerdict.saving(sinceLastSave: 5),
-                        .noPlayback,
-                        .playbackStale(sinceLastTick: 900)] {
+    /// Which verdicts leave the device, stated over the whole enum.
+    ///
+    /// The previous version listed three cases by hand and asserted nothing was
+    /// emitted, with the message "only .dry is a finding". When `.tickGap` was
+    /// added that message became false and the list became one short — and a
+    /// case missing from a list reads exactly like a case that stays silent.
+    /// Deleting the entire `.tickGap` emit arm left all 63 tests green.
+    ///
+    /// The `switch` below has no `default`, so adding a verdict case stops this
+    /// file COMPILING until someone says which side of the partition it is on.
+    /// That is the part a list cannot do.
+    func testCrashlyticsSaveReport_emitsExactlyTheFindings() {
+        let samples: [PositionSaveVerdict] = [
+            .noPlayback,
+            .playbackStale(sinceLastTick: 900),
+            .saving(sinceLastSave: 5),
+            .dry(seconds: 10_800),
+            .tickGap(seconds: 10_800)
+        ]
+
+        for verdict in samples {
+            let expected: TPPErrorCode?
+            switch verdict {
+            case .noPlayback, .playbackStale, .saving:
+                // Healthy, or the instrument has nothing to say. Reporting
+                // these would bury the signal under every paused session in
+                // the install base.
+                expected = nil
+            case .dry:
+                expected = .audiobookPositionSaveDry
+            case .tickGap:
+                expected = .audiobookPositionTickGap
+            }
+
+            var codes: [TPPErrorCode] = []
             AudiobookPositionTraceRecorder.crashlyticsSaveReport(
-                verdict, stateAtLastTick: "active", emit: { _, _, _ in emitted += 1 }
+                verdict,
+                context: PositionTraceContext(applicationStateAtLastTick: "active",
+                                              tickGapCount: 0, longestTickGap: 0),
+                emit: { code, _, _ in codes.append(code) }
             )
+            XCTAssertEqual(codes, expected.map { [$0] } ?? [],
+                           "\(verdict) routed wrongly")
         }
-        XCTAssertEqual(emitted, 0, "only .dry is a finding")
     }
 
     // MARK: - Restore gap

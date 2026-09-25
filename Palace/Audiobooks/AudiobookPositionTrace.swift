@@ -57,9 +57,22 @@ enum PositionSaveVerdict: Equatable {
     /// a pause and reporting `.saving` would emit an affirmative "healthy" for
     /// the exact three-hour locked session the instrument exists to catch.
     ///
-    /// The position can't break the tie either: `timestamp` is scoped to a
-    /// TRACK, so any gap long enough to matter has probably crossed a track
-    /// boundary, which resets it. There is no discriminator available here.
+    /// Two discriminators do exist, and this case is not a claim that they
+    /// don't — it is what the recorder reports until one is wired in.
+    /// `AudiobookPositionOffsets.resolver` already converts a (trackKey,
+    /// timestamp) pair to an absolute book offset, summing intervening track
+    /// durations, so the position DOES survive a track boundary and a position
+    /// that advanced across the gap means playback continued. And
+    /// `OpenAccessPlayer.pause()` publishes `.stopped` on a plain
+    /// `PassthroughSubject` from a global queue, so a wedged main thread
+    /// cannot suppress it: a `.stopped` inside the gap means a pause, and its
+    /// absence means a stall.
+    ///
+    /// Both are one-way and partial — a seek during a pause confounds the
+    /// first, Findaway differs on the second, and `.stopped` is conditional on
+    /// a non-nil track position — so wiring either is its own change with its
+    /// own failure mode, tracked on the ticket. Until then the honest verdict
+    /// is that this instrument did not see.
     ///
     /// So the ambiguity is reported instead of resolved — the same discipline
     /// as `.playbackStale` over a silent `.dry`, and `.markerUnresolvable` over
@@ -68,6 +81,20 @@ enum PositionSaveVerdict: Equatable {
     /// (that `positionPublisher` survives a locked screen) failing out loud
     /// rather than passing as health.
     case tickGap(seconds: TimeInterval)
+}
+
+/// What the recorder observed alongside a verdict, carried to the fleet.
+///
+/// `.tickGap` on its own cannot separate an overnight pause from an overnight
+/// stall — the two produce identical inputs, and no single session can tell
+/// them apart. Across many sessions they do separate: pausing leaves a handful
+/// of gaps, a delivery path that stalls leaves many or one enormous one. These
+/// counters are what makes that comparison possible. Both are counts of the
+/// device's own behaviour and carry no book or patron identity.
+struct PositionTraceContext: Equatable {
+    let applicationStateAtLastTick: String
+    let tickGapCount: Int
+    let longestTickGap: TimeInterval
 }
 
 /// What the playback clock observed during ONE continuous stretch of playback.

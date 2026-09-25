@@ -1,5 +1,5 @@
 //
-//  AudiobookPositionTraceTests.swift
+//  PositionSaveDryPolicyTests.swift
 //  PalaceTests
 //
 //  PP-4963 — the instrumentation that decides whether position saves stop
@@ -203,16 +203,22 @@ final class PositionSaveDryPolicyTests: XCTestCase {
 
     // MARK: - The scale mismatch this type exists to prevent
 
-    /// A patron plays a minute, pauses three hours, resumes, unlocks 3s later.
-    /// The resume starts a NEW stretch, so the save that froze before the
-    /// pause is not in scope and cannot be measured against.
+    /// A save from a previous stretch is never measured against this one.
     ///
     /// Under the previous `lastSaveAt ?? firstTickAt ?? sessionStartedAt`
-    /// chain this reported `.dry(10803)` — a routine gesture manufacturing the
-    /// finding, on the ungated fleet signal.
-    func testResumeAfterLongPause_isNotReportedDry() {
+    /// chain, a patron who played a minute, paused three hours, resumed and
+    /// unlocked was compared against the save that froze before the pause, and
+    /// reported `.dry(10803)` — a routine gesture producing a finding on the
+    /// ungated fleet signal. Scoping the save to its stretch removes that.
+    ///
+    /// This drives the stretch with `precededByGap: nil` and so covers the
+    /// FIRST stretch of a session, not the resumed one: after a pause the
+    /// recorder records the gap, and that cell is `.tickGap`, covered by
+    /// `testYoungStretchOpenedByAGap_withNoSaveOfItsOwn_reportsTickGap`. The
+    /// name used to claim the resumed case; it measures the clean-birth case.
+    func testFirstStretchOfASession_withNoSaveYet_isNotReportedDry() {
         guard case let .saving(since) = evaluate(startedAgo: 3, lastTickAgo: 0) else {
-            return XCTFail("a fresh stretch after a pause is not a dry window")
+            return XCTFail("a session that has simply started is not a dry window")
         }
         XCTAssertEqual(since, 3, accuracy: 0.001,
                        "measured from the stretch that is actually playing")

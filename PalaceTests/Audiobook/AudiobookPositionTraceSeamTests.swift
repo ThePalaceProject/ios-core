@@ -247,10 +247,57 @@ final class AudiobookPositionTraceSeamTests: XCTestCase {
     func testSaveFinding_filesUnderTheDrySaveCode() {
         var codes: [TPPErrorCode] = []
         AudiobookPositionTraceRecorder.crashlyticsSaveReport(
-            .dry(seconds: 10_800), stateAtLastTick: "background",
+            .dry(seconds: 10_800),
+            context: PositionTraceContext(applicationStateAtLastTick: "background",
+                                          tickGapCount: 0, longestTickGap: 0),
             emit: { code, _, _ in codes.append(code) }
         )
         XCTAssertEqual(codes, [.audiobookPositionSaveDry])
+    }
+
+    /// 406 got its own code this round and not its own test — the same shape
+    /// that lost 405 in round three. Deleting the whole `.tickGap` emit arm
+    /// left all 63 tests green, so the signal added to remove a silent false
+    /// negative was itself silent.
+    func testTickGapFinding_filesUnderTheTickGapCode_not404() {
+        var codes: [TPPErrorCode] = []
+        AudiobookPositionTraceRecorder.crashlyticsSaveReport(
+            .tickGap(seconds: 10_800),
+            context: PositionTraceContext(applicationStateAtLastTick: "background",
+                                          tickGapCount: 1, longestTickGap: 10_800),
+            emit: { code, _, _ in codes.append(code) }
+        )
+        XCTAssertEqual(codes, [.audiobookPositionTickGap],
+                       "a tick-gap finding filed under the dry-save code would "
+                       + "inflate the dry count with sessions that merely paused")
+    }
+
+    /// The counters are the only thing that makes a `.tickGap` interpretable:
+    /// one session cannot separate an overnight pause from an overnight stall,
+    /// and across the fleet the gap COUNT is what does. Shipping the verdict
+    /// without them puts an unresolvable ambiguity in Crashlytics.
+    func testTickGapPayload_carriesTheCountersAndNoIdentity() throws {
+        var payloads: [[String: Any]] = []
+        AudiobookPositionTraceRecorder.crashlyticsSaveReport(
+            .tickGap(seconds: 10_800),
+            context: PositionTraceContext(applicationStateAtLastTick: "background",
+                                          tickGapCount: 7, longestTickGap: 10_800),
+            emit: { _, _, metadata in payloads.append(metadata ?? [:]) }
+        )
+        let payload = try XCTUnwrap(payloads.first)
+        XCTAssertEqual(payload["gapSeconds"] as? Double, 10_800)
+        XCTAssertEqual(payload["tickGapCount"] as? Int, 7,
+                       "without the count, a pause and a stall are the same event")
+        XCTAssertEqual(payload["longestTickGapSeconds"] as? Double, 10_800)
+
+        // A patron's position in a book is a library record and must not leave
+        // the device. Scanned rather than spot-checked, so a field added later
+        // has to answer this too.
+        let rendered = payload.map { "\($0.key)=\($0.value)" }.joined(separator: " ").lowercased()
+        for forbidden in ["book", "title", "isbn", "barcode", "patron", "track", "identifier"] {
+            XCTAssertFalse(rendered.contains(forbidden),
+                           "fleet payload must carry no \(forbidden): \(rendered)")
+        }
     }
 
     func testRestoreGapFinding_filesUnderTheRestoreGapCode_not404() {

@@ -167,7 +167,7 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     private let bookID: String
     private let markerStore: LastLivePositionMarkerStoring
     private let diagnosticsEnabled: () -> Bool
-    private let reportSaveVerdict: (PositionSaveVerdict, String) -> Void
+    private let reportSaveVerdict: (PositionSaveVerdict, PositionTraceContext) -> Void
     private let reportGapVerdict: (PositionRestoreGapVerdict) -> Void
     private let fileLog: (String) -> Void
     // No stored emitter: the two report closures capture it directly. A stored
@@ -200,7 +200,7 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         diagnosticsEnabled: @escaping () -> Bool = {
             DebugSettings().isAudiobookPositionTraceEnabled
         },
-        reportSaveVerdict: ((PositionSaveVerdict, String) -> Void)? = nil,
+        reportSaveVerdict: ((PositionSaveVerdict, PositionTraceContext) -> Void)? = nil,
         reportGapVerdict: ((PositionRestoreGapVerdict) -> Void)? = nil,
         fileLog: ((String) -> Void)? = nil,
         emitFleetEvent: FleetEventEmitting? = nil,
@@ -219,8 +219,8 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         }
         // Wrapped rather than referenced bare: a bare reference to a function
         // carrying a defaulted parameter crashes the Swift frontend.
-        self.reportSaveVerdict = reportSaveVerdict ?? { verdict, state in
-            Self.crashlyticsSaveReport(verdict, stateAtLastTick: state, emit: emit)
+        self.reportSaveVerdict = reportSaveVerdict ?? { verdict, context in
+            Self.crashlyticsSaveReport(verdict, context: context, emit: emit)
         }
         self.reportGapVerdict = reportGapVerdict ?? { verdict in
             Self.crashlyticsGapReport(verdict, emit: emit)
@@ -343,9 +343,15 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         // the tick stream stalled for three hours, and the device trace PP-4963
         // is waiting on cannot tell the two readings apart after the fact.
         // Gated like every other trace line, so it costs nothing by default.
-        if let boundaryGap, diagnosticsEnabled() {
-            fileLog("[\(bookID)] stretch boundary after \(String(format: "%.1f", boundaryGap))s "
-                    + "without a tick (gap #\(gapCountSoFar), longest \(String(format: "%.1f", longestGapSoFar))s)")
+        if let boundaryGap {
+            // Through `traceLine`, not `fileLog` directly. The per-book log is
+            // read by filtering on the `[AUDIOPOS-TRACE]` prefix, which a direct
+            // write does not carry — so the one line a device run most needs to
+            // tell a pause from a stall would be the one line the filter drops.
+            // `traceLine` also applies the same gate.
+            traceLine("stretch boundary after \(String(format: "%.1f", boundaryGap))s "
+                      + "without a tick (gap #\(gapCountSoFar), "
+                      + "longest \(String(format: "%.1f", longestGapSoFar))s)")
         }
 
         guard shouldWriteMarker else { return }
@@ -379,11 +385,16 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
 
         lock.lock()
         let verdict = PositionSaveDryPolicy.evaluate(now: at, stretch: stretch)
-        let state = lastObservedAppState
+        let context = PositionTraceContext(
+            applicationStateAtLastTick: lastObservedAppState,
+            tickGapCount: tickGapCount,
+            longestTickGap: longestTickGap
+        )
         lock.unlock()
 
-        traceLine("verdict \(verdict) stateAtLastTick=\(state)")
-        reportSaveVerdict(verdict, state)
+        traceLine("verdict \(verdict) stateAtLastTick=\(context.applicationStateAtLastTick) "
+                  + "gaps=\(context.tickGapCount) longestGap=\(String(format: "%.1f", context.longestTickGap))")
+        reportSaveVerdict(verdict, context)
     }
 
     /// Convenience over the resolver-taking form below, so the call site does
@@ -475,7 +486,7 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     /// leaves the device; the data-minimisation claim is otherwise unpinned.
     static func crashlyticsSaveReport(
         _ verdict: PositionSaveVerdict,
-        stateAtLastTick: String,
+        context: PositionTraceContext,
         emit: FleetEventEmitting = { code, summary, metadata in
             TPPErrorLogger.logError(withCode: code, summary: summary, metadata: metadata)
         }
@@ -492,27 +503,31 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         // `.saving` would hide the locked-and-stalled case entirely. Round
         // three of this change already lost 405 to exactly that kind of
         // collapse, so each signal keeps its own code.
+        //
+        // Both findings carry the gap counters. A `.tickGap` without them is
+        // an ambiguity the fleet cannot resolve, and a `.dry` is worth more
+        // when it can be read against how choppy that session's tick stream
+        // was. Counts of the device's own behaviour — no book, no title, no
+        // patron.
+        let shared: [String: Any] = [
+            // The state seen by the last PLAYBACK TICK; see notePlaybackTick.
+            "applicationStateAtLastTick": context.applicationStateAtLastTick,
+            "tickGapCount": context.tickGapCount,
+            "longestTickGapSeconds": context.longestTickGap,
+            "ticket": "PP-4963"
+        ]
         switch verdict {
         case let .dry(seconds):
             emit(
                 .audiobookPositionSaveDry,
                 "Position saves dry while playback was live (PP-4963)",
-                [
-                    "drySeconds": seconds,
-                    // The state seen by the last PLAYBACK TICK; see notePlaybackTick.
-                    "applicationStateAtLastTick": stateAtLastTick,
-                    "ticket": "PP-4963"
-                ]
+                shared.merging(["drySeconds": seconds]) { _, new in new }
             )
         case let .tickGap(seconds):
             emit(
                 .audiobookPositionTickGap,
                 "Playback tick stream went quiet; save health unknown (PP-4963)",
-                [
-                    "gapSeconds": seconds,
-                    "applicationStateAtLastTick": stateAtLastTick,
-                    "ticket": "PP-4963"
-                ]
+                shared.merging(["gapSeconds": seconds]) { _, new in new }
             )
         case .noPlayback, .playbackStale, .saving:
             return

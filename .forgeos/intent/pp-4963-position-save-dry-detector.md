@@ -70,8 +70,19 @@ the measurement.
 - A marker whose track key is absent from the loaded manifest reports
   `.markerUnresolvable`, never `.aligned` — the 3.2.3 Cause 2 hazard, where an
   unresolvable position is silently treated as agreement.
-- Adds `TPPErrorLogger` codes 404 (`audiobookPositionSaveDry`) and 405
-  (`audiobookPositionRestoreGap`) in the audiobooks block.
+- A tick-stream gap reports `.tickGap`, never `.saving`. A gap has two causes
+  this signal cannot separate — the patron paused, or playback continued while
+  main-queue delivery was suppressed — and the second is the hypothesis under
+  test, so a stretch opened by a gap with no save of its own makes no health
+  claim. `.dry` still outranks it, and a stretch that has since saved reports
+  `.saving`.
+- Adds `TPPErrorLogger` codes 404 (`audiobookPositionSaveDry`), 405
+  (`audiobookPositionRestoreGap`) and 406 (`audiobookPositionTickGap`) in the
+  audiobooks block. Each signal keeps its own code; 405 was lost to a collapse
+  into 404 in an earlier round.
+- Both fleet findings carry `tickGapCount` and `longestTickGapSeconds`. One
+  session cannot separate a pause from a stall; across the fleet the gap count
+  is what does.
 
 ## Anti-claims
 
@@ -105,11 +116,16 @@ the measurement.
 - `Palace/Audiobooks/AudiobookSessionManager.swift` (restore-gap observation)
 - `Palace/Reader2/Bookmarks/AudiobookBookmarkBusinessLogic.swift` (OWNS the
   recorder; notifies it on every local write)
-- `Palace/Logging/TPPErrorLogger.swift` (codes 404/405)
+- `Palace/Logging/TPPErrorLogger.swift` (codes 404/405/406)
 - `Palace/Settings/Debug/DebugSettings.swift` (the default-off trace switch)
 - `Palace/Settings/DeveloperSettings/DeveloperSettingsViewModel.swift` (exposes it)
 - `Palace/Settings/DeveloperSettings/DeveloperSettingsView.swift` (the row)
-- `PalaceTests/Audiobook/AudiobookPositionTraceTests.swift` (new)
+- `PalaceTests/Audiobook/PositionSaveDryPolicyTests.swift` (new — holds
+  `PositionSaveDryPolicyTests` and `PositionRestoreGapPolicyTests`; named for
+  its classes after the original filename matched none of them, which made an
+  `-only-testing` filter silently select nothing)
+- `PalaceTests/Audiobook/AudiobookPositionTraceCallSiteTests.swift` (new — the
+  two `noteSave` call sites and the marker store)
 - `PalaceTests/Audiobook/AudiobookPositionTraceRecorderTests.swift` (new)
 - `PalaceTests/Audiobook/AudiobookPositionTraceSeamTests.swift` (new — the
   joins: resolver against a real manifest, observe, dispatch, file trace)
