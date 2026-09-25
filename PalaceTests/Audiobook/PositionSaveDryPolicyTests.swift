@@ -27,13 +27,15 @@ final class PositionSaveDryPolicyTests: XCTestCase {
     private func evaluate(
         startedAgo: TimeInterval? = nil,
         lastTickAgo: TimeInterval? = nil,
-        lastSaveAgo: TimeInterval? = nil
+        lastSaveAgo: TimeInterval? = nil,
+        precededByGap: TimeInterval? = nil
     ) -> PositionSaveVerdict {
         let stretch = startedAgo.map { started in
             PlaybackStretch(
                 startedAt: now.addingTimeInterval(-started),
                 lastTickAt: now.addingTimeInterval(-(lastTickAgo ?? started)),
-                lastSaveAt: lastSaveAgo.map { now.addingTimeInterval(-$0) }
+                lastSaveAt: lastSaveAgo.map { now.addingTimeInterval(-$0) },
+                precededByGap: precededByGap
             )
         }
         return PositionSaveDryPolicy.evaluate(
@@ -132,6 +134,71 @@ final class PositionSaveDryPolicyTests: XCTestCase {
             return XCTFail("ten minutes of playback with no save is the defect")
         }
         XCTAssertEqual(seconds, 600, accuracy: 0.001)
+    }
+
+    // MARK: - Cell 5 — the stretch that cannot vouch for itself
+
+    /// The cell an earlier draft of this change got wrong, in the direction
+    /// that matters most.
+    ///
+    /// A tick-stream gap has two causes and this signal cannot separate them:
+    /// the patron paused, or playback continued while main-queue delivery was
+    /// suppressed. Resolving that toward "paused" and reporting `.saving`
+    /// emits an affirmative clean bill of health for the second — which is
+    /// PP-4963's own hypothesis, the three-hour locked listen the instrument
+    /// exists to catch. Worse, `.saving` is not reported to the fleet at all,
+    /// so the false negative would be silent: nothing to see, read as nothing
+    /// wrong.
+    func testYoungStretchOpenedByAGap_withNoSaveOfItsOwn_reportsTickGap() {
+        guard case let .tickGap(seconds) = evaluate(
+            startedAgo: 3, lastTickAgo: 0, precededByGap: 10_800
+        ) else {
+            return XCTFail(
+                "a stretch that began because the ticks stopped has not earned "
+                + "a health claim, got \(evaluate(startedAgo: 3, lastTickAgo: 0, precededByGap: 10_800))"
+            )
+        }
+        XCTAssertEqual(seconds, 10_800, accuracy: 0.001,
+                       "the reported duration is the gap, which is what the fleet "
+                       + "needs to tell a pause from a stall in aggregate")
+    }
+
+    /// The same young stretch WITHOUT a gap behind it is the ordinary start of
+    /// playback, and must stay `.saving`. This is the round-two fix (measure
+    /// from the first tick, not session start) and the gap dimension must not
+    /// undo it — otherwise every session reports a finding in its first two
+    /// minutes.
+    func testYoungStretchWithNoGapBehindIt_staysSaving() {
+        guard case .saving = evaluate(startedAgo: 3, lastTickAgo: 0) else {
+            return XCTFail("a session that simply started is not a finding")
+        }
+    }
+
+    /// A gap does not outlive the evidence that supersedes it. Once the stretch
+    /// has seen a save of its own, it can vouch for itself and how it began
+    /// stops mattering — otherwise a patron who pauses once reports `.tickGap`
+    /// for the rest of the session.
+    func testStretchOpenedByAGap_thatHasSinceSaved_reportsSaving() {
+        guard case let .saving(since) = evaluate(
+            startedAgo: 90, lastTickAgo: 0, lastSaveAgo: 4, precededByGap: 10_800
+        ) else {
+            return XCTFail("a save inside this stretch is evidence about this stretch")
+        }
+        XCTAssertEqual(since, 4, accuracy: 0.001)
+    }
+
+    /// And a gapped stretch that has run past the dry threshold with no save
+    /// is a `.dry` finding on its own terms — the gap neither upgrades nor
+    /// downgrades it. `.dry` outranks `.tickGap` because it is the stronger
+    /// statement and this stretch earned it.
+    func testStretchOpenedByAGap_quietPastTheThreshold_reportsDryNotTickGap() {
+        guard case let .dry(seconds) = evaluate(
+            startedAgo: 200, lastTickAgo: 0, precededByGap: 10_800
+        ) else {
+            return XCTFail("200s of live playback with no save is a dry window, gap or no gap")
+        }
+        XCTAssertEqual(seconds, 200, accuracy: 0.001,
+                       "measured from this stretch's start, not from the gap")
     }
 
     // MARK: - The scale mismatch this type exists to prevent

@@ -112,13 +112,15 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
     /// finding PP-4963 exists to test for.
     func testSaveIsRecorded_soAHealthySessionIsNotReportedDry() {
         let recorder = makeRecorder()
-        recorder.notePlaybackTick(trackKey: "a", timestamp: 0, at: clock)
 
-        // Let the session age well past the dry threshold BEFORE saving, so
-        // `sessionStartedAt` and the save are distinguishable reference points.
-        advance(200)
+        // CONTINUOUS playback well past the dry threshold before saving, so the
+        // stretch's start and the save are distinguishable reference points.
+        // Two ticks 200s apart would not do: that gap is a stretch boundary, the
+        // save would land on the stretch it ends, and the verdict would be
+        // `.tickGap` — a different cell, testing something this test does not
+        // mean to ask about.
+        driveLivePlayback(recorder, for: 200)
         recorder.noteSave(at: clock)
-        recorder.notePlaybackTick(trackKey: "a", timestamp: 200, at: clock)
 
         recorder.applicationDidBecomeActive()
 
@@ -126,6 +128,37 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
             return XCTFail("a session that saved 0s ago is saving, not \(reported)")
         }
         XCTAssertEqual(sinceLastSave, 0, accuracy: 0.001)
+    }
+
+    /// Architect review found this cell unenumerated in a change whose whole
+    /// thesis is enumeration, so it is pinned rather than argued.
+    ///
+    /// A save arriving before any playback tick has nowhere to go: a save
+    /// belongs to the stretch it happened in, and there is no stretch. It is
+    /// dropped. That is safe in both directions — the verdict is `.noPlayback`
+    /// regardless, and a dropped save can only ever SHRINK a reported quiet
+    /// window, never invent one — but the behaviour is new in this change
+    /// (`noteSave` used to record unconditionally) and worth a test rather
+    /// than a comment.
+    ///
+    /// It also reconciles the termination call site's comment, which says
+    /// leaving that hook out "would make a session that only ever saved on
+    /// termination look as though it had never saved at all": true once
+    /// playback has ticked, and moot before it has, because there is no
+    /// verdict to distort.
+    func testSaveBeforeAnyTick_isDroppedAndReportsNoPlayback() {
+        let recorder = makeRecorder()
+
+        recorder.noteSave(at: clock)
+        advance(300)
+        recorder.applicationDidBecomeActive()
+
+        guard case .noPlayback? = reported.first else {
+            return XCTFail(
+                "a save with no playback behind it cannot support any verdict "
+                + "about playback, got \(reported)"
+            )
+        }
     }
 
     // MARK: - The instrument must not agree with itself
@@ -184,25 +217,22 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         XCTAssertEqual(store.writeCount, 1, "a tick just short of the interval is absorbed")
     }
 
-    // MARK: - The scale mismatch, from the recorder's side
-
-    /// `PlaybackStretch` makes the scale mismatch unrepresentable only if the
-    /// recorder actually OPENS a new stretch when playback resumes. Nothing
-    /// asserted that it does: `PositionSaveDryPolicyTests`
-    /// `.testResumeAfterLongPause_isNotReportedDry` hands the policy a fresh
-    /// stretch it built by hand, so it passes just as well against a recorder
-    /// that never creates one. Deleting the gap check
-    /// (`isResume = stretch == nil`) left all 57 tests green — the units were
-    /// pinned and the wiring between them was not, which is the same join every
-    /// earlier round of this change turned up.
+    /// The scenario PP-4963 exists to catch, in the shape where the instrument
+    /// is ALSO impaired — and the one the first version of this refactor
+    /// reported as healthy.
     ///
-    /// A patron plays a minute, saves, pauses three hours — the position
-    /// publisher emits nothing at all while paused — resumes, and unlocks
-    /// three seconds later. If the gap does not end the stretch, the save that
-    /// froze before the pause is still in scope and the quiet window is the
-    /// whole pause: `.dry` for a healthy session, on the ungated fleet signal,
-    /// produced by a routine gesture.
-    func testResumeAfterALongPause_opensANewStretch_andIsNotReportedDry() {
+    /// Playback runs, saves die, and the tick stream stalls too (delivery is on
+    /// the main queue, which is the suspect). Three hours later the patron
+    /// unlocks and ticks resume. The inputs reaching the recorder are
+    /// BYTE-IDENTICAL to a patron who simply paused for three hours — there is
+    /// no discriminator available, and `timestamp` cannot supply one because it
+    /// is scoped to a track and any gap this long has crossed a boundary.
+    ///
+    /// So the instrument must decline to answer rather than guess, and it must
+    /// decline in the direction that does not manufacture health: `.saving`
+    /// here is not merely wrong, it is invisible, because `.saving` is never
+    /// emitted to the fleet.
+    func testTicksResumeAfterAGap_withNoSaveSince_reportsTheGapRatherThanAVerdict() {
         let recorder = makeRecorder()
         driveLivePlayback(recorder, for: 60)
         recorder.noteSave(at: clock)
@@ -216,15 +246,24 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
 
         recorder.applicationDidBecomeActive()
 
-        guard case let .saving(since)? = reported.first else {
+        guard case let .tickGap(gap)? = reported.first else {
             return XCTFail(
-                "a resume after a pause must open a new stretch — got \(reported), "
-                + "which is the pre-pause save being measured across the pause"
+                "the instrument must report that it could not see, not that all "
+                + "is well — got \(reported)"
             )
         }
-        XCTAssertEqual(since, 3, accuracy: 0.001,
-                       "measured from the resumed stretch, not from the save that "
-                       + "froze when playback stopped three hours earlier")
+        XCTAssertEqual(gap, 10_800, accuracy: 1,
+                       "the gap duration is what separates a pause from a stall "
+                       + "once the fleet aggregates many sessions")
+
+        // The round-four requirement, still binding: this must NOT be `.dry`.
+        // A patron who merely paused presents these same inputs, and reporting
+        // a three-hour dry window for them would manufacture the finding the
+        // ticket is trying to confirm. `.tickGap` is the only verdict that is
+        // honest under both readings — which is the point of it existing.
+        if case .dry = reported.first {
+            XCTFail("a pause and a stall are indistinguishable here; neither may be called dry")
+        }
     }
 
     // MARK: - The default-off gate

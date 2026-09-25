@@ -170,6 +170,13 @@ private let nullString = "null"
     /// the playback clock observed, or the recorded position could not be
     /// located in the loaded manifest.
     case audiobookPositionRestoreGap = 405
+    /// PP-4963 — the playback tick stream itself went quiet, so the instrument
+    /// cannot say whether saves kept up. Its own code rather than a silent
+    /// `.saving`: a gap has two causes (the patron paused, or playback
+    /// continued while main-queue delivery was suppressed) and the second is
+    /// the hypothesis under test. Carries the gap duration, never book or
+    /// patron identity.
+    case audiobookPositionTickGap = 406
 
     // ereader
     case nilCFI = 500

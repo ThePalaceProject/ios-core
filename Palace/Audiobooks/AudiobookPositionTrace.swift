@@ -46,6 +46,28 @@ enum PositionSaveVerdict: Equatable {
     /// finding PP-4963 exists to confirm or refute; the duration is the
     /// patron-visible loss window.
     case dry(seconds: TimeInterval)
+    /// The tick stream itself went quiet, and the stretch that resumed is too
+    /// young to have earned a verdict of its own.
+    ///
+    /// This case exists because the alternative was a lie. A gap in the ticks
+    /// has two causes that the tick stream cannot tell apart: the patron
+    /// paused, or playback continued while delivery was suppressed — and the
+    /// second is PP-4963's own hypothesis, since `positionPublisher` is driven
+    /// by the playback clock but DELIVERS on the main queue. Treating a gap as
+    /// a pause and reporting `.saving` would emit an affirmative "healthy" for
+    /// the exact three-hour locked session the instrument exists to catch.
+    ///
+    /// The position can't break the tie either: `timestamp` is scoped to a
+    /// TRACK, so any gap long enough to matter has probably crossed a track
+    /// boundary, which resets it. There is no discriminator available here.
+    ///
+    /// So the ambiguity is reported instead of resolved — the same discipline
+    /// as `.playbackStale` over a silent `.dry`, and `.markerUnresolvable` over
+    /// `.aligned`. It is also a finding in its own right: a gap means the
+    /// instrument went blind, which is the branch's one unverified assumption
+    /// (that `positionPublisher` survives a locked screen) failing out loud
+    /// rather than passing as health.
+    case tickGap(seconds: TimeInterval)
 }
 
 /// What the playback clock observed during ONE continuous stretch of playback.
@@ -78,6 +100,13 @@ struct PlaybackStretch: Equatable {
     let lastTickAt: Date
     /// Most recent save observed WITHIN this stretch; nil until one lands.
     let lastSaveAt: Date?
+    /// The tick-stream gap that opened this stretch, if one did.
+    ///
+    /// Carried rather than discarded because a stretch that began after a gap
+    /// cannot support a health claim until it has run long enough to produce
+    /// its own evidence. `nil` for the first stretch of a session, which began
+    /// because playback began — not because anything went quiet.
+    let precededByGap: TimeInterval?
 
     /// The point the dry window is measured from. Both candidates are
     /// stretch-scoped, so this is a same-scale choice rather than a
@@ -105,16 +134,27 @@ struct PlaybackStretch: Equatable {
 /// `.noPlayback` — the instrument would quietly report the absence of a defect
 /// it had merely lost the ability to see.
 ///
-/// The decision is a total function over four reachable cells:
+/// The decision is a total function over five reachable cells:
 ///
-///   | stretch | tick freshness      | quiet window   | verdict          |
-///   |---------|---------------------|----------------|------------------|
-///   | nil     | —                   | —              | `.noPlayback`    |
-///   | present | > tickFreshness     | —              | `.playbackStale` |
-///   | present | <= tickFreshness    | <= dryThreshold| `.saving`        |
-///   | present | <= tickFreshness    | > dryThreshold | `.dry`           |
+///   | stretch | tick fresh | quiet > dryThreshold | saved | gap  | verdict          |
+///   |---------|------------|----------------------|-------|------|------------------|
+///   | nil     | —          | —                    | —     | —    | `.noPlayback`    |
+///   | present | no         | —                    | —     | —    | `.playbackStale` |
+///   | present | yes        | yes                  | —     | —    | `.dry`           |
+///   | present | yes        | no                   | yes   | —    | `.saving`        |
+///   | present | yes        | no                   | no    | nil  | `.saving`        |
+///   | present | yes        | no                   | no    | some | `.tickGap`       |
 ///
-/// Four cells, each with its boundary. That is the whole state space — which
+/// The last row is the one that earns its keep, and it is the cell an earlier
+/// draft got wrong. A young stretch with no save of its own is benign when it
+/// began because playback began, and is NOT benign when it began because the
+/// tick stream went quiet — in the second case the instrument has no basis for
+/// a health claim and must not make one. Everything above that row is
+/// unchanged by the addition of the gap dimension: a stretch that has saved,
+/// or has already run past the dry threshold, has its own evidence and does
+/// not care how it started.
+///
+/// Five cells, each with its boundary. That is the whole state space — which
 /// is the point of taking a `PlaybackStretch?` rather than five loose dates.
 enum PositionSaveDryPolicy {
 
@@ -156,10 +196,22 @@ enum PositionSaveDryPolicy {
 
         // A negative interval is wall-clock skew (NTP step, manual clock
         // change), not a dry window.
-        guard quietFor > dryThreshold else {
-            return .saving(sinceLastSave: max(0, quietFor))
+        if quietFor > dryThreshold {
+            return .dry(seconds: quietFor)
         }
-        return .dry(seconds: quietFor)
+
+        // Short quiet window. That is only evidence of health if this stretch
+        // has evidence of its own — a save it actually observed, or a clean
+        // birth. A stretch opened by a gap in the tick stream has neither, and
+        // the gap has two causes this signal cannot separate: the patron
+        // paused, or playback continued while delivery was suppressed. Saying
+        // `.saving` here would emit an affirmative "healthy" for the second,
+        // which is PP-4963's own hypothesis — and `.saving` is not reported to
+        // the fleet at all, so that claim would be silent as well as wrong.
+        if stretch.lastSaveAt == nil, let gap = stretch.precededByGap {
+            return .tickGap(seconds: gap)
+        }
+        return .saving(sinceLastSave: max(0, quietFor))
     }
 }
 

@@ -144,9 +144,25 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     /// report.
     static let markerWriteInterval: TimeInterval = 60
 
-    /// Mirrors `PositionSaveDryPolicy.defaultTickFreshness`; a tick gap larger
-    /// than this is a new stretch of playback, not a continuation.
+    /// The one tick-freshness value in the system. A gap larger than this ends
+    /// a stretch here, and the same constant decides staleness in
+    /// `PositionSaveDryPolicy.evaluate`.
+    ///
+    /// Deliberately NOT a separate knob. The two boundaries answer the same
+    /// question — "has the tick stream gone quiet?" — and a caller that moved
+    /// one without the other would split the recorder's idea of a stretch from
+    /// the policy's idea of staleness, with no compile error and no test
+    /// failure to show for it. `evaluate` still takes `tickFreshness` so its
+    /// own boundary tests can drive both sides of it; production has exactly
+    /// one caller and it passes the default.
     static let tickFreshnessWindow: TimeInterval = PositionSaveDryPolicy.defaultTickFreshness
+
+    /// Serial and utility-QoS: trace writes must stay ordered relative to each
+    /// other, and must never contend with playback or the save path.
+    private static let fileLogQueue = DispatchQueue(
+        label: "org.thepalaceproject.audiobook-position-trace",
+        qos: .utility
+    )
 
     private let bookID: String
     private let markerStore: LastLivePositionMarkerStoring
@@ -167,6 +183,14 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     private var lastMarkerWriteAt: Date = .distantPast
     /// App state as seen by the most recent playback tick. See `notePlaybackTick`.
     private var lastObservedAppState: String = "unknown"
+    /// How many times the tick stream went quiet long enough to open a new
+    /// stretch, and the worst such gap. Aggregate rather than per-stretch: a
+    /// healthy session pauses a handful of times, while a stalled delivery
+    /// path produces many gaps or one enormous one. That distinction is what
+    /// separates the two causes of a gap ACROSS the fleet, which is the
+    /// question PP-4963 has to answer and no single session can.
+    private var tickGapCount: Int = 0
+    private var longestTickGap: TimeInterval = 0
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -202,7 +226,28 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
             Self.crashlyticsGapReport(verdict, emit: emit)
         }
         self.fileLog = fileLog ?? { [bookID] line in
-            AudiobookFileLogger.shared.logEvent(forBookId: bookID, event: line)
+            // Hopped off the caller's thread, which is the MAIN actor: both
+            // `noteSave` call sites sit in `AudiobookBookmarkBusinessLogic`,
+            // reached from the `@MainActor` `DefaultAudiobookManager`.
+            //
+            // `AudiobookFileLogger.logEvent` is synchronous and not cheap — an
+            // unthrottled directory enumeration with per-file `resourceValues`,
+            // a `fileExists`, an `attributesOfItem`, and a FileHandle
+            // open/seek/write/close. Inline on the main thread at save cadence
+            // (~every 5s of playback) that is main-thread disk I/O added to the
+            // critical save path.
+            //
+            // It would also corrupt the measurement. PP-4963 asks whether saves
+            // keep firing during long locked playback; a trace run that adds
+            // synchronous I/O to every save is measuring a save path the
+            // instrument itself changed. A watchdog must not perturb what it
+            // watches — the same reason the liveness signal is taken from
+            // `positionPublisher` rather than the timer under test.
+            //
+            // Serial, so trace lines keep their order in the file.
+            Self.fileLogQueue.async {
+                AudiobookFileLogger.shared.logEvent(forBookId: bookID, event: line)
+            }
         }
         self.now = now
     }
@@ -222,7 +267,8 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
             stretch = PlaybackStretch(
                 startedAt: current.startedAt,
                 lastTickAt: current.lastTickAt,
-                lastSaveAt: date
+                lastSaveAt: date,
+                precededByGap: current.precededByGap
             )
         }
         let state = lastObservedAppState
@@ -253,22 +299,54 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         // is the point: a save from before a three-hour pause is not evidence
         // about the stretch that just began, and comparing against it reported
         // a dry window for a healthy session.
-        let isResume = stretch.map { date.timeIntervalSince($0.lastTickAt) > Self.tickFreshnessWindow } ?? true
+        // The gap is CARRIED, not just acted on. Opening a new stretch throws
+        // away the previous save, which is right for a pause and wrong for a
+        // stalled tick stream — and this predicate cannot tell those apart.
+        // Recording the gap on the stretch lets the policy decline to make a
+        // health claim it has not earned, instead of guessing.
+        let gap = stretch.map { date.timeIntervalSince($0.lastTickAt) }
+        let isResume = gap.map { $0 > Self.tickFreshnessWindow } ?? true
         if isResume {
-            stretch = PlaybackStretch(startedAt: date, lastTickAt: date, lastSaveAt: nil)
+            if let gap {
+                tickGapCount += 1
+                longestTickGap = max(longestTickGap, gap)
+            }
+            stretch = PlaybackStretch(
+                startedAt: date,
+                lastTickAt: date,
+                lastSaveAt: nil,
+                precededByGap: gap
+            )
         } else if let current = stretch {
             stretch = PlaybackStretch(
                 startedAt: current.startedAt,
                 lastTickAt: date,
-                lastSaveAt: current.lastSaveAt
+                lastSaveAt: current.lastSaveAt,
+                precededByGap: current.precededByGap
             )
         }
+        // Snapshotted under the lock: the trace line below runs outside it, and
+        // these two are mutated by every tick on whichever thread delivers.
+        let boundaryGap = isResume ? gap : nil
+        let gapCountSoFar = tickGapCount
+        let longestGapSoFar = longestTickGap
         lastObservedAppState = state
         let shouldWriteMarker = date.timeIntervalSince(lastMarkerWriteAt) >= Self.markerWriteInterval
         if shouldWriteMarker {
             lastMarkerWriteAt = date
         }
         lock.unlock()
+
+        // A stretch boundary is the one event a deliberate trace run most needs
+        // and the only one nothing recorded. Without it the log shows an
+        // unbroken column of ticks whether the patron paused for three hours or
+        // the tick stream stalled for three hours, and the device trace PP-4963
+        // is waiting on cannot tell the two readings apart after the fact.
+        // Gated like every other trace line, so it costs nothing by default.
+        if let boundaryGap, diagnosticsEnabled() {
+            fileLog("[\(bookID)] stretch boundary after \(String(format: "%.1f", boundaryGap))s "
+                    + "without a tick (gap #\(gapCountSoFar), longest \(String(format: "%.1f", longestGapSoFar))s)")
+        }
 
         guard shouldWriteMarker else { return }
 
@@ -406,17 +484,39 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         // and `.noPlayback` / `.playbackStale` mean the instrument has nothing
         // to say — reporting those would bury the signal under every paused
         // session in the install base.
-        guard case let .dry(seconds) = verdict else { return }
-        emit(
-            .audiobookPositionSaveDry,
-            "Position saves dry while playback was live (PP-4963)",
-            [
-                "drySeconds": seconds,
-                // The state seen by the last PLAYBACK TICK; see notePlaybackTick.
-                "applicationStateAtLastTick": stateAtLastTick,
-                "ticket": "PP-4963"
-            ]
-        )
+        //
+        // `.tickGap` DOES reach the fleet, under its own code. It is not a
+        // health claim and not a dry finding — it is the instrument reporting
+        // that it could not see. Collapsing it into 404 would inflate the dry
+        // count with sessions that were merely paused; collapsing it into
+        // `.saving` would hide the locked-and-stalled case entirely. Round
+        // three of this change already lost 405 to exactly that kind of
+        // collapse, so each signal keeps its own code.
+        switch verdict {
+        case let .dry(seconds):
+            emit(
+                .audiobookPositionSaveDry,
+                "Position saves dry while playback was live (PP-4963)",
+                [
+                    "drySeconds": seconds,
+                    // The state seen by the last PLAYBACK TICK; see notePlaybackTick.
+                    "applicationStateAtLastTick": stateAtLastTick,
+                    "ticket": "PP-4963"
+                ]
+            )
+        case let .tickGap(seconds):
+            emit(
+                .audiobookPositionTickGap,
+                "Playback tick stream went quiet; save health unknown (PP-4963)",
+                [
+                    "gapSeconds": seconds,
+                    "applicationStateAtLastTick": stateAtLastTick,
+                    "ticket": "PP-4963"
+                ]
+            )
+        case .noPlayback, .playbackStale, .saving:
+            return
+        }
     }
 
     /// `internal` for the same reason as `crashlyticsSaveReport`.
