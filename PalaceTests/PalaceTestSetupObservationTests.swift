@@ -64,6 +64,55 @@ final class PalaceTestSetupObservationTests: XCTestCase {
         )
     }
 
+    // MARK: - 2b. Built-in resetters survive a test that clears the registry
+
+    /// The canonical built-in list, derived from the registration function
+    /// itself so this test does not restate it.
+    private func builtInResetterNames() -> [String] {
+        SingletonResetRegistry.shared._removeAllForTests()
+        PalaceTestSetup.registerBuiltInResetters()
+        let names = SingletonResetRegistry.shared.registeredNames()
+        SingletonResetRegistry.shared._removeAllForTests()
+        return names
+    }
+
+    /// Several suites (this one, `SingletonResetRegistryTests`,
+    /// `PalaceWiringTestCaseTests`, `TPPUserAccountTestFactoryTests`) empty the
+    /// registry to observe it in isolation. The between-test boundary must put
+    /// the built-ins back, or every later test in the process runs without its
+    /// cleanup (AppContainer rebuild, disk-cache purge, stub reset, flag pin).
+    func testBoundaryAfterRegistryCleared_restoresAndRunsBuiltInResetters() {
+        let expected = builtInResetterNames()
+        XCTAssertTrue(expected.contains("AppContainer._resetForTesting"),
+                      "Precondition: the built-in list must include the AppContainer rebuild")
+        XCTAssertTrue(SingletonResetRegistry.shared.registeredNames().isEmpty,
+                      "Precondition: a test has emptied the registry")
+
+        // State one built-in exists to clear. If the boundary runs without
+        // built-ins, this leaks into the next test.
+        MockBackendURLProtocol.scopedHost = "leak.example"
+        defer { MockBackendURLProtocol.scopedHost = nil }
+
+        PalaceSingletonResetObserver().testCaseDidFinish(self)
+
+        XCTAssertEqual(SingletonResetRegistry.shared.registeredNames(), expected,
+                       "The test boundary must restore every built-in resetter a test cleared")
+        XCTAssertNil(MockBackendURLProtocol.scopedHost,
+                     "The restored built-ins must RUN at that boundary, not only be listed")
+    }
+
+    /// Several tearDowns call `bootstrap()` to restore the built-ins after
+    /// clearing. That must hold after the first bootstrap has already run.
+    func testBootstrapAfterRegistryCleared_reRegistersBuiltInResetters() {
+        let expected = builtInResetterNames()
+        XCTAssertTrue(SingletonResetRegistry.shared.registeredNames().isEmpty)
+
+        _ = PalaceTestSetup.bootstrap()
+
+        XCTAssertEqual(SingletonResetRegistry.shared.registeredNames(), expected,
+                       "bootstrap() must re-register the built-ins even when the observer already exists")
+    }
+
     // MARK: - 3. NotificationCenter observer-count audit fires on leaks
 
     /// Pins the audit behaviour: if a test leaks `N` observers, the audit
