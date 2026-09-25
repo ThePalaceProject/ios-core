@@ -8,8 +8,9 @@
 //  `loggableDictionary` method: a function value in `[String: Any]` metadata
 //  compiles, and reaches Crashlytics as an opaque closure description.
 //
-//  Reachable here: `MyBooksDownloadCenter.logBookDownloadFailure`, through the
-//  injected `DeviceSpecificErrorMonitoring`. Not reachable: the three
+//  Reachable here: `MyBooksDownloadCenter.reportDownloadFailure` (the body
+//  `logBookDownloadFailure` forwards to), through the injected
+//  `DeviceSpecificErrorMonitoring`; the test awaits the `Task` it returns. Not reachable: the three
 //  `AdobeDRMHandler.handleFulfillmentResult` reports, which go to the static
 //  `TPPErrorLogger`; those are covered by the verification grep only.
 //
@@ -23,16 +24,11 @@ import PalaceBookModel
 @MainActor
 final class FulfillmentErrorMetadataTests: XCTestCase {
 
-    /// Records `logDownloadFailure` calls and fulfils an expectation per call,
-    /// so the test joins the `Task` that `logBookDownloadFailure` spawns
-    /// instead of polling for it.
+    /// Records `logDownloadFailure` calls.
     private final class DownloadFailureMonitorSpy: DeviceSpecificErrorMonitoring, @unchecked Sendable {
         private let lock = NSLock()
         private var _metadata: [[String: Any]] = []
         private var _reasons: [String] = []
-        let reported: XCTestExpectation
-
-        init(reported: XCTestExpectation) { self.reported = reported }
 
         var metadata: [[String: Any]] { lock.withLock { _metadata } }
         var reasons: [String] { lock.withLock { _reasons } }
@@ -42,7 +38,6 @@ final class FulfillmentErrorMetadataTests: XCTestCase {
                 _metadata.append(metadata)
                 _reasons.append(reason)
             }
-            reported.fulfill()
         }
 
         func initialize() async {}
@@ -74,18 +69,16 @@ final class FulfillmentErrorMetadataTests: XCTestCase {
     }
 
     func testLogBookDownloadFailure_ReportsBookDictionaryWithIdentifierAndTitle() async throws {
-        let reported = expectation(description: "download failure reported")
-        let monitor = DownloadFailureMonitorSpy(reported: reported)
+        let monitor = DownloadFailureMonitorSpy()
         let center = makeCenter(monitor: monitor)
         let book = makeBook(id: "urn:a2:book-dictionary", title: "Metadata Title", distributor: "Metadata Distributor")
 
-        center.logBookDownloadFailure(
+        await center.reportDownloadFailure(
             book,
             reason: "Download Error",
             downloadTask: MockURLSessionDownloadTask(taskIdentifier: 7),
             metadata: nil
-        )
-        await fulfillment(of: [reported], timeout: 5)
+        ).value
 
         XCTAssertEqual(monitor.reasons, ["Download Error"])
         let bookEntry = try XCTUnwrap(
@@ -98,18 +91,16 @@ final class FulfillmentErrorMetadataTests: XCTestCase {
     }
 
     func testLogBookDownloadFailure_KeepsCallerMetadataAlongsideBookDictionary() async throws {
-        let reported = expectation(description: "download failure reported")
-        let monitor = DownloadFailureMonitorSpy(reported: reported)
+        let monitor = DownloadFailureMonitorSpy()
         let center = makeCenter(monitor: monitor)
         let book = makeBook(id: "urn:a2:caller-metadata", title: "Caller Metadata", distributor: "Caller Distributor")
 
-        center.logBookDownloadFailure(
+        await center.reportDownloadFailure(
             book,
             reason: "Download Error",
             downloadTask: MockURLSessionDownloadTask(taskIdentifier: 8),
             metadata: ["mimeType": "application/problem+json"]
-        )
-        await fulfillment(of: [reported], timeout: 5)
+        ).value
 
         let reportedMetadata = try XCTUnwrap(monitor.metadata.first)
         XCTAssertEqual(reportedMetadata["mimeType"] as? String, "application/problem+json")
