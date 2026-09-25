@@ -800,7 +800,7 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
 /// `NSLock`); `NSHashTable.weakObjects()` holds WEAK refs to `AccountsManager`
 /// (itself `Sendable`), so registration never extends any instance's lifetime.
 /// DEBUG-only: the whole registry compiles out of release.
-private final class AccountsManagerLiveRegistry: @unchecked Sendable {
+final class AccountsManagerLiveRegistry: @unchecked Sendable {
     private let lock = NSLock()
     private let table = NSHashTable<AccountsManager>.weakObjects()
     func add(_ m: AccountsManager) {
@@ -819,30 +819,10 @@ extension AccountsManager {
     /// Process-wide weak registry of every live AccountsManager, so a global
     /// test-boundary drain can cancel background work on instances a test never
     /// tore down (the foreign-polluter case). Weak so it never extends lifetime.
-    private static let _liveInstancesForTesting = AccountsManagerLiveRegistry()
+    static let _liveInstancesForTesting = AccountsManagerLiveRegistry()
 
     static func _registerLiveInstanceForTesting(_ m: AccountsManager) {
         _liveInstancesForTesting.add(m)
-    }
-
-    /// Drain + cancel background work on ALL live instances. Called at each test
-    /// boundary BEFORE AccountStateStore._resetAllForTesting so any flushed late
-    /// write is then wiped. Snapshot under lock (inside the holder); drain
-    /// outside the lock (the drain pumps the run loop and must not hold a lock).
-    ///
-    /// Also retires each instance from `.TPPUseBetaDidChange`. Instances built
-    /// by earlier tests can outlive their graph (each boundary rebuild leaves the
-    /// previous manager alive), and every subscribed one answers a beta toggle
-    /// with a global-queue `updateAccountSet` that blocks in its loader's
-    /// `loadingHandlersQueue.sync`. Enough of them exhaust the dispatch worker
-    /// pool, so the barriers they wait on never get a thread. A manager built
-    /// after this call registers normally.
-    static func _drainAllLiveInstancesForTesting() {
-        let snapshot = _liveInstancesForTesting.snapshot()
-        for m in snapshot {
-            NotificationCenter.default.removeObserver(m, name: .TPPUseBetaDidChange, object: nil)
-            m.cancelAndDrainBackgroundWork()
-        }
     }
 
     /// Test-only: the registry store, so a test can seed and read its current

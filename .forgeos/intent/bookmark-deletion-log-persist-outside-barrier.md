@@ -58,8 +58,12 @@ the barrier waits for main while main waits for the barrier.
 - `PalaceTests/PalaceTestSetup.swift` — built-in resetters re-registered at every boundary (separate strand, test-only)
 - `PalaceTests/PalaceTestSetupObservationTests.swift`
 - `PalaceTests/Support/SingletonResetRegistryTests.swift`
-- `Palace/Accounts/Library/AccountsManager.swift` — DEBUG-only boundary drain
-  also retires drained instances from `.TPPUseBetaDidChange` (Claim E)
+- `Palace/Accounts/Library/AccountsManager+TestingSupport.swift` — DEBUG-only
+  boundary drain, moved out of the frozen hub; also retires drained instances
+  from `.TPPUseBetaDidChange` (Claim E)
+- `Palace/Accounts/Library/AccountsManager.swift` — live-instance registry made
+  internal for the extension; DEBUG `_registryStoreForTesting` accessor
+- `Palace.xcodeproj/project.pbxproj` — the new file in both app targets
 - `PalaceTests/Accounts/AccountsManagerCancellationTests.swift` —
   `testBoundaryDrain_retiredManager_ignoresBetaToggle`
 
