@@ -1256,6 +1256,12 @@ run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" 
   "No NSKeyedUnarchiver.unarchiveObject(with:) — raises uncatchably on a corrupt archive" "diff"
 run_phase35_detector "opaque_blob_egress" "check-opaque-blob-egress.py" "block" \
   "No opaque payload reaches an external sink"
+# "scan", not "diff": the hazard appears when a DECODER elsewhere in the file
+# gains .convertFromSnakeCase, and that commit may touch no CodingKeys at all —
+# a diff-scoped run would see nothing. (The script tolerates --diff anyway so a
+# uniform harness invocation cannot spuriously block; asserted in its pytest.)
+run_phase35_detector "snakecase_codingkeys" "check-snakecase-codingkeys.py" "block" \
+  "No CodingKey raw value is snake_case in a .convertFromSnakeCase file (PP-5202: the strategy rewrites the key first, so the case can never match — silently)" "scan"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
