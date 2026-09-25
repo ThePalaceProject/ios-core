@@ -288,6 +288,7 @@ jobs:
           name: test-results-streaming-on
           path: ${{ runner.temp }}/TestResults-streaming-on.xcresult
           retention-days: 7
+        continue-on-error: true
 
       # Fails the job when a build warning shows an `@objc` optional-protocol
       # method that "nearly matches" its requirement by the same name — i.e. the
