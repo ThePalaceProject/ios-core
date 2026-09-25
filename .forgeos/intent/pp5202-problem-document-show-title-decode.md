@@ -43,19 +43,24 @@ key before matching.
 
 ## Anti-claims
 
-- does NOT land the `check-snakecase-codingkeys.py` detector or any of its wiring — designed, written and reviewed, but split into its own follow-up PR because block-mode tooling that can stop every developer's commit should be reviewed on its own merits, not as a passenger on a sign-in fix. Preserved on local branch `pp5202-snakecase-codingkeys-detector`.
+- does NOT land the `check-snakecase-codingkeys.py` detector or any of its wiring — designed, written and reviewed, but split into its own follow-up PR because block-mode tooling that can stop every developer's commit should be reviewed on its own merits, not as a passenger on a sign-in fix. Preserved on `origin/pp5234-snakecase-codingkeys-detector` (PR #1512) — pushed, not local.
 
 - does NOT make the five RFC 7807 members lenient — a wrong-typed `status` stays fatal (pre-existing, deliberately not widened)
 - does NOT make `fromData` itself lenient or non-throwing — callers rely on the throw to distinguish a problem document from unrelated JSON
 - does NOT add a custom `encode(to:)` — the synthesized encoder already round-trips through the new `init(from:)`, and a snake_case encoder would break every plain-decoder round trip
 - does NOT touch `Palace/Network/TPPNetworkResponder.swift` — its `catch` arm is correct for a genuinely unparseable body
-- does NOT touch `Palace/SignInLogic/TPPSignInBusinessLogic.swift` production code — `userFacingSignInError` was starved of input, not wrong
+- the DECODE commit does not touch `Palace/SignInLogic/TPPSignInBusinessLogic.swift`
+  — `userFacingSignInError` was starved of input, not wrong. NOTE: the feature
+  commits on this branch DO change that file (`userFacingSignInError` honours
+  `shouldShowTitle`), so this anti-claim is scoped to the decode fix, not to the
+  branch as a whole.
 - does NOT touch `AuthErrorClassifier`
 - does NOT reconcile the strict/lenient `{"status":"403","show_title":0}` divergence — that needs `fromDictionary`'s public contract to change; recorded as known debt in Section 7b
 
 ## Files in scope
 
 - Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPProblemDocument.swift
+- Palace/SignInLogic/TPPSignInBusinessLogic.swift (feature commits — see Anti-claims)
 - PalaceTests/ProblemDocumentTests.swift
 - PalaceTests/TPPSignInBusinessLogicTests.swift
 - docs/architecture/areas/network/verification-checklist.md

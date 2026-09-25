@@ -111,7 +111,7 @@ It stops the throw, so it passes a test that only covers the type-drift rows, wh
    degrades to "absent" (→ `shouldShowTitle == true`, the pre-extension behavior) instead of
    costing the document. The five RFC 7807 members stay strict — the leniency is scoped to
    the one member that can afford it.
-2. **Landed in this PR:** `scripts/check-snakecase-codingkeys.py` — see below.
+2. **Queued, NOT landed (PP-5234):** `scripts/check-snakecase-codingkeys.py` — see below.
 3. **Test-shape rule, generalizable:** where a JSON member has a wire type, the test helper
    must accept a RAW literal, not the Swift type. `Bool?` cannot express the bodies that
    break a `Bool?` member.
@@ -172,9 +172,11 @@ snake_case `CodingKey` raw value. The class is empty precisely because nobody ha
 to write the obvious fix — the argument FOR the wall, not against it.
 
 **Implementation already written.** The full detector, its 14-case pytest, ten fixtures (including
-the regression fixture above), and the wiring are preserved on local branch
-`pp5202-snakecase-codingkeys-detector`. The follow-up PR should start there rather than from
-scratch, but should re-review it — it is not code that has been through CI.
+the regression fixture above), and the wiring are on `origin/pp5234-snakecase-codingkeys-detector`, pushed as PR
+#1512 — not a local branch. The follow-up should start there rather than from
+scratch, and should still re-review it: at the time of writing #1512 had
+flake-lint and tooling-integrity green with build-and-test still running, so it
+has not yet had a full CI pass.
 
 ## Related prior wall — the same room, a different door
 
