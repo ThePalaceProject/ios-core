@@ -80,7 +80,7 @@ final class AdobeDRMHandler: NSObject {
                 TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: destination file URL unavailable", metadata: [
                     "adeptError": adeptError ?? "N/A",
                     "fileURLToRemove": adeptToURL ?? "N/A",
-                    "book": book.loggableDictionary,
+                    "book": book.loggableDictionary(),
                     "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
                     "AdobeRights": rights,
                     "AdobeTag": tag
@@ -98,7 +98,7 @@ final class AdobeDRMHandler: NSObject {
                     "copyError": error,
                     "fromURL": adeptToURL,
                     "destURL": destURL,
-                    "book": book.loggableDictionary,
+                    "book": book.loggableDictionary(),
                     "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
                     "AdobeRights": rights,
                     "AdobeTag": tag
@@ -108,7 +108,7 @@ final class AdobeDRMHandler: NSObject {
             TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: did not finish download", metadata: [
                 "adeptError": adeptError ?? "N/A",
                 "adeptToURL": adeptToURL ?? "N/A",
-                "book": book.loggableDictionary,
+                "book": book.loggableDictionary(),
                 "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
                 "AdobeRights": rights,
                 "AdobeTag": tag

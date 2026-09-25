@@ -37,16 +37,6 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     init(_ call: @escaping (URLRequest?) -> Void) { self.call = call }
 }
 
-/// Sendable carrier for a non-Sendable `[String: Any]` failure-metadata
-/// dictionary crossing the `sending` `Task` boundary in `logBookDownloadFailure`.
-/// INVARIANT — the dictionary is fully assembled synchronously before the `Task`
-/// is enqueued and thereafter read-only; only the single logging `Task` consumes
-/// it, so `@unchecked Sendable` waives no real race. Mirrors `BorrowErrorDictBox`.
-private final class DownloadFailureMetadataBox: @unchecked Sendable {
-    let metadata: [String: Any]
-    init(_ metadata: [String: Any]) { self.metadata = metadata }
-}
-
 /// - Sendable invariant (Swift 6 `complete`-mode): `MyBooksDownloadCenter` is a
 ///   single long-lived instance owned by `AppContainer` (stored as
 ///   `let downloadCenter`, cached behind `OSAllocatedUnfairLock<AppContainer?>`),
@@ -243,7 +233,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     private(set) var lastNetworkLossFailureTask: Task<Void, Never>?
     let memoryPressureMonitor: MemoryPressureMonitor
     let bookmarkDeletionLog: TPPBookmarkDeletionLog
-    let deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor
+    let deviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring
     let opdsFeedService: OPDSFeedService
     let debugSettings: DebugSettings
     let settings: TPPSettings
@@ -398,7 +388,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         reachability: Reachability = AppContainer.production().reachability,
         memoryPressureMonitor: MemoryPressureMonitor = .shared,
         bookmarkDeletionLog: TPPBookmarkDeletionLog = .shared,
-        deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor = .shared,
+        deviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring = DeviceSpecificErrorMonitor.shared,
         opdsFeedService: OPDSFeedService = OPDSFeedService(),
         debugSettings: DebugSettings = DebugSettings(),
         settings: TPPSettings = TPPSettings(),
@@ -1857,29 +1847,7 @@ extension MyBooksDownloadCenter {
     }
 
     func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
-        let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
-
-        var dict: [String: Any] = metadata ?? [:]
-        dict["book"] = book.loggableDictionary
-        dict["rightsManagement"] = rights
-        dict["taskOriginalRequest"] = downloadTask.originalRequest?.loggableString
-        dict["taskCurrentRequest"] = downloadTask.currentRequest?.loggableString
-        dict["response"] = downloadTask.response ?? "N/A"
-        dict["downloadError"] = downloadTask.error ?? "N/A"
-
-        // Use enhanced logging if enabled.
-        // Swift 6 `complete`: box the non-Sendable `[String: Any]` metadata before
-        // the `sending` `Task` boundary (see `DownloadFailureMetadataBox`); `dict`
-        // is fully built above and read-only thereafter.
-        let metadataBox = DownloadFailureMetadataBox(dict)
-        Task { [weak self] in
-            await self?.deviceSpecificErrorMonitor.logDownloadFailure(
-                book: book,
-                reason: reason,
-                error: downloadTask.error,
-                metadata: metadataBox.metadata
-            )
-        }
+        reportDownloadFailure(book, reason: reason, downloadTask: downloadTask, metadata: metadata)
     }
 
     func fulfillLCPLicense(fileUrl: URL, forBook book: TPPBook, downloadTask: URLSessionDownloadTask) {
