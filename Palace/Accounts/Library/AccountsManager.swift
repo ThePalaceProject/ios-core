@@ -829,10 +829,25 @@ extension AccountsManager {
     /// boundary BEFORE AccountStateStore._resetAllForTesting so any flushed late
     /// write is then wiped. Snapshot under lock (inside the holder); drain
     /// outside the lock (the drain pumps the run loop and must not hold a lock).
+    ///
+    /// Also retires each instance from `.TPPUseBetaDidChange`. Instances built
+    /// by earlier tests can outlive their graph (each boundary rebuild leaves the
+    /// previous manager alive), and every subscribed one answers a beta toggle
+    /// with a global-queue `updateAccountSet` that blocks in its loader's
+    /// `loadingHandlersQueue.sync`. Enough of them exhaust the dispatch worker
+    /// pool, so the barriers they wait on never get a thread. A manager built
+    /// after this call registers normally.
     static func _drainAllLiveInstancesForTesting() {
         let snapshot = _liveInstancesForTesting.snapshot()
-        for m in snapshot { m.cancelAndDrainBackgroundWork() }
+        for m in snapshot {
+            NotificationCenter.default.removeObserver(m, name: .TPPUseBetaDidChange, object: nil)
+            m.cancelAndDrainBackgroundWork()
+        }
     }
+
+    /// Test-only: the registry store, so a test can seed and read its current
+    /// hash on a manager built through `makeFreshAccountsManager()`.
+    var _registryStoreForTesting: AccountRegistryStore { registryStore }
 
     /// Test-only seam: populate an accountSets bucket without going through
     /// OPDS2 parsing. Routes through `registryStore.mutate` (the store's barrier)

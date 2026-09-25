@@ -496,6 +496,49 @@ class AccountsManagerCancellationTests: PalaceWiringTestCase {
             "Race-guard: task handle must be nilled out after cancelBackgroundWork() fires mid-await"
         )
     }
+
+    // MARK: - Boundary retirement: a drained manager stops reacting to the beta toggle
+
+    /// Every test-boundary rebuild leaves the previous graph's `AccountsManager`
+    /// alive (measured: 50 of 50 survive 50 `AppContainer._resetForTesting()`
+    /// calls), and each one stayed subscribed to `.TPPUseBetaDidChange`. One
+    /// post then fans out to one global-queue `updateAccountSet` per surviving
+    /// manager, each blocking in its loader's `loadingHandlersQueue.sync`. CI run
+    /// 36079232269 wedged there with 62 workers and the main thread blocked
+    /// (`TPPSettingsTests.testUseBetaLibraries_postsNotification`, 120 s).
+    ///
+    /// The boundary drain already treats every live instance as retired and
+    /// cancels its background work; it must also stop it reacting to the
+    /// process-wide toggle. A manager built after the drain is the positive
+    /// control, so a notification that never arrives cannot pass this test.
+    func testBoundaryDrain_retiredManager_ignoresBetaToggle() {
+        let sentinel = "retirement-sentinel"
+
+        let retired = makeFreshAccountsManager()
+        retired._registryStoreForTesting.setCurrentHash(sentinel)
+
+        AccountsManager._drainAllLiveInstancesForTesting()
+
+        let live = makeFreshAccountsManager()
+        live._registryStoreForTesting.setCurrentHash(sentinel)
+
+        NotificationCenter.default.post(name: .TPPUseBetaDidChange, object: nil)
+
+        // Positive control: the live manager reacts (updateAccountSet rewrites
+        // the store's current hash from the sentinel to the real one).
+        let deadline = Date().addingTimeInterval(5)
+        while live._registryStoreForTesting.currentHash == sentinel && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertNotEqual(live._registryStoreForTesting.currentHash, sentinel,
+                          "Precondition: a manager built after the boundary must still react to the beta toggle")
+
+        // Both reactions were dispatched by the same post; give the retired
+        // one the same chance to land.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(retired._registryStoreForTesting.currentHash, sentinel,
+                       "A manager retired at the test boundary must not react to .TPPUseBetaDidChange — surviving managers each dispatch a blocking updateAccountSet and exhaust the dispatch worker pool")
+    }
 }
 
 // MARK: - Test helpers

@@ -31,7 +31,19 @@ the barrier waits for main while main waits for the barrier.
 - **D.** The fix covers all three barrier writers (`logDeletion`,
   `clearDeletion`, `clearAllDeletions`) through the single `saveToDisk`.
 
+- **E.** An `AccountsManager` drained at a test boundary no longer reacts to
+  `.TPPUseBetaDidChange`. Boundary rebuilds leave earlier managers alive; with
+  built-in resetters now running for the whole process, enough of them answer a
+  beta toggle with blocking `updateAccountSet` calls to exhaust the dispatch
+  worker pool (CI run 36079232269, `TPPSettingsTests`). DEBUG-only; a manager
+  built after the drain registers normally.
+
 ## Anti-claims
+
+- Does not find or fix what keeps a rebuilt graph's `AccountsManager` alive.
+  A standalone manager is freed; the container's is not, and neither the
+  download center, book registry, network queue nor auth coordinator is the
+  retainer.
 
 - Does not change the in-memory API or its barrier/sync semantics.
 - Does not identify which main-queue observer of the standard defaults' change
@@ -46,6 +58,10 @@ the barrier waits for main while main waits for the barrier.
 - `PalaceTests/PalaceTestSetup.swift` — built-in resetters re-registered at every boundary (separate strand, test-only)
 - `PalaceTests/PalaceTestSetupObservationTests.swift`
 - `PalaceTests/Support/SingletonResetRegistryTests.swift`
+- `Palace/Accounts/Library/AccountsManager.swift` — DEBUG-only boundary drain
+  also retires drained instances from `.TPPUseBetaDidChange` (Claim E)
+- `PalaceTests/Accounts/AccountsManagerCancellationTests.swift` —
+  `testBoundaryDrain_retiredManager_ignoresBetaToggle`
 
 ## Verification
 
