@@ -165,7 +165,6 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         # as its per-test fix lands.
         "PalaceTests/BookRegistrySyncTests"
         "PalaceTests/LCPFulfillmentHandlerTests"
-        "PalaceTests/BookSignInRedirectHandlerTests"
         "PalaceTests/PalacePreferencesSettingsRoundTripTests"
     )
     ISOLATED_SKIP_ARGS=()
