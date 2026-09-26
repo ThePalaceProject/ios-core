@@ -115,6 +115,70 @@ final class AccountsManagerCollaboratorInitRaceTests: PalaceWiringTestCase {
         }
     }
 
+    /// `registryLoader` stays a `lazy var` — its eight provider closures are not yet
+    /// routed through `AccountsManagerOwnerRef` — so unlike the two above it cannot be
+    /// asserted absent from lazy storage. What CAN be asserted, and is the property
+    /// that actually matters, is that `init` has already forced its construction
+    /// before returning.
+    ///
+    /// Why it matters: `init` registers the `.TPPUseBetaDidChange` observer, whose
+    /// handler dispatches to a global queue and reaches `registryLoader` via
+    /// `updateAccountSet` -> `loadCatalogs`. A Swift `lazy var` has no
+    /// synchronisation, so two concurrent first-touches can both run the initialiser.
+    /// The production preload used to be the only thing forcing it, and it runs AFTER
+    /// the observer is registered — and the DEBUG `deferDiskCachePreloadForTesting`
+    /// path (set by this suite's setUp) skips that preload entirely, so the first
+    /// touch could be the background handler.
+    ///
+    /// This test runs with the preload deferred, which is precisely the configuration
+    /// where nothing else forces construction. If it passed with the preload enabled
+    /// it would be asserting the preload, not the fix.
+    func testInit_forcesRegistryLoaderBeforeTheObserverCanReachIt() {
+        // BOTH forcing paths must be off or this arm is vacuous. A reviewer found
+        // the second one: `init` also calls `registryLoader.spawnInitialBackgroundLoad()`
+        // (AccountsManager.swift:466) whenever `deferInitialLoadCatalogsForTesting` is
+        // false. Asserting only the preload flag left the arm depending on a separate
+        // flip in PalaceWiringTestCase.setUpWithError, which a future edit could remove
+        // without touching this file — and the test would then pass by measuring the
+        // background spawn instead of the fix.
+        XCTAssertTrue(AccountsManager.deferDiskCachePreloadForTesting,
+                      "vacuous without the preload deferred: the preload would force "
+                      + "construction and the assertion below would prove nothing")
+        XCTAssertTrue(AccountsManager.deferInitialLoadCatalogsForTesting,
+                      "vacuous without the background load deferred: "
+                      + "spawnInitialBackgroundLoad() is init's other first-toucher")
+
+        let manager = makeFreshAccountsManager(defaults: Self.testUserDefaults())
+        let children = Mirror(reflecting: manager).children
+
+        // Enumerate rather than name. Neither this arm nor the two-collaborator
+        // loop above would notice a NEW lazy collaborator: the loop checks a
+        // hardcoded pair, this arm checks a hardcoded single, and a third
+        // property would land in both blind spots. `registryLoader` is the only
+        // lazy var in AccountsManager today and this pins that fact, so adding
+        // another forces a deliberate decision here.
+        let lazyNames = Set(children.compactMap { child -> String? in
+            guard let label = child.label, label.hasPrefix("$__lazy_storage_$_") else { return nil }
+            return String(label.dropFirst("$__lazy_storage_$_".count))
+        })
+        XCTAssertEqual(lazyNames, ["registryLoader"],
+                       "AccountsManager's set of lazy vars changed. A new one is a new "
+                       + "first-touch race unless init forces it too; an removed one means "
+                       + "this arm should move into the stored-property loop above.")
+
+        let storage = children.first { $0.label == "$__lazy_storage_$_registryLoader" }
+        XCTAssertNotNil(storage,
+                        "registryLoader is no longer a lazy var — if it became a stored "
+                        + "let, fold it into testInit_constructsCollaboratorsBeforeReturning")
+        if let storage {
+            let value = Mirror(reflecting: storage.value)
+            let isNilOptional = value.displayStyle == .optional && value.children.isEmpty
+            XCTAssertFalse(isNilOptional,
+                           "registryLoader was still unconstructed when init returned, so the "
+                           + "TPPUseBetaDidChange handler's background first-touch can race it")
+        }
+    }
+
     // MARK: - Owner reference
 
     /// The collaborators hold the owner box and the manager holds the collaborators, so

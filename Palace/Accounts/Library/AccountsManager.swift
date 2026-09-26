@@ -174,9 +174,16 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// Catalog LOAD orchestration + owned background-crawl + drain collaborator
     /// (Wave 3 / 3a-4). A `lazy var` (not a `let` default arg) because its provider
     /// closures capture `self`; first access is normally the synchronous preload in
-    /// `init`. Unlike `authDocLoader` it stays lazy: the `.TPPUseBetaDidChange`
-    /// observer registered before that preload can reach it first. Orchestrates registryCache /
-    /// registryStore / authDocLoader (via the injected drive/fetch closures).
+    /// `init`. It stays a `lazy var` only because its eight provider closures capture
+    /// `self` and are not yet routed through `AccountsManagerOwnerRef` the way
+    /// `authDocLoader`'s are — not because laziness is safe here. It is not: the
+    /// `.TPPUseBetaDidChange` observer is registered BEFORE the preload below, and its
+    /// handler reaches this property from a global queue via `updateAccountSet` ->
+    /// `loadCatalogs`. A Swift `lazy var` has no synchronisation, so two concurrent
+    /// first-touches can both run the initialiser. `init` therefore forces construction
+    /// explicitly before registering that observer; see the call site.
+    /// Orchestrates registryCache / registryStore / authDocLoader (via the injected
+    /// drive/fetch closures).
     private lazy var registryLoader: AccountRegistryLoader = AccountRegistryLoader(
         registryCache: registryCache,
         registryStore: registryStore,
@@ -397,6 +404,17 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
                         ? TPPConfiguration.betaUrlHash
                         : TPPConfiguration.prodUrlHash)
         )
+        // Force `registryLoader`'s construction on THIS thread before the observer
+        // below goes live. The observer's handler hops to a global queue and reaches
+        // `registryLoader` through `updateAccountSet` -> `loadCatalogs`; a `lazy var`
+        // has no synchronisation, so that background first-touch can race the one on
+        // the constructing thread. The synchronous preload further down used to be the
+        // only thing forcing it, and it runs AFTER this registration — and the DEBUG
+        // `deferDiskCachePreloadForTesting` path skips the preload entirely, leaving
+        // the handler as a plausible first toucher. This costs nothing:
+        // `AccountRegistryLoader.init` is pure assignment, no dispatch and no I/O.
+        _ = registryLoader
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(updateAccountSetFromNotification(_:)),
