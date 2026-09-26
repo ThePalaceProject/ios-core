@@ -43,12 +43,15 @@ final class AudiobookContentGateTests: XCTestCase {
         streamingSUTs = []
         appContainer = makeTestAppContainer()
         // Spy trigger: records every book the gate asks to (re)download, so a
-        // test can prove the gate TRIGGERS rather than only polls.
+        // test can prove the gate TRIGGERS rather than only polls. The flag is
+        // pinned OFF here (download-first); streaming-ON cases use
+        // `makeStreamingSUT()`.
         sut = AudiobookSessionManager(
             appContainer: appContainer,
             lcpContentDownloadTrigger: { [weak self] book in
                 self?.triggeredBookIds.append(book.identifier)
-            }
+            },
+            lcpStreamingEnabledProvider: { false }
         )
     }
 
@@ -467,7 +470,8 @@ final class AudiobookContentGateTests: XCTestCase {
         // Rebuild the SUT with a logging trigger so the CallLog captures order.
         let manager = AudiobookSessionManager(
             appContainer: appContainer,
-            lcpContentDownloadTrigger: { b in log.record("triggerDownload", args: ["bookId": b.identifier]) }
+            lcpContentDownloadTrigger: { b in log.record("triggerDownload", args: ["bookId": b.identifier]) },
+            lcpStreamingEnabledProvider: { false }
         )
         defer { Task { await manager.stopPlayback(dismissPhoneUI: false) } }
 
@@ -491,7 +495,8 @@ final class AudiobookContentGateTests: XCTestCase {
         let book = TPPBookMocker.mockBook(identifier: "gate-contract-book", title: "Gate Contract Book")
         let manager = AudiobookSessionManager(
             appContainer: appContainer,
-            lcpContentDownloadTrigger: { b in log.record("triggerDownload", args: ["bookId": b.identifier]) }
+            lcpContentDownloadTrigger: { b in log.record("triggerDownload", args: ["bookId": b.identifier]) },
+            lcpStreamingEnabledProvider: { false }
         )
         defer { Task { await manager.stopPlayback(dismissPhoneUI: false) } }
 
