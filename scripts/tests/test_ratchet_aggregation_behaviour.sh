@@ -23,7 +23,7 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VPR="${VPR_OVERRIDE:-$REPO/scripts/verify-pr.sh}"
-RATCHETS="check-appcontainer-locator-count.sh check-godclass-loc-freeze.sh check-shared-read-count.sh"
+RATCHETS="check-appcontainer-locator-count.sh check-file-size-ceiling.sh check-shared-read-count.sh check-package-tests-wired.sh"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "  ok  $*"; }

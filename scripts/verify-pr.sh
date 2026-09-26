@@ -1009,14 +1009,22 @@ else
   record "palacedownloads_package_purity" "skip" "check-palacedownloads-package-purity.sh not found"
 fi
 
-# 3b6. Decomposition ratchets — locator count, god-class LOC, `.shared` reads.
-# Three whole-tree scans that each hold a baseline file. They were written with
-# baselines and pytests but wired into NOTHING, so the lines they exist to hold
-# could drift upward silently (audited 2026-08-20: all three orphaned). A check
-# nothing invokes is inert — see memory `fixes-must-be-systemic-not-remembered`.
-# Each exits non-zero only when the tree regresses PAST its committed baseline,
+# 3b6. Decomposition ratchets — locator count, file-size ceiling, `.shared`
+# reads, package-test wiring.
+# Four whole-tree scans, and they no longer share a shape: two hold a baseline
+# file, the file-size ceiling holds a hard cap with no upward path, and the
+# package-test wiring gate holds neither — it asserts every package test target
+# actually executes.
+#
+# The original THREE were written with baselines and pytests and wired into
+# NOTHING, so the lines they existed to hold could drift upward silently
+# (audited 2026-08-20: all three orphaned). A check nothing invokes is inert —
+# see memory `fixes-must-be-systemic-not-remembered`. That is why they are
+# invoked from here.
+#
+# Each exits non-zero only when the tree regresses past what it holds,
 # so they are no-ops on a clean tree and cost ~7s total.
-echo "--- Decomposition ratchets (locator / god-class LOC / .shared reads) ---"
+echo "--- Decomposition ratchets (locator / file-size ceiling / .shared reads / package-test wiring) ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
   record "decomposition_ratchets" "skip" "not run (--mutation-only)"
 else
@@ -1024,10 +1032,16 @@ else
   RATCHET_DETAIL=""
   RATCHET_RAN=""
   RATCHET_MISSING=""
-  for ratchet in check-appcontainer-locator-count.sh check-godclass-loc-freeze.sh check-shared-read-count.sh; do
+  # check-godclass-loc-freeze.sh RETIRED here (Phase A) and replaced by
+  # check-file-size-ceiling.sh. The freeze watched six named files, so it could
+  # not see AccountRegistryLoader (693 code lines, CREATED by the Wave 3a
+  # decomposition), and its re-baseline hatch absorbed +528 physical lines in a
+  # single hotfix forward-port (PR #1348) instead of blocking them. The ceiling
+  # has no upward path.
+  for ratchet in check-appcontainer-locator-count.sh check-file-size-ceiling.sh check-shared-read-count.sh check-package-tests-wired.sh; do
     # A MISSING ratchet is not a passing one. Skipping it silently and then
-    # reporting "all three at or under baseline" is how a deleted gate reads as
-    # green — name the ones that actually ran.
+    # reporting them all as clean is how a deleted gate reads as green — name
+    # the ones that actually ran.
     if [ ! -f "scripts/$ratchet" ]; then
       RATCHET_MISSING="$RATCHET_MISSING $ratchet"
       continue
@@ -1046,7 +1060,10 @@ else
     # Some ran clean, but the report must not imply the missing ones did.
     record "decomposition_ratchets" "skip" "ran:${RATCHET_RAN:- none} — MISSING:$RATCHET_MISSING"
   else
-    record "decomposition_ratchets" "pass" "at or under baseline:$RATCHET_RAN"
+    # Not "at or under baseline" any more: two of these four hold a baseline
+    # file, the ceiling holds a hard cap with no upward path, and the wiring
+    # gate holds neither — it asserts every package test target executes.
+    record "decomposition_ratchets" "pass" "clean:$RATCHET_RAN"
   fi
 fi
 

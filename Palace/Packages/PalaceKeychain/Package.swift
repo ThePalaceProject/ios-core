@@ -5,7 +5,7 @@ let package = Package(
     name: "PalaceKeychain",
     platforms: [
         .iOS(.v17),
-        .macOS(.v11)
+        .macOS(.v13)
     ],
     products: [
         .library(

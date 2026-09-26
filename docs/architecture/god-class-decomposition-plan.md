@@ -153,7 +153,7 @@ Key inversions that make this acyclic (each is a protocol defined *in the lower 
 
 1. **SwiftPM (hard, structural):** cyclic package dependencies are a manifest-resolution error; a package cannot import the app target at all. Once code is in a package, the cycle it participated in *cannot recur*.
 2. **Ledger layer gate (soft, for the shrinking app-target remainder):** the existing `layerRules` in `tools/ledger/ledger-config.json` keep policing the in-target folders during transition; each wave moves a folder's Domain half out and re-tags the remainder Presentation/Application. Name-inferred edges get a confidence tag (see §3b cycle 9).
-3. **New ratchet gates (Wave 0):** god-class LOC freeze per file; `.shared`-read count monotone-down; `AppContainer.production()` call-site count outside an allowlist (composition roots, `@Environment` default, test bootstrap) monotone-down. All three are dumb greps — cheap, ungameable, wired into `verify-pr.sh` + a tooling-checks-style workflow per CLAUDE.md's "don't land a gate faster than you can verify it."
+3. **New ratchet gates (Wave 0):** god-class LOC freeze per file (**RETIRED 2026-09-25** — see the Wave 0 note below; replaced by a generic file-size ceiling, `scripts/check-file-size-ceiling.sh`); `.shared`-read count monotone-down; `AppContainer.production()` call-site count outside an allowlist (composition roots, `@Environment` default, test bootstrap) monotone-down. All three are dumb greps — cheap, ungameable, wired into `verify-pr.sh` + a tooling-checks-style workflow per CLAUDE.md's "don't land a gate faster than you can verify it."
 
 ### 2.5 Why each root 2-cycle becomes structurally impossible (summary; full map in §3b)
 
@@ -296,6 +296,35 @@ Ordering principle: **leaf-inward** — extract what the hubs depend ON before t
 ### Wave 0 — Ratchet + census (1 PR-week; prerequisite for everything)
 No extraction. Land the gates so the problem stops growing while the fleet works:
 - **God-class LOC freeze:** script + CI check — the 6 files' line counts may not exceed a checked-in baseline (decreases auto-rebaseline). Fires in `verify-pr.sh` + PR workflow.
+
+  > **RETIRED 2026-09-25, replaced by `scripts/check-file-size-ceiling.sh`.** This
+  > was the right idea with two holes, both of which were exercised in practice.
+  > (a) A named list only sees files someone already noticed, and *decomposition
+  > mints god-classes*: `AccountRegistryLoader.swift` was created at 693 code
+  > lines by the Wave 3a extraction and had no baseline entry, so it was born
+  > unwatched. (b) "decreases auto-rebaseline" reads as a ratchet but the
+  > mechanism also permitted *increases* with a justifying paragraph, and that
+  > became the accretion channel: the 3.2.1/3.2.2/3.2.3 hotfix forward-port
+  > (PR #1348) raised four hubs by +528 physical lines. (Those are the
+  > baseline's physical counts, not the code-line metric the replacement gate
+  > uses; the two are not comparable, and a wider total across the baseline's
+  > whole history is not quotable because its entries mix the two.) The
+  > baseline had stopped being a ratchet and become a changelog.
+  >
+  > The replacement is a generic 800-code-line ceiling over every app-target
+  > Swift file **including `Palace/Packages/*/Sources`**, with a DOWN-only
+  > allowlist and deliberately no upward path. This **extends** the Wave 7 exit
+  > criterion below ("ratchet thresholds converted from trend-down to hard
+  > ceiling") rather than contradicting it — the conversion simply happened in
+  > Wave 0 instead, because the hatch was actively in use.
+  >
+  > Wave 0 also gained a gate the original plan did not anticipate:
+  > `scripts/check-package-tests-wired.sh`. Extraction creates
+  > `Palace/Packages/*/Tests`, and nothing ran them — 144 passing tests across
+  > PalaceAuth, PalaceReadingPosition and PalaceLogging had executed zero times
+  > in CI, PalaceAuth's since 2026-05-12. Moving code into a package silently
+  > moved its tests out of the suite, which would have made every later wave
+  > look safer than it was.
 - **Coupling trend-down:** ledger avg-coupling + cycle-count thresholds pinned at current values (183 edges / 24 cycles), must be ≤ baseline per PR.
 - **`.shared`-read + `AppContainer.production()`-locator counts** monotone-down (grep-based, allowlisted composition roots).
 - **Ledger hygiene:** annotate TriageBotUI↔Palace as known-false-positive; add confidence tags for name-inferred edges.
