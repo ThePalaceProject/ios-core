@@ -136,6 +136,31 @@ final class PositionSaveDryPolicyTests: XCTestCase {
         XCTAssertEqual(seconds, 600, accuracy: 0.001)
     }
 
+    // MARK: - Cell 6 — a reference ahead of now
+
+    /// Every other verdict has a direct policy test with its boundary; this one
+    /// was reached only through two recorder integration tests, so a refactor
+    /// of that setup could silently un-cover the guard.
+    ///
+    /// The boundary matters in both directions: exactly 0 is NOT a regression
+    /// (the reference equals now, which every ordinary foreground return
+    /// produces), and any negative value is.
+    func testReferenceAheadOfNow_reportsClockRegressed() {
+        guard case let .clockRegressed(by) = evaluate(startedAgo: 60, lastTickAgo: -30) else {
+            return XCTFail("a reference later than now can measure nothing")
+        }
+        XCTAssertEqual(by, 30, accuracy: 0.001, "carries how far ahead it sits")
+    }
+
+    /// The zero boundary: a tick landing exactly at `now` is live, not
+    /// regressed. `< 0` widened to `<= 0` would swallow every healthy
+    /// foreground return that evaluates at the same instant as its last tick.
+    func testReferenceExactlyAtNow_isNotAClockRegression() {
+        if case .clockRegressed = evaluate(startedAgo: 60, lastTickAgo: 0) {
+            XCTFail("a reference equal to now is not ahead of it")
+        }
+    }
+
     // MARK: - Cell 5 — the stretch that cannot vouch for itself
 
     /// The cell an earlier draft of this change got wrong, in the direction

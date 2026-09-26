@@ -108,10 +108,10 @@ struct PositionTraceContext: Equatable {
     /// How many ticks arrived with a timestamp earlier than the reference.
     ///
     /// The recorder clamps its reference forward so one out-of-order tick
-    /// cannot manufacture a gap, and a clamp that leaves no trace is a guard
-    /// whose refusal renders as success. This is that trace: a session with a
-    /// non-zero count had its clock move under it, and its other numbers
-    /// should be read with that in mind.
+    /// cannot manufacture a gap. This is the trace of that clamp: a session
+    /// with a non-zero count had its clock move under it, and its other
+    /// numbers should be read with that in mind. One per episode, not per
+    /// tick, so it is comparable with `tickGapCount`.
     let clockRegressionCount: Int
 }
 
@@ -179,17 +179,19 @@ struct PlaybackStretch: Equatable {
 /// `.noPlayback` — the instrument would quietly report the absence of a defect
 /// it had merely lost the ability to see.
 ///
-/// The decision is a total function over five reachable cells:
+/// The decision is a total function over seven reachable cells. "tick fresh"
+/// is `ahead` when the reference sits later than `now`, which no interval can
+/// be measured from; otherwise `yes`/`no` against `tickFreshness`.
 ///
 ///   | stretch | tick fresh | quiet > dryThreshold | saved | gap  | verdict           |
 ///   |---------|------------|----------------------|-------|------|-------------------|
 ///   | nil     | —          | —                    | —     | —    | `.noPlayback`     |
-///   | present | reference ahead of now            | —     | —    | `.clockRegressed` |
-///   | present | no         | —                    | —     | —    | `.playbackStale` |
-///   | present | yes        | yes                  | —     | —    | `.dry`           |
-///   | present | yes        | no                   | yes   | —    | `.saving`        |
-///   | present | yes        | no                   | no    | nil  | `.saving`        |
-///   | present | yes        | no                   | no    | some | `.tickGap`       |
+///   | present | ahead      | —                    | —     | —    | `.clockRegressed` |
+///   | present | no         | —                    | —     | —    | `.playbackStale`  |
+///   | present | yes        | yes                  | —     | —    | `.dry`            |
+///   | present | yes        | no                   | yes   | —    | `.saving`         |
+///   | present | yes        | no                   | no    | nil  | `.saving`         |
+///   | present | yes        | no                   | no    | some | `.tickGap`        |
 ///
 /// The last row is the one that earns its keep, and it is the cell an earlier
 /// draft got wrong. A young stretch with no save of its own is benign when it
@@ -200,7 +202,7 @@ struct PlaybackStretch: Equatable {
 /// or has already run past the dry threshold, has its own evidence and does
 /// not care how it started.
 ///
-/// Five cells, each with its boundary. That is the whole state space — which
+/// Seven cells, each with its boundary. That is the whole state space — which
 /// is the point of taking a `PlaybackStretch?` rather than five loose dates.
 enum PositionSaveDryPolicy {
 

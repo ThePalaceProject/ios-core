@@ -191,6 +191,12 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     /// question PP-4963 has to answer and no single session can.
     private var tickGapCount: Int = 0
     private var clockRegressionCount: Int = 0
+    /// Whether the last tick was already behind the reference, so a single
+    /// clock step counts once rather than once per tick. At roughly four ticks
+    /// a second a thirty-minute step would otherwise report ~7,200 alongside
+    /// `tickGapCount`, which counts events — two numbers in one payload
+    /// measuring different things in the same units.
+    private var inClockRegression = false
     private var longestTickGap: TimeInterval = 0
 
     private var cancellables = Set<AnyCancellable>()
@@ -306,7 +312,14 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         // Recording the gap on the stretch lets the policy decline to make a
         // health claim it has not earned, instead of guessing.
         let gap = stretch.map { date.timeIntervalSince($0.lastTickAt) }
-        if let gap, gap < 0 { clockRegressionCount += 1 }
+        if let gap, gap < 0 {
+            if !inClockRegression {
+                clockRegressionCount += 1
+                inClockRegression = true
+            }
+        } else {
+            inClockRegression = false
+        }
         let isResume = gap.map { $0 > Self.tickFreshnessWindow } ?? true
         if isResume {
             if let gap {
@@ -330,11 +343,11 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
                 // result is a spurious `.tickGap` on a session that never
                 // stopped playing, produced by the clock rather than by
                 // anything the patron did.
-                // Clamped forward, and COUNTED. A single out-of-order tick
-                // must not manufacture a gap, but a clamp that leaves no
-                // trace is a guard whose refusal renders as success — and a
+                // Clamped forward, and counted. A single out-of-order tick
+                // must not manufacture a gap; counting the clamp is what makes
+                // a session that hit one identifiable in the trace. A
                 // sustained backwards step holds the reference ahead of now,
-                // which `PositionSaveDryPolicy` now declines to measure from.
+                // which `PositionSaveDryPolicy` declines to measure from.
                 lastTickAt: max(current.lastTickAt, date),
                 lastSaveAt: current.lastSaveAt,
                 precededByGap: current.precededByGap

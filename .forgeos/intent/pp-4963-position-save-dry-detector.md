@@ -76,10 +76,13 @@ the measurement.
   test, so a stretch opened by a gap with no save of its own makes no health
   claim. `.dry` still outranks it, and a stretch that has since saved reports
   `.saving`.
+- A tick reference sitting later than `now` reports `.clockRegressed`, never
+  a measured verdict. Every interval is computed from that reference, so once
+  it is ahead of the present none of them mean anything.
 - Adds `TPPErrorLogger` codes 404 (`audiobookPositionSaveDry`), 405
-  (`audiobookPositionRestoreGap`) and 406 (`audiobookPositionTickGap`) in the
-  audiobooks block. Each signal keeps its own code; 405 was lost to a collapse
-  into 404 in an earlier round.
+  (`audiobookPositionRestoreGap`), 406 (`audiobookPositionTickGap`) and 407
+  (`audiobookPositionClockRegressed`) in the audiobooks block. Each signal
+  keeps its own code; 405 was lost to a collapse into 404 in an earlier round.
 - Both fleet findings carry `tickGapCount` and `longestTickGapSeconds`. One
   session cannot separate a pause from a stall; across the fleet the gap count
   is what does.
@@ -94,11 +97,21 @@ the measurement.
 - Does NOT change what is restored. `resolveInitialPosition` and
   `validatedRemotePosition` keep their current behavior; the gap is observed
   alongside the restore, never used to alter it.
-- Does NOT emit book identity, title, or patron identity in the fleet event.
-  Patron reading position is a library record; the event carries a duration, an
-  app state, and a resolution outcome. This is a deliberate narrowing of the
+- Does NOT add book identity, title, or patron identity to the fleet event.
+  Patron reading position is a library record; what this instrument contributes
+  is a duration, an app state, and two counts. A deliberate narrowing of the
   ticket's "record every position save" for the fleet path — the full per-book
   detail stays in the existing local `AudiobookFileLogger`.
+
+  Scoped deliberately to what this instrument adds, because the payload is not
+  the whole event. `TPPErrorLogger.addAccountInfoToMetadata` attaches account
+  name, UUID and catalog/loans URLs to every `logError(withCode:)`, and
+  `FirebaseManager` sets a global md5(barcode) Crashlytics user id. Both are
+  pre-existing and shared with shipped code 403, and no BOOK identity is
+  reachable either way — so a patron's position in a book stays
+  unreconstructible, which is the property that justifies shipping 404, 406 and
+  407 ungated. It is not an end-to-end anonymity claim and must not be read as
+  one.
 - Does NOT add a new UserDefaults-backed restore source. The last-live marker
   is diagnostic only; nothing reads it to decide where to open a book.
 - No toolkit (`ios-audiobooktoolkit`) change. `positionPublisher` is already a

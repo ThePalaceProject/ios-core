@@ -335,9 +335,9 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
             )
         }
         XCTAssertGreaterThan(by, 0, "the regression carries how far back the clock went")
-        XCTAssertGreaterThan(reportedContexts.first?.clockRegressionCount ?? 0, 0,
-                             "and the clamp must leave a trace; a silent clamp is a "
-                             + "guard whose refusal reads as success")
+        XCTAssertEqual(reportedContexts.first?.clockRegressionCount, 1,
+                       "one episode, not one per tick — the count sits beside "
+                       + "tickGapCount and has to mean the same kind of thing")
     }
 
     /// The control: the same pause on a steady clock is still a tick gap, so
@@ -584,6 +584,32 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         XCTAssertEqual(reportedContexts.first?.longestTickGap ?? 0, 10_805, accuracy: 1,
                        "a three-hour gap followed by a one-minute gap must still "
                        + "report three hours; the recent one is not the worst one")
+    }
+
+    /// `gap == 0` is not a clock regression, and the clamp is what makes that
+    /// case reachable at all: during a backwards excursion the reference is
+    /// pinned at a fixed value, so the instant the clock catches up exactly the
+    /// gap is zero. A duplicate tick carrying an identical `Date` produces it
+    /// too.
+    ///
+    /// Review measured `gap < 0` -> `<=` SURVIVING the whole suite. Counting
+    /// those would inflate the one field whose stated job is marking sessions
+    /// for exclusion from the aggregate — the sibling guard in the policy got
+    /// its zero boundary pinned and this one had not.
+    func testTickAtExactlyTheSameInstant_isNotAClockRegression() {
+        let recorder = makeRecorder()
+
+        driveLivePlayback(recorder, for: 30)
+        // Same instant as the previous tick: gap is exactly 0, not negative.
+        recorder.notePlaybackTick(trackKey: "a", timestamp: 30, at: clock)
+        recorder.notePlaybackTick(trackKey: "a", timestamp: 30, at: clock)
+        driveLivePlayback(recorder, for: 5)
+
+        recorder.applicationDidBecomeActive()
+
+        XCTAssertEqual(reportedContexts.first?.clockRegressionCount, 0,
+                       "a tick at the same instant is not the clock moving "
+                       + "backwards; counting it inflates the exclusion key")
     }
 
     // MARK: - The default-off gate

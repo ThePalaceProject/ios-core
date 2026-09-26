@@ -181,6 +181,13 @@ private let nullString = "null"
     /// intervals the trace measured for it cannot be trusted. Its own code so
     /// those sessions can be excluded from the aggregate rather than quietly
     /// diluting it.
+    ///
+    /// EXCLUDE ON THIS CODE, not on `clockRegressionCount`. The count can be
+    /// zero on a genuine regression: if the clock steps back between the last
+    /// tick and the foreground check, no tick ever observes a negative gap, so
+    /// the policy reports the regression while nothing incremented. The count
+    /// is corroborating detail about how choppy the session was; this code is
+    /// the key.
     case audiobookPositionClockRegressed = 407
 
     // ereader
