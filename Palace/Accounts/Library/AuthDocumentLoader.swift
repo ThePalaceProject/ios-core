@@ -56,9 +56,16 @@ final class AuthDocumentLoader: @unchecked Sendable {
     private let currentAccountProvider: () -> Account?
 
     /// Resolves the signed-in credential state for `Account.loadAuthenticationDocument`.
-    /// `TPPSignedInStateProvider?` (the parameter's own type) — nil only if the owning
-    /// manager has been deallocated, which cannot happen while the loader (its `lazy var`)
-    /// is alive to call this.
+    /// `TPPSignedInStateProvider?` (the parameter's own type) — nil once the owning
+    /// manager has been deallocated.
+    ///
+    /// That IS reachable, which an earlier version of this comment denied: it argued the
+    /// manager could not be gone "while the loader (its `lazy var`) is alive to call
+    /// this". The loader is a stored `let` now and reaches the manager through a WEAK
+    /// `AccountsManagerOwnerRef`, so the loader outliving the manager is exactly the
+    /// case the box exists to make safe. `loadAuthenticationDocument(using:)` accepts
+    /// the optional and the completion below is `[weak self]`, so nil is handled rather
+    /// than impossible.
     private let signedInStateProvider: () -> TPPSignedInStateProvider?
 
     /// Whether the owning manager has been torn down (a DEBUG test-boundary reset). When

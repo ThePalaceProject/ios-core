@@ -33,7 +33,7 @@ must invert before 3a and 3b can land independently, or 3b serializes behind 3a.
 | # | Site (file:line) | What it does | Status |
 |---|---|---|---|
 | **A1** | `Accounts/Library/AccountsManager.swift:994` → `MyBooks/MyBooksDownloadCenter+Async.swift:27` → `MyBooks/BorrowOperation.swift:141` | `cleanupActiveContentBeforeAccountSwitch` calls the STATIC `MyBooksDownloadCenter.clearAllBorrowReauthState()` on every real library switch, wiping the process-wide per-book borrow-reauth circuit breaker. | **PINNED** (new `AccountSwitchBorrowReauthCouplingContractTests`). **Un-inverted static — needs a seam (S1).** |
-| A2 | `Accounts/Library/AccountsManager.swift:993` (via lazy `networkExecutor`, decl :274 = `AppContainer.production().networkExecutor`) | Account switch cancels non-essential in-flight tasks (incl. downloads). | Covered at the executor level by `AccountSwitchLifecycleTests` + `AccountSwitchCleanupTests`. Reaches `AppContainer.production()` — see S3. |
+| A2 | `Accounts/Library/AccountsManager.swift:993` (via computed `networkExecutor` over `AppContainer.production().networkExecutor`) | Account switch cancels non-essential in-flight tasks (incl. downloads). | Covered at the executor level by `AccountSwitchLifecycleTests` + `AccountSwitchCleanupTests`. Reaches `AppContainer.production()` — see S3. |
 | A3 | `Accounts/Library/AccountsManager.swift:1131` (doc) | Comment: MyBooksDownloadCenter observes `hasCredentials` transitions on the account. | Advisory only; no direct call. |
 
 The account-switch cleanup also fires (same setter, `currentAccount.didSet` @ :910):

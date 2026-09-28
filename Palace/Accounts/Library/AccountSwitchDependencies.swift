@@ -58,8 +58,8 @@ struct AccountSwitchDependencies: Sendable {
     /// `AccountNetworking` seam so a packaged `AccountsManager` names no concrete
     /// `Palace/Network` type (3a precondition). DEFERRED because `AccountsManager`
     /// is constructed inline inside `AppContainer`'s dispatch_once — resolving the
-    /// executor eagerly at init would re-enter that lock and trap. Resolved once,
-    /// cached behind the manager's `lazy var networkExecutor`.
+    /// executor eagerly at init would re-enter that lock and trap. Called on each
+    /// use by the manager's computed `networkExecutor`.
     let networkExecutorProvider: @Sendable () -> any AccountNetworking
 
     /// Main-actor navigation cleanup before an account switch: pop the active

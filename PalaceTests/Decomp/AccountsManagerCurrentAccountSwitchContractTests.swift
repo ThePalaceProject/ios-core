@@ -93,7 +93,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
 
         // Act — synchronous; the observer fires inside this assignment.
         // VERIFY: on the A→B path the setter's `cleanupActiveContentBeforeAccountSwitch`
-        // touches the lazy `networkExecutor` (→ `AppContainer.production()`); this
+        // touches the computed `networkExecutor` (→ `AppContainer.production()`); this
         // test assumes that build emits NO second `.TPPCurrentAccountDidChange` (so
         // the log holds exactly one record). The wiring suite's reselect test drives
         // the identical path today, so this holds — re-confirm if AppContainer
