@@ -563,6 +563,24 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
             TPPErrorLogger.logError(withCode: code, summary: summary, metadata: metadata)
         }
     ) {
+        guard let payload = saveReportPayload(for: verdict, context: context) else { return }
+        emit(payload.code, payload.summary, payload.metadata)
+    }
+
+    /// The exact event a save verdict puts on the wire, or nil when the verdict
+    /// is not a finding.
+    ///
+    /// Split out of the emit so the privacy promise is something a test can
+    /// hold as a SET rather than screen for by substring. "No book, title, or
+    /// patron identity reaches Crashlytics" is a claim about which keys exist,
+    /// and a denylist of forbidden substrings passes for every field nobody
+    /// thought to forbid. `AudiobookPositionTraceReportTests` pins the key set
+    /// of each of the five emitting cases, so adding a field here fails a named
+    /// test instead of shipping.
+    static func saveReportPayload(
+        for verdict: PositionSaveVerdict,
+        context: PositionTraceContext
+    ) -> (code: TPPErrorCode, summary: String, metadata: [String: Any])? {
         // Only the finding reaches the fleet. `.saving` is the healthy case,
         // and `.noPlayback` / `.playbackStale` mean the instrument has nothing
         // to say — reporting those would bury the signal under every paused
@@ -591,25 +609,25 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         ]
         switch verdict {
         case let .dry(seconds):
-            emit(
+            return (
                 .audiobookPositionSaveDry,
                 "Position saves dry while playback was live (PP-4963)",
                 shared.merging(["drySeconds": seconds]) { _, new in new }
             )
         case let .tickGap(seconds):
-            emit(
+            return (
                 .audiobookPositionTickGap,
                 "Playback tick stream went quiet; save health unknown (PP-4963)",
                 shared.merging(["gapSeconds": seconds]) { _, new in new }
             )
         case let .clockRegressed(by):
-            emit(
+            return (
                 .audiobookPositionClockRegressed,
                 "Device clock moved backwards under a trace session (PP-4963)",
                 shared.merging(["regressedBySeconds": by]) { _, new in new }
             )
         case .noPlayback, .playbackStale, .saving:
-            return
+            return nil
         }
     }
 
@@ -620,6 +638,19 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
             TPPErrorLogger.logError(withCode: code, summary: summary, metadata: metadata)
         }
     ) {
+        guard let payload = gapReportPayload(for: verdict) else { return }
+        emit(payload.code, payload.summary, payload.metadata)
+    }
+
+    /// The exact event a restore-gap verdict puts on the wire, or nil when the
+    /// verdict is not a finding. See `saveReportPayload(for:context:)` for why
+    /// this is separated from the emit.
+    ///
+    /// `.markerUnresolvable` carries the track key's LENGTH and never the key
+    /// itself: a track key is often the chapter title, which is book identity.
+    static func gapReportPayload(
+        for verdict: PositionRestoreGapVerdict
+    ) -> (code: TPPErrorCode, summary: String, metadata: [String: Any])? {
         // `.behind` is the patron complaint. `.markerUnresolvable` is reported
         // too: it means a position we recorded as live could not be located in
         // the manifest we later loaded, which is its own defect and must not be
@@ -634,9 +665,9 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
             summary = "Last-live marker not present in loaded manifest (PP-4963)"
             metadata = ["trackKeyLength": trackKey.count, "ticket": "PP-4963"]
         case .noMarker, .markerForDifferentBook, .aligned, .ahead:
-            return
+            return nil
         }
-        emit(.audiobookPositionRestoreGap, summary, metadata)
+        return (.audiobookPositionRestoreGap, summary, metadata)
     }
 
     private static func applicationStateName() -> String {
