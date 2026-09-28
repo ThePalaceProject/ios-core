@@ -126,7 +126,7 @@ Responder behavior:
 - `PalaceTests/Network/TPPNetworkResponderTests.swift`
 - `PalaceTests/Network/TPPNetworkResponderAuthCoordinatorTests.swift` *(lands with swarm_66819d80; verify presence)*
 - `PalaceTests/Network/URLResponseAuthenticationTests.swift`
-- `PalaceTests/Network/URLResponseNYPLTests.swift`
+- `Palace/Packages/PalaceUtilities/Tests/PalaceUtilitiesTests/URLResponseNYPLTests.swift`
 - `PalaceTests/Network/CrossDomain401Tests.swift` *(lands with swarm_66819d80; verify presence)*
 - `PalaceTests/Network/AuthErrorCategoryTests.swift` *(lands with swarm_66819d80; verify presence)*
 
@@ -147,7 +147,7 @@ Domain / contract:
 - `PalaceTests/Network/DefaultCatalogAPITests.swift`
 - `PalaceTests/Network/ManifestFetchTests.swift`
 - `PalaceTests/Network/OPDSFormatTests.swift`
-- `PalaceTests/Network/URLExtensionsTests.swift`
+- `Palace/Packages/PalaceUtilities/Tests/PalaceUtilitiesTests/URLExtensionsTests.swift`
 - `PalaceTests/Network/URLRequestExtensionsTests.swift`
 - `PalaceTests/Network/URLRequestNYPLAdditionsTests.swift`
 

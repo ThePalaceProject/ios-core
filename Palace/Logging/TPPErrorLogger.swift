@@ -12,6 +12,7 @@ import FirebaseCore
 import FirebaseCrashlytics
 import PalaceLogging
 import PalaceCatalog
+import PalaceUtilities
 #endif
 
 private let nullString = "null"

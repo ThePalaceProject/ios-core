@@ -8,6 +8,7 @@
 
 import UIKit
 import PalaceBookRegistry
+import PalaceUtilities
 
 extension TPPSignInBusinessLogic {
 

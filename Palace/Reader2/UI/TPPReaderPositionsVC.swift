@@ -9,6 +9,7 @@
 import UIKit
 import PureLayout
 import PalaceBookModel
+import PalaceUtilities
 
 /// A protocol describing callbacks for the possible user actions related
 /// to TOC items and bookmarks (aka positions).

@@ -123,6 +123,14 @@ jobs:
       - name: Run PalaceReadingPosition package tests
         run: swift test --package-path Palace/Packages/PalaceReadingPosition
 
+      # PalaceUtilities is the Phase B1 extraction: the Foundation-only core of
+      # Palace/Utilities, with no package dependencies at all. Foundation-only
+      # is what makes it host-buildable, which is what makes this step possible;
+      # the UIKit and Strings-dependent halves stayed in the app target for
+      # exactly that reason. 153 tests, under a second.
+      - name: Run PalaceUtilities package tests
+        run: swift test --package-path Palace/Packages/PalaceUtilities
+
       # The package suite above runs RedactionCorpusTests, but a deny-list guard
       # is only worth its ability to fail. --self-test disables redaction to prove
       # the guard goes red on an un-redacted corpus, catching a guard that has

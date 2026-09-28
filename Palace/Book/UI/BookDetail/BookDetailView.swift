@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PalaceBookModel
+import PalaceUtilities
 
 struct BookDetailView: View {
     @Environment(\.dismiss) var dismiss

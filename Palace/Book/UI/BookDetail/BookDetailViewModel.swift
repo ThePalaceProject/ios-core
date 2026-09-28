@@ -10,6 +10,7 @@ import PalaceBookRegistry
 #if LCP
 import ReadiumShared
 import ReadiumStreamer
+import PalaceUtilities
 #endif
 
 struct BookLane {

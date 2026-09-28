@@ -21,6 +21,7 @@ import Foundation
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
+import PalaceUtilities
 
 /// Errors produced by AudiobookLoader during audiobook preparation.
 enum AudiobookLoadError: Error {

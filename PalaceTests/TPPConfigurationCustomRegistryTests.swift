@@ -1,6 +1,7 @@
 import XCTest
 import PalacePreferences
 @testable import Palace
+import PalaceUtilities
 
 /// Covers the developer-settings custom registry URL construction
 /// (`TPPConfiguration.customUrl` / `customRegistryIsExplicitURL`).

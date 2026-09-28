@@ -10,6 +10,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceUtilities
 
 /// Adobe DRM Certificate structure.
 ///

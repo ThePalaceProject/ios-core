@@ -21,6 +21,7 @@ import PalaceBookRegistry
 import Foundation
 import PalaceLogging
 import PalaceBookModel
+import PalaceUtilities
 
 // MARK: - LCPFulfillmentHandlerDelegate
 

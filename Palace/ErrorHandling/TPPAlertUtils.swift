@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import PalaceLogging
 import PalaceCatalog
+import PalaceUtilities
 
 // swift6: This type exclusively builds, mutates, and presents UIAlertController /
 // UIViewController objects (all @MainActor-isolated in the iOS SDK) and reads

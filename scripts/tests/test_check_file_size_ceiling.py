@@ -144,6 +144,60 @@ def test_block_comment_bodies_do_not_count(tmp_path):
     )
 
 
+def test_import_lines_do_not_count(tmp_path):
+    """An `import` declaration is not a code line.
+
+    This is what lets an extraction touch a capped hub at all. Moving a helper
+    into an SPM package costs every consuming file exactly one import and
+    nothing else, so while imports counted, a file pinned at its measured size
+    could not participate in the decomposition this gate exists to serve —
+    there is no upward path on the allowlist by design. Phase B1 hit this on
+    four hubs at once, each landing exactly 1 over.
+
+    801 code lines + imports must still fail, which the next arm asserts, so
+    this exclusion cannot be read as "the ceiling got looser".
+    """
+    root = _tree(tmp_path)
+    p = root / "Palace" / "ManyImports.swift"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    imports = [
+        "import Foundation",
+        "import Combine",
+        "@testable import Palace",
+        "@preconcurrency import PalaceNetwork",
+        "  import PalaceUtilities",
+    ] * 20  # 100 import lines
+    p.write_text("\n".join(imports + [f"let v{i} = {i}" for i in range(800)]) + "\n")
+    r = _run(root)
+    assert r.returncode == 0, (
+        "100 import lines + 800 code lines must count as 800\n" + r.stdout + r.stderr
+    )
+
+
+def test_import_exclusion_does_not_raise_the_ceiling(tmp_path):
+    """The companion to the arm above: imports stop counting, code does not.
+
+    Without this, deleting the `next` for imports and deleting the whole
+    counter are indistinguishable — a gate that counts nothing also passes a
+    file with 100 imports. 801 real code lines must still be red no matter how
+    many imports sit above them.
+    """
+    root = _tree(tmp_path)
+    p = root / "Palace" / "ImportsPlusOverage.swift"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    imports = ["import Foundation"] * 100
+    p.write_text("\n".join(imports + [f"let v{i} = {i}" for i in range(801)]) + "\n")
+    r = _run(root)
+    assert r.returncode == 1, (
+        "801 code lines must fail regardless of the imports above them\n"
+        + r.stdout + r.stderr
+    )
+    assert "OVER-CEILING" in r.stderr
+    assert "801 code lines" in r.stderr, (
+        "the reported count must be the code lines alone, not 901\n" + r.stderr
+    )
+
+
 def test_package_sources_are_in_scope(tmp_path):
     """Excluding Palace/Packages/** was a laundering path, proven not argued.
 

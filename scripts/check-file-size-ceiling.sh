@@ -75,16 +75,18 @@ SRC="$ROOT/Palace"
 
 # <max-code-lines> <repo-relative path>   — ratchet DOWN only.
 # Every entry is a decomposition target with a phase that will retire it.
+# Every cap below was ratcheted down in Phase B1 when loc_of stopped counting
+# `import` declarations — same files, same code, a smaller and stricter number.
 read -r -d '' ALLOWLIST <<'EOF'
-1557 Palace/Audiobooks/AudiobookSessionManager.swift
-1226 Palace/MyBooks/MyBooksDownloadCenter.swift
-1201 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
-981  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
-878  Palace/Utilities/Localization/Strings.swift
-# AccountsManager is 372, not 371: #1520 landed `_ = registryLoader` in init
-# while this branch was in review, forcing the lazy var's construction before
-# the .TPPUseBetaDidChange observer can race it. Measured against develop with
-# this gate's own counter, not inferred from the diff.
+1546 Palace/Audiobooks/AudiobookSessionManager.swift
+1213 Palace/MyBooks/MyBooksDownloadCenter.swift
+1197 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
+971  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+875  Palace/Utilities/Localization/Strings.swift
+# AccountsManager is 367 under this metric, not 366: #1520 landed
+# `_ = registryLoader` in init while this branch was in review. Re-measured
+# against the current tree with this gate's own import-excluding counter, not
+# derived by adding one to the previous number.
 #
 # Carried over from the retired six-file freeze at their MEASURED sizes, not the
 # freeze's stale numbers. Without these three the swap would LOOSEN exactly the
@@ -92,13 +94,13 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 429 lines of headroom, TPPSignInBusinessLogic 162 and BorrowOperation 279 —
 # 870 in total, on two CLAUDE.md critical paths (sign-in, borrow). The allowlist
 # only ratchets down, so pinning them costs nothing and closes the regression.
-372  Palace/Accounts/Library/AccountsManager.swift
-638  Palace/SignInLogic/TPPSignInBusinessLogic.swift
-521  Palace/MyBooks/BorrowOperation.swift
+367  Palace/Accounts/Library/AccountsManager.swift
+634  Palace/SignInLogic/TPPSignInBusinessLogic.swift
+514  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the
 # ceiling inside the old blind spot; pinned here at its measured size so the
 # scope widening lands green rather than red-on-arrival.
-848  Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Reducer/ConversationReducer.swift
+847  Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Reducer/ConversationReducer.swift
 EOF
 
 # Injection seam, matching FILE_SIZE_CEILING. Without it the pytest fixture had
@@ -121,9 +123,28 @@ fi
 
 [ -d "$SRC" ] || { echo "[file-size] ERROR: no $SRC" >&2; exit 2; }
 
-loc_of() {  # live CODE-line count (non-blank, non-comment-only); -1 if missing
+loc_of() {  # live CODE-line count (non-blank, non-comment-only, non-import); -1 if missing
   local p="$1"
   [ -f "$p" ] || { echo "-1"; return; }
+  # `import` declarations are excluded, and the exclusion is load-bearing rather
+  # than cosmetic. This gate exists to serve the decomposition campaign, and the
+  # campaign's mechanism is moving code into SPM packages — which costs every
+  # consuming file exactly one `import` line and nothing else. Counting that
+  # line meant an extraction could not touch a capped hub at all: Phase B1
+  # (PalaceUtilities) added one import each to AudiobookSessionManager,
+  # AudiobookMorphingPlayerView, TPPSignInBusinessLogic and BookDetailViewModel
+  # and pushed all four exactly 1 over their caps, with no downward path
+  # available, since the allowlist ratchets down only.
+  #
+  # An import carries no logic, so excluding it does not open a channel for the
+  # accretion this gate watches for. It does make every measurement smaller, and
+  # a smaller measurement under an unchanged cap is slack — so every allowlist
+  # cap above was re-measured and re-pinned to its new value in the same change.
+  #
+  # Measured, because the obvious claim here is wrong: slack is ZERO on all nine
+  # files both before and after, so the gate is exactly as tight, not tighter.
+  # The caps fell because the metric changed, not because headroom was removed.
+  # Re-pinning is what PRESERVES the zero; it does not improve on it.
   awk '
     {
       s = $0
@@ -131,6 +152,7 @@ loc_of() {  # live CODE-line count (non-blank, non-comment-only); -1 if missing
       if (s == "")            next
       if (s ~ "^//")          next
       if (s ~ "^/?[*]")       next
+      if (s ~ "^(@[A-Za-z_][A-Za-z0-9_]*[[:space:]]+)*import[[:space:]]") next
       n++
     }
     END { print n + 0 }

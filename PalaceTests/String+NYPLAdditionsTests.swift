@@ -8,6 +8,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceUtilities
 
 @MainActor
 class String_NYPLAdditionsTests: XCTestCase {

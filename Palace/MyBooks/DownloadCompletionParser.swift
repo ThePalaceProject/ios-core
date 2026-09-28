@@ -20,6 +20,7 @@ import Foundation
 import PalaceCatalog
 import PalaceLogging
 import PalaceBookModel
+import PalaceUtilities
 
 // MARK: - Routing surface
 

@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UIKit
+import PalaceUtilities
 
 struct LibraryBook: Codable, Hashable {
     var bookId: String

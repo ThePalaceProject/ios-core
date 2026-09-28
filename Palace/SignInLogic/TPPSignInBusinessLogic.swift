@@ -10,6 +10,7 @@ import CoreLocation
 import PalaceLogging
 import PalaceCatalog
 import PalaceAuth
+import PalaceUtilities
 
 @objc enum TPPAuthRequestType: Int {
     case signIn = 1

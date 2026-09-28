@@ -19,6 +19,7 @@ import Foundation
 import UIKit
 import PalaceAuth
 import PalaceCatalog
+import PalaceUtilities
 
 /// Wraps the businessLogic-injected `urlSettingsProvider` in PalaceAuth's
 /// `UniversalLinksProviding` protocol. The injected type is

@@ -11,6 +11,7 @@ import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
 import PalaceAuth
+import PalaceUtilities
 
 private struct TPPNetworkTaskInfo {
     var progressData: Data

@@ -19,6 +19,7 @@ import Foundation
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
+import PalaceUtilities
 
 /// Narrow seams for the two collaborators LCPAdapter needs. Defined here so
 /// the adapter is unit-testable without retrofitting protocols onto the @objc

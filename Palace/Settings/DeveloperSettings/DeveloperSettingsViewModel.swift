@@ -20,6 +20,7 @@ import MessageUI
 import WebKit
 import PalaceCatalog
 import PalaceBookRegistry
+import PalaceUtilities
 
 /// Owns all Testing / Advanced screen state and actions. The two SwiftUI
 /// screens (`DeveloperSettingsView`, `AppAdvancedSettingsView`) share this one
