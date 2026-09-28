@@ -171,6 +171,30 @@ def test_a_column_zero_comment_does_not_truncate_a_dead_jobs_SPAN():
     assert effective_runs(wf) == []
 
 
+def test_a_comment_between_run_and_continue_on_error_still_drops_the_step():
+    """The FOURTH boundary decision — `_step_blocks` — exercised directly.
+
+    The other three comment arms cover the `jobs:` tracker, the job-key scan and
+    the span-end scan. This one was covered only by the live-corpus arms, which
+    pass because some real workflow happens to contain a comment in this
+    position. Delete that comment upstream and the decision loses all coverage
+    silently: a reviewer mutated `_skippable` at this call site and, with the
+    three corpus-coupled arms deselected, the suite stayed 54/54 green.
+
+    The direction matters. If the comment is NOT skipped here, the following
+    `continue-on-error: true` is never read as a key, so a step that CANNOT fail
+    the build is reported as enforcement — fail-OPEN, which is this gate's own
+    threat model. `unit-testing.yml` uses continue-on-error 14x, so the shape is
+    ordinary rather than contrived.
+    """
+    wf = ("name: w\non: push\njobs:\n  live:\n    steps:\n"
+          "      - name: Run PalaceAuth package tests\n"
+          "        run: swift test --package-path Palace/Packages/PalaceAuth\n"
+          "# flaky during the incident, see PP-9999\n"
+          "        continue-on-error: true\n")
+    assert effective_runs(wf) == []
+
+
 def test_comment_trailing_a_job_id_does_not_hide_its_job_keys():
     """The comment skip had landed in only ONE of the two loops walking a job.
 
