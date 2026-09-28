@@ -114,7 +114,7 @@ final class AudiobookPositionTraceCallSiteTests: XCTestCase {
 
     /// The ordinary path. Every local position write must be reported, because
     /// a successful save leaves no other trace anywhere.
-    func testSaveListeningPosition_notifiesTheTrace() throws {
+    func testSaveListeningPosition_notifiesTheTrace() async throws {
         var verdicts: [PositionSaveVerdict] = []
         let recorder = makeRecorder { verdicts.append($0) }
         let logic = AudiobookBookmarkBusinessLogic(
@@ -127,11 +127,25 @@ final class AudiobookPositionTraceCallSiteTests: XCTestCase {
         let track = try XCTUnwrap(tracks.tracks.first)
         driveTicks(recorder, track: track)
 
-        let done = expectation(description: "save completes")
+        // Joined on the actual work unit, not a wall-clock deadline. This
+        // replaces a five-second expectation deadline, which polls for a
+        // fire-and-forget `Task` and starves under parallel simulator clones —
+        // STARVE-001, the `parallel-clone-starvation` recurrence class.
+        //
+        // The join cannot silently no-op: `saveListeningPosition` assigns its
+        // write `Task` through `onStateQueue`, which is synchronous on both
+        // branches — inline when already on the work queue, `queue.sync`
+        // otherwise — and that assignment is the last unconditional statement
+        // of the method. So the handle exists before the call returns.
+        //
+        // The one path that leaves the handle nil is the `toTPPBookLocation()`
+        // guard, which also skips `noteSave` — so the assertion below fails
+        // rather than passing vacuously. The barrier is self-diagnosing.
         logic.saveListeningPosition(
-            at: TrackPosition(track: track, timestamp: 240, tracks: tracks)
-        ) { _ in done.fulfill() }
-        wait(for: [done], timeout: 5.0)
+            at: TrackPosition(track: track, timestamp: 240, tracks: tracks),
+            completion: nil
+        )
+        await logic._awaitPositionWriteForTesting()
 
         recorder.applicationDidBecomeActive()
 
