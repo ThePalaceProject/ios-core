@@ -406,6 +406,39 @@ def test_live_allowlist_pins_the_critical_paths(tmp_path):
     )
 
 
+def test_a_code_line_merely_CONTAINING_import_still_counts(tmp_path):
+    """The `^` anchor on the import exclusion is load-bearing, and was untested.
+
+    `loc_of` skips import declarations so an extraction can add one per consumer
+    without blowing a cap. Dropping the `^` turns that into "skip any line
+    containing `import `", which silently manufactures slack — and the instance
+    is live, not hypothetical: `MyBooksDownloadCenter.swift:1030` is
+    `NSLog("Cannot import ADEPT")`, real code in a file sitting at EXACTLY its
+    cap, so one free line there is a cap that no longer binds.
+
+    A reviewer's mechanical mutant found this: with the anchor removed the whole
+    suite stayed green and the live tree still reported OK. Comment lines
+    containing "import" are already excluded as comments, so this arm uses the
+    shape that actually reaches the counter — a string literal in executable
+    code.
+    """
+    root = _tree(tmp_path)
+    p = root / "Palace" / "MentionsImport.swift"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    body = [f"let v{i} = {i}" for i in range(800)]
+    body.append('NSLog("Cannot import ADEPT")')          # 801st CODE line
+    p.write_text("\n".join(body) + "\n")
+    r = _run(root, ceiling=None)
+    assert r.returncode == 1, (
+        "a code line that merely contains the word import must still count; "
+        "801 code lines exceed the default ceiling\n" + r.stdout + r.stderr
+    )
+    assert "MentionsImport.swift" in r.stderr
+    assert "801 code lines" in r.stderr, (
+        "the count must be 801, not 800 — the NSLog line was skipped\n" + r.stderr
+    )
+
+
 def test_live_repo_passes():
     """The real tree must be clean, or the gate lands already-red and gets
     switched off within a week.
