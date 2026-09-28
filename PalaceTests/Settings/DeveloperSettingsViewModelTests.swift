@@ -90,13 +90,13 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     /// Seeding from a test-scoped `RemoteFeatureFlags` also stops the `@Published`
     /// mirrors being initialised from `UserDefaults.standard` while the assertions
     /// read `testDefaults` — the write and the read now address one store.
-    private func makeViewModel() -> DeveloperSettingsViewModel {
+    private func makeViewModel(debugSettings: DebugSettings? = nil) -> DeveloperSettingsViewModel {
         let container = makeTestAppContainer()
         return DeveloperSettingsViewModel(
             settings: container.settings,
             accountsManager: container.accountsManager,
             bookRegistry: container.bookRegistry,
-            debugSettings: container.debugSettings,
+            debugSettings: debugSettings ?? container.debugSettings,
             featureFlags: RemoteFeatureFlags(defaults: testDefaults),
             overrideDefaults: testDefaults
         )
@@ -139,6 +139,63 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     // PP-2677: side loading shipped in 3.3.0 with NO writer for its local
     // override outside tests, so the Settings section it gates was unreachable
     // in any build. These pin the toggle that makes it reachable.
+
+    /// PP-4963 — this `didSet` is the ONLY production writer of the flag the
+    /// position trace reads, and nulling its body left 121 tests green.
+    ///
+    /// Without it the instrument is unreachable in the field: the toggle moves,
+    /// nothing is stored, the recorder's `diagnosticsEnabled` closure keeps
+    /// reading false, and no trace is ever written. By this change's own thesis
+    /// an empty fleet reads as "no defect" — so the failure mode is the silent
+    /// false negative the whole instrument exists to remove, arriving at the
+    /// outermost layer where none of its own tests look.
+    ///
+    /// Side loading shipped dark in 3.3.0 for exactly this shape: an override
+    /// with no writer outside test.
+    func testAudiobookPositionTraceToggle_writesThroughToDebugSettings() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        let vm = makeViewModel(debugSettings: scoped)
+
+        vm.audiobookPositionTraceEnabled = true
+        XCTAssertTrue(scoped.isAudiobookPositionTraceEnabled,
+                      "turning the trace ON must persist — otherwise a deliberate "
+                      + "trace run records nothing and reads as a clean result")
+
+        vm.audiobookPositionTraceEnabled = false
+        XCTAssertFalse(scoped.isAudiobookPositionTraceEnabled,
+                       "and turning it OFF must persist too; that write is what "
+                       + "triggers the purge of the positions it recorded")
+    }
+
+    /// The write-through only matters if it lands where the RECORDER looks.
+    /// Asserting the toggle alone would pass even against a writer aimed at a
+    /// key nothing consults — the original side-loading defect's shape.
+    ///
+    /// This reads through the recorder's own shipped default closure rather
+    /// than the property, so a change to either side breaks it.
+    func testAudiobookPositionTraceToggle_isTheFlagTheRecorderActuallyReads() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        let vm = makeViewModel(debugSettings: scoped)
+        let asTheRecorderReadsIt = { DebugSettings(defaults: self.testDefaults).isAudiobookPositionTraceEnabled }
+
+        vm.audiobookPositionTraceEnabled = true
+        XCTAssertTrue(asTheRecorderReadsIt(),
+                      "the recorder must see the toggle a tester just moved")
+
+        vm.audiobookPositionTraceEnabled = false
+        XCTAssertFalse(asTheRecorderReadsIt())
+    }
+
+    /// The row must show the stored state on open. Without the init read-back
+    /// the switch renders OFF over a trace that is ON, and a tester toggling it
+    /// to "turn it on" silently turns it off.
+    func testAudiobookPositionTraceToggle_seedsFromStoredStateOnInit() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        scoped.isAudiobookPositionTraceEnabled = true
+
+        XCTAssertTrue(makeViewModel(debugSettings: scoped).audiobookPositionTraceEnabled,
+                      "the view model must read the stored value at init, not default to false")
+    }
 
     func testSideLoadingToggle_writesThroughToLocalOverrideKey() {
         let vm = makeViewModel()
