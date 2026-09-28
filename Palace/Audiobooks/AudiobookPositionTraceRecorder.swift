@@ -84,14 +84,32 @@ struct UserDefaultsLastLivePositionMarkerStore: LastLivePositionMarkerStoring, @
     private let diagnosticsEnabled: @Sendable () -> Bool
     fileprivate static let keyPrefix = "audiobook.lastLivePosition."
 
+    /// `diagnosticsEnabled` is optional rather than defaulted to a closure
+    /// literal, so the gate is bound to THIS store's domain and to the one
+    /// named reader.
+    ///
+    /// The literal it replaces — `{ DebugSettings().isAudiobookPositionTraceEnabled }`
+    /// — was wrong twice. It re-implemented the read that
+    /// `AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled` exists to be
+    /// the only copy of, and it ignored `defaults`, so a store scoped to an
+    /// injected domain consulted `.standard` instead. Measured: replacing that
+    /// literal's body with `false` left the whole suite green, because every
+    /// test injects a closure and nothing exercised the default — while in
+    /// production it is the path `makePositionTrace` takes, and a store that
+    /// reads nothing makes code 405 permanently silent.
     init(
         defaults: UserDefaults = .standard,
-        diagnosticsEnabled: @escaping @Sendable () -> Bool = {
-            DebugSettings().isAudiobookPositionTraceEnabled
-        }
+        diagnosticsEnabled: (@Sendable () -> Bool)? = nil
     ) {
         self.defaults = defaults
+        // `nonisolated(unsafe)` on the capture, not a widened conformance: the
+        // closure is `@Sendable` and `UserDefaults` is not `Sendable`, but this
+        // type's existing `@unchecked Sendable` already rests on Apple
+        // documenting `UserDefaults` as thread-safe. Same invariant, stated at
+        // the one place that now depends on it.
+        nonisolated(unsafe) let gateDefaults = defaults
         self.diagnosticsEnabled = diagnosticsEnabled
+            ?? { AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled(defaults: gateDefaults) }
     }
 
     private func key(_ bookID: String) -> String { Self.keyPrefix + bookID }
