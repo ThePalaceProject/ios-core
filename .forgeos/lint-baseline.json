@@ -5,16 +5,16 @@
   ],
   "files_scanned": 1469,
   "summary": {
-    "total": 5112,
+    "total": 5113,
     "blockers": 79,
-    "warnings": 5033,
+    "warnings": 5034,
     "by_category": {
       "force_unwraps": 79,
       "ticket_refs": 668,
       "commented_out_code": 95,
       "archaeology": 91,
       "state_splitbrain": 32,
-      "sut_instantiation": 3064,
+      "sut_instantiation": 3065,
       "test_isolation": 1080,
       "py_suppressions": 2,
       "fluff_comments": 1
@@ -3907,8 +3907,18 @@
       "column": 1,
       "detector": "sut_instantiation",
       "severity": "warn",
-      "message": "test 'testRefresh_SingleFlight_TwoConcurrentCallsResultInOneReauthenticatorCall' never references SUT 'Auth' \u2014 asserts on collaborators only; the SUT's code is not exercised (fake-test-instantiation)",
-      "snippet": "func testRefresh_SingleFlight_TwoConcurrentCallsResultInOneReauthenticatorCall() async {",
+      "message": "test 'testRefresh_SingleFlight_CallerArrivingDuringFlight_JoinsIt' never references SUT 'Auth' \u2014 asserts on collaborators only; the SUT's code is not exercised (fake-test-instantiation)",
+      "snippet": "func testRefresh_SingleFlight_CallerArrivingDuringFlight_JoinsIt() async {",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Packages/PalaceAuth/Tests/PalaceAuthTests/AuthCoordinatorTests.swift",
+      "line": 180,
+      "column": 1,
+      "detector": "sut_instantiation",
+      "severity": "warn",
+      "message": "test 'testRefresh_SingleFlight_CallerArrivingAfterFlightCompletes_StartsNewFlight' never references SUT 'Auth' \u2014 asserts on collaborators only; the SUT's code is not exercised (fake-test-instantiation)",
+      "snippet": "func testRefresh_SingleFlight_CallerArrivingAfterFlightCompletes_StartsNewFlight() async {",
       "autofix_available": false
     },
     {
