@@ -1062,7 +1062,7 @@
       "helpspot_tag": "how-to-hold-pickup-window",
       "trust_level": "authoritative",
       "visibility": "user_facing",
-      "ui_surface": "my-books",
+      "ui_surface": "holds",
       "reviewed_at": "2026-07-21"
     },
     {

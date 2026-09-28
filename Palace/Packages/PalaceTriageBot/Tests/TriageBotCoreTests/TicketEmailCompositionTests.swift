@@ -8,6 +8,7 @@ import XCTest
 final class TicketEmailCompositionTests: XCTestCase {
 
     private func makeContext(
+        platform: String = "iOS",
         recentLogs: [String] = [],
         audio: String? = nil,
         lowPower: Bool? = nil,
@@ -18,6 +19,7 @@ final class TicketEmailCompositionTests: XCTestCase {
         ContextSnapshot(
             appVersion: "3.0.3",
             appBuild: "478",
+            platform: platform,
             osVersion: "26.4.2",
             deviceModel: "iPhone17,2",
             libraryName: "Sample Library",
@@ -38,6 +40,7 @@ final class TicketEmailCompositionTests: XCTestCase {
     }
 
     private func makeDraft(
+        platform: String = "iOS",
         matched: String? = nil,
         priority: TicketDraft.Priority = .normal,
         recentLogs: [String] = [],
@@ -48,6 +51,7 @@ final class TicketEmailCompositionTests: XCTestCase {
             category: .audiobook,
             matchedEntryId: matched,
             context: makeContext(
+                platform: platform,
                 recentLogs: recentLogs,
                 audio: diagnostics.audio,
                 lowPower: diagnostics.lowPower,
@@ -58,6 +62,59 @@ final class TicketEmailCompositionTests: XCTestCase {
             helpspotTags: ["triage-bot-escalate-novel"],
             priority: priority
         )
+    }
+
+    // MARK: - Platform naming
+
+    /// Every human-readable string in a ticket must name the platform the
+    /// report came FROM, read from `context.platform`, not a compile-time
+    /// literal.
+    ///
+    /// `TicketEmailComposition` lives in TriageBotCore, and its own header
+    /// offers it for reuse by a non-email gateway "(server-side, Android,
+    /// etc.)". It previously hardcoded "iOS" in the subject, the environment
+    /// line, the signature, and the log-file header, and never printed
+    /// `context.platform` in the body at all — so the field reached support
+    /// only inside `palace-diagnostics.json` while every label a triager reads
+    /// said iOS unconditionally. A port reusing this composition would have
+    /// stamped "Palace iOS support" on Android tickets.
+    func testSubject_namesThePlatformFromContext() {
+        let subject = TicketEmailComposition.subject(for: makeDraft(platform: "Android"))
+        XCTAssertTrue(subject.contains("Palace Android support"), "subject was: \(subject)")
+        XCTAssertFalse(subject.contains("iOS"), "subject still names iOS for an Android report: \(subject)")
+    }
+
+    func testBody_environmentLineAndSignature_nameThePlatformFromContext() {
+        let body = TicketEmailComposition.body(for: makeDraft(platform: "Android"))
+        XCTAssertTrue(body.contains("Android: 26.4.2"), "environment line missing the platform-labelled OS version")
+        XCTAssertTrue(body.contains("Palace Android in-app triage bot"), "signature does not name the reporting platform")
+        XCTAssertFalse(body.contains("iOS"), "body still names iOS somewhere for an Android report")
+    }
+
+    func testAttachments_logHeader_namesThePlatformFromContext() throws {
+        let attachments = TicketEmailComposition.attachments(
+            for: makeDraft(platform: "Android", recentLogs: ["line one", "line two"])
+        )
+        let logs = try XCTUnwrap(attachments.first { $0.fileName == "palace-logs.txt" })
+        let text = try XCTUnwrap(String(data: logs.data, encoding: .utf8))
+        XCTAssertTrue(text.contains("Palace Android — recent log tail"), "log header does not name the reporting platform")
+        XCTAssertFalse(text.contains("iOS"), "log header still names iOS for an Android report")
+    }
+
+    /// The iOS output must be byte-for-byte what it always was — reading the
+    /// field is only correct if it produces the identical result for the
+    /// platform that was previously hardcoded.
+    func testIOSOutput_isUnchangedByReadingTheField() throws {
+        let draft = makeDraft()
+        XCTAssertTrue(TicketEmailComposition.subject(for: draft).contains("Palace iOS support"))
+        let body = TicketEmailComposition.body(for: makeDraft(recentLogs: ["l"]))
+        XCTAssertTrue(body.contains("iOS: 26.4.2"))
+        XCTAssertTrue(body.contains("(Sent from the Palace iOS in-app triage bot)"))
+        let attachments = TicketEmailComposition.attachments(for: makeDraft(recentLogs: ["l"]))
+        let logs = try XCTUnwrap(attachments.first { $0.fileName == "palace-logs.txt" })
+        let text = try XCTUnwrap(String(data: logs.data, encoding: .utf8))
+        XCTAssertTrue(text.contains("Palace iOS — recent log tail"))
+        XCTAssertTrue(text.contains("/ iOS 26.4.2"))
     }
 
     // MARK: - Subject

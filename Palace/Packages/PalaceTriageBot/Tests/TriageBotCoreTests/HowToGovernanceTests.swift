@@ -16,9 +16,17 @@ final class HowToGovernanceTests: XCTestCase {
     /// `settings-libraries` last changed 2026-07-20 — the Palace-icon library
     /// switcher moved into Settings (PP-4825). The switch/add-library answers were
     /// re-reviewed the same day, so they pass; had they not been, this would fail.
+    ///
+    /// `holds` and `my-books` both last changed 2026-07-10, when the empty-state
+    /// icons were removed from both screens (`76a3586e0`). `my-books` had been
+    /// logged as 2026-05-01, which understated it — the same commit that changed
+    /// the Holds screen changed My Books, and only one of them was recorded.
+    /// Every my-books answer was reviewed 2026-07-20 or later, so correcting the
+    /// date marks nothing stale; it just stops the log lying about the surface.
     static let uiSurfaceChangeLog: [String: String] = [
         "settings-libraries": "2026-07-20",
-        "my-books": "2026-05-01",
+        "my-books": "2026-07-10",
+        "holds": "2026-07-10",
         "catalog": "2026-05-01",
         "notifications-settings": "2026-07-20",
     ]
