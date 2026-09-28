@@ -84,18 +84,22 @@ KEY_RE = re.compile(
 def _skippable(stripped: str) -> bool:
     """Blank or comment — carries no YAML structure.
 
-    ONE definition, called from every loop that walks lines. Three loops make
-    boundary decisions here and comments were patched into them one at a time
-    across three review rounds, each patch leaving the others wrong: a comment
-    ended a job's key scan, then truncated a dead job's span, then made the
-    `jobs:` tracker think it had left the mapping entirely. Sharing the
-    predicate is what makes them agree by construction; three correct copies
-    only agree by coincidence, and a fourth loop would forget again.
+    ONE definition, called from every loop that walks lines. Four loops make
+    boundary decisions here — the `jobs:` tracker, the job-key scan, the
+    span-end scan and `_step_blocks` — and comments were patched into them one
+    at a time across three review rounds, each patch leaving the others wrong:
+    a comment ended a job's key scan, then truncated a dead job's span, then
+    made the `jobs:` tracker think it had left the mapping entirely. Sharing
+    the predicate is what makes them agree by construction; four correct copies
+    only agree by coincidence, and a fifth loop would forget again.
 
-    `_step_blocks` deliberately does NOT use it: a comment between a step's
-    `- name:` and its `run:` drops that run, which reports UNWIRED. That is
-    fail-closed, the direction this module declares survivable, and changing it
-    is a behaviour change rather than a consistency fix.
+    An earlier version of this docstring said `_step_blocks` deliberately does
+    NOT use it, on the grounds that dropping a run is fail-closed. It uses it
+    (see the call in `_step_blocks`), and the fail-closed claim held for only
+    one of the two comment positions: a comment between `- name:` and `run:`
+    drops the run and reports UNWIRED, while a comment between `run:` and a
+    following `continue-on-error: true` reported `ok`. That is fail-OPEN, and
+    it is the gate's own threat model.
     """
     return not stripped or stripped.startswith("#")
 
@@ -185,7 +189,7 @@ def _ineffective_job_spans(lines):
         # `continue-on-error: true` job's steps as enforcement. That banner shape
         # is this repo's own (ledger.yml:712).
         #
-        # This is one of three loops that skip via `_skippable`; see its
+        # This is one of four loops that skip via `_skippable`; see its
         # docstring for why the predicate is shared rather than repeated.
         if _skippable(stripped):
             continue
@@ -298,10 +302,14 @@ def effective_runs(text: str):
         keys = {}
         run_lines, in_run = None, False
         for line in block:
-            if not line.strip():
-                if in_run and run_lines is not None:
-                    run_lines.append("")
-                continue
+            # No blank-line case here: `_step_blocks` drops blanks and comments
+            # via `_skippable` before a line reaches a block, so a branch for
+            # them is unreachable by construction (measured: 0 blanks across 16
+            # workflows / 227 step blocks). An earlier version preserved blanks
+            # inside a `run: |` body, which `_skippable` had already made
+            # impossible — and blanks are irrelevant to this module's one
+            # question anyway, since a `swift test --package-path` invocation
+            # is matched per line.
             indent = len(line) - len(line.lstrip())
             km = KEY_RE.match(line)
             if km and indent == body_indent:
