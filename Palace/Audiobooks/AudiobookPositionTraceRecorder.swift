@@ -22,6 +22,17 @@
 //    every save — about every five seconds of playback — which is the right
 //    cost for a measurement run and the wrong one for the install base.
 //
+//  The same switch gates the last-live marker STORE, for reads as well as
+//  writes. A reading position is patron data, and the marker keeps one outside
+//  `TPPBookRegistry`'s deletion lifecycle: nothing purges it on return, delete,
+//  sign-out or account switch, and nothing expires it. The recorder already
+//  declined to WRITE a marker with the switch off; a blob left behind by an
+//  earlier diagnostics-on run was still read back, so `evaluateRestoreGap`
+//  could report a restore gap in a build that was recording nothing. Gating the
+//  store closes that: with the switch off a default build persists nothing,
+//  reads nothing, and the restore-gap evaluation degrades to `.noMarker`. The
+//  cost is that code 405 speaks only from diagnostics-enabled builds.
+//
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
@@ -47,28 +58,52 @@ protocol LastLivePositionMarkerStoring: Sendable {
 /// `UserDefaults`-backed marker store. One small JSON blob per book.
 ///
 /// Deliberately NOT the book registry: the registry is the restore source, and
-/// a diagnostic that wrote there could change where a book opens. This is
-/// write-only from the app's point of view — nothing but the trace reads it.
-/// `@unchecked Sendable`: the only stored property is a `UserDefaults`, which
-/// Apple documents as thread-safe, and this type adds no mutable state of its
-/// own. The store is read and written from the player's thread as well as the
-/// main one, so the conformance is load-bearing rather than cosmetic.
+/// a diagnostic that wrote there could change where a book opens. Nothing but
+/// the trace reads it.
+///
+/// Both reads and writes are gated on the same developer diagnostics switch as
+/// the file log. A marker is a reading position, which is patron data, and this
+/// store keeps one outside the registry's deletion lifecycle — no purge on
+/// return, delete, sign-out or account switch, and no expiry (`recordedAt` is
+/// recorded for a future reader, not consulted here). With the switch off the
+/// store neither reads nor writes: a default build persists nothing, and a blob
+/// left behind by an earlier diagnostics-on run cannot produce a restore-gap
+/// finding from a build that is recording nothing.
+///
+/// `purgeAll` is deliberately NOT gated. It runs from the switch's own setter
+/// AFTER the switch has been written false, so a gated purge would decline to
+/// delete exactly the markers it exists to remove.
+///
+/// `@unchecked Sendable`: the stored properties are a `UserDefaults`, which
+/// Apple documents as thread-safe, and a `@Sendable` closure. This type adds no
+/// mutable state of its own. The store is read and written from the player's
+/// thread as well as the main one, so the conformance is load-bearing rather
+/// than cosmetic.
 struct UserDefaultsLastLivePositionMarkerStore: LastLivePositionMarkerStoring, @unchecked Sendable {
     private let defaults: UserDefaults
+    private let diagnosticsEnabled: @Sendable () -> Bool
     fileprivate static let keyPrefix = "audiobook.lastLivePosition."
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        diagnosticsEnabled: @escaping @Sendable () -> Bool = {
+            DebugSettings().isAudiobookPositionTraceEnabled
+        }
+    ) {
         self.defaults = defaults
+        self.diagnosticsEnabled = diagnosticsEnabled
     }
 
     private func key(_ bookID: String) -> String { Self.keyPrefix + bookID }
 
     func marker(forBookID bookID: String) -> LastLivePositionMarker? {
+        guard diagnosticsEnabled() else { return nil }
         guard let data = defaults.data(forKey: key(bookID)) else { return nil }
         return try? JSONDecoder().decode(LastLivePositionMarker.self, from: data)
     }
 
     func save(_ marker: LastLivePositionMarker) {
+        guard diagnosticsEnabled() else { return }
         guard let data = try? JSONEncoder().encode(marker) else { return }
         defaults.set(data, forKey: key(marker.bookID))
     }

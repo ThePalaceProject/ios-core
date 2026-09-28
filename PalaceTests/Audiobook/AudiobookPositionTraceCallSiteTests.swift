@@ -166,7 +166,7 @@ final class UserDefaultsLastLivePositionMarkerStoreTests: XCTestCase {
     /// A Codable or key-prefix divergence would make the restore signal report
     /// `.noMarker` forever — and silence reads as health.
     func testMarkerRoundTrips() throws {
-        let store = UserDefaultsLastLivePositionMarkerStore(defaults: defaults)
+        let store = makeStore(diagnostics: true)
         let recorded = Date(timeIntervalSince1970: 1_000_000)
         store.save(LastLivePositionMarker(
             bookID: "book-1", trackKey: "track-7", timestamp: 123.5, recordedAt: recorded
@@ -181,7 +181,7 @@ final class UserDefaultsLastLivePositionMarkerStoreTests: XCTestCase {
     }
 
     func testMarkersAreScopedPerBook() {
-        let store = UserDefaultsLastLivePositionMarkerStore(defaults: defaults)
+        let store = makeStore(diagnostics: true)
         store.save(LastLivePositionMarker(
             bookID: "book-1", trackKey: "a", timestamp: 1, recordedAt: Date()
         ))
@@ -191,8 +191,14 @@ final class UserDefaultsLastLivePositionMarkerStoreTests: XCTestCase {
     }
 
     /// Switching the trace off must remove what it recorded — and nothing else.
+    ///
+    /// Asserted against the RAW defaults rather than through
+    /// `marker(forBookID:)`. The read is gated on the same switch, and
+    /// `DebugSettings` writes the switch false BEFORE calling `purgeAll`, so a
+    /// read-based assertion would pass whether the purge ran or not — the exact
+    /// order this test exists to cover.
     func testPurgeAll_removesMarkers_andLeavesOtherKeysAlone() {
-        let store = UserDefaultsLastLivePositionMarkerStore(defaults: defaults)
+        let store = makeStore(diagnostics: true)
         defaults.set("keep me", forKey: "unrelated.setting")
         defaults.set(true, forKey: "debug.audiobookPositionTrace")
         for id in ["book-1", "book-2", "book-3"] {
@@ -200,18 +206,135 @@ final class UserDefaultsLastLivePositionMarkerStoreTests: XCTestCase {
                 bookID: id, trackKey: "a", timestamp: 1, recordedAt: Date()
             ))
         }
-        XCTAssertNotNil(store.marker(forBookID: "book-2"), "precondition")
+        XCTAssertNotNil(rawMarkerData(forBookID: "book-2"), "precondition")
 
         store.purgeAll()
 
         for id in ["book-1", "book-2", "book-3"] {
-            XCTAssertNil(store.marker(forBookID: id),
+            XCTAssertNil(rawMarkerData(forBookID: id),
                          "\(id)'s recorded position must not outlive the switch")
         }
         XCTAssertEqual(defaults.string(forKey: "unrelated.setting"), "keep me",
                        "the purge is scoped to the marker namespace")
         XCTAssertTrue(defaults.bool(forKey: "debug.audiobookPositionTrace"),
                       "and must not clear the flag it is reacting to")
+    }
+
+    /// The order `DebugSettings.isAudiobookPositionTraceEnabled` actually uses:
+    /// the switch is written false first, and the purge runs after. A purge
+    /// that consulted the switch would decline to delete exactly the markers it
+    /// exists to remove, and every one of them would survive indefinitely.
+    func testPurgeAll_withDiagnosticsAlreadyOff_stillRemovesMarkers() {
+        makeStore(diagnostics: true).save(LastLivePositionMarker(
+            bookID: "book-1", trackKey: "a", timestamp: 1, recordedAt: Date()
+        ))
+        XCTAssertNotNil(rawMarkerData(forBookID: "book-1"), "precondition")
+
+        makeStore(diagnostics: false).purgeAll()
+
+        XCTAssertNil(
+            rawMarkerData(forBookID: "book-1"),
+            "the purge runs after the switch is off; gating it would strand every "
+            + "marker a trace run recorded"
+        )
+    }
+
+    // MARK: - The diagnostics gate
+
+    /// A reading position is patron data, and this store keeps one outside
+    /// `TPPBookRegistry`'s deletion lifecycle. With the switch off nothing may
+    /// be written — asserted against the raw `UserDefaults` bytes, because the
+    /// read is gated too and would report `nil` either way.
+    func testMarkerStore_withDiagnosticsOff_writesNothingToUserDefaults() {
+        makeStore(diagnostics: false).save(LastLivePositionMarker(
+            bookID: "book-1", trackKey: "track-7", timestamp: 123.5, recordedAt: Date()
+        ))
+
+        XCTAssertNil(
+            rawMarkerData(forBookID: "book-1"),
+            "a default build must persist no reading position; there is no purge "
+            + "on return, delete, sign-out or account switch to undo it"
+        )
+    }
+
+    /// The other half of the gate, and the one that is not merely tidiness: a
+    /// blob left behind by an earlier diagnostics-on run must not be read back
+    /// by a build that is recording nothing.
+    func testMarkerStore_withDiagnosticsOff_doesNotReadAnExistingMarker() {
+        makeStore(diagnostics: true).save(LastLivePositionMarker(
+            bookID: "book-1", trackKey: "track-7", timestamp: 123.5, recordedAt: Date()
+        ))
+        XCTAssertNotNil(rawMarkerData(forBookID: "book-1"), "precondition: it is on disk")
+
+        XCTAssertNil(
+            makeStore(diagnostics: false).marker(forBookID: "book-1"),
+            "with the switch off the store must not surface a position an earlier "
+            + "run recorded"
+        )
+    }
+
+    /// The consequence at the verdict: with the switch off the restore-gap arm
+    /// degrades to `.noMarker` rather than reporting a gap out of stale bytes.
+    func testRestoreGap_withDiagnosticsOff_degradesToNoMarker() {
+        makeStore(diagnostics: true).save(LastLivePositionMarker(
+            bookID: "book-1", trackKey: "a", timestamp: 10_800, recordedAt: Date()
+        ))
+        var reported: [PositionRestoreGapVerdict] = []
+        let recorder = AudiobookPositionTraceRecorder(
+            bookID: "book-1",
+            markerStore: makeStore(diagnostics: false),
+            diagnosticsEnabled: { false },
+            reportGapVerdict: { reported.append($0) },
+            fileLog: { _ in }
+        )
+
+        recorder.evaluateRestoreGap(
+            restoredTrackKey: "a", restoredTimestamp: 0,
+            absoluteOffset: { _, timestamp in timestamp }
+        )
+
+        XCTAssertEqual(
+            reported, [.noMarker],
+            "a build that records nothing must report nothing; reading the stale "
+            + "blob here would emit code 405 from a session it never observed"
+        )
+    }
+
+    /// Non-vacuity for the two above: the same shapes with the switch open must
+    /// round-trip and must produce the gap.
+    func testRestoreGap_withDiagnosticsOn_reportsTheGapFromTheSameStore() {
+        makeStore(diagnostics: true).save(LastLivePositionMarker(
+            bookID: "book-1", trackKey: "a", timestamp: 10_800, recordedAt: Date()
+        ))
+        var reported: [PositionRestoreGapVerdict] = []
+        let recorder = AudiobookPositionTraceRecorder(
+            bookID: "book-1",
+            markerStore: makeStore(diagnostics: true),
+            diagnosticsEnabled: { true },
+            reportGapVerdict: { reported.append($0) },
+            fileLog: { _ in }
+        )
+
+        recorder.evaluateRestoreGap(
+            restoredTrackKey: "a", restoredTimestamp: 0,
+            absoluteOffset: { _, timestamp in timestamp }
+        )
+
+        XCTAssertEqual(reported, [.behind(seconds: 10_800)])
+    }
+
+    // MARK: - Helpers
+
+    private func makeStore(diagnostics: Bool) -> UserDefaultsLastLivePositionMarkerStore {
+        UserDefaultsLastLivePositionMarkerStore(
+            defaults: defaults,
+            diagnosticsEnabled: { diagnostics }
+        )
+    }
+
+    /// Reads the stored bytes directly, bypassing the gated accessor.
+    private func rawMarkerData(forBookID bookID: String) -> Data? {
+        defaults.data(forKey: "audiobook.lastLivePosition." + bookID)
     }
 }
 

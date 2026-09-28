@@ -363,17 +363,22 @@ final class DebugSettingsTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let scoped = DebugSettings(defaults: defaults)
-        let store = UserDefaultsLastLivePositionMarkerStore(defaults: defaults)
+        let store = UserDefaultsLastLivePositionMarkerStore(
+            defaults: defaults, diagnosticsEnabled: { true }
+        )
 
         scoped.isAudiobookPositionTraceEnabled = true
         store.save(LastLivePositionMarker(
             bookID: "book-1", trackKey: "a", timestamp: 42, recordedAt: Date()
         ))
-        XCTAssertNotNil(store.marker(forBookID: "book-1"), "precondition")
+        XCTAssertNotNil(defaults.data(forKey: markerKey("book-1")), "precondition")
 
         scoped.isAudiobookPositionTraceEnabled = false
 
-        XCTAssertNil(store.marker(forBookID: "book-1"),
+        // Read the raw bytes: the store's accessor is gated on the same switch
+        // this test has just turned off, so `marker(forBookID:)` would report
+        // nil whether the purge ran or not.
+        XCTAssertNil(defaults.data(forKey: markerKey("book-1")),
                      "a patron's recorded position must not outlive the switch "
                      + "that recorded it")
         XCTAssertFalse(scoped.isAudiobookPositionTraceEnabled)
@@ -387,16 +392,24 @@ final class DebugSettingsTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let scoped = DebugSettings(defaults: defaults)
-        let store = UserDefaultsLastLivePositionMarkerStore(defaults: defaults)
+        // Written as an earlier trace run would have written it — with the
+        // switch open. The store declines to write at all once it is closed.
+        let store = UserDefaultsLastLivePositionMarkerStore(
+            defaults: defaults, diagnosticsEnabled: { true }
+        )
         store.save(LastLivePositionMarker(
             bookID: "book-1", trackKey: "a", timestamp: 42, recordedAt: Date()
         ))
 
         scoped.isAudiobookPositionTraceEnabled = true
 
-        XCTAssertNotNil(store.marker(forBookID: "book-1"),
+        XCTAssertNotNil(defaults.data(forKey: markerKey("book-1")),
                         "switching the trace on must not discard what it is about "
                         + "to be read against")
+    }
+
+    private func markerKey(_ bookID: String) -> String {
+        "audiobook.lastLivePosition." + bookID
     }
 
 }
