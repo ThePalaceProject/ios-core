@@ -63,6 +63,11 @@ final class AudiobookLoaderPositionTraceWiringTests: XCTestCase {
 
         let weakTrace = wire(collector: collector)
 
+        // lint-ignore: FLUFF-003 — `weakTrace.value` is a WEAK reference, so this
+        // is a liveness assertion, not a constructor-returns-non-nil tautology.
+        // `wire` has returned and its locals are gone; anything still holding the
+        // recorder is the graph under test. The rule's regex cannot distinguish
+        // the two shapes.
         XCTAssertNotNil(
             weakTrace.value,
             "nothing else in the graph holds the recorder — LoadedAudiobook is a "
@@ -83,6 +88,7 @@ final class AudiobookLoaderPositionTraceWiringTests: XCTestCase {
     func testMakePositionTrace_recorderDiesWithTheDelegateAndNotBefore() {
         let collector = VerdictCollector()
         let weakTrace = wire(collector: collector)
+        // lint-ignore: FLUFF-003 — weak reference; see the note above.
         XCTAssertNotNil(weakTrace.value, "precondition")
 
         host.bookmarkDelegate = nil
