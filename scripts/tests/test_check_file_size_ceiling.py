@@ -380,16 +380,16 @@ def test_live_allowlist_pins_the_critical_paths(tmp_path):
             caps[path] = int(cap)
 
     expected = {
-        "Palace/Audiobooks/AudiobookSessionManager.swift": 1557,
-        "Palace/MyBooks/MyBooksDownloadCenter.swift": 1226,
-        "Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift": 1201,
-        "Palace/Book/UI/BookDetail/BookDetailViewModel.swift": 981,
-        "Palace/Utilities/Localization/Strings.swift": 878,
-        "Palace/Accounts/Library/AccountsManager.swift": 372,
-        "Palace/SignInLogic/TPPSignInBusinessLogic.swift": 638,
-        "Palace/MyBooks/BorrowOperation.swift": 521,
+        "Palace/Audiobooks/AudiobookSessionManager.swift": 1546,
+        "Palace/MyBooks/MyBooksDownloadCenter.swift": 1213,
+        "Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift": 1197,
+        "Palace/Book/UI/BookDetail/BookDetailViewModel.swift": 971,
+        "Palace/Utilities/Localization/Strings.swift": 875,
+        "Palace/Accounts/Library/AccountsManager.swift": 367,
+        "Palace/SignInLogic/TPPSignInBusinessLogic.swift": 634,
+        "Palace/MyBooks/BorrowOperation.swift": 514,
         "Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Reducer/"
-        "ConversationReducer.swift": 848,
+        "ConversationReducer.swift": 847,
     }
     # All nine, not just the three critical paths. A RAISED cap on any entry is
     # the same defect as a deleted one, and for the five entries that sit ABOVE
