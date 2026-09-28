@@ -16,9 +16,32 @@ final class HowToGovernanceTests: XCTestCase {
     /// `settings-libraries` last changed 2026-07-20 — the Palace-icon library
     /// switcher moved into Settings (PP-4825). The switch/add-library answers were
     /// re-reviewed the same day, so they pass; had they not been, this would fail.
+    ///
+    /// `holds` and `my-books` both last changed **2026-09-02**: `ed8361a2d`
+    /// (PP-5066, #1447) removed the Palace-icon library-switch affordance from
+    /// `HoldsView.swift` and `MyBooksView.swift`. An earlier draft of this entry
+    /// said 2026-07-10 — `76a3586e0`, the empty-state icon removal — which was
+    /// the right commit when the draft was written and was overtaken while it
+    /// sat unlanded. `my-books` had been logged as 2026-05-01, understating it
+    /// twice over; `holds` was absent entirely and so was never staleness-checked
+    /// at all.
+    ///
+    /// Moving to 2026-09-02 flags all five answers on those two surfaces, which
+    /// is the point of the log. Each was then read against that specific change:
+    /// `ed8361a2d` removed a library switcher, and none of the five mentions a
+    /// library switcher or any affordance it touched. They give these
+    /// instructions — return via My Books swipe-left (HT-2026-002), open the
+    /// title from your holds (HT-2026-005), and no UI navigation at all
+    /// (HT-2026-006, -007, -009). Their `reviewed_at` moved to 2026-09-28 on the
+    /// strength of that reading and nothing more; it is not a claim that the
+    /// wording was re-edited.
+    ///
+    /// `settings-libraries` is NOT affected: `ed8361a2d` touches four files and
+    /// none of them is a settings screen.
     static let uiSurfaceChangeLog: [String: String] = [
         "settings-libraries": "2026-07-20",
-        "my-books": "2026-05-01",
+        "my-books": "2026-09-02",
+        "holds": "2026-09-02",
         "catalog": "2026-05-01",
         "notifications-settings": "2026-07-20",
     ]
