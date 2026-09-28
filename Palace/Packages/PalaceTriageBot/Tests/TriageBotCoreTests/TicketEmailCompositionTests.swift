@@ -101,9 +101,14 @@ final class TicketEmailCompositionTests: XCTestCase {
         XCTAssertFalse(text.contains("iOS"), "log header still names iOS for an Android report")
     }
 
-    /// The iOS output must be byte-for-byte what it always was — reading the
-    /// field is only correct if it produces the identical result for the
-    /// platform that was previously hardcoded.
+    /// The iOS output must be what it always was — reading the field is only
+    /// correct if it produces the same result for the platform that was
+    /// previously hardcoded.
+    ///
+    /// This checks the five substrings the change touched, not byte equality:
+    /// each of the four parametrized strings plus the `Device: … / iOS …` row.
+    /// A full-output golden would also pin the ~30 lines this change does not
+    /// touch, and would then fail for every unrelated wording edit.
     func testIOSOutput_isUnchangedByReadingTheField() throws {
         let draft = makeDraft()
         XCTAssertTrue(TicketEmailComposition.subject(for: draft).contains("Palace iOS support"))
