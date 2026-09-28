@@ -73,6 +73,25 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
         )
     }
 
+    /// Drops the per-test collections and the spy store.
+    ///
+    /// `makeRecorder` resets them on the way in, so no test reads another
+    /// test's state today. The declaration is still required: the file names
+    /// `AudiobookFileLogger.shared` — which is the singleton every one of these
+    /// recorders is built to avoid — and a later test that forgets to go
+    /// through `makeRecorder` would inherit whatever the previous one left.
+    /// `XCTestCase` keeps an instance per test method alive until the whole
+    /// suite finishes, so these arrays are also held for the length of the run
+    /// unless something releases them.
+    override func tearDownWithError() throws {
+        store = nil
+        reported = []
+        reportedContexts = []
+        gapsReported = []
+        logLines = []
+        try super.tearDownWithError()
+    }
+
     private func advance(_ seconds: TimeInterval) {
         clock = clock.addingTimeInterval(seconds)
     }
