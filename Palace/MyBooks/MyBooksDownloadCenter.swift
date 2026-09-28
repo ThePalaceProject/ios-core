@@ -17,10 +17,10 @@ import PalaceNetwork
 import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
-import PalaceUtilities
 #endif
 
 // DownloadCoordinator is defined in MyBooksDownloadQueue.swift

@@ -5,6 +5,7 @@
 
 import CFNetwork
 import Foundation
+import PalaceUtilities
 #if canImport(FirebaseCore)
 import FirebaseCore
 #endif
@@ -12,7 +13,6 @@ import FirebaseCore
 import FirebaseCrashlytics
 import PalaceLogging
 import PalaceCatalog
-import PalaceUtilities
 #endif
 
 private let nullString = "null"

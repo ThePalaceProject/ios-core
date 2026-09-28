@@ -1,4 +1,5 @@
 import PalaceBookRegistry
+import PalaceUtilities
 //
 //  OverdriveDownloadHandler.swift
 //  Palace
@@ -24,7 +25,6 @@ import Foundation
 import OverdriveProcessor
 import PalaceLogging
 import PalaceBookModel
-import PalaceUtilities
 
 // MARK: - OverdriveDownloadHandlerDelegate
 

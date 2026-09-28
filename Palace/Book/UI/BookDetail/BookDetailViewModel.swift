@@ -6,11 +6,11 @@ import PalaceLogging
 import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 #if LCP
 import ReadiumShared
 import ReadiumStreamer
-import PalaceUtilities
 #endif
 
 struct BookLane {
