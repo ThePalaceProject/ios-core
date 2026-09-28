@@ -157,20 +157,39 @@ final class AuthCoordinatorTests: XCTestCase {
 
     // MARK: - Single-flight
 
-    func testRefresh_SingleFlight_TwoConcurrentCallsResultInOneReauthenticatorCall() async {
-        // Drive two concurrent refreshes from the SAME mechanism. Only one
-        // modal-present (or silent-refresh) call should fire, and both
-        // callers should see the same outcome.
-        let env = TestEnv(mechanism: .token, silentSucceeds: true)
+    func testRefresh_SingleFlight_CallerArrivingDuringFlight_JoinsIt() async {
+        // The gate holds the first silent refresh open, and the test waits
+        // until the second caller has joined before releasing it. Firing two
+        // `async let` calls against a stub that returns immediately does not
+        // guarantee overlap: under load the first flight can finish before
+        // the second caller arrives.
+        let gate = RefreshGate()
+        let env = TestEnv(mechanism: .token, silentSucceeds: true, silentGate: gate)
 
-        async let firstOutcome = env.coordinator.refreshCredentialsIfNeeded(reason: .expiredToken)
-        async let secondOutcome = env.coordinator.refreshCredentialsIfNeeded(reason: .expiredToken)
+        let (a, b, joined) = await refreshWithSecondCallerJoiningFirst(env.coordinator, gate: gate)
 
-        let (a, b) = await (firstOutcome, secondOutcome)
+        XCTAssertTrue(joined, "second caller never joined the in-flight refresh")
         XCTAssertTrue(a.isSuccess, "first call expected success, got \(a)")
         XCTAssertTrue(b.isSuccess, "second call expected success, got \(b)")
         XCTAssertEqual(env.reauth.silentCount, 1,
-            "single-flight must produce exactly one silent refresh call for concurrent callers")
+            "a caller arriving during a refresh must join it, not start another")
+    }
+
+    func testRefresh_SingleFlight_CallerArrivingAfterFlightCompletes_StartsNewFlight() async {
+        // The complement: once a refresh has completed, the slot is clear and
+        // the next caller refreshes again. A slot that is never cleared would
+        // hand every later caller a stale outcome.
+        let env = TestEnv(mechanism: .token, silentSucceeds: true)
+
+        let a = await env.coordinator.refreshCredentialsIfNeeded(reason: .expiredToken)
+        let b = await env.coordinator.refreshCredentialsIfNeeded(reason: .expiredToken)
+
+        XCTAssertTrue(a.isSuccess, "first call expected success, got \(a)")
+        XCTAssertTrue(b.isSuccess, "second call expected success, got \(b)")
+        XCTAssertEqual(env.reauth.silentCount, 2,
+            "a caller arriving after a refresh completed must start a new one")
+        let joins = await env.coordinator.joinedInFlightRefreshCount
+        XCTAssertEqual(joins, 0, "no refresh was in flight to join")
     }
 
     // MARK: - markCredentialsStale wiring
@@ -243,9 +262,10 @@ private struct TestEnv {
     init(
         mechanism: AuthMechanism?,
         silentSucceeds: Bool = false,
-        modalSucceeds: Bool = false
+        modalSucceeds: Bool = false,
+        silentGate: RefreshGate? = nil
     ) {
-        let reauth = SpyReauthenticator(succeeds: silentSucceeds)
+        let reauth = SpyReauthenticator(succeeds: silentSucceeds, gate: silentGate)
         let modal = SpyModalPresenter(succeeds: modalSucceeds)
         let user = SpyUserAccount()
         let accountProvider = SpyAccountProvider(mechanism: mechanism)
@@ -271,13 +291,18 @@ private final class SpyReauthenticator: Reauthenticating, @unchecked Sendable {
     private let queue = DispatchQueue(label: "SpyReauthenticator")
     private var _silentCount = 0
     private let succeeds: Bool
+    private let gate: RefreshGate?
 
     var silentCount: Int { queue.sync { _silentCount } }
 
-    init(succeeds: Bool) { self.succeeds = succeeds }
+    init(succeeds: Bool, gate: RefreshGate? = nil) {
+        self.succeeds = succeeds
+        self.gate = gate
+    }
 
     func authenticateIfNeeded(usingExistingCredentials: Bool) async -> Bool {
         queue.sync { _silentCount += 1 }
+        await gate?.enterAndWait()
         return succeeds
     }
 }

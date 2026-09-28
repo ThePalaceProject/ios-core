@@ -62,6 +62,11 @@ public actor AuthCoordinator {
     /// await this task instead of starting a new one.
     private var inFlightRefresh: Task<Result<Void, AuthRefreshCancellation>, Never>?
 
+    /// Callers that joined an in-flight refresh instead of starting one.
+    /// A join is otherwise unobservable, and tests read this to put a second
+    /// caller provably inside the in-flight window.
+    internal private(set) var joinedInFlightRefreshCount = 0
+
     /// When the most-recent refresh failed, the timestamp is recorded so
     /// the coordinator can short-circuit subsequent calls within the
     /// cooldown window. This prevents the bearer-token-refresh loop where
@@ -124,6 +129,7 @@ public actor AuthCoordinator {
 
         // Step 2 — single-flight: join an in-flight refresh if one exists.
         if let task = inFlightRefresh {
+            joinedInFlightRefreshCount += 1
             return await task.value
         }
 
@@ -281,6 +287,7 @@ public actor AuthCoordinator {
     internal func resetForTesting() {
         inFlightRefresh = nil
         lastFailureTimestamp = nil
+        joinedInFlightRefreshCount = 0
     }
 
     /// Force a sign-out + clear. Production sign-out paths still go

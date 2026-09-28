@@ -111,18 +111,35 @@ final class AuthTelemetryEmissionTests: XCTestCase {
         // callers join the in-flight task". The instrumentation must
         // respect that — two callers should produce ONE start + ONE end
         // event, not two pairs.
-        let env = TestEnv(mechanism: .token, silentSucceeds: true)
+        // The gate holds the refresh open until the second caller has joined;
+        // two `async let` calls against an immediate stub do not guarantee
+        // overlap (see AuthCoordinatorTests single-flight pair).
+        let gate = RefreshGate()
+        let env = TestEnv(mechanism: .token, silentSucceeds: true, silentGate: gate)
 
-        async let first = env.coordinator.refreshCredentialsIfNeeded(reason: .expiredToken)
-        async let second = env.coordinator.refreshCredentialsIfNeeded(reason: .expiredToken)
-        _ = await (first, second)
+        let (_, _, joined) = await refreshWithSecondCallerJoiningFirst(env.coordinator, gate: gate)
 
+        XCTAssertTrue(joined, "second caller never joined the in-flight refresh")
         let starts = env.recorder.events(step: .coordinatorRefreshStarted)
         let ends = env.recorder.events(step: .coordinatorRefreshCompleted)
         XCTAssertEqual(starts.count, 1,
             "single-flight join must emit ONE refresh-started, not one per concurrent caller (frequency budget)")
         XCTAssertEqual(ends.count, 1,
             "single-flight join must emit ONE refresh-completed; the joined caller does not get a duplicate completion event")
+    }
+
+    func testRefresh_sequentialCalls_emitTwoStartEndPairs() async {
+        // Complement of the single-flight case: two refreshes that do not
+        // overlap are two flights, and each reports its own start and end.
+        let env = TestEnv(mechanism: .token, silentSucceeds: true)
+
+        _ = await env.coordinator.refreshCredentialsIfNeeded(reason: .expiredToken)
+        _ = await env.coordinator.refreshCredentialsIfNeeded(reason: .expiredToken)
+
+        XCTAssertEqual(env.recorder.events(step: .coordinatorRefreshStarted).count, 2,
+            "each non-overlapping refresh emits its own refresh-started")
+        XCTAssertEqual(env.recorder.events(step: .coordinatorRefreshCompleted).count, 2,
+            "each non-overlapping refresh emits its own refresh-completed")
     }
 
     // MARK: - Library UUID propagation
@@ -193,12 +210,13 @@ private struct TestEnv {
         mechanism: AuthMechanism?,
         silentSucceeds: Bool = false,
         modalSucceeds: Bool = false,
-        libraryUUID: String? = nil
+        libraryUUID: String? = nil,
+        silentGate: RefreshGate? = nil
     ) {
         let recorder = SpyAuthDecisionRecorder()
         self.recorder = recorder
         self.coordinator = AuthCoordinator(
-            reauthenticator: SpyReauthenticator(succeeds: silentSucceeds),
+            reauthenticator: SpyReauthenticator(succeeds: silentSucceeds, gate: silentGate),
             modalPresenter: SpyModalPresenter(succeeds: modalSucceeds),
             userAccount: SpyUserAccount(),
             accountProvider: SpyAccountProvider(mechanism: mechanism),
@@ -231,8 +249,15 @@ private final class SpyAuthDecisionRecorder: AuthDecisionRecording, @unchecked S
 
 private final class SpyReauthenticator: Reauthenticating, @unchecked Sendable {
     private let succeeds: Bool
-    init(succeeds: Bool) { self.succeeds = succeeds }
-    func authenticateIfNeeded(usingExistingCredentials: Bool) async -> Bool { succeeds }
+    private let gate: RefreshGate?
+    init(succeeds: Bool, gate: RefreshGate? = nil) {
+        self.succeeds = succeeds
+        self.gate = gate
+    }
+    func authenticateIfNeeded(usingExistingCredentials: Bool) async -> Bool {
+        await gate?.enterAndWait()
+        return succeeds
+    }
 }
 
 private final class SpyModalPresenter: SignInModalPresenting, @unchecked Sendable {
