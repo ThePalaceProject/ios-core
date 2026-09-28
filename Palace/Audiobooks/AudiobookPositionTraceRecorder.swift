@@ -164,6 +164,16 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
         qos: .utility
     )
 
+    /// How the shipped recorder decides whether the local trace is on.
+    ///
+    /// Named and static so the init default and any test read the SAME code
+    /// rather than two copies that agree by coincidence. Measured: with this
+    /// inline, a test that re-implemented the expression passed while the
+    /// production closure returned `false` unconditionally.
+    static func defaultDiagnosticsEnabled(defaults: UserDefaults = .standard) -> Bool {
+        DebugSettings(defaults: defaults).isAudiobookPositionTraceEnabled
+    }
+
     private let bookID: String
     private let markerStore: LastLivePositionMarkerStoring
     private let diagnosticsEnabled: () -> Bool
@@ -204,9 +214,7 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     init(
         bookID: String,
         markerStore: LastLivePositionMarkerStoring = UserDefaultsLastLivePositionMarkerStore(),
-        diagnosticsEnabled: @escaping () -> Bool = {
-            DebugSettings().isAudiobookPositionTraceEnabled
-        },
+        diagnosticsEnabled: @escaping () -> Bool = { AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled() },
         reportSaveVerdict: ((PositionSaveVerdict, PositionTraceContext) -> Void)? = nil,
         reportGapVerdict: ((PositionRestoreGapVerdict) -> Void)? = nil,
         fileLog: ((String) -> Void)? = nil,

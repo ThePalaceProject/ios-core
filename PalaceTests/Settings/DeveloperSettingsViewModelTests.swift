@@ -61,10 +61,14 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         // `makeViewModel()` builds against a TEST container, not `.production()`,
-        // but `AccountsManager` can still round-trip TPPKeychain — skip on CI
-        // hosts where SecItem returns -34018, same gate the sibling VM tests use.
-        // The feature-flag write-through is exercised where these DO run (local,
-        // where mutation is measured).
+        // but `AccountsManager` can still round-trip TPPKeychain, so this guards
+        // against SecItem -34018.
+        //
+        // It is a safety net, NOT a CI carve-out: `b57b3af43` (PP-5058) signs
+        // the test host ad-hoc and `CODE_SIGNING_ALLOWED=YES`, so the keychain
+        // works on CI and these tests report real verdicts there. An earlier
+        // version of this comment said they only ran locally, which would have
+        // made the PP-4963 toggle gate below look unenforced on the board.
         try KeychainAvailability.skipIfUnavailable()
         suiteName = "test.DeveloperSettings.\(ProcessInfo.processInfo.globallyUniqueString)"
         testDefaults = UserDefaults(suiteName: suiteName)
@@ -171,12 +175,31 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     /// Asserting the toggle alone would pass even against a writer aimed at a
     /// key nothing consults — the original side-loading defect's shape.
     ///
-    /// This reads through the recorder's own shipped default closure rather
-    /// than the property, so a change to either side breaks it.
+    /// It calls `AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled` —
+    /// the same function the shipped init defaults to — so gutting that reader
+    /// breaks this test. Asserting against a locally re-implemented copy does
+    /// not: that is what the first version of this test did, and it passed
+    /// against a production closure returning `false` unconditionally.
+    ///
+    /// What it does NOT cover, stated so the name is not read as more than it
+    /// is: both sides here are pointed at the same injected suite, so it pins
+    /// the WRITE-then-READ contract, not the production wiring that makes those
+    /// two stores the same one. `AppContainer.swift:776` hands Settings a
+    /// `DebugSettings()` over `.standard`, which is also what
+    /// `defaultDiagnosticsEnabled()` defaults to — repoint that and the toggle
+    /// stops reaching the recorder with every test here still green. Measured
+    /// in review. That layer needs its own test and does not have one.
     func testAudiobookPositionTraceToggle_isTheFlagTheRecorderActuallyReads() {
         let scoped = DebugSettings(defaults: testDefaults)
         let vm = makeViewModel(debugSettings: scoped)
-        let asTheRecorderReadsIt = { DebugSettings(defaults: self.testDefaults).isAudiobookPositionTraceEnabled }
+        // The recorder's OWN reader, not a copy of it. Calling
+        // `AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled` is what makes
+        // this test's name true: an earlier version re-implemented the same
+        // expression here and passed with the production closure gutted to
+        // `{ false }`.
+        let asTheRecorderReadsIt = {
+            AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled(defaults: self.testDefaults)
+        }
 
         vm.audiobookPositionTraceEnabled = true
         XCTAssertTrue(asTheRecorderReadsIt(),
