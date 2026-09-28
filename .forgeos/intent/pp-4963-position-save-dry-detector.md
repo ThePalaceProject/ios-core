@@ -123,13 +123,14 @@ the measurement.
 - `Palace/Audiobooks/AudiobookPositionTrace.swift` (new — pure policies + marker)
 - `Palace/Audiobooks/AudiobookPositionTraceRecorder.swift` (new — live recorder,
   plus the manifest offset resolver)
-- `Palace/Audiobooks/AudiobookLoader.swift` (builds the recorder and subscribes
-  `player.positionPublisher`; this is the only place the bookmark logic, the
-  manager and the player all exist together)
+- `Palace/Audiobooks/AudiobookLoader.swift` (`makePositionTrace` builds the
+  recorder, installs the bookmark logic as `bookmarkDelegate` and subscribes the
+  player; this is the only place the bookmark logic, the manager and the player
+  all exist together)
 - `Palace/Audiobooks/AudiobookSessionManager.swift` (restore-gap observation)
 - `Palace/Reader2/Bookmarks/AudiobookBookmarkBusinessLogic.swift` (OWNS the
   recorder; notifies it on every local write)
-- `Palace/Logging/TPPErrorLogger.swift` (codes 404/405/406)
+- `Palace/Logging/TPPErrorLogger.swift` (codes 404/405/406/407)
 - `Palace/Settings/Debug/DebugSettings.swift` (the default-off trace switch)
 - `Palace/Settings/DeveloperSettings/DeveloperSettingsViewModel.swift` (exposes it)
 - `Palace/Settings/DeveloperSettings/DeveloperSettingsView.swift` (the row)
@@ -142,6 +143,10 @@ the measurement.
 - `PalaceTests/Audiobook/AudiobookPositionTraceRecorderTests.swift` (new)
 - `PalaceTests/Audiobook/AudiobookPositionTraceSeamTests.swift` (new — the
   joins: resolver against a real manifest, observe, dispatch, file trace)
+- `PalaceTests/Audiobook/AudiobookPositionTraceReportTests.swift` (new — the key
+  SET of every payload that leaves the device)
+- `PalaceTests/Audiobooks/AudiobookLoaderPositionTraceWiringTests.swift` (new —
+  the loader's three joins)
 - `Palace.xcodeproj/project.pbxproj` (via `scripts/pbxproj_add_swift.rb`)
 
 `AudiobookSessionPresenter.swift` was listed in the first draft and is NOT
@@ -168,8 +173,23 @@ away.
 - Transition-table tests over both policies, including threshold boundaries
   (exactly-on-threshold is NOT dry) and the unresolvable-marker cell.
 - Mutation via `scripts/palace_mutate.py --diff-only` on both new policy files.
-- The instrument's own failure mode is tested: playback live + saves dry must
-  produce `.dry`, and NO ticks must produce `.noPlayback` rather than `.dry`,
-  so an inert recorder cannot be mistaken for a clean result.
+- The instrument's own failure mode is tested AT THE VERDICT: playback live +
+  saves dry must produce `.dry`, and NO ticks must produce `.noPlayback` rather
+  than `.dry`. That discriminates the two in a unit test, and it does NOT carry
+  to the fleet. `saveReportPayload` returns nil for `.noPlayback`,
+  `.playbackStale` and `.saving`, so those three are silent at the Crashlytics
+  sink, and an inert recorder produces none of the other three either — it has
+  no tick stream to find a gap in and no reference to see a clock step against.
+  Zero events on 404, 406 and 407 therefore means "no finding was observed",
+  which is what a healthy install base looks like AND what a recorder that was
+  never wired, lost its `observe(player:)` call, or saw a suspended
+  `positionPublisher` looks like. Confirm liveness on a diagnostics-ON device
+  before reading a null result as good news.
+- The WIRING is tested, which is what makes the rule above actionable rather
+  than only a caveat. `AudiobookLoaderPositionTraceWiringTests` drives
+  `AudiobookLoader.makePositionTrace` and asserts the recorder is reachable from
+  the manager after every local reference is dropped, dies with the bookmark
+  delegate and not before, and answers a foreground return — so the three joins
+  that would leave a shipped instrument inert fail a named test instead.
 - Device run (iPhone SE 2nd gen, passcode set, 3h locked background listen)
   reads the result. n=1 confirms a mechanism; the fleet detector supplies scale.
