@@ -323,6 +323,97 @@ final class UserDefaultsLastLivePositionMarkerStoreTests: XCTestCase {
         XCTAssertEqual(reported, [.behind(seconds: 10_800)])
     }
 
+    // MARK: - The defaults nothing was taking
+
+    // Every other test in this file, and every other construction of either
+    // type in the suite, injects `diagnosticsEnabled` explicitly. That is good
+    // isolation and it left the DEFAULT bindings — the only ones production
+    // takes — exercised by nothing. `AudiobookLoader.makePositionTrace` builds
+    // `AudiobookPositionTraceRecorder(bookID:)` and accepts all of them.
+    //
+    // Measured before these two existed: replacing the store's default closure
+    // body with `false` left 142/142 green, and so did replacing the recorder's.
+    // Gutted, the trace reads and writes nothing and codes 404-407 go
+    // permanently silent — which, by this feature's own thesis, is
+    // indistinguishable from a healthy fleet.
+
+    /// The store's default gate reads the switch, in the store's OWN domain.
+    ///
+    /// Three mutations die here: the default closure returning a constant, the
+    /// closure reading `DebugSettings()` instead of `DebugSettings(defaults:)`,
+    /// and the captured `gateDefaults` being repointed at `.standard` — all
+    /// three leave the scoped domain empty.
+    func testStoreDefaultGate_readsTheSwitchInItsOwnDomain() {
+        DebugSettings(defaults: defaults).isAudiobookPositionTraceEnabled = true
+        // No `diagnosticsEnabled:` — this is the production binding.
+        let store = UserDefaultsLastLivePositionMarkerStore(defaults: defaults)
+
+        store.save(LastLivePositionMarker(
+            bookID: "book-1", trackKey: "a", timestamp: 42, recordedAt: Date()
+        ))
+
+        XCTAssertNotNil(rawMarkerData(forBookID: "book-1"),
+                        "with the switch open in this domain, the default gate "
+                        + "must let the write through")
+    }
+
+    /// And declines with the switch closed.
+    ///
+    /// A fresh store on a domain where the flag was never set — not the same
+    /// store after writing `false`. Writing `false` through `DebugSettings`
+    /// also calls `purgeAll`, so an absence afterwards would be evidence of the
+    /// purge, not of the gate. This asserts the gate.
+    func testStoreDefaultGate_declinesWithTheSwitchClosed() {
+        XCTAssertFalse(DebugSettings(defaults: defaults).isAudiobookPositionTraceEnabled,
+                       "precondition: the flag is unset in this domain")
+        let store = UserDefaultsLastLivePositionMarkerStore(defaults: defaults)
+
+        store.save(LastLivePositionMarker(
+            bookID: "book-1", trackKey: "a", timestamp: 42, recordedAt: Date()
+        ))
+
+        XCTAssertNil(rawMarkerData(forBookID: "book-1"),
+                     "a patron's position must not be persisted while the "
+                     + "trace is off")
+    }
+
+    /// The recorder's own default gate and default store, driven end to end.
+    ///
+    /// `notePlaybackTick` is the production write path, and `lastMarkerWriteAt`
+    /// starts at `.distantPast`, so the first tick writes. The bytes are read
+    /// raw from the injected domain, which is what makes this fail if either
+    /// default reaches `.standard` instead.
+    func testRecorderDefaults_gateAndStore_bothBindToTheInjectedDomain() {
+        DebugSettings(defaults: defaults).isAudiobookPositionTraceEnabled = true
+        // Only `bookID` and `defaults`: `markerStore` and `diagnosticsEnabled`
+        // are the bindings under test.
+        let recorder = AudiobookPositionTraceRecorder(
+            bookID: "book-1", defaults: defaults, fileLog: { _ in }
+        )
+
+        recorder.notePlaybackTick(trackKey: "a", timestamp: 12.5, at: Date())
+
+        let data = rawMarkerData(forBookID: "book-1")
+        XCTAssertNotNil(data,
+                        "the recorder's default store and default gate must "
+                        + "both resolve to the domain it was given")
+    }
+
+    /// Non-vacuity for the above: the same construction with the switch closed
+    /// writes nothing, so the assertion is reading the gate and not merely the
+    /// fact that a tick happened.
+    func testRecorderDefaults_writeNothingWhileTheSwitchIsClosed() {
+        XCTAssertFalse(DebugSettings(defaults: defaults).isAudiobookPositionTraceEnabled,
+                       "precondition: the flag is unset in this domain")
+        let recorder = AudiobookPositionTraceRecorder(
+            bookID: "book-1", defaults: defaults, fileLog: { _ in }
+        )
+
+        recorder.notePlaybackTick(trackKey: "a", timestamp: 12.5, at: Date())
+
+        XCTAssertNil(rawMarkerData(forBookID: "book-1"))
+    }
+
     // MARK: - Helpers
 
     private func makeStore(diagnostics: Bool) -> UserDefaultsLastLivePositionMarkerStore {

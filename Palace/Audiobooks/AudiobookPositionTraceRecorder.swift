@@ -264,10 +264,25 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
 
     private var cancellables = Set<AnyCancellable>()
 
+    /// `defaults` exists so the two defaulted collaborators below — the marker
+    /// store and the diagnostics gate — can be pinned to one injected domain.
+    ///
+    /// Those two are the only bindings production takes: `AudiobookLoader`
+    /// constructs this as `AudiobookPositionTraceRecorder(bookID:)` and accepts
+    /// every default, while all twelve test constructions pass `markerStore`
+    /// and `diagnosticsEnabled` explicitly. Neither default was reachable from
+    /// a test, so replacing either body with `false` left the suite green while
+    /// making codes 404–407 permanently silent in the shipped app.
+    ///
+    /// Built in the body rather than as default arguments because a Swift
+    /// default argument cannot read another parameter — and two expressions
+    /// reaching for `.standard` independently is the shape that made this
+    /// untestable in the first place.
     init(
         bookID: String,
-        markerStore: LastLivePositionMarkerStoring = UserDefaultsLastLivePositionMarkerStore(),
-        diagnosticsEnabled: @escaping () -> Bool = { AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled() },
+        defaults: UserDefaults = .standard,
+        markerStore: LastLivePositionMarkerStoring? = nil,
+        diagnosticsEnabled: (() -> Bool)? = nil,
         reportSaveVerdict: ((PositionSaveVerdict, PositionTraceContext) -> Void)? = nil,
         reportGapVerdict: ((PositionRestoreGapVerdict) -> Void)? = nil,
         fileLog: ((String) -> Void)? = nil,
@@ -276,7 +291,9 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     ) {
         self.bookID = bookID
         self.markerStore = markerStore
+            ?? UserDefaultsLastLivePositionMarkerStore(defaults: defaults)
         self.diagnosticsEnabled = diagnosticsEnabled
+            ?? { AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled(defaults: defaults) }
         // The CODE is part of the seam. It was previously hard-coded to
         // `.audiobookPositionSaveDry` here, which made code 405 unreachable and
         // filed every restore-gap finding under the dry-save code — collapsing
