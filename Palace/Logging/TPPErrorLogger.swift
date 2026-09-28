@@ -162,6 +162,33 @@ private let nullString = "null"
     /// across a background → foreground transition. Indicates the toolkit
     /// timer or position publisher has regressed.
     case audiobookNowPlayingDry = 403
+    /// PP-4963 — position saves went quiet while the playback clock showed
+    /// audio still running. Carries the dry duration and the app state, never
+    /// book or patron identity.
+    case audiobookPositionSaveDry = 404
+    /// PP-4963 — the position restored on open sits behind the last position
+    /// the playback clock observed, or the recorded position could not be
+    /// located in the loaded manifest.
+    case audiobookPositionRestoreGap = 405
+    /// PP-4963 — the playback tick stream itself went quiet, so the instrument
+    /// cannot say whether saves kept up. Its own code rather than a silent
+    /// `.saving`: a gap has two causes (the patron paused, or playback
+    /// continued while main-queue delivery was suppressed) and the second is
+    /// the hypothesis under test. Carries the gap duration, never book or
+    /// patron identity.
+    case audiobookPositionTickGap = 406
+    /// PP-4963 — the device clock moved backwards under a session, so the
+    /// intervals the trace measured for it cannot be trusted. Its own code so
+    /// those sessions can be excluded from the aggregate rather than quietly
+    /// diluting it.
+    ///
+    /// EXCLUDE ON THIS CODE, not on `clockRegressionCount`. The count can be
+    /// zero on a genuine regression: if the clock steps back between the last
+    /// tick and the foreground check, no tick ever observes a negative gap, so
+    /// the policy reports the regression while nothing incremented. The count
+    /// is corroborating detail about how choppy the session was; this code is
+    /// the key.
+    case audiobookPositionClockRegressed = 407
 
     // ereader
     case nilCFI = 500

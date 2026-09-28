@@ -199,6 +199,7 @@ struct DeveloperSettingsView: View {
     @ViewBuilder private var badgeTestingSection: some View {
         Section(header: Text("Badge Testing")) {
             DevToggleRow(title: "Enable Badge Logging", isOn: $viewModel.badgeLoggingEnabled)
+            DevToggleRow(title: "Audiobook Position Trace (PP-4963)", isOn: $viewModel.audiobookPositionTraceEnabled)
             DevDisclosureValueRow(
                 title: "Test Holds Configuration",
                 value: viewModel.testHoldsConfiguration.displayName,
