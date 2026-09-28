@@ -406,37 +406,56 @@ def test_live_allowlist_pins_the_critical_paths(tmp_path):
     )
 
 
-def test_a_code_line_merely_CONTAINING_import_still_counts(tmp_path):
-    """The `^` anchor on the import exclusion is load-bearing, and was untested.
+def test_every_skip_in_loc_of_is_ANCHORED(tmp_path):
+    """All three skips in `loc_of` are anchored, and all three anchors bind.
 
-    `loc_of` skips import declarations so an extraction can add one per consumer
-    without blowing a cap. Dropping the `^` turns that into "skip any line
-    containing `import `", which silently manufactures slack — and the instance
-    is live, not hypothetical: `MyBooksDownloadCenter.swift:1030` is
-    `NSLog("Cannot import ADEPT")`, real code in a file sitting at EXACTLY its
-    cap, so one free line there is a cap that no longer binds.
+    `loc_of` skips a line that IS a comment, a block-comment body, or an import.
+    Each rule is anchored with `^` after whitespace-stripping, so it matches the
+    line's start rather than anywhere in it. Drop any one anchor and the rule
+    becomes "skip any line CONTAINING this", which silently manufactures slack
+    on files pinned at exactly their cap.
 
-    A reviewer's mechanical mutant found this: with the anchor removed the whole
-    suite stayed green and the live tree still reported OK. Comment lines
-    containing "import" are already excluded as comments, so this arm uses the
-    shape that actually reaches the counter — a string literal in executable
-    code.
+    All three were measured reachable on the live tree, and the loosening is not
+    theoretical:
+
+        ^//        4 at-cap hubs lose lines (AudiobookSessionManager,
+                   AccountsManager, BookDetailViewModel, MyBooksDownloadCenter)
+        ^/?[*]     5 hubs, including BorrowOperation
+        ^import    2 hubs — `NSLog("Cannot import ADEPT")` in
+                   MyBooksDownloadCenter and a localized string in Strings.swift
+
+    Three of those files are CLAUDE.md critical paths. `shrunk` is advisory and
+    is not counted into `total`, so `test_live_repo_passes` cannot see any of it.
+
+    This arm covers all three rather than one each, because the previous version
+    pinned ONLY the import anchor while its two siblings five lines away stayed
+    unheld — the exact shape recorded in
+    `.forgeos/wall-failures/2026-09-27-corrected-claim-survives-its-siblings.md`,
+    committed in the change that was hardening this very function. A fourth skip
+    added later has one obvious place to be pinned.
     """
-    root = _tree(tmp_path)
-    p = root / "Palace" / "MentionsImport.swift"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    body = [f"let v{i} = {i}" for i in range(800)]
-    body.append('NSLog("Cannot import ADEPT")')          # 801st CODE line
-    p.write_text("\n".join(body) + "\n")
-    r = _run(root, ceiling=None)
-    assert r.returncode == 1, (
-        "a code line that merely contains the word import must still count; "
-        "801 code lines exceed the default ceiling\n" + r.stdout + r.stderr
-    )
-    assert "MentionsImport.swift" in r.stderr
-    assert "801 code lines" in r.stderr, (
-        "the count must be 801, not 800 — the NSLog line was skipped\n" + r.stderr
-    )
+    # Each payload is CODE whose text contains the skipped token away from the
+    # line's start, so only the anchor keeps it counted.
+    payloads = [
+        ("slash", "^//     (a URL literal)",    'let u = "https://example.com"'),
+        ("star",  "^/?[*]  (a multiplication)", "let area = w * h"),
+        ("imp",   "^import (a logged string)",  'NSLog("Cannot import ADEPT")'),
+    ]
+    for key, label, line in payloads:
+        root = _tree(tmp_path / key)
+        p = root / "Palace" / "Anchored.swift"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        body = [f"let v{i} = {i}" for i in range(800)] + [line]
+        p.write_text("\n".join(body) + "\n")
+        r = _run(root, ceiling=None)
+        assert r.returncode == 1, (
+            f"{label}: 801 code lines must exceed the default ceiling — the "
+            f"anchor stopped binding\n" + r.stdout + r.stderr
+        )
+        assert "801 code lines" in r.stderr, (
+            f"{label}: counted {r.stderr.strip()[:120]!r}, expected 801 — the "
+            "payload line was skipped\n"
+        )
 
 
 def test_live_repo_passes():
