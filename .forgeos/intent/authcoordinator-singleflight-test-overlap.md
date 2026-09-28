@@ -26,9 +26,12 @@ of 600. The production guard is correct.
   and release it only after the coordinator reports the second caller joined,
   so the overlap is established rather than assumed.
 - AuthCoordinator records how many callers joined an in-flight refresh, as an
-  internal read-only counter bumped on the join branch and cleared by the
-  existing reset-for-testing hook. It exists because a join is otherwise
-  unobservable.
+  internal read-only counter bumped on the join branch. It is a lifetime count
+  per coordinator instance; every test builds its own coordinator, so no reset
+  is needed. It exists because a join is otherwise unobservable.
+- Every wait in the single-flight helper is bounded, and the gate is released
+  on every path, so a regression that stops the refresh reaching the stub
+  fails the test by name instead of hanging it.
 - Each in-flight test is paired with a sequential test asserting two flights,
   so a slot that is never cleared is caught as well as a join that never
   happens.

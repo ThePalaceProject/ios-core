@@ -166,11 +166,13 @@ final class AuthCoordinatorTests: XCTestCase {
         let gate = RefreshGate()
         let env = TestEnv(mechanism: .token, silentSucceeds: true, silentGate: gate)
 
-        let (a, b, joined) = await refreshWithSecondCallerJoiningFirst(env.coordinator, gate: gate)
+        let run = await refreshWithSecondCallerJoiningFirst(env.coordinator, gate: gate)
 
-        XCTAssertTrue(joined, "second caller never joined the in-flight refresh")
-        XCTAssertTrue(a.isSuccess, "first call expected success, got \(a)")
-        XCTAssertTrue(b.isSuccess, "second call expected success, got \(b)")
+        XCTAssertTrue(run.entered, "first refresh never reached the silent reauthenticator")
+        XCTAssertTrue(run.joined, "second caller never joined the in-flight refresh")
+        XCTAssertTrue(run.first.isSuccess, "first call expected success, got \(run.first)")
+        XCTAssertTrue(run.second?.isSuccess == true,
+            "second call expected success, got \(String(describing: run.second))")
         XCTAssertEqual(env.reauth.silentCount, 1,
             "a caller arriving during a refresh must join it, not start another")
     }

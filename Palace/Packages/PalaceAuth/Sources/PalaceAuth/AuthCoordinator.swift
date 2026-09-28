@@ -287,7 +287,6 @@ public actor AuthCoordinator {
     internal func resetForTesting() {
         inFlightRefresh = nil
         lastFailureTimestamp = nil
-        joinedInFlightRefreshCount = 0
     }
 
     /// Force a sign-out + clear. Production sign-out paths still go

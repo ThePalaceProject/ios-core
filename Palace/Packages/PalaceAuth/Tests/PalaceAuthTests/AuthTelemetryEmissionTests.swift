@@ -117,9 +117,10 @@ final class AuthTelemetryEmissionTests: XCTestCase {
         let gate = RefreshGate()
         let env = TestEnv(mechanism: .token, silentSucceeds: true, silentGate: gate)
 
-        let (_, _, joined) = await refreshWithSecondCallerJoiningFirst(env.coordinator, gate: gate)
+        let run = await refreshWithSecondCallerJoiningFirst(env.coordinator, gate: gate)
 
-        XCTAssertTrue(joined, "second caller never joined the in-flight refresh")
+        XCTAssertTrue(run.entered, "first refresh never reached the silent reauthenticator")
+        XCTAssertTrue(run.joined, "second caller never joined the in-flight refresh")
         let starts = env.recorder.events(step: .coordinatorRefreshStarted)
         let ends = env.recorder.events(step: .coordinatorRefreshCompleted)
         XCTAssertEqual(starts.count, 1,

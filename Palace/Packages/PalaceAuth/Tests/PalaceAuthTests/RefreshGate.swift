@@ -17,23 +17,19 @@ import Foundation
 actor RefreshGate {
     private var entryCount = 0
     private var isReleased = false
-    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
     private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Whether any stub call has entered the gate. Polled with a deadline
+    /// rather than awaited, so a refresh that never reaches the stub fails
+    /// the test by name instead of suspending it forever.
+    var hasEntered: Bool { entryCount > 0 }
 
     /// Called by a stub collaborator. Records the entry, then suspends until
     /// `release()` — the refresh stays in flight for as long as the test needs.
     func enterAndWait() async {
         entryCount += 1
-        entryWaiters.forEach { $0.resume() }
-        entryWaiters.removeAll()
         guard !isReleased else { return }
         await withCheckedContinuation { releaseWaiters.append($0) }
-    }
-
-    /// Suspends until at least one stub call has entered the gate.
-    func waitUntilEntered() async {
-        guard entryCount == 0 else { return }
-        await withCheckedContinuation { entryWaiters.append($0) }
     }
 
     func release() {
@@ -43,9 +39,8 @@ actor RefreshGate {
     }
 }
 
-/// Polls `condition` until it holds or `timeout` elapses. Returns whether it
-/// held, so the caller can release any gate before asserting — a failed wait
-/// must not leave a stub suspended and hang the test.
+/// Polls `condition` every millisecond until it holds or `timeout` elapses,
+/// and returns whether it held.
 func awaitCondition(
     timeout: TimeInterval = 5,
     _ condition: () async -> Bool
@@ -53,28 +48,42 @@ func awaitCondition(
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
         if await condition() { return true }
-        await Task.yield()
+        try? await Task.sleep(nanoseconds: 1_000_000)
     }
     return await condition()
 }
 
+/// Outcome of `refreshWithSecondCallerJoiningFirst`. `second` is nil when the
+/// first refresh never reached the stub, because the second caller is then
+/// never started.
+struct JoinedRefreshRun {
+    let first: Result<Void, AuthRefreshCancellation>
+    let second: Result<Void, AuthRefreshCancellation>?
+    let entered: Bool
+    let joined: Bool
+}
+
 /// Two refreshes where the second caller provably joins the first: the gate
 /// holds the first flight open until the coordinator reports the join, then
-/// releases it. `joined` is false if the join was never observed; the gate
-/// is released either way so a failed run cannot hang.
+/// releases it.
+///
+/// Both waits are bounded. If the first refresh never reaches the stub — it
+/// was routed elsewhere, or short-circuited — `entered` is false; if the
+/// second caller never joins, `joined` is false. The gate is released on every
+/// path before any refresh is awaited, so neither case can leave the test
+/// suspended.
 func refreshWithSecondCallerJoiningFirst(
     _ coordinator: AuthCoordinator,
     gate: RefreshGate,
     reason: ReauthReason = .expiredToken
-) async -> (
-    first: Result<Void, AuthRefreshCancellation>,
-    second: Result<Void, AuthRefreshCancellation>,
-    joined: Bool
-) {
+) async -> JoinedRefreshRun {
     let first = Task { await coordinator.refreshCredentialsIfNeeded(reason: reason) }
-    await gate.waitUntilEntered()
+    guard await awaitCondition({ await gate.hasEntered }) else {
+        await gate.release()
+        return JoinedRefreshRun(first: await first.value, second: nil, entered: false, joined: false)
+    }
     let second = Task { await coordinator.refreshCredentialsIfNeeded(reason: reason) }
     let joined = await awaitCondition { await coordinator.joinedInFlightRefreshCount == 1 }
     await gate.release()
-    return (await first.value, await second.value, joined)
+    return JoinedRefreshRun(first: await first.value, second: await second.value, entered: true, joined: joined)
 }
