@@ -59,6 +59,25 @@ struct LoadedAudiobook {
     let positionTrace: AudiobookPositionTraceRecorder
 }
 
+/// The slice of `AudiobookManager` the PP-4963 position trace joins to.
+///
+/// A protocol rather than `DefaultAudiobookManager` so `makePositionTrace` can
+/// be driven from a test. The concrete manager's `init` starts the now-playing
+/// timer, the chapter monitor, the media-control publisher and an app-state
+/// observer; standing all of that up to assert three lines of wiring would put
+/// timers and a remote command centre into the unit suite, which is how shared
+/// state starts bleeding between tests.
+///
+/// `AudiobookManager` itself will not do: it declares `bookmarkDelegate` as
+/// get-only, and the assignment is one of the joins being pinned.
+@MainActor
+protocol AudiobookPositionTraceHost: AnyObject {
+    var bookmarkDelegate: AudiobookBookmarkDelegate? { get set }
+    var audiobook: Audiobook { get }
+}
+
+extension DefaultAudiobookManager: @MainActor AudiobookPositionTraceHost {}
+
 @MainActor
 final class AudiobookLoader {
 
@@ -422,18 +441,7 @@ final class AudiobookLoader {
 
         // PP-4963: watch the save path against the playback clock, so a locked
         // listen that stops saving becomes an event instead of an absence.
-        // The liveness signal is taken from `player.positionPublisher` rather
-        // than from anything the runloop feeds — see the recorder's `observe`.
-        //
-        // The recorder is handed to the bookmark logic rather than held here:
-        // that object is retained by `manager.bookmarkDelegate`, and the
-        // session manager retains the manager, so the trace survives for the
-        // whole listening session. Held any other way it died with this
-        // function and the instrument recorded nothing.
-        let positionTrace = AudiobookPositionTraceRecorder(bookID: book.identifier)
-        let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book, positionTrace: positionTrace)
-        manager.bookmarkDelegate = bookmarkLogic
-        positionTrace.observe(positionPublisher: manager.audiobook.player.positionPublisher)
+        let positionTrace = makePositionTrace(book: book, manager: manager)
 
         manager.playbackCompletionHandler = { [weak book, weak manager] in
             guard let book = book, let manager = manager else { return }
@@ -457,6 +465,53 @@ final class AudiobookLoader {
             playbackModel: playbackModel,
             positionTrace: positionTrace
         )))
+    }
+
+    /// Builds the PP-4963 recorder and joins it to the session graph.
+    ///
+    /// Extracted from `finalizeBuild` because the join had no test and could
+    /// not get one there: `finalizeBuild` reads `AppContainer.production()` for
+    /// time tracking and the Wi-Fi setting, and its three trace lines could all
+    /// be deleted with every suite still green — leaving a shipped instrument
+    /// that observes nothing. Mutation cannot reach that either; the defect is
+    /// a deleted CALL, not a flipped operator.
+    ///
+    /// Three joins, in the order they have to happen:
+    ///
+    /// 1. the recorder is constructed for this book;
+    /// 2. `AudiobookBookmarkBusinessLogic` takes it as a `let` and becomes
+    ///    `manager.bookmarkDelegate`, which is the ONLY thing that keeps the
+    ///    recorder alive for the session — the manager retains the delegate and
+    ///    `AudiobookSessionManager` retains the manager, while `LoadedAudiobook`
+    ///    is a struct `bind` destructures and drops;
+    /// 3. the recorder subscribes to the PLAYER's own position signal and to
+    ///    foreground return.
+    ///
+    /// - Parameter recorder: production passes nil and gets one built for
+    ///   `book`. A test injects one whose sinks it can observe; the recorder's
+    ///   own construction is pinned by its unit tests, and what this function
+    ///   exists to pin is the wiring around it.
+    /// - Parameter notificationCenter: injectable so a test can drive the real
+    ///   foreground subscription without posting `didBecomeActiveNotification`
+    ///   to the whole app — a global post also wakes `NowPlayingCoordinator`
+    ///   (which can emit a 403) and `DownloadThrottlingService`, landing in
+    ///   whichever test runs next.
+    @discardableResult
+    func makePositionTrace(
+        book: TPPBook,
+        manager: AudiobookPositionTraceHost,
+        recorder: AudiobookPositionTraceRecorder? = nil,
+        notificationCenter: NotificationCenter = .default
+    ) -> AudiobookPositionTraceRecorder {
+        let positionTrace = recorder ?? AudiobookPositionTraceRecorder(bookID: book.identifier)
+        let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book, positionTrace: positionTrace)
+        manager.bookmarkDelegate = bookmarkLogic
+        // `observe(player:)` rather than the publisher form: the liveness
+        // signal MUST be the playback clock's, and passing the player makes
+        // anything runloop-fed unrepresentable here.
+        positionTrace.observe(player: manager.audiobook.player,
+                              notificationCenter: notificationCenter)
+        return positionTrace
     }
 
     private func logDecodingError(_ decodingError: DecodingError) {

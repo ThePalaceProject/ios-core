@@ -524,6 +524,25 @@ final class AudiobookPositionTraceRecorder: @unchecked Sendable {
     ///   whole app — a global post also wakes `NowPlayingCoordinator` (which can
     ///   emit a 403) and `DownloadThrottlingService` on the main queue, landing
     ///   in whichever test runs next.
+    /// The production entry point. Takes the `Player` rather than a publisher
+    /// so substituting `AudiobookPlaybackModel.$currentLocation` — which
+    /// carries both the playback clock AND the runloop timer under measurement
+    /// — is unrepresentable at the call site rather than forbidden by a comment
+    /// a refactor can read past.
+    ///
+    /// `@MainActor` because `Player` is: the toolkit's protocol is
+    /// main-actor-isolated. Only the SUBSCRIPTION is isolated — deliveries land
+    /// on whatever thread AVPlayer's periodic time observer uses, which is the
+    /// point.
+    @MainActor
+    func observe(player: Player, notificationCenter: NotificationCenter = .default) {
+        observe(positionPublisher: player.positionPublisher,
+                notificationCenter: notificationCenter)
+    }
+
+    /// The publisher-taking form, so a test can drive a liveness signal it
+    /// cannot get a real `Player` to emit — `OpenAccessPlayer.positionSubject`
+    /// is `private`. Production goes through `observe(player:)`.
     func observe(
         positionPublisher: AnyPublisher<TrackPosition, Never>,
         notificationCenter: NotificationCenter = .default
