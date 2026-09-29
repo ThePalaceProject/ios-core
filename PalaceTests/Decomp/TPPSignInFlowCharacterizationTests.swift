@@ -2,6 +2,26 @@
 //  TPPSignInFlowCharacterizationTests.swift
 //  PalaceTests
 //
+//  RUNNING THESE: `-only-testing` matches <bundle>/<XCTestCase subclass>, NOT a
+//  file, so
+//      -only-testing:PalaceTests/TPPSignInFlowCharacterizationTests
+//  matches nothing and reports `Executed 0 tests` with `** TEST SUCCEEDED **`
+//  and exit 0. That happened here while verifying R3, on the one measurement
+//  this pack's credibility rests on; the executed count is what caught it, not
+//  the exit code. Always read the count. CLAUDE.md: "a run that says 0 tests
+//  executed is a misconfiguration, not a clean pass".
+//
+//  Enumerate rather than trust a number in a comment — a count here goes stale
+//  the moment a class is added, and an undercount produces exactly the
+//  false-complete run this note exists to prevent:
+//      grep -nE '^(final )?class .*: SignInFlowFixture' <this file>
+//  As of 2026-09-29 that is FOUR runnable classes totalling 36 tests —
+//  SignInReadinessRaceCharacterizationTests (8),
+//  SignInTokenErrorCharacterizationTests (12),
+//  SignInCredentialSideEffectCharacterizationTests (6),
+//  SignInStatePrecedenceCharacterizationTests (10) — plus `SignInFlowFixture`,
+//  the base, which XCTest discovers with zero test methods.
+//
 //  ON THE MUTANT COMMENTS BELOW: "Targets a hand-written mutant that ..." means
 //  exactly that — a shape I reasoned the test should catch, NOT a mutant any
 //  tool generated and NOT part of any score. `scripts/palace_mutate.py`'s
