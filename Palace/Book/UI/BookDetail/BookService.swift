@@ -7,17 +7,17 @@ import PalaceBookModel
 import PalaceBookRegistry
 import PalaceUtilities
 
-/// Dispatches book-open requests to the right reader/player. Owns only the
-/// EPUB and PDF paths directly; audiobook opens delegate to
-/// `AudiobookSessionManager.openAudiobook`, which is the sole owner of the
-/// audiobook lifecycle (manager, decryptor, playback, navigation).
+/// The book-open entry point callers name, plus two audiobook helpers that are
+/// not routing: the open-failure alert and the bearer-token manifest fetch.
 ///
-/// Before this refactor, BookService was a static god-utility that built
-/// audiobook managers and handed them off via AudiobookEvents.managerCreated.
-/// That handoff ran the new open's DRM pipeline while the previous
-/// AudiobookManager was still alive, which caused Readium's
-/// publicationOpener.open() to hang after a few back-to-back audiobook opens.
-/// See AudiobookLoader + AudiobookSessionManager for the new ownership model.
+/// The format -> destination decision and the reader wiring moved to
+/// `BookOpenRouter` (Application layer) in Wave 5, so `open` is a forwarder and
+/// the readers are reachable from one place. Audiobook opens still land on
+/// `AudiobookSessionManager.openAudiobook`, the sole owner of the audiobook
+/// lifecycle (manager, decryptor, playback, navigation) — that ownership is what
+/// keeps a previous session's DRM decryptor from outliving the next open and
+/// hanging Readium's `publicationOpener.open()`. See AudiobookLoader +
+/// AudiobookSessionManager.
 enum BookService {
     /// Book-open entry point for every caller (BookDetail, My Books, the
     /// audiobook retry action). Forwards to `BookOpenRouter`, which owns the
