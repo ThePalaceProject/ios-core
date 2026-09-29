@@ -20,8 +20,10 @@ struct LibraryNavTitleView: View {
         if let onTap {
             Button(action: onTap) { content }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(.isHeader)
         } else {
             content
+                .accessibilityAddTraits(.isHeader)
         }
     }
 

@@ -89,6 +89,7 @@ struct HoldsView: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
             Text(error.message)
                 .font(.caption)
                 .foregroundStyle(.primary)

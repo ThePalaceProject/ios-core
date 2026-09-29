@@ -219,7 +219,10 @@ private struct FacetSectionHeader: View {
     var body: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline).foregroundStyle(.primary)
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .accessibilityAddTraits(.isHeader)
                 if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.subheadline)

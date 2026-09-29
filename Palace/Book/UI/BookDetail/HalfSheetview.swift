@@ -259,6 +259,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 
             Text(accountsManager.currentAccount?.name ?? "")
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
 
             bookInfoView
             statusInfoView
