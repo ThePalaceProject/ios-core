@@ -348,7 +348,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         setLoaded()                                 // resolves the gate
 
-        await fulfillment(of: [fired, accepted], timeout: 5.0)
+        await fulfillment(of: [fired, accepted], timeout: 5.0)   // STARVE-001-OK: expectRequestFired + uiDelegate hook; NYPLNetworkExecutorMock fires onExecuteRequest inline and setLoaded() resolves the gate in-test — no real network, no fire-and-forget Task
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
                        "The deferred tap must produce exactly one credential request once details load")
         XCTAssertEqual(uiDelegate.validationErrorCount, 0,
@@ -376,7 +376,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         setLoaded()
 
-        await fulfillment(of: [fired], timeout: 5.0)
+        await fulfillment(of: [fired], timeout: 5.0)   // STARVE-001-OK: expectRequestFired; NYPLNetworkExecutorMock invokes onExecuteRequest inline when logIn executes a request — no real network
         // Give any second awaiter a turn to land before counting.
         for _ in 0..<5 { await Task.yield() }
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
@@ -425,7 +425,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         setLoaded()
 
-        await fulfillment(of: [fired], timeout: 5.0)
+        await fulfillment(of: [fired], timeout: 5.0)   // STARVE-001-OK: expectRequestFired; NYPLNetworkExecutorMock invokes onExecuteRequest inline — no real network
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
                        "A prior readiness failure must not permanently wedge the deferred sign-in path")
     }
@@ -498,7 +498,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         businessLogic.logIn()
         businessLogic.logIn()
 
-        await fulfillment(of: [fired], timeout: 5.0)
+        await fulfillment(of: [fired], timeout: 5.0)   // STARVE-001-OK: onExecuteRequest is set directly on NYPLNetworkExecutorMock and fires inline per request — no real network
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 2,
                        "The already-loaded fast path issues one request per tap")
     }
@@ -540,7 +540,7 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
                               password: "1234",
                               tokenURL: tokenURL,
                               tokenRefresher: refresher) { done.fulfill() }
-        await fulfillment(of: [done], timeout: 5.0)
+        await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: FlowTokenRefresherMock.executeTokenRefresh calls completion(...) INLINE from a pre-set .result — no queue hop, no I/O
         return true
     }
 
@@ -649,7 +649,7 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
                                      tokenURL: tokenURL, tokenRefresher: refresher) {
             done.fulfill()
         }
-        await fulfillment(of: [done], timeout: 5.0)
+        await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: FlowTokenRefresherMock calls completion(...) inline from a pre-set .failure — no queue hop, no I/O
         XCTAssertEqual(uiDelegate.validationErrorCount, 1,
                        "Exactly one validation error is surfaced per failed exchange")
     }
@@ -677,7 +677,7 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
         businessLogic.getBearerToken(username: "patron", password: "1234",
                                      tokenURL: tokenURL, tokenRefresher: refresher)
 
-        await fulfillment(of: [fired, accepted], timeout: 5.0)
+        await fulfillment(of: [fired, accepted], timeout: 5.0)   // STARVE-001-OK: FlowTokenRefresherMock completes inline from a pre-set .success and the uiDelegate hook fires on the same call stack — no I/O
         XCTAssertEqual(capturedAuthorization.value, "Bearer tok-chain-1",
                        "The freshly exchanged token must authorize the credential-validation request")
         XCTAssertEqual(businessLogic.userAccount.authToken, "tok-chain-1",
@@ -942,10 +942,14 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         // lint-ignore: FLUFF-001 — `selectedAuthentication` is a COMPUTED
         // 4-rung getter (TPPSignInBusinessLogic.swift:435-446): explicit
-        // selection, then `userAccount.authDefinition`, then a sole-IdP
+        // selection, then `userAccount.authDefinition`, then a sole-auth
         // read, then nil. The assignment sets rung 1 and the assertion
         // reads the ladder's OUTPUT, so this exercises precedence, not
-        // Swift property storage. Deleting a rung reddens it.
+        // Swift property storage. Deleting a rung reddens it — EXCEPT the
+        // sole-auth rung: the 2026-09-29 mutation run left `:443`
+        // (`auths.count > 1` → `>=`) alive because none of these cells
+        // exercises `count == 1`. That case is pinned in
+        // `TPPPreferredAuthSelectionTests`, not here.
 
         XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .oidc,
                        "An explicit selection must win over the persisted auth definition")
@@ -959,15 +963,19 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
         businessLogic.selectedAuthentication = nil
         // lint-ignore: FLUFF-001 — `selectedAuthentication` is a COMPUTED
         // 4-rung getter (TPPSignInBusinessLogic.swift:435-446): explicit
-        // selection, then `userAccount.authDefinition`, then a sole-IdP
+        // selection, then `userAccount.authDefinition`, then a sole-auth
         // read, then nil. The assignment sets rung 1 and the assertion
         // reads the ladder's OUTPUT, so this exercises precedence, not
-        // Swift property storage. Deleting a rung reddens it.
+        // Swift property storage. Deleting a rung reddens it — EXCEPT the
+        // sole-auth rung: the 2026-09-29 mutation run left `:443`
+        // (`auths.count > 1` → `>=`) alive because none of these cells
+        // exercises `count == 1`. That case is pinned in
+        // `TPPPreferredAuthSelectionTests`, not here.
 
         XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .basic,
                        "With no explicit selection, the persisted auth definition answers")
         XCTAssertEqual(businessLogic.userAccount.authDefinition?.authType, .basic,
-                       "and it answers FROM rung 2 — the persisted definition — not from a sole-IdP read")
+                       "and it answers FROM rung 2 — the persisted definition — not from a sole-auth read")
     }
 
     // P7 — rung 3: a multi-auth library with nothing selected and nothing
@@ -986,10 +994,14 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
         // lint-ignore: FLUFF-001 — `selectedAuthentication` is a COMPUTED
         // 4-rung getter (TPPSignInBusinessLogic.swift:435-446): explicit
-        // selection, then `userAccount.authDefinition`, then a sole-IdP
+        // selection, then `userAccount.authDefinition`, then a sole-auth
         // read, then nil. The assignment sets rung 1 and the assertion
         // reads the ladder's OUTPUT, so this exercises precedence, not
-        // Swift property storage. Deleting a rung reddens it.
+        // Swift property storage. Deleting a rung reddens it — EXCEPT the
+        // sole-auth rung: the 2026-09-29 mutation run left `:443`
+        // (`auths.count > 1` → `>=`) alive because none of these cells
+        // exercises `count == 1`. That case is pinned in
+        // `TPPPreferredAuthSelectionTests`, not here.
         XCTAssertNotNil(businessLogic.selectedAuthentication)
 
         businessLogic.selectedAuthentication = nil
