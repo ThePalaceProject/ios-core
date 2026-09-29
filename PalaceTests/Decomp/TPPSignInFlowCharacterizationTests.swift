@@ -31,8 +31,16 @@
 //  arm". CLAUDE.md: a hand-authored mutant is an illustration, not a score —
 //  reading these as evidence inherits my blind spots exactly, which is the
 //  failure that rule exists to stop. Exactly ONE is measured: R3, which says
-//  KILLS and carries its run. The 80.0% in the commit body is the tool's figure
-//  over ITS mutants and is unrelated to these comments.
+//  KILLS and carries its run.
+//
+//  An earlier version of this header pointed at "the 80.0% in the commit body"
+//  as the tool's figure. No commit body in this branch's range contains it —
+//  the section was amended away — so the citation pointed at nothing, which is
+//  the same defect this pack was written to characterize. The number is not
+//  restated here: quoting a mutation score with no surviving
+//  total/killed/survived/errored breakdown is an unfalsifiable claim. Re-run
+//  `palace_mutate.py` and paste the invocation with its counts if the figure
+//  is wanted.
 //
 //  CHARACTERIZATION PACK (part 3) — Wave 4 prerequisite for the
 //  `TPPSignInBusinessLogic` decomposition
@@ -308,8 +316,8 @@ class SignInFlowFixture: XCTestCase {
 final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
 
     // R1 — a sign-in tap that arrives BEFORE the auth document has loaded
-    // fires no network request and does not announce "signing in". Kills a
-    // mutant that drops the `guard let wrapped = selectedAuthentication`
+    // fires no network request and does not announce "signing in". Targets a
+    // hand-written mutant that drops the `guard let wrapped = selectedAuthentication`
     // and falls through to the auth-type switch on a nil auth.
     func test_logIn_beforeDetailsLoaded_firesNoRequest_andDoesNotAnnounceSigningIn() async {
         let recorder = SigningInNotificationRecorder()
@@ -521,15 +529,43 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
     }
 
     @discardableResult
-    private func refreshFailing(with error: NSError) async -> Bool {
+    private func refreshFailing(with error: NSError,
+                                on logic: TPPSignInBusinessLogic? = nil) async -> Bool {
+        // `businessLogic` is IUO on the fixture; annotate so `??` yields a
+        // non-optional rather than re-wrapping it.
+        let target: TPPSignInBusinessLogic = logic ?? businessLogic
         refresher.result = .failure(error)
         let done = expectation(description: "getBearerToken completion")
-        businessLogic.getBearerToken(username: "patron",
-                                     password: "1234",
-                                     tokenURL: tokenURL,
-                                     tokenRefresher: refresher) { done.fulfill() }
+        target.getBearerToken(username: "patron",
+                              password: "1234",
+                              tokenURL: tokenURL,
+                              tokenRefresher: refresher) { done.fulfill() }
         await fulfillment(of: [done], timeout: 5.0)
         return true
+    }
+
+    /// A business logic for a library that is NOT the mock's current one.
+    ///
+    /// `TPPLibraryAccountMock.tppAccountUUID` and `.currentAccountId` both
+    /// return `tppAccount.uuid` (the class lives in
+    /// `PalaceTests/Mocks/NYPLLibraryAccountsProviderMock.swift:80,:84` — file
+    /// name and class name differ after the NYPL→TPP rename), so any assertion comparing
+    /// `libraryAccountID` against `currentAccountId` on the shared fixture
+    /// compares a value to itself and cannot fail. Routing tests must build
+    /// their own instance, as S2 does.
+    private func businessLogicForOtherLibrary(
+        _ uuid: String = "some-other-library-uuid"
+    ) -> TPPSignInBusinessLogic {
+        TPPSignInBusinessLogic(
+            libraryAccountID: uuid,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: registry,
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: networkExecutor,
+            uiDelegate: uiDelegate,
+            drmAuthorizer: TPPDRMAuthorizingMock())
     }
 
     private func httpError(_ code: Int) -> NSError {
@@ -656,13 +692,27 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
                      "…and the expiration mirror goes with it")
     }
 
-    // T10 — the token exchange is scoped to THIS business logic's library,
-    // not the currently-selected one (PP-4986: Settings signs in/out for any
-    // library). Targets a hand-written mutant that passes `currentAccountId` instead.
+    // T10 — the token exchange is scoped to THIS business logic's library, not
+    // the currently-selected one (PP-4986: Settings signs in/out for any
+    // library). `TPPSignInBusinessLogic.swift:587` passes
+    // `accountId: libraryAccountID`; the mutant this pins swaps it to
+    // `currentAccountId`.
+    //
+    // It must run against a NON-current library. On the shared fixture the
+    // mock returns `tppAccount.uuid` from both `tppAccountUUID` and
+    // `currentAccountId`, so the earlier form of this test asserted
+    // `lastAccountId == businessLogic.libraryAccountID` where both sides were
+    // the same value and the mutant survived. The PP-4986 seam is exactly the
+    // one Wave 4 (iii) will move, so an unpinned cell here is expensive.
     func test_getBearerToken_routesAccountIdToItsOwnLibrary() async {
-        await refreshFailing(with: httpError(401))
-        XCTAssertEqual(refresher.lastAccountId, businessLogic.libraryAccountID,
+        let other = businessLogicForOtherLibrary()
+        await refreshFailing(with: httpError(401), on: other)
+
+        XCTAssertEqual(refresher.lastAccountId, "some-other-library-uuid",
                        "accountId must be the library this businessLogic signs in to")
+        XCTAssertNotEqual(refresher.lastAccountId, libraryMock.currentAccountId,
+                          "the discriminating half: with `currentAccountId` substituted at "
+                          + "TPPSignInBusinessLogic.swift:587 this is what changes")
     }
 
     // T11 — boundary of the transient range itself. `(500...599).contains`
