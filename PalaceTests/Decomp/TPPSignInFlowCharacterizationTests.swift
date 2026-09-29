@@ -835,7 +835,12 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
     // signed in.
     func test_isSignedIn_trueWithCredentialsAndNoOverride() {
         persistBasic()
-        XCTAssertTrue(businessLogic.isSignedIn())
+        XCTAssertFalse(businessLogic.ignoreSignedInState,
+                       "precondition: this control is only meaningful with the override clear")
+        XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
+                      "precondition: credentials are actually held")
+        XCTAssertTrue(businessLogic.isSignedIn(),
+                      "credentials held and no override means signed in — the positive control P2/P3 are measured against")
     }
 
     // P2 — `.credentialsStale` wins over held credentials. This is the SAML
@@ -885,6 +890,12 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
                        "precondition: the persisted definition is basic")
 
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        // lint-ignore: FLUFF-001 — `selectedAuthentication` is a COMPUTED
+        // 4-rung getter (TPPSignInBusinessLogic.swift:435-446): explicit
+        // selection, then `userAccount.authDefinition`, then a sole-IdP
+        // read, then nil. The assignment sets rung 1 and the assertion
+        // reads the ladder's OUTPUT, so this exercises precedence, not
+        // Swift property storage. Deleting a rung reddens it.
 
         XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .oidc,
                        "An explicit selection must win over the persisted auth definition")
@@ -896,9 +907,17 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
     func test_selectedAuthentication_fallsBackToPersistedDefinition() {
         persistBasic()
         businessLogic.selectedAuthentication = nil
+        // lint-ignore: FLUFF-001 — `selectedAuthentication` is a COMPUTED
+        // 4-rung getter (TPPSignInBusinessLogic.swift:435-446): explicit
+        // selection, then `userAccount.authDefinition`, then a sole-IdP
+        // read, then nil. The assignment sets rung 1 and the assertion
+        // reads the ladder's OUTPUT, so this exercises precedence, not
+        // Swift property storage. Deleting a rung reddens it.
 
         XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .basic,
                        "With no explicit selection, the persisted auth definition answers")
+        XCTAssertEqual(businessLogic.userAccount.authDefinition?.authType, .basic,
+                       "and it answers FROM rung 2 — the persisted definition — not from a sole-IdP read")
     }
 
     // P7 — rung 3: a multi-auth library with nothing selected and nothing
@@ -915,6 +934,12 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
     // flips it back, proving the read is state-driven rather than latched.
     func test_selectedAuthentication_nilWhileDetailsAreLoading_evenAfterAPriorRead() {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
+        // lint-ignore: FLUFF-001 — `selectedAuthentication` is a COMPUTED
+        // 4-rung getter (TPPSignInBusinessLogic.swift:435-446): explicit
+        // selection, then `userAccount.authDefinition`, then a sole-IdP
+        // read, then nil. The assignment sets rung 1 and the assertion
+        // reads the ladder's OUTPUT, so this exercises precedence, not
+        // Swift property storage. Deleting a rung reddens it.
         XCTAssertNotNil(businessLogic.selectedAuthentication)
 
         businessLogic.selectedAuthentication = nil
