@@ -401,6 +401,7 @@ jobs:
             const a11yMajor = '${{ steps.parse.outputs.a11y_major }}' || '0';
             const a11yMinor = '${{ steps.parse.outputs.a11y_minor }}' || '0';
             const a11yInfo = '${{ steps.parse.outputs.a11y_info }}' || '0';
+            const a11yAvailable = '${{ steps.parse.outputs.a11y_available }}' === 'true';
             
             // QAAtlas metrics (if qa domain enabled)
             const qaCoverageRaw = '${{ steps.parse.outputs.qa_coverage }}';
@@ -414,40 +415,63 @@ jobs:
             const totalIssues = parseInt(archIssues) + parseInt(reachIssues) + parseInt(a11yIssues);
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             
-            let body = '## 🏗️ CodeAtlas Ledger Analysis\n\n';
-            
-            // Overall status header
+            let body = '## 🏗️ Architecture and Accessibility\n\n';
+
+            // The headline answers one question: is there anything here for the
+            // author to do? Everything else is reference material and belongs
+            // further down or behind a fold. A panel where every number shouts
+            // equally is a panel nobody reads.
             const criticalA11y = parseInt(a11yBlocker) + parseInt(a11yMajor);
-            if (totalIssues === 0) {
-              body += '### ✅ All Checks Passed\n\n';
-            } else if (criticalA11y > 0 || parseInt(archIssues) > 0) {
-              body += `### 🚨 ${totalIssues} Issue${totalIssues === 1 ? '' : 's'} Require Attention\n\n`;
-            } else {
-              body += `### ⚠️ ${totalIssues} Issue${totalIssues === 1 ? '' : 's'} Found\n\n`;
+            const todo = [];
+            if (criticalA11y > 0) {
+              todo.push(`**${criticalA11y} accessibility ${criticalA11y === 1 ? 'issue' : 'issues'}** at major or blocker severity — see below`);
             }
+            if (parseInt(archIssues) > 0) {
+              todo.push(`**${archIssues} architecture ${parseInt(archIssues) === 1 ? 'finding' : 'findings'}** — see below`);
+            }
+
+            if (todo.length > 0) {
+              body += '**Worth a look before merging:**\n\n';
+              for (const t of todo) { body += `- ${t}\n`; }
+              body += '\n';
+            } else if (!a11yAvailable) {
+              body += '**Nothing to act on from the architecture scan.** Accessibility was *not evaluated* this run — see below.\n\n';
+            } else {
+              body += '**Nothing to act on.** No major accessibility issues and no new architecture findings.\n\n';
+            }
+
+            // Said once, plainly, near the top: these numbers do not respond to
+            // this PR. Readers who do not know that will hunt for a change they
+            // caused and find a constant.
+            body += '<sub>All figures below are **whole-repo, measured at this PR\'s head commit** — not a diff against the base. A number that looks alarming is usually the repo\'s standing baseline, not something this branch did.</sub>\n\n';
             
             // ═══════════════════════════════════════════════════════════════
             // ACCESSIBILITY SECTION (AccessLint)
             // ═══════════════════════════════════════════════════════════════
             body += '---\n';
-            body += '### ♿ Accessibility (via AccessLint)\n\n';
-            body += '> 💡 *Static analysis against WCAG 2.1 AA guidelines for iOS accessibility.*\n\n';
-            
-            const a11yAvailable = '${{ steps.parse.outputs.a11y_available }}' === 'true';
+            body += '### ♿ Accessibility\n\n';
+
             if (!a11yAvailable) {
-              body += '⚠️ **Not evaluated** — the AccessLint binary was not available in this run, so no files were scanned.\n\n';
-              body += 'This is not a pass. Zero findings here means zero files read, not zero issues.\n\n';
+              body += '⚠️ **Not evaluated.** The AccessLint binary was unavailable, so **no files were scanned**.\n\n';
+              body += '<sub>This is not a pass. Zero findings here means zero files read.</sub>\n\n';
             } else if (parseInt(a11yIssues) === 0) {
-              body += '✅ **No accessibility issues detected**\n\n';
+              body += '✅ **No issues found** across the scanned Swift sources.\n\n';
             } else {
-              // Severity breakdown table with help
-              body += '| Severity | Count | ℹ️ What This Means |\n';
-              body += '|----------|-------|-------------------|\n';
-              if (parseInt(a11yBlocker) > 0) body += `| 🚨 Blocker | ${a11yBlocker} | Completely blocks assistive technology users |\n`;
-              body += `| 🔴 Major | ${a11yMajor} | Significant barrier - fix before release |\n`;
-              body += `| 🟡 Minor | ${a11yMinor} | Usability issue - improves experience |\n`;
-              body += `| 🔵 Info | ${a11yInfo} | Best practice suggestion |\n`;
-              body += `| **Total** | **${a11yIssues}** | |\n\n`;
+              // Lead with the only line most readers need: is any of this
+              // blocking a VoiceOver user today? Severity detail follows.
+              if (criticalA11y > 0) {
+                body += `🔴 **${criticalA11y} ${criticalA11y === 1 ? 'issue needs' : 'issues need'} attention** — these block or seriously impede assistive-technology users.\n\n`;
+              } else {
+                body += `🟡 **${a11yIssues} ${parseInt(a11yIssues) === 1 ? 'issue' : 'issues'}, none blocking.** Worth fixing, safe to merge.\n\n`;
+              }
+
+              body += '| | Severity | Count | What it means for a patron |\n';
+              body += '|---|----------|-------|---------------------------|\n';
+              if (parseInt(a11yBlocker) > 0) body += `| 🚨 | Blocker | **${a11yBlocker}** | Cannot use the control at all with VoiceOver |\n`;
+              if (parseInt(a11yMajor) > 0) body += `| 🔴 | Major | **${a11yMajor}** | Reaches it, but cannot tell what it is or does |\n`;
+              if (parseInt(a11yMinor) > 0) body += `| 🟡 | Minor | ${a11yMinor} | Usable, but harder work than it should be |\n`;
+              if (parseInt(a11yInfo) > 0) body += `| 🔵 | Info | ${a11yInfo} | Polish — no patron is blocked |\n`;
+              body += `| | **Total** | **${a11yIssues}** | |\n\n`;
               
               // Top issues
               body += '**Top Issues:**\n';
@@ -582,25 +606,39 @@ jobs:
             // ARCHITECTURE SECTION
             // ═══════════════════════════════════════════════════════════════
             body += '---\n';
-            body += '### 🏛️ Architecture Analysis\n\n';
-            
-            // Always show metrics table with help tooltips
-            body += '| Metric | Value | ℹ️ What This Means |\n';
-            body += '|--------|-------|-------------------|\n';
-            body += `| Components | ${components} | Distinct modules/layers detected in your codebase |\n`;
-            body += `| Dependency Cycles | ${sccCount} | Distinct circular dependencies (A→B→C→A). Goal: **0** |\n`;
-            body += `| Largest Cycle | ${largestScc === '0' ? '—' : largestScc + ' components'} | How many components are mutually tangled in the biggest cycle |\n`;
-            body += `| Layer Violations | ${violations} | Dependencies that break architectural boundaries |\n`;
-            body += `| Hotspots | ${hotspots} | Components with more than 5 dependents (Analyzer.swift). NOT complexity — extracting a widely-used package ADDS one. |\n`;
-            body += `| Avg Coupling | ${avgCoupling} | Total dependency edges ÷ components. Tool bands: <2 good, <4 fair, ≥4 watch. |\n\n`;
-            body += '> ⚠️ *Avg Coupling RISES when a package is extracted* — edges that were invisible inside the monolith become counted edges between named components. It is not a decomposition progress metric. Track **Largest Cycle** and monolith-internal edges instead.\n\n';
+            body += '### 🏛️ Architecture\n\n';
+
+            // The headline metric is the tangle, because it is the one that
+            // should FALL as the decomposition proceeds. Avg Coupling rises
+            // when a package is extracted, so leading with it tells the reader
+            // the opposite of the truth.
+            if (largestScc !== '0') {
+              body += `**Largest dependency tangle: ${largestScc} components** — ${sccCount} distinct ${sccCount === '1' ? 'cycle' : 'cycles'}.\n\n`;
+              body += '<sub>This is the number to watch during the modularisation: it should fall as packages come out. Extracting a leaf without cutting a cycle leaves it unchanged.</sub>\n\n';
+            } else {
+              body += '**No dependency cycles.**\n\n';
+            }
+
+            body += '<details>\n<summary>All architecture metrics</summary>\n\n';
+            body += '| Metric | Value | What it means |\n';
+            body += '|--------|-------|---------------|\n';
+            body += `| Components | ${components} | Modules and layers the analyser indexed |\n`;
+            body += `| Dependency cycles | ${sccCount} | Distinct circular dependencies (A→B→C→A) |\n`;
+            body += `| Largest cycle | ${largestScc === '0' ? '—' : largestScc + ' components'} | Components mutually tangled in the biggest one |\n`;
+            body += `| Layer violations | ${violations} | Dependencies crossing an architectural boundary |\n`;
+            body += `| Hotspots | ${hotspots} | Components with more than 5 dependents |\n`;
+            body += `| Avg coupling | ${avgCoupling} | Dependency edges ÷ components |\n\n`;
+            body += '**Two of these read the opposite way to how they sound:**\n\n';
+            body += '- **Avg coupling rises when you extract a package.** Edges that were invisible inside the monolith become counted edges between named components. Same code, same real coupling, higher number. It is not a decomposition scoreboard.\n';
+            body += '- **Hotspots counts dependents, not complexity.** A widely-used package adds one the moment it is extracted.\n\n';
+            body += '</details>\n\n';
 
             // Honesty note: these are repo-BASELINE metrics, not diff deltas —
             // they read identically on most PRs. Don't misread a constant as
             // PR-caused. A true base-vs-head delta is a tracked Obligation
             // (pr-report-contract.md §2).
             if (changedFiles === '0') {
-              body += `> ℹ️ These are **whole-repo** figures measured at this PR's head commit, not a diff against the base. Ledger has no per-PR delta: its \\`--diff\\` path is a stub and is not invoked. Compare against another PR's numbers to see movement.\n\n`;
+              body += `> ℹ️ These are **whole-repo** figures measured at this PR's head commit, not a diff against the base. Ledger has no per-PR delta: its \`--diff\` path is a stub and is not invoked. Compare against another PR's numbers to see movement.\n\n`;
             } else {
               body += `> ℹ️ Baseline metrics (whole-repo), not a diff delta. Watch for a value that *moves* vs. \`develop\`, not its absolute level.\n\n`;
             }
@@ -706,8 +744,11 @@ jobs:
             // FOOTER
             // ═══════════════════════════════════════════════════════════════
             body += '---\n';
-            body += `📊 Whole-repo analysis at \\`${process.env.GITHUB_SHA ? process.env.GITHUB_SHA.substring(0,9) : 'head'}\\` | `;
-            body += `📦 [Download Full Report](${runUrl})\n\n`;
+            body += `**Scanned:** whole repo at \`${process.env.GITHUB_SHA ? process.env.GITHUB_SHA.substring(0,9) : 'head'}\` · `;
+            body += `**Accessibility:** ${a11yAvailable ? 'ran' : '**did not run**'} · `;
+            body += `**Dead code:** not evaluated · `;
+            body += `**Test coverage:** not evaluated (QAAtlas disabled)\n\n`;
+            body += `[Download the full report](${runUrl})\n\n`;
             body += '*Powered by [CodeAtlas Ledger](https://github.com/mauricecarrier7/ledger-dist)*\n';
             body += '*• Accessibility: [AccessLint](https://github.com/mauricecarrier7/AccessLint-Distribution)*';
             if (qaCoverage) {
