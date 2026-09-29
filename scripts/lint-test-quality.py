@@ -318,14 +318,61 @@ def _git_diff(base: str) -> str:
     return ''
 
 
-def run_diff_gate(diff_text: str, quiet: bool = False) -> int:
+def uncommitted_test_files() -> List[str]:
+    """Test files modified or untracked in the working tree.
+
+    `_git_diff` is HEAD-based, so anything not committed is invisible to it and
+    the gate reports a clean scan over work it never read. That is the
+    "guard refusal renders as success" shape: the pass is true for what was
+    scanned and false for what the author is actually holding.
+
+    Measured cost of not saying so: three consecutive edit-and-recheck rounds on
+    2026-09-29, each reporting the same stale finding, because every fix was in
+    the working tree while the scan read HEAD. The same idiom is in
+    `verify-pr.sh` and `check-doc-hygiene.sh`.
+    """
+    import subprocess
+    try:
+        out = subprocess.run(
+            ['git', 'status', '--porcelain', '--', 'PalaceTests'],
+            capture_output=True, text=True, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return []
+    files = []
+    for line in out.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:].strip()
+        if ' -> ' in path:          # a rename reads "R  old -> new"
+            path = path.split(' -> ', 1)[1]
+        if path.endswith('.swift'):
+            files.append(path)
+    return files
+
+
+def run_diff_gate(diff_text: str, quiet: bool = False,
+                  uncommitted=None) -> int:
     """Run the diff-scoped STARVE-001 gate over `diff_text`; print findings and
     return the process exit code (1 on any hit, else 0)."""
     findings = lint_starvation_diff(diff_text)
+    pending = uncommitted or []
     if not findings:
         if not quiet:
-            print("STARVE-001: no new deadline-poll waits in changed test files.")
+            if pending:
+                print("STARVE-001: no new deadline-poll waits in COMMITTED test "
+                      f"files — {len(pending)} uncommitted file(s) were NOT scanned:")
+                for f in pending[:10]:
+                    print(f"    {f}")
+                if len(pending) > 10:
+                    print(f"    ... and {len(pending) - 10} more")
+                print("  The scan reads `git diff <base>...HEAD`. Commit, then re-run.")
+            else:
+                print("STARVE-001: no new deadline-poll waits in changed test files.")
         return 0
+    if pending:
+        print(f"  NOTE: {len(pending)} uncommitted test file(s) were NOT scanned; "
+              "the lines below are HEAD's, not your working tree's.")
     print(f"STARVE-001: {len(findings)} new deadline-poll wait(s) in changed test files:")
     print("=" * 70)
     for v in findings:
@@ -612,7 +659,8 @@ def main():
         idx = sys.argv.index('--changed')
         nxt = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else ''
         base = nxt if (nxt and not nxt.startswith('-')) else 'origin/develop'
-        sys.exit(run_diff_gate(_git_diff(base), quiet=quiet))
+        sys.exit(run_diff_gate(_git_diff(base), quiet=quiet,
+                               uncommitted=uncommitted_test_files()))
 
     fix_mode = '--fix' in sys.argv
     # `--per-file` emits one line per violation: <relpath>:<line>:<rule>

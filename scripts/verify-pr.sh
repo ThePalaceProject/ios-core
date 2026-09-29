@@ -332,6 +332,23 @@ baseline_verdict_from_output() {
     echo "all-preexisting"
   fi
 }
+# Every CHANGED_* below is computed from `$BASE...HEAD`, so uncommitted work is
+# invisible to this whole script. That is correct for "what would I be pushing",
+# and it is a trap when read as "is my work clean": a green run over a dirty tree
+# is a verdict about bytes nobody scanned. CLAUDE.md points contributors here as
+# the pre-PR self-check, so the omission is announced rather than assumed.
+# Measured 2026-09-29: three consecutive edit-and-recheck rounds against the
+# sibling `lint-test-quality.py --changed`, each reporting the same stale
+# finding, because every fix was sitting uncommitted.
+UNCOMMITTED_TRACKED=$(git status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d ' ')
+if [ "${UNCOMMITTED_TRACKED:-0}" -gt 0 ]; then
+  echo ""
+  echo "  NOTE: $UNCOMMITTED_TRACKED uncommitted change(s) in the working tree are NOT"
+  echo "        part of this run. Everything below is measured against HEAD"
+  echo "        ($(git rev-parse --short HEAD)). Commit them and re-run if you"
+  echo "        meant to verify them."
+  echo ""
+fi
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
 CHANGED_TEST_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep 'Tests/' || true)
 # Scope a11y file picker to actual SwiftUI/UIKit view files. Exclude

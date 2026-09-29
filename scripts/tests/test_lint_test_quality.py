@@ -411,3 +411,85 @@ final class SomeTests: XCTestCase {
 }
 """)
     assert "FLUFF-005" not in _codes(v)
+
+
+# ---------------------------------------------------------------------------
+# The HEAD-blind scan must say what it could not see.
+#
+# `--changed` runs `git diff <base>...HEAD`, so uncommitted work is invisible to
+# it. Before this, the gate printed an unqualified "no new deadline-poll waits"
+# over a working tree it had never read — a verdict about bytes nobody scanned.
+# Measured cost: three consecutive edit-and-recheck rounds on 2026-09-29, each
+# reporting the same stale finding while every fix sat uncommitted.
+#
+# The exit code deliberately does NOT change. CI runs on a clean tree, and
+# failing here would redden the board for an ordinary local edit. What changes is
+# what the pass line CLAIMS.
+
+def test_clean_tree_pass_line_is_unqualified(capsys):
+    rc = _LTQ.run_diff_gate("", quiet=False, uncommitted=[])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "no new deadline-poll waits in changed test files." in out
+    assert "NOT scanned" not in out
+
+
+def test_dirty_tree_pass_line_names_what_was_not_scanned(capsys):
+    rc = _LTQ.run_diff_gate("", quiet=False,
+                            uncommitted=["PalaceTests/A.swift", "PalaceTests/B.swift"])
+    out = capsys.readouterr().out
+    assert rc == 0, "a dirty tree must not redden the gate"
+    assert "COMMITTED" in out, "the pass must say WHICH files it covers"
+    assert "2 uncommitted file(s) were NOT scanned" in out
+    assert "PalaceTests/A.swift" in out and "PalaceTests/B.swift" in out
+    assert "Commit, then re-run." in out
+
+
+def test_dirty_tree_with_findings_warns_the_lines_are_stale(capsys):
+    diff = _new_file_diff("PalaceTests/X.swift",
+                          ["func testX() {", "    wait(for: [e], timeout: 5)", "}"])
+    rc = _LTQ.run_diff_gate(diff, quiet=False, uncommitted=["PalaceTests/X.swift"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "NOT scanned" in out
+    assert "HEAD's, not your working tree's" in out, (
+        "a finding list from HEAD over a dirty tree must say the lines are stale — "
+        "that is what sent an author editing the same line three times"
+    )
+
+
+def test_dirty_tree_does_not_change_the_exit_code_either_way():
+    assert _LTQ.run_diff_gate("", quiet=True, uncommitted=[]) == 0
+    assert _LTQ.run_diff_gate("", quiet=True, uncommitted=["PalaceTests/A.swift"]) == 0
+
+
+def test_uncommitted_test_files_parses_porcelain_shapes(monkeypatch):
+    import subprocess as _sp
+
+    class _R:
+        stdout = (
+            " M PalaceTests/Modified.swift\n"
+            "?? PalaceTests/Untracked.swift\n"
+            "R  PalaceTests/Old.swift -> PalaceTests/New.swift\n"
+            " M PalaceTests/NotSwift.md\n"
+        )
+
+    monkeypatch.setattr(_sp, "run", lambda *a, **k: _R())
+    files = _LTQ.uncommitted_test_files()
+    assert "PalaceTests/Modified.swift" in files
+    assert "PalaceTests/Untracked.swift" in files
+    assert "PalaceTests/New.swift" in files, "a rename must report the NEW path — that is what a scan would read"
+    assert "PalaceTests/Old.swift" not in files
+    assert not any(f.endswith(".md") for f in files)
+
+
+def test_uncommitted_test_files_survives_a_missing_git(monkeypatch):
+    import subprocess as _sp
+
+    def _boom(*a, **k):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(_sp, "run", _boom)
+    assert _LTQ.uncommitted_test_files() == [], (
+        "no git must degrade to 'nothing to report', never crash the gate"
+    )
