@@ -211,6 +211,7 @@ private extension CatalogSearchView {
         .padding(.horizontal, 24)
         .padding(.vertical, 48)
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
         .accessibilityIdentifier(AccessibilityID.Search.noResultsView)
     }
 

@@ -34,6 +34,9 @@ import PalaceBookModel
   override func viewDidLoad() {
     super.viewDidLoad()
 
+    title = NSLocalizedString("Report a Problem",
+                              comment: "Screen title for the form where a patron reports a problem with a book")
+
     submitProblemButton = UIBarButtonItem(
       title: NSLocalizedString("Submit", comment: ""),
       style: .done,

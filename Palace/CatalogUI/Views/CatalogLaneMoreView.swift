@@ -219,6 +219,7 @@ struct CatalogLaneMoreView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(Strings.Catalog.sortBy)
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
                 .padding(.horizontal)
                 .padding(.top, 12)
             ScrollView {

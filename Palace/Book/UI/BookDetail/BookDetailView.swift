@@ -342,6 +342,7 @@ struct BookDetailView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: viewModel.isFullSize ? .leading : .center)
                 .accessibilityIdentifier(AccessibilityID.BookDetail.title)
+                .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($isTitleFocused)
 
             if let authors = viewModel.book.authors, !authors.isEmpty {
@@ -481,6 +482,7 @@ struct BookDetailView: View {
                             HStack {
                                 Text(lane.title)
                                     .font(.headline)
+                                    .accessibilityAddTraits(.isHeader)
                                 Spacer()
                                 if let url = lane.subsectionURL {
                                     NavigationLink(destination: CatalogLaneMoreView(url: url, appContainer: appContainer)) {

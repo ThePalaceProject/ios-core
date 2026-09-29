@@ -183,6 +183,7 @@ private extension CatalogView {
             Text(Strings.Generic.error)
                 .font(.headline)
                 .foregroundStyle(.red)
+                .accessibilityAddTraits(.isHeader)
 
             Text(message)
                 .font(.body)
@@ -228,6 +229,7 @@ private extension CatalogView {
 
             Text(Strings.Catalog.offlineTitle)
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
 
             Text(Strings.Catalog.offlineMessage)
                 .font(.body)
