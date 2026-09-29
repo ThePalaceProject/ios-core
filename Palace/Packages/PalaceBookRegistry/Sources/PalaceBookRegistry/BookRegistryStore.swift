@@ -6,9 +6,12 @@ import PalaceBookModel
 /// Uses a concurrent DispatchQueue with barrier writes for thread safety.
 ///
 /// `@unchecked Sendable` invariant (verified, not waived):
-///   ALL access to the two pieces of mutable state — the `registry`
-///   dictionary and the `processingIdentifiers` set — is funnelled through
-///   `syncQueue`, a *concurrent* queue used as a reader/writer lock:
+///   ALL access to the three pieces of mutable state — the `registry`
+///   dictionary, the `processingIdentifiers` set, and the `announcesChanges`
+///   flag — is funnelled through `syncQueue`, a *concurrent* queue used as a
+///   reader/writer lock. (`announcesChanges` is set and reset inside the single
+///   `performBarrier` block of `mutateRegistry(_:announce:onComplete:)`, and read
+///   by `registry`'s `didSet`, which only runs inside a barrier write.)
 ///     • Every READ (`allBooks`, `heldBooks`, `myBooks`, `record(for:)`,
 ///       `book(for:)`, `state(for:)`, `fulfillmentId(for:)`,
 ///       `processing(for:)`, `readRegistry`, `registrySnapshot`) goes through
