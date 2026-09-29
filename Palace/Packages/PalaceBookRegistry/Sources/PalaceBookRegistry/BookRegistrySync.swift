@@ -707,7 +707,13 @@ final class BookRegistrySync: @unchecked Sendable {
   /// would persist A's state to B's registry file and cause cross-account
   /// contamination (PP-4129 regression).
   func save(for account: String) {
-    save(for: account, serverAuthoritative: false)
+    save(for: account, serverAuthoritative: false, scope: .shelf)
+  }
+
+  /// A non-authoritative save whose `scope` says what changed. See
+  /// `RegistrySaveScope`.
+  func save(for account: String, scope: RegistrySaveScope) {
+    save(for: account, serverAuthoritative: false, scope: scope)
   }
 
   /// - Parameter serverAuthoritative: `true` only when the snapshot being
@@ -719,6 +725,10 @@ final class BookRegistrySync: @unchecked Sendable {
   ///   last-good `.bak` with an empty snapshot during the post-corrupt rebuild
   ///   window (INV-1).
   func save(for account: String, serverAuthoritative: Bool) {
+    save(for: account, serverAuthoritative: serverAuthoritative, scope: .shelf)
+  }
+
+  private func save(for account: String, serverAuthoritative: Bool, scope: RegistrySaveScope) {
     guard let registryUrl = registryUrl(for: account) else { return }
 
     let snapshot = store.registrySnapshot()
@@ -763,15 +773,20 @@ final class BookRegistrySync: @unchecked Sendable {
         // Refresh the last-good `.bak` BEFORE overwriting the primary, but only
         // for a good snapshot (non-empty, or a server-authoritative empty) so a
         // transient empty can never clobber the backup.
-        if !isEmpty || serverAuthoritative {
+        // A position-only save leaves the backup to the next shelf save: the
+        // backup exists to recover the SHELF after corruption, and one that is
+        // a few positions behind still recovers it.
+        if scope == .shelf, !isEmpty || serverAuthoritative {
           try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl)
         }
         try registryData.write(to: registryUrl, options: .atomic)
         if !isEmpty || serverAuthoritative {
           needsRebuildFromServer = false
         }
-        DispatchQueue.main.async {
-          NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
+        if scope == .shelf {
+          DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
+          }
         }
       } catch {
         Log.error(#file, "Error saving book registry: \(error.localizedDescription)")
@@ -1152,4 +1167,16 @@ public struct SendableErrorDocument: @unchecked Sendable {
 /// read-off-thread confinement. Mirrors `SendableErrorDocument`.
 private struct SendableRegistryPayload: @unchecked Sendable {
   let value: [String: Any]
+}
+
+/// What a registry save persists. Decides the side effects, not the bytes: both
+/// scopes write the whole registry file.
+enum RegistrySaveScope {
+  /// Anything that can change what is on the shelf. Refreshes the last-good
+  /// backup and posts `TPPBookRegistryDidChange`.
+  case shelf
+  /// Only a reading position moved (PP-5268). Neither refreshes the backup nor
+  /// posts a change: positions are saved every few seconds of playback, and no
+  /// observer of the shelf renders one.
+  case positionOnly
 }

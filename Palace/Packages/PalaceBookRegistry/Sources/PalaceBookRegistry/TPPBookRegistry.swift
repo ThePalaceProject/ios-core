@@ -458,6 +458,7 @@ public class TPPBookRegistry: @unchecked Sendable {
         self.bookmarks = BookmarkManager(
             store: store,
             save: { [weak sync] account in sync?.save(for: account) },
+            savePosition: { [weak sync] account in sync?.save(for: account, scope: .positionOnly) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) }
         )
         setupAccountDidChangeObserver()
@@ -484,6 +485,7 @@ public class TPPBookRegistry: @unchecked Sendable {
         self.bookmarks = BookmarkManager(
             store: store,
             save: { [weak sync] account in sync?.save(for: account) },
+            savePosition: { [weak sync] account in sync?.save(for: account, scope: .positionOnly) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) }
         )
         syncEngine.load(account: account) { [weak self] newState in self?.state = newState }
