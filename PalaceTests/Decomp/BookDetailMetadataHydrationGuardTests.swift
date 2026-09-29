@@ -210,13 +210,20 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
         }
 
         let gate = HydratorGate()
+        // The entry signal is an XCTestExpectation, not an unbounded await: a
+        // change that stops the fetch from happening at all must make this test
+        // FAIL at the timeout rather than hang. A hanging test is worse than a
+        // red one — under the mutation harness it reports ERRORED (nothing
+        // measured) instead of killing the mutant.
+        let entered = expectation(description: "hydrator entered")
         let vm = makeVM(book: original, registry: registry) { _ in
+            entered.fulfill()
             await gate.waitForRelease()
             return fresh
         }
 
         let hydration = Task { await vm.hydrateMetadataIfNeeded() }
-        await gate.waitUntilEntered()
+        await fulfillment(of: [entered], timeout: 5)
 
         // Swap the book while the fetch is suspended — the exact interleaving
         // the post-await identity guard exists for.
@@ -253,13 +260,16 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
                          fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
         let gate = HydratorGate()
+        // Bounded entry signal — see the note in the identity-re-check test.
+        let entered = expectation(description: "hydrator entered")
         let vm = makeVM(book: sparse, registry: registry) { _ in
+            entered.fulfill()
             await gate.waitForRelease()
             return staleFresh
         }
 
         let hydration = Task { await vm.hydrateMetadataIfNeeded() }
-        await gate.waitUntilEntered()
+        await fulfillment(of: [entered], timeout: 5)
 
         // Same identifier, now fully populated — the identity guard passes and
         // only the needs-hydration re-check can stop the merge.
@@ -373,30 +383,19 @@ private final class CallCounter: @unchecked Sendable {
     var count = 0
 }
 
-/// Deterministic suspend/resume gate for the hydrator. The test waits until the
-/// hydrator has ENTERED (so the interleaving it wants to create is real, not a
-/// hoped-for race), mutates the view model, then releases.
-///
-/// `awaitConditionAsync`-style barriers can be inert when the predicate is
-/// already true; this one cannot, because `waitUntilEntered` only completes
-/// after the hydrator itself signals entry.
+/// Deterministic suspend/resume gate for the hydrator. The test waits on a
+/// bounded `XCTestExpectation` that the hydrator fulfills on entry (so the
+/// interleaving it wants to create is real, not a hoped-for race), mutates the
+/// view model, then releases the gate.
 private actor HydratorGate {
-    private var enteredContinuations: [CheckedContinuation<Void, Never>] = []
     private var releaseContinuations: [CheckedContinuation<Void, Never>] = []
-    private var hasEntered = false
     private var isReleased = false
 
+    /// Suspends the hydrator until `release()`. `isReleased` is checked first so
+    /// a release that lands before the hydrator arrives cannot strand it.
     func waitForRelease() async {
-        hasEntered = true
-        for c in enteredContinuations { c.resume() }
-        enteredContinuations.removeAll()
         if isReleased { return }
         await withCheckedContinuation { releaseContinuations.append($0) }
-    }
-
-    func waitUntilEntered() async {
-        if hasEntered { return }
-        await withCheckedContinuation { enteredContinuations.append($0) }
     }
 
     func release() {
