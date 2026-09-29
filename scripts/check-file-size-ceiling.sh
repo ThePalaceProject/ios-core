@@ -85,7 +85,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 1234 Palace/Audiobooks/AudiobookSessionManager.swift
 1213 Palace/MyBooks/MyBooksDownloadCenter.swift
 1115 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
-971  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 875  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 367 under this metric, not 366: #1520 landed
 # `_ = registryLoader` in init while this branch was in review. Re-measured

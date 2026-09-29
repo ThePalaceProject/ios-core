@@ -13,12 +13,6 @@ import ReadiumShared
 import ReadiumStreamer
 #endif
 
-struct BookLane {
-    let title: String
-    let books: [TPPBook]
-    let subsectionURL: URL?
-}
-
 @MainActor
 final class BookDetailViewModel: ObservableObject {
 
@@ -141,7 +135,8 @@ final class BookDetailViewModel: ObservableObject {
     private let opdsFeedService: OPDSFeedService
     private let samplePreviewManager: SamplePreviewManager
     private let readerService: ReaderService
-    private let metadataHydrator: BookMetadataHydrator
+    private let metadataService: BookMetadataService
+    private let relatedBooksService: RelatedBooksService
     /// Optional injected audiobook session — nil in production (BookService
     /// resolves the DI-root session). A test injects a mock so the audiobook
     /// open → half-sheet-dismiss wiring is drivable. fix/audiobook-first-open-hang.
@@ -154,7 +149,9 @@ final class BookDetailViewModel: ObservableObject {
     private let authGateOverride: ((@escaping () -> Void) -> Void)?
     private var cancellables = Set<AnyCancellable>()
 
-    typealias BookMetadataHydrator = (URL) async throws -> TPPBook?
+    /// Retained spelling of `BookMetadataFetcher` so existing call sites and
+    /// tests that name the view model's typealias keep compiling.
+    typealias BookMetadataHydrator = BookMetadataFetcher
 
     // Note: audiobook management moved to BookService
     // private var audiobookViewController: UIViewController? // No longer used
@@ -205,6 +202,7 @@ final class BookDetailViewModel: ObservableObject {
         samplePreviewManager: SamplePreviewManager,
         readerService: ReaderService,
         metadataHydrator: BookMetadataHydrator? = nil,
+        relatedBooksFetcher: RelatedBooksFeedFetcher? = nil,
         audiobookSession: AudiobookSessionManaging? = nil,
         authGateOverride: ((@escaping () -> Void) -> Void)? = nil
     ) {
@@ -222,9 +220,10 @@ final class BookDetailViewModel: ObservableObject {
         // AppContainer DI-root session.
         self.injectedAudiobookSession = audiobookSession
         self.authGateOverride = authGateOverride
-        // Default hydrator captures the injected services instead of reading
-        // .shared singletons. Tests pass a custom hydrator to short-circuit.
-        self.metadataHydrator = metadataHydrator ?? { url in
+        // Default fetchers capture the injected services instead of reading
+        // .shared singletons. Tests pass custom ones to short-circuit the
+        // network and the Obj-C feed bridge.
+        self.metadataService = BookMetadataService(fetcher: metadataHydrator ?? { url in
             let feed = try await opdsFeedService.fetchFeed(
                 from: url,
                 useToken: accountsManager.currentUserAccount.hasAdobeToken()
@@ -232,7 +231,16 @@ final class BookDetailViewModel: ObservableObject {
             guard let entries = feed.entries as? [TPPOPDSEntry],
                   let entry = entries.first else { return nil }
             return TPPBook(entry: entry)
-        }
+        })
+        self.relatedBooksService = RelatedBooksService(
+            fetcher: relatedBooksFetcher ?? { url in
+                try await opdsFeedService.fetchFeed(
+                    from: url,
+                    useToken: accountsManager.currentUserAccount.hasAdobeToken()
+                )
+            },
+            registry: registry
+        )
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -571,72 +579,25 @@ final class BookDetailViewModel: ObservableObject {
 
     // MARK: - Metadata Hydration
 
-    /// Some OPDS servers serve lightweight `<entry>` blocks inside grouped-lane
-    /// feeds — they omit `<dcterms:issued>`, `<bibframe:publisher>`,
-    /// `<distribution>`, and `<category>`. When the user lands on the detail
-    /// view from a swimlane, the INFORMATION section would render empty rows.
-    /// Re-fetching the single-entry feed at `alternateURL` returns the full
-    /// metadata; we merge the missing fields in without disturbing navigational
-    /// state (acquisitions, related/revoke/report URLs) that the lane entry
-    /// does populate.
+    /// Fills in the INFORMATION-section fields a lightweight lane entry omits,
+    /// by re-fetching the single-entry feed at `alternateURL`.
+    /// `BookMetadataService` owns the fetch and the merge; what stays here is
+    /// the view-model state around them.
+    ///
+    /// Both post-await guards are load-bearing. `hydrateMetadataIfNeeded` can be
+    /// in flight while a related-book tap replaces `book`, and while a registry
+    /// emission delivers an already-hydrated copy of the same book — so the
+    /// identity and the needs-hydration questions are both re-asked on the far
+    /// side of the fetch, against whatever `book` is by then.
     func hydrateMetadataIfNeeded() async {
-        guard Self.needsMetadataHydration(book) else { return }
-        guard let url = book.alternateURL else { return }
-
         let targetIdentifier = book.identifier
-        do {
-            guard let fresh = try await metadataHydrator(url) else { return }
-            guard book.identifier == targetIdentifier else { return }
-            guard Self.needsMetadataHydration(book) else { return }
+        guard let fresh = await metadataService.fetchFullEntry(for: book) else { return }
+        guard book.identifier == targetIdentifier else { return }
+        guard BookMetadataService.needsHydration(book) else { return }
 
-            let merged = Self.mergeHydratedMetadata(into: book, fresh: fresh)
-            book = merged
-            _ = registry.updatedBookMetadata(merged)
-        } catch {
-            Log.warn(#file, "Failed to hydrate book metadata: \(error.localizedDescription)")
-        }
-    }
-
-    private static func needsMetadataHydration(_ book: TPPBook) -> Bool {
-        book.published == nil
-            && (book.publisher?.isEmpty ?? true)
-            && (book.distributor?.isEmpty ?? true)
-            && (book.categoryStrings?.isEmpty ?? true)
-            && (book.audience?.isEmpty ?? true)
-            && (book.language?.isEmpty ?? true)
-    }
-
-    private static func mergeHydratedMetadata(into current: TPPBook, fresh: TPPBook) -> TPPBook {
-        TPPBook(
-            acquisitions: current.acquisitions,
-            authors: current.bookAuthors,
-            categoryStrings: (current.categoryStrings?.isEmpty ?? true) ? fresh.categoryStrings : current.categoryStrings,
-            distributor: (current.distributor?.isEmpty ?? true) ? fresh.distributor : current.distributor,
-            identifier: current.identifier,
-            imageURL: current.imageURL ?? fresh.imageURL,
-            imageThumbnailURL: current.imageThumbnailURL ?? fresh.imageThumbnailURL,
-            published: current.published ?? fresh.published,
-            publisher: (current.publisher?.isEmpty ?? true) ? fresh.publisher : current.publisher,
-            subtitle: current.subtitle ?? fresh.subtitle,
-            summary: (current.summary?.isEmpty ?? true) ? fresh.summary : current.summary,
-            title: current.title,
-            updated: current.updated,
-            annotationsURL: current.annotationsURL,
-            analyticsURL: current.analyticsURL,
-            alternateURL: current.alternateURL,
-            relatedWorksURL: current.relatedWorksURL,
-            previewLink: current.previewLink ?? fresh.previewLink,
-            seriesURL: current.seriesURL ?? fresh.seriesURL,
-            seriesName: (current.seriesName?.isEmpty ?? true) ? fresh.seriesName : current.seriesName,
-            revokeURL: current.revokeURL,
-            reportURL: current.reportURL,
-            timeTrackingURL: current.timeTrackingURL,
-            contributors: current.contributors,
-            bookDuration: (current.bookDuration?.isEmpty ?? true) ? fresh.bookDuration : current.bookDuration,
-            audience: (current.audience?.isEmpty ?? true) ? fresh.audience : current.audience,
-            language: (current.language?.isEmpty ?? true) ? fresh.language : current.language,
-            imageCache: current.imageCache
-        )
+        let merged = BookMetadataService.merge(into: book, fresh: fresh)
+        book = merged
+        _ = registry.updatedBookMetadata(merged)
     }
 
     // MARK: - Related Books
@@ -660,59 +621,19 @@ final class BookDetailViewModel: ObservableObject {
 
         isLoadingRelatedBooks = true
 
+        let authorName = book.authors
         Task { [weak self] in
             guard let self else { return }
-            do {
-                let feed = try await opdsFeedService.fetchFeed(from: url, useToken: accountsManager.currentUserAccount.hasAdobeToken())
-
-                await MainActor.run {
-                    guard self.book.identifier == currentBookId else {
-                        self.isLoadingRelatedBooks = false
-                        return
-                    }
-
-                    if feed.type == .acquisitionGrouped {
-                        var groupTitleToBooks: [String: [TPPBook]] = [:]
-                        var groupTitleToMoreURL: [String: URL?] = [:]
-                        if let entries = feed.entries as? [TPPOPDSEntry] {
-                            for entry in entries {
-                                guard let group = entry.groupAttributes else { continue }
-                                let groupTitle = group.title ?? ""
-                                if let b = CatalogViewModel.makeBook(from: entry, bookRegistry: registry) {
-                                    groupTitleToBooks[groupTitle, default: []].append(b)
-                                    if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
-                                }
-                            }
-                        }
-                        self.createRelatedBooksCells(groupedBooks: groupTitleToBooks, moreURLs: groupTitleToMoreURL)
-                    } else {
-                        self.isLoadingRelatedBooks = false
-                    }
-                }
-            } catch {
-                Log.warn(#file, "Failed to fetch related books: \(error.localizedDescription)")
-                await MainActor.run { self.isLoadingRelatedBooks = false }
+            let lanes = await relatedBooksService.fetchLanes(from: url, authorName: authorName)
+            guard self.book.identifier == currentBookId, let lanes else {
+                self.isLoadingRelatedBooks = false
+                return
             }
+            self.applyRelatedBooks(lanes)
         }
     }
 
-    private func createRelatedBooksCells(groupedBooks: [String: [TPPBook]], moreURLs: [String: URL?]) {
-        var lanesMap = [String: BookLane]()
-        for (title, books) in groupedBooks {
-            let lane = BookLane(title: title, books: books, subsectionURL: moreURLs[title] ?? nil)
-            lanesMap[title] = lane
-        }
-
-        if let author = book.authors, !author.isEmpty {
-            if let authorLane = lanesMap.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
-                lanesMap.removeValue(forKey: authorLane.key)
-                var reorderedBooks = [String: BookLane]()
-                reorderedBooks[authorLane.key] = authorLane.value
-                reorderedBooks.merge(lanesMap) { _, new in new }
-                lanesMap = reorderedBooks
-            }
-        }
-
+    private func applyRelatedBooks(_ lanesMap: [String: BookLane]) {
         DispatchQueue.main.async {
             // Don't replace existing related books with empty data.
             // This can happen if the network request succeeds but parsing fails.
@@ -1038,59 +959,37 @@ final class BookDetailViewModel: ObservableObject {
         TPPCirculationAnalytics.postEvent("open_book", withBook: book)
 
         let resolvedBook = registry.book(forIdentifier: book.identifier) ?? book
-        let contentType = resolvedBook.defaultBookContentType
+        let destination = BookOpenRouter.destination(for: resolvedBook)
 
-        Log.debug(#file, "  Content type determined: \(TPPBookContentTypeConverter.stringValue(of: contentType))")
-        Log.debug(#file, "  Distributor: \(resolvedBook.distributor ?? "nil")")
+        Log.debug(#file, "  Routing \(TPPBookContentTypeConverter.stringValue(of: resolvedBook.defaultBookContentType)) to \(destination); distributor: \(resolvedBook.distributor ?? "nil")")
 
-        switch contentType {
-        case .epub:
-            Log.debug(#file, "  → Opening as EPUB")
-            presentEPUB(resolvedBook) { [weak self] in
-                DispatchQueue.main.async {
-                    self?.processingButtons.removeAll()
-                    completion?()
-                }
+        // Every arm below clears `processingButtons` — a button left spinning is
+        // a stuck screen. `.unsupported` deliberately does NOT report
+        // completion: it ends in an alert, not in a reader.
+        let finishOnMain: () -> Void = { [weak self] in
+            DispatchQueue.main.async {
+                self?.processingButtons.removeAll()
+                completion?()
             }
-        case .pdf:
-            Log.debug(#file, "  → Opening as PDF")
-            presentPDF(resolvedBook) { [weak self] in
-                DispatchQueue.main.async {
-                    self?.processingButtons.removeAll()
-                    completion?()
-                }
-            }
-        case .audiobook:
-            Log.debug(#file, "  → Opening as AUDIOBOOK")
-            openAudiobook(resolvedBook, completion: { [weak self] in
-                DispatchQueue.main.async {
-                    self?.processingButtons.removeAll()
-                    completion?()
-                }
-            }, onLoadingShellPresented: onLoadingShellPresented)
-        case .streamingHTML:
-            // PP-4161: streaming-media titles use the in-app WKWebView reader
-            // presented via NavigationCoordinator. Note: handleAction(.readStreaming)
-            // is the canonical entry point; this case handles the rare path
-            // where some other call site funnels a streamingHTML book through
-            // openBook(_:completion:) (e.g. a coordinator-level resume).
-            Log.debug(#file, "  → Opening as STREAMING-HTML")
-            presentStreamingReader(resolvedBook)
+        }
+
+        switch destination {
+        case .epubReader, .pdfReader:
+            BookService.open(resolvedBook, onFinish: finishOnMain)
+        case .audiobookSession:
+            openAudiobook(resolvedBook, completion: finishOnMain, onLoadingShellPresented: onLoadingShellPresented)
+        case .streamingReader:
+            // PP-4161: `handleAction(.readStreaming)` is the canonical entry
+            // point; this arm covers the rare path where another call site
+            // funnels a streamingHTML book through `openBook` (a
+            // coordinator-level resume, say).
+            BookOpenRouter.presentStreamingReader(resolvedBook)
             processingButtons.removeAll()
             completion?()
-        default:
-            Log.error(#file, "  ❌ UNSUPPORTED CONTENT TYPE - showing error to user")
+        case .unsupported:
             processingButtons.removeAll()
             presentUnsupportedItemError()
         }
-    }
-
-    @MainActor private func presentEPUB(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        BookService.open(book, onFinish: completion)
-    }
-
-    @MainActor private func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        BookService.open(book, onFinish: completion)
     }
 
     // MARK: - Audiobook Opening
@@ -1113,17 +1012,12 @@ final class BookDetailViewModel: ObservableObject {
         completion?()
     }
 
-    /// Pushes the streamingHTML route on the navigation coordinator after
-    /// storing the book payload so the destination resolver can look it up.
+    /// Pushes the streamingHTML route. The coordinator lookup and the
+    /// unreachable-reader fallback live in `BookOpenRouter` so this screen and
+    /// the open pipeline reach the shell the same way.
     @MainActor
     private func presentStreamingReader(_ book: TPPBook) {
-        guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
-            // PP-5022 — a warn line is not a patron-visible outcome.
-            ReaderService.presentUnreachableReaderAlert(for: book, source: "BookDetailViewModel.presentStreamingReader")
-            return
-        }
-        coordinator.store(book: book)
-        coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+        BookOpenRouter.presentStreamingReader(book)
     }
 
     private func getLCPLicenseURL(for book: TPPBook) -> URL? {
