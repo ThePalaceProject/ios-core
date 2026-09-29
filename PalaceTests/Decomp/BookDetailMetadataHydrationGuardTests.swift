@@ -223,7 +223,7 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
         }
 
         let hydration = Task { await vm.hydrateMetadataIfNeeded() }
-        await fulfillment(of: [entered], timeout: 5)
+        await fulfillment(of: [entered], timeout: 5)  // STARVE-001-OK: hydrator entry is recorded by the gate actor; bounded so a SKIPPED fetch fails by name instead of hanging
 
         // Swap the book while the fetch is suspended — the exact interleaving
         // the post-await identity guard exists for.
@@ -269,7 +269,7 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
         }
 
         let hydration = Task { await vm.hydrateMetadataIfNeeded() }
-        await fulfillment(of: [entered], timeout: 5)
+        await fulfillment(of: [entered], timeout: 5)  // STARVE-001-OK: hydrator entry is recorded by the gate actor; bounded so a SKIPPED fetch fails by name instead of hanging
 
         // Same identifier, now fully populated — the identity guard passes and
         // only the needs-hydration re-check can stop the merge.

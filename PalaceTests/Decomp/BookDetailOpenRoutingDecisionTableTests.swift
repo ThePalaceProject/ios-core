@@ -107,6 +107,10 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
     /// `.audiobook` — the one positive destination that is injectable. Opens the
     /// session exactly once and does NOT push a streaming route.
     func testOpenBook_audiobook_opensInjectedSessionOnce_andDoesNotPushStreamingRoute() async {
+        // MISSING-001-OK: table-driven row — the assertions live in `runRow`,
+        // which carries five including a precondition that the fixture actually
+        // classifies as `expectedType`, so a row cannot silently measure a
+        // different cell than it names.
         await runRow(
             book: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook),
             expectedType: .audiobook,
@@ -120,6 +124,10 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
     /// `.streamingHTML` — pushes exactly one route on the coordinator and never
     /// touches the audiobook session.
     func testOpenBook_streamingHTML_pushesExactlyOneRoute_andDoesNotOpenAudiobookSession() async {
+        // MISSING-001-OK: table-driven row — the assertions live in `runRow`,
+        // which carries five including a precondition that the fixture actually
+        // classifies as `expectedType`, so a row cannot silently measure a
+        // different cell than it names.
         await runRow(
             book: Self.makeStreamingHTMLBook(id: "table-streaming"),
             expectedType: .streamingHTML,
@@ -136,6 +144,10 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
     /// Mutation: adding `completion?()` to the default arm (a plausible
     /// "cleanup" refactor during extraction) flips `completionInvoked` and fails.
     func testOpenBook_unsupportedFormat_reachesNoReader_andDoesNotInvokeCompletion() async {
+        // MISSING-001-OK: table-driven row — the assertions live in `runRow`,
+        // which carries five including a precondition that the fixture actually
+        // classifies as `expectedType`, so a row cannot silently measure a
+        // different cell than it names.
         let unsupported = TPPBookMocker.mockBook(distributorType: .Biblioboard)
         await runRow(
             book: unsupported,
@@ -157,6 +169,10 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
     /// Mutation: making any arm conditional on `bookState` changes one of these
     /// two cells and fails.
     func testOpenBook_audiobookInUsedState_routesIdenticallyToDownloadSuccessful() async {
+        // MISSING-001-OK: table-driven row — the assertions live in `runRow`,
+        // which carries five including a precondition that the fixture actually
+        // classifies as `expectedType`, so a row cannot silently measure a
+        // different cell than it names.
         await runRow(
             book: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook),
             expectedType: .audiobook,
@@ -198,7 +214,7 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
         let opened = expectation(description: "session opened")
         session.onOpen = { opened.fulfill() }
         vm.openBook(stale, completion: nil)
-        await fulfillment(of: [opened], timeout: 5)
+        await fulfillment(of: [opened], timeout: 5)  // STARVE-001-OK: fulfilled by the recorded session open, not a poll on fire-and-forget work
 
         XCTAssertEqual(session.lastOpenedTitle, registryCopy.title,
                        "openBook must route the registry's copy of the book, not the caller's stale instance")
@@ -241,7 +257,7 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
             vm.openBook(book) { completionInvoked = true }
             DispatchQueue.main.async { settled.fulfill() }
         }
-        await fulfillment(of: [settled], timeout: 5)
+        await fulfillment(of: [settled], timeout: 5)  // STARVE-001-OK: fulfilled by openBook's own completion (or one main-queue turn for the no-completion row)
         await drainMainQueueAsync()
 
         XCTAssertEqual(session.openCount, expectSessionOpens,
