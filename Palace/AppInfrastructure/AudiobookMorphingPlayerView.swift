@@ -299,7 +299,15 @@ struct AudiobookMorphingPlayerView: View {
         // "dismissing" the player). Keeping the drag off the controls fixes that.
         .fullScreenCover(isPresented: $showChaptersBookmarks) {
             if let model = presenter.playbackModel {
-                NavigationStack { AudiobookNavigationView(model: model) }
+                NavigationStack {
+                    AudiobookNavigationView(model: model)
+                        // The toolkit view draws its own back button and no
+                        // title, so VoiceOver reached this screen with nothing
+                        // to announce it by. Same string as the control that
+                        // opens it, so the destination matches the door.
+                        .navigationTitle(Strings.Generic.tableOfContents)
+                        .navigationBarTitleDisplayMode(.inline)
+                }
             }
         }
         // Ported stepped speed picker (0.5×–3.0× with ± steppers + presets).
@@ -473,9 +481,11 @@ struct AudiobookMorphingPlayerView: View {
                 .accessibilityLabel(Strings.Generic.close)
                 Spacer()
                 Button { showChaptersBookmarks = true } label: {
+                    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - glyph geometry inside a fixed 44pt hit target, not text
                     Image(systemName: "list.bullet")
                         .font(.system(size: 18, weight: .medium))
                         .frame(width: 44, height: 44)
+                    // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 }
                 .buttonStyle(.plain)
                 .tint(.primary)
@@ -568,6 +578,10 @@ struct AudiobookMorphingPlayerView: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .accessibilityFocused($isTitleFocused)
+                // `onAppear` moves VoiceOver focus here, and the Rotor's
+                // headings list is how a patron gets back to it after browsing
+                // the controls.
+                .accessibilityAddTraits(.isHeader)
             if let authors = presenter.currentBook?.authors, !authors.isEmpty {
                 Text(authors)
                     .font(.subheadline)
@@ -642,12 +656,18 @@ struct AudiobookMorphingPlayerView: View {
 
     /// A template-rendered custom glyph at a point size. Template rendering tints
     /// it with the surrounding foreground color, matching the old SF Symbols.
+    ///
+    /// Hidden from VoiceOver: every call site draws this inside a control that
+    /// already carries its own `.accessibilityLabel` (close, play/pause, skip,
+    /// AirPlay, sleep, bookmark), so an element here would make VoiceOver
+    /// announce each of those controls twice.
     private func abGlyph(_ name: String, size: CGFloat) -> some View {
         Image(name)
             .renderingMode(.template)
             .resizable()
             .scaledToFit()
             .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 
     /// The mini-player skip control: Alissa's arrow glyph with the interval value
@@ -657,9 +677,11 @@ struct AudiobookMorphingPlayerView: View {
         ZStack {
             Circle().fill(Color(.secondarySystemFill))
             abGlyph(asset, size: 25)
+            // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - sized to sit inside the 25pt arrow glyph; the button's label speaks the interval
             Text("\(interval)")
                 .font(.system(size: 7, weight: .semibold, design: .rounded))
                 .monospacedDigit()
+            // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
         }
         .foregroundStyle(.primary)
         .frame(width: 40, height: 40)
@@ -688,6 +710,7 @@ struct AudiobookMorphingPlayerView: View {
         return HStack(spacing: metrics.chipSpacing) {
             // Speed → opens the stepped speed sheet. Text, so it stays a pill.
             Button { showSpeedSheet = true } label: {
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - `metrics.fontSize` is the viewport-tier size for this fixed-height four-control row; the speed sheet carries the scalable readout
                 Text(currentRate.displayLabel)
                     .font(.system(size: metrics.fontSize + 2, weight: .semibold, design: .rounded))
                     .monospacedDigit()
@@ -696,6 +719,7 @@ struct AudiobookMorphingPlayerView: View {
                     .background(controlBg)
                     .clipShape(Capsule())
                     .contentShape(Capsule())
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Strings.Generic.playbackSpeedValue(currentRate.displayLabel))
@@ -734,9 +758,11 @@ struct AudiobookMorphingPlayerView: View {
                 HStack(spacing: metrics.narrow ? 4 : 6) {
                     abGlyph(Self.icSleep, size: glyph)
                     if audiobookSession.sleepTimerIsActive {
+                        // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - countdown inside the same fixed-height capsule as the row's other controls
                         Text(Self.formatTime(audiobookSession.sleepTimerRemaining))
                             .font(.system(size: metrics.fontSize, weight: .medium, design: .monospaced))
                             .lineLimit(1).minimumScaleFactor(0.6)
+                        // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                     }
                 }
                 .padding(.horizontal, audiobookSession.sleepTimerIsActive ? metrics.chipPadH : 0)
@@ -791,9 +817,11 @@ struct AudiobookMorphingPlayerView: View {
             )
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
+                    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - glyph geometry beside a 4pt progress track
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
+                    // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.primary.opacity(0.15)).frame(height: 4)
@@ -804,14 +832,16 @@ struct AudiobookMorphingPlayerView: View {
                         .frame(maxHeight: .infinity)
                     }
                     .frame(height: 4)
+                    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - pinned to a 34pt gutter so the bar does not reflow digit by digit
                     Text("\(Int(barProgress * 100))%")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                         .frame(width: 34, alignment: .trailing)
                         .monospacedDigit()
+                    // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 }
                 Text(Strings.Generic.audiobookDownloading)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(.caption2, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .transition(.opacity)
@@ -1045,10 +1075,14 @@ struct AudiobookMorphingPlayerView: View {
             ZStack {
             Color.black.opacity(0.5).ignoresSafeArea()
             VStack(spacing: 16) {
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - decorative glyph; the title and message beneath it scale
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 40)).foregroundStyle(.yellow)
+                    .accessibilityHidden(true)
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 Text(Strings.Generic.audiobookLoadErrorTitle)
                     .foregroundStyle(.white).font(.headline)
+                    .accessibilityAddTraits(.isHeader)
                 Text(Strings.Generic.audiobookLoadErrorMessage)
                     .foregroundStyle(.white).multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -1183,7 +1217,7 @@ struct AudiobookMorphingPlayerView: View {
                         ProgressView()
                             .controlSize(.mini)
                         Text("\(Strings.Generic.audiobookDownloading) \(Int(presenter.overallDownloadProgress * 100))%")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(.footnote, weight: .medium))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
@@ -1269,11 +1303,14 @@ struct AudiobookMorphingPlayerView: View {
     private var toastOverlay: some View {
         if showToast {
             HStack(spacing: 10) {
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - decorative glyph; the message beside it scales
                 Image(systemName: Self.toastIsError(toastText)
                       ? "exclamationmark.circle.fill" : "bookmark.fill")
                     .font(.system(size: 16, weight: .semibold))
+                    .accessibilityHidden(true)
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 Text(toastText)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(.subheadline, weight: .medium))
                     .lineLimit(2).multilineTextAlignment(.leading)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
@@ -1302,9 +1339,11 @@ struct AudiobookMorphingPlayerView: View {
             ZStack {
                 Circle().fill(Color(.secondarySystemFill))
                 abGlyph(asset, size: glyph)
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - derived from `glyph` so the number stays inside the arrow; the button's label speaks the interval
                 Text("\(interval)")
                     .font(.system(size: glyph * 0.27, weight: .semibold, design: .rounded))
                     .monospacedDigit()
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
             }
             .foregroundStyle(.primary)
             .frame(width: diameter, height: diameter)
@@ -1314,6 +1353,17 @@ struct AudiobookMorphingPlayerView: View {
     }
 
     // MARK: - Mini layout
+
+    /// What VoiceOver reads for the mini-player's title/author zone. The zone
+    /// expands the player on tap, so it has to name the book AND say what
+    /// activating it does; the marquee text alone reads as two loose labels.
+    private var miniPlayerAccessibilityLabel: String {
+        let title = presenter.currentBook?.title ?? ""
+        if let authors = presenter.currentBook?.authors, !authors.isEmpty {
+            return String(format: Strings.Generic.nowPlayingLabelTitleAndAuthor, title, authors)
+        }
+        return String(format: Strings.Generic.nowPlayingLabelTitleOnly, title)
+    }
 
     private var miniContent: some View {
         // Revised layout (PP-4910): close (✕) at the LEADING edge, then the
@@ -1338,6 +1388,10 @@ struct AudiobookMorphingPlayerView: View {
                 .frame(width: 44, height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
+                // The title/author element beside it names the book; a second
+                // "Book cover" stop in a six-element bar adds a swipe without
+                // adding information.
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 MarqueeText(text: presenter.currentBook?.title ?? "",
@@ -1349,6 +1403,13 @@ struct AudiobookMorphingPlayerView: View {
             // Tap the cover/title zone to expand.
             .contentShape(Rectangle())
             .onTapGesture { expand() }
+            // `onTapGesture` gives VoiceOver nothing to activate, so this zone
+            // read as two lines of static text. Collapse the marquee pair into
+            // one button that names the book and performs the expand.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(miniPlayerAccessibilityLabel)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { expand() }
 
             Spacer(minLength: 2)
 
@@ -1399,12 +1460,14 @@ struct AudiobookMorphingPlayerView: View {
             Image(uiImage: cover)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
+                .accessibilityLabel(Strings.Generic.bookCover)
         } else {
             Image(systemName: "book.closed")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .foregroundStyle(.secondary)
                 .padding(8)
+                .accessibilityLabel(Strings.Generic.bookCover)
         }
     }
 
@@ -1903,11 +1966,15 @@ private struct PlaybackSpeedSheet: View {
 
     private var headerRow: some View {
         HStack {
+            // This row is collapsed into a single element below, so neither
+            // Text is an accessibility element of its own: the header trait
+            // A11Y.SWIFTUI.HEADING_STRUCTURE asks for here would never reach
+            // VoiceOver. The one element reads "Playback speed: 1.5x".
             Text(Strings.Generic.playbackSpeed)
                 .font(.headline)
             Spacer()
             Text(speedLabel)
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .font(.system(.title2, design: .rounded, weight: .semibold))
                 .monospacedDigit()
                 .contentTransition(.numericText())
         }
@@ -1928,10 +1995,16 @@ private struct PlaybackSpeedSheet: View {
 
     private func stepButton(systemName: String, label: String, isDisabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
+            // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - glyph geometry inside a fixed 40pt circle
             Image(systemName: systemName)
                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 40, height: 40)
                 .background(Circle().fill(Color.secondary.opacity(isDisabled ? 0.05 : 0.15)))
+                // Keep the 40pt circle, widen the hit region to the 44pt
+                // minimum (WCAG 2.5.5), matching the mini-player's close button.
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+            // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
@@ -1954,7 +2027,11 @@ private struct PlaybackSpeedSheet: View {
             withAnimation(.easeOut(duration: 0.1)) { sliderValue = Double(multiplier) }
         } label: {
             Text(preset.displayLabel)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .lineLimit(1)
+                // Six chips share one row, so past roughly AX2 the label shrinks
+                // rather than truncating or pushing its neighbours off-screen.
+                .minimumScaleFactor(0.7)
                 .foregroundStyle(isSelected ? Color(.systemBackground) : Color.primary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
