@@ -109,6 +109,84 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
                       "A short-circuited hydration must not touch the registry")
     }
 
+    // MARK: - 1b. The needs-hydration predicate, as a table
+
+    /// `needsHydration` is a six-way conjunction: published, publisher,
+    /// distributor, categoryStrings, audience, language. Any ONE of them being
+    /// populated means the book came from a full entry, so the fetch must not
+    /// run. Asserted per field rather than by sampling, because the conjunction
+    /// has one term per field and a sampled test leaves the others unheld.
+    ///
+    /// Measured, not assumed: a mechanical mutation run over
+    /// `BookMetadataService.swift` (palace_mutate.py, 6 points) left three `&&`
+    /// -> `||` mutants alive — the publisher, distributor and categoryStrings
+    /// terms — because no test populated those fields alone. This table is what
+    /// kills them. The final row is the complement: with every field blank the
+    /// fetch DOES run, so a green result here cannot come from hydration being
+    /// unreachable.
+    func testNeedsHydration_anySinglePopulatedField_suppressesTheFetch() async {
+        let rows: [(field: String, book: TPPBook)] = [
+            ("published", makeBook(identifier: "f-published", title: "T",
+                                   published: Date(timeIntervalSince1970: 0), publisher: nil,
+                                   distributor: nil, categoryStrings: [], audience: nil, language: nil)),
+            ("publisher", makeBook(identifier: "f-publisher", title: "T",
+                                   published: nil, publisher: "A Publisher",
+                                   distributor: nil, categoryStrings: [], audience: nil, language: nil)),
+            ("distributor", makeBook(identifier: "f-distributor", title: "T",
+                                     published: nil, publisher: nil,
+                                     distributor: "A Distributor", categoryStrings: [], audience: nil, language: nil)),
+            ("categoryStrings", makeBook(identifier: "f-categories", title: "T",
+                                         published: nil, publisher: nil,
+                                         distributor: nil, categoryStrings: ["Fiction"], audience: nil, language: nil)),
+            ("audience", makeBook(identifier: "f-audience", title: "T",
+                                  published: nil, publisher: nil,
+                                  distributor: nil, categoryStrings: [], audience: "Adult", language: nil)),
+            ("language", makeBook(identifier: "f-language", title: "T",
+                                  published: nil, publisher: nil,
+                                  distributor: nil, categoryStrings: [], audience: nil, language: "en"))
+        ]
+
+        for row in rows {
+            XCTAssertFalse(BookMetadataService.needsHydration(row.book),
+                           "precondition: a book carrying \(row.field) must not need hydration")
+            let registry = RecordingMetadataRegistry()
+            registry.addBook(row.book, location: nil, state: .downloadSuccessful,
+                             fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+            let calls = CallCounter()
+            let vm = makeVM(book: row.book, registry: registry) { _ in
+                calls.count += 1
+                return nil
+            }
+
+            await vm.hydrateMetadataIfNeeded()
+
+            XCTAssertEqual(calls.count, 0,
+                           "\(row.field) alone must suppress the hydration fetch — the guard is a conjunction over all six fields")
+            XCTAssertTrue(registry.recordedMetadataWrites.isEmpty,
+                          "\(row.field) alone must also suppress the registry write-back")
+        }
+
+        // The complement. Without it every row above could pass because
+        // hydration never runs for any input.
+        let blank = makeBook(identifier: "f-none", title: "T", published: nil, publisher: nil,
+                             distributor: nil, categoryStrings: [], audience: nil, language: nil)
+        XCTAssertTrue(BookMetadataService.needsHydration(blank),
+                      "precondition: an all-blank book must need hydration")
+        let registry = RecordingMetadataRegistry()
+        registry.addBook(blank, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let calls = CallCounter()
+        let vm = makeVM(book: blank, registry: registry) { _ in
+            calls.count += 1
+            return nil
+        }
+
+        await vm.hydrateMetadataIfNeeded()
+
+        XCTAssertEqual(calls.count, 1,
+                       "With every field blank the fetch MUST run — otherwise the rows above assert nothing")
+    }
+
     // MARK: - 2. The identity re-check
 
     /// If the view model navigates to a DIFFERENT book while the hydrator is
@@ -287,6 +365,12 @@ private final class RecordingMetadataRegistry: TPPBookRegistryMock {
         recordedMetadataWrites.append(book)
         return super.updatedBookMetadata(book)
     }
+}
+
+/// Mutable counter the hydrator closure can increment without capturing a
+/// local `var` across the async boundary.
+private final class CallCounter: @unchecked Sendable {
+    var count = 0
 }
 
 /// Deterministic suspend/resume gate for the hydrator. The test waits until the
