@@ -63,6 +63,8 @@ private struct ThemeSwatch: View {
 
                 // "A" letter preview showing text color
                 Text("A")
+                    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - preview glyph
+                    // inside a fixed 36pt swatch; scaling it would overflow the circle.
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(theme.textSwiftUI)
             }

@@ -53,11 +53,16 @@ struct TPPPDFSearchView: View {
             } else {
                 List {
                     ForEach(searchDelegate.searchResults) { location in
-                        TPPPDFLocationView(location: location)
-                            .onTapGesture {
-                                metadata.currentPage = location.pageNumber
-                                done()
-                            }
+                        // A real Button, not a tap gesture, so VoiceOver
+                        // announces each match as a button rather than as
+                        // static text.
+                        Button {
+                            metadata.currentPage = location.pageNumber
+                            done()
+                        } label: {
+                            TPPPDFLocationView(location: location)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }

@@ -197,34 +197,38 @@ struct TypographySettingsView: View {
     // MARK: - Font Family Section
 
     private var fontFamilySection: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Font")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
+        // The whole row is the control. One Button instead of a row-wide tap
+        // gesture plus a separate chevron button: VoiceOver reaches a single
+        // "Choose font" element carrying the current family as its value, and
+        // the row tap and the chevron tap are the same action.
+        Button {
+            showFontPicker = true
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Font")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
 
-                Text(viewModel.fontFamily.displayName)
-                    .font(Font(viewModel.fontFamily.uiFont(size: 17)))
-                    .foregroundStyle(.primary)
-            }
+                    Text(viewModel.fontFamily.displayName)
+                        .font(Font(viewModel.fontFamily.uiFont(size: 17)))
+                        .foregroundStyle(.primary)
+                }
 
-            Spacer()
+                Spacer()
 
-            Button {
-                showFontPicker = true
-            } label: {
                 Image(systemName: "chevron.right")
                     .foregroundStyle(.secondary)
                     .font(.body)
             }
-            .accessibilityLabel("Choose font")
-            .accessibilityValue(viewModel.fontFamily.displayName)
+            .padding(.horizontal)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
-        .onTapGesture { showFontPicker = true }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Choose font")
+        .accessibilityValue(viewModel.fontFamily.displayName)
     }
 
     // MARK: - Margin Section

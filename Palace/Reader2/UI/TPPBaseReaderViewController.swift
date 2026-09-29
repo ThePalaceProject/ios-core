@@ -403,7 +403,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         // navigation bar exactly as a plain image bar button item would be.
         let button = UIButton(type: .system)
         button.setImage(img, for: .normal)
-        button.frame = CGRect(x: 0, y: 0, width: 24, height: 24)
+        // A UIBarButtonItem's custom view is its whole tap target, so this
+        // frame is the hit area: 44pt is the HIG minimum. The 24pt artwork
+        // stays centred at its natural size inside it.
+        button.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
         button.addTarget(self, action: #selector(toggleBookmark), for: .touchUpInside)
         button.accessibilityLabel = currentLocationIsBookmarked ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark
         bookmarkButton = button
