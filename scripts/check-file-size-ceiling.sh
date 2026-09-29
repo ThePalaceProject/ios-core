@@ -82,7 +82,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # recovery decision to AudiobookPlaybackRecoveryReducer.swift and the
 # open-time position decision to AudiobookPositionResolver.swift, both
 # in-target and both well under the ceiling. 1546 -> 1234.
-1234 Palace/Audiobooks/AudiobookSessionManager.swift
+1213 Palace/Audiobooks/AudiobookSessionManager.swift
 1213 Palace/MyBooks/MyBooksDownloadCenter.swift
 1115 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
