@@ -23,7 +23,7 @@
       "enabled": true,
       "severity": "minor"
     },
-    "A11Y.SWIFTUI.TOUCH_TARGET": {
+    "A11Y.SWIFTUI.TOUCH_TARGET_SIZE": {
       "enabled": true,
       "severity": "major"
     },
@@ -67,7 +67,7 @@
       "enabled": true,
       "severity": "minor"
     },
-    "A11Y.UIKIT.TOUCH_TARGET": {
+    "A11Y.UIKIT.TOUCH_TARGET_SIZE": {
       "enabled": true,
       "severity": "major"
     },

@@ -1354,7 +1354,8 @@ struct AudiobookMorphingPlayerView: View {
 
             Button(action: { audiobookSession.skipBack() }) {
                 miniSkipGlyph(asset: Self.icSkipBack, interval: skipBackInterval)
-                    .frame(width: 40, height: 44)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain).tint(.primary)
             .accessibilityLabel(Strings.Generic.skipBackSeconds(skipBackInterval))
@@ -1372,7 +1373,8 @@ struct AudiobookMorphingPlayerView: View {
 
             Button(action: { audiobookSession.skipForward() }) {
                 miniSkipGlyph(asset: Self.icSkipForward, interval: skipForwardInterval)
-                    .frame(width: 40, height: 44)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain).tint(.primary)
             .accessibilityLabel(Strings.Generic.skipForwardSeconds(skipForwardInterval))
@@ -1932,6 +1934,9 @@ private struct PlaybackSpeedSheet: View {
                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 40, height: 40)
                 .background(Circle().fill(Color.secondary.opacity(isDisabled ? 0.05 : 0.15)))
+                // Visual stays 40pt; the touch target is 44pt per WCAG 2.5.5.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
