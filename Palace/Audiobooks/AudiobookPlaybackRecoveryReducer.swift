@@ -2,36 +2,52 @@
 //  AudiobookPlaybackRecoveryReducer.swift
 //  Palace
 //
-//  The playback-failure recovery decision for audiobooks: given a toolkit
-//  `.playbackFailed` and the session's per-book attempt bookkeeping, which of
-//  the five recovery paths (or none) applies, and whether the player should
-//  hold a loading state while that recovery runs.
+//  The playback-failure decision for audiobooks: given a toolkit
+//  `.playbackFailed` and the session's per-book attempt bookkeeping, what the
+//  session publishes and which of the five recovery paths (or none) runs.
 //
 //  WHY A REDUCER AND NOT FIVE PREDICATES
 //
-//  The five predicates moved here were already pure and already unit-pinned
+//  The five predicates below were already pure and already unit-pinned
 //  individually (`AudiobookLoadFailureSAMLReauthTests`,
 //  `AudiobookBearerTokenRecoveryTests`, `AudiobookColdLoadRecoveryTests`,
-//  `AudiobookVendorRecoveryContractTests`). What no test reached was the
-//  PRECEDENCE between them, because the ordering lived as a chain of
-//  `if …, let book { … return }` arms inside `handleManagerState`, which
+//  `OverdriveFulfillmentTests`, `AudiobookVendorRecoveryContractTests`). What no
+//  test reached was the PRECEDENCE between them, because the ordering lived as a
+//  chain of early-returning `if` arms inside `handleManagerState`, which
 //  `AudiobookSessionManager.swift` itself records as unreachable from a test:
-//  "nothing in PalaceTests drives `handleManagerState`. `currentBook` is
-//  `private(set)` and written only on the open path."
+//  "nothing in PalaceTests drives `handleManagerState`."
 //
-//  Ordering is where the interesting failures live. Two predicates can both be
+//  Ordering is where the consequential failures live. Two predicates can both be
 //  true for one error — an OverDrive title whose signed URL expired on a cold
 //  load matches both the OverDrive arm and the cold-load arm — and which one
-//  wins decides whether the patron gets a fresh fulfillment or a silent
-//  re-open. `decide(_:)` makes that finite and enumerable, per CLAUDE.md's
+//  wins decides whether the patron gets fresh signed URLs or a silent re-open of
+//  a dead one. `decide(_:)` makes that finite and enumerable, per CLAUDE.md's
 //  "test the transition table, not scenarios."
 //
-//  `keepsPlayerLoading` is derived from the SAME decision that selects the
-//  action, so the two cannot drift. In `handleManagerState` they were computed
-//  separately: a `willRecover` disjunction chose `.loading` vs `.error`, and an
-//  independent if-chain chose the recovery. See that property's note for the
-//  one place the two disagree today, which this move preserves rather than
-//  silently changes.
+//  WHY THE PUBLISHED STATE IS NOT A PROPERTY OF THE RECOVERY CASE
+//
+//  It cannot be, and an earlier revision of this file got that wrong. The
+//  published state is a function of the CONTEXT — the shipped disjunction
+//  `SAML || OverDrive || coldLoad`, evaluated whole, independently of which arm
+//  the precedence chain then selects. The recovery case does not determine it.
+//
+//  Four of the six recoveries happen to determine it as a theorem: `.samlReauth`
+//  is only selected when the SAML term is true, `.overdriveRefulfill` only when
+//  the OverDrive term is true, both cold-load arms only when the cold-load term
+//  is true, and `.terminal` only when all three are false. `.bearerTokenRefulfill`
+//  is the one case with no such implication — it is selected on a term that is
+//  not IN the disjunction, so whether the session shows the loading shell or the
+//  error dialog depends on whether the cold-load term happens to be true
+//  alongside it. Concretely: the same bearer-token entitlement expiry publishes
+//  `.loading` on a title's FIRST play of the session and `.error` mid-listen.
+//
+//  So `decide(_:)` returns the published state and the recovery TOGETHER, and no
+//  type here can express a per-case published state. That is deliberate: a
+//  `keepsPlayerLoading` property hanging off the enum is exactly the shape that
+//  silently narrowed a context-dependent value into a case-dependent one, and a
+//  100% mutation kill rate was compatible with it, because the tests pinned the
+//  narrowed value (see `.harness/wall-failures/`
+//  2026-09-29-collapsing-a-context-dependent-value-into-a-case-dependent-one.md).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -42,13 +58,13 @@ import PalaceCatalog
 
 // MARK: - AudiobookPlaybackRecovery
 
-/// The single recovery outcome for one `.playbackFailed` signal.
+/// The recovery that runs for one `.playbackFailed` signal, after the session
+/// has published its state.
+///
+/// Suppression is NOT a case here — a suppressed failure publishes no state and
+/// runs no recovery, which is `AudiobookPlaybackOutcome.suppressFollowOnFailure`.
+/// Keeping it out of this enum leaves exactly one encoding of that fact.
 enum AudiobookPlaybackRecovery: Equatable {
-    /// The session is already parked awaiting this book's content download, so
-    /// this failure is part of the streaming player's follow-on failure storm
-    /// and is swallowed (PP-4542 A). No state publication, no recovery.
-    case ignoreFollowOnFailure
-
     /// Auth-required signal on a SAML account with credentials — dispatch a
     /// credential refresh and re-open on success (PP-3703).
     case samlReauth
@@ -74,39 +90,36 @@ enum AudiobookPlaybackRecovery: Equatable {
     /// failure after playback had already started, which only publishes the
     /// error.
     case terminal(dismissAndAlert: Bool)
+}
 
-    /// Whether the session should publish `.loading` (recovery in flight)
-    /// rather than `.error` for this decision.
+// MARK: - AudiobookPlaybackOutcome
+
+/// What the session does with one `.playbackFailed` signal.
+enum AudiobookPlaybackOutcome: Equatable {
+    /// The session is already parked awaiting this book's content download, so
+    /// this failure is part of the streaming player's follow-on failure storm
+    /// and is swallowed (PP-4542 A). No state is published and no recovery runs
+    /// — the book is already held in `.loading` by the arm that started the wait.
+    case suppressFollowOnFailure
+
+    /// Publish `.loading` (when `keepsPlayerLoading`) or `.error`, then run
+    /// `recovery`.
     ///
-    /// PRESERVED DIVERGENCE — `.bearerTokenRefulfill` returns `false`.
-    ///
-    /// The `willRecover` disjunction this replaces read
-    /// `SAML || OverDrive || coldLoad` and never gained a bearer-token term
-    /// when 323-Cause-3 added that arm. So a bearer-token vendor's mid-listen
-    /// entitlement expiry publishes `.error(bookId:, "Playback failed")` and
-    /// then immediately re-opens — the error-then-recover flicker that
-    /// `willRecover` exists to prevent (PP-4800). This move reproduces the
-    /// shipped behaviour exactly rather than folding a behaviour change into a
-    /// decomposition; the divergence is pinned by
-    /// `AudiobookPlaybackRecoveryDecisionTableTests` so a fix is a one-line
-    /// change with a failing test to flip.
-    var keepsPlayerLoading: Bool {
-        switch self {
-        case .samlReauth, .overdriveRefulfill,
-             .coldLoadAwaitContentThenReopen, .coldLoadReopen:
-            return true
-        case .bearerTokenRefulfill:
-            return false
-        case .ignoreFollowOnFailure, .terminal:
-            return false
-        }
-    }
+    /// `keepsPlayerLoading` and `recovery` are computed from the same context by
+    /// the same call, which is what stops them disagreeing. While a recovery is
+    /// in flight the player holds a `.loading` (recovering) state so the
+    /// presenter shows the loading shell instead of flashing an error dialog
+    /// that the recovery then immediately undoes — the error-then-recover
+    /// flicker patrons saw on the OverDrive expired-URL path (PP-4800). An
+    /// `.error` additionally tears the view-facing session down:
+    /// `AudiobookSessionPresenter` calls `clearActiveSession()` on any `.error`.
+    case publish(keepsPlayerLoading: Bool, recovery: AudiobookPlaybackRecovery)
 }
 
 // MARK: - AudiobookPlaybackFailureContext
 
-/// Every input the recovery decision reads, named explicitly so the decision
-/// is a pure function of its arguments.
+/// Every input the decision reads, named explicitly so the decision is a pure
+/// function of its arguments.
 ///
 /// `contentIsLocal` is a closure, not a `Bool`, because the shipped code only
 /// stats the filesystem inside the cold-load arm. Evaluating it eagerly for
@@ -157,9 +170,62 @@ struct AudiobookPlaybackFailureContext {
 @MainActor
 enum AudiobookPlaybackRecoveryReducer {
 
+    /// Decides what the session publishes and which recovery runs.
+    static func decide(_ context: AudiobookPlaybackFailureContext) -> AudiobookPlaybackOutcome {
+        if context.isAwaitingContentDownload {
+            return .suppressFollowOnFailure
+        }
+        return .publish(
+            keepsPlayerLoading: recoveryIsExpected(context),
+            recovery: selectRecovery(context)
+        )
+    }
+
+    /// The published-state disjunction, whole and independent of which arm the
+    /// precedence chain selects.
+    ///
+    /// This is the shipped `willRecover` expression
+    /// (`AudiobookSessionManager.handleManagerState`, `.playbackFailed`) with
+    /// nothing added and nothing removed — including the fact that it has no
+    /// bearer-token term. 323-Cause-3 added the `.bearerTokenRefulfill` arm and
+    /// did not add a term here, so a bearer-token entitlement expiry that
+    /// matches no other term publishes `.error` and then re-opens, which tears
+    /// the view-facing session down via the presenter's `clearActiveSession()`
+    /// and rebuilds it. That is a defect in the shipped behaviour, reproduced
+    /// here rather than changed inside a decomposition; adding
+    /// `|| shouldTriggerBearerTokenRefulfillForPlaybackFailure(…)` is the fix,
+    /// and `testPublishedState_bearerTokenMidListen_publishesError` is the test
+    /// that flips.
+    private static func recoveryIsExpected(_ context: AudiobookPlaybackFailureContext) -> Bool {
+        var expected = shouldTriggerSAMLReauthForPlaybackFailure(
+            error: context.error,
+            userAccount: context.userAccount,
+            currentBook: context.book
+        )
+#if FEATURE_OVERDRIVE
+        expected = expected || shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: context.error,
+            book: context.book,
+            alreadyAttempted: context.overdriveRefulfillAlreadyAttempted
+        )
+#endif
+        // Back-edge to the hub: `shouldAutoReopenOnColdLoadFailure` lives in
+        // `AudiobookSessionManager+ContentOpenPolicy.swift`. Harmless in-target
+        // (one namespace), but it is an edge this file would have to lose
+        // before the cluster could move into a `PalaceAudiobookSession` package
+        // per god-class-decomposition-plan.md §3a-1. Noted, not fixed here.
+        expected = expected || AudiobookSessionManager.shouldAutoReopenOnColdLoadFailure(
+            hasEverStartedPlayback: context.hasEverStartedPlayback,
+            hasCurrentBook: context.book != nil,
+            alreadyAttempted: context.coldLoadReopenAlreadyAttempted
+        )
+        return expected
+    }
+
     /// Selects the one recovery that applies, in the shipped precedence order:
-    /// follow-on suppression, SAML re-auth, OverDrive re-fulfill, bearer-token
-    /// re-fulfill, cold-load re-open, terminal.
+    /// SAML re-auth, OverDrive re-fulfill, bearer-token re-fulfill, cold-load
+    /// re-open, terminal. (Follow-on suppression precedes all of these and is
+    /// handled in `decide(_:)`, which returns before reaching here.)
     ///
     /// The order is load-bearing where two arms overlap. An OverDrive title
     /// failing its FIRST play matches both `.overdriveRefulfill` (410 /
@@ -168,11 +234,9 @@ enum AudiobookPlaybackRecoveryReducer {
     /// stale signed URL fails identically while a re-fulfill produces a fresh
     /// one. Likewise a SAML 401 on a cold load takes the re-auth, not the
     /// re-open, because the re-open would hit the same 401.
-    static func decide(_ context: AudiobookPlaybackFailureContext) -> AudiobookPlaybackRecovery {
-        if context.isAwaitingContentDownload {
-            return .ignoreFollowOnFailure
-        }
-
+    private static func selectRecovery(
+        _ context: AudiobookPlaybackFailureContext
+    ) -> AudiobookPlaybackRecovery {
         if shouldTriggerSAMLReauthForPlaybackFailure(
             error: context.error,
             userAccount: context.userAccount,

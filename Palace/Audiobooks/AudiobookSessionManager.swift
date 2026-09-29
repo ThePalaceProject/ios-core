@@ -2231,12 +2231,13 @@ public final class AudiobookSessionManager: ObservableObject {
             playbackStatePublisher.send(state)
 
         case .playbackFailed(let position, let error):
-            // One decision for both the published state and the recovery that
-            // runs, so the two cannot disagree. See
-            // `AudiobookPlaybackRecoveryReducer` for the precedence and for the
-            // `keepsPlayerLoading` divergence this preserves.
+            // One call yields both the published state and the recovery that
+            // runs, from one context, so the two cannot disagree. The published
+            // state is NOT derivable from the recovery case — see
+            // `AudiobookPlaybackRecoveryReducer`'s header for which case breaks
+            // that implication and why.
             let failedBookId = currentBook?.identifier
-            let recovery = AudiobookPlaybackRecoveryReducer.decide(
+            let outcome = AudiobookPlaybackRecoveryReducer.decide(
                 AudiobookPlaybackFailureContext(
                     error: error,
                     book: currentBook,
@@ -2260,7 +2261,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // is now true) and dead-ends to the "Unavailable" alert while the
             // await is still in flight — which is exactly what defeated the wait
             // in the field repro.
-            if recovery == .ignoreFollowOnFailure {
+            guard case .publish(let keepsPlayerLoading, let recovery) = outcome else {
                 Log.info(#file, "Ignoring follow-on playback failure for \(bookId) — already awaiting content download (PP-4542)")
                 return
             }
@@ -2274,7 +2275,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // immediately undoes — the error-then-recover flicker patrons saw
             // on the OverDrive expired-URL path (PP-4800). Only a terminal
             // failure publishes `.error`.
-            state = recovery.keepsPlayerLoading
+            state = keepsPlayerLoading
                 ? .loading(bookId: bookId)
                 : .error(bookId: bookId, message: "Playback failed")
             playbackStatePublisher.send(state)
@@ -2288,10 +2289,6 @@ public final class AudiobookSessionManager: ObservableObject {
             Self.recordPlaybackFailure(error: error, position: position, bookId: bookId)
 
             switch recovery {
-            case .ignoreFollowOnFailure:
-                // Handled by the early return above; unreachable here.
-                return
-
             case .samlReauth:
                 // PP-3703 (swarm_66819d80 Module C migration): When BiblioBoard
                 // bearer token refresh fails due to SAML session expiration

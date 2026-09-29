@@ -81,8 +81,8 @@ read -r -d '' ALLOWLIST <<'EOF'
 # Wave 6 (god-class-decomposition-plan.md §4) moved the playback-failure
 # recovery decision to AudiobookPlaybackRecoveryReducer.swift and the
 # open-time position decision to AudiobookPositionResolver.swift, both
-# in-target and both well under the ceiling. 1546 -> 1236.
-1236 Palace/Audiobooks/AudiobookSessionManager.swift
+# in-target and both well under the ceiling. 1546 -> 1234.
+1234 Palace/Audiobooks/AudiobookSessionManager.swift
 1213 Palace/MyBooks/MyBooksDownloadCenter.swift
 1115 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 971  Palace/Book/UI/BookDetail/BookDetailViewModel.swift

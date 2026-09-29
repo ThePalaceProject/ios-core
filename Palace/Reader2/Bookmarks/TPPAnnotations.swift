@@ -790,7 +790,7 @@ protocol AnnotationsManager {
         //     3.2.0 shipped (07-08); #18449 is a download failure and #18468 a
         //     won't-play. What #18019 actually asks is that the position be
         //     CORRECT ("says ch1 p1 but it is not"), which is handled by
-        //     `AudiobookSessionManager.validatedRemotePosition` — retained.
+        //     `AudiobookPositionResolver.validatedRemotePosition` — retained.
         //
         // Deleting a patron's place on return is therefore a NEW product
         // decision, not a regression fix, and it would be inconsistent on two
