@@ -86,8 +86,9 @@ enum AudiobookContentSource: String {
 /// Decides whether a playback failure is a repeat that should not be recorded
 /// again. Value type with the time passed in, so it is tested without a clock.
 ///
-/// A failure is a repeat when the same (book, top-level domain, top-level code)
-/// was seen within `repeatWindow` of the latest occurrence. The window slides:
+/// A failure is a repeat when the same
+/// (book, domain, code, underlying domain, underlying code) was seen within
+/// `repeatWindow` of the latest occurrence. The window slides:
 /// every occurrence, recorded or not, extends it.
 ///
 /// Why 60 seconds, sliding: field data shows devices re-reporting the same
@@ -135,8 +136,9 @@ struct PlaybackFailureRecordDeduplicator {
     private var lastSeenByKey: [Key: Date] = [:]
     private var lastFailureByBook: [String: Date] = [:]
 
-    /// Number of (book, domain, code) entries still held. Exposed so a test can
-    /// assert that expired entries do not accumulate.
+    /// Number of (book, domain, code, underlying domain, underlying code)
+    /// entries still held. Exposed so a test can assert that expired entries do
+    /// not accumulate.
     var trackedKeyCount: Int { lastSeenByKey.count }
 
     mutating func evaluate(

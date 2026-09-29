@@ -25,8 +25,11 @@ Counts are inflated by repeat reports of the same failure.
 - The record gains `atTrackStart`.
 - The record gains `msSincePreviousFailureForBook` when an earlier failure for the
   same book arrived within the repeat window.
-- A failure with the same (bookId, domain, code) as one seen within the previous
-  60 seconds is not recorded again.
+- A failure with the same (bookId, domain, code, underlyingDomain, underlyingCode)
+  as one seen within the previous 60 seconds is not recorded again. The
+  underlying pair is part of the key because AVFoundation collapses every
+  resource-loader failure into `AVFoundationErrorDomain -11800`, so keying on
+  the top level alone would suppress exactly the distinctions this change adds.
 
 - The audiobook open-failure non-fatal (`BookService.showAudiobookTryAgainError`)
   gains `loadError`, `contentSource`, and the cause fields of the error the load
@@ -34,9 +37,6 @@ Counts are inflated by repeat reports of the same failure.
   code are unchanged.
 - The five audiobook-fulfillment log sites that passed `book.loggableDictionary`
   unapplied (OverDrive x2, LCP x3) now call it.
-- The deduplication key carries the first `NSUnderlyingError` as well as the
-  top-level domain/code, so two different causes under the same
-  `AVFoundationErrorDomain -11800` are both recorded.
 
 ## Known gaps
 

@@ -35,7 +35,7 @@
 #      Those figures are the baseline's own PHYSICAL line counts (e.g.
 #      AudiobookSessionManager 2764 -> 3093), not the code-line metric this
 #      gate uses — the baseline's banner says the two are not comparable, and
-#      the same file measures 1557 code lines today. An earlier version of this
+#      the same file measures 1525 code lines today. An earlier version of this
 #      comment attributed the increases to releases 3.2.4 / 3.3.0 / 3.3.1,
 #      which appear nowhere in the baseline, called them code lines, and
 #      totalled 474 by omitting the +54 it went on to itemize. The argument for
