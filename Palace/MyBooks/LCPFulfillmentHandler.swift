@@ -1,4 +1,5 @@
 import PalaceBookRegistry
+import PalaceUtilities
 //
 //  LCPFulfillmentHandler.swift
 //  Palace

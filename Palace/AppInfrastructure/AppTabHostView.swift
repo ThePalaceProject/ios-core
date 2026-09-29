@@ -5,6 +5,7 @@ import PalaceNetwork
 import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 /// What a tab-bar tap means. PP-5051 — a tap on the already-selected tab is a
 /// distinct gesture from a switch, and SwiftUI cannot tell them apart for you.

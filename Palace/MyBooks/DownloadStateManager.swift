@@ -11,6 +11,7 @@ import Foundation
 import Combine
 import PalaceBookModel
 import PalaceLogging
+import PalaceUtilities
 
 // MARK: - DownloadStateManaging Protocol
 

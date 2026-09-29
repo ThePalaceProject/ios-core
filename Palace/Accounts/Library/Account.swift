@@ -2,6 +2,7 @@ import PalaceLogging
 import PalacePreferences
 import PalaceCatalog
 import PalaceBookModel
+import PalaceUtilities
 
 private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
 private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"

@@ -13,6 +13,7 @@
 import XCTest
 @testable import Palace
 import PalaceBookModel
+import PalaceUtilities
 
 // MARK: - Float+TPPAdditions Tests
 

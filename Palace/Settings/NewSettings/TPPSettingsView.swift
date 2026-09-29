@@ -12,6 +12,7 @@ import PalaceUIKit
 import PalaceBookModel
 import PalaceBookRegistry
 import TriageBotCore
+import PalaceUtilities
 
 struct TPPSettingsView: View {
     typealias DisplayStrings = Strings.Settings

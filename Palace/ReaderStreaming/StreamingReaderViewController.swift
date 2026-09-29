@@ -10,6 +10,7 @@
 import Combine
 import UIKit
 import WebKit
+import PalaceUtilities
 
 /// Narrow seam over `WKWebView.evaluateJavaScript(_:completionHandler:)` so
 /// the scroll-restore retry loop can be exercised deterministically in tests

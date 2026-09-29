@@ -911,6 +911,7 @@ extension TPPAppDelegate {
 
 // MARK: - Memory and Disk Pressure Handling
 import UIKit
+import PalaceUtilities
 
 /// Severity levels for cache cleanup operations
 private enum CleanupSeverity {

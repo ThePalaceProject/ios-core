@@ -12,6 +12,7 @@ import PalaceReadingPosition
 import PalaceBookRegistry
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
+import PalaceUtilities
 
 // Swift 6 `complete`: `@unchecked Sendable`. This class is captured by the
 // `@Sendable` `Task` / work-`queue` / `DispatchQueue.main.async` / `DispatchWorkItem`

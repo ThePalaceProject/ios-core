@@ -1,6 +1,7 @@
 import MessageUI
 import UIKit
 import PalaceBookModel
+import PalaceUtilities
 
 @MainActor
 @objcMembers class ProblemReportEmail: NSObject {

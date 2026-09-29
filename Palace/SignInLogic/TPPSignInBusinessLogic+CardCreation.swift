@@ -9,6 +9,7 @@
 import Foundation
 import CoreLocation
 import SafariServices
+import PalaceUtilities
 
 // `@preconcurrency`: `CLLocationManagerDelegate` is a nonisolated system
 // protocol; `TPPSignInBusinessLogic` is `@MainActor`. CoreLocation delivers

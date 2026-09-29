@@ -114,7 +114,7 @@ def test_audiobook_named_files_without_the_import_are_caught(path):
 
 @pytest.mark.parametrize("path", [
     "Palace/Utilities/Localization/Strings.swift",
-    "Palace/Utilities/Testing/AccessibilityIdentifiers.swift",
+    "Palace/Packages/PalaceUtilities/Sources/PalaceUtilities/Testing/AccessibilityIdentifiers.swift",
 ])
 def test_files_that_merely_mention_audiobooks_do_not_fire(path):
     """A matcher that runs the smoke on every localisation edit gets narrowed by

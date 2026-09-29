@@ -356,15 +356,18 @@ def test_the_gates_own_workflow_yields_its_exact_run_count():
     deleted rather than alongside them.
 
     When this number legitimately changes — a step added or removed — update it
-    deliberately and say so in the commit. That is the cost of the arm, and it
+    deliberately and say so in the commit. It moved from 120 to 121 in Phase B1,
+    which adds the `swift test --package-path Palace/Packages/PalaceUtilities`
+    step: the arm caught that on the first run against the rebased base, which
+    is the behaviour it exists for. That is the cost of the arm, and it
     is the point: a silent change to what the gate can see is exactly what the
     other two forms failed to catch.
     """
     from pathlib import Path
     wf = Path(__file__).resolve().parent.parent.parent / ".github" / "workflows" / "unit-testing.yml"
     runs = effective_runs(wf.read_text())
-    assert len(runs) == 120, (
-        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 120. "
+    assert len(runs) == 121, (
+        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 121. "
         "If a step was added or removed this is correct — update the number. "
         "If nothing changed in the workflow, the extractor's view of it did."
     )

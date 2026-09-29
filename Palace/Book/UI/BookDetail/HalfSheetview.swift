@@ -1,6 +1,7 @@
 import SwiftUI
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 /// Which progress cue the half-sheet shows. Extracted from the view so the
 /// decision is unit-testable and mutation-verifiable — a SwiftUI `@ViewBuilder`

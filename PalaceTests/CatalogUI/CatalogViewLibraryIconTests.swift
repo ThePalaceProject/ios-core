@@ -15,6 +15,7 @@
 //
 
 import XCTest
+import PalaceUtilities
 
 final class CatalogViewLibraryIconTests: XCTestCase {
 

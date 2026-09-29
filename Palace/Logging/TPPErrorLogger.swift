@@ -5,6 +5,7 @@
 
 import CFNetwork
 import Foundation
+import PalaceUtilities
 #if canImport(FirebaseCore)
 import FirebaseCore
 #endif

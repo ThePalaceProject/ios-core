@@ -14,6 +14,7 @@
 
 import SwiftUI
 import PalaceUIKit
+import PalaceUtilities
 
 // MARK: - LibrariesView
 

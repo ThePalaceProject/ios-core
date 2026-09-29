@@ -31,6 +31,7 @@ import AVKit
 import PalaceAudiobookToolkit
 import SwiftUI
 import UIKit
+import PalaceUtilities
 
 @MainActor
 struct AudiobookMorphingPlayerView: View {

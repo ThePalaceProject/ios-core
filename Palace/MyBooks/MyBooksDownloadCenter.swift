@@ -17,6 +17,7 @@ import PalaceNetwork
 import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
@@ -311,9 +312,6 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     private var taskIdentifierToBook: SafeDictionary<Int, TPPBook> {
         stateManager.taskIdentifierToBook
     }
-
-    // Serial execution for download operations (replaces downloadQueue)
-    private let downloadExecutor = SerialExecutor()
 
     let downloadProgressPublisher: PassthroughSubject<(String, Double), Never>
 

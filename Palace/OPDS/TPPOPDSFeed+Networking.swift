@@ -2,6 +2,7 @@ import Compression
 import Foundation
 import PalaceCatalog
 import PalaceLogging
+import PalaceUtilities
 
 private enum TPPOPDSFeedDataInspection {
   /// Raw bytes of the gzip magic (RFC 1952, section 2.3.1).

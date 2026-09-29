@@ -10,6 +10,7 @@ import XCTest
 import PalacePreferences
 import PalaceNetwork
 @testable import Palace
+import PalaceUtilities
 
 @MainActor
 final class DownloadOnlyOnWiFiTests: XCTestCase {

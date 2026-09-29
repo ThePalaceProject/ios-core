@@ -4,6 +4,7 @@ import UIKit
 import PalaceNetwork
 import PalaceCatalog
 import PalaceBookModel
+import PalaceUtilities
 
 // MARK: - Accessibility focus target
 // PP-4641: after a search completes, VoiceOver focus must remain on the search

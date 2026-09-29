@@ -3,6 +3,7 @@ import PalacePreferences
 import UIKit
 import PalaceLogging
 import PalaceBookModel
+import PalaceUtilities
 
 struct CatalogView: View {
     // MARK: - Properties

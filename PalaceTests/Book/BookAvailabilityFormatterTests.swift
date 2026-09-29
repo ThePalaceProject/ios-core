@@ -15,6 +15,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceUtilities
 
 @MainActor
 final class BookAvailabilityFormatterTests: XCTestCase {

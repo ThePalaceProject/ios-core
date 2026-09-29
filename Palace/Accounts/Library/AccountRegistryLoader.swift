@@ -40,6 +40,7 @@ import PalaceCatalog
 import PalaceBookRegistry
 import PalaceBookModel
 import UIKit
+import PalaceUtilities
 
 /// Documented carrier for a non-Sendable `(Bool) -> Void` load-completion handler
 /// stored into the `loadingHandlersQueue` barrier in `addLoadingHandler` (and reused

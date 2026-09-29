@@ -9,6 +9,7 @@
 import Foundation
 import WebKit
 import PalaceLogging
+import PalaceUtilities
 
 /// Sendable carrier for the non-Sendable `() -> Void` sign-out `completion`
 /// closure captured by WebKit's `@Sendable` `removeData` completion closures in

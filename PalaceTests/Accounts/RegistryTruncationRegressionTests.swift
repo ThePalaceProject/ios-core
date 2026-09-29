@@ -22,6 +22,7 @@ import XCTest
 import PalaceCatalog
 import PalacePreferences
 @testable import Palace
+import PalaceUtilities
 
 // `PalaceWiringTestCase`: this suite mints `AccountRegistryLoader`s that spawn owned
 // crawl Tasks, so the base's tearDown cancel is what stops them outliving the test.

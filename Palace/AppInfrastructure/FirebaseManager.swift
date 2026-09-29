@@ -13,6 +13,7 @@ import FirebaseRemoteConfig
 import FirebaseAnalytics
 import FirebaseCrashlytics
 import PalaceLogging
+import PalaceUtilities
 
 /// Lock-guarded, resume-exactly-once holder for a `CheckedContinuation`, shared
 /// across the two racing tasks in `FirebaseManager.withTimeout`. A
