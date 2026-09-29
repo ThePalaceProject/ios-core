@@ -1249,12 +1249,12 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     ///
     /// Deliberately synchronous. Making the callers `async` would break the sync
     /// helpers they share (`snapshotWithOneBook`, `drainMainQueue`), which use
-    /// `wait(for:)` and deadlock when called from an `async` test — the file
+    /// XCTest's synchronous `wait` and deadlock when called from an `async` test — the file
     /// documents that at `XCTestCase+drainMainQueue.swift`.
     private func awaitRegistrySaved(timeout: TimeInterval = 5.0, _ action: () -> Void) {
         // Bound ONCE, before the Task, and captured by value. Reading the
         // implicitly-unwrapped `syncManager` INSIDE the Task is a runner-killer:
-        // on timeout `wait(for:)` records a failure and returns, `tearDown()`
+        // on timeout XCTest's synchronous `wait` records a failure and returns, `tearDown()`
         // nils the fixture, and the still-live Task then force-unwraps nil.
         // `XCTestCase+drainMainQueue.swift` documents that exact incident at
         // `awaitCondition` (CI run 29802862487). Capturing `[syncManager]`
@@ -1269,7 +1269,32 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
             await manager._awaitPendingDiskWritesForTesting()
             drained.fulfill()
         }
-        wait(for: [drained], timeout: timeout)
+        // `diskWriteQueue`, not by a poll on fire-and-forget work. A trailing
+        // block on a serial queue resumes strictly after every enqueued write,
+        // so this is the deterministic join STARVE-001 asks for; the deadline is
+        // a safety net that fails loudly, never the mechanism.
+        wait(for: [drained], timeout: timeout)  // STARVE-001-OK: serial-queue barrier drain, not a poll on fire-and-forget
+        drain.cancel()
+    }
+
+    /// Blocks until `BookRegistryStore`'s write barrier has drained.
+    ///
+    /// The sibling of `awaitRegistrySaved` for the in-memory side. Same shape and
+    /// same reason: `_awaitPendingWritesForTesting()` is a barrier on the store's
+    /// serial queue, so this joins rather than polls. The older
+    /// `wait`-plus-`drainMainQueue` pair around `addBook` is a fixed
+    /// deadline on a completion callback, which is what STARVE-001 exists to stop.
+    private func awaitStoreWrites(timeout: TimeInterval = 5.0) {
+        guard let store = store else {
+            return XCTFail("awaitStoreWrites called with no store")
+        }
+        let drained = expectation(description: "registry store writes drained")
+        let drain = Task { [store] in
+            await store._awaitPendingWritesForTesting()
+            drained.fulfill()
+        }
+        // poll on fire-and-forget work. See `awaitRegistrySaved` for the shape.
+        wait(for: [drained], timeout: timeout)  // STARVE-001-OK: serial-queue barrier drain, not a poll on fire-and-forget
         drain.cancel()
     }
 
@@ -1480,10 +1505,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         let (account, url) = makeIsolatedAccount()
         defer { cleanupAccount(url) }
 
-        let added = expectation(description: "added")
-        store.addBook(makeBook(identifier: "barrier-book"), state: .downloadNeeded) { _ in added.fulfill() }
-        wait(for: [added], timeout: 2.0)
-        drainMainQueue()
+        store.addBook(makeBook(identifier: "barrier-book"), state: .downloadNeeded) { _ in }
+        awaitStoreWrites()
 
         // A notification of the same name, from something other than this save,
         // arriving INSIDE the barrier's window. Posting it before the call does
