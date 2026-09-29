@@ -7,10 +7,8 @@
     "Palace/AppRating",
     "Palace/Audiobooks",
     "Palace/Book",
-    "Palace/BuildSupport",
     "Palace/CarPlay",
     "Palace/Catalog",
-    "Palace/CatalogDomain",
     "Palace/CatalogUI",
     "Palace/ErrorHandling",
     "Palace/FeatureFlags",
@@ -29,7 +27,6 @@
     "Palace/ReaderStreaming",
     "Palace/Settings",
     "Palace/SignInLogic",
-    "Palace/Stats",
     "Palace/Support",
     "Palace/Utilities",
     "Palace/Views"
@@ -87,7 +84,11 @@
       "Tests"
     ]
   },
-  "firstPartyRoots": ["Palace", "PalaceTests", "PalaceUIKit"],
+  "firstPartyRoots": [
+    "Palace",
+    "PalaceTests",
+    "PalaceUIKit"
+  ],
   "submoduleExclusions": [
     "ios-tenprintcover",
     "adept-ios",
@@ -121,7 +122,8 @@
     "PalaceTests": "Tests",
     "ios-audiobooktoolkit": "Presentation",
     "adept-ios": "Infrastructure",
-    "ios-tenprintcover": "Infrastructure"
+    "ios-tenprintcover": "Infrastructure",
+    "AppInfrastructure": "Application"
   },
   "knownLayerViolations": [
     {
@@ -136,7 +138,7 @@
       "aka": "TriageBotUI",
       "to": "Palace",
       "confidence": "name-inferred",
-      "reason": "SwiftPM structurally forbids a package (PalaceTriageBot / its TriageBotUI target) from importing the app target (Palace). This edge is a name-based inference artifact, not a real import — the compiler cannot produce it. The trend gate must DISCOUNT it so the cycle count is not inflated by an impossible edge. See docs/architecture/god-class-decomposition-plan.md §3b cycle 9 (Wave 0 ledger hygiene)."
+      "reason": "SwiftPM structurally forbids a package (PalaceTriageBot / its TriageBotUI target) from importing the app target (Palace). This edge is a name-based inference artifact, not a real import \u2014 the compiler cannot produce it. The trend gate must DISCOUNT it so the cycle count is not inflated by an impossible edge. See docs/architecture/god-class-decomposition-plan.md \u00a73b cycle 9 (Wave 0 ledger hygiene)."
     }
   ]
 }
