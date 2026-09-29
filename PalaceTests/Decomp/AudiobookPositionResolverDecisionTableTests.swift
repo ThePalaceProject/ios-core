@@ -204,6 +204,49 @@ final class AudiobookPositionResolverDecisionTableTests: XCTestCase {
         XCTAssertEqual(resolved.timestamp, 0)
     }
 
+    // MARK: - The restore precondition
+
+    // `shouldRestoreBookmarkPosition` decides whether the local-restore path is
+    // entered at all. Mutation on the extracted resolver reported all three of
+    // its lines UNCOVERED — no test executed them — which is the reachable-cell
+    // question mutation score cannot answer on its own. The seam is trivially
+    // drivable now that the resolver takes an injected registry, so the gap is
+    // closed rather than recorded.
+
+    func testShouldRestore_withSavedLocation_isTrue() {
+        let book = TPPBookMocker.mockBook(title: "Saved")
+        let saved = position(trackIndex: 1, timestamp: 42, savedAt: older)
+        let location = saved.toAudioBookmark().toTPPBookLocation()
+        XCTAssertNotNil(location, "fixture must produce a storable location or the arrange step is vacuous")
+        registryMock.addBook(book, location: location, state: .downloadSuccessful)
+
+        XCTAssertTrue(sut.shouldRestoreBookmarkPosition(for: book),
+            "A book with a saved location must enter the restore path; skipping it drops the patron to chapter 1 with a position on disk")
+    }
+
+    func testShouldRestore_withNoSavedLocation_isFalse() {
+        let book = TPPBookMocker.mockBook(title: "Never opened")
+        registryMock.addBook(book, location: nil, state: .downloadSuccessful)
+        XCTAssertNil(registryMock.location(forIdentifier: book.identifier),
+            "arrange: this book must have nothing saved")
+
+        XCTAssertFalse(sut.shouldRestoreBookmarkPosition(for: book),
+            "With nothing saved the restore path has nothing to reconstruct and the open falls to the beginning")
+    }
+
+    func testShouldRestore_isPerBook_notGlobal() {
+        let saved = TPPBookMocker.mockBook(title: "Saved")
+        let other = TPPBookMocker.mockBook(title: "Other")
+        let location = position(trackIndex: 1, timestamp: 42, savedAt: older)
+            .toAudioBookmark().toTPPBookLocation()
+        registryMock.addBook(saved, location: location, state: .downloadSuccessful)
+        registryMock.addBook(other, location: nil, state: .downloadSuccessful)
+
+        XCTAssertTrue(sut.shouldRestoreBookmarkPosition(for: saved))
+        XCTAssertFalse(sut.shouldRestoreBookmarkPosition(for: other),
+            "One book's saved position must not make a different book look resumable — the lookup is keyed by identifier")
+    }
+
     // MARK: - The gate reports which step dropped the position
 
     func testForeignKeyedRemote_logsTheFailureWithRemoteSource() throws {
