@@ -41,12 +41,17 @@ struct ReadiumPDFLoadingView: View {
             // Title as a faded watermark behind the foreground content.
             // Large display weight, low opacity — present but not loud.
             Text(book.title)
+                // Display watermark sized to the screen rather than to body
+                // copy: it already shrinks to 50% to fit four lines, and the
+                // same title is repeated below in a Dynamic-Type .headline.
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - fixed display geometry
                 .font(.system(size: 56, weight: .heavy, design: .serif))
                 .foregroundStyle(.white.opacity(0.08))
                 .multilineTextAlignment(.center)
                 .lineLimit(4)
                 .minimumScaleFactor(0.5)
                 .padding(.horizontal, 24)
+                .accessibilityHidden(true)
 
             VStack(spacing: 24) {
                 Spacer()
@@ -94,7 +99,10 @@ struct ReadiumPDFLoadingView: View {
     @ViewBuilder
     private var coverThumbnail: some View {
         if let image = book.coverImage {
-            Image(uiImage: image).resizable().scaledToFill()
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .accessibilityHidden(true)
         } else {
             // The cover image is loaded lazily by `TPPBookCoverRegistry`
             // and published onto `book.coverImage`. If it hasn't landed
