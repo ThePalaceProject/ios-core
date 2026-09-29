@@ -340,13 +340,46 @@ baseline_verdict_from_output() {
 # Measured 2026-09-29: three consecutive edit-and-recheck rounds against the
 # sibling `lint-test-quality.py --changed`, each reporting the same stale
 # finding, because every fix was sitting uncommitted.
-UNCOMMITTED_TRACKED=$(git status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d ' ')
-if [ "${UNCOMMITTED_TRACKED:-0}" -gt 0 ]; then
+# Untracked files are INCLUDED deliberately. A brand-new test file is the most
+# common shape of uncommitted work under TDD, and `--untracked-files=no` made
+# exactly that case produce no notice at all. The files are NAMED, not merely
+# counted: this checkout is chronically dirty by one unrelated tracked file
+# (`Package.resolved`), and a bare count fires on nearly every local run
+# without saying what for — alarm fatigue on the signal being added.
+UNCOMMITTED_NAMES=$(git status --porcelain -z 2>/dev/null | python3 -c '
+import sys
+# `--porcelain -z` because porcelain v1 QUOTES any path with a space or a
+# non-ASCII byte, and a quoted path silently vanishes from a naive parse — an
+# announcement of an omission that omits a file.
+#
+# A rename emits TWO records, `XY new` then a bare `orig` with no status
+# prefix. Stripping three characters from every record turns that orig into a
+# phantom entry: measured, `PalaceTests/Orig.swift` came out as
+# `aceTests/Orig.swift` and inflated the count by one per rename.
+recs = [r for r in sys.stdin.read().split("\0") if r]
+skip = False
+for r in recs:
+    if skip:
+        skip = False
+        continue
+    if len(r) < 4:
+        continue
+    if r[0] in "RC":
+        skip = True
+    print(r[3:])
+' || true)
+UNCOMMITTED_COUNT=$(printf '%s' "$UNCOMMITTED_NAMES" | grep -c . || true)
+UNCOMMITTED_COUNT=${UNCOMMITTED_COUNT:-0}
+if [ "$UNCOMMITTED_COUNT" -gt 0 ]; then
   echo ""
-  echo "  NOTE: $UNCOMMITTED_TRACKED uncommitted change(s) in the working tree are NOT"
+  echo "  NOTE: $UNCOMMITTED_COUNT uncommitted change(s) in the working tree are NOT"
   echo "        part of this run. Everything below is measured against HEAD"
   echo "        ($(git rev-parse --short HEAD)). Commit them and re-run if you"
   echo "        meant to verify them."
+  printf '%s\n' "$UNCOMMITTED_NAMES" | head -10 | sed 's/^/          /'
+  if [ "$UNCOMMITTED_COUNT" -gt 10 ]; then
+    echo "          ... and $((UNCOMMITTED_COUNT - 10)) more"
+  fi
   echo ""
 fi
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
@@ -499,6 +532,8 @@ if [ "$DOCS_ONLY" = "true" ]; then
   "pass_count": $PASS_COUNT,
   "fail_count": $FAIL_COUNT,
   "skip_count": $SKIP_COUNT,
+  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
+  "scanned_ref": "$(git rev-parse HEAD)",
   "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
   "checks": [$RESULTS_JSON]
 }
@@ -1923,6 +1958,8 @@ if [ -n "$REPORT_FILE" ]; then
   "pass_count": $PASS_COUNT,
   "fail_count": $FAIL_COUNT,
   "skip_count": $SKIP_COUNT,
+  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
+  "scanned_ref": "$(git rev-parse HEAD)",
   "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
   "checks": [$RESULTS_JSON]
 }
@@ -1937,8 +1974,18 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
 fi
 
 echo ""
-if [ "$SKIP_COUNT" -gt 0 ]; then
+# The line a human actually reads after a 10+ minute run is this one. A notice
+# ~1570 lines upstream does not reach them, so the qualification has to live
+# here too — same reasoning as the SKIP_COUNT arm directly above.
+if [ "$SKIP_COUNT" -gt 0 ] && [ "${UNCOMMITTED_COUNT:-0}" -gt 0 ]; then
+  echo "CLEAR: no checks failed — but $SKIP_COUNT ran nothing, and ${UNCOMMITTED_COUNT} uncommitted"
+  echo "       change(s) were never scanned. Neither is the same as verified."
+elif [ "$SKIP_COUNT" -gt 0 ]; then
   echo "CLEAR: no checks failed — but $SKIP_COUNT ran nothing. Not the same as verified."
+elif [ "${UNCOMMITTED_COUNT:-0}" -gt 0 ]; then
+  echo "CLEAR: all checks passed against HEAD ($(git rev-parse --short HEAD)) — but"
+  echo "       ${UNCOMMITTED_COUNT} uncommitted change(s) were never scanned. This is a verdict"
+  echo "       about what you would push, not about what you are holding."
 else
   echo "CLEAR: All checks passed."
 fi
