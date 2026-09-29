@@ -73,7 +73,7 @@ The toolkit called Palace via `AudiobookBookmarkDelegate` (defined in `ios-audio
 
 ### Pattern 5 — `.shared` singletons on lifecycle-critical code
 
-`Palace/Audiobooks/AudiobookSessionManager.swift:87` and `Palace/Audiobooks/PlaybackBootstrapper.swift:56` both exposed `static let shared`. <!-- audit-verified: line numbers per `swarm_03acb10a/plan.md` recon table. --> Three production sites read them (`TPPAppDelegate.swift:55`, `CarPlaySceneDelegate.swift:43`, `BookService.swift:75`); test sites had `setUp resets shared mock` workarounds for the cross-test bleed.
+`Palace/Audiobooks/AudiobookSessionManager.swift:87` and `Palace/Audiobooks/PlaybackBootstrapper.swift:56` both exposed `static let shared`. <!-- audit-verified: line numbers per `swarm_03acb10a/plan.md` recon table. --> Three production sites read them (`TPPAppDelegate.swift:55`, `CarPlaySceneDelegate.swift:43`, `BookService.swift:75` — that read moved to `BookOpenRouter.swift` in Wave 5, 2026-09-29; the line reference records where it was at the time of this audit); test sites had `setUp resets shared mock` workarounds for the cross-test bleed.
 
 **Symptom:** initialization order was implicit, CarPlay startup invariants were spread across files, and tests held shared state between runs. The triad-epic singleton purge (PR #866 / #867) had reduced `.shared` from 732 → 344 sites overall, but the audiobook cluster was untouched. <!-- audit-verified: 732 → 344 number per memory `singleton_audit_2026_04_24.md` (referenced in architectural-triad.md). -->
 

@@ -133,7 +133,7 @@ final class ReaderService {
     ///   - Plain (non-LCP) PDFs → `openPlainPDF` (PDFKit `PDFDocument(url:)`
     ///     mmap, no publication/extract hop).
     ///
-    /// Gating lives here rather than only in `BookService.presentPDF` so that
+    /// Gating lives here rather than only in `BookOpenRouter`'s PDF path so that
     /// EVERY caller stays correct through a single seam. The Continue-reading
     /// card called this method directly while it was LCP-only, so tapping a
     /// plain downloaded PDF (an open-access title) drove it through the LCP
