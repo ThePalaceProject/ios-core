@@ -2,6 +2,18 @@
 //  TPPSignInFlowCharacterizationTests.swift
 //  PalaceTests
 //
+//  ON THE MUTANT COMMENTS BELOW: "Targets a hand-written mutant that ..." means
+//  exactly that — a shape I reasoned the test should catch, NOT a mutant any
+//  tool generated and NOT part of any score. `scripts/palace_mutate.py`'s
+//  operator table is cmp / bool / bound / retval / assign only (its
+//  `_MUTATORS`), so it structurally cannot produce "deletes the guard",
+//  "removes the catch-arm post", or "calls validateCredentials() on the failure
+//  arm". CLAUDE.md: a hand-authored mutant is an illustration, not a score —
+//  reading these as evidence inherits my blind spots exactly, which is the
+//  failure that rule exists to stop. Exactly ONE is measured: R3, which says
+//  KILLS and carries its run. The 80.0% in the commit body is the tool's figure
+//  over ITS mutants and is unrelated to these comments.
+//
 //  CHARACTERIZATION PACK (part 3) — Wave 4 prerequisite for the
 //  `TPPSignInBusinessLogic` decomposition
 //  (docs/architecture/god-class-decomposition-plan.md §4 "Wave 4", §5 row
@@ -295,7 +307,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
 
     // R2 — the retry itself: once readiness resolves AND an auth method is
     // available, the deferred tap is honored and the credential request
-    // fires. This is the 476→479 regression. Kills a mutant that deletes
+    // fires. This is the 476→479 regression. Targets a hand-written mutant that deletes
     // the `self.logIn(with: tokenURL)` re-entry.
     func test_logIn_beforeDetailsLoaded_retriesAfterReadiness_andFiresRequest() async {
         setLoading()
@@ -318,9 +330,15 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
     }
 
     // R3 — the re-entrancy guard: two taps while details are loading must
-    // await ONCE. Kills a mutant that deletes
+    // await ONCE. KILLS — measured, not asserted — a mutant that deletes
     // `guard !isAwaitingReadinessForLogIn` (which would produce two awaiting
     // tasks and therefore two credential requests).
+    //
+    // That guard was deleted from TPPSignInBusinessLogic.swift and this test
+    // failed 5 of 5 iterations, 0 passes, while the other 7 in this class
+    // stayed green. Review challenged the `for _ in 0..<5 { await Task.yield() }`
+    // barrier below as possibly insufficient for a second awaiter hopping
+    // through `TPPMainThreadRun.asyncIfNeeded`; 5/5 RED is the answer.
     func test_logIn_twoTapsBeforeDetailsLoaded_retriesExactlyOnce() async {
         setLoading()
         let fired = expectRequestFired()
@@ -339,7 +357,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
 
     // R4 — readiness resolving to `.detailsFailed` clears the spinner rather
     // than leaving the UI hanging: TPPIsSigningIn(false) is posted and no
-    // request is made. Kills a mutant that removes the catch-arm post.
+    // request is made. Targets a hand-written mutant that removes the catch-arm post.
     func test_logIn_whenReadinessFails_announcesNotSigningIn_andFiresNoRequest() async {
         let recorder = SigningInNotificationRecorder()
         defer { recorder.stop() }
@@ -356,7 +374,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
     }
 
     // R5 — the give-up path CLEARS the await-once guard, so a later tap can
-    // await again. Kills a mutant that arms `isAwaitingReadinessForLogIn`
+    // await again. Targets a hand-written mutant that arms `isAwaitingReadinessForLogIn`
     // and never resets it in the catch arm — which would wedge sign-in for
     // the lifetime of the object after one auth-doc failure.
     //
@@ -412,7 +430,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
     }
 
     // R7 — when there is no library account at all, `logIn()` returns before
-    // even arming the readiness guard. Kills a mutant that drops
+    // even arming the readiness guard. Targets a hand-written mutant that drops
     // `guard let account = libraryAccount`.
     func test_logIn_withNoLibraryAccount_isATotalNoOp() async {
         let orphan = TPPSignInBusinessLogic(
@@ -540,7 +558,7 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
     }
 
     // T6 — the failure arm also lands in the reducer, so a re-render reads
-    // the same message the delegate got. Kills a mutant that drops the
+    // the same message the delegate got. Targets a hand-written mutant that drops the
     // `dispatch(.credentialsValidationFailed(...))` in handleNetworkError.
     func test_getBearerToken_failure_recordsErrorInAuthState_andEndsValidation() async {
         await refreshFailing(with: httpError(503))
@@ -553,7 +571,7 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
     }
 
     // T7 — a token failure must not promote a token or reach /patrons/me.
-    // Kills a mutant that calls validateCredentials() on the failure arm.
+    // Targets a hand-written mutant that calls validateCredentials() on the failure arm.
     func test_getBearerToken_failure_storesNoToken_andNeverCallsProfileEndpoint() async {
         await refreshFailing(with: httpError(500))
 
@@ -581,7 +599,7 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
     }
 
     // T9 — the success chain: the received token is carried into the
-    // /patrons/me request as a Bearer header. Kills a mutant that stores the
+    // /patrons/me request as a Bearer header. Targets a hand-written mutant that stores the
     // token but skips validateCredentials(), and one that drops the
     // expiration from `.bearerTokenReceived`.
     func test_getBearerToken_success_chainsIntoProfileRequestWithBearerHeader() async {
@@ -620,7 +638,7 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
 
     // T10 — the token exchange is scoped to THIS business logic's library,
     // not the currently-selected one (PP-4986: Settings signs in/out for any
-    // library). Kills a mutant that passes `currentAccountId` instead.
+    // library). Targets a hand-written mutant that passes `currentAccountId` instead.
     func test_getBearerToken_routesAccountIdToItsOwnLibrary() async {
         await refreshFailing(with: httpError(401))
         XCTAssertEqual(refresher.lastAccountId, businessLogic.libraryAccountID,
@@ -692,7 +710,7 @@ final class SignInCredentialSideEffectCharacterizationTests: SignInFlowFixture {
 
     // S2 — the gate's other side: signing in to a NON-current library (the
     // Settings flow) must not kick a sync that would fetch the wrong
-    // library's loans. Kills a mutant that deletes the
+    // library's loans. Targets a hand-written mutant that deletes the
     // `libraryAccountID == currentAccountId` condition.
     func test_updateUserAccount_forOtherLibrary_doesNotSyncTheBookRegistry() {
         let other = TPPSignInBusinessLogic(
@@ -732,7 +750,7 @@ final class SignInCredentialSideEffectCharacterizationTests: SignInFlowFixture {
 
     // S4 — after the canonical store (TPPUserAccount) has the credentials,
     // the in-flight reducer mirrors are dropped so a stale token cannot be
-    // reused by `makeRequest`. Kills a mutant that removes
+    // reused by `makeRequest`. Targets a hand-written mutant that removes
     // `dispatch(.userAccountUpdated)`.
     func test_updateUserAccount_clearsInFlightTokenMirror() {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
@@ -814,7 +832,7 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
                        "A stale session must read as signed out even though credentials exist")
     }
 
-    // P3 — the second override, checked after staleness. Kills a mutant that
+    // P3 — the second override, checked after staleness. Targets a hand-written mutant that
     // deletes the `if ignoreSignedInState { return false }` arm.
     func test_isSignedIn_falseWhenIgnoreSignedInStateIsSet_despiteHeldCredentials() {
         persistBasic()
@@ -853,7 +871,7 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
     }
 
     // P6 — rung 2: with nothing explicitly selected, the persisted definition
-    // answers. Kills a mutant that deletes the
+    // answers. Targets a hand-written mutant that deletes the
     // `guard userAccount.authDefinition == nil` rung.
     func test_selectedAuthentication_fallsBackToPersistedDefinition() {
         persistBasic()
@@ -890,7 +908,7 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
 
     // P9 — `ensureAuthenticationDocumentIsLoaded` short-circuits when the
     // document is already in hand: it reports success without ever marking
-    // the document as loading. Kills a mutant that removes the early return
+    // the document as loading. Targets a hand-written mutant that removes the early return
     // (which would re-fetch on every borrow).
     func test_ensureAuthenticationDocumentIsLoaded_alreadyLoaded_succeedsWithoutMarkingLoading() {
         var reported: Bool?
