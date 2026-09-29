@@ -71,13 +71,37 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/mauricecarrier7/ledger-dist/main/install.sh \
             | bash -s -- --version 0.9.7 --dir ./tools/bin
           
+          # The 0.9.6 and 0.9.7 releases ship NO accesslint asset, and
+          # install.sh's fallback URL 404s for both. Ledger then silently falls
+          # back to an internal analyzer that scans a top-level `Sources/`
+          # directory Palace does not have, with zero rules registered — so it
+          # reported "0 accessibility issues" while reading 0 files. Fetch the
+          # binary from v0.9.5, the last release that carries it.
+          if [[ ! -x ./tools/bin/accesslint ]]; then
+            echo "accesslint missing from the 0.9.7 payload — fetching the v0.9.5 asset"
+            curl -fsSL -o ./tools/bin/accesslint \
+              https://github.com/mauricecarrier7/ledger-dist/releases/download/v0.9.5/accesslint-macos-arm64 \
+              && chmod +x ./tools/bin/accesslint \
+              || echo "accesslint fetch FAILED"
+          fi
+
           # Clear macOS quarantine attributes (fixes exit code 11)
           xattr -cr ./tools/bin/ 2>/dev/null || true
           
           echo "Installed versions:"
           ./tools/bin/ledger --version
-          ./tools/bin/accesslint --version 2>/dev/null || echo "AccessLint installed"
-          ./tools/bin/qaatlas --version 2>/dev/null || echo "QAAtlas installed"
+
+          # Absence must not render as success. The previous form printed
+          # "AccessLint installed" on the failure branch of `||`, i.e. it said
+          # "installed" precisely when the binary was not there.
+          if ./tools/bin/accesslint --version 2>/dev/null; then
+            echo "accesslint_available=true" >> $GITHUB_ENV
+          else
+            echo "::warning title=AccessLint unavailable::No accesslint binary — the accessibility section will report 'not evaluated' rather than a pass."
+            echo "accesslint_available=false" >> $GITHUB_ENV
+          fi
+
+          ./tools/bin/qaatlas --version 2>/dev/null || echo "qaatlas not present (qa domain is disabled)"
 
       - name: Run analysis
         env:
@@ -158,6 +182,9 @@ jobs:
           echo "a11y_major=0" >> $GITHUB_OUTPUT
           echo "a11y_minor=0" >> $GITHUB_OUTPUT
           echo "a11y_info=0" >> $GITHUB_OUTPUT
+          # Whether AccessLint actually ran. Drives "not evaluated" vs a pass,
+          # so a missing binary can never render as a clean bill of health.
+          echo "a11y_available=${accesslint_available:-false}" >> $GITHUB_OUTPUT
           echo "qa_coverage=" >> $GITHUB_OUTPUT
           echo "qa_tested=0" >> $GITHUB_OUTPUT
           echo "qa_total=0" >> $GITHUB_OUTPUT
@@ -406,7 +433,11 @@ jobs:
             body += '### ♿ Accessibility (via AccessLint)\n\n';
             body += '> 💡 *Static analysis against WCAG 2.1 AA guidelines for iOS accessibility.*\n\n';
             
-            if (parseInt(a11yIssues) === 0) {
+            const a11yAvailable = '${{ steps.parse.outputs.a11y_available }}' === 'true';
+            if (!a11yAvailable) {
+              body += '⚠️ **Not evaluated** — the AccessLint binary was not available in this run, so no files were scanned.\n\n';
+              body += 'This is not a pass. Zero findings here means zero files read, not zero issues.\n\n';
+            } else if (parseInt(a11yIssues) === 0) {
               body += '✅ **No accessibility issues detected**\n\n';
             } else {
               // Severity breakdown table with help
@@ -560,15 +591,16 @@ jobs:
             body += `| Dependency Cycles | ${sccCount} | Distinct circular dependencies (A→B→C→A). Goal: **0** |\n`;
             body += `| Largest Cycle | ${largestScc === '0' ? '—' : largestScc + ' components'} | How many components are mutually tangled in the biggest cycle |\n`;
             body += `| Layer Violations | ${violations} | Dependencies that break architectural boundaries |\n`;
-            body += `| Hotspots | ${hotspots} | Files with high complexity + frequent changes |\n`;
-            body += `| Avg Coupling | ${avgCoupling} | How interconnected modules are (lower is better, <1.0 is good) |\n\n`;
+            body += `| Hotspots | ${hotspots} | Components with more than 5 dependents (Analyzer.swift). NOT complexity — extracting a widely-used package ADDS one. |\n`;
+            body += `| Avg Coupling | ${avgCoupling} | Total dependency edges ÷ components. Tool bands: <2 good, <4 fair, ≥4 watch. |\n\n`;
+            body += '> ⚠️ *Avg Coupling RISES when a package is extracted* — edges that were invisible inside the monolith become counted edges between named components. It is not a decomposition progress metric. Track **Largest Cycle** and monolith-internal edges instead.\n\n';
 
             // Honesty note: these are repo-BASELINE metrics, not diff deltas —
             // they read identically on most PRs. Don't misread a constant as
             // PR-caused. A true base-vs-head delta is a tracked Obligation
             // (pr-report-contract.md §2).
             if (changedFiles === '0') {
-              body += `> ℹ️ This diff changed **0** architecture-relevant files — the numbers above are the repo baseline, unchanged by this PR.\n\n`;
+              body += `> ℹ️ These are **whole-repo** figures measured at this PR's head commit, not a diff against the base. Ledger has no per-PR delta: its \\`--diff\\` path is a stub and is not invoked. Compare against another PR's numbers to see movement.\n\n`;
             } else {
               body += `> ℹ️ Baseline metrics (whole-repo), not a diff delta. Watch for a value that *moves* vs. \`develop\`, not its absolute level.\n\n`;
             }
@@ -633,7 +665,7 @@ jobs:
               // over ZERO analyzed files is meaningless, and a fake ✅ trains
               // readers to trust the real ones less (pr-report-contract.md §2).
               if (changedFiles === '0') {
-                body += 'ℹ️ No architecture-relevant files in this diff — reachability not evaluated.\n\n';
+                body += 'ℹ️ Reachability not evaluated. Its analyzer reads a top-level `Sources/` directory that this repo does not have, so it scans 0 files.\n\n';
               } else {
                 body += '✅ **No dead code detected**\n\n';
               }
@@ -674,7 +706,7 @@ jobs:
             // FOOTER
             // ═══════════════════════════════════════════════════════════════
             body += '---\n';
-            body += `📊 **${changedFiles}** files analyzed | `;
+            body += `📊 Whole-repo analysis at \\`${process.env.GITHUB_SHA ? process.env.GITHUB_SHA.substring(0,9) : 'head'}\\` | `;
             body += `📦 [Download Full Report](${runUrl})\n\n`;
             body += '*Powered by [CodeAtlas Ledger](https://github.com/mauricecarrier7/ledger-dist)*\n';
             body += '*• Accessibility: [AccessLint](https://github.com/mauricecarrier7/AccessLint-Distribution)*';
