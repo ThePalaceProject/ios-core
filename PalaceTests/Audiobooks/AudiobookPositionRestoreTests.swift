@@ -110,7 +110,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     /// `.trackKeyNotInManifest` for a key that IS present and fail here.
     func testValidationFailure_trackKeyInManifest_returnsNil() {
         let position = TrackPosition(track: tracks.tracks[0], timestamp: 100, tracks: tracks)
-        XCTAssertNil(sut.validationFailure(for: position, in: toc),
+        XCTAssertNil(sut.positionResolver.validationFailure(for: position, in: toc),
                      "An in-manifest track key with a sane timestamp must validate (no failure)")
     }
 
@@ -121,7 +121,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     func testValidationFailure_trackKeyNotInManifest_returnsTrackKeyFailure() throws {
         let foreign = try makeForeignKeyedTrack()
         let position = TrackPosition(track: foreign, timestamp: 100, tracks: tracks)
-        guard let failure = sut.validationFailure(for: position, in: toc) else {
+        guard let failure = sut.positionResolver.validationFailure(for: position, in: toc) else {
             XCTFail("A track key absent from the manifest must produce a validation failure")
             return
         }
@@ -136,7 +136,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     /// ~1343 (under the mutant a valid position would report invalid).
     func testIsValidPosition_validPosition_returnsTrue() {
         let position = TrackPosition(track: tracks.tracks[1], timestamp: 50, tracks: tracks)
-        XCTAssertTrue(sut.isValidPosition(position, in: toc),
+        XCTAssertTrue(sut.positionResolver.isValidPosition(position, in: toc),
                       "A position with an in-manifest key and a finite, non-negative timestamp is valid")
     }
 
@@ -145,7 +145,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     /// inversion mutant cannot survive.
     func testIsValidPosition_negativeTimestamp_returnsFalse() {
         let position = TrackPosition(track: tracks.tracks[0], timestamp: -5, tracks: tracks)
-        XCTAssertFalse(sut.isValidPosition(position, in: toc),
+        XCTAssertFalse(sut.positionResolver.isValidPosition(position, in: toc),
                        "A negative timestamp must make the position invalid")
     }
 
@@ -153,7 +153,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     func testIsValidPosition_foreignKey_returnsFalse() throws {
         let foreign = try makeForeignKeyedTrack()
         let position = TrackPosition(track: foreign, timestamp: 10, tracks: tracks)
-        XCTAssertFalse(sut.isValidPosition(position, in: toc),
+        XCTAssertFalse(sut.positionResolver.isValidPosition(position, in: toc),
                        "A track key absent from the manifest must make the position invalid")
     }
 
@@ -175,7 +175,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
             makeBookmarkLocation(track: tracks.tracks[1], timestamp: 20, savedAt: "2026-02-01T00:00:00Z"),
         ]
 
-        let selected = sut.selectMostRecentValidBookmark(from: locations, in: toc)
+        let selected = sut.positionResolver.selectMostRecentValidBookmark(from: locations, in: toc)
 
         XCTAssertNotNil(selected, "Three valid bookmarks must yield a selection")
         XCTAssertEqual(selected?.track.key, tracks.tracks[2].key,
@@ -191,7 +191,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
             makeBookmarkLocation(track: tracks.tracks[1], timestamp: 20, savedAt: "2027-12-31T23:59:59Z"),
         ]
 
-        let selected = sut.selectMostRecentValidBookmark(from: locations, in: toc)
+        let selected = sut.positionResolver.selectMostRecentValidBookmark(from: locations, in: toc)
         XCTAssertEqual(selected?.track.key, tracks.tracks[1].key,
                        "Newest (2027) must win regardless of position in the input array")
     }
@@ -226,7 +226,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
             savedAt: "2026-01-01T00:00:00Z"
         )
 
-        let selected = sut.selectMostRecentValidBookmark(
+        let selected = sut.positionResolver.selectMostRecentValidBookmark(
             from: [capExceedingNewer, validOlder],
             in: toc
         )
@@ -251,7 +251,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
             savedAt: "2026-05-05T00:00:00Z"
         )
 
-        let selected = sut.selectMostRecentValidBookmark(from: [capExceeding], in: toc)
+        let selected = sut.positionResolver.selectMostRecentValidBookmark(from: [capExceeding], in: toc)
         XCTAssertNil(selected,
                      "Only candidate exceeds the duration cap → filtered out → no fallback position")
     }
@@ -469,7 +469,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     // PP-4542: the open path was reworked so remote-position resolution gates
     // the FIRST play (was a post-play seek). The decision of whether to honor
     // the remote save over the local one funnels through the pure static
-    // `AudiobookSessionManager.preferRemotePosition(local:remote:)` — "prefer
+    // `AudiobookPositionResolver.preferRemotePosition(local:remote:)` — "prefer
     // remote iff it was saved >5s newer; no/unparseable local ⇒ prefer remote;
     // unparseable remote ⇒ keep local." This static changed open-time behavior
     // on a critical-path FR but shipped unpinned (flagged in review). The table
@@ -489,26 +489,26 @@ final class AudiobookPositionRestoreTests: XCTestCase {
         // Remote save we can't date → can't prove it's newer → keep local.
         let local = makePosition(savedAt: "2026-01-01T00:00:00Z")
         let remote = makePosition(savedAt: "garbage-not-a-date")
-        XCTAssertFalse(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+        XCTAssertFalse(AudiobookPositionResolver.preferRemotePosition(local: local, remote: remote))
     }
 
     func testPreferRemote_noLocalPosition_prefersRemote() {
         // Nothing local to lose → take the remote save.
         let remote = makePosition(savedAt: "2026-01-01T00:00:00Z")
-        XCTAssertTrue(AudiobookSessionManager.preferRemotePosition(local: nil, remote: remote))
+        XCTAssertTrue(AudiobookPositionResolver.preferRemotePosition(local: nil, remote: remote))
     }
 
     func testPreferRemote_unparseableLocalTimestamp_prefersRemote() {
         // Local exists but its timestamp is corrupt → trust the dateable remote.
         let local = makePosition(savedAt: "not-iso8601")
         let remote = makePosition(savedAt: "2026-01-01T00:00:00Z")
-        XCTAssertTrue(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+        XCTAssertTrue(AudiobookPositionResolver.preferRemotePosition(local: local, remote: remote))
     }
 
     func testPreferRemote_remoteNewerByMoreThan5s_prefersRemote() {
         let local = makePosition(savedAt: "2026-01-01T00:00:00Z")
         let remote = makePosition(savedAt: "2026-01-01T00:00:06Z") // +6s
-        XCTAssertTrue(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+        XCTAssertTrue(AudiobookPositionResolver.preferRemotePosition(local: local, remote: remote))
     }
 
     func testPreferRemote_remoteNewerByExactly5s_keepsLocal() {
@@ -516,20 +516,20 @@ final class AudiobookPositionRestoreTests: XCTestCase {
         // Kills a `>` → `>=` mutation of the threshold comparison.
         let local = makePosition(savedAt: "2026-01-01T00:00:00Z")
         let remote = makePosition(savedAt: "2026-01-01T00:00:05Z") // +5s exactly
-        XCTAssertFalse(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+        XCTAssertFalse(AudiobookPositionResolver.preferRemotePosition(local: local, remote: remote))
     }
 
     func testPreferRemote_remoteNewerByLessThan5s_keepsLocal() {
         let local = makePosition(savedAt: "2026-01-01T00:00:00Z")
         let remote = makePosition(savedAt: "2026-01-01T00:00:03Z") // +3s
-        XCTAssertFalse(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+        XCTAssertFalse(AudiobookPositionResolver.preferRemotePosition(local: local, remote: remote))
     }
 
     func testPreferRemote_remoteOlderThanLocal_keepsLocal() {
         // Negative delta → never prefer remote (kills an `abs()`/sign mutation).
         let local = makePosition(savedAt: "2026-01-01T00:00:10Z")
         let remote = makePosition(savedAt: "2026-01-01T00:00:00Z") // -10s
-        XCTAssertFalse(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+        XCTAssertFalse(AudiobookPositionResolver.preferRemotePosition(local: local, remote: remote))
     }
 
     // MARK: - validatedRemotePosition (3.2.3 Cause 2 — remote manifest gate)
@@ -547,7 +547,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
         let staleRemote = TrackPosition(track: foreign, timestamp: 100, tracks: tracks)
         let safeFallback = TrackPosition(track: tracks.tracks[0], timestamp: 0, tracks: tracks)
 
-        let resolved = sut.validatedRemotePosition(
+        let resolved = sut.positionResolver.validatedRemotePosition(
             staleRemote,
             fallback: safeFallback,
             in: toc,
@@ -567,7 +567,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
         let validRemote = TrackPosition(track: tracks.tracks[2], timestamp: 30, tracks: tracks)
         let fallback = TrackPosition(track: tracks.tracks[0], timestamp: 0, tracks: tracks)
 
-        let resolved = sut.validatedRemotePosition(
+        let resolved = sut.positionResolver.validatedRemotePosition(
             validRemote,
             fallback: fallback,
             in: toc,

@@ -133,7 +133,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
 
     func testShouldNotTriggerSAMLReauthForNilError() {
         let mock = TPPUserAccountMock()
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: nil,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -145,7 +145,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         let mock = makeSAMLMockAccount()
 
         let error = NSError(domain: "com.other.domain", code: 5)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -157,7 +157,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         let mock = makeSAMLMockAccount()
 
         let error = NSError(domain: "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer", code: 99)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -171,7 +171,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         // No credentials set = hasCredentials() returns false
 
         let error = NSError(domain: "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer", code: 5)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -183,7 +183,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         let mock = makeSAMLMockAccount()
 
         let error = NSError(domain: "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer", code: 5)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: nil
@@ -198,7 +198,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         // authDefinition is nil -> isSaml is false
 
         let error = NSError(domain: "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer", code: 5)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)

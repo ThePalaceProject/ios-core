@@ -31,7 +31,7 @@ final class AudiobookVendorRecoveryContractTests: XCTestCase {
     /// failure flows on to OverDrive's own path / SAML / cold-load / the
     /// terminal "content unavailable" alert exactly as before.
     private func route(book: TPPBook, error: NSError, alreadyAttempted: Bool) -> String {
-        if AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        if AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: error, book: book, alreadyAttempted: alreadyAttempted) {
             return "bearerTokenRefulfill.reopen(forceRefulfill=true)"
         }

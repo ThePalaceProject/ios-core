@@ -245,6 +245,13 @@ public final class AudiobookSessionManager: ObservableObject {
     public let errorPublisher = PassthroughSubject<AudiobookSessionError, Never>()
 
     private let bookRegistry: TPPBookRegistryProvider
+
+    /// Owns the open-time position decision (local vs server-synced vs
+    /// beginning) and the `[AUDIOPOS]` diagnostics that go with it.
+    /// `internal` so `@testable` tests drive the seams directly, the same way
+    /// they drove them when this code was inline here.
+    let positionResolver: AudiobookPositionResolver
+
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
     /// Reachability is resolved on demand because it's a process-wide
@@ -367,6 +374,7 @@ public final class AudiobookSessionManager: ObservableObject {
         readinessTimeout: TimeInterval
     ) {
         self.bookRegistry = bookRegistry
+        self.positionResolver = AudiobookPositionResolver(bookRegistry: bookRegistry)
         self.accountsManager = accountsManager
         self.settings = settings
         self.reachabilityProvider = reachabilityProvider
@@ -902,7 +910,7 @@ public final class AudiobookSessionManager: ObservableObject {
                         // doesn't flash an error on screen.
                         if case .cancelled = loadError {
                             // no-op
-                        } else if Self.shouldTriggerSAMLReauthForLoadFailure(
+                        } else if AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                             loadError: loadError,
                             userAccount: self.accountsManager.currentUserAccount,
                             currentBook: self.currentBook
@@ -1557,8 +1565,8 @@ public final class AudiobookSessionManager: ObservableObject {
             Log.error(#file, "No tracks available in audiobook")
             return
         }
-        let shouldRestore = shouldRestoreBookmarkPosition(for: book)
-        let localPosition = shouldRestore ? getValidLocalPosition(book: book, audiobook: loaded.audiobook) : nil
+        let shouldRestore = positionResolver.shouldRestoreBookmarkPosition(for: book)
+        let localPosition = shouldRestore ? positionResolver.getValidLocalPosition(book: book, audiobook: loaded.audiobook) : nil
         let beginning = TrackPosition(
             track: firstTrack,
             timestamp: 0.0,
@@ -1578,7 +1586,7 @@ public final class AudiobookSessionManager: ObservableObject {
         // valve, not the common path).
         Task { @MainActor in
             guard self.currentBook?.identifier == bookId else { return }
-            let initialPosition = await self.resolveInitialPosition(
+            let initialPosition = await self.positionResolver.resolveInitialPosition(
                 for: book,
                 audiobook: loaded.audiobook,
                 localPosition: localPosition,
@@ -1675,145 +1683,6 @@ public final class AudiobookSessionManager: ObservableObject {
         }
     }
 
-    // MARK: - Position resolve before play (PP-4542)
-
-    /// PP-4542: maximum time to wait for the server-synced position before
-    /// opening at the local/beginning position, so a slow backend can't stall
-    /// audiobook open. Audiobook bookmarks normally return in ~0.5s; this is the
-    /// rare-slow-case safety valve.
-    static let remotePositionResolveTimeout: TimeInterval = 2.5
-
-    /// Resolves the position to OPEN at: awaits the remote bookmark (bounded) and
-    /// prefers it over the local position only when meaningfully newer (the same
-    /// >5s rule the prior post-play seek used), otherwise returns `fallback`
-    /// (local-or-beginning). Running this BEFORE the first play is what removes
-    /// the "jump" — the player opens directly at the resolved spot.
-    @MainActor
-    private func resolveInitialPosition(
-        for book: TPPBook,
-        audiobook: Audiobook,
-        localPosition: TrackPosition?,
-        fallback: TrackPosition
-    ) async -> TrackPosition {
-        guard let remote = await awaitRemotePosition(
-            for: book,
-            audiobook: audiobook,
-            timeout: Self.remotePositionResolveTimeout
-        ) else {
-            Log.debug(#file, "No remote position resolved before play — opening at local position")
-            return fallback
-        }
-        guard Self.preferRemotePosition(local: localPosition, remote: remote) else {
-            Log.debug(#file, "Local position is current — opening at local position")
-            return fallback
-        }
-        // Manifest-validate the REMOTE position with the SAME gate the local
-        // path applies (`tryLoadPrimaryLocalPosition` at the `validationFailure`
-        // seam): a stale remote track key absent from the loaded manifest is
-        // exactly the 3.2.3 Cause 2 failure — seeking it verbatim opens at a
-        // phantom position. Drop to the safe fallback (local-or-Ch1) instead.
-        let resolved = validatedRemotePosition(
-            remote,
-            fallback: fallback,
-            in: audiobook.tableOfContents,
-            bookId: book.identifier
-        )
-        return resolved
-    }
-
-    /// Applies the manifest-validation gate to a resolved REMOTE position,
-    /// mirroring the local path's `validationFailure(for:in:)` check. Returns
-    /// `remote` when it validates against the loaded manifest, else `fallback`
-    /// — a remote track key that isn't in the manifest must NOT be seeked
-    /// verbatim (3.2.3 Cause 2). `internal` so the decision is unit-pinnable
-    /// with a real TOC + a foreign-keyed position, the same way the local
-    /// `validationFailure` / `selectMostRecentValidBookmark` seams are.
-    func validatedRemotePosition(
-        _ remote: TrackPosition,
-        fallback: TrackPosition,
-        in tableOfContents: AudiobookTableOfContents,
-        bookId: String
-    ) -> TrackPosition {
-        if let failure = validationFailure(for: remote, in: tableOfContents) {
-            let manifestKeys = tableOfContents.tracks.tracks
-                .prefix(5).map(\.key).joined(separator: ",")
-            positionLogger.logFailure(
-                reason: failureReasonString(failure),
-                context: [
-                    "bookId": bookId,
-                    "savedKey": remote.track.key,
-                    "manifestKeys": manifestKeys,
-                    "source": "remote"
-                ]
-            )
-            return fallback
-        }
-        Log.info(#file, "📡 Opening at remote position (newer than local): track=\(remote.track.key), timestamp=\(remote.timestamp)")
-        return remote
-    }
-
-    /// Bounded await of the server-synced position. Resolves to the remote
-    /// `TrackPosition` if the bookmark sync returns one within `timeout`, else
-    /// `nil` (slow/again backend or no remote bookmark). Single-resume guarded so
-    /// the timeout and the sync callback race safely. No-ops to `nil` for a
-    /// mock-injected registry (tests), so the local position alone drives open.
-    @MainActor
-    private func awaitRemotePosition(
-        for book: TPPBook,
-        audiobook: Audiobook,
-        timeout: TimeInterval
-    ) async -> TrackPosition? {
-        guard let concreteRegistry = bookRegistry as? TPPBookRegistry else { return nil }
-        let toc = audiobook.tableOfContents
-        // `TrackPosition` (PalaceAudiobookToolkit) is not Sendable-audited, so
-        // resuming the continuation with a bare `TrackPosition?` trips the
-        // `sending 'position' risks data races` diagnostic — the `syncLocation`
-        // completion fires off the caller's actor (inside TPPBookRegistry's
-        // detached sync Task, see `SyncLocationBox`), and `@preconcurrency
-        // import` downgrades the Sendable-conformance warning but NOT the
-        // `sending` one. Carry the value through the continuation in a Sendable
-        // box and unwrap after the `await` (back on this `@MainActor` method).
-        let box: SendableTrackPositionBox = await withCheckedContinuation { (cont: CheckedContinuation<SendableTrackPositionBox, Never>) in
-            let once = PositionResolveOnce()
-            concreteRegistry.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
-                // Build the position INLINE, not via `.flatMap { … }`. The
-                // syncLocation completion is `@Sendable` (non-isolated) and fires
-                // on a BACKGROUND queue (TPPBookRegistry's detached sync Task).
-                // A `.flatMap` transform closure, however, is NOT `@Sendable`, so
-                // it inherited this `@MainActor` method's isolation — and invoking
-                // that main-actor closure off-main tripped `dispatch_assert_queue_fail`
-                // (EXC_BREAKPOINT on every audiobook open with a remote bookmark;
-                // Crashlytics 6e05efb…, fresh in 3.3.0). Inline `if let` runs
-                // directly in the non-isolated completion closure — no nested
-                // closure, no inherited isolation.
-                let position: TrackPosition?
-                if let remoteBookmark {
-                    position = TrackPosition(audioBookmark: remoteBookmark, toc: toc.toc, tracks: toc.tracks)
-                } else {
-                    position = nil
-                }
-                let boxed = SendableTrackPositionBox(position)
-                once.fire { cont.resume(returning: boxed) }
-            }
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
-                once.fire { cont.resume(returning: SendableTrackPositionBox(nil)) }
-            }
-        }
-        return box.value
-    }
-
-    /// True iff `remote` should be preferred over `local` — i.e. the remote save
-    /// is >5s newer (no local ⇒ prefer remote). Pure/static so it's unit-pinnable.
-    static func preferRemotePosition(local: TrackPosition?, remote: TrackPosition) -> Bool {
-        let formatter = ISO8601DateFormatter()
-        guard let remoteDate = formatter.date(from: remote.lastSavedTimeStamp) else { return false }
-        guard let local = local,
-              let localDate = formatter.date(from: local.lastSavedTimeStamp) else {
-            return true
-        }
-        return remoteDate.timeIntervalSince(localDate) > 5.0
-    }
 
     // MARK: - Readiness gate wiring (F-011)
 
@@ -1983,416 +1852,7 @@ public final class AudiobookSessionManager: ObservableObject {
         return trackCount
     }
 
-    // MARK: - Position restoration helpers
 
-    /// Logger for `[AUDIOPOS]` diagnostic lines. Indirected through a protocol
-    /// so unit tests can spy on emissions without scraping Crashlytics output.
-    /// Production binds the default which routes through `Log.warn`.
-    var positionLogger: AudiobookPositionLogging = DefaultAudiobookPositionLogger()
-
-    private func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
-        let hasLocation = bookRegistry.location(forIdentifier: book.identifier) != nil
-        guard hasLocation else { return false }
-        return true
-    }
-
-    /// Returns a `TrackPosition` reconstructed from the registry's saved
-    /// location for `book`, validated against the loaded audiobook's manifest.
-    ///
-    /// Failure modes are individually logged with `[AUDIOPOS]` markers. When
-    /// the primary saved location can't be used but the registry has other
-    /// generic bookmarks for this book, the most-recent valid one is returned
-    /// as a fallback (better than dropping the patron to chapter-1 start).
-    /// Returns `nil` only when there's nothing usable at all.
-    // `internal` (not `private`) so `@testable import Palace` unit tests can
-    // drive the position-restore decision through this production seam with
-    // constructed registry/TOC fixtures — see AudiobookPositionRestoreTests.
-    // This is the same seam-exposure pattern already used by the static
-    // policy mirrors (networkValidationError, normalizedChaptersCount).
-    func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
-        let primary = tryLoadPrimaryLocalPosition(book: book, audiobook: audiobook)
-        switch primary {
-        case .success(let position):
-            return position
-        case .failure:
-            // Fall back to most-recent valid generic bookmark.
-            if let fallback = fallbackToMostRecentValidBookmark(book: book, audiobook: audiobook) {
-                positionLogger.logFallback(
-                    reason: "primary_position_invalid_using_recent_bookmark",
-                    context: ["bookId": book.identifier]
-                )
-                return fallback
-            }
-            return nil
-        }
-    }
-
-    /// Tries to reconstruct the position from `bookRegistry.location(...)`.
-    /// Each early-out logs a `[AUDIOPOS] FAIL` line so support can grep the
-    /// crashlog and see exactly which step dropped the saved position.
-    private func tryLoadPrimaryLocalPosition(
-        book: TPPBook,
-        audiobook: Audiobook
-    ) -> Result<TrackPosition, AudiobookPositionValidationFailure> {
-        guard let location = bookRegistry.location(forIdentifier: book.identifier) else {
-            positionLogger.logFailure(reason: "no_location", context: ["bookId": book.identifier])
-            return .failure(.trackKeyNotInManifest(savedKey: ""))
-        }
-        guard let dict = location.locationStringDictionary() else {
-            positionLogger.logFailure(reason: "locator_decode", context: ["bookId": book.identifier])
-            return .failure(.trackKeyNotInManifest(savedKey: ""))
-        }
-        guard let localBookmark = AudioBookmark.create(locatorData: dict) else {
-            positionLogger.logFailure(reason: "bookmark_create", context: ["bookId": book.identifier])
-            return .failure(.trackKeyNotInManifest(savedKey: ""))
-        }
-        guard let localPosition = TrackPosition(
-            audioBookmark: localBookmark,
-            toc: audiobook.tableOfContents.toc,
-            tracks: audiobook.tableOfContents.tracks
-        ) else {
-            positionLogger.logFailure(
-                reason: "trackposition_construct",
-                context: ["bookId": book.identifier]
-            )
-            return .failure(.trackKeyNotInManifest(savedKey: ""))
-        }
-        if let failure = validationFailure(for: localPosition, in: audiobook.tableOfContents) {
-            // Manifest keys for diagnostic context (first few only — avoid bloat).
-            let manifestKeys = audiobook.tableOfContents.tracks.tracks
-                .prefix(5).map(\.key).joined(separator: ",")
-            positionLogger.logFailure(
-                reason: failureReasonString(failure),
-                context: [
-                    "bookId": book.identifier,
-                    "savedKey": localPosition.track.key,
-                    "manifestKeys": manifestKeys
-                ]
-            )
-            return .failure(failure)
-        }
-        return .success(localPosition)
-    }
-
-    /// Returns the most-recent valid `TrackPosition` from
-    /// `bookRegistry.genericBookmarksForIdentifier(...)`, where "valid" means
-    /// the validator accepts it AND it parses against the current manifest.
-    /// Recency is by `lastSavedTimeStamp` (ISO8601), falling back to array
-    /// order when timestamps are missing.
-    func fallbackToMostRecentValidBookmark(
-        book: TPPBook,
-        audiobook: Audiobook
-    ) -> TrackPosition? {
-        let bookmarks = bookRegistry.genericBookmarksForIdentifier(book.identifier)
-        guard !bookmarks.isEmpty else { return nil }
-        return selectMostRecentValidBookmark(
-            from: bookmarks,
-            in: audiobook.tableOfContents
-        )
-    }
-
-    /// Pure candidate-selection seam: from a set of saved generic bookmarks,
-    /// reconstruct each against the manifest, drop any that fail validation,
-    /// and return the most-recent valid one (descending `lastSavedTimeStamp`,
-    /// which is ISO8601 and therefore lexicographically sortable).
-    ///
-    /// `internal` (not `private`) and threaded `AudiobookTableOfContents`
-    /// instead of the full `Audiobook` so the validation filter and the
-    /// recency ordering are mutation-testable from a unit test with a real
-    /// TOC + seeded `TPPBookLocation` fixtures — no live `Audiobook` /
-    /// player graph required. Mirrors the `validationFailure(for:in:)` seam.
-    func selectMostRecentValidBookmark(
-        from bookmarks: [TPPBookLocation],
-        in tableOfContents: AudiobookTableOfContents
-    ) -> TrackPosition? {
-        let candidates: [(TrackPosition, String)] = bookmarks.compactMap { location in
-            guard let dict = location.locationStringDictionary(),
-                  let bookmark = AudioBookmark.create(locatorData: dict),
-                  let position = TrackPosition(
-                    audioBookmark: bookmark,
-                    toc: tableOfContents.toc,
-                    tracks: tableOfContents.tracks
-                  ),
-                  validationFailure(for: position, in: tableOfContents) == nil else {
-                return nil
-            }
-            return (position, bookmark.lastSavedTimeStamp ?? "")
-        }
-
-        guard !candidates.isEmpty else { return nil }
-        // Descending by timestamp string (ISO8601 is lexicographically sortable).
-        let sorted = candidates.sorted { $0.1 > $1.1 }
-        return sorted.first?.0
-    }
-
-    /// Re-uses `AudiobookPositionPolicy.validate`. The thin shim adapts the
-    /// instance-level call site (which already has the toolkit's position
-    /// object) to the pure-function policy (which doesn't need the toolkit).
-    func validationFailure(
-        for position: TrackPosition,
-        in tableOfContents: AudiobookTableOfContents
-    ) -> AudiobookPositionValidationFailure? {
-        let trackKeyMatches = tableOfContents.tracks.track(forKey: position.track.key) != nil
-        let totalDuration = tableOfContents.tracks.totalDuration
-        let positionDuration = position.durationToSelf()
-        let result = AudiobookPositionPolicy.validate(
-            timestamp: position.timestamp,
-            positionDuration: positionDuration,
-            totalDuration: totalDuration,
-            trackKeyMatchesManifest: trackKeyMatches,
-            savedTrackKey: position.track.key
-        )
-        switch result {
-        case .success: return nil
-        case .failure(let f): return f
-        }
-    }
-
-    /// Maps a validation failure to a short greppable reason string for the
-    /// `[AUDIOPOS] FAIL: <reason>` log line. Keep these stable — they're
-    /// matched by support staff in crashlog triage.
-    private func failureReasonString(_ failure: AudiobookPositionValidationFailure) -> String {
-        switch failure {
-        case .negativeTimestamp: return "negative_timestamp"
-        case .nonFiniteTimestamp: return "non_finite_timestamp"
-        case .trackKeyNotInManifest: return "track_key_mismatch"
-        case .positionExceedsCap: return "position_exceeds_cap"
-        }
-    }
-
-    /// Kept as a thin wrapper for any in-file callers that just want a bool.
-    /// New code should use `validationFailure(for:in:)` directly so the
-    /// failure mode can be logged.
-    func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
-        return validationFailure(for: position, in: tableOfContents) == nil
-    }
-
-    // MARK: - Private Methods
-
-    /// HelpSpot 17727: Returns true when an audiobook OPEN (load) failed and the
-    /// user's account is in `.credentialsStale` state (set upstream by the network
-    /// layer when an authenticated request returned 401 / a recoverable auth doc),
-    /// AND the account is SAML with credentials, AND there's a current book to
-    /// re-open after re-auth. This is the load-path counterpart to
-    /// `shouldTriggerSAMLReauthForPlaybackFailure` (PP-3703, which handles the
-    /// playback-time 401 from OpenAccessPlayer).
-    ///
-    /// Why predicate on `authState == .credentialsStale` instead of inspecting the
-    /// load error's underlying NSError: most `AudiobookLoadError` cases don't
-    /// carry an HTTP-status-bearing underlying error (e.g. `manifestFetchFailed`
-    /// is a bare case, no associated value). The credentials-stale signal is
-    /// already propagated by `TPPNetworkResponder` / interceptors when any
-    /// authenticated request returns 401, so by the time the loader returns
-    /// failure we already know whether the credentials need refresh — just check
-    /// the latched signal rather than try to re-derive it from a partial error.
-    ///
-    /// Cancellation never triggers re-auth (a superseded open shouldn't drag the
-    /// user through a sign-in sheet they didn't ask for).
-    static func shouldTriggerSAMLReauthForLoadFailure(
-        loadError: AudiobookLoadError,
-        userAccount: TPPUserAccount,
-        currentBook: TPPBook?
-    ) -> Bool {
-        if case .cancelled = loadError {
-            return false
-        }
-        return userAccount.authState == .credentialsStale
-            && userAccount.authDefinition?.isSaml == true
-            && userAccount.hasCredentials()
-            && currentBook != nil
-    }
-
-    /// PP-3703: Returns true when playback failed due to bearer token refresh (e.g. 401 on CM fulfill)
-    /// and the account is SAML with credentials, so we should trigger re-auth and re-open the audiobook.
-    /// Extracted for unit testing to prevent regressions.
-    static func shouldTriggerSAMLReauthForPlaybackFailure(error: Error?, userAccount: TPPUserAccount, currentBook: TPPBook?) -> Bool {
-        let nsError = error as NSError?
-        let isAuthRequired = nsError?.domain == Self.openAccessPlayerErrorDomain
-            && nsError?.code == Self.openAccessPlayerErrorAuthenticationRequiredCode
-        return isAuthRequired
-            && userAccount.authDefinition?.isSaml == true
-            && userAccount.hasCredentials()
-            && currentBook != nil
-    }
-
-    private static let openAccessPlayerErrorDomain = "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer"
-    private static let openAccessPlayerErrorAuthenticationRequiredCode = 5 // OpenAccessPlayerError.authenticationRequired
-
-#if FEATURE_OVERDRIVE
-    /// WS-3 (3.2.0 crash-triage `04373e48`/`d2c9e0ef`): an OverDrive audiobook
-    /// streams from time-limited SIGNED URLs embedded in its on-disk manifest.
-    /// When those URLs expire the toolkit surfaces a `.playbackFailed` carrying
-    /// an HTTP-`410` error and — because OverDrive is not SAML — the recovery in
-    /// `handleManagerState` falls through to a `.unknown` dead-end with no way to
-    /// play. Returns true when the failure is a RECOVERABLE signed-URL expiry a
-    /// fresh re-fulfill can fix: an OverDrive book, an HTTP-410 (Gone) signal, and
-    /// no prior re-fulfill this session.
-    ///
-    /// Conservative by design (per "when in doubt, don't re-fulfill — a false
-    /// dead-end is safer than retrying into a revoked loan"): 401/auth and
-    /// loan-revoked are handled elsewhere (toolkit bearer refresh / SAML re-auth)
-    /// and are NOT retried here; HTTP-403 is excluded because it is ambiguous
-    /// (signed-URL expiry vs entitlement denial) absent a confirmed OverDrive
-    /// expiry signature; an error with no extractable HTTP status is NOT retried.
-    /// Mirrors `shouldTriggerSAMLReauthForPlaybackFailure`.
-    static func shouldTriggerOverdriveRefulfillForPlaybackFailure(
-        error: Error?,
-        book: TPPBook?,
-        alreadyAttempted: Bool
-    ) -> Bool {
-        guard !alreadyAttempted, let book else { return false }
-        guard book.distributor?.lowercased() == OverdriveDistributorKey.lowercased() else { return false }
-        // A clean HTTP 410 (Gone) is the textbook signed-URL expiry. But the toolkit
-        // streams OverDrive tracks through AVFoundation, which collapses a 410 on a
-        // track fetch into `NSURLErrorDomain -1008` (NSURLErrorResourceUnavailable)
-        // with NO extractable httpStatusCode — so the 410-only gate never actually
-        // fired in the field (device repro: Mi historia / A1QA, 2026-07-15: expired
-        // `links.contentlinks` signed URLs → 410 → surfaced as -1008 → dead-ended to
-        // "A Problem Has Occurred"). Treat that resource-unavailable signal as the
-        // same recoverable expiry a fresh re-fulfill fixes. Still conservative: 401/
-        // 403 arrive as an httpStatusCode (!= 410) and no-network (-1009) / timeout
-        // (-1001) are NOT resource-unavailable, so all fall through to false.
-        if httpStatusCode(from: error) == 410 { return true }
-        return isResourceUnavailable(from: error)
-    }
-
-#endif
-
-    // NOTE (forward-port): `isResourceUnavailable(from:)` is deliberately OUTSIDE
-    // the `#if FEATURE_OVERDRIVE` block. It began as an OverDrive-only helper, but
-    // 323-Cause-3's distributor-agnostic `isExpiredEntitlementSignal` needs the
-    // same signal and must compile in the noDRM configuration. develop's richer
-    // implementation is kept (it also inspects the flattened
-    // `underlyingDomain`/`underlyingCode` scalars) and the hotfix's simpler
-    // `isResourceUnavailable(_:)` was folded into it — one implementation, the
-    // strictly-more-thorough one.
-    /// True iff `error` carries an `NSURLErrorResourceUnavailable` (-1008) signal —
-    /// the AVFoundation manifestation of an expired OverDrive signed-URL 410. Checks
-    /// the top-level error (the raw shape handed to `.playbackFailed`), the flattened
-    /// `underlyingDomain`/`underlyingCode` userInfo scalars stamped by
-    /// `buildPlaybackFailureRecord`, and one level down the `NSUnderlyingError` chain.
-    /// Scoped to -1008 ONLY: -1009 (offline) and -1001 (timeout) are deliberately not
-    /// matched — re-fulfilling into those would just fail again.
-    static func isResourceUnavailable(from error: Error?) -> Bool {
-        guard let nsError = error as NSError? else { return false }
-        func matches(domain: String, code: Int) -> Bool {
-            domain == NSURLErrorDomain && code == NSURLErrorResourceUnavailable
-        }
-        if matches(domain: nsError.domain, code: nsError.code) { return true }
-        // Defensive: the flattened `underlyingDomain`/`underlyingCode` scalars are the
-        // shape `buildPlaybackFailureRecord` produces for the Crashlytics record. That
-        // record is NOT the error handed to this gate at runtime (the raw error is —
-        // caught by the top-level and nested-chain branches), so this branch is
-        // belt-and-suspenders against a future call site that passes the built record.
-        if let underlyingDomain = nsError.userInfo["underlyingDomain"] as? String,
-           let underlyingCode = nsError.userInfo["underlyingCode"] as? Int,
-           matches(domain: underlyingDomain, code: underlyingCode) {
-            return true
-        }
-        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
-           matches(domain: underlying.domain, code: underlying.code) {
-            return true
-        }
-        return false
-    }
-
-    // FORWARD-PORT: the hotfix relocated `shouldAutoReopenOnColdLoadFailure`
-    // out of `#if FEATURE_OVERDRIVE` for the noDRM build. develop had already
-    // made the identical move for the identical reason, so the hotfix's copy is
-    // dropped here and develop's (below, with the fuller rationale) is kept —
-    // one declaration, same behavior.
-
-    /// Extracts an HTTP status code from a playback error. The toolkit's network
-    /// layer stamps `userInfo["httpStatusCode"]` on download/streaming failures
-    /// (`OpenAccessDownloadTask`); we also walk one level of the
-    /// `NSUnderlyingError` chain.
-    ///
-    /// Relocated OUT of the `#if FEATURE_OVERDRIVE` block (323-Cause-3) so the
-    /// distributor-agnostic bearer-token recovery below can reuse it in every
-    /// build configuration (the OverDrive predicate above still calls it — same
-    /// type, so ordering is irrelevant).
-    static func httpStatusCode(from error: Error?) -> Int? {
-        guard let nsError = error as NSError? else { return nil }
-        if let status = nsError.userInfo["httpStatusCode"] as? Int { return status }
-        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
-           let status = underlying.userInfo["httpStatusCode"] as? Int {
-            return status
-        }
-        return nil
-    }
-
-    // MARK: - 323-Cause-3 (HelpSpot #18471): mid-listen expired-entitlement recovery
-
-    // FORWARD-PORT: the hotfix's `isResourceUnavailable(_:)` lived here. It was
-    // folded into develop's `isResourceUnavailable(from:)` above — a strict
-    // superset (same domain/code check plus the flattened
-    // `underlyingDomain`/`underlyingCode` scalars) — so there is ONE
-    // implementation rather than two near-identical helpers that could drift.
-
-    /// True when a playback error carries an expired-entitlement signal a fresh
-    /// re-fulfill can recover: an HTTP 410 (Gone) or 403 (Forbidden) surfaced by
-    /// the toolkit's network layer, or a URLError -1008 (resourceUnavailable)
-    /// from an expired signed URL. 403 is included here (unlike the OverDrive
-    /// predicate, which excludes it) because the bearer-token recovery below is
-    /// non-destructive — see `shouldTriggerBearerTokenRefulfillForPlaybackFailure`.
-    static func isExpiredEntitlementSignal(_ error: Error?) -> Bool {
-        if let status = httpStatusCode(from: error), status == 410 || status == 403 {
-            return true
-        }
-        return isResourceUnavailable(from: error)
-    }
-
-    /// 323-Cause-3 (HelpSpot #18471): generalizes mid-listen expired-entitlement
-    /// recovery beyond OverDrive to **bearer-token audiobooks** — the vendors
-    /// (BiblioBoard, Unlimited Listens, and any other title fulfilled through an
-    /// `application/vnd.librarysimplified.bearer-token+json` acquisition) whose
-    /// signed content URL / entitlement expires MID-LISTEN. Before this fix such
-    /// a title matched NONE of the recovery paths (SAML is 401-only, OverDrive is
-    /// distributor-gated, cold-load reopen is `!hasEverStartedPlayback`-gated) and
-    /// dead-ended at the "content no longer available" alert.
-    ///
-    /// Recovery uses the SAME proven mechanism as OverDrive: re-open via
-    /// `AudiobookLoader(forceRefulfill: true)`, which drops the stale on-disk
-    /// manifest and re-fetches a FRESH manifest (fresh signed URLs) from the CM
-    /// through `BearerTokenAdapter`. It is **non-destructive**: it re-fetches the
-    /// existing fulfillment link, it does NOT re-borrow — so a genuinely-revoked
-    /// or truly-expired loan simply re-fails the fetch and falls through to the
-    /// existing terminal error UX (no regression, no false loan extension). That
-    /// non-destructiveness is why 403 is accepted here even though the OverDrive
-    /// path conservatively excludes it: the worst case is one bounded, harmless
-    /// re-fetch before the same alert the user would have seen anyway.
-    ///
-    /// Positive allowlist by acquisition type (`ContentTypeBearerToken`) — this
-    /// is exactly the set the loader's `BearerTokenMIMEGate` claims for fresh
-    /// fulfillment, so the recovery only fires where re-fetching the manifest IS
-    /// the fix. Everything else is left on the existing terminal alert by
-    /// construction:
-    ///  - **OverDrive** carries an overdrive-profile acquisition, not
-    ///    bearer-token, so it never matches here; its dedicated 410 path above
-    ///    runs first and is kept byte-identical.
-    ///  - **LCP / Palace Marketplace** audiobooks: a mid-listen LCP failure is
-    ///    LICENSE/loan expiry, not a signed-URL expiry. The `.lcpa` is already on
-    ///    disk and `redownloadLCPContentFile` skips-if-present + re-fulfills from
-    ///    the stale on-disk `.lcpl`, so it CANNOT refresh an expired license. The
-    ///    terminal alert is the correct outcome — left on the existing fallback.
-    ///  - **Findaway / Audible** carry a distinct `ContentTypeFindaway`
-    ///    acquisition (never bearer-token); their AudioEngine session re-fulfill
-    ///    is not safely verifiable for a hotfix, so they too stay on the alert.
-    ///
-    /// NOT gated on `hasEverStartedPlayback` — that is the mid-listen exclusion
-    /// this fix lifts. Bounded to one attempt per book per session by
-    /// `alreadyAttempted` (mirrors the OverDrive + cold-load guards) so a
-    /// persistent failure reaches the alert instead of looping. Pure, so the
-    /// trigger classification is pinned by mutation testing.
-    static func shouldTriggerBearerTokenRefulfillForPlaybackFailure(
-        error: Error?,
-        book: TPPBook?,
-        alreadyAttempted: Bool
-    ) -> Bool {
-        guard !alreadyAttempted, let book else { return false }
-        guard book.defaultAcquisition?.type == ContentTypeBearerToken else { return false }
-        return isExpiredEntitlementSignal(error)
-    }
 
     /// PP-4542 / 323-Cause-1: the upfront LCP content gate. If the audiobook is
     /// openable but its `.lcpa` content package isn't on disk, TRIGGER the
@@ -2771,6 +2231,28 @@ public final class AudiobookSessionManager: ObservableObject {
             playbackStatePublisher.send(state)
 
         case .playbackFailed(let position, let error):
+            // One decision for both the published state and the recovery that
+            // runs, so the two cannot disagree. See
+            // `AudiobookPlaybackRecoveryReducer` for the precedence and for the
+            // `keepsPlayerLoading` divergence this preserves.
+            let failedBookId = currentBook?.identifier
+            let recovery = AudiobookPlaybackRecoveryReducer.decide(
+                AudiobookPlaybackFailureContext(
+                    error: error,
+                    book: currentBook,
+                    userAccount: accountsManager.currentUserAccount,
+                    isAwaitingContentDownload: awaitingContentDownloadBookIds.contains(bookId),
+                    overdriveRefulfillAlreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId),
+                    bearerTokenRefulfillAlreadyAttempted: bearerTokenRefulfillAttemptedBookIds.contains(bookId),
+                    coldLoadReopenAlreadyAttempted: coldLoadReopenAttemptedBookIds.contains(bookId),
+                    hasEverStartedPlayback: hasEverStartedPlayback,
+                    contentIsLocal: {
+                        guard let failedBookId else { return false }
+                        return AudiobookSessionManager.audiobookContentIsLocal(failedBookId)
+                    }
+                )
+            )
+
             // PP-4542 (A): if we're already parked awaiting this book's content
             // download (a fresh-borrow streaming failure), swallow the streaming
             // player's follow-on failure storm. Without this, a second
@@ -2778,7 +2260,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // is now true) and dead-ends to the "Unavailable" alert while the
             // await is still in flight — which is exactly what defeated the wait
             // in the field repro.
-            if awaitingContentDownloadBookIds.contains(bookId) {
+            if recovery == .ignoreFollowOnFailure {
                 Log.info(#file, "Ignoring follow-on playback failure for \(bookId) — already awaiting content download (PP-4542)")
                 return
             }
@@ -2786,28 +2268,13 @@ public final class AudiobookSessionManager: ObservableObject {
             Log.error(#file, "Playback failed at position: \(String(describing: position))")
             isPlaying = false
 
-            // Decide up front whether ANY recovery will be attempted. If one will,
-            // keep the player in a `.loading` (recovering) state so the presenter
-            // shows the loading shell instead of flashing an error dialog that the
-            // recovery then immediately undoes — the error-then-recover flicker
-            // patrons saw on the OverDrive expired-URL path (PP-4800). Only a truly
-            // terminal failure (no recovery applies) publishes `.error`. The
-            // predicates are pure and side-effect-free, so evaluating them here
-            // changes none of the recovery control flow below.
-            let userAccount = accountsManager.currentUserAccount
-            var willRecover = Self.shouldTriggerSAMLReauthForPlaybackFailure(
-                error: error, userAccount: userAccount, currentBook: currentBook)
-#if FEATURE_OVERDRIVE
-            willRecover = willRecover || Self.shouldTriggerOverdriveRefulfillForPlaybackFailure(
-                error: error, book: currentBook,
-                alreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId))
-#endif
-            willRecover = willRecover || Self.shouldAutoReopenOnColdLoadFailure(
-                hasEverStartedPlayback: hasEverStartedPlayback,
-                hasCurrentBook: currentBook != nil,
-                alreadyAttempted: coldLoadReopenAttemptedBookIds.contains(bookId))
-
-            state = willRecover
+            // While a recovery is in flight the player holds a `.loading`
+            // (recovering) state so the presenter shows the loading shell
+            // instead of flashing an error dialog that the recovery then
+            // immediately undoes — the error-then-recover flicker patrons saw
+            // on the OverDrive expired-URL path (PP-4800). Only a terminal
+            // failure publishes `.error`.
+            state = recovery.keepsPlayerLoading
                 ? .loading(bookId: bookId)
                 : .error(bookId: bookId, message: "Playback failed")
             playbackStatePublisher.send(state)
@@ -2820,20 +2287,24 @@ public final class AudiobookSessionManager: ObservableObject {
             // underlying error code, HTTP status, track URL, and book id.
             Self.recordPlaybackFailure(error: error, position: position, bookId: bookId)
 
-            // PP-3703 (swarm_66819d80 Module C migration): When BiblioBoard
-            // bearer token refresh fails due to SAML session expiration
-            // (401 on CM fulfill link), the AuthCoordinator picks the
-            // mechanism (SAML/OIDC modal, basic silent refresh, etc.) so
-            // this site no longer carries IdP-dispatch knowledge. The
-            // `shouldTriggerSAMLReauthForPlaybackFailure` boundary
-            // predicate is preserved — it still gates whether we even ask
-            // the coordinator (cancellations and non-SAML accounts skip
-            // the entire path) — but the IdP-specific reauth (`new
-            // TPPReauthenticator()` + `markCredentialsStale()`) is
-            // collapsed into a single `refreshCredentialsIfNeeded` call.
-            // (`userAccount` is computed once above for the willRecover check.)
-            if Self.shouldTriggerSAMLReauthForPlaybackFailure(error: error, userAccount: userAccount, currentBook: currentBook),
-               let book = currentBook {
+            switch recovery {
+            case .ignoreFollowOnFailure:
+                // Handled by the early return above; unreachable here.
+                return
+
+            case .samlReauth:
+                // PP-3703 (swarm_66819d80 Module C migration): When BiblioBoard
+                // bearer token refresh fails due to SAML session expiration
+                // (401 on CM fulfill link), the AuthCoordinator picks the
+                // mechanism (SAML/OIDC modal, basic silent refresh, etc.) so
+                // this site no longer carries IdP-dispatch knowledge. The
+                // boundary predicate is preserved in the reducer — it still
+                // gates whether we even ask the coordinator (cancellations and
+                // non-SAML accounts skip the entire path) — but the
+                // IdP-specific reauth (`new TPPReauthenticator()` +
+                // `markCredentialsStale()`) is collapsed into a single
+                // `refreshCredentialsIfNeeded` call.
+                guard let book = currentBook else { return }
                 Log.info(#file, "Playback failed with auth-required signal — dispatching through AuthCoordinator")
                 let coordinator = AppContainer.production().authCoordinator
                 Task { [weak self] in
@@ -2855,26 +2326,22 @@ public final class AudiobookSessionManager: ObservableObject {
                     }
                 }
                 return
-            }
 
+            case .overdriveRefulfill:
 #if FEATURE_OVERDRIVE
-            // WS-3 (3.2.0 crash-triage / PP-4800): OverDrive streams from
-            // time-limited signed URLs and has no SAML session to re-auth — an
-            // expired URL surfaces here (as AVPlayer -1008 / HTTP 410) and would
-            // otherwise dead-end as `.unknown`. Recover by re-fulfilling FRESH
-            // signed URLs. NOTE: this must route through the DOWNLOAD path, not
-            // the audiobook loader — the loader's `forceRefulfill` sends OverDrive
-            // to `OpenAccessAdapter`, whose generic bearer-token second leg hits
-            // OverDrive's `downloadlink` WITHOUT the `x-overdrive-scope` /
-            // `x-overdrive-patron-authorization` headers → 401 (device-confirmed).
-            // Only `OverdriveDownloadHandler.processOverdriveDownload` runs the 302
-            // header dance that authorizes fresh URLs. Bounded to one attempt per
-            // session so a persistent failure cannot loop on this shared handler.
-            if Self.shouldTriggerOverdriveRefulfillForPlaybackFailure(
-                error: error,
-                book: currentBook,
-                alreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId)
-            ), let book = currentBook {
+                // WS-3 (3.2.0 crash-triage / PP-4800): OverDrive streams from
+                // time-limited signed URLs and has no SAML session to re-auth — an
+                // expired URL surfaces here (as AVPlayer -1008 / HTTP 410) and would
+                // otherwise dead-end as `.unknown`. Recover by re-fulfilling FRESH
+                // signed URLs. NOTE: this must route through the DOWNLOAD path, not
+                // the audiobook loader — the loader's `forceRefulfill` sends OverDrive
+                // to `OpenAccessAdapter`, whose generic bearer-token second leg hits
+                // OverDrive's `downloadlink` WITHOUT the `x-overdrive-scope` /
+                // `x-overdrive-patron-authorization` headers → 401 (device-confirmed).
+                // Only `OverdriveDownloadHandler.processOverdriveDownload` runs the 302
+                // header dance that authorizes fresh URLs. Bounded to one attempt per
+                // session so a persistent failure cannot loop on this shared handler.
+                guard let book = currentBook else { return }
                 Log.info(#file, "OverDrive audiobook playback failed on an expired signed URL — re-fulfilling via the download center and re-opening")
                 overdriveRefulfillAttemptedBookIds.insert(bookId)
                 Task { [weak self] in
@@ -2882,30 +2349,25 @@ public final class AudiobookSessionManager: ObservableObject {
                     guard self.currentBook?.identifier == book.identifier else { return }
                     await self.recoverExpiredOverdriveByRefulfilling(book)
                 }
-                return
-            }
 #endif
+                return
 
-            // 323-Cause-3 (HelpSpot #18471): generalize mid-listen expired-
-            // entitlement recovery beyond OverDrive to bearer-token audiobooks
-            // (BiblioBoard / Unlimited Listens / other bearer-token vendors). A
-            // signed-URL / entitlement expiry MID-LISTEN previously dead-ended
-            // here for every non-OverDrive, non-SAML vendor (see the "403 from
-            // BiblioBoard fell through to a generic toast" note above). Re-open
-            // via the proven fresh-fulfillment loader path (forceRefulfill:
-            // drops the stale on-disk manifest, re-fetches fresh signed URLs
-            // through BearerTokenAdapter). Non-destructive: it does NOT re-borrow,
-            // so a genuinely-revoked loan simply re-fails the open and falls
-            // through to the existing terminal error UX (BookService
-            // .showAudiobookTryAgainError / errorPublisher) — no regression, no
-            // new copy. Bounded to one attempt per book per session; fires
-            // regardless of hasEverStartedPlayback, which is the mid-listen
-            // exclusion this fix lifts.
-            if Self.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
-                error: error,
-                book: currentBook,
-                alreadyAttempted: bearerTokenRefulfillAttemptedBookIds.contains(bookId)
-            ), let book = currentBook {
+            case .bearerTokenRefulfill:
+                // 323-Cause-3 (HelpSpot #18471): generalize mid-listen expired-
+                // entitlement recovery beyond OverDrive to bearer-token audiobooks
+                // (BiblioBoard / Unlimited Listens / other bearer-token vendors). A
+                // signed-URL / entitlement expiry MID-LISTEN previously dead-ended
+                // here for every non-OverDrive, non-SAML vendor. Re-open via the
+                // proven fresh-fulfillment loader path (forceRefulfill: drops the
+                // stale on-disk manifest, re-fetches fresh signed URLs through
+                // BearerTokenAdapter). Non-destructive: it does NOT re-borrow, so a
+                // genuinely-revoked loan simply re-fails the open and falls through
+                // to the existing terminal error UX (BookService
+                // .showAudiobookTryAgainError / errorPublisher) — no regression, no
+                // new copy. Bounded to one attempt per book per session; fires
+                // regardless of hasEverStartedPlayback, which is the mid-listen
+                // exclusion this fix lifts.
+                guard let book = currentBook else { return }
                 Log.info(#file, "Bearer-token audiobook playback failed on an expired entitlement — re-fulfilling fresh manifest and re-opening (323-Cause-3)")
                 bearerTokenRefulfillAttemptedBookIds.insert(bookId)
                 Task { [weak self] in
@@ -2914,73 +2376,67 @@ public final class AudiobookSessionManager: ObservableObject {
                     _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: true)
                 }
                 return
-            }
 
-            // PP-4542: cold-load auto-recovery. A first cold open of an LCP
-            // audiobook can fail transiently because the encrypted package
-            // isn't fully materialized yet — the toolkit's resource loader
-            // reads a byte-range past the not-yet-complete ZIP and surfaces
-            // ReadiumZIPFoundation rangeOutOfBounds (a Readium 3.9.0 / PP-4340
-            // regression). Re-opening succeeds once the data has landed, which
-            // is exactly what users discover by re-tapping. Do ONE re-open
-            // automatically before surfacing any error. Bounded to one attempt
-            // per book per session (mirrors the OverDrive refulfill guard) so a
-            // genuinely persistent failure can't loop and still reaches the
-            // alert below. The toolkit-side retry (LCPResourceLoaderDelegate) is
-            // the primary fix; this is the belt-and-suspenders guard for
-            // cold-load failures it doesn't absorb.
-            if Self.shouldAutoReopenOnColdLoadFailure(
-                   hasEverStartedPlayback: hasEverStartedPlayback,
-                   hasCurrentBook: currentBook != nil,
-                   alreadyAttempted: coldLoadReopenAttemptedBookIds.contains(bookId)
-               ), let book = currentBook {
-                coldLoadReopenAttemptedBookIds.insert(bookId)
-
+            case .coldLoadAwaitContentThenReopen:
                 // PP-4542 (A): the freshly-borrowed LCP audiobook case. A book is
                 // marked download-successful the instant the tiny .lcpl license
                 // lands, but the full .lcpa content keeps downloading in the
                 // background and only lands atomically on completion. Until then,
                 // the open *streams* — and streaming a fresh borrow is unreliable
-                // (the 3.2.0-only "Audiobook Unavailable"; root cause tracked as
-                // B). Re-opening the SAME not-ready stream a few ms later just
-                // fails again, even though simply waiting for the in-flight
-                // download would play perfectly from the local path (exactly what
-                // users discover by re-tapping later). So when the content isn't
-                // on disk yet, hold a loading state and re-open from the reliable
-                // local path the moment the download lands — instead of dead-
-                // ending to the alert.
+                // (the 3.2.0-only "Audiobook Unavailable"). Re-opening the SAME
+                // not-ready stream a few ms later just fails again, even though
+                // simply waiting for the in-flight download would play perfectly
+                // from the local path. So when the content isn't on disk yet, hold
+                // a loading state and re-open from the reliable local path the
+                // moment the download lands — instead of dead-ending to the alert.
                 // Cannot stack with the upfront `#if LCP` gate in openAudiobook:
                 // that gate fires BEFORE any playback attempt and `return`s on
                 // timeout (no loader.load → no streaming → no .playbackFailed),
-                // and on success the content is local so the guard below is
-                // false. This reactive wait therefore only covers non-LCP books
+                // and on success the content is local so this arm is not selected.
+                // This reactive wait therefore only covers non-LCP books
                 // downloading mid-open — a single 180s window, never 180+180.
-                if !Self.audiobookContentIsLocal(book.identifier) {
-                    Log.info(#file, "Cold-load failure while content still downloading — awaiting local content before re-opening (PP-4542)")
-                    // Park this book so the streaming player's follow-on failure
-                    // storm is swallowed (see the guard at the top of this case)
-                    // instead of racing past us to the "Unavailable" alert.
-                    awaitingContentDownloadBookIds.insert(book.identifier)
-                    state = .loading(bookId: book.identifier)
-                    playbackStatePublisher.send(state)
-                    Task { [weak self] in
-                        guard let self else { return }
-                        let becameLocal = await Self.awaitAudiobookContentLocal(book.identifier)
-                        // The wait is over — stop swallowing failures for this book
-                        // so the re-open's own success/failure drives the UI.
-                        self.awaitingContentDownloadBookIds.remove(book.identifier)
-                        guard self.currentBook?.identifier == book.identifier else { return }
-                        if becameLocal {
-                            Log.info(#file, "Content download landed — re-opening audiobook from local path")
-                            _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: false, isColdLoadRecovery: true)
-                        } else {
-                            Log.info(#file, "Content download did not land within wait window — surfacing unavailable alert")
-                            await self.dismissAndPresentColdLoadUnavailable()
-                        }
+                guard let book = currentBook else { return }
+                coldLoadReopenAttemptedBookIds.insert(bookId)
+                Log.info(#file, "Cold-load failure while content still downloading — awaiting local content before re-opening (PP-4542)")
+                // Park this book so the streaming player's follow-on failure
+                // storm is swallowed (see the guard at the top of this case)
+                // instead of racing past us to the "Unavailable" alert.
+                awaitingContentDownloadBookIds.insert(book.identifier)
+                state = .loading(bookId: book.identifier)
+                playbackStatePublisher.send(state)
+                Task { [weak self] in
+                    guard let self else { return }
+                    let becameLocal = await Self.awaitAudiobookContentLocal(book.identifier)
+                    // The wait is over — stop swallowing failures for this book
+                    // so the re-open's own success/failure drives the UI.
+                    self.awaitingContentDownloadBookIds.remove(book.identifier)
+                    guard self.currentBook?.identifier == book.identifier else { return }
+                    if becameLocal {
+                        Log.info(#file, "Content download landed — re-opening audiobook from local path")
+                        _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: false, isColdLoadRecovery: true)
+                    } else {
+                        Log.info(#file, "Content download did not land within wait window — surfacing unavailable alert")
+                        await self.dismissAndPresentColdLoadUnavailable()
                     }
-                    return
                 }
+                return
 
+            case .coldLoadReopen:
+                // PP-4542: cold-load auto-recovery. A first cold open of an LCP
+                // audiobook can fail transiently because the encrypted package
+                // isn't fully materialized yet — the toolkit's resource loader
+                // reads a byte-range past the not-yet-complete ZIP and surfaces
+                // ReadiumZIPFoundation rangeOutOfBounds (a Readium 3.9.0 / PP-4340
+                // regression). Re-opening succeeds once the data has landed, which
+                // is exactly what users discover by re-tapping. Do ONE re-open
+                // automatically before surfacing any error. Bounded to one attempt
+                // per book per session (mirrors the OverDrive refulfill guard) so a
+                // genuinely persistent failure can't loop and still reaches the
+                // alert. The toolkit-side retry (LCPResourceLoaderDelegate) is the
+                // primary fix; this is the belt-and-suspenders guard for cold-load
+                // failures it doesn't absorb.
+                guard let book = currentBook else { return }
+                coldLoadReopenAttemptedBookIds.insert(bookId)
                 Log.info(#file, "Cold-load failure detected — attempting one automatic re-open before surfacing alert")
                 Task { [weak self] in
                     guard let self else { return }
@@ -2988,23 +2444,26 @@ public final class AudiobookSessionManager: ObservableObject {
                     _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: false, isColdLoadRecovery: true)
                 }
                 return
-            }
 
-            errorPublisher.send(.unknown("Playback failed"))
+            case .terminal(let dismissAndAlert):
+                errorPublisher.send(.unknown("Playback failed"))
 
-            // Cold-load failure that persisted past the one silent auto-reopen
-            // above (or a failure after playback had already started): dismiss
-            // the player and surface an honest "not playable right now" alert.
-            // NOT a retry offer — we already retried once silently; a button
-            // would just invite rage-tapping for no outcome. The user can re-tap
-            // the book themselves; that's natural UX, not a fake affordance.
-            if !hasEverStartedPlayback, currentBook != nil {
-                Log.info(#file, "Cold-load failure persisted after auto re-open — dismissing player UI and showing unavailable alert")
-                Task { [weak self] in
-                    guard let self else { return }
-                    await self.dismissAndPresentColdLoadUnavailable()
+                // Cold-load failure that persisted past the one silent auto-reopen
+                // (or a failure after playback had already started): dismiss the
+                // player and surface an honest "not playable right now" alert.
+                // NOT a retry offer — we already retried once silently; a button
+                // would just invite rage-tapping for no outcome. The user can
+                // re-tap the book themselves; that's natural UX, not a fake
+                // affordance.
+                if dismissAndAlert {
+                    Log.info(#file, "Cold-load failure persisted after auto re-open — dismissing player UI and showing unavailable alert")
+                    Task { [weak self] in
+                        guard let self else { return }
+                        await self.dismissAndPresentColdLoadUnavailable()
+                    }
                 }
             }
+
 
         case .playbackCompleted(let position):
             // A CHAPTER ended, not the book. PP-4951: this used to set
@@ -3083,53 +2542,5 @@ public final class AudiobookSessionManager: ObservableObject {
             isPlaying: isPlaying,
             playbackRate: audiobook.player.playbackRate
         )
-    }
-}
-
-/// One-shot resume guard (PP-4542): ensures a `CheckedContinuation` is resumed
-/// exactly once when a bounded await races a timeout against a completion
-/// callback. NSLock-guarded so the (possibly background-thread) sync callback and
-/// the MainActor timeout can race safely without a double-resume trap.
-///
-/// - Sendable invariant: this guard is captured by both the (possibly
-///   off-main) `syncLocation` completion and the `@MainActor` timeout `Task` —
-///   i.e. it deliberately crosses concurrency domains. That is safe because its
-///   only mutable state (`fired`) is read and written EXCLUSIVELY under `lock`,
-///   so the two racing `fire(_:)` calls serialize and exactly one runs `block`.
-///   Hence `@unchecked Sendable` (the lock discipline is the invariant the
-///   compiler cannot see).
-private final class PositionResolveOnce: @unchecked Sendable {
-    private let lock = NSLock()
-    private var fired = false
-    func fire(_ block: @Sendable () -> Void) {
-        lock.lock()
-        if fired {
-            lock.unlock()
-            return
-        }
-        fired = true
-        lock.unlock()
-        block()
-    }
-}
-
-/// `Sendable` carrier for a resolved `TrackPosition?` crossing the
-/// `awaitRemotePosition` continuation boundary.
-///
-/// `TrackPosition` lives in the un-Sendable-audited PalaceAudiobookToolkit, so
-/// resuming `CheckedContinuation<TrackPosition?, …>` with it trips the
-/// `sending` diagnostic (which `@preconcurrency import` does not silence). The
-/// value is produced fresh inside the off-actor `syncLocation` completion and
-/// consumed once on `@MainActor` after the `await`, so boxing it makes the
-/// hand-off explicit rather than crossing a bare non-Sendable value.
-///
-/// - Sendable invariant: `value` is set once at init and only read thereafter
-///   — the wrapped `TrackPosition?` is never mutated after boxing, so there is
-///   no shared mutation. The `@unchecked` waiver covers only the toolkit type
-///   the compiler cannot prove `Sendable`.
-private struct SendableTrackPositionBox: @unchecked Sendable {
-    let value: TrackPosition?
-    init(_ value: TrackPosition?) {
-        self.value = value
     }
 }
