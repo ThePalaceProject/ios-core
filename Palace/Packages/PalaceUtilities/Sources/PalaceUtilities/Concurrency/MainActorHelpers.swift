@@ -132,6 +132,13 @@ actor Debouncer {
         task?.cancel()
         task = nil
     }
+
+    /// Test-only join: returns once the most recently scheduled work has run,
+    /// or been cancelled. A test awaits this instead of sleeping past the
+    /// debounce duration and racing the scheduler to run the work.
+    func _awaitPendingForTesting() async {
+        await task?.value
+    }
 }
 
 // MARK: - Throttling

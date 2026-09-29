@@ -94,8 +94,10 @@ final class MainActorHelpersTests: XCTestCase {
             }
         }
 
-        // Wait for debounce duration to pass
-        try await Task.sleep(nanoseconds: 150_000_000)
+        // Join the last scheduled work rather than sleeping past the duration:
+        // a fixed 150ms sleep could expire before the scheduler ran the 50ms
+        // debounced task, and the test then read 0 (seen on CI, run 36596835929).
+        await debouncer._awaitPendingForTesting()
         let finalValue = await counter.value
         XCTAssertEqual(finalValue, 5, "Only the last debounced call should execute")
     }
