@@ -362,17 +362,26 @@ struct AppTabHostView: View {
     @ViewBuilder
     static func tabLabel(for tab: AppTab) -> some View {
         switch tab {
+        // Each `Label`'s title is the tab's accessible name, so the raster
+        // icon beside it is decoration: an element of its own would make
+        // VoiceOver announce every tab twice.
         case .catalog:
             Label { Text(Strings.Settings.catalog) } icon: {
-                Image("Catalog").renderingMode(.template)
+                Image("Catalog")
+                    .renderingMode(.template)
+                    .accessibilityHidden(true)
             }
         case .myBooks:
             Label { Text(Strings.MyBooksView.navTitle) } icon: {
-                Image("MyBooks").renderingMode(.template)
+                Image("MyBooks")
+                    .renderingMode(.template)
+                    .accessibilityHidden(true)
             }
         case .holds:
             Label { Text(Strings.HoldsView.reservations) } icon: {
-                Image("Holds").renderingMode(.template)
+                Image("Holds")
+                    .renderingMode(.template)
+                    .accessibilityHidden(true)
             }
         case .settings:
             Label(Strings.Settings.settings, systemImage: "gearshape")

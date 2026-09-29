@@ -52,6 +52,10 @@ final class ReadiumPDFViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        // Names the screen for assistive technology. The navigator is embedded
+        // in SwiftUI chrome that draws its own bar, so this sets no visible
+        // navigation-bar title.
+        title = book.title
         installNavigator()
     }
 

@@ -23,13 +23,14 @@
       "enabled": true,
       "severity": "minor"
     },
-    "A11Y.SWIFTUI.TOUCH_TARGET": {
+    "A11Y.SWIFTUI.TOUCH_TARGET_SIZE": {
       "enabled": true,
       "severity": "major"
     },
     "A11Y.SWIFTUI.ACCESSIBILITY_HINT": {
-      "enabled": true,
-      "severity": "info"
+      "enabled": false,
+      "severity": "info",
+      "disabled_reason": "Hints are optional per Apple's guidance and VoiceOver users can turn them off. This rule produced 116 of 193 findings on develop (60%), all info-level, which drowned 35 major findings that matter. Re-enable if the corpus of real findings is ever cleared and we want the extra polish."
     },
     "A11Y.SWIFTUI.ORIENTATION_LOCK": {
       "enabled": true,
@@ -67,13 +68,14 @@
       "enabled": true,
       "severity": "minor"
     },
-    "A11Y.UIKIT.TOUCH_TARGET": {
+    "A11Y.UIKIT.TOUCH_TARGET_SIZE": {
       "enabled": true,
       "severity": "major"
     },
     "A11Y.UIKIT.ACCESSIBILITY_HINT": {
-      "enabled": true,
-      "severity": "info"
+      "enabled": false,
+      "severity": "info",
+      "disabled_reason": "Hints are optional per Apple's guidance and VoiceOver users can turn them off. This rule produced 116 of 193 findings on develop (60%), all info-level, which drowned 35 major findings that matter. Re-enable if the corpus of real findings is ever cleared and we want the extra polish."
     },
     "A11Y.UIKIT.ORIENTATION_LOCK": {
       "enabled": true,

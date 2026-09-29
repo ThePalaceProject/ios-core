@@ -55,7 +55,7 @@ private struct FontRow: View {
     let isSelected: Bool
     let action: () -> Void
 
-    // accesslint:disable A11Y.SWIFTUI.DYNAMIC_TYPE - Intentional fixed size for font preview
+    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - Intentional fixed size for font preview
     var body: some View {
         Button(action: action) {
             HStack {
@@ -68,6 +68,7 @@ private struct FontRow: View {
                         .font(Font(font.uiFont(size: 13)))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 }
 
                 Spacer()
