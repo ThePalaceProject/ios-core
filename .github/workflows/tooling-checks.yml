@@ -114,8 +114,33 @@ jobs:
           fi
           bash scripts/tests/test_pre_commit_phase35_detectors.sh
 
-      # 3b. verify-pr detector wiring test. The three decomposition ratchets
-      #     (locator count, god-class LOC, .shared reads) each shipped with a
+      # 3a2. The two Phase-A gates, run whole-tree as NAMED steps.
+      #      They are also exercised by their pytests, but a pytest asserts the
+      #      gate's logic; this asserts the CURRENT TREE is clean. Relying on
+      #      test_live_repo_passes for that made a unit test load-bearing for
+      #      enforcement — if it ever goes inert (four arms in this very PR did,
+      #      on first write) the whole-tree check disappears with it, silently.
+      - name: file-size ceiling (whole tree)
+        run: |
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Skipping here turns a removed gate into a green check.
+          if [ ! -f scripts/check-file-size-ceiling.sh ]; then
+            echo "::error::scripts/check-file-size-ceiling.sh is missing — the gate cannot run."
+            exit 1
+          fi
+          bash scripts/check-file-size-ceiling.sh
+
+      - name: package tests are wired (whole tree)
+        run: |
+          if [ ! -f scripts/check-package-tests-wired.sh ]; then
+            echo "::error::scripts/check-package-tests-wired.sh is missing — the gate cannot run."
+            exit 1
+          fi
+          bash scripts/check-package-tests-wired.sh
+
+      # 3b. verify-pr detector wiring test. The decomposition ratchets
+      #     (locator count, file-size ceiling, .shared reads, package-test
+      #     wiring) each shipped with a
       #     baseline and a passing pytest while being invoked by NOTHING
       #     (audited 2026-08-20). A detector's own unit tests are silent about
       #     whether anything calls it, so this asserts the CALL SITE — and

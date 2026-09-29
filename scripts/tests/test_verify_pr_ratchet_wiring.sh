@@ -4,7 +4,8 @@
 # Pins the WIRING of four detectors into scripts/verify-pr.sh:
 #
 #   check-appcontainer-locator-count.sh   (whole-tree, baseline)
-#   check-godclass-loc-freeze.sh          (whole-tree, baseline)
+#   check-file-size-ceiling.sh            (whole-tree, generic ceiling)
+#   check-package-tests-wired.sh          (whole-tree, package test targets)
 #   check-shared-read-count.sh            (whole-tree, baseline)
 #   check-completion-isolation.py         (diff-scoped, file paths)
 #   check-playback-ui-latch.py            (whole-tree, optional root arg)
@@ -39,7 +40,8 @@ pass() { echo "  ok — $*"; }
 # ---------------------------------------------------------------------------
 echo "1. detectors referenced by verify-pr.sh"
 for d in check-appcontainer-locator-count.sh \
-         check-godclass-loc-freeze.sh \
+         check-file-size-ceiling.sh \
+         check-package-tests-wired.sh \
          check-shared-read-count.sh \
          check-completion-isolation.py \
          check-playback-ui-latch.py \
@@ -57,13 +59,16 @@ for key in '"decomposition_ratchets"' '"completion_isolation"' '"playback_ui_lat
 done
 
 # ---------------------------------------------------------------------------
-# 2. CLEAN PATH — the three whole-tree ratchets must pass on the real tree with
-#    the exact interface verify-pr.sh uses (no arguments). If one of these ever
+# 2. CLEAN PATH — the whole-tree ratchets must pass on the real tree with the
+#    exact interface verify-pr.sh uses (no arguments). If one of these ever
 #    needs a flag, this catches the mismatch before it lands as a false block.
+#    Both new gates default their root to `git rev-parse --show-toplevel`, so
+#    the no-argument call is the one that has to work.
 # ---------------------------------------------------------------------------
 echo "2. clean path — whole-tree ratchets, invoked with no arguments"
 for r in check-appcontainer-locator-count.sh \
-         check-godclass-loc-freeze.sh \
+         check-file-size-ceiling.sh \
+         check-package-tests-wired.sh \
          check-shared-read-count.sh; do
   [ -f "$REPO_ROOT/scripts/$r" ] || fail "$r missing"
   if ( cd "$REPO_ROOT" && bash "scripts/$r" >/dev/null 2>&1 ); then

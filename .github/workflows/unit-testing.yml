@@ -96,6 +96,33 @@ jobs:
       - name: Run PalaceTriageBot package tests
         run: swift test --package-path Palace/Packages/PalaceTriageBot
 
+      # The other host-buildable packages. These test targets have existed since
+      # extraction but ran NOWHERE: the only schemes are Palace / Palace-noDRM, so
+      # xcodebuild never saw them, and the only `swift test` step was TriageBot's.
+      # PalaceAuthTests (116 tests) had been dark since 2026-05-12 — a gate that
+      # cannot fail reports a pass. Measured on 2026-09-25: Auth 116, ReadingPosition
+      # 20, Logging 8, all green in well under a minute combined.
+      #
+      # PalaceKeychain is deliberately NOT here. It builds, then HANGS: its tests
+      # guard with KeychainAvailability.skipIfUnavailable(), which probes by writing
+      # to the keychain. That guard was written for the iOS Simulator, where an
+      # unentitled host returns -34018 and the skip fires. On an unsigned macOS
+      # `swift test` binary the same call blocks on a UI authorization prompt
+      # instead of erroring, so the guard itself never returns. Wiring it here
+      # would hang CI for the step timeout. Tracked in the Phase A notes.
+      # Paths are written out in full, deliberately. A `for pkg in ...` loop
+      # builds the path at runtime, so check-package-tests-wired.sh cannot see
+      # which packages this step covers — and a gate that cannot see the thing
+      # it guards is the defect this whole step exists to fix. Explicit wins.
+      - name: Run PalaceAuth package tests
+        run: swift test --package-path Palace/Packages/PalaceAuth
+
+      - name: Run PalaceLogging package tests
+        run: swift test --package-path Palace/Packages/PalaceLogging
+
+      - name: Run PalaceReadingPosition package tests
+        run: swift test --package-path Palace/Packages/PalaceReadingPosition
+
       # The package suite above runs RedactionCorpusTests, but a deny-list guard
       # is only worth its ability to fail. --self-test disables redaction to prove
       # the guard goes red on an un-redacted corpus, catching a guard that has
