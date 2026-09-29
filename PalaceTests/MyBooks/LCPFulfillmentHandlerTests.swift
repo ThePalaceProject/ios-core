@@ -277,13 +277,25 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         let progress = try XCTUnwrap(lcpService.lastProgress)
 
         // A long transfer that keeps reporting, well past the idle window.
+        //
+        // Each tick joins the heartbeat by waiting for the progress EVENT for this
+        // book. The progress callback does its work in an unstructured `Task` (it
+        // awaits the download-state actor first), so a main-queue drain does not
+        // order behind it: under a loaded runner the last heartbeat could land
+        // after the assertion and the registration read as expired. `sendProgress`
+        // writes the heartbeat synchronously and only then publishes, so the
+        // event arriving proves the heartbeat was recorded at this tick's `now`.
         for _ in 0..<4 {
             now += DownloadProgressReporter.contentTransferIdleTimeout - 10
-            progress(0.5)
             let ticked = expectation(description: "heartbeat applied")
-            DispatchQueue.main.async { ticked.fulfill() }
-            // Bounded wait, not a deadline poll: FIFO main-queue drain — the fulfilling `main.async` is enqueued after the progress callback, so the heartbeat write it orders behind has already been applied.
-            wait(for: [ticked], timeout: 5.0)  // STARVE-001-OK
+            let bookID = book.identifier
+            let subscription = reporter.downloadProgressPublisher
+                .filter { $0.0 == bookID }
+                .first()
+                .sink { _ in ticked.fulfill() }
+            progress(0.5)
+            wait(for: [ticked], timeout: 5.0)  // STARVE-001-OK: fulfilled by this book's progress event, which sendProgress publishes only after writing the heartbeat
+            subscription.cancel()
         }
         now += DownloadProgressReporter.contentTransferIdleTimeout - 10
 
