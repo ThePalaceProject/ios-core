@@ -1249,12 +1249,12 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     ///
     /// Deliberately synchronous. Making the callers `async` would break the sync
     /// helpers they share (`snapshotWithOneBook`, `drainMainQueue`), which use
-    /// XCTest's synchronous `wait` and deadlock when called from an `async` test — the file
+    /// `wait(for:)` and deadlock when called from an `async` test — the file
     /// documents that at `XCTestCase+drainMainQueue.swift`.
     private func awaitRegistrySaved(timeout: TimeInterval = 5.0, _ action: () -> Void) {
         // Bound ONCE, before the Task, and captured by value. Reading the
         // implicitly-unwrapped `syncManager` INSIDE the Task is a runner-killer:
-        // on timeout XCTest's synchronous `wait` records a failure and returns, `tearDown()`
+        // on timeout `wait(for:)` records a failure and returns, `tearDown()`
         // nils the fixture, and the still-live Task then force-unwraps nil.
         // `XCTestCase+drainMainQueue.swift` documents that exact incident at
         // `awaitCondition` (CI run 29802862487). Capturing `[syncManager]`
@@ -1269,10 +1269,11 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
             await manager._awaitPendingDiskWritesForTesting()
             drained.fulfill()
         }
-        // `diskWriteQueue`, not by a poll on fire-and-forget work. A trailing
-        // block on a serial queue resumes strictly after every enqueued write,
-        // so this is the deterministic join STARVE-001 asks for; the deadline is
-        // a safety net that fails loudly, never the mechanism.
+        // `drained` is fulfilled by a drain of the SERIAL `diskWriteQueue`, not
+        // by a poll on fire-and-forget work. A trailing block on a serial queue
+        // resumes strictly after every enqueued write, so this is the
+        // deterministic join STARVE-001 asks for; the deadline is a safety net
+        // that fails loudly, never the mechanism.
         wait(for: [drained], timeout: timeout)  // STARVE-001-OK: serial-queue barrier drain, not a poll on fire-and-forget
         drain.cancel()
     }
@@ -1280,10 +1281,18 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     /// Blocks until `BookRegistryStore`'s write barrier has drained.
     ///
     /// The sibling of `awaitRegistrySaved` for the in-memory side. Same shape and
-    /// same reason: `_awaitPendingWritesForTesting()` is a barrier on the store's
-    /// serial queue, so this joins rather than polls. The older
-    /// `wait`-plus-`drainMainQueue` pair around `addBook` is a fixed
-    /// deadline on a completion callback, which is what STARVE-001 exists to stop.
+    /// same reason: `_awaitPendingWritesForTesting()` is a `.barrier` block on the
+    /// store's CONCURRENT `syncQueue`, so it resumes after all previously-enqueued
+    /// work and joins rather than polls. The older `wait(for:) + drainMainQueue()`
+    /// pair around `addBook` is a fixed deadline on a completion callback, which is
+    /// what STARVE-001 exists to stop.
+    ///
+    /// It does NOT hop the main queue. `TPPBookRegistry._awaitPendingWritesForTesting`
+    /// (TPPBookRegistry.swift:769-773) composes the store drain THEN a
+    /// `DispatchQueue.main.async` continuation; this helper is the first half only.
+    /// Adequate here — the assertions read the file and `save()` snapshots
+    /// synchronously — but a caller swapping `drainMainQueue()` for this loses
+    /// main-queue delivery.
     private func awaitStoreWrites(timeout: TimeInterval = 5.0) {
         guard let store = store else {
             return XCTFail("awaitStoreWrites called with no store")
@@ -1293,8 +1302,9 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
             await store._awaitPendingWritesForTesting()
             drained.fulfill()
         }
+        // `drained` is fulfilled by the store's write BARRIER draining, not by a
         // poll on fire-and-forget work. See `awaitRegistrySaved` for the shape.
-        wait(for: [drained], timeout: timeout)  // STARVE-001-OK: serial-queue barrier drain, not a poll on fire-and-forget
+        wait(for: [drained], timeout: timeout)  // STARVE-001-OK: store write barrier drain, not a poll on fire-and-forget
         drain.cancel()
     }
 
