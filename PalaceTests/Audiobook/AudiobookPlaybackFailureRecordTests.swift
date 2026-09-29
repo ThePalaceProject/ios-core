@@ -146,8 +146,15 @@ final class PlaybackFailureRecordCauseTests: XCTestCase {
     }
 
     func testRecord_NilPosition_IsAtTrackStart() {
-        XCTAssertEqual(record(nil, position: nil)["atTrackStart"] as? String, "true",
+        let fields = record(nil, position: nil)
+        XCTAssertEqual(fields["atTrackStart"] as? String, "true",
                        "no position means playback never reached a point inside a track")
+        // `atTrackStart` cannot separate "failed at 0.0" from "no position data"
+        // — both are true. `trackPosition` is the only thing that does, so a
+        // reader depends on it being present. Pinned here rather than left to
+        // the reader to notice.
+        XCTAssertEqual(fields["trackPosition"] as? String, "unknown",
+                       "the only field that distinguishes a nil position from a genuine 0.0")
     }
 
     func testRecord_SecondsSincePreviousFailure_IsRecordedInMilliseconds() {
@@ -187,6 +194,54 @@ final class PlaybackFailureRecordDeduplicatorTests: XCTestCase {
         let decision = dedupe.evaluate(bookId: "a", domain: "d", code: 1, at: t0)
         XCTAssertTrue(decision.shouldRecord)
         XCTAssertNil(decision.secondsSincePreviousFailureForBook)
+    }
+
+    /// The case the key exists for. AVFoundation reports almost every
+    /// resource-loader failure as `AVFoundationErrorDomain -11800`, so keying on
+    /// the top level alone would suppress the second of two genuinely different
+    /// causes on the same book and never read its chain — worse than today,
+    /// where both arrive generically.
+    func testSameTopLevelDifferentUnderlyingCause_AreBothRecorded() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        let first = dedupe.evaluate(
+            bookId: "a", domain: "AVFoundationErrorDomain", code: -11800,
+            underlyingDomain: "NSOSStatusErrorDomain", underlyingCode: -12881, at: t0
+        )
+        let second = dedupe.evaluate(
+            bookId: "a", domain: "AVFoundationErrorDomain", code: -11800,
+            underlyingDomain: "NSURLErrorDomain", underlyingCode: -1009,
+            at: t0.addingTimeInterval(5)
+        )
+        XCTAssertTrue(first.shouldRecord)
+        XCTAssertTrue(second.shouldRecord, "a different underlying cause is a different failure")
+    }
+
+    /// And the suppression still works when the chain matches too — otherwise
+    /// the key would never collapse anything under AVFoundation.
+    func testSameTopLevelSameUnderlyingCause_IsSuppressed() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        _ = dedupe.evaluate(
+            bookId: "a", domain: "AVFoundationErrorDomain", code: -11800,
+            underlyingDomain: "NSOSStatusErrorDomain", underlyingCode: -12881, at: t0
+        )
+        let repeated = dedupe.evaluate(
+            bookId: "a", domain: "AVFoundationErrorDomain", code: -11800,
+            underlyingDomain: "NSOSStatusErrorDomain", underlyingCode: -12881,
+            at: t0.addingTimeInterval(5)
+        )
+        XCTAssertFalse(repeated.shouldRecord)
+    }
+
+    /// An error with no chain and one with a chain are not the same failure,
+    /// even when their top level matches.
+    func testChainPresentVersusAbsent_AreDistinctKeys() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        _ = dedupe.evaluate(bookId: "a", domain: "d", code: 1, at: t0)
+        let withChain = dedupe.evaluate(
+            bookId: "a", domain: "d", code: 1,
+            underlyingDomain: "u", underlyingCode: 9, at: t0.addingTimeInterval(1)
+        )
+        XCTAssertTrue(withChain.shouldRecord)
     }
 
     func testSameKeyWithinWindow_IsSuppressed() {
@@ -305,6 +360,53 @@ final class PlaybackFailureRecordDeduplicatorTests: XCTestCase {
 
         XCTAssertEqual(first?.userInfo["contentSource"] as? String, "lcpLocal")
         XCTAssertNil(second, "a repeat within the window must not be sent")
+    }
+
+    /// Through the real send path, not the deduplicator directly.
+    ///
+    /// The three key tests above drive `evaluate` with explicit underlying
+    /// arguments, so they pass whether or not anything threads the chain into
+    /// it — nulling the wiring in `playbackFailureRecordToSend` left all of them
+    /// green. This asserts the wiring: two AVFoundation errors identical at the
+    /// top level and different underneath, both of which must reach the sink.
+    func testRecordToSend_SameTopLevelDifferentCause_BothReachTheSink() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        let staleTrack = NSError(
+            domain: "AVFoundationErrorDomain", code: -11800,
+            userInfo: [NSUnderlyingErrorKey: NSError(domain: "NSOSStatusErrorDomain", code: -12881)]
+        )
+        let offline = NSError(
+            domain: "AVFoundationErrorDomain", code: -11800,
+            userInfo: [NSUnderlyingErrorKey: NSError(domain: "NSURLErrorDomain", code: -1009)]
+        )
+        let first = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: staleTrack, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0)
+        let second = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: offline, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0.addingTimeInterval(2))
+
+        XCTAssertNotNil(first)
+        XCTAssertNotNil(second, "a different cause under the same -11800 is a different failure")
+        XCTAssertEqual(second?.userInfo["underlyingErrorCode"] as? Int, -1009,
+                       "and the second record carries its own cause, not the first's")
+    }
+
+    /// The other side: identical top level AND identical cause still collapses,
+    /// or the key would never suppress anything under AVFoundation.
+    func testRecordToSend_SameTopLevelSameCause_IsStillSuppressed() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        let error = NSError(
+            domain: "AVFoundationErrorDomain", code: -11800,
+            userInfo: [NSUnderlyingErrorKey: NSError(domain: "NSOSStatusErrorDomain", code: -12881)]
+        )
+        _ = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: error, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0)
+        let repeated = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: error, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0.addingTimeInterval(2))
+        XCTAssertNil(repeated)
     }
 
     func testRecordToSend_FollowUpWithDifferentCode_CarriesTheInterval() {
@@ -453,6 +555,63 @@ final class AudiobookContentSourceTests: XCTestCase {
 /// fixed domain/code with no cause. These pin the metadata the session manager
 /// now hands it: which loader step failed, the error that step carried, and the
 /// content source.
+/// Covers the conjunction that a surviving mutant exposed: with `&&` changed to
+/// `||`, every LCP book reported `.lcpLocal` and the streamed/local split — the
+/// most valuable distinction in this field, with streaming at 100% in
+/// production — silently disappeared, and the whole suite stayed green. The
+/// file-exists side is injected here because the production one reads
+/// `AppContainer.production()` and cannot be driven from a unit test.
+@MainActor
+final class LCPStreamedVersusLocalTests: XCTestCase {
+
+    private func lcpBook() -> TPPBook {
+        TPPBook(
+            acquisitions: [TPPOPDSAcquisition(
+                relation: .generic,
+                type: "application/audiobook+lcp",
+                hrefURL: URL(string: "https://example.test/fulfill")!,
+                indirectAcquisitions: [],
+                availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+            )],
+            authors: [], categoryStrings: [], distributor: nil,
+            identifier: "lcp-book", imageURL: nil, imageThumbnailURL: nil,
+            published: Date(), publisher: "Test", subtitle: nil, summary: nil,
+            title: "Fixture", updated: Date(), annotationsURL: nil, analyticsURL: nil,
+            alternateURL: nil, relatedWorksURL: nil, previewLink: nil, seriesURL: nil,
+            revokeURL: nil, reportURL: nil, timeTrackingURL: nil, contributors: [:],
+            bookDuration: nil, imageCache: MockImageCache()
+        )
+    }
+
+    func testDecryptorPresentAndContentOnDisk_IsLocal() {
+        let source = AudiobookSessionManager.contentSource(
+            for: lcpBook(), isLCP: true, contentIsLocal: { _ in true }
+        )
+        XCTAssertEqual(source, .lcpLocal)
+    }
+
+    /// The arm `||` would have erased.
+    func testDecryptorPresentButContentNotOnDisk_IsStreamed() {
+        let source = AudiobookSessionManager.contentSource(
+            for: lcpBook(), isLCP: true, contentIsLocal: { _ in false }
+        )
+        XCTAssertEqual(source, .lcpStreamed,
+                       "an LCP book whose .lcpa is not on disk is streaming, not local")
+    }
+
+    /// And with no decryptor the file-exists answer must not matter — this is
+    /// the case the original `||` argument covered, kept so the pair is complete.
+    func testNoDecryptor_IsNotLCPRegardlessOfDisk() {
+        for onDisk in [true, false] {
+            let source = AudiobookSessionManager.contentSource(
+                for: lcpBook(), isLCP: false, contentIsLocal: { _ in onDisk }
+            )
+            XCTAssertNotEqual(source, .lcpLocal)
+            XCTAssertNotEqual(source, .lcpStreamed)
+        }
+    }
+}
+
 final class AudiobookOpenFailureMetadataTests: XCTestCase {
 
     private func metadata(_ error: AudiobookLoadError, source: AudiobookContentSource = .lcpStreamed) -> [String: Any] {

@@ -34,6 +34,16 @@ Counts are inflated by repeat reports of the same failure.
   code are unchanged.
 - The five audiobook-fulfillment log sites that passed `book.loggableDictionary`
   unapplied (OverDrive x2, LCP x3) now call it.
+- The deduplication key carries the first `NSUnderlyingError` as well as the
+  top-level domain/code, so two different causes under the same
+  `AVFoundationErrorDomain -11800` are both recorded.
+
+## Known gaps
+
+- The SAML re-auth fallback (`AudiobookSessionManager.swift`) still reports the
+  open failure with no metadata: `[String: Any]` is not `Sendable` and the call
+  sits inside an `@Sendable` closure. A `Sendable` metadata carrier would
+  unblock it.
 
 ## Anti-claims
 

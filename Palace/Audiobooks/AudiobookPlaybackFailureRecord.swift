@@ -100,7 +100,11 @@ enum AudiobookContentSource: String {
 /// Failures with a different code for the same book are always recorded, even
 /// when they arrive a moment after another failure: some of those are follow-ups
 /// of the first failure, but a different code can also be a different cause, and
-/// suppressing it would hide that. `secondsSincePreviousFailureForBook` lets a
+/// suppressing it would hide that. The same reasoning applies one level down,
+/// which is why the key carries the first `NSUnderlyingError` too — under
+/// AVFoundation the top-level code is usually the same `-11800` regardless of
+/// cause, so keying on it alone would suppress precisely the distinctions this
+/// record was added to capture. `secondsSincePreviousFailureForBook` lets a
 /// reader identify the follow-ups instead.
 struct PlaybackFailureRecordDeduplicator {
 
@@ -117,6 +121,15 @@ struct PlaybackFailureRecordDeduplicator {
         let bookId: String
         let domain: String
         let code: Int
+        /// The first level of the `NSUnderlyingError` chain, when the error has
+        /// one. Without it the key is the field this whole change exists
+        /// because it cannot discriminate: AVFoundation collapses every
+        /// resource-loader failure into `AVFoundationErrorDomain -11800`, so two
+        /// genuinely different causes on the same book would share a key and the
+        /// second would be dropped with its chain unread. That is a worse
+        /// outcome than today, where both at least arrive generically.
+        let underlyingDomain: String?
+        let underlyingCode: Int?
     }
 
     private var lastSeenByKey: [Key: Date] = [:]
@@ -126,12 +139,25 @@ struct PlaybackFailureRecordDeduplicator {
     /// assert that expired entries do not accumulate.
     var trackedKeyCount: Int { lastSeenByKey.count }
 
-    mutating func evaluate(bookId: String, domain: String, code: Int, at now: Date) -> Decision {
+    mutating func evaluate(
+        bookId: String,
+        domain: String,
+        code: Int,
+        underlyingDomain: String? = nil,
+        underlyingCode: Int? = nil,
+        at now: Date
+    ) -> Decision {
         let window = Self.repeatWindow
         lastSeenByKey = lastSeenByKey.filter { now.timeIntervalSince($0.value) < window }
         lastFailureByBook = lastFailureByBook.filter { now.timeIntervalSince($0.value) < window }
 
-        let key = Key(bookId: bookId, domain: domain, code: code)
+        let key = Key(
+            bookId: bookId,
+            domain: domain,
+            code: code,
+            underlyingDomain: underlyingDomain,
+            underlyingCode: underlyingCode
+        )
         let isRepeat = lastSeenByKey[key] != nil
         let sincePrevious = lastFailureByBook[bookId].map { now.timeIntervalSince($0) }
 
@@ -265,10 +291,13 @@ extension AudiobookSessionManager {
         now: Date
     ) -> NSError? {
         let nsError = error as NSError?
+        let firstUnderlying = nsError?.userInfo[NSUnderlyingErrorKey] as? NSError
         let decision = deduplicator.evaluate(
             bookId: bookId ?? "unknown",
             domain: nsError?.domain ?? "none",
             code: nsError?.code ?? -1,
+            underlyingDomain: firstUnderlying?.domain,
+            underlyingCode: firstUnderlying?.code,
             at: now
         )
         guard decision.shouldRecord else { return nil }
@@ -300,7 +329,19 @@ extension AudiobookSessionManager {
 #endif
     }
 
-    private static func contentSource(for book: TPPBook, isLCP hasDecryptor: Bool) -> AudiobookContentSource {
+    /// `contentIsLocal` is injected so the `hasDecryptor && …` conjunction below
+    /// is reachable from a test. It defaults to the production file-exists check,
+    /// which reads `AppContainer.production()` and is therefore not drivable from
+    /// a unit test — which is exactly why mutating that `&&` to `||` survived the
+    /// suite: with `||` short-circuiting on `hasDecryptor`, every LCP book would
+    /// report `.lcpLocal` and the streamed/local split — the most valuable
+    /// distinction in this field, with streaming at 100% in production — would
+    /// silently vanish.
+    static func contentSource(
+        for book: TPPBook,
+        isLCP hasDecryptor: Bool,
+        contentIsLocal: (String) -> Bool = { audiobookContentIsLocal($0) }
+    ) -> AudiobookContentSource {
 #if FEATURE_OVERDRIVE
         let overdriveKey: String? = OverdriveDistributorKey
 #else
@@ -309,7 +350,7 @@ extension AudiobookSessionManager {
         return AudiobookContentSource.classify(
             book: book,
             hasDecryptor: hasDecryptor,
-            lcpContentIsLocal: hasDecryptor && audiobookContentIsLocal(book.identifier),
+            lcpContentIsLocal: hasDecryptor && contentIsLocal(book.identifier),
             overdriveDistributorKey: overdriveKey
         )
     }
