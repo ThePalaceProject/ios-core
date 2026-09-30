@@ -1844,6 +1844,14 @@ struct PalaceSeekSliderView: View {
 
     enum StepDirection { case forward, back }
 
+    /// Whether a live playback value shows the seek has landed. The tolerance
+    /// is 1% of the chapter, capped at half the distance moved, so a stale tick
+    /// from the old position cannot release the hold on a small move (a 30 s
+    /// step is under 1% of any chapter over 50 minutes).
+    nonisolated static func holdReleases(live: Double, target: Double, origin: Double) -> Bool {
+        abs(live - target) <= min(0.01, abs(target - origin) / 2)
+    }
+
     /// Step used when the chapter length is not known yet: 5% of the chapter.
     nonisolated static let fallbackStepFraction = 0.05
 
@@ -1864,6 +1872,11 @@ struct PalaceSeekSliderView: View {
     @State private var tempValue: Double?
     @State private var isDragging: Bool = false
     @State private var isCommitting: Bool = false
+    /// Where the displayed position was when the current hold began; the hold
+    /// releases only on a live value nearer the target than half the move.
+    @State private var commitOrigin: Double = 0
+    /// Identifies the latest commit, so only its safety timer can release.
+    @State private var commitGeneration: Int = 0
 
     private let trackRest: CGFloat = 4
     private let trackActive: CGFloat = 6
@@ -1912,7 +1925,7 @@ struct PalaceSeekSliderView: View {
                     .onEnded { _ in
                         withAnimation(.easeOut(duration: 0.2)) { isDragging = false }
                         if let finalValue = tempValue {
-                            commit(finalValue)
+                            commit(finalValue, from: value)
                         }
                     }
             )
@@ -1922,7 +1935,7 @@ struct PalaceSeekSliderView: View {
             // `isCommitting` so idle ticks never touch `tempValue`.
             .onChange(of: value) { newValue in
                 guard isCommitting, let target = tempValue else { return }
-                if abs(newValue - target) <= 0.01 {
+                if Self.holdReleases(live: newValue, target: target, origin: commitOrigin) {
                     tempValue = nil
                     isCommitting = false
                 }
@@ -1952,13 +1965,17 @@ struct PalaceSeekSliderView: View {
             stepSeconds: direction == .forward ? forwardStepSeconds : backStepSeconds,
             chapterDuration: chapterDuration
         )
+        let origin = displayValue
         tempValue = target
-        commit(target)
+        commit(target, from: origin)
     }
 
     /// Commits a seek to `finalValue`: the end of a drag and a VoiceOver step
     /// both land here.
-    private func commit(_ finalValue: Double) {
+    private func commit(_ finalValue: Double, from origin: Double) {
+        commitGeneration += 1
+        let generation = commitGeneration
+        commitOrigin = origin
         isCommitting = true
         value = finalValue
         // Subtle completion haptic on seek commit (toolkit parity).
@@ -1977,7 +1994,7 @@ struct PalaceSeekSliderView: View {
         // seek propagates, with a safety timeout so a failed /
         // silent seek can never wedge the thumb.
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            if isCommitting {
+            if isCommitting && commitGeneration == generation {
                 tempValue = nil
                 isCommitting = false
             }
