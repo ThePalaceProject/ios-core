@@ -31,7 +31,7 @@
 //  `SAML || OverDrive || coldLoad`, evaluated whole, independently of which arm
 //  the precedence chain then selects. The recovery case does not determine it.
 //
-//  Four of the six recoveries happen to determine it as a theorem: `.samlReauth`
+//  Five of the six recoveries happen to determine it as a theorem: `.samlReauth`
 //  is only selected when the SAML term is true, `.overdriveRefulfill` only when
 //  the OverDrive term is true, both cold-load arms only when the cold-load term
 //  is true, and `.terminal` only when all three are false. `.bearerTokenRefulfill`
@@ -46,8 +46,8 @@
 //  `keepsPlayerLoading` property hanging off the enum is exactly the shape that
 //  silently narrowed a context-dependent value into a case-dependent one, and a
 //  100% mutation kill rate was compatible with it, because the tests pinned the
-//  narrowed value (see `.harness/wall-failures/`
-//  2026-09-29-collapsing-a-context-dependent-value-into-a-case-dependent-one.md).
+//  narrowed value (see
+//  `.forgeos/wall-failures/2026-09-29-collapsing-a-context-dependent-value-into-a-case-dependent-one.md`).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
