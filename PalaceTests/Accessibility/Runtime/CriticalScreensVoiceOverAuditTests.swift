@@ -157,17 +157,19 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
         reader.toggleNavigationBar()
         reader.updateViewsForVoiceOver(isRunning: true)
         host.settle(0.6)
+        reader.manualNavigationPending = false
 
         let bookmarkStrings = Strings.TPPBaseReaderViewController.self
         auditScreen(
             "EPUB reader chrome",
             host: host,
             witnesses: [
-                // Previous/next chapter drive the Readium navigator asynchronously;
-                // the witness is that the tap reached their bar button (the audit
-                // fails the activation otherwise), not a page turn.
-                bookmarkStrings.previousChapter: { true },
-                bookmarkStrings.nextChapter: { true },
+                // Previous/next chapter hand off to the Readium navigator
+                // asynchronously; their handlers mark a manual navigation
+                // before doing so, which is the witness (the one-chapter
+                // fixture has nowhere to turn to).
+                bookmarkStrings.previousChapter: { reader.manualNavigationPending },
+                bookmarkStrings.nextChapter: { reader.manualNavigationPending },
                 Strings.Generic.goBack: { coordinator.path.isEmpty },
                 Strings.Generic.searchInBook: { reader.presentedViewController != nil },
                 Strings.Generic.tableOfContents: { nav.viewControllers.count == 2 },
@@ -184,6 +186,7 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
                 }
             ],
             resetAfterActivation: {
+                reader.manualNavigationPending = false
                 host.dismissPresented()
                 nav.popToRootViewController(animated: false)
                 host.settle(0.2)
