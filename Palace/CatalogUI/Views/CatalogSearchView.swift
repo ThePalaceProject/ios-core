@@ -195,10 +195,12 @@ private extension CatalogSearchView {
     /// against the loading and "no query yet" cases — see BUG-003.
     var noResultsEmptyState: some View {
         VStack(spacing: 12) {
+            // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - sizes a decorative SF Symbol glyph (accessibilityHidden below), not text, so Dynamic Type does not apply
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 44, weight: .light))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
             Text(Strings.SearchAnnouncements.noResultsTitle)
                 .font(.headline)
                 .multilineTextAlignment(.center)

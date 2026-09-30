@@ -11,7 +11,9 @@ import UIKit
 /// PDF preview grid.
 ///
 /// Shows page previews and bookmarks in `.pdf` files.
+// accesslint:disable A11Y.UIKIT.SCREEN_TITLE - the screen title is set in init as `title = NSLocalizedString(...)`; the detector matches only the literal `self.title`; the window closes on the declaration line because that is the only line this rule reports at — note it therefore also hides this class later LOSING its title
 class TPPPDFPreviewGridController: UICollectionViewController {
+// accesslint:enable A11Y.UIKIT.SCREEN_TITLE
 
     private let preferredPreviewWidth: CGFloat = 200
     private let minimumItemsPerRow: Int = 3

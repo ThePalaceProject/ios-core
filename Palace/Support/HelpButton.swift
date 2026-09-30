@@ -45,11 +45,13 @@ struct HelpButton: View {
             Button {
                 showHelp = true
             } label: {
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - sizes a decorative SF Symbol glyph inside a 44x44 button, not text, so Dynamic Type does not apply
                 Image(systemName: "questionmark.circle")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.primary)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
+                    // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("help.button.\(entryPoint.rawValue)")
