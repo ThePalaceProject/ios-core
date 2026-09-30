@@ -47,6 +47,8 @@ Anti-patterns (do NOT ship these):
 - Copy-pasting the implementation plan or the diff.
 - Jargon a librarian couldn't parse in the first paragraph.
 - One-liner descriptions ("Bump iOS target.") with no why/scope/done.
+- Internal tooling vocabulary or run IDs (swarm/wave/phase IDs, reviewer roles, `rev_<hex>`,
+  changesets). Describe the work, not the process that produced it.
 
 **Structure:** default to a **Story with Sub-tasks**, one sub-task per shippable PR /
 stage. Use an **Epic with Stories** only when the effort is large enough that each child
@@ -162,6 +164,10 @@ When this skill is used alongside real delivery, keep Jira honest in lockstep:
 - **Starting a stage** -> transition its sub-task to **In Progress** (id 21).
 - **PR opened / up for review** -> **Code Review** (id 51).
 - **PR merged** -> **Done** (id 31).
+
+PR titles, PR bodies and commit messages follow "Writing conventions" in `CLAUDE.md`
+(What / Why / How verified, about 20 lines, no AI footer). Put the PP key in the PR title
+and commit subject; `jira-pr-opened.yml` copies the PR's What and Why onto the ticket.
 
 Do the transition at the moment the state changes, not in a batch at the end — the point
 of the board is that it reflects reality right now.
