@@ -52,6 +52,7 @@ DETECTORS=(
   "RAISING_UNARCHIVER|check-raising-unarchiver.py|block|diff"
   "OPAQUE_BLOB_EGRESS|check-opaque-blob-egress.py|block|diff"
   "SNAKECASE_CODINGKEYS|check-snakecase-codingkeys.py|block|scan"
+  "COMMENT_HYGIENE|check-comment-hygiene.py|block|diff"
 )
 
 OVERALL_EXIT=0
