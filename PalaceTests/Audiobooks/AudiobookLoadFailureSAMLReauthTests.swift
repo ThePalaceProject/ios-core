@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Locks the audiobook-OPEN SAML re-auth predicate
-//  (`AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure`).
+//  (`AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure`).
 //
 //  Why this matters (HelpSpot 17727):
 //  Crashlytics shows "Audiobook failed to open - showing try again error (401)"
@@ -53,7 +53,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         let book = TPPBookMocker.mockBook(title: "Test Audiobook", authors: "Author")
 
         XCTAssertTrue(
-            AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+            AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                 loadError: .manifestFetchFailed,
                 userAccount: userAccountMock,
                 currentBook: book
@@ -86,7 +86,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         ]
         for err in nonCancelledErrors {
             XCTAssertTrue(
-                AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+                AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                     loadError: err,
                     userAccount: userAccountMock,
                     currentBook: book
@@ -106,7 +106,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         let book = TPPBookMocker.mockBook(title: "Test", authors: "Author")
 
         XCTAssertFalse(
-            AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+            AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                 loadError: .cancelled,
                 userAccount: userAccountMock,
                 currentBook: book
@@ -126,7 +126,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         let book = TPPBookMocker.mockBook(title: "Test", authors: "Author")
 
         XCTAssertFalse(
-            AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+            AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                 loadError: .manifestFetchFailed,
                 userAccount: userAccountMock,
                 currentBook: book
@@ -143,7 +143,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         let book = TPPBookMocker.mockBook(title: "Test", authors: "Author")
 
         XCTAssertFalse(
-            AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+            AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                 loadError: .manifestFetchFailed,
                 userAccount: userAccountMock,
                 currentBook: book
@@ -160,7 +160,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         let book = TPPBookMocker.mockBook(title: "Test", authors: "Author")
 
         XCTAssertFalse(
-            AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+            AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                 loadError: .manifestFetchFailed,
                 userAccount: userAccountMock,
                 currentBook: book
@@ -177,7 +177,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         let book = TPPBookMocker.mockBook(title: "Test", authors: "Author")
 
         XCTAssertFalse(
-            AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+            AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                 loadError: .manifestFetchFailed,
                 userAccount: userAccountMock,
                 currentBook: book
@@ -194,7 +194,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         let book = TPPBookMocker.mockBook(title: "Test", authors: "Author")
 
         XCTAssertFalse(
-            AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+            AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                 loadError: .manifestFetchFailed,
                 userAccount: userAccountMock,
                 currentBook: book
@@ -211,7 +211,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         userAccountMock.setAuthState(.credentialsStale)
 
         XCTAssertFalse(
-            AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+            AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                 loadError: .manifestFetchFailed,
                 userAccount: userAccountMock,
                 currentBook: nil
@@ -233,7 +233,7 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
         let book = TPPBookMocker.mockBook(title: "School Audiobook", authors: "Author")
 
         XCTAssertTrue(
-            AudiobookSessionManager.shouldTriggerSAMLReauthForLoadFailure(
+            AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
                 loadError: .manifestFetchFailed,
                 userAccount: userAccountMock,
                 currentBook: book

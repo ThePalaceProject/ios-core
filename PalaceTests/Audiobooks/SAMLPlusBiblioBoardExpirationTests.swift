@@ -49,7 +49,7 @@ final class SAMLPlusBiblioBoardExpirationTests: XCTestCase {
         )
         let book = TPPBookMocker.mockBook(title: "Test Audiobook", authors: "Author")
 
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: userAccountMock,
             currentBook: book
@@ -65,7 +65,7 @@ final class SAMLPlusBiblioBoardExpirationTests: XCTestCase {
         userAccountMock._credentials = .barcodeAndPin(barcode: "user", pin: "1234")
         let book = TPPBookMocker.mockBook(title: "Test", authors: "Author")
 
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: nil,
             userAccount: userAccountMock,
             currentBook: book
@@ -81,7 +81,7 @@ final class SAMLPlusBiblioBoardExpirationTests: XCTestCase {
 
         let error = NSError(domain: "other.domain", code: 5, userInfo: nil)
 
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: userAccountMock,
             currentBook: book
@@ -101,7 +101,7 @@ final class SAMLPlusBiblioBoardExpirationTests: XCTestCase {
             userInfo: nil
         )
 
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: userAccountMock,
             currentBook: book
@@ -121,7 +121,7 @@ final class SAMLPlusBiblioBoardExpirationTests: XCTestCase {
             userInfo: nil
         )
 
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: userAccountMock,
             currentBook: book
@@ -142,7 +142,7 @@ final class SAMLPlusBiblioBoardExpirationTests: XCTestCase {
             userInfo: nil
         )
 
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: userAccountMock,
             currentBook: book
@@ -161,7 +161,7 @@ final class SAMLPlusBiblioBoardExpirationTests: XCTestCase {
             userInfo: nil
         )
 
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: userAccountMock,
             currentBook: nil
@@ -181,7 +181,7 @@ final class SAMLPlusBiblioBoardExpirationTests: XCTestCase {
             userInfo: nil
         )
 
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: userAccountMock,
             currentBook: book

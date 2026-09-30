@@ -47,20 +47,20 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
     // MARK: - Signal classification: isResourceUnavailable
 
     func testResourceUnavailable_minus1008_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(from: resourceUnavailableError()),
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: resourceUnavailableError()),
             "URLError -1008 (resourceUnavailable) is the signal an expired signed content URL surfaces")
     }
 
     func testResourceUnavailable_minus1008InUnderlyingChain_returnsTrue() {
         let underlying = NSError(domain: NSURLErrorDomain, code: NSURLErrorResourceUnavailable, userInfo: [:])
         let wrapped = NSError(domain: "av", code: -11800, userInfo: [NSUnderlyingErrorKey: underlying])
-        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(from: wrapped),
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: wrapped),
             "The -1008 may be one level down the NSUnderlyingError chain (AVFoundation wraps it)")
     }
 
     func testResourceUnavailable_otherURLErrorCode_returnsFalse() {
         let notConnected = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: [:])
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: notConnected),
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: notConnected),
             "A different URLError code (e.g. notConnectedToInternet) is NOT an expired-URL signal")
     }
 
@@ -68,81 +68,81 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
         // Same numeric code but a different domain must NOT match — the domain
         // check is load-bearing (kills the `domain ==` mutation).
         let sameCodeOtherDomain = NSError(domain: "some.other.domain", code: NSURLErrorResourceUnavailable, userInfo: [:])
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: sameCodeOtherDomain),
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: sameCodeOtherDomain),
             "-1008 only counts inside NSURLErrorDomain — a same-numbered code in another domain is unrelated")
     }
 
     func testResourceUnavailable_nilError_returnsFalse() {
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: nil))
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: nil))
     }
 
     // MARK: - Signal classification: isExpiredEntitlementSignal
 
     func testExpiredSignal_410_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.isExpiredEntitlementSignal(httpError(410)),
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.isExpiredEntitlementSignal(httpError(410)),
             "HTTP 410 (Gone) is a clean expired-entitlement signal")
     }
 
     func testExpiredSignal_403_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.isExpiredEntitlementSignal(httpError(403)),
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.isExpiredEntitlementSignal(httpError(403)),
             "HTTP 403 is the documented BiblioBoard mid-listen dead-end — covered by the non-destructive bearer-token recovery")
     }
 
     func testExpiredSignal_minus1008_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.isExpiredEntitlementSignal(resourceUnavailableError()),
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.isExpiredEntitlementSignal(resourceUnavailableError()),
             "URLError -1008 (expired signed URL) is an expired-entitlement signal")
     }
 
     func testExpiredSignal_401_returnsFalse() {
-        XCTAssertFalse(AudiobookSessionManager.isExpiredEntitlementSignal(httpError(401)),
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isExpiredEntitlementSignal(httpError(401)),
             "401 is auth-required (handled by SAML re-auth / toolkit bearer refresh) — not a signed-URL expiry")
     }
 
     func testExpiredSignal_404_returnsFalse() {
-        XCTAssertFalse(AudiobookSessionManager.isExpiredEntitlementSignal(httpError(404)),
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isExpiredEntitlementSignal(httpError(404)),
             "404 is not an expiry signal — re-fulfilling would not help")
     }
 
     func testExpiredSignal_noStatusNoURLError_returnsFalse() {
         let bare = NSError(domain: "av", code: -11800, userInfo: [:])
-        XCTAssertFalse(AudiobookSessionManager.isExpiredEntitlementSignal(bare),
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isExpiredEntitlementSignal(bare),
             "A bare AVFoundation error with no extractable status and no -1008 → conservatively not an expiry")
     }
 
     // MARK: - Vendor allowlist + bound: shouldTriggerBearerTokenRefulfillForPlaybackFailure
 
     func testBearerTokenRefulfill_bearerToken410_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(410), book: bearerTokenBook(), alreadyAttempted: false),
             "A bearer-token audiobook with a 410 expiry is exactly the case this fix recovers")
     }
 
     func testBearerTokenRefulfill_bearerToken403_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(403), book: bearerTokenBook(), alreadyAttempted: false),
             "A bearer-token 403 (BiblioBoard 'Animal Farm' case) must recover, not dead-end")
     }
 
     func testBearerTokenRefulfill_bearerTokenMinus1008_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: resourceUnavailableError(), book: bearerTokenBook(), alreadyAttempted: false),
             "A bearer-token expired signed URL (-1008) must recover via a fresh re-fulfill")
     }
 
     func testBearerTokenRefulfill_bearerToken401_returnsFalse() {
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(401), book: bearerTokenBook(), alreadyAttempted: false),
             "A 401 is auth, not entitlement expiry — must not enter the re-fulfill path (SAML path owns it)")
     }
 
     func testBearerTokenRefulfill_alreadyAttempted_returnsFalse_bounded() {
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(410), book: bearerTokenBook(), alreadyAttempted: true),
             "Bounded to one re-fulfill per book per session — a second expiry must reach the terminal alert, not loop")
     }
 
     func testBearerTokenRefulfill_nilBook_returnsFalse() {
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(410), book: nil, alreadyAttempted: false),
             "No current book → nothing to re-fulfill")
     }
@@ -154,7 +154,7 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
         // the on-disk .lcpa + stale .lcpl cannot be re-fulfilled into a fresh
         // license. The terminal alert is the correct outcome.
         let lcp = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(410), book: lcp, alreadyAttempted: false),
             "LCP audiobooks are deliberately left on the existing alert — re-fulfill cannot refresh an expired license")
     }
@@ -164,7 +164,7 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
         // bearer-token); its AudioEngine session re-fulfill is not safely
         // verifiable for a hotfix, so it stays on the alert.
         let findaway = TPPBookMocker.mockBook(distributorType: .Findaway)
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(410), book: findaway, alreadyAttempted: false),
             "Findaway/Audible are deliberately left on the existing alert — their re-fulfill is not safely verifiable")
     }
@@ -173,7 +173,7 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
         // Plain open-access audiobooks stream from static (non-signed) URLs that
         // do not expire; they are not claimed by the bearer-token allowlist.
         let openAccess = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(410), book: openAccess, alreadyAttempted: false),
             "Open-access audiobooks are not bearer-token fulfilled — outside this recovery's positive allowlist")
     }
@@ -183,7 +183,7 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
         // so it never matches here — its dedicated 410 path handles it and is
         // kept byte-identical.
         let overdrive = TPPBookMocker.mockBook(distributorType: .OverdriveAudiobook)
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(410), book: overdrive, alreadyAttempted: false),
             "OverDrive stays on its own dedicated re-fulfill path — the bearer-token allowlist excludes it by acquisition type")
     }
