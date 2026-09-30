@@ -22,8 +22,25 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
     /// also the in-memory record count we re-read.
     private let corpusCount = 5000
 
+    /// The app's image providers, restored in tearDown.
+    private var savedImageCacheProvider: (() -> ImageCacheType)?
+    private var savedImageLoaderProvider: (() -> ImageLoading)?
+
     override func setUpWithError() throws {
         try super.setUpWithError()
+        // Every TPPBook init starts a thumbnail and a cover fetch through
+        // TPPBookImageContext, which the host app configures at launch. For
+        // books with no image URL that renders a generated cover and samples
+        // its dominant colour, so 5000 books took this test process to a
+        // measured 3.9 GB resident (2.8 GB in the spindump of CI run
+        // 36769109335). On the 7 GB CI runner, with a second simulator clone
+        // alongside, that pushes the host into compression and swap, and the
+        // resulting page-fault stalls hang whatever test is running in either
+        // clone. This suite asserts registry record integrity only, so it runs
+        // with the context unconfigured: no loader, and the inert cache.
+        savedImageCacheProvider = TPPBookImageContext.imageCacheProvider
+        savedImageLoaderProvider = TPPBookImageContext.imageLoaderProvider
+        TPPBookImageContext._resetForTesting()
         account = "test-large-corpus-\(UUID().uuidString)"
         store = BookRegistryStore()
         // FLAKE-003 fix: this suite constructs an AccountsManager purely as a
@@ -54,6 +71,8 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
         #if DEBUG
         AccountsManager.deferDiskCachePreloadForTesting = false
         #endif
+        TPPBookImageContext.imageCacheProvider = savedImageCacheProvider
+        TPPBookImageContext.imageLoaderProvider = savedImageLoaderProvider
         try super.tearDownWithError()
     }
 

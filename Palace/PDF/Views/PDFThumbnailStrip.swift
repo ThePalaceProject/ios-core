@@ -38,6 +38,10 @@ struct PDFThumbnailStrip: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: spacing) {
                         ForEach(0..<provider.pageCount, id: \.self) { page in
+                            // The cell carries `.accessibilityLabel` and
+                            // `.isButton`/`.isSelected` (`PDFThumbnailStripCell.body`),
+                            // so the tap target already announces as a button.
+                            // accesslint:disable A11Y.SWIFTUI.MISSING_TRAITS
                             PDFThumbnailStripCell(
                                 provider: provider,
                                 page: page,
@@ -47,6 +51,7 @@ struct PDFThumbnailStrip: View {
                             .id(page)
                             .contentShape(Rectangle())
                             .onTapGesture { currentPage = page }
+                            // accesslint:enable A11Y.SWIFTUI.MISSING_TRAITS
                         }
                     }
                     .padding(.horizontal, 12)

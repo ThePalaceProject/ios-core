@@ -128,10 +128,11 @@ struct TPPReaderSettingsView: View {
     /// - Returns: Text element
     @ViewBuilder
     func fontSizeText(size: Double) -> some View {
+        // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - the glyph size IS the
+        // control's meaning; scaling it would make small and large read alike.
         Text("A")
-            // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - the glyph size IS the
-            // control's meaning; scaling it would make small and large read alike.
             .font(.system(size: size, weight: .medium, design: .rounded))
+            // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
             .accessibilityLabel(String(format: NSLocalizedString("Font size %g", comment: "Font size picker option"), size))
     }
 
