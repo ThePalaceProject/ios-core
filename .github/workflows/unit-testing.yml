@@ -107,8 +107,8 @@ jobs:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
 
-      # Package checkouts only (`-clonedSourcePackagesDirPath SourcePackages`
-      # below), keyed on the lockfile. SPM checks every checkout out at the
+      # Package checkouts only (DerivedData/SourcePackages — the Crashlytics
+      # build phase finds its script there), keyed on the lockfile. SPM checks every checkout out at the
       # revision Package.resolved pins, so a restored cache cannot change what
       # is built. DerivedData is deliberately NOT cached: this workflow cleaned
       # before every build to defeat stale-DerivedData false greens, so the
@@ -117,7 +117,7 @@ jobs:
       - name: Cache Swift packages
         uses: actions/cache@v6
         with:
-          path: SourcePackages
+          path: ${{ runner.temp }}/dd/SourcePackages
           key: ${{ runner.os }}-spm-${{ hashFiles('Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
@@ -170,7 +170,6 @@ jobs:
             -destination "id=${{ steps.sim.outputs.id }}" \
             -configuration Debug \
             -derivedDataPath "$RUNNER_TEMP/dd" \
-            -clonedSourcePackagesDirPath SourcePackages \
             -resultBundlePath "$RUNNER_TEMP/BuildResults.xcresult" \
             -enableCodeCoverage YES \
             CODE_SIGNING_ALLOWED=YES \
