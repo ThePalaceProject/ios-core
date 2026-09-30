@@ -97,6 +97,7 @@ class TPPAgeCheckViewController: UIViewController {
         label.text = DisplayStrings.titleLabel
         label.textAlignment = .center
         label.font = UIFont.customFont(forTextStyle: .headline)
+        label.accessibilityTraits = .header
         return label
     }()
 
@@ -110,6 +111,10 @@ class TPPAgeCheckViewController: UIViewController {
     lazy var inputTextField: UITextField = {
         let textfield = UITextField()
         textfield.text = ""
+        // Once a year is picked the placeholder is gone, so without this
+        // VoiceOver reads only the value ("1994, text field"). Reuses the
+        // on-screen caption rather than adding a string to translate.
+        textfield.accessibilityLabel = DisplayStrings.titleLabel
 
         textfield.delegate = self
 
