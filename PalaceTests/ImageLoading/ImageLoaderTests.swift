@@ -104,23 +104,31 @@ final class ImageLoaderTests: XCTestCase {
                        "cache.set should not be called when the cover key is already populated")
     }
 
-    func testCoverImage_displayPoints_cacheHit_skipsNetwork() async {
-        // The displayPoints variant keys on identifier_<px>px — preload that
-        // and assert the loader short-circuits before checking imageURL.
+    func testCoverImage_displayPoints_cacheHitUnderRegistryKey_returnsWithoutConsultingRegistry() async {
+        // Arrange: seed the cache under the key TPPBookCoverRegistry writes after
+        // a sized decode — derived from the registry's own `decodePixels`, not
+        // from the loader, so the two keyings are checked against each other.
         let book = makeBook(imageURL: URL(string: "https://example.com/img.jpg")!)
+        let displayPoints: CGFloat = 150
         let scale = await MainActor.run { UIScreen.main.scale }
-        let neededPixels = min(100 * scale * 1.5, 1200)
-        let key = "\(book.identifier)_\(Int(neededPixels))px"
+        let registryPixels = TPPBookCoverRegistry.decodePixels(displayPoints: displayPoints, scale: scale)
+        let registryKey = "\(book.identifier)_\(Int(registryPixels))px"
         let preloaded = makeImage(color: .blue)
-        cache.set(preloaded, for: key, expiresIn: nil)
-        // Drop the setup's set() from setKeys — see sibling test above.
+        cache.set(preloaded, for: registryKey, expiresIn: nil)
         cache.resetHistory()
 
-        let result = await loader.coverImage(for: book, displayPoints: 100)
+        // Act
+        let result = await loader.coverImage(for: book, displayPoints: displayPoints)
 
+        // Assert: the loader's own lookup hit, so the registry (which reads via
+        // getAsync) never looked the sized key up and nothing was re-stored.
+        // Assertions are scoped to the sized key: TPPBook.init starts its own
+        // thumbnail fetch, which writes other keys to this cache concurrently.
         XCTAssertEqual(result?.pngData(), preloaded.pngData())
-        XCTAssertFalse(cache.setKeys.contains(key),
-                       "cache.set should not be called when the displayPoints key is already populated")
+        XCTAssertFalse(cache.asyncGetKeys.contains(registryKey),
+                       "loader missed its cache short-circuit and fell through to the registry")
+        XCTAssertFalse(cache.setKeys.contains(registryKey),
+                       "cache.set should not be called when the registry's sized key is already populated")
     }
 
     // MARK: - Placeholder fallthrough
