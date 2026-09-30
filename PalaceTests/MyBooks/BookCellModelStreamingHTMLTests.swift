@@ -155,9 +155,8 @@ final class BookCellModelStreamingHTMLTests: XCTestCase {
     }
 
     /// Negative control: didSelectRead on an EPUB book must NOT push the
-    /// streamingHTML route. If a mutant accidentally routes all content
-    /// types through `coordinator.push(.streamingHTML(...))`, this test
-    /// fails.
+    /// streamingHTML route. Routing all content types through
+    /// `coordinator.push(.streamingHTML(...))` fails this test.
     func testBookCellModel_didSelectRead_epubBook_doesNotPushStreamingRoute() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)

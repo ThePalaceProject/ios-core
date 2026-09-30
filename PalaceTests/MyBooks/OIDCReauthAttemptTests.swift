@@ -89,9 +89,8 @@ final class OIDCReauthAttemptTests: XCTestCase {
 
     // MARK: - shouldRetry: the retry decision as a table
 
-    // SoD review defeated the previous `case` pattern THREE times, because a
-    // source-text lint is monotone — it catches deletion, never addition or
-    // reordering. As a pure function the decision is an ordinary mutant target.
+    // A source-text lint catches deletion but not addition or reordering; as a
+    // pure function the decision can be asserted cell by cell.
 
     func testShouldRetry_onlyPresentationFailure_andOnlyOnFirstAttempt() {
         let all: [OIDCReauthAttempt] = [.succeeded, .patronCancelled, .presentationFailed, .failed]
@@ -106,7 +105,7 @@ final class OIDCReauthAttemptTests: XCTestCase {
         }
     }
 
-    /// The bound is a value, so narrowing it is a killable mutant rather than a
+    /// The bound is a value, so narrowing it fails a test rather than being a
     /// silent loop-header edit.
     func testShouldRetry_maxAttemptsOne_neverRetries() {
         XCTAssertFalse(

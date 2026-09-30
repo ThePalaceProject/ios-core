@@ -5,17 +5,11 @@
 //  Drives `attemptOIDCSilentReauth`'s retry loop for real, through the injected
 //  presentation seam.
 //
-//  These exist because three rounds of SoD review defeated the structural-lint
-//  approach. The verdict, precisely: `XCTAssertTrue(code.contains(...))` is
-//  MONOTONE in the source text — it detects deletion but never ADDITION or
-//  reordering. So a lint pinning `outcome.isRetryable && attempt == 0` stayed
-//  green while `case .patronCancelled where attempt == 0: continue` was INSERTED
-//  after it (re-presenting a sheet the patron dismissed), and stayed green while
-//  `0...1` was narrowed to `0...0` (deleting the retry entirely).
-//
-//  The fix was a seam, not more string assertions. With the presentation
-//  injected, "how many times did we present, and did we present after a
-//  cancellation" become observable facts rather than spellings.
+//  A source-text lint (`code.contains(...)`) detects deletion but not insertion
+//  or reordering: it cannot see an added `case .patronCancelled where attempt
+//  == 0: continue` (re-presenting a dismissed sheet) or `0...1` narrowed to
+//  `0...0`. With the presentation injected, the number of presentations and
+//  whether one follows a cancellation are observable facts.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -73,9 +67,8 @@ final class OIDCReauthRetryBehaviorTests: XCTestCase {
 
     /// THE consent property, driven rather than spelled.
     ///
-    /// The additive mutant that beat every previous lint — inserting
-    /// `case .patronCancelled where attempt == 0: continue` — makes this fail,
-    /// because it asserts the OBSERVED number of presentations.
+    /// Inserting `case .patronCancelled where attempt == 0: continue` makes this
+    /// fail, because it asserts the observed number of presentations.
     func testPatronCancellation_presentsExactlyOnce() async {
         let spy = PresentationSpy([.patronCancelled, .succeeded])
 

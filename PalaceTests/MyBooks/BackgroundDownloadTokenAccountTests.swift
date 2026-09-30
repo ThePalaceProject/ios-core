@@ -174,7 +174,7 @@ final class BackgroundDownloadTokenAccountTests: PalaceWiringTestCase {
         // Register an account under the EMPTY id. Without this the spy would fall
         // back to `userAccount` for an unknown id, so dropping the emptiness guard
         // would still resolve to `userAccount` and this test would pass for the
-        // wrong reason — it did, until a mutation run caught it.
+        // wrong reason.
         delegate.accountsForCapturedId[""] = makeAccount(
             id: "test-uuid-empty-\(UUID().uuidString)", token: "empty-id-token")
 
@@ -199,8 +199,7 @@ final class BackgroundDownloadTokenAccountTests: PalaceWiringTestCase {
         // written at download start under the ORIGINAL book, while the follow-up
         // carries an UPDATED book parsed from the server's OPDS2 publication, whose
         // identifier is server-supplied and can differ. Every other test here passes
-        // the same book as both, so keying on `updatedBook` would pass all of them
-        // — review found exactly that mutant surviving.
+        // the same book as both, so keying on `updatedBook` would pass all of them.
         let startedAccount = makeAccount(id: startedLibraryID, token: "started-library-token")
         let currentAccount = makeAccount(id: "test-uuid-current-\(UUID().uuidString)",
                                          token: "current-library-token")

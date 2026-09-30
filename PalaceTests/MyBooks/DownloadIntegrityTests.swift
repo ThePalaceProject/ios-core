@@ -2,20 +2,11 @@
 //  DownloadIntegrityTests.swift
 //  PalaceTests
 //
-//  Deep mutation-killing coverage for the *integrity* leg of the
-//  download lifecycle: file existence + non-zero size validation, hash
-//  comparison against the server-declared content hash (where the
-//  contract is currently size-based as documented in
-//  BackgroundDownloadHandler.validateDownloadedFile), and the audiobook
-//  manifest contract — when an audiobook manifest is part of the
-//  payload, the registry must still be authoritative for the loan state
-//  and the underlying bytes must round-trip without corruption.
-//
-//  These tests stay hermetic: per-test temp dir, no network, no Adobe
-//  RMSDK. They drive BackgroundDownloadHandler.validateDownloadedFile /
-//  replaceBook / moveFile so we can pin the contract a downstream hash
-//  check would extend, and surface seam gaps for fields that aren't yet
-//  threaded through (commented below).
+//  Pins the integrity leg of the download lifecycle: file existence and
+//  non-zero size validation (the current contract in
+//  BackgroundDownloadHandler.validateDownloadedFile), and that audiobook
+//  payloads round-trip without corruption while the registry stays
+//  authoritative for loan state. Hermetic: per-test temp dir, no network.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -78,8 +69,7 @@ final class DownloadIntegrityTests: XCTestCase {
 
     // MARK: - Existence + size validation (mutation kill on the > 0 guard)
 
-    /// Size > 0 is the gate. Any mutation that flips to `>= 0` (silent
-    /// accept of empty payloads) is killed by this test.
+    /// Size > 0 is the gate; flipping it to `>= 0` would accept empty payloads.
     func testValidate_nonEmptyFile_passes() throws {
         let book = makeBook()
         let file = tempDir.appendingPathComponent("ok.epub")
@@ -108,7 +98,7 @@ final class DownloadIntegrityTests: XCTestCase {
 
     /// Round-trips a payload through `replaceBook` and verifies the on-disk
     /// SHA-256 matches the source SHA-256. This pins the byte-for-byte
-    /// integrity contract: any mutation that, e.g., off-by-ones a buffer
+    /// integrity contract: e.g. an off-by-one buffer
     /// length during move/replace would diverge the hashes.
     func testReplaceBook_byteForByteHashMatch() throws {
         let book = makeBook()
@@ -156,7 +146,7 @@ final class DownloadIntegrityTests: XCTestCase {
     /// Seam-gap pin: production `validateDownloadedFile` currently only
     /// checks existence + size > 0. The contract this test surfaces is
     /// that the *same* file can be validated repeatedly and the answer
-    /// stays stable — a mutation that, e.g., consumed the file on first
+    /// stays stable — a change that, e.g., consumed the file on first
     /// read would break re-validation after replays/recovery.
     func testValidate_repeatedCallsAreIdempotent() throws {
         let book = makeBook()
@@ -171,9 +161,8 @@ final class DownloadIntegrityTests: XCTestCase {
     }
 
     /// Hash-drift surrogate: write A, replace with B (different bytes,
-    /// same length). The hash AFTER replace must match B, not A. A
-    /// mutation that "skips the replace if sizes are equal" would be
-    /// caught here.
+    /// same length). The hash AFTER replace must match B, not A, so skipping
+    /// the replace when sizes are equal is caught.
     func testReplaceBook_sameSizeDifferentBytes_writesNewBytes() throws {
         let book = makeBook()
         let dest = tempDir.appendingPathComponent("book.epub")

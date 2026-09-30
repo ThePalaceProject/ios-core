@@ -160,9 +160,8 @@ final class BorrowOperationStreamingHTMLTests: XCTestCase {
 
     /// Companion positive control: a successful borrow for an EPUB book
     /// (which has a downloadable asset) MUST still call
-    /// `delegate.startDownload`. Without this test, a mutant that removes
-    /// the entire conditional (so startDownload never fires) would pass
-    /// the streaming-HTML test silently.
+    /// `delegate.startDownload`, so removing the whole conditional (so
+    /// startDownload never fires) cannot pass the streaming-HTML test.
     func testBorrowOperation_borrowSucceeded_epubBook_callsStartDownloadOnce() async throws {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         XCTAssertFalse(book.isStreamingHTML,

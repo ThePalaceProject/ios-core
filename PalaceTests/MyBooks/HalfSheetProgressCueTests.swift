@@ -333,9 +333,8 @@ final class HalfSheetProgressCueTests: XCTestCase {
     /// `BookDetailViewModel`'s `isBorrowProcessing` seed exists for — a borrow
     /// kicked off from a swimlane, then navigated into.
     ///
-    /// An earlier revision of the allowlist answered `.idle` here, which removed
-    /// the only "Borrowing…" signal and re-opened the documented "borrow stuck
-    /// with Cancel-only UI" defect. Found by three independent reviewers.
+    /// Answering `.idle` here would remove the only "Borrowing…" signal and
+    /// re-open the "borrow stuck with Cancel-only UI" defect.
     func testBorrowInFlightWhileStillCanBorrow_showsBorrowingSpinner() {
         let cue = HalfSheetProgressCue.resolve(
             isBorrowProcessing: true,
@@ -448,15 +447,8 @@ final class HalfSheetProgressCueTests: XCTestCase {
     /// Completeness over the whole enum, with the idle bucket DERIVED rather
     /// than hand-listed, so a new `BookButtonState` lands in an asserted bucket
     /// and must be deliberately moved out of it.
-    ///
-    /// Replaces a tautology. The previous version built a set by inserting every
-    /// member of `allCases` and then asserted it equalled `Set(allCases)` —
-    /// guaranteed by construction, killing zero mutants, while the real
-    /// completeness claim still rested on a hand-written list. All three
-    /// reviewers flagged it independently, and it was the sole justification
-    /// offered for adding `CaseIterable` to a production enum. This version
-    /// makes the conformance load-bearing: it asserts what `resolve` ANSWERS for
-    /// every case, so a changed verdict fails and a new case fails.
+    /// Asserts what `resolve` answers for every case, which is what makes the
+    /// `CaseIterable` conformance on the production enum load-bearing.
     func testEveryButtonStateHasAPinnedCueVerdict() {
         // The states that represent a pending acquisition — a wait the patron
         // can do nothing about but watch.
