@@ -239,7 +239,7 @@ struct Strings {
             String.localizedStringWithFormat(NSLocalizedString("Skip forward %d seconds", comment: "VoiceOver: Skip audiobook forward by the configured interval"), seconds)
         }
         static let dismissPlayer = NSLocalizedString("Dismiss player", comment: "VoiceOver: Done button on the full audiobook player, dismisses to the mini-player")
-        // Accessibility - Audiobook mini-player (swarm_0b7616e7 Module D)
+        // Accessibility - Audiobook mini-player
         static let nowPlayingLabelTitleAndAuthor = NSLocalizedString(
             "Now playing: %1$@ by %2$@. Double-tap to expand.",
             comment: "VoiceOver: Combined accessibility label for the audiobook mini-player, including title and author"

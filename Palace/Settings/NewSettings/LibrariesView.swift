@@ -2,12 +2,9 @@
 //  LibrariesView.swift
 //  Palace
 //
-//  The dedicated Libraries screen (PP-5098). The patron's libraries used to
-//  live inline on the Settings tab (PP-917), which turned that tab into a long
-//  scroll for anyone with five or more libraries. This screen is the same
-//  functionality relocated: it hosts the unchanged `LibrariesSectionViewModel`,
-//  so switching, adding, and removing libraries run exactly the chain they ran
-//  before. Settings keeps only a labeled row that pushes this screen.
+//  The Libraries screen (PP-5098), pushed from a row on Settings so that tab
+//  stays short for patrons with many libraries. Hosts `LibrariesSectionViewModel`
+//  for switching, adding, and removing libraries.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -24,19 +21,11 @@ struct LibrariesView: View {
     @StateObject private var viewModel: LibrariesSectionViewModel
     @State private var switchPromptAccount: Account? = nil
 
-    /// Injected rather than reached for: this screen is new code, so it takes
-    /// its graph from the caller (`TPPSettingsView` passes the one resolved
-    /// from `@Environment(\.appContainer)`) instead of calling
-    /// `AppContainer.production()` itself.
-    ///
-    /// The container rather than a ready-made view model, because a caller-owned
-    /// view model would have to be a `@StateObject` on `TPPSettingsView`, whose
-    /// `init` cannot read `@Environment` — reintroducing the exact
-    /// `AppContainer.production()`-in-init this change deleted. Building it here
-    /// costs nothing per render: `StateObject(wrappedValue:)` takes an
-    /// autoclosure, so the view model is constructed once for this view's
-    /// identity even though `NavigationLink` rebuilds the destination on every
-    /// pass of the parent's body.
+    /// Injected by the caller (from `@Environment(\.appContainer)`). The
+    /// container rather than a view model, because a caller-owned view model
+    /// would be a `@StateObject` on `TPPSettingsView`, whose `init` cannot read
+    /// `@Environment`. `StateObject(wrappedValue:)` takes an autoclosure, so the
+    /// view model is built once per view identity.
     private let appContainer: AppContainer
 
     init(appContainer: AppContainer) {
@@ -49,11 +38,9 @@ struct LibrariesView: View {
     }
 
     var body: some View {
-        // The overlay composes with THIS screen's content, not with the
-        // navigation stack's root. It used to sit in `TPPSettingsView`'s root
-        // `ZStack`, which was correct while the library list was inline there;
-        // now that switching happens on a pushed screen, an overlay left at the
-        // root would render behind it. See `SwitchingOverlayContainer`.
+        // The overlay composes with this screen's content, not the navigation
+        // root, which would render behind a pushed screen. See
+        // `SwitchingOverlayContainer`.
         SwitchingOverlayContainer(isSwitching: viewModel.isSwitching) {
             listView
         }
@@ -260,28 +247,14 @@ struct LibrariesView: View {
 /// Composes a screen's content with the library-switch loading overlay on top
 /// of it.
 ///
-/// This exists as a container rather than an `.overlay` written inline because
-/// PP-5098 made the overlay's PLACEMENT a decision that can be silently wrong.
-/// It used to be a `ZStack` sibling of the Settings list, which was right while
-/// the library list was inline on that screen. Now the switch is started from a
-/// screen pushed on top of Settings, and a `ZStack` sibling of a navigation
-/// stack's root renders BEHIND whatever is pushed onto it — the patron would
-/// watch the spinner under the wrong screen, with nothing in the code to say so.
-/// Putting the composition in one named type means the screen that starts a
-/// switch is the screen that owns the overlay.
+/// A named container so the screen that starts a switch owns the overlay. A
+/// `ZStack` sibling of a navigation stack's root renders behind whatever is
+/// pushed onto it (PP-5098).
 ///
-/// NOT covered by a test, and the attempts are worth recording so nobody spends
-/// the afternoon again. Rendering this into a `UIHostingController` and reading
-/// back accessibility labels works locally and returns NOTHING on the CI
-/// simulator — where the two "the label is present" assertions failed and the
-/// one "the label is absent" assertion passed VACUOUSLY, which is worse than no
-/// test. Hit-testing for z-order fails in both arrangements, because SwiftUI
-/// renders these layers into shared host views carrying no per-layer label. That
-/// matches the standing convention in `PalaceTests` (no ViewInspector, no
-/// `UIHostingController`); the tests here were the only ones that broke it.
-/// What IS pinned is the flag this reads: see
-/// `LibrariesSectionViewModelTests.test_switchToAccount_firesCompletion_andClearsIsSwitching_whenEnvironmentReportsReady`.
-/// The rendering and the stacking are on the PR's on-device list.
+/// The stacking is not unit-tested: reading accessibility labels back from a
+/// `UIHostingController` returns nothing on the CI simulator, and SwiftUI layers
+/// carry no per-layer label for hit-testing. The flag it reads is pinned in
+/// `LibrariesSectionViewModelTests`.
 struct SwitchingOverlayContainer<Content: View>: View {
     let isSwitching: Bool
     @ViewBuilder let content: () -> Content
@@ -290,11 +263,8 @@ struct SwitchingOverlayContainer<Content: View>: View {
         ZStack {
             content()
 
-            // Composed AFTER the content, so it is in FRONT of it. Keep this
-            // line LAST in the ZStack — nothing tests the ordering (see the
-            // type's doc comment for why it is not assertable here), so moving
-            // it up would put the spinner behind the screen it is covering with
-            // a green suite either way.
+            // Keep this last in the ZStack so it draws in front of the content;
+            // the ordering is not covered by tests.
             //
             // Stays up while the auth document loads — when the view model
             // fires its completion the overlay dismisses and the tab jumps to

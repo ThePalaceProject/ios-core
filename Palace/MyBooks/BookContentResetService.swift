@@ -2,16 +2,9 @@
 //  BookContentResetService.swift
 //  Palace
 //
-//  Owns the bulk-reset flows that lived on MyBooksDownloadCenter via the
-//  TPPBookDownloadsDeleting conformance: per-account content
-//  obliteration (reset(account:) / reset()), audiobook deletion
-//  (deleteAudiobooks(forAccount:)), and audiobook cache purging
-//  (purgeAllAudiobookCaches(force:)).
-//
-//  Extracted so the cleanup state machine can be exercised without
-//  standing up MBDC. MBDC keeps the TPPBookDownloadsDeleting
-//  conformance as 1-line delegators so the
-//  TPPSignInBusinessLogic.bookDownloadsCenter contract is preserved.
+//  Bulk-reset flows behind MyBooksDownloadCenter's TPPBookDownloadsDeleting
+//  conformance: per-account content removal, audiobook deletion, and
+//  audiobook cache purging. MBDC's conformance delegates here.
 //
 
 import Foundation

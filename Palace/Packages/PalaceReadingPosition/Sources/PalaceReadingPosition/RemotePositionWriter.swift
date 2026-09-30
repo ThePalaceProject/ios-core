@@ -2,14 +2,10 @@
 //  RemotePositionWriter.swift
 //  PalaceReadingPosition
 //
-//  The canonical, network-backed `PositionWriter`. Throttles per-book to
-//  a configurable window, coalesces queued snapshots inside the window,
-//  and wraps every POST in a UIApplication background-task on iOS so
-//  callers don't need to think about app suspension.
-//
-//  Concurrency: a serial `DispatchQueue` guards all bookkeeping. The
-//  network calls themselves are dispatched off-queue via Swift
-//  concurrency, so the queue never blocks on I/O.
+//  Network-backed `PositionWriter`. Throttles per book, coalesces snapshots
+//  inside the window, and wraps each POST in a background task so app
+//  suspension does not drop it. A serial queue guards bookkeeping; network
+//  calls run off-queue so it never blocks on I/O.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

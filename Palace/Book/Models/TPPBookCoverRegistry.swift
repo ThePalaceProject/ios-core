@@ -11,10 +11,8 @@ import PalaceBookRegistry
 /// Tracks hosts that are consistently failing (e.g., DNS resolution errors) and allows
 /// callers to skip requests to those hosts immediately instead of waiting for timeouts.
 ///
-/// This is critical for performance when a library's image host is down — without it,
-/// each book in a swimlane wastes 2 sequential network requests waiting for DNS timeouts
-/// before falling back to a placeholder. With it, the first failure trips the circuit
-/// and all subsequent requests skip instantly.
+/// Without it, when a library's image host is down every book in a lane waits on
+/// DNS timeouts before falling back to a placeholder.
 actor HostFailureTracker {
 
     /// How long to remember a host failure before retrying
@@ -26,10 +24,8 @@ actor HostFailureTracker {
     private struct HostRecord {
         var consecutiveFailures: Int = 0
         var lastFailureDate: Date = Date()
-        /// Copied from the enclosing actor's `failureThreshold` at record
-        /// creation so `isTripped` honors the configured threshold instead of
-        /// tripping on the very first failure (which blacklisted a whole cover
-        /// CDN for the cooldown window after one Wi-Fi↔cellular blip).
+        /// Copied from the actor's `failureThreshold` so `isTripped` does not
+        /// trip on a single failure (e.g. one Wi-Fi↔cellular blip).
         let failureThreshold: Int
         var isTripped: Bool { consecutiveFailures >= failureThreshold }
     }
@@ -78,24 +74,16 @@ actor HostFailureTracker {
 
 // MARK: - Swift Concurrency Actor
 actor TPPBookCoverRegistry {
-    /// `nonisolated let` (no `(unsafe)`) because `ImageCacheType` is now `Sendable`
-    /// — an immutable reference to a Sendable type can be read from any isolation
-    /// context without the unchecked escape hatch. See #1129 module-3 playbook:
-    /// prefer honest isolation over `nonisolated(unsafe)` once the type is Sendable.
+    /// `nonisolated let` (no `(unsafe)`) because `ImageCacheType` is `Sendable`.
     nonisolated let imageCache: ImageCacheType
 
     static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared)
 
-    /// URL-keyed cache of raw image bytes from the network. A single source URL
-    /// often needs to be decoded at multiple sizes (catalog cell ~150pt, detail
-    /// ~280pt, audiobook player ~screen width). Before this cache existed, each
-    /// size variant was a separate network round-trip. With it, the first fetch
-    /// saves the bytes and later variants re-decode from RAM.
+    /// URL-keyed cache of raw image bytes, so one source decoded at several sizes
+    /// (cell, detail, player) costs one network round-trip.
     ///
-    /// `NSCache` is thread-safe but not `Sendable`, so this genuinely needs the
-    /// `nonisolated(unsafe)` escape hatch — it lets any actor-isolated method
-    /// read/write it without extra hops, and the NSCache internal locking makes
-    /// that sound.
+    /// `NSCache` is thread-safe but not `Sendable`; its internal locking makes
+    /// `nonisolated(unsafe)` sound here.
     nonisolated(unsafe) private let sourceDataCache: NSCache<NSString, NSData> = {
         let cache = NSCache<NSString, NSData>()
         cache.totalCostLimit = 40 * 1024 * 1024 // 40MB of source bytes
@@ -118,16 +106,10 @@ actor TPPBookCoverRegistry {
     /// Tracks hosts that are down to skip requests immediately instead of waiting for timeouts
     let hostFailureTracker: HostFailureTracker
 
-    /// Retained so the observer is torn down in `deinit`. A Wi-Fi↔cellular
-    /// handoff briefly fails in-flight image requests on the old interface; on
-    /// any reachability change we clear the circuit breaker so the covers that a
-    /// transient blip tripped are retried on the new interface instead of
-    /// staying blacklisted for the full cooldown window.
-    // `nonisolated(unsafe)`: the token is written once in `init` and read once in
-    // the actor's `nonisolated deinit` to unregister the observer. Swift 6 forbids
-    // touching a non-Sendable stored property from a nonisolated deinit, but deinit
-    // runs only when no other reference to the actor exists, so this single teardown
-    // read races nothing.
+    /// Reachability observer: a Wi-Fi↔cellular handoff briefly fails in-flight
+    /// requests, so any reachability change clears the circuit breaker.
+    // `nonisolated(unsafe)`: written once in `init`, read once in the nonisolated
+    // `deinit`, when no other reference to the actor exists.
     nonisolated(unsafe) private var reachabilityObserverToken: NSObjectProtocol?
 
     /// Dedicated URLSession with short timeouts for image fetches.
@@ -138,10 +120,8 @@ actor TPPBookCoverRegistry {
         config.timeoutIntervalForRequest = 10     // 10s to connect/respond (vs 60s default)
         config.timeoutIntervalForResource = 15    // 15s total per image fetch
         config.waitsForConnectivity = false        // Fail immediately if no network
-        // 8 matches our concurrent fetch slot budget (maxConcurrentFetches). The old
-        // cap of 4 was the real bottleneck: a single-CDN library serving every cover
-        // from the same host could only run 4 in parallel no matter how many slots
-        // we had free.
+        // Matches maxConcurrentFetches; single-CDN libraries serve every cover
+        // from one host.
         config.httpMaximumConnectionsPerHost = 8
         config.urlCache = nil                      // Images have their own cache layer
         return URLSession(configuration: config)
@@ -149,14 +129,8 @@ actor TPPBookCoverRegistry {
 
     /// The session image fetches actually run on.
     ///
-    /// Injected so `sourceData(for:)` can be exercised. The static
-    /// `imageSession` below is a hard-coded default with no seam, and a
-    /// globally-registered `URLProtocol` cannot reach a session built from its
-    /// own `URLSessionConfiguration` — only `configuration.protocolClasses` is
-    /// consulted. That made the fetch path untestable, which is very likely why
-    /// it has no tests while the pure `downsampleImage` helper next to it has
-    /// four: the untested surface was the unreachable one, not the neglected
-    /// one.
+    /// Injected so `sourceData(for:)` is testable: a globally registered
+    /// `URLProtocol` cannot reach a session built from its own configuration.
     ///
     /// `nonisolated let`: written once in `init`, `URLSession` is `Sendable`,
     /// and the fetch reads it from a detached `Task`.
@@ -203,11 +177,8 @@ actor TPPBookCoverRegistry {
     }
 
     /// Clears the host circuit breaker (fire-and-forget). Call on an account
-    /// switch so a host that tripped under the prior library does not keep
-    /// suppressing cover fetches for the newly selected library. `nonisolated`
-    /// + a detached reset lets synchronous main-actor callers (the account
-    /// switch path) invoke it without `await`; capturing only the Sendable
-    /// tracker keeps this off `self`.
+    /// switch so a host tripped under the prior library does not suppress covers
+    /// for the new one. `nonisolated` so synchronous callers need no `await`.
     nonisolated func resetHostFailures() {
         let tracker = hostFailureTracker
         Task { await tracker.reset() }
@@ -257,14 +228,9 @@ actor TPPBookCoverRegistry {
 
     /// Target decode dimension (in pixels) for a cover shown at `displayPoints`.
     ///
-    /// Decodes at EXACTLY the display pixel box (1:1) — NOT oversampled. Handing
-    /// SwiftUI a bitmap larger than the box it's drawn into forces Core Animation
-    /// to minify a non-mipmapped texture on every frame; as the cell scrolls the
-    /// subpixel sample position shifts each frame, which is precisely the
-    /// shimmer/aliasing seen on cover edges during scroll. A 1:1 decode makes the
-    /// blit exact. Clamped to 1200px to bound memory on very large display sizes.
-    ///
-    /// Pure + static so the sizing math is unit-testable without a decode.
+    /// Decodes at exactly the display pixel box (1:1), not oversampled: a larger
+    /// bitmap makes Core Animation minify a non-mipmapped texture each frame,
+    /// which shimmers on cover edges during scroll. Clamped to 1200px.
     static func decodePixels(displayPoints: CGFloat, scale: CGFloat) -> CGFloat {
         min(displayPoints * scale, 1200)
     }
@@ -286,14 +252,9 @@ actor TPPBookCoverRegistry {
 
         if let cached = await imageCache.getAsync(for: key) { return cached }
 
-        // No network image — fall back directly to a size-aware placeholder so TenPrint
-        // renders at the display size rather than the fixed 80×120 thumbnail size.
-        //
-        // For small display sizes (catalog cells ~150pt) prefer the thumbnail
-        // URL: prefetch (CatalogViewModel.prefetchThumbnails → thumbnailImage)
-        // fetches `imageThumbnailURL`, and `sourceData(for:)` dedups by URL, so
-        // sharing the URL lets the cell fetch coalesce onto the prefetch task
-        // instead of pulling the full-res `imageURL` a second time.
+        // No network image: fall back to a size-aware TenPrint placeholder.
+        // Small displays use the thumbnail URL so the fetch coalesces with
+        // prefetch (see `coverSourceURL`).
         guard let url = Self.coverSourceURL(
             imageURL: book.imageURL,
             thumbnailURL: book.imageThumbnailURL,
@@ -364,14 +325,9 @@ actor TPPBookCoverRegistry {
             return img
         }
 
-        // Memory pressure backoff: while an LCP PDF is opening, the
-        // decrypt walk + Readium page rendering consume large memory
-        // buffers; layering background cover prefetches on top is what
-        // tipped device opens into OOM (visible in the device log as
-        // "Memory warning received" followed by SIGABRT). Skip the
-        // network + decode here — callers see the same nil-on-miss
-        // they'd see during a transient network failure, and the
-        // catalog re-fetches naturally when the user scrolls back.
+        // Memory-pressure backoff: while an LCP PDF is opening, cover prefetches
+        // on top of decryption and page rendering can push the device into OOM.
+        // Callers see the same nil as a transient network failure.
         #if LCP
         if LCPPDFOpenProgress.isOpenInProgress {
             return nil
@@ -419,41 +375,20 @@ actor TPPBookCoverRegistry {
             await self.acquireFetchSlot()
             defer { Task { await self.releaseFetchSlot() } }
 
-            // Recompute the cache key inside the Task from the Sendable `url`
-            // rather than capturing the outer `key` (`NSString`, non-Sendable) —
-            // capturing it made this `sending` Task closure trip the
-            // `complete`-mode "risks data races between 'self'-isolated code and
-            // concurrent execution of the closure" diagnostic. `url` is Sendable
-            // and the key is a pure function of it, so this is behavior-identical.
+            // Recomputed from the Sendable `url` rather than capturing the outer
+            // non-Sendable `NSString` key into the `sending` Task closure.
             let key = url.absoluteString as NSString
 
             do {
                 let (data, response) = try await self.urlSession.data(
                     for: URLRequest.withoutHTTP3Assumption(url: url)
                 )
-                // The response used to be discarded into `_`, so a non-2xx body
-                // (an HTML error page) and a 200 with a zero-length body were
-                // both treated as a successful fetch AND cached under the URL
-                // key. Neither can decode, so the cover fell back to a generated
-                // TenPrint placeholder — and because the bad bytes were cached,
-                // every later fetch was served them too, so the placeholder
-                // became permanent for the process lifetime instead of
-                // recovering on the next scroll. This session sets
-                // `urlCache = nil`, so there is no layer underneath to recover
-                // through either.
-                //
-                // Empty is the only body state that matters here: a TRUNCATED
-                // JPEG still decodes (verified at 10/25/50/75/90% prefixes of a
-                // real cover), while zero bytes is exactly and only the input
-                // that makes `downsampleImage` return nil.
-                //
-                // The refusal is reported rather than silent. Declining here
-                // means the decode is never attempted, so the decode-side
-                // `logImageDecodeFail` that used to fire for these responses no
-                // longer does — the signal MOVES to this call rather than
-                // disappearing. Without it a fix would make the symptom stop
-                // being logged instead of stop happening, and nobody could tell
-                // "bad responses stopped arriving" from "we stopped noticing".
+                // Refuse non-2xx and empty bodies so they are not cached: cached
+                // bad bytes would pin the TenPrint placeholder for the process
+                // lifetime (this session has no URLCache underneath). A truncated
+                // JPEG still decodes; zero bytes is the input that does not.
+                // The refusal is logged here because the decode-side
+                // `logImageDecodeFail` no longer sees these responses.
                 let status = (response as? HTTPURLResponse)?.statusCode
                 let statusIsUsable = status.map { (200..<300).contains($0) } ?? true
                 guard statusIsUsable, !data.isEmpty else {
@@ -665,12 +600,4 @@ actor TPPBookCoverRegistry {
 
 // MARK: - Objective-C Bridge
 //
-// `TPPBookCoverRegistryBridge` was removed in the swarm_d5a3d473 Track A
-// consolidation (2026-05-19). Its responsibilities moved to the
-// `ImageLoading` umbrella's completion-style overloads on `ImageLoader`,
-// which is constructed once in `AppContainer.production()` and injected
-// through `AppContainer.imageLoader`. Call sites that used to read
-// `TPPBookCoverRegistryBridge.shared` now read `imageLoader` either via
-// explicit `AppContainer` injection (BookListView, TPPBookRegistry,
-// CarPlayImageProvider) or via the `AppContainer.production().imageLoader`
-// computed accessor on TPPBook+Presentation.
+// Completion-style access goes through `ImageLoader` (`AppContainer.imageLoader`).

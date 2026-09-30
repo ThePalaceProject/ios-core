@@ -9,14 +9,13 @@ import Foundation
 import PalaceBookModel
 import PalaceCatalog
 
-/// The download-center surface `BookRegistrySync` consumes, injected app-side
-/// (god-class decomposition Wave 2b). `MyBooksDownloadCenter` conforms via an
+/// The download-center surface `BookRegistrySync` consumes, injected app-side.
+/// `MyBooksDownloadCenter` conforms via an
 /// app-target extension.
 ///
 /// `contentFileSatisfied` / `lcpContentFileMissing` exist because SPM targets do
-/// NOT inherit the app's `LCP` compilation condition — the `#if LCP` /
-/// `LCPAudiobooks.canOpenBook` probe logic that used to live inline in
-/// `checkIfBookFileExists` MUST live in the app-side adapter. Palace-noDRM's
+/// not inherit the app's `LCP` compilation condition, so the `#if LCP` /
+/// `LCPAudiobooks.canOpenBook` probe has to live in the app-side adapter. Palace-noDRM's
 /// adapter returns the non-LCP behavior (plain file existence / `false`).
 public protocol RegistryDownloadServicing: Sendable {
     func fileUrl(for book: TPPBook, account: String?) -> URL?

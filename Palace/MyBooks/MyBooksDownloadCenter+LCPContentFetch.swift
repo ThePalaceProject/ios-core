@@ -4,9 +4,7 @@
 //
 //  The download centre's LCP content-fetch seam: deciding whether a book that
 //  holds only its `.lcpl` license still needs its `.lcpa` archive pulled, and
-//  asking `LocalBookContentService` for it. Extracted from the hub rather than
-//  added to it — `MyBooksDownloadCenter` is under the god-class LOC freeze, and
-//  this cluster has one subject and one collaborator.
+//  asking `LocalBookContentService` for it.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -37,9 +35,8 @@ extension MyBooksDownloadCenter {
     ///
     /// The account is passed IN rather than read here: the centre's
     /// `accountsManager` is `private`, and resolving it at the call site keeps
-    /// this off `AccountsManager.shared`, which CLAUDE.md forbids in new code and
-    /// which would resolve paths through the live singleton for a test centre
-    /// wired to a different account.
+    /// this off `AccountsManager.shared`, which would resolve paths through the
+    /// live singleton for a test centre wired to a different account.
     /// - parameter afterFailedDownload: the completion path's final verdict. Both
     ///   its arms fall through to this call, and a download can fail AFTER its
     ///   licence has landed — at which point the book still looks fetchable. PP-5148:

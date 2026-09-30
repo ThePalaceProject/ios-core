@@ -2,19 +2,11 @@
 //  Adapters+Production.swift
 //  Palace
 //
-//  Production conformances for Module B's adapter-local collaborator
-//  protocols (AudiobookManifestNetworkFetching, BearerTokenManifestFetching,
+//  Production conformances for the vendor adapters' collaborator protocols
+//  (AudiobookManifestNetworkFetching, BearerTokenManifestFetching,
 //  AudiobookFileReading, BearerTokenRefreshing) plus the BearerTokenMIMEGate
-//  wrapper that controls when BearerTokenAdapter claims a book in the chain.
-//
-//  Module D of swarm_5c8ddbd5 (Audiobook Vendor Adapter Extraction).
-//
-//  The adapter classes themselves live in Module B and are test-injected with
-//  these collaborators stubbed. The loader's `makeProductionAdapters()`
-//  assembles the chain pulling these production conformances and the LCP
-//  adapter (Module C). Each conformance is a thin wrapper — no logic beyond
-//  delegation — so the adapter test suites (Module B) remain the behavior
-//  authority and these wrappers only need a smoke test through the build.
+//  that controls when BearerTokenAdapter claims a book. Each is a thin
+//  delegating wrapper; behavior is tested through the adapters.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -85,10 +77,9 @@ final class ProductionBearerTokenManifestFetcher: BearerTokenManifestFetching {
 
 /// MIME-gated wrapper around BearerTokenAdapter so it only claims books
 /// whose `defaultAcquisition.type` advertises the bearer-token wrapper
-/// MIME. The underlying adapter's `canHandle` returns true unconditionally
-/// (Module B contract decision) — this wrapper is Module D's per-book
-/// gate that keeps OpenAccessAdapter as the chain's fallback for
-/// non-bearer-token books.
+/// MIME. The underlying adapter's `canHandle` returns true unconditionally;
+/// this gate keeps OpenAccessAdapter as the fallback for non-bearer-token
+/// books.
 final class BearerTokenMIMEGate: AudiobookVendorAdapter {
     static let bearerTokenMIME = "application/vnd.librarysimplified.bearer-token+json"
 

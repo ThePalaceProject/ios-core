@@ -310,11 +310,9 @@ final class CarPlayTemplateManager: NSObject {
             return
         }
 
-        // PHASE 1 (swarm_81b5099e Bucket A): the authentication check now
-        // awaits Account.awaitReady() (under the hood in CarPlayAuthHelper)
-        // so we no longer race the cold-launch authentication_document
-        // fetch. Wrap downstream guards in the same Task so the alert
-        // sequencing stays linear with the await.
+        // The authentication check awaits account readiness (see
+        // CarPlayAuthHelper); later guards share the Task so alerts stay
+        // ordered after the await.
         Task { [weak self] in
             guard let self else { return }
             let authenticated = await self.isUserAuthenticated()
@@ -381,7 +379,7 @@ final class CarPlayTemplateManager: NSObject {
     }
 
     /// Checks if the user is authenticated with the current library.
-    /// PHASE 1: awaits the Account.LoadState readiness gate so the
+    /// Awaits the Account.LoadState readiness gate so the
     /// answer reflects loaded credentials, not pre-load defaults.
     /// Note: If tokens need refresh, the app's auth layer handles this automatically.
     /// CarPlay cannot show sign-in UI - users must sign in via the phone app.

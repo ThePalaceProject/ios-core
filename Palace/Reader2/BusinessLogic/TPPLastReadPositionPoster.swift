@@ -14,12 +14,8 @@ import PalaceBookRegistry
 
 /// A front-end to the position-write path that builds an EPUB-shaped
 /// `PositionSnapshot` and delegates to a `PositionWriter` for throttling,
-/// queuing, and background-task lifetime.
-///
-/// Throttle bookkeeping previously lived in this class (a serial
-/// `DispatchQueue` + `lastReadPositionUploadDate` + `queuedReadPosition`).
-/// As of the PalaceReadingPosition migration that state is owned by
-/// `RemotePositionWriter` and shared across EPUB, audiobook, and PDF.
+/// queuing, and background-task lifetime (shared across EPUB, audiobook and
+/// PDF).
 class TPPLastReadPositionPoster {
     /// Interval used to throttle request submission. Retained as a public
     /// constant so `PalaceTests/Reader/EPUBPositionTests` can pin the
@@ -35,14 +31,8 @@ class TPPLastReadPositionPoster {
     private let positionWriter: PositionWriter
     private let deviceID: String
 
-    /// Retains every spawned server-post `Task` still in flight so tests can
-    /// join the actual fire-and-forget work deterministically instead of
-    /// racing a fixed wall-clock `Task.sleep` (which starves under parallel
-    /// oversubscription). Behavior-identical in production: each Task is
-    /// spawned and runs exactly as before; we merely hold references so
-    /// `awaitPendingWrites()` can drain them. Access is serialized on the
-    /// caller's actor (`storeReadPosition` / the test helper both run on the
-    /// same isolation domain as the poster's owner).
+    /// In-flight server-post `Task`s, retained so tests can join them. Accessed
+    /// only on the owner's isolation domain.
     private var pendingWriteTasks: [Task<Void, Never>] = []
 
     init(book: TPPBook,
@@ -77,16 +67,9 @@ class TPPLastReadPositionPoster {
         })
     }
 
-    /// Test seam: awaits every server-post `Task` spawned since the last
-    /// drain so a test can JOIN the actual writes instead of polling a
-    /// wall-clock deadline. No-op in production (never called there).
-    /// Returns once all pending writes have finished.
-    /// Synchronous snapshot: hands the caller every server-post `Task` spawned
-    /// since the last drain so a test can `await` them (join the actual writes).
-    /// SYNC on purpose — an `async` seam on this non-Sendable poster would make
-    /// `await poster.<seam>()` from a `@MainActor` test *send* the poster across
-    /// an isolation boundary (Swift 6 data-race error); a sync call sends nothing,
-    /// and `Task<Void, Never>` is Sendable so the caller can await the returned set.
+    /// Test seam: returns every server-post `Task` spawned since the last drain
+    /// so a test can await them. Synchronous on purpose: an `async` seam would
+    /// send this non-Sendable poster across an isolation boundary.
     func pendingWriteTasksForTesting() -> [Task<Void, Never>] {
         let tasks = pendingWriteTasks
         pendingWriteTasks.removeAll()
@@ -95,13 +78,11 @@ class TPPLastReadPositionPoster {
 
     /// Determines if a locator should be stored and posted.
     ///
-    /// Contract (P0 #1, swarm `swarm_f3b9b087`):
+    /// Contract:
     /// - **Reject** any locator with `totalProgression == nil`. Readium
-    ///   emits an initial locator-change *before* the WKWebView has
-    ///   laid out the document; `totalProgression` is nil at that point.
-    ///   Persisting that locator overwrites the patron's real saved
-    ///   position with pre-render junk and is the root cause of the
-    ///   "opens at chapter 1" regression.
+    ///   emits an initial locator-change before the WKWebView has laid out
+    ///   the document; persisting it would overwrite the patron's saved
+    ///   position ("opens at chapter 1").
     /// - **Accept** any locator with `position` > 0 (PDF / fixed-layout
     ///   EPUB page index — a legitimate anchor independent of
     ///   continuous progression).
@@ -148,17 +129,10 @@ class TPPLastReadPositionPoster {
     ///
     ///     {"@type":"LocatorHrefProgression","href":…,"progressWithinChapter":…}
     ///
-    /// PP-5138: this used to post `locator.jsonString()`, the Readium `Locator`
-    /// shape, which carries neither `@type` nor `progressWithinChapter` and so
-    /// matches no variant in the spec's schema. The spec tells a client that
-    /// meets an untyped locator to read it as `LocatorLegacyCFI`, and Android
-    /// does exactly that and then discards the result for EPUBs — so every
-    /// reading position iOS wrote was dropped on the other platform. Posting
-    /// the bytes we already store locally makes the two sides agree and makes
-    /// the annotation readable by Android. `position`, `progressWithinBook`,
-    /// `title` and `cssSelector` ride along; the schema sets no
-    /// `additionalProperties: false`, and Android reads only the two keys it
-    /// needs and ignores the rest.
+    /// PP-5138: a raw Readium `Locator` has no `@type`, which Android reads as
+    /// `LocatorLegacyCFI` and discards for EPUBs. Extra keys (`position`,
+    /// `progressWithinBook`, `title`, `cssSelector`) are allowed by the schema
+    /// and ignored by Android.
     private func makeSnapshot(from location: TPPBookLocation?) -> PositionSnapshot? {
         guard let location else { return nil }
         return PositionSnapshot(

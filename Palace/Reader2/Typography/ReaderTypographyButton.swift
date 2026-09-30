@@ -26,11 +26,8 @@ import UIKit
 /// ```
 struct ReaderTypographyButton: View {
 
-    /// Whether the advanced typography feature is enabled.
-    /// Wave 1b exception E3: static gate on a UIKit/static boundary — kept on
-    /// `.shared` (injecting here would require a production-container locator
-    /// read that raises the locator ratchet). Slated for the Wave 5
-    /// presentation-slimming work.
+    /// Whether the advanced typography feature is enabled. Reads `.shared`
+    /// because this static gate sits on a UIKit boundary with no injection point.
     static var isEnabled: Bool {
         RemoteFeatureFlags.shared.isFeatureEnabled(.advancedTypographyEnabled)
     }

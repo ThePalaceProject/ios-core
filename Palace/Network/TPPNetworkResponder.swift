@@ -696,41 +696,20 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
 
     let authDef = snapshot.authDefinition
 
-    // swarm_66819d80 Module C: route the 401 decision through the typed
-    // `AuthErrorClassifier`. The classifier owns the cross-domain carve-out
-    // logic (delegates to URLResponse+TPPAuthentication.isSameDomain), so
-    // we no longer call `indicatesAuthenticationNeedsRefresh` here — the
-    // classifier outcome IS the decision.
+    // The 401 decision is `AuthErrorClassifier`'s (it owns the cross-domain
+    // carve-out). This site keeps the task-layer concerns: the per-task
+    // refresh budget (2) in the caller, `refreshTokenAndResume` to retry this
+    // task, and the /patrons/me bypass for browser auth (the IdP cookie
+    // expires before the bearer token, so a /patrons/me 401 must not mark
+    // credentials stale; 3.0.2 hotfix).
     //
-    // What stays at this site (the responder's task-layer concerns):
-    //   - The per-task token-refresh budget in the calling
-    //     `urlSession(_:task:didCompleteWithError:)` (caps refresh attempts
-    //     per task at 2).
-    //   - The task-scoped `refreshTokenAndResume` which retries THIS task
-    //     after the silent token refresh. The coordinator doesn't drive
-    //     task-resumption — that's a network-executor concern.
-    //   - The /patrons/me bypass for browser-auth 401s. (Browser auth has
-    //     TWO surfaces — bearer token + IdP cookie — and the IdP cookie
-    //     expires faster than the bearer in Gorgon. Marking credentials
-    //     stale on a /patrons/me poll while the bearer is still good drove
-    //     the cross-launch credentials-stale loop fixed on the 3.0.2
-    //     hotfix branch.)
+    // Browser auth dispatches to the coordinator (single-flight, cooldown,
+    // telemetry); the non-browser branch refreshes inline because only the
+    // responder can re-run this URLSessionTask.
     //
-    // What changes (Pass 3 reviewer fixup ARCH-3): the classifier outcome
-    // now ROUTES the action, instead of being computed and discarded. The
-    // browser-auth markCredentialsStale call is replaced by an async
-    // coordinator dispatch — the coordinator owns markCredentialsStale
-    // internally and threads the refresh through its single-flight +
-    // cooldown + telemetry. The non-browser branch keeps its inline
-    // markCredentialsStale + refreshTokenAndResume because the task-resume
-    // semantics are responder-owned (the coordinator's silent path can
-    // refresh the token but won't re-run THIS URLSessionTask).
-    // Wire the classifier with the current account's auth-surface hosts so
-    // Rule 4b (foreign-host 401 → .ok) short-circuits a 401 from a host
-    // outside the current account's surface (e.g. a lingering A1QA playtimes
-    // upload to gorgon.staging while the active account is Icarus on
-    // minotaur.dev). See wall-failure
-    // 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    // The classifier gets the current account's auth-surface hosts so a 401
+    // from a foreign host (e.g. a lingering upload to another library's
+    // server) is ignored instead of logging the patron out (PR #1018).
     let classifier = AuthErrorClassifier(
         currentAccountHostsProvider: {
             AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts

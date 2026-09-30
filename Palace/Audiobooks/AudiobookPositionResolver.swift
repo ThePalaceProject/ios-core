@@ -2,29 +2,12 @@
 //  AudiobookPositionResolver.swift
 //  Palace
 //
-//  Decides WHICH position an audiobook opens at: the locally-saved one, the
-//  server-synced one, or the beginning. Moved out of `AudiobookSessionManager`
-//  whole — the local-restore cluster (PP-4542 / 3.2.3 Cause 2) and the bounded
-//  remote-bookmark await that races it were two halves of one decision split
-//  across 400 lines of a 1,546-line hub.
-//
-//  WHAT CHANGED IN THE MOVE
-//
-//  One thing, and it is the point of the move: `resolveInitialPosition` used to
-//  interleave the bounded network await with the choose-between-them rule, so
-//  the rule could only be exercised through a live `TPPBookRegistry`. The await
-//  now stops at `awaitRemotePosition` and the rule is
-//  `chooseInitialPosition(remote:localPosition:fallback:in:bookId:)` — pure,
-//  synchronous, and enumerable as a table
-//  (`AudiobookPositionResolverDecisionTableTests`). Everything else is the same
-//  code, in the same order, with the same logging.
-//
-//  WHY A CLASS AND NOT A STATIC NAMESPACE
-//
-//  The restore path reads `bookRegistry` (saved location + generic bookmarks)
-//  and writes `[AUDIOPOS]` diagnostics through an injected logger. Both are
-//  dependencies of the decision, so they are constructor arguments; the
-//  session manager owns one instance and holds it as `positionResolver`.
+//  Decides which position an audiobook opens at: the locally-saved one, the
+//  server-synced one, or the beginning (PP-4542). The bounded network await
+//  (`awaitRemotePosition`) is separate from the pure choice
+//  (`chooseInitialPosition`), which is tested as a table in
+//  `AudiobookPositionResolverDecisionTableTests`. A class because it depends
+//  on `bookRegistry` and an injected `[AUDIOPOS]` logger.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -37,9 +20,7 @@ import PalaceLogging
 
 /// Resolves the `TrackPosition` an audiobook should open at.
 ///
-/// `@MainActor` to match the isolation this code had inside
-/// `AudiobookSessionManager` (a `@MainActor` class); the move changes the
-/// isolation of nothing.
+/// `@MainActor` to match the isolation it had inside `AudiobookSessionManager`.
 @MainActor
 final class AudiobookPositionResolver {
 
@@ -90,8 +71,6 @@ final class AudiobookPositionResolver {
     /// The pure half of `resolveInitialPosition`: given whatever the bounded
     /// remote await produced, decide what the player opens at.
     ///
-    /// Three inputs, each with its own outcome, and they compose as a table
-    /// rather than a sequence of scenarios:
     ///  - no remote (slow backend, no server bookmark, or a test registry) ⇒
     ///    `fallback`, which is the validated local position or chapter 1;
     ///  - a remote that is not meaningfully newer than the local save ⇒
@@ -114,11 +93,9 @@ final class AudiobookPositionResolver {
             Log.debug(#file, "Local position is current — opening at local position")
             return fallback
         }
-        // Manifest-validate the REMOTE position with the SAME gate the local
-        // path applies (`tryLoadPrimaryLocalPosition` at the `validationFailure`
-        // seam): a stale remote track key absent from the loaded manifest is
-        // exactly the 3.2.3 Cause 2 failure — seeking it verbatim opens at a
-        // phantom position. Drop to the safe fallback (local-or-Ch1) instead.
+        // Validate the remote position against the manifest with the same gate
+        // as the local path: seeking a stale track key opens at a phantom
+        // position.
         return validatedRemotePosition(
             remote,
             fallback: fallback,
@@ -130,10 +107,8 @@ final class AudiobookPositionResolver {
     /// Applies the manifest-validation gate to a resolved REMOTE position,
     /// mirroring the local path's `validationFailure(for:in:)` check. Returns
     /// `remote` when it validates against the loaded manifest, else `fallback`
-    /// — a remote track key that isn't in the manifest must NOT be seeked
-    /// verbatim (3.2.3 Cause 2). `internal` so the decision is unit-pinnable
-    /// with a real TOC + a foreign-keyed position, the same way the local
-    /// `validationFailure` / `selectMostRecentValidBookmark` seams are.
+    /// — a remote track key that isn't in the manifest must not be seeked
+    /// verbatim. `internal` for unit tests.
     func validatedRemotePosition(
         _ remote: TrackPosition,
         fallback: TrackPosition,
@@ -171,27 +146,15 @@ final class AudiobookPositionResolver {
     ) async -> TrackPosition? {
         guard let concreteRegistry = bookRegistry as? TPPBookRegistry else { return nil }
         let toc = audiobook.tableOfContents
-        // `TrackPosition` (PalaceAudiobookToolkit) is not Sendable-audited, so
-        // resuming the continuation with a bare `TrackPosition?` trips the
-        // `sending 'position' risks data races` diagnostic — the `syncLocation`
-        // completion fires off the caller's actor (inside TPPBookRegistry's
-        // detached sync Task, see `SyncLocationBox`), and `@preconcurrency
-        // import` downgrades the Sendable-conformance warning but NOT the
-        // `sending` one. Carry the value through the continuation in a Sendable
-        // box and unwrap after the `await` (back on this `@MainActor` method).
+        // `TrackPosition` is not Sendable and the completion fires off this
+        // actor, so the value crosses the continuation in a box.
         let box: SendableTrackPositionBox = await withCheckedContinuation { (cont: CheckedContinuation<SendableTrackPositionBox, Never>) in
             let once = PositionResolveOnce()
             concreteRegistry.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
-                // Build the position INLINE, not via `.flatMap { … }`. The
-                // syncLocation completion is `@Sendable` (non-isolated) and fires
-                // on a BACKGROUND queue (TPPBookRegistry's detached sync Task).
-                // A `.flatMap` transform closure, however, is NOT `@Sendable`, so
-                // it inherited this `@MainActor` method's isolation — and invoking
-                // that main-actor closure off-main tripped `dispatch_assert_queue_fail`
-                // (EXC_BREAKPOINT on every audiobook open with a remote bookmark;
-                // Crashlytics 6e05efb…, fresh in 3.3.0). Inline `if let` runs
-                // directly in the non-isolated completion closure — no nested
-                // closure, no inherited isolation.
+                // Build the position inline, not via `.flatMap { … }`: this
+                // completion runs on a background queue, and a non-`@Sendable`
+                // nested closure would inherit `@MainActor` isolation and trap
+                // with `dispatch_assert_queue_fail` (Crashlytics 6e05efb).
                 let position: TrackPosition?
                 if let remoteBookmark {
                     position = TrackPosition(audioBookmark: remoteBookmark, toc: toc.toc, tracks: toc.tracks)
@@ -237,11 +200,7 @@ final class AudiobookPositionResolver {
     /// generic bookmarks for this book, the most-recent valid one is returned
     /// as a fallback (better than dropping the patron to chapter-1 start).
     /// Returns `nil` only when there's nothing usable at all.
-    // `internal` (not `private`) so `@testable import Palace` unit tests can
-    // drive the position-restore decision through this production seam with
-    // constructed registry/TOC fixtures — see AudiobookPositionRestoreTests.
-    // This is the same seam-exposure pattern already used by the static
-    // policy mirrors (networkValidationError, normalizedChaptersCount).
+    // `internal` for AudiobookPositionRestoreTests.
     func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
         let primary = tryLoadPrimaryLocalPosition(book: book, audiobook: audiobook)
         switch primary {
@@ -329,11 +288,8 @@ final class AudiobookPositionResolver {
     /// and return the most-recent valid one (descending `lastSavedTimeStamp`,
     /// which is ISO8601 and therefore lexicographically sortable).
     ///
-    /// `internal` (not `private`) and threaded `AudiobookTableOfContents`
-    /// instead of the full `Audiobook` so the validation filter and the
-    /// recency ordering are mutation-testable from a unit test with a real
-    /// TOC + seeded `TPPBookLocation` fixtures — no live `Audiobook` /
-    /// player graph required. Mirrors the `validationFailure(for:in:)` seam.
+    /// Takes `AudiobookTableOfContents` rather than `Audiobook` so it is
+    /// testable without a player graph.
     func selectMostRecentValidBookmark(
         from bookmarks: [TPPBookLocation],
         in tableOfContents: AudiobookTableOfContents
@@ -406,13 +362,8 @@ final class AudiobookPositionResolver {
 /// callback. NSLock-guarded so the (possibly background-thread) sync callback and
 /// the MainActor timeout can race safely without a double-resume trap.
 ///
-/// - Sendable invariant: this guard is captured by both the (possibly
-///   off-main) `syncLocation` completion and the `@MainActor` timeout `Task` —
-///   i.e. it deliberately crosses concurrency domains. That is safe because its
-///   only mutable state (`fired`) is read and written EXCLUSIVELY under `lock`,
-///   so the two racing `fire(_:)` calls serialize and exactly one runs `block`.
-///   Hence `@unchecked Sendable` (the lock discipline is the invariant the
-///   compiler cannot see).
+/// - Sendable invariant: `fired` is only read and written under `lock`, so the
+///   two racing `fire(_:)` calls serialize and exactly one runs `block`.
 private final class PositionResolveOnce: @unchecked Sendable {
     private let lock = NSLock()
     private var fired = false
@@ -431,17 +382,9 @@ private final class PositionResolveOnce: @unchecked Sendable {
 /// `Sendable` carrier for a resolved `TrackPosition?` crossing the
 /// `awaitRemotePosition` continuation boundary.
 ///
-/// `TrackPosition` lives in the un-Sendable-audited PalaceAudiobookToolkit, so
-/// resuming `CheckedContinuation<TrackPosition?, …>` with it trips the
-/// `sending` diagnostic (which `@preconcurrency import` does not silence). The
-/// value is produced fresh inside the off-actor `syncLocation` completion and
-/// consumed once on `@MainActor` after the `await`, so boxing it makes the
-/// hand-off explicit rather than crossing a bare non-Sendable value.
-///
-/// - Sendable invariant: `value` is set once at init and only read thereafter
-///   — the wrapped `TrackPosition?` is never mutated after boxing, so there is
-///   no shared mutation. The `@unchecked` waiver covers only the toolkit type
-///   the compiler cannot prove `Sendable`.
+/// - Sendable invariant: `value` is set once at init and only read thereafter.
+///   The `@unchecked` waiver covers the toolkit type the compiler cannot prove
+///   `Sendable`.
 private struct SendableTrackPositionBox: @unchecked Sendable {
     let value: TrackPosition?
     init(_ value: TrackPosition?) {

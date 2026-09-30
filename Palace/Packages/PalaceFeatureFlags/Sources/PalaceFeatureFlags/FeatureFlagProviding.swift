@@ -2,18 +2,10 @@
 //  FeatureFlagProviding.swift
 //  PalaceFeatureFlags
 //
-//  THE feature-flag read seam (god-class decomposition Wave 1b §3c).
-//  Consolidates the per-package protocol copies (PalaceCatalog's
-//  FeatureFlagProvider) into one Layer-0 leaf. The Firebase-Remote-Config-
-//  backed implementation (RemoteFeatureFlags) stays in the app target;
-//  consumers hold this protocol, injected from AppContainer
-//  (`appContainer.featureFlags`). Packages that need flag reads depend on
-//  THIS package — never on Firebase, never on the app target.
-//
-//  Deliberately NOT here: `appRatingConfig` (returns the app-target
-//  RatingConfig type — read it off the concrete impl at the composition
-//  root), the DEBUG-only force-submit-failure override (build-config-forked
-//  requirement), and fetch/lifecycle methods (Firebase wiring, impl-only).
+//  The feature-flag read seam, injected from `AppContainer.featureFlags`.
+//  Packages that read flags depend on this, never on Firebase or the app.
+//  Not here: `appRatingConfig` (returns an app-target type), the DEBUG-only
+//  force-submit-failure override, and Firebase fetch/lifecycle methods.
 //
 
 import Foundation

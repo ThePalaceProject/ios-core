@@ -2,15 +2,10 @@
 //  TriageBotFactory.swift
 //  Palace
 //
-//  Palace-side composition root for the PalaceTriageBot package. Builds the
-//  TriageBotViewModel with Palace-specific context-collector lambdas and
-//  ticket-gateway selection (real submission vs. demo-clipboard) based on
-//  Firebase Remote Config flags.
-//
-//  Visibility of the whole bot — Settings row, chat surface, anything —
-//  must be gated on `featureFlags.isTriageBotEnabled` (the injected
-//  FeatureFlagProviding seam) BEFORE this factory is called. Treat that
-//  flag as the master kill-switch.
+//  Composition root for PalaceTriageBot: builds the view model with Palace
+//  context collectors and picks the ticket gateway from Remote Config flags.
+//  Callers must gate on `featureFlags.isTriageBotEnabled` (the master
+//  kill-switch) before calling this factory.
 //
 
 import Foundation
@@ -25,12 +20,9 @@ enum TriageBotFactory {
     /// bundled KB can't be loaded (degenerate; bot is unusable in that case).
     @MainActor
     static func makeViewModel(featureFlags: FeatureFlagProviding) -> Any? {
-        // Synchronous load via BundledCatalogSource.loadCatalogSync(). The
-        // earlier semaphore-bridge implementation triggered iOS 26's "Hang
-        // Risk" runtime fault and intermittently returned nil on force-quit
-        // relaunch (chaos-qa F-004), which hid the Settings entry-point for
-        // the whole session. The work is genuinely synchronous (bundled
-        // JSON read + decode), so the sync path is correct here.
+        // Synchronous load: the work is a bundled JSON read + decode. A
+        // semaphore bridge over the async loader triggered iOS 26's "Hang Risk"
+        // fault and could return nil on relaunch, hiding the Settings row.
         let catalog: KBCatalog
         do {
             catalog = try BundledCatalogSource.loadCatalogSync()
@@ -100,20 +92,15 @@ enum TriageBotFactory {
             gateway = ClipboardTicketGateway()
         }
 
-        // PP-4808/PP-4813: DEBUG-only failure injection. On a bare simulator
-        // canSendMail() is false, so the gateways above both resolve to the
-        // always-succeeding ClipboardTicketGateway — the error+retry UI (AC-8/9)
-        // was unreachable on-screen. When the "Force ticket submission failure"
-        // developer toggle (or `-TriageBotForceSubmitFailure 1`) is on, swap in a
-        // gateway that always throws `.transport`, landing on the real
-        // ErrorActionsCard path. Entirely inside `#if DEBUG` — release builds
-        // never see this override read or the forced gateway.
+        // PP-4808/PP-4813: DEBUG-only failure injection. On a simulator
+        // canSendMail() is false and every gateway succeeds, so the error+retry
+        // UI is unreachable. The "Force ticket submission failure" developer
+        // toggle (or `-TriageBotForceSubmitFailure 1`) swaps in a gateway that
+        // always throws `.transport`.
         let effectiveGateway: TicketGateway
         #if DEBUG
-        // Wave 1b exception E2: isTriageBotForceSubmitFailureEnabled is a
-        // DEBUG-only override deliberately kept OFF the FeatureFlagProviding
-        // protocol (a #if DEBUG requirement would fork the witness table across
-        // build configs) — read it off the concrete impl here.
+        // Read off the concrete type: a DEBUG-only requirement on
+        // FeatureFlagProviding would differ across build configurations.
         if RemoteFeatureFlags.shared.isTriageBotForceSubmitFailureEnabled {
             effectiveGateway = ForcedFailureTicketGateway(mode: .transport)
         } else {

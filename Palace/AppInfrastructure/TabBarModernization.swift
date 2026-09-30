@@ -1,20 +1,10 @@
 //
-//  TabBarModernization.swift
-//  Palace
-//
-//  Extracted, unit-testable seams for the modern tab-bar refresh (the main app
-//  `TabView` in `AppTabHostView`). Keeping the *decisions* here — the resolved
+//  Unit-testable decisions for the main `TabView` in `AppTabHostView`: the
 //  brand tint, the mini-player bottom-inset math, and the minimize-behavior
-//  gate — means the SwiftUI view stays declarative while the behavior that could
-//  regress (wrong tint, mini-player desync under a minimizing bar, minimize
-//  enabled while a session floats above the bar) is covered by tests that don't
-//  need a SwiftUI host.
+//  gate, so they can be tested without a SwiftUI host.
 //
-//  Deployment floor is iOS 17 (see `PalaceMotion` / project settings), so
-//  `.tint(_:)` and `.sensoryFeedback`/`palaceHaptic` are available
-//  unconditionally. Only the iOS 18 `Tab(value:role:)` builder and the iOS 26
-//  Liquid-Glass `.tabBarMinimizeBehavior` are `@available`-gated progressive
-//  enhancements in `AppTabHostView`.
+//  Only the iOS 18 `Tab(value:role:)` builder and the iOS 26
+//  `.tabBarMinimizeBehavior` are `@available`-gated in `AppTabHostView`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -2,10 +2,9 @@
 //  BorrowAdobeActivationStep.swift
 //  Palace
 //
-//  The Adobe device-activation step of a borrow, extracted out of
-//  `BorrowOperation` so the hub does not grow while the decomposition campaign
-//  runs (Wave 0 ratchet). One cohesive concern: activate the device for an
-//  Adobe-DRM title, and keep the UI honest while that happens.
+//  The Adobe device-activation step of a borrow, split out of
+//  `BorrowOperation`: activate the device for an Adobe-DRM title, and keep
+//  the UI state accurate while that happens.
 //
 
 import Foundation

@@ -43,7 +43,7 @@ enum Group: Int {
     private let settings: TPPSettings
     private let downloadCenter: MyBooksDownloadCenter
     /// Whether the device currently has connectivity. Injected so the
-    /// eviction gate (INV-2) can keep offline-expired downloads readable
+    /// eviction gate can keep offline-expired downloads readable
     /// instead of deleting them on a possibly-stale cached `until`.
     /// Default reads production reachability.
     private let isOnline: () -> Bool
@@ -95,7 +95,7 @@ enum Group: Int {
         self.settings = settings
         self.downloadCenter = downloadCenter
         // Default to production reachability. Tests inject a stub so the
-        // offline eviction guard (INV-2) is deterministic.
+        // offline eviction guard is deterministic.
         self.isOnline = isOnline ?? { AppContainer.production().reachability.isConnectedToNetwork() }
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
@@ -139,7 +139,7 @@ enum Group: Int {
 
         let registryBooks = bookRegistry.myBooks
 
-        // Eviction gate (seam S3 / INV-2). An expired-by-cached-`until` book
+        // Eviction gate. An expired-by-cached-`until` book
         // is NOT unconditionally deleted. LoanEvictionPolicy decides:
         //   - offline + expired      -> keep (never destroy on a stale `until`)
         //   - online + past grace    -> evict (loan provably over)
@@ -172,7 +172,7 @@ enum Group: Int {
             case .evict:
                 toEvict.append(book)
             case .keep, .confirmWithServer:
-                // INV-2: keep the downloaded file + registry record so the
+                // Keep the downloaded file + registry record so the
                 // book stays openable. No delete, no unregister.
                 active.append(book)
             }
@@ -237,9 +237,6 @@ enum Group: Int {
         guard !isLoading else { return }
 
         if accountsManager.currentUserAccount.needsAuth, !accountsManager.currentUserAccount.hasCredentials() {
-            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
-            // injected sheet presenter. The presenter reads from the same
-            // `_cached` accountsManager singleton.
             AppContainer.production().signInModalSheetPresenter
                 .presentSignInModalForCurrentAccount(completion: nil)
         } else {
@@ -347,10 +344,9 @@ enum Group: Int {
 
     // MARK: - Notification Handling
     private func registerNotifications() {
-        // Per-book state changes migrated off `.TPPBookRegistryStateDidChange` to
-        // the registry's `bookStatePublisher` (swarm_8ce6f5ae WS3). The registry
-        // and sync notifications stay as-is (out of this contract's scope). All
-        // three are mapped to `Void` so they can merge into one refresh trigger.
+        // Per-book state changes come from the registry's `bookStatePublisher`;
+        // registry and sync changes are still notifications. All three map to
+        // `Void` so they merge into one refresh trigger.
         let stateChange = bookRegistry.bookStatePublisher.map { _ in () }
         let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange).map { _ in () }
         let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded).map { _ in () }

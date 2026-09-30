@@ -2,15 +2,11 @@
 //  ManagedAppConfiguration.swift
 //  Palace
 //
-//  PP-5070 spike — read a library pre-selection out of Apple's Managed App
-//  Configuration so an MDM can point a managed install at the right library
-//  before the student ever opens Settings.
-//
-//  MDM writes its configuration dictionary into the app's own NSUserDefaults
-//  under `com.apple.configuration.managed` at install time. There is no SDK,
-//  no entitlement and no Info.plist key involved — reading that one key is the
-//  whole channel. The dictionary is REPLACED wholesale whenever the MDM pushes
-//  a new configuration, and is absent entirely on an unmanaged install.
+//  PP-5070 — reads a library pre-selection from Apple's Managed App
+//  Configuration so an MDM can point a managed install at the right library.
+//  MDM writes a dictionary into the app's UserDefaults under
+//  `com.apple.configuration.managed`; no SDK or entitlement is involved. The
+//  dictionary is replaced wholesale on each push and absent when unmanaged.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -2,28 +2,13 @@
 //  ReadiumPDFTOCCache.swift
 //  Palace
 //
-//  Disk-backed cache of TOC + page count snapshots for Readium-backed
-//  PDFs. Lets a cold-app re-open of the same LCP PDF skip the entire
-//  `publication.tableOfContents()` + `publication.positions()` round
-//  trip — both calls force Readium to read the PDF cross-reference
-//  table and outline through the LCP content protection layer, which
-//  triggers the dominant AES-decrypt loop on large Marketplace
-//  containers (the hundreds of `Successfully decrypted 2064 -> 2048`
-//  log lines).
+//  Disk-backed cache of TOC + page count snapshots for Readium-backed PDFs, so
+//  re-opening an LCP PDF skips `tableOfContents()` + `positions()`, which read
+//  the cross-reference table through the LCP decrypt layer.
 //
-//  Cache layout, per-account:
-//
-//      <accountDir>/registry/pdf-toc/<bookIdentifierSHA256>.json
-//
-//  Cache invariant: the LCP container for a given book identifier is
-//  immutable for the loan window — the same SHA256(identifier) is a
-//  stable filename and the cached TOC matches the on-disk file. On
-//  return/re-borrow the registry path changes, so we don't have to
-//  hand-invalidate.
-//
-//  Errors are non-fatal: a read miss or write failure just means we
-//  fall back to the in-memory-only behavior (re-decrypt the cross-ref
-//  on the next open). No correctness impact.
+//  Layout: <accountDir>/registry/pdf-toc/<bookIdentifierSHA256>.json. The LCP
+//  container is immutable for the loan window, and the registry path changes
+//  on return/re-borrow. Errors are non-fatal: a miss means re-reading on open.
 //
 
 import Foundation

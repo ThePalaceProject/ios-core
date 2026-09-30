@@ -20,9 +20,8 @@ extension TPPBook {
     ///
     /// - parameter downloadedContentType: The Content-Type returned by the server response.
     /// - returns `true` if the download should be completed.
-    // de-objc (Wave 2a): dropped @objc(canCompleteDownloadWithContentType:) — an @objc
-    // member in an app-side extension of the now-external PalaceBookModel.TPPBook emits an
-    // illegal ObjC category into Palace-Swift.h. Zero ObjC callers; all Swift.
+    // Not @objc: an @objc member in an app-side extension of the external
+    // PalaceBookModel.TPPBook emits an illegal ObjC category into Palace-Swift.h.
     func canCompleteDownload(withContentType downloadedContentType: String) -> Bool {
         let downloadedType = downloadedContentType.lowercased()
 

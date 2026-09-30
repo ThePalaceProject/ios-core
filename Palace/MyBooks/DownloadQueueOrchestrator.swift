@@ -2,26 +2,11 @@
 //  DownloadQueueOrchestrator.swift
 //  Palace
 //
-//  Owns the pending-download queue management that lived inside
-//  MyBooksDownloadCenter as `enqueuePending(_:)` /
-//  `schedulePendingStartsIfPossible()` / `schedulePendingStartsAsync()`.
-//
-//  Encapsulates the read of the active-count + max-concurrent-downloads
-//  cap, the dequeue-up-to-capacity step, and the per-book startDownload
-//  fan-out — the policy that runs every time the active set shrinks or a
-//  new download is requested past the cap.
-//
-//  MyBooksDownloadCenter keeps `schedulePendingStartsIfPossible()` as a
-//  1-line delegator so the existing public surface (called from
-//  BackgroundDownloadHandler / DownloadAlertPresenter / multiple internal
-//  call sites) is preserved, AND keeps `schedulePendingStartsAsync()` as
-//  a 1-line delegator so DownloadThrottlingService's delegate protocol
-//  still resolves through the same MBDC seam.
-//
-//  The `enqueuePending` path is internal-only and only had a single
-//  caller in `startDownloadAsync`, so MBDC routes through
-//  `queueOrchestrator.enqueuePending(book)` directly rather than keeping
-//  a wrapper.
+//  The pending-download queue: compares the active count against the
+//  concurrent-download cap, dequeues up to capacity, and starts each book.
+//  Runs whenever the active set shrinks or a download is requested past the
+//  cap. MyBooksDownloadCenter's `schedulePendingStartsIfPossible()` /
+//  `schedulePendingStartsAsync()` delegate here.
 //
 
 import Foundation
@@ -34,9 +19,6 @@ import PalaceUtilities
 
 /// Surface MBDC needs to expose so the orchestrator can spin up the
 /// per-book download workflow once a queued book has been dequeued.
-/// `startDownloadAsync(for:withRequest:)` already exists on MBDC's
-/// surface — promoted from `private` to `internal` so the delegate
-/// protocol's empty conformance resolves.
 protocol DownloadQueueOrchestratorDelegate: AnyObject {
     func startDownloadAsync(for book: TPPBook, withRequest request: URLRequest?) async
 }

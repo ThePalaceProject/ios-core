@@ -66,15 +66,10 @@ public final class PlaybackBootstrapper {
     /// tests inject a mock and lets the production closure resolve through
     /// `AppContainer.production().audiobookSession` lazily.
     private let audiobookSessionProvider: () -> AudiobookSessionManaging
-    /// Off-main-safe read of "is an audiobook manager currently bound," used by
-    /// the `@Sendable` remote-command handlers (which run on MediaRemote's
-    /// BACKGROUND queue and therefore MUST NOT touch `@MainActor` state — that is
-    /// the #1218 / #1199 crash class). Kept SEPARATE from
-    /// `audiobookSessionProvider` (whose production closure reads the `@MainActor`
-    /// `AppContainer.audiobookSession` and is thus main-only): this source reads
-    /// the `nonisolated` `AudiobookSessionManager.hasActiveManagerSnapshot`
-    /// mirror instead. `@Sendable` so it can be captured by the off-main handlers;
-    /// tests inject a controllable `Bool` for deterministic gating.
+    /// Off-main-safe read of "is an audiobook manager currently bound," for the
+    /// remote-command handlers, which run on MediaRemote's background queue and
+    /// must not touch `@MainActor` state (#1218 / #1199). Reads the `nonisolated`
+    /// `AudiobookSessionManager.hasActiveManagerSnapshot` mirror.
     private let hasActiveManagerSnapshot: @Sendable () -> Bool
     /// Dispatches the deferred audio-session configuration off the synchronous
     /// launch path (see `ensureInitialized()`). Production hops to a background
@@ -231,11 +226,8 @@ public final class PlaybackBootstrapper {
         // Full initialization if not done yet
         ensureInitialized()
 
-        // Re-activate audio session in case it was deactivated. Runs as a
-        // detached MainActor task so the synchronous CarPlay `didConnect`
-        // path is NOT blocked by the bounded retry/backoff — the deferral in
-        // `.forgeos/intent/3.2.0-crash-triage.md` flagged a ~1s main-thread
-        // block if this retried synchronously. WS-2 / Crashlytics d45f5aa9.
+        // Re-activate the audio session in a Task so the synchronous CarPlay
+        // `didConnect` path is not blocked by the retry backoff (up to ~1s).
         Task { @MainActor [weak self] in
             await self?.activateAudioSessionWithRetry()
         }
@@ -249,18 +241,11 @@ public final class PlaybackBootstrapper {
     /// Ensure the audio session is configured AND active before a normal (phone)
     /// audiobook open issues `play()`.
     ///
-    /// At cold launch `configureAudioSession()` can fail with OSStatus -50 ("no
-    /// scenes yet"), and `setActive(true)` previously ran ONLY on CarPlay connect
-    /// (`ensureInitializedForCarPlay`) or foreground re-entry — never on a plain
-    /// first open. So the first `play()` of a freshly-opened audiobook was issued
-    /// against an INACTIVE session and failed with AVError -11849 ("Operation
-    /// Stopped"), recovering only on a retry/auto-reopen — the "slow to start"
-    /// symptom (pre-existing; also reproduces on 3.1.0, so not a 3.2.0
-    /// regression). By open time the scenes ARE connected, so re-running the
-    /// category setup now succeeds, and we activate with the same bounded retry
-    /// used for CarPlay. Idempotent and safe to call on every open; the activator
-    /// skips activation when other audio is already playing. Fire-and-forget so
-    /// the synchronous open path is never blocked by the backoff.
+    /// At cold launch `configureAudioSession()` can fail with -50 (no scenes
+    /// yet); a first `play()` against an inactive session fails with AVError
+    /// -11849. By open time scenes are connected, so the category setup succeeds
+    /// here and activation uses the same bounded retry as CarPlay. Idempotent;
+    /// fire-and-forget so the open path is not blocked by the backoff.
     // PUBLIC_INTENT: lifecycle entry point on the public PlaybackBootstrapper, matching the sibling `public` ensureInitialized()/ensureInitializedForCarPlay() bootstrap surface.
     public func ensureAudioSessionActiveForPlayback() {
         configureAudioSession()
@@ -272,10 +257,7 @@ public final class PlaybackBootstrapper {
     // MARK: - Audio Session
 
     // `nonisolated`: touches only the thread-safe `AVAudioSession.sharedInstance()`
-    // and `Log` — no `@MainActor` `self` state — so `ensureInitialized()` can
-    // dispatch it off-main via `launchAudioSessionDispatcher`, while the
-    // synchronous re-run callers (`ensureAudioSessionActiveForPlayback`,
-    // `ensureInitializedForCarPlay`) still invoke it directly. Body unchanged.
+    // and `Log`, so `ensureInitialized()` can dispatch it off-main.
     nonisolated private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
 
@@ -303,13 +285,9 @@ public final class PlaybackBootstrapper {
 
     /// Activates the audio session with a bounded async retry/backoff.
     ///
-    /// CarPlay cold launch can transiently refuse activation (observed
-    /// OSStatus 561015905, plus `-50` in the very-early window). Before WS-2
-    /// a single refusal left the session inactive, so the toolkit's
-    /// OpenAccessPlayer reported not-ready and the CarPlay play command hit
-    /// `.playerNotReady` (Crashlytics d45f5aa9). The retry gives the session
-    /// time to become active before play is issued. Async so the bounded
-    /// backoff never blocks the MainActor `didConnect` path.
+    /// CarPlay cold launch can transiently refuse activation (see
+    /// `AudioSessionActivator`). Async so the backoff never blocks the main
+    /// actor.
     private func activateAudioSessionWithRetry() async {
         let session = AVAudioSession.sharedInstance()
         let activator = AudioSessionActivator(
@@ -457,64 +435,49 @@ public final class PlaybackBootstrapper {
     /// action, so we return `.success` to acknowledge the command; with no
     /// manager there is nothing to act on, so `.noActionableNowPlayingItem`
     /// (which keeps the lock screen from presenting a dead control before a book
-    /// is opened). Extracted as a `nonisolated static` PURE function so the gate
-    /// is unit-testable directly — MPRemoteCommand exposes no public
-    /// invoke-handler-and-read-status API, so this is the seam that lets a test
-    /// kill the gate-inversion mutant without an MPRemoteCommand invocation or a
-    /// bound-manager fixture. `internal` for `@testable` access.
+    /// is opened). A pure static because MPRemoteCommand offers no way to invoke
+    /// a handler and read its status from a test.
     nonisolated static func remoteCommandStatus(hasActiveManager: Bool) -> MPRemoteCommandHandlerStatus {
         hasActiveManager ? .success : .noActionableNowPlayingItem
     }
 
     nonisolated private func handlePlay() -> MPRemoteCommandHandlerStatus {
-        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
-        // `audiobookSessionProvider().hasActiveManager` (which would trip
-        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        // Off-main-safe snapshot; see `hasActiveManagerSnapshot`.
         let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handlePlay - manager: \(hasManager)")
         return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
     nonisolated private func handlePause() -> MPRemoteCommandHandlerStatus {
-        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
-        // `audiobookSessionProvider().hasActiveManager` (which would trip
-        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        // Off-main-safe snapshot; see `hasActiveManagerSnapshot`.
         let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handlePause - manager: \(hasManager)")
         return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
     nonisolated private func handleTogglePlayPause() -> MPRemoteCommandHandlerStatus {
-        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
-        // `audiobookSessionProvider().hasActiveManager` (which would trip
-        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        // Off-main-safe snapshot; see `hasActiveManagerSnapshot`.
         let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handleTogglePlayPause - manager: \(hasManager)")
         return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
     nonisolated private func handleSkipForward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
-        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
-        // `audiobookSessionProvider().hasActiveManager` (which would trip
-        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        // Off-main-safe snapshot; see `hasActiveManagerSnapshot`.
         let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handleSkipForward(\(interval)s) - manager: \(hasManager)")
         return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
     nonisolated private func handleSkipBackward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
-        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
-        // `audiobookSessionProvider().hasActiveManager` (which would trip
-        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        // Off-main-safe snapshot; see `hasActiveManagerSnapshot`.
         let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handleSkipBackward(\(interval)s) - manager: \(hasManager)")
         return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
     nonisolated private func handleChangePlaybackRate(rate: Float) -> MPRemoteCommandHandlerStatus {
-        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
-        // `audiobookSessionProvider().hasActiveManager` (which would trip
-        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        // Off-main-safe snapshot; see `hasActiveManagerSnapshot`.
         let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handleChangePlaybackRate(\(rate)x) - manager: \(hasManager)")
         return Self.remoteCommandStatus(hasActiveManager: hasManager)

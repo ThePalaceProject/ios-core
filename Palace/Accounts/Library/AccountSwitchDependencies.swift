@@ -2,31 +2,11 @@
 //  AccountSwitchDependencies.swift
 //  Palace
 //
-//  god-class decomposition — Wave 3 seam S3.
-//
-//  The ambient collaborators the `AccountsManager.currentAccount` setter and its
-//  `cleanupActiveContentBeforeAccountSwitch(from:to:)` path used to reach for
-//  directly — the shared image cache, the shared cover-registry circuit breaker,
-//  the shared account-state store, the composition root's network executor, and the
-//  composition root's navigation coordinator hub. Bundled into a frozen, `Sendable`
-//  deps struct injected at construction — the `RegistryExternalDependencies`
-//  precedent (Wave 2b) — so that:
-//
-//    * a packaged `AccountsManager` (the Wave 3a `PalaceAccounts` move) names none
-//      of these app-target singletons directly, and
-//    * the account-switch cleanup ORDER becomes spy-observable — each seam is a
-//      recordable double instead of a process-wide singleton mutation a test can
-//      only observe through a `NotificationCenter` round-trip.
-//
-//  Provider CLOSURES preserve the LAZY resolution the originals had where the
-//  original read was deferred: `networkExecutorProvider` keeps the documented
-//  init-cycle deferral (the manager is built INSIDE the composition root's
-//  dispatch_once, so resolving the executor eagerly at init re-enters + traps), and
-//  `popToRootForAccountSwitch` keeps the `@MainActor` navigation hop.
-//
-//  The `production` binding lives at the composition root — the one place allowed to
-//  resolve these singletons — so this file carries no edge to the container / image
-//  caches / cover registry and is already the shape the 3a package move needs.
+//  Collaborators the `AccountsManager` account-switch path needs (image cache,
+//  cover circuit breaker, account-state store, network executor, navigation),
+//  bundled and injected so `AccountsManager` names no app-target singleton and
+//  tests can observe the cleanup order with spies. The `production` binding
+//  lives in `AppContainer`, the one place allowed to resolve those singletons.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -36,8 +16,7 @@ import PalaceBookModel
 
 /// Frozen bundle of the account-switch cleanup collaborators, injected into
 /// `AccountsManager` at construction. `Sendable` so the cleanup Task can capture it
-/// by value (the pop-to-root hop must survive regardless of the manager's lifetime,
-/// exactly as the prior composition-root-based hop did).
+/// by value (the pop-to-root hop must survive regardless of the manager's lifetime).
 struct AccountSwitchDependencies: Sendable {
     /// Decoded-image cache. `evictDecodedImages()` runs on a real library switch
     /// (the new library has different covers); also the cache every
@@ -45,28 +24,21 @@ struct AccountSwitchDependencies: Sendable {
     let imageCache: ImageCacheType
 
     /// Per-uuid account load-state store. Read/written by the setter's prior-account
-    /// eviction and by the hydrate / auth-doc-drive guards. Injected as the concrete
-    /// instance for S3 (the type itself moves into `PalaceAccounts` at 3a).
+    /// eviction and by the hydrate / auth-doc-drive guards.
     let accountStateStore: AccountStateStore
 
     /// Resets the cover-fetch circuit breaker so a host that tripped while the prior
-    /// library was active does not keep cover fetches suppressed for the new library
-    /// (was the shared cover registry's `resetHostFailures()`).
+    /// library was active does not keep cover fetches suppressed for the new library.
     let resetCoverCircuitBreaker: @Sendable () -> Void
 
-    /// Lazily resolves the shared network executor, typed to the account-facing
-    /// `AccountNetworking` seam so a packaged `AccountsManager` names no concrete
-    /// `Palace/Network` type (3a precondition). DEFERRED because `AccountsManager`
-    /// is constructed inline inside `AppContainer`'s dispatch_once — resolving the
-    /// executor eagerly at init would re-enter that lock and trap. Called on each
-    /// use by the manager's computed `networkExecutor`.
+    /// Lazily resolves the shared network executor. Deferred because
+    /// `AccountsManager` is constructed inside `AppContainer`'s dispatch_once;
+    /// resolving the executor eagerly at init would re-enter that lock and trap.
     let networkExecutorProvider: @Sendable () -> any AccountNetworking
 
     /// Main-actor navigation cleanup before an account switch: pop the active
     /// navigation stack to root (when non-empty) then wait the documented settle
-    /// interval before the switch's `isAccountSwitching` flag is cleared. Encapsulates
-    /// the coordinator lookup + the pop decision so the whole hop is a single spy
-    /// point; the production binding resolves the coordinator via the composition root.
+    /// interval before the switch's `isAccountSwitching` flag is cleared.
     let popToRootForAccountSwitch: @MainActor @Sendable () async -> Void
 
     init(

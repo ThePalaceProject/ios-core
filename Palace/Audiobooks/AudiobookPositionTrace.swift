@@ -2,28 +2,12 @@
 //  AudiobookPositionTrace.swift
 //  Palace
 //
-//  PP-4963 — instrumentation for "the app forgot where I was."
-//
-//  WHY THIS EXISTS
-//
-//  25 of 83 App Store reviews this year report losing hours of audiobook
-//  position. Four fixes shipped across 3.2.x/3.3.0 without moving the
-//  complaint volume. Reading the source suggests the autosave stops during
-//  long screen-locked background playback — the chain is two main-runloop
-//  stages (`AudiobookManager.setupNowPlayingInfoTimer`'s
-//  `Timer.publish(on: .main, in: .common)` feeding
-//  `AudiobookPlaybackModel`'s `.throttle(5s, scheduler: RunLoop.main)`), and
-//  the toolkit's own comment says iOS coalesces and suspends such timers when
-//  the screen is locked. But that is a reading, and the previous four fixes
-//  were each written with confidence too.
-//
-//  Crashlytics cannot answer it as-is: it records failures, and a save that
-//  does not happen is an ABSENCE. Nothing logs its own absence from inside the
-//  thing that stopped running. The only way absence becomes an event is a
-//  second clock, still running, noticing the first went quiet — which is
-//  exactly what `NowPlayingCoordinator.checkForDryStream()` (code 403) already
-//  does for the lock-screen writer. These policies apply that shipping pattern
-//  to the save path.
+//  PP-4963: instrumentation for lost audiobook position. The suspected cause is
+//  that the autosave, fed by main-runloop timers, stops during long
+//  screen-locked playback. A save that does not happen leaves no log, so these
+//  policies use a second clock (the player's position stream) to notice when
+//  saves went quiet while playback was live, the same pattern as
+//  `NowPlayingCoordinator.checkForDryStream()` (code 403).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -34,110 +18,54 @@ import Foundation
 
 /// What the save path was doing across a background → foreground transition.
 enum PositionSaveVerdict: Equatable {
-    /// The playback clock never ticked, so nothing can be concluded. Distinct
-    /// from every other case on purpose — see `PositionSaveDryPolicy`.
+    /// The playback clock never ticked, so nothing can be concluded.
     case noPlayback
     /// Playback stopped before the check, which explains a quiet save window
     /// on its own.
     case playbackStale(sinceLastTick: TimeInterval)
     /// Saves kept pace with playback.
     case saving(sinceLastSave: TimeInterval)
-    /// Playback was demonstrably live and saves had stopped. This is the
-    /// finding PP-4963 exists to confirm or refute; the duration is the
+    /// Playback was live and saves had stopped; the duration is the
     /// patron-visible loss window.
     case dry(seconds: TimeInterval)
     /// The tick stream itself went quiet, and the stretch that resumed is too
     /// young to have earned a verdict of its own.
     ///
-    /// This case exists because the alternative was a lie. A gap in the ticks
-    /// has two causes that the tick stream cannot tell apart: the patron
-    /// paused, or playback continued while delivery was suppressed — and the
-    /// second is PP-4963's own hypothesis, since `positionPublisher` is driven
-    /// by the playback clock but DELIVERS on the main queue. Treating a gap as
-    /// a pause and reporting `.saving` would emit an affirmative "healthy" for
-    /// the exact three-hour locked session the instrument exists to catch.
-    ///
-    /// Two discriminators do exist, and this case is not a claim that they
-    /// don't — it is what the recorder reports until one is wired in.
-    /// `AudiobookPositionOffsets.resolver` already converts a (trackKey,
-    /// timestamp) pair to an absolute book offset, summing intervening track
-    /// durations, so the position DOES survive a track boundary and a position
-    /// that advanced across the gap means playback continued. And
-    /// `OpenAccessPlayer.pause()` publishes `.stopped` on a plain
-    /// `PassthroughSubject` from a global queue, so a wedged main thread
-    /// cannot suppress it: a `.stopped` inside the gap means a pause, and its
-    /// absence means a stall.
-    ///
-    /// Both are one-way and partial — a seek during a pause confounds the
-    /// first, Findaway differs on the second, and `.stopped` is conditional on
-    /// a non-nil track position — so wiring either is its own change with its
-    /// own failure mode, tracked on the ticket. Until then the honest verdict
-    /// is that this instrument did not see.
-    ///
-    /// So the ambiguity is reported instead of resolved — the same discipline
-    /// as `.playbackStale` over a silent `.dry`, and `.markerUnresolvable` over
-    /// `.aligned`. It is also a finding in its own right: a gap means the
-    /// instrument went blind, which is the branch's one unverified assumption
-    /// (that `positionPublisher` survives a locked screen) failing out loud
-    /// rather than passing as health.
+    /// A tick gap has two causes the stream cannot separate: the patron paused,
+    /// or playback continued while main-queue delivery was suppressed (the
+    /// PP-4963 hypothesis). Reporting `.saving` would claim health for exactly
+    /// the session under suspicion, so the ambiguity is reported instead.
+    /// Possible discriminators (position advance across the gap, a `.stopped`
+    /// event inside it) are tracked on the ticket.
     case tickGap(seconds: TimeInterval)
     /// The device clock moved backwards between the last tick and this check,
     /// so the tick reference sits AHEAD of `now`.
     ///
-    /// Every interval this policy computes is measured from that reference, so
-    /// once it is ahead of the present none of them mean anything: a quiet
-    /// window reads short, a pause reads as no gap at all, and the verdict
-    /// resolves toward health. Reporting the regression is the only honest
-    /// answer, and it is a finding in its own right — the sessions it marks
-    /// are the ones whose other numbers cannot be trusted.
+    /// Every interval is measured from that reference, so none of them are
+    /// meaningful; the regression is reported instead of a verdict.
     case clockRegressed(by: TimeInterval)
 }
 
 /// What the recorder observed alongside a verdict, carried to the fleet.
 ///
-/// `.tickGap` on its own cannot separate an overnight pause from an overnight
-/// stall — the two produce identical inputs, and no single session can tell
-/// them apart. Across many sessions they do separate: pausing leaves a handful
-/// of gaps, a delivery path that stalls leaves many or one enormous one. These
-/// counters are what makes that comparison possible. Both are counts of the
-/// device's own behaviour and carry no book or patron identity.
+/// A single `.tickGap` cannot separate a pause from a stall, but across many
+/// sessions the gap counts can. Counts only; no book or patron identity.
 struct PositionTraceContext: Equatable {
     let applicationStateAtLastTick: String
     let tickGapCount: Int
     let longestTickGap: TimeInterval
     /// How many ticks arrived with a timestamp earlier than the reference.
     ///
-    /// The recorder clamps its reference forward so one out-of-order tick
-    /// cannot manufacture a gap. This is the trace of that clamp: a session
-    /// with a non-zero count had its clock move under it, and its other
-    /// numbers should be read with that in mind. One per episode, not per
-    /// tick, so it is comparable with `tickGapCount`.
+    /// The recorder clamps its reference forward so an out-of-order tick cannot
+    /// manufacture a gap; this counts those clamps, once per episode.
     let clockRegressionCount: Int
 }
 
 /// What the playback clock observed during ONE continuous stretch of playback.
 ///
-/// This type exists to make a defect class unrepresentable rather than
-/// reconciled. The three facts the verdict needs — when this stretch began,
-/// when it was last alive, and when a save was last seen — used to be three
-/// independent `Date?`s on three different scales, combined by a precedence
-/// chain at read time:
-///
-///   `lastSaveAt ?? firstTickAt ?? sessionStartedAt`
-///
-/// `lastSaveAt` is frozen while paused, because its only writer is gated on
-/// `isPlaying`. `firstTickAt` tracked the current stretch. `sessionStartedAt`
-/// tracked the whole session. Reading them in precedence order silently mixed
-/// scales: a patron who played a minute, paused three hours, resumed and
-/// unlocked was measured against the save that froze before the pause, and the
-/// instrument reported a three-hour dry window for a perfectly healthy
-/// session — on the UNGATED fleet signal, from a routine gesture.
-///
-/// Scoping the save to the stretch that contains it removes the mismatch at
-/// the source. A new stretch starts with no save, so a save from a previous
-/// stretch cannot be compared against this one; there is nothing left to
-/// reconcile, and no `max()` to get wrong. `sessionStartedAt` disappeared
-/// entirely — it was only ever a fallback for a case that cannot occur.
+/// The last save is scoped to the stretch that contains it, so a save from
+/// before a pause is never measured against playback after it (which would
+/// report a pause as a dry window).
 struct PlaybackStretch: Equatable {
     /// First tick of THIS stretch. A resume after a gap starts a new one.
     let startedAt: Date
@@ -147,37 +75,22 @@ struct PlaybackStretch: Equatable {
     let lastSaveAt: Date?
     /// The tick-stream gap that opened this stretch, if one did.
     ///
-    /// Carried rather than discarded because a stretch that began after a gap
-    /// cannot support a health claim until it has run long enough to produce
-    /// its own evidence. `nil` for the first stretch of a session, which began
-    /// because playback began — not because anything went quiet.
+    /// A stretch that began after a gap cannot support a health claim until it
+    /// has evidence of its own. `nil` for the session's first stretch.
     let precededByGap: TimeInterval?
 
-    /// The point the dry window is measured from. Both candidates are
-    /// stretch-scoped, so this is a same-scale choice rather than a
-    /// cross-scale reconciliation.
+    /// The point the dry window is measured from.
     var lastSignOfLife: Date { lastSaveAt ?? startedAt }
 }
 
 /// Decides, on foreground return, whether position saves went quiet WHILE
 /// playback was still live.
 ///
-/// The two-signal shape is load-bearing. "No saves for three hours" on its own
-/// is ambiguous — it is equally consistent with the defect and with the patron
-/// having simply paused. Pairing it with an independent liveness signal is what
-/// makes the measurement mean something.
-///
-/// Which liveness signal is just as load-bearing, and belongs to the caller:
-/// it MUST come from `player.positionPublisher`, which AVPlayer drives from the
-/// playback clock. Its SOURCE is independent of the runloop, so it survives the
-/// NSTimer coalescing under test; whether it survives a three-hour lock is the
-/// measurement this exists to take, not an assumption it may rest on.
-/// It must NOT come from `AudiobookPlaybackModel.$currentLocation` (fed by both
-/// the playback clock AND the suspect runloop timer) and must not come from a
-/// timer of its own. A watchdog driven by the mechanism it is watching goes
-/// silent exactly when the defect fires, and its silence would then read as
-/// `.noPlayback` — the instrument would quietly report the absence of a defect
-/// it had merely lost the ability to see.
+/// "No saves" alone is consistent with a pause, so it is paired with an
+/// independent liveness signal. The caller must feed that from
+/// `player.positionPublisher` (driven by the playback clock), never from
+/// `AudiobookPlaybackModel.$currentLocation` or a timer, which share the
+/// runloop mechanism under suspicion and would go quiet with it.
 ///
 /// The decision is a total function over seven reachable cells. "tick fresh"
 /// is `ahead` when the reference sits later than `now`, which no interval can
@@ -193,17 +106,8 @@ struct PlaybackStretch: Equatable {
 ///   | present | yes        | no                   | no    | nil  | `.saving`         |
 ///   | present | yes        | no                   | no    | some | `.tickGap`        |
 ///
-/// The last row is the one that earns its keep, and it is the cell an earlier
-/// draft got wrong. A young stretch with no save of its own is benign when it
-/// began because playback began, and is NOT benign when it began because the
-/// tick stream went quiet — in the second case the instrument has no basis for
-/// a health claim and must not make one. Everything above that row is
-/// unchanged by the addition of the gap dimension: a stretch that has saved,
-/// or has already run past the dry threshold, has its own evidence and does
-/// not care how it started.
-///
-/// Seven cells, each with its boundary. That is the whole state space — which
-/// is the point of taking a `PlaybackStretch?` rather than five loose dates.
+/// The last row: a young, unsaved stretch is benign when playback just began,
+/// but has no basis for a health claim when it began after a tick gap.
 enum PositionSaveDryPolicy {
 
     /// Comfortably above any legitimate cadence: the throttle saves every ~5s
@@ -229,16 +133,9 @@ enum PositionSaveDryPolicy {
 
         let sinceLastTick = now.timeIntervalSince(stretch.lastTickAt)
 
-        // Checked FIRST, because every branch below measures from a reference
-        // this makes meaningless. A negative interval means the reference is
-        // ahead of `now`: the clock stepped back, or the recorder clamped the
-        // reference forward and the clock has not caught up.
-        //
-        // Falling through instead is what made a clamped reference dangerous.
-        // A ten-minute pause that reports `.tickGap(605)` on a steady clock
-        // reported `.saving(0.0)` across a thirty-minute backwards step —
-        // measured — which is an affirmative health claim, and `.saving` never
-        // reaches the fleet, so it is a silent one.
+        // Checked first: a negative interval means the reference is ahead of
+        // `now` (clock stepped back, or the clamped reference has not been
+        // caught up), and every branch below would then read as healthy.
         if sinceLastTick < 0 {
             return .clockRegressed(by: -sinceLastTick)
         }
@@ -263,14 +160,9 @@ enum PositionSaveDryPolicy {
             return .dry(seconds: quietFor)
         }
 
-        // Short quiet window. That is only evidence of health if this stretch
-        // has evidence of its own — a save it actually observed, or a clean
-        // birth. A stretch opened by a gap in the tick stream has neither, and
-        // the gap has two causes this signal cannot separate: the patron
-        // paused, or playback continued while delivery was suppressed. Saying
-        // `.saving` here would emit an affirmative "healthy" for the second,
-        // which is PP-4963's own hypothesis — and `.saving` is not reported to
-        // the fleet at all, so that claim would be silent as well as wrong.
+        // A short quiet window only indicates health if the stretch has its
+        // own evidence (an observed save, or a clean start). A stretch opened
+        // by a tick gap has neither; see `PositionSaveVerdict.tickGap`.
         if stretch.lastSaveAt == nil, let gap = stretch.precededByGap {
             return .tickGap(seconds: gap)
         }
@@ -283,12 +175,9 @@ enum PositionSaveDryPolicy {
 /// The last position the PLAYBACK CLOCK observed, persisted so it survives the
 /// app being terminated mid-listen.
 ///
-/// Recorded on the playback-clock cadence and never on save. Updating it when a
-/// save happens would make the restore gap identically zero by construction —
-/// the instrument would agree with itself and measure nothing.
-///
-/// Diagnostic only. Nothing reads this to decide where to open a book; the
-/// restore path is `resolveInitialPosition` and stays unchanged.
+/// Recorded on the playback-clock cadence, never on save (which would make the
+/// restore gap zero by construction). Diagnostic only; the restore path does
+/// not read it.
 struct LastLivePositionMarker: Codable, Equatable, Sendable {
     let bookID: String
     let trackKey: String
@@ -323,10 +212,8 @@ enum PositionRestoreGapPolicy {
 
     /// - Parameter absoluteOffset: maps `(trackKey, timestamp)` to an offset
     ///   from the start of the book, returning nil when the track is absent
-    ///   from the loaded manifest. Injected rather than taking a table of
-    ///   contents so the decision stays a pure function over a small input
-    ///   space, and so cross-track arithmetic is exercised without building a
-    ///   toolkit `Tracks` graph.
+    ///   from the loaded manifest. Injected so the decision stays pure and
+    ///   testable without a toolkit `Tracks` graph.
     static func evaluate(
         marker: LastLivePositionMarker?,
         bookID: String,
@@ -341,10 +228,8 @@ enum PositionRestoreGapPolicy {
         guard marker.bookID == bookID else {
             return .markerForDifferentBook
         }
-        // An unresolvable key must never fall through to `.aligned`. Treating a
-        // position that cannot be located as agreement is the 3.2.3 Cause 2
-        // shape, and here it would report a healthy restore for exactly the
-        // book that lost its place.
+        // An unresolvable key must never fall through to `.aligned`: that would
+        // report a healthy restore for the book that lost its place.
         guard let liveOffset = absoluteOffset(marker.trackKey, marker.timestamp) else {
             return .markerUnresolvable(trackKey: marker.trackKey)
         }
@@ -354,11 +239,7 @@ enum PositionRestoreGapPolicy {
 
         let gap = liveOffset - restoredOffset
 
-        // A negative tolerance is meaningless here — it would make `.aligned`
-        // unreachable and let a gap of exactly zero fall into the sign test
-        // below, where zero has no correct answer. Clamping removes that
-        // degree of freedom, and in doing so makes `abs(gap) > band` imply
-        // `gap != 0`, so `gap > 0` has no reachable boundary case.
+        // Clamped so `abs(gap) > band` implies `gap != 0` for the sign test.
         let band = max(0, tolerance)
         guard abs(gap) > band else {
             return .aligned(driftSeconds: gap)

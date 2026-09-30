@@ -1,25 +1,10 @@
 //
-//  ManagedLibraryDebugOverride.swift
-//  Palace
+//  PP-5070 — lets the Testing screen stand in for an MDM. It writes the same
+//  `com.apple.configuration.managed` key an MDM writes, so everything
+//  downstream runs the production path; only the author is simulated.
 //
-//  PP-5070 — lets the Testing screen stand in for an MDM.
-//
-//  ## Why this writes the REAL key
-//
-//  The obvious shortcut is a separate debug key that the preconfigurator also
-//  consults. That would be worse than useless: it would exercise a branch
-//  production never takes, and leave the one path that matters — reading a
-//  dictionary out of `com.apple.configuration.managed` — untested on a device.
-//  So this writes the SAME key an MDM writes, and everything downstream (parse,
-//  normalize, decide, resolve, apply, bounded wait) is the production path
-//  byte-for-byte. The only thing simulated is WHO wrote the dictionary, which is
-//  the one part no amount of app-side code can test anyway.
-//
-//  ## Why this is not `#if DEBUG`
-//
-//  It is gated by the Testing screen's `showEngineeringTools`, which is true on
-//  DEBUG, simulator AND TestFlight. `#if DEBUG` would compile it out of exactly
-//  the build QA uses to exercise this on real hardware.
+//  Not `#if DEBUG`: gated by `showEngineeringTools`, which is also true on
+//  TestFlight, the build QA uses on real hardware.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

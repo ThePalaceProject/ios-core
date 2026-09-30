@@ -9,15 +9,11 @@ import Foundation
 import PalaceBookModel
 import PalaceBookRegistry
 
-/// `MyBooksDownloadCenter`'s conformance to the registry's download seam
-/// (god-class decomposition Wave 2b). `fileUrl(for:account:)`,
-/// `deleteLocalContent(forBook:account:)`, and `redownloadLCPContentFile(for:)`
-/// are satisfied by the download center's existing methods; the two additions
-/// below own the `#if LCP` license-vs-content probe that USED to live inside
-/// `BookRegistrySync.checkIfBookFileExists` — the SPM package never sees the app's
-/// `LCP` compilation condition, so that logic MUST live here. Palace-noDRM builds
-/// this file with `LCP` undefined, giving the plain non-LCP behavior (content-file
-/// existence / `false`), mirroring the pre-extraction `#else` branches exactly.
+/// `MyBooksDownloadCenter`'s conformance to the registry's download seam.
+/// The two additions below own the `#if LCP` license-vs-content probe: the SPM
+/// registry package never sees the app's `LCP` compilation condition, so that
+/// logic must live in the app target. Palace-noDRM builds this file with `LCP`
+/// undefined and gets the plain content-file-existence behavior.
 extension MyBooksDownloadCenter: RegistryDownloadServicing {
 
     /// Protocol witness for the no-request start (the download center's own

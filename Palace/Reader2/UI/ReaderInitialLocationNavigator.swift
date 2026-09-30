@@ -2,31 +2,12 @@
 //  ReaderInitialLocationNavigator.swift
 //  Palace
 //
-//  P0 #3 (swarm `swarm_f3b9b087`): gates the initial `navigator.go(to:)`
-//  call behind a WKWebView-ready signal.
-//
-//  Why this exists:
-//
-//  `TPPBaseReaderViewController.viewDidLoad` used to launch the initial
-//  navigation as an unguarded `Task { await navigator.go(to: initialLocation) }`.
-//  Readium's EPUB navigator wraps a WKWebView whose first-paint completes
-//  asynchronously *after* `viewDidLoad` returns. Calling `go(to:)` before
-//  the WebView has finished its initial layout occasionally lands the
-//  user at chapter 1 instead of the saved position — `go(to:)` resolves
-//  before the navigator's internal location-mapping table has been
-//  populated, and falls back to the publication's start.
-//
-//  This helper holds the `initialLocation` and a ready latch. The
-//  view controller calls `signalReady()` from `viewDidAppear` — by then
-//  the WKWebView has reported its first paint and the navigator's
-//  location table is populated. The `go(to:)` call fires exactly once,
-//  after both the navigator is attached AND the ready signal has fired.
-//
-//  Testability: the helper depends only on the slim `NavigatorGoTo`
-//  protocol below, so it can be exercised with a recording stub in
-//  `PalaceTests/Reader2/TPPBaseReaderViewControllerInitialLocationTests.swift`.
-//  Production `Navigator` instances satisfy the protocol via the
-//  conformance declaration in `TPPBaseReaderViewController`.
+//  Gates the initial `navigator.go(to:)` behind a WKWebView-ready signal.
+//  Calling it before the WebView's first layout can resolve before Readium's
+//  location table is populated and land the patron at chapter 1. The view
+//  controller calls `signalReady()` from `viewDidAppear`; `go(to:)` fires once,
+//  after both the navigator is attached and the ready signal has fired.
+//  Depends only on `NavigatorGoTo` so tests can use a recording stub.
 //
 
 import Foundation
@@ -62,11 +43,9 @@ final class ReaderInitialLocationNavigator {
     private var didNavigate: Bool = false
 
     /// Set true if the post-first-paint restore `go(to:)` returned false — Readium
-    /// could not resolve the saved/synced locator. Because the EPUB navigator's
-    /// CONSTRUCTOR restore is disabled (`TPPEPUBViewController.navigatorConstructorInitialLocation`
-    /// is always nil), the navigator is already at the publication's natural start,
-    /// so a failed restore is a graceful degradation to page 1 — NOT a WebContent
-    /// teardown / bounce. Observable for diagnostics + tests.
+    /// could not resolve the saved/synced locator. The constructor restore is
+    /// disabled, so the navigator is already at the start and this is a graceful
+    /// degradation to page 1.
     private(set) var restoreDidDegradeToStart = false
 
     /// Test hook: fired (on the main actor) with the FINAL `go(to:)` Bool result
@@ -74,13 +53,9 @@ final class ReaderInitialLocationNavigator {
     var onRestoreAttempt: ((Bool) -> Void)?
 
     /// PP-4652: how many times to (re)try `go(to:)` before degrading to page 1,
-    /// and the delay between tries. A DRM/Adobe EPUB decrypts + loads its
-    /// WebContent more slowly than an open-access EPUB, so at `viewDidAppear`
-    /// (when the gate fires) Readium's location-mapping table may not be
-    /// populated yet — the first `go(to:)` then no-ops to `false` and #1084's
-    /// single-shot gate gave up at the cover. Retrying until the table is ready
-    /// restores the real position; the constructor restore stays disabled so a
-    /// retried `go(to:)` cannot double-restore / tear down WebContent.
+    /// and the delay between tries. A DRM EPUB loads its WebContent more slowly,
+    /// so at `viewDidAppear` the location table may not be ready and the first
+    /// `go(to:)` returns `false`.
     private let maxRestoreAttempts: Int
     private let restoreRetryDelayNanos: UInt64
 
@@ -123,16 +98,10 @@ final class ReaderInitialLocationNavigator {
         didNavigate = true
         Task { @MainActor [weak self] in
             guard let self else { return }
-            // Single restore authority: the navigator first-paints at its natural
-            // start (constructor restore disabled), then this restores once the
-            // WKWebView's location-mapping table is populated. For a DRM EPUB that
-            // can lag past `viewDidAppear`, so `go(to:)` may no-op to false on the
-            // first try (PP-4652: book reopened to the cover). Retry until it
-            // resolves — each false attempt is a no-op (nothing navigated, nothing
-            // torn down), so retrying restores the real position without
-            // re-introducing the #1084 double-restore. Only a persistently
-            // unresolvable locator (all attempts false) degrades to page 1, which
-            // we record/log rather than silently discard.
+            // Single restore authority (constructor restore is disabled). Each
+            // `false` attempt navigates nothing, so retrying is safe (PP-4652,
+            // #1084). Only a locator that never resolves degrades to page 1,
+            // which is recorded and logged.
             var restored = false
             for attempt in 0..<self.maxRestoreAttempts {
                 restored = await navigator.go(to: location, options: NavigatorGoOptions(animated: false))

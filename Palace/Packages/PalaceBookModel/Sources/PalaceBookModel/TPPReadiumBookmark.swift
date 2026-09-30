@@ -69,8 +69,7 @@ public final class TPPReadiumBookmark: NSObject, Bookmark {
     /// The full-field initializer that derives the location string via the
     /// Readium-backed `TPPBookLocation(href:type:...)` convenience init lives
     /// app-side in `TPPReadiumBookmark+R3.swift` (ReadiumShared cannot cross
-    /// into this leaf model package) and delegates here — Wave 2a extraction,
-    /// behavior byte-identical.
+    /// into this leaf model package) and delegates here.
     public init(annotationId: String?,
                 href: String,
                 chapter: String?,
@@ -117,23 +116,10 @@ public final class TPPReadiumBookmark: NSObject, Bookmark {
         self.device = dictionary[TPPBookmarkDictionaryRepresentation.deviceKey] as? String
         self.readingOrderItem = dictionary[TPPBookmarkDictionaryRepresentation.readingOrderItem] as? String
 
-        // P0 #2 (swarm `swarm_f3b9b087`): mixed-format dictionaries from
-        // older app versions may carry BOTH the audiobook-style
-        // `readingOrderItemOffsetMilliseconds` AND the canonical EPUB
-        // `progressWithinChapter`. Contract:
-        //
-        //   1. If `progressWithinChapter` (chapterProgressKey) is present,
-        //      it wins — it is the canonical EPUB key for in-chapter
-        //      progression and is the value the EPUB reader actually
-        //      sets when persisting a bookmark.
-        //   2. Otherwise, fall back to `readingOrderItemOffsetMilliseconds`
-        //      so legacy audiobook-style dictionaries still hydrate a
-        //      meaningful `progressWithinChapter` value.
-        //
-        // Implemented as `if/else` (rather than the prior two unconditional
-        // assignments) so the precedence is explicit at the call site —
-        // a refactor flipping the order will now silently mutate behavior
-        // instead of compiling cleanly.
+        // Dictionaries from older app versions may carry both the
+        // audiobook-style `readingOrderItemOffsetMilliseconds` and the EPUB
+        // `progressWithinChapter`. The EPUB key wins because it is what the
+        // EPUB reader writes; the offset is a fallback for legacy dictionaries.
         if let progressChapter = dictionary[TPPBookmarkDictionaryRepresentation.chapterProgressKey] as? NSNumber {
             self.progressWithinChapter = progressChapter.floatValue
         } else if let readingOrderItemOffsetMilliseconds = dictionary[TPPBookmarkDictionaryRepresentation.readingOrderItemOffsetMilliseconds] as? NSNumber {

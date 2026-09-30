@@ -2,20 +2,12 @@
 //  DownloadTaskPersistence.swift
 //  Palace
 //
-//  Reliability WS-A — Durable Downloads (seam S1).
-//
-//  The task<->book maps in DownloadStateManager are in-memory only: a kill
-//  mid-download loses them, so an actually-still-running background task (iOS
-//  keeps background downloads alive across app death) is orphaned — the app
-//  never re-adopts it. This file adds the durable, crash-surviving mirror plus
-//  the PURE reconciliation that decides, at launch, what to do with each
-//  persisted record given the set of still-live URLSession tasks and the
-//  registry's per-book state.
-//
-//  Ownership contract (seam S1): registry state is the source of truth for a
-//  book's lifecycle; we reconcile URLSession tasks TO it. We only heal a
-//  persisted record whose task is NOT live — a live task is always adopted,
-//  never restarted or failed (INV-4).
+//  Durable downloads. DownloadStateManager's task<->book maps are in-memory,
+//  but iOS keeps background downloads running across app death. This file
+//  persists a crash-surviving mirror and the pure launch reconciliation that
+//  decides what to do with each record given the live URLSession tasks and the
+//  registry's per-book state. Registry state is the source of truth; a live
+//  task is always adopted, never restarted or failed.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -26,7 +18,7 @@ import PalaceBookModel
 import PalaceBookRegistry
 import PalaceUtilities
 
-// MARK: - Seam S1 types
+// MARK: - Types
 
 /// Durable record of one in-flight download task. Codable/Sendable so it can be
 /// JSON-persisted and fed to the pure reconciler across the actor boundary.
@@ -60,44 +52,21 @@ enum DownloadReconciliation {
 
     /// The live task this record should be adopted onto, or nil.
     ///
-    /// Matches on URL, and returns the LIVE identifier — not the persisted one.
-    /// That distinction is the whole fix, and it is deliberately agnostic about a
-    /// question nobody has settled on device: whether a background session
-    /// preserves `taskIdentifier` across an app relaunch.
+    /// Matches on URL and returns the live identifier, not the persisted one,
+    /// so it works whether or not a background session preserves
+    /// `taskIdentifier` across relaunch (unsettled on device): an exact
+    /// identifier+URL match wins, otherwise a unique URL match. Requiring both
+    /// would refuse a still-running renumbered download; `.restart` is inert
+    /// for a `.downloading` book, so it would end as `.downloadFailed` and the
+    /// patron would have to retry.
     ///
-    ///   - if identifiers ARE preserved, the record's own task is found by the
-    ///     exact branch and the live identifier equals the persisted one;
-    ///   - if identifiers are RENUMBERED, the exact branch misses and the unique
-    ///     URL branch still finds the record's own task under its new identifier.
+    /// Two live tasks on one URL are ambiguous and neither is adopted unless
+    /// one carries this record's exact identifier.
     ///
-    /// Requiring identifier AND url (the first attempt at PP-4997) is only correct
-    /// in the first world. In the second it refuses to adopt a download that is
-    /// still running and falls through to `.restart`.
-    ///
-    /// That is NOT the double-start INV-4 forbids, and an earlier version of this
-    /// comment wrongly said it was. `startDownload` returns early on
-    /// `.downloading` (DownloadStartCoordinator), which is the state a book
-    /// killed mid-download is in, so the restart is inert there. The cost is
-    /// quieter: nothing maps the live task's identifier to a book, so its
-    /// callbacks are dropped, the book sits in `.downloading` with no task, and
-    /// registry sync later heals it to `.downloadFailed`. A download that was
-    /// running fine becomes a failure the patron has to retry.
-    ///
-    /// Ambiguity is declined rather than guessed: two live tasks on the same URL
-    /// cannot be told apart, so unless one of them carries this record's exact
-    /// identifier, neither is adopted. The same inertness applies — `.restart`
-    /// will not re-drive a `.downloading` book, so the practical outcome is the
-    /// heal to `.downloadFailed` above, not a fresh download.
-    ///
-    /// The exact discriminator would be `URLSessionTask.taskDescription` carrying
-    /// the book id — it survives relaunch and needs no inference, and it makes
-    /// this helper collapse to one lookup.
-    ///
-    /// CAUTION: that field is no longer free. PP-4986 stores the dispatching
-    /// account there via `TaskProvenance` (`TPPNetworkExecutor.swift`), encoded as
-    /// `key=value;` pairs precisely so a book id can join it. Add a `book=` key
-    /// through `TaskProvenance` — do NOT assign `task.taskDescription` directly,
-    /// which would silently erase the account and reopen a credential leak.
+    /// A book id in `URLSessionTask.taskDescription` would be an exact
+    /// discriminator, but that field holds the dispatching account (PP-4986).
+    /// Add a `book=` key through `TaskProvenance`; assigning `taskDescription`
+    /// directly would erase the account and reopen a credential leak.
     private static func adoptableTask(
         for record: PersistedDownloadRecord,
         in liveTasks: [Int: URL]
@@ -112,69 +81,29 @@ enum DownloadReconciliation {
     /// - Parameter liveTasks: still-running download tasks, keyed by task
     ///   identifier, valued by the URL that task is actually fetching.
     ///
-    ///   PP-4997: this used to be a bare `Set<Int>` of identifiers, and that is
-    ///   not enough to identify a download. `URLSessionTask.taskIdentifier` is
-    ///   documented as unique only *within its session* — a relaunch creates a
-    ///   new session and numbering restarts from 1. A leftover record for task 1
-    ///   would then match a DIFFERENT book's live task 1, and the adoption routed
-    ///   that download's progress and its finished file to the wrong title. It
-    ///   failed silently: no error, no alert, no log line, and the patron simply
-    ///   received a book they did not ask for.
+    ///   PP-4997: identifiers alone are not enough. `taskIdentifier` is unique
+    ///   only within its session and restarts from 1 after relaunch, so a stale
+    ///   record could adopt a different book's task and deliver the wrong title.
+    ///   The URL is the discriminator; the identifier is only a hint.
     ///
-    ///   The URL is the discriminator and the record already carried it; it was
-    ///   just never read. The identifier is only a hint: a record is adopted
-    ///   when some live task is fetching its URL, and the adoption carries THAT
-    ///   task's identifier. So this is correct whether or not identifiers happen
-    ///   to survive a relaunch — a question this code no longer has to answer.
+    ///   Do not cancel an unadoptable task. It can be a real in-flight download
+    ///   (contested URL, a start that recorded no URL, a future start path). An
+    ///   orphan costs bandwidth; `MyBooksDownloadCenter` ignores unmapped
+    ///   identifiers, so its bytes are discarded rather than misrouted.
     ///
-    ///   DO NOT "OPTIMIZE" THIS BY CANCELLING THE UNADOPTABLE TASK. It reads as
-    ///   an obvious improvement — the task is orphaned, so why leave it running?
-    ///   Because a live task here can be a REAL in-flight download. PP-5023 made
-    ///   `followAcquisitionLink` and the bearer-token hop persist, which removes
-    ///   the commonest case, but it does NOT make cancelling safe: a task is also
-    ///   unadoptable when its URL is contested, when `persistStartedTaskRecord`
-    ///   found no URL to record, and on any path added after this comment was
-    ///   written. An orphan costs bandwidth; cancelling costs the patron a book.
-    ///   Leave it: `MyBooksDownloadCenter` early-returns on an unmapped
-    ///   identifier, so the orphan's bytes are discarded rather than misrouted.
+    ///   Invariant: within one pass, a download URL identifies at most one book.
+    ///   Two books can share a URL (one open-access title in two catalogs), so
+    ///   records with a contested URL are refused adoption. This is enforced
+    ///   for records only: `contestedURLs` cannot see a live task with no
+    ///   record, so every path that starts a download must persist a record
+    ///   (PP-5023 covers `followAcquisitionLink` and the bearer-token hop;
+    ///   `persistStartedTaskRecord` still writes nothing when it resolves no
+    ///   URL). `DownloadReissuePersistenceTests` pins the known re-issue paths.
     ///
-    ///   LOAD-BEARING INVARIANT: within one reconcile pass, a download URL
-    ///   identifies at most one book. The URL is only a safe discriminator
-    ///   because of that. Two books CAN legitimately share one — the same
-    ///   open-access title surfaced by two catalogs — so the invariant is
-    ///   enforced here for records, and NOT enforced for live tasks — a limit
-    ///   worth stating precisely, because an earlier version of this comment
-    ///   overclaimed. Records whose URL is claimed by more than one book are
-    ///   refused adoption; adopting them would route the finished file to
-    ///   whichever book wrote `taskIdentifierToBook` last, which is PP-4997's
-    ///   own failure mode re-entered through its fix.
+    /// Pure: no URLSession, no I/O.
     ///
-    ///   WHAT IT RESTS ON: `contestedURLs` is computed from `persisted` alone,
-    ///   because that is all this function is given, so the guard can only see a
-    ///   live task that has a record. Two paths used to create tasks without one
-    ///   — `followAcquisitionLink` and the bearer-token hop in
-    ///   `RightsManagementDispatcher` — and a book whose record named such a
-    ///   task's URL adopted that download outright: a wrong adoption, not a
-    ///   decline. Both persist as of PP-5023, which closes the two known holes.
-    ///   It does NOT make the guard complete: `persistStartedTaskRecord` writes
-    ///   nothing when it can resolve no URL, so that arm still produces a live
-    ///   unrecorded task, and any future start path reopens the same gap.
-    ///
-    ///   That completeness is a property of the CALLERS, not of this function,
-    ///   and nothing here can enforce it. Any future path that starts a download
-    ///   in this session must persist a record, or it reopens the same hole.
-    ///   `DownloadReissuePersistenceTests` pins the two known re-issue paths and
-    ///   carries the control that demonstrates the failure they used to cause.
-    /// PURE — no URLSession, no I/O. Unit-testable exhaustively over the
-    /// {live task / dead task} × {registry state} matrix.
-    ///
-    /// - Note: `registryStates` is keyed by book id and carries the *per-book*
-    ///   lifecycle state (`TPPBookState`), which is the source of truth for the
-    ///   book's download lifecycle. (Seam S1's draft typed this as
-    ///   `TPPBookRegistry.RegistryState`, but that enum is the whole-registry
-    ///   load state — `.unloaded/.loading/.loaded/...` — not per-book. INV-4's
-    ///   healing contract is explicitly about the per-book `.downloading`
-    ///   record, so the per-book `TPPBookState` is the correct input.)
+    /// - Note: `registryStates` carries the per-book `TPPBookState`, not the
+    ///   whole-registry load state.
     static func reconcile(
         persisted: [PersistedDownloadRecord],
         liveTasks: [Int: URL],
@@ -190,13 +119,9 @@ enum DownloadReconciliation {
         let contestedURLs = Set(bookIDsByURL.filter { $0.value.count > 1 }.map(\.key))
 
         return persisted.map { record in
-            // INV-4: a still-running background task is adopted, never restarted
-            // (no double-start) and never spuriously failed.
-            //
-            // PP-4997: match on url, adopt the LIVE identifier. A colliding
-            // identifier fetching a different url is NOT this record's task;
-            // fall through and let the registry decide, exactly as it would for
-            // a task that had died.
+            // A still-running task is adopted, never restarted or failed. A
+            // colliding identifier on a different URL is not this record's task;
+            // the registry decides, as for a dead task.
             if !contestedURLs.contains(record.downloadURL),
                let liveID = adoptableTask(for: record, in: liveTasks) {
                 return .adopt(bookID: record.bookID, taskIdentifier: liveID)
@@ -225,12 +150,10 @@ enum DownloadReconciliation {
         }
     }
 
-    /// PURE orchestrator for the launch reconciliation sequence. Encapsulates
-    /// the ORDER contract (registry-loaded gate → load persisted → live tasks →
-    /// read registry state → reconcile → apply) behind injected closures so the
-    /// production wiring in `MyBooksDownloadCenter` and the launch-order
-    /// contract-snapshot test drive the same code. INV-4: the registry-loaded
-    /// gate is FIRST — reconciliation never runs before the registry has loaded.
+    /// Launch reconciliation sequence: registry-loaded gate → load persisted →
+    /// live tasks → registry state → reconcile → apply. Closures are injected so
+    /// production and the launch-order contract test run the same code. The
+    /// gate comes first: reconciliation never runs before the registry loads.
     static func runLaunchReconciliation(
         isRegistryLoaded: () -> Bool,
         loadPersisted: () -> [PersistedDownloadRecord],
@@ -265,16 +188,11 @@ enum DownloadReconciliation {
 
 // MARK: - Durable store
 
-/// Crash-durable mirror of the in-flight download records. Persists to its OWN
-/// JSON file in Application Support — deliberately NOT the registry file (WS-B
-/// owns that). The in-memory `SafeDictionary`s in `DownloadStateManager` remain
-/// the hot cache. This store was originally consulted only at launch
-/// reconciliation; as of PP-4978 it is ALSO read on the download path, to
-/// recover which account a download was started under when re-issuing its
-/// request (`BackgroundDownloadHandler.startedForAccount(for:delegate:)`).
-/// That read is once per re-issue, not per progress callback, but it is no
-/// longer launch-only — a change to this file's read cost now has a runtime
-/// consumer.
+/// Crash-durable mirror of the in-flight download records, in its own JSON file
+/// in Application Support (not the registry file). Read at launch
+/// reconciliation and, since PP-4978, once per re-issue by
+/// `BackgroundDownloadHandler.startedForAccount(for:delegate:)`, so its read
+/// cost matters at runtime.
 ///
 /// `@unchecked Sendable`: the sole mutable state is the on-disk file, guarded by
 /// `lock`; every accessor takes the lock for the read-modify-write.
@@ -326,31 +244,16 @@ final class DownloadTaskPersistence: @unchecked Sendable {
     /// Read-modify-write one book's record under a SINGLE lock acquisition.
     ///
     /// `all()` followed by `record(_:)` takes the lock twice, so a concurrent
-    /// `remove`/`removeAll` landing between them resurrects a record that was
-    /// meant to be gone, and two re-issues for one book can interleave. Callers
-    /// that derive a new record FROM the existing one (the mid-flight re-issue
-    /// paths) must use this instead.
+    /// `remove` landing between them resurrects a deleted record. Callers that
+    /// derive a new record from the existing one must use this instead.
     ///
-    /// `transform` receives the current record for `bookID`, or nil, and returns
-    /// the record to store. It is NON-optional deliberately: an earlier draft let
-    /// it return nil to mean "leave the store alone", but no caller used that and
-    /// no test or mutant could reach the branch — the third instance in this
-    /// changeset of a guard nothing can falsify. A caller that wants to leave the
-    /// store alone should not call `upsert`.
+    /// `transform` receives the current record for `bookID` (or nil) and
+    /// returns the record to store. It runs while the non-recursive lock is
+    /// held, so it must not call back into this store.
     ///
-    /// `transform` runs WHILE THE LOCK IS HELD and `lock` is not recursive, so it
-    /// must not call back into this store — no `all()`, `record`, `remove`, or a
-    /// nested `upsert`. Keep it a pure function of the record it is handed.
-    ///
-    /// CONTRACT, stated rather than enforced: `transform` must return a record for
-    /// `bookID`. Its one caller (`DownloadStateManager.persistReissuedTask`) does,
-    /// unconditionally — two call PATHS reach it, the acquisition-link follow-up
-    /// and the bearer hop, but there is one call site. An earlier version
-    /// enforced it by also deleting the requested key — but since the two keys are
-    /// identical for every reachable input, that clause could not be killed by any
-    /// test or mutant, which is a worse thing to carry on a critical path than a
-    /// documented precondition. A transform returning a foreign id would leave a
-    /// STALE record under `bookID` (not a duplicate); no caller can produce it.
+    /// Precondition (not enforced): `transform` returns a record for `bookID`;
+    /// a foreign id would leave a stale record under `bookID`. The only caller,
+    /// `DownloadStateManager.persistReissuedTask`, always does.
     ///
     /// - Parameter inheritingFrom: read the record under THIS id and write under
     ///   `bookID`. They differ when a re-issue re-registers the download under a
@@ -415,24 +318,9 @@ final class DownloadTaskPersistence: @unchecked Sendable {
 /// URLSession tasks inside the `getAllTasks` completion (non-`Sendable` task
 /// objects never cross the continuation boundary) and hand them to `apply`.
 ///
-/// Lives here rather than in MyBooksDownloadCenter because it is reconciliation
-/// infrastructure, not download-center state — and the hub is frozen under the
-/// decomposition ratchet, which asks for extraction rather than growth.
-/// `@unchecked Sendable` with a lock over BOTH writes and reads.
-///
-/// The original argument was that every write happens inside the single
-/// `getAllTasks` completion and every read after it resumes — sound, and
-/// auditable while the type was file-`private`. Extraction made it
-/// module-visible, at which point "every write" became a claim about the whole
-/// app target that nothing enforced. `private(set)` closes the dictionaries to
-/// outside writers but `capture` is still an unlocked internal mutator, so two
-/// reviewers independently flagged the same gap.
-///
-/// The first attempt at that added an `NSLock` around `capture` and left the
-/// dictionaries `private(set)`, so every READ was still unlocked — and the
-/// comment claimed "an actual lock, not a convention" while shipping half of
-/// one. Review caught it. The storage is `private` now and the only way in or
-/// out is through the accessors below, all of which take the lock.
+/// `@unchecked Sendable`: the storage is `private` and every accessor takes the
+/// lock, for reads as well as writes, because the type is module-visible and
+/// cannot rely on all writes happening inside one `getAllTasks` completion.
 final class LiveDownloadTaskBox: @unchecked Sendable {
     private let lock = NSLock()
     private var map: [Int: URLSessionDownloadTask] = [:]
@@ -455,19 +343,12 @@ final class LiveDownloadTaskBox: @unchecked Sendable {
     /// Record a live task and the URL it is fetching.
     ///
     /// Falls back to `currentRequest`: a redirected task can report a nil
-    /// `originalRequest`, and dropping it would silently decline to adopt a
-    /// download that is still running. Returns false when the task has no URL
-    /// at all — it can never be adopted, and the caller logs rather than
-    /// dropping it in silence.
-    /// THE BINDING BELOW IS THE ONE THING NO TEST HERE DRIVES, and that is a
-    /// property of `URLSessionDownloadTask`, not of the tests. A task built from
-    /// a URL reports the SAME value for `originalRequest` and `currentRequest`,
-    /// so swapping the two arguments changes nothing any test can observe; a
-    /// task reporting neither cannot be constructed at all. The decision itself
-    /// is driven exhaustively in `downloadURL(original:current:)`, and what
-    /// remains here is a two-line adapter with no branch of its own. Naming the
-    /// gap is the honest form — a reviewer proved it by swapping the labels and
-    /// watching all nine tests stay green.
+    /// `originalRequest`. Returns false when the task has no URL at all; it can
+    /// never be adopted, and the caller logs it.
+    ///
+    /// The argument binding below is untestable: a test-constructed task
+    /// reports the same URL for both requests. The decision itself is covered
+    /// through `downloadURL(original:current:)`.
     @discardableResult
     func capture(_ task: URLSessionDownloadTask) -> Bool {
         let id = task.taskIdentifier
@@ -483,13 +364,8 @@ final class LiveDownloadTaskBox: @unchecked Sendable {
 
     /// The URL a live task is fetching, given what its two requests report.
     ///
-    /// Split out because the branches are NOT reachable through
-    /// `URLSessionDownloadTask`: a task built from a URL reports the same value
-    /// for `originalRequest` and `currentRequest`, and one with neither cannot
-    /// be constructed at all. Mutating the fallback or the nil arm inside
-    /// `capture` therefore left every test green. Whether a branch can be
-    /// exercised is a property of the seam, not of the diligence of the test —
-    /// so the decision moved somewhere it can be driven exhaustively.
+    /// Split out so the branches can be tested; a real `URLSessionDownloadTask`
+    /// cannot be built to reach them.
     ///
     /// `originalRequest` wins because it survives a redirect: `currentRequest`
     /// holds the redirected URL, and the persisted record carries the URL the

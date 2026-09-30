@@ -4,13 +4,7 @@
 //
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
-//  Forwarder shim for the borrow lifecycle. The actual implementation
-//  lives in `BorrowOperation` (see Palace/MyBooks/BorrowOperation.swift).
-//  MBDC keeps `borrowAsync(_:attemptDownload:)` and the three static
-//  helpers callable here so external callers (AccountsManager,
-//  TPPAlertUtilsTests, MyBooksDownloadCenterIntegrationTests) and the
-//  `DownloadStartCoordinatorDelegate.borrowAsync` hop don't have to
-//  change.
+//  Forwarders to `BorrowOperation`, which implements the borrow lifecycle.
 //
 
 import Foundation

@@ -2,14 +2,9 @@
 //  AuthCoordinatorSeams.swift
 //  PalaceAuth
 //
-//  Protocol seams used by `AuthCoordinator` to reach the main-target
-//  re-authentication driver and the sign-in modal presenter without
-//  importing main-target types. Conformances live in the main target via
-//  single-purpose extensions wired in Module C.
-//
-//  These protocols are intentionally narrow — they declare ONLY what the
-//  coordinator actually calls. Adding to them is a deliberate, reviewed
-//  decision because every property forces public surface.
+//  Protocol seams that let `AuthCoordinator` reach the main-target
+//  re-authenticator and sign-in modal without importing main-target types.
+//  Kept narrow on purpose: every member becomes public surface.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -51,8 +46,7 @@ public enum AuthMechanism: Equatable, Sendable {
 /// or trigger a basic-auth retry without surfacing UI. `AuthCoordinator`
 /// calls this for non-browser mechanisms (`.basic`, `.token`).
 ///
-/// `TPPReauthenticator` (main target) conforms via a 3-line extension
-/// added in Module C. Tests use a spy implementation.
+/// `TPPReauthenticator` (main target) conforms; tests use a spy.
 public protocol Reauthenticating: AnyObject, Sendable {
     /// Drive a re-auth attempt using credentials already in the keychain
     /// (silent path). For `.token`, this triggers the bearer-token
@@ -77,8 +71,7 @@ public protocol Reauthenticating: AnyObject, Sendable {
 /// requires browser flow, or as a fallback when silent refresh isn't
 /// applicable.
 ///
-/// `SignInModalPresenter` (main target) conforms via a 3-line extension
-/// added in Module C. Tests use a spy implementation.
+/// `SignInModalPresenter` (main target) conforms; tests use a spy.
 public protocol SignInModalPresenting: AnyObject, Sendable {
     /// Present the sign-in modal for the currently-selected library
     /// account. The implementation selects the appropriate UI (web sheet
@@ -95,8 +88,7 @@ public protocol SignInModalPresenting: AnyObject, Sendable {
 /// know whether credentials are present and whether the auth token is
 /// expired — it does NOT read patron details or keychain internals.
 ///
-/// The full ~17-method split is Phase 3 trunk-move scope per
-/// `docs/3.2.0-auth-deps.md` and explicitly out of scope here.
+/// The full split is described in `docs/3.2.0-auth-deps.md`.
 public protocol TPPUserAccountReading: AnyObject, Sendable {
     /// True when there's a stored credential (bearer token, basic pair,
     /// or SAML cookies). Persisted in keychain per library UUID.
@@ -128,11 +120,8 @@ public protocol TPPUserAccountWriting: AnyObject, Sendable {
 /// the coordinator calls this from its actor context but expects sync
 /// reads to be safe.
 ///
-/// `AccountsManager` (main target) conforms via a 3-line extension added
-/// in Module C; tests use a spy. The protocol intentionally exposes only
-/// what the coordinator needs (the `AuthMechanism` of the current
-/// account) — the full `Account` / `AccountDetails` surface is not
-/// promoted to PalaceAuth in this swarm.
+/// `AccountsManager` (main target) conforms; tests use a spy. Only the
+/// current account's `AuthMechanism` is exposed, not the full `Account`.
 public protocol TPPCurrentLibraryAccountProviding: AnyObject {
     /// The auth mechanism for the currently-selected library account, or
     /// `nil` when no library is selected (cold launch, between accounts

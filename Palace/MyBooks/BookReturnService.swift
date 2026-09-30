@@ -2,17 +2,10 @@
 //  BookReturnService.swift
 //  Palace
 //
-//  Owns the borrow-return business flow that lived inside
-//  MyBooksDownloadCenter as `returnBook(withIdentifier:completion:)` (~230
-//  LOC of nested error handling: Adobe DRM return, OPDS revoke fetch,
-//  PalaceError.parsing fallback, no-active-loan / loan-term-limit cleanup,
-//  invalid-credentials re-auth + retry, generic alert with
-//  retry/remove-from-device/cancel actions).
-//
-//  Extracted so the return state machine can be reasoned about and
-//  exercised in isolation. MBDC keeps the same `returnBook(withIdentifier:
-//  completion:)` @objc surface as a 1-line delegator — preserves all
-//  external callers (UI, BookDetailViewModel, MyBooksViewModel, etc.).
+//  The loan-return flow: Adobe DRM return, OPDS revoke fetch, no-active-loan /
+//  loan-term-limit cleanup, invalid-credentials reauth + retry, offline queueing,
+//  and the retry/remove/cancel alert. MyBooksDownloadCenter's @objc
+//  `returnBook(withIdentifier:completion:)` delegates here.
 //
 
 import Foundation
@@ -39,22 +32,11 @@ protocol BookReturnServiceDelegate: AnyObject {
 
 /// Coordinates the return-loan flow with the circulation manager.
 ///
-/// - Sendable invariant: every stored dependency is a `let` bound at init
-///   (`bookRegistry`, `localContentService`, `opdsFeedService`,
-///   `downloadAnnouncementService`, `bookmarkDeletionLog`, `reauthenticator`,
-///   `userRetryTracker`, `userAccountProvider`, `adobeDRMService`,
-///   `authCoordinator`) — the same already-shared services this flow drives
-///   today under Swift-5 mode from `launchTrackedTask` / `MainActor.run`
-///   closures. The mutable instance state is exactly two members, both already
-///   serialized: `inFlightTasks` is guarded by `inFlightLock` (NSLock, see the
-///   property doc), and `weak var delegate` is assigned exactly once during
-///   owner (`MyBooksDownloadCenter`) construction and never reassigned —
-///   weak-reference reads and ARC zeroing are atomic in the Swift runtime, so
-///   it needs no explicit lock. `@unchecked` (rather than a synthesized
-///   conformance) because `delegate`'s protocol existential and the shared
-///   service types are not themselves `Sendable`; this conformance asserts the
-///   serialization contract above and does not change the ordered return
-///   cleanup contract (setProcessing → setState → removeBook → announce).
+/// - Sendable invariant: every stored dependency is a `let` bound at init. The
+///   only mutable state is `inFlightTasks` (guarded by `inFlightLock`) and
+///   `weak var delegate` (assigned once during `MyBooksDownloadCenter`
+///   construction; weak reads are atomic). `@unchecked` because the delegate
+///   existential and the shared service types are not themselves `Sendable`.
 final class BookReturnService: @unchecked Sendable {
 
     weak var delegate: BookReturnServiceDelegate?
@@ -67,27 +49,18 @@ final class BookReturnService: @unchecked Sendable {
     private let reauthenticator: Reauthenticator
     private let userRetryTracker: UserRetryTracker
 
-    /// swarm_66819d80 Module C: auth-refresh coordinator. Optional so
-    /// existing tests that supply only `reauthenticator` keep compiling;
-    /// production wiring (and any new test) injects the real coordinator
-    /// (or a `SpyAuthCoordinator`). When non-nil, the auth-error branch
-    /// in `returnBook` routes through this instead of the legacy
-    /// `reauthenticator.authenticateIfNeeded` closure.
+    /// Auth-refresh coordinator. When non-nil, the auth-error branch in
+    /// `returnBook` routes through it instead of
+    /// `reauthenticator.authenticateIfNeeded`.
     private let authCoordinator: AuthCoordinator?
 
-    /// Reliability WS-C (INV-3): enqueue seam for a genuine offline
-    /// return. When non-nil and the revoke fetch fails with an offline
-    /// `NSURLError`, the return is queued for later drain instead of
-    /// dead-ending in an alert — and NO local content is deleted /
-    /// unregistered until the queued return is server-confirmed. Optional
-    /// so existing tests/callers that don't wire the queue keep the legacy
-    /// alert behavior. Production injects the real queue enqueue.
+    /// Enqueue seam for a genuine offline return. When non-nil and the revoke
+    /// fetch fails with an offline `NSURLError`, the return is queued instead
+    /// of ending in an alert, and no local content is deleted or unregistered
+    /// until the server confirms the queued return. nil keeps the alert.
     private let offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)?
 
-    /// Production default for `offlineReturnEnqueuer`: enqueue onto the
-    /// app-wide offline queue. Used so the MBDC-constructed instance gets
-    /// INV-3 behavior without MBDC (owned by WS-A) having to change. Tests
-    /// inject their own spy to observe the enqueue deterministically.
+    /// Production default for `offlineReturnEnqueuer`: the app-wide offline queue.
     static let productionOfflineReturnEnqueuer: @Sendable (OfflineAction) async -> Void = { action in
         await OfflineQueueService.shared.enqueue(action)
     }
@@ -97,14 +70,11 @@ final class BookReturnService: @unchecked Sendable {
     /// computed property semantics).
     private let userAccountProvider: () -> TPPUserAccount
 
-    /// 3.2.3 Cause 2. Fire-and-forget cancellation of any pending throttled
-    /// remote listening-position write for a book, called at the START of the
-    /// return flow so a queued snapshot can't flush AFTER `deleteAllBookmarks`
-    /// and resurrect the stale server position we just deleted. Defaults to a
-    /// no-op so existing tests/callers compile unchanged; production wiring
-    /// (MBDC) routes it to `AppContainer.audiobookSession
-    /// .cancelPendingRemotePositionWrite(forBookId:)`. Idempotent and a no-op
-    /// when the book isn't the active audiobook session.
+    /// Cancels any pending throttled remote listening-position write for a
+    /// book. Called at the start of the return flow so a queued snapshot cannot
+    /// flush after `deleteAllBookmarks` and restore the deleted server
+    /// position. Production routes it to the audiobook session; defaults to a
+    /// no-op.
     private let remotePositionWriteCanceller: @Sendable (String) -> Void
 
     /// Adobe DRM service stored property gated on FEATURE_DRM_CONNECTOR
@@ -114,35 +84,18 @@ final class BookReturnService: @unchecked Sendable {
     private let adobeDRMService: AdobeDRMService
     #endif
 
-    // MARK: - In-flight Task retention (swarm_4e47d4d4 F3)
+    // MARK: - In-flight Task retention
 
-    /// Retained handles for the fire-and-forget Tasks launched from the
-    /// return state machine: the OPDS revoke fetch + cleanup hops (line
-    /// 154-style), the coordinator and legacy reauth retry hops, the
-    /// alert presentation hop, and the post-return sync hop. Previously
-    /// each Task was leaked once dispatched — if the service was torn
-    /// down (deinit, sign-out, library swap) before the Task completed,
-    /// the Task kept running and wrote into `bookRegistry` /
-    /// `localContentService` / `bookmarkDeletionLog` after the owning
-    /// context expired. Retaining lets `cancelAllInFlightTasks()` (called
-    /// from `deinit` and any reset path) deterministically drop the
-    /// orphaned work. Tasks remove themselves from the set when their
-    /// body finishes so the set never grows unbounded.
+    /// Retained handles for the Tasks the return flow launches, so
+    /// `cancelAllInFlightTasks()` can drop them on sign-out / library switch
+    /// instead of letting them write into the registry after the owning context
+    /// is gone. Tasks remove themselves when their body finishes.
     ///
-    /// Guarded by `inFlightLock` rather than an actor annotation —
-    /// `BookReturnService` is callable from non-MainActor contexts
-    /// (MBDC) and the Task bodies straddle the cooperative pool and the
-    /// main actor. NSLock is the lowest-blast-radius primitive that
-    /// keeps both safe.
-    /// Keyed by a per-launch `UUID` token rather than the `Task` handle
-    /// itself. The auto-removal closure captures the token **by value**
-    /// (a `Sendable` value type), so it never reads the launch-site `task`
-    /// variable from inside the Task body. The prior `var task: Task!` +
-    /// `inFlightTasks.remove(task)` pattern was an unsynchronized cross-thread
-    /// read of the IUO: the body runs on a different executor than the one
-    /// assigning `task`, so under load the write was not yet visible and the
-    /// implicit unwrap crashed ("nil while implicitly unwrapping") — an
-    /// intermittent fatal on the book-return reauth path.
+    /// Guarded by `inFlightLock` rather than an actor because callers are not
+    /// main-actor and the Task bodies straddle the cooperative pool and the
+    /// main actor. Keyed by a per-launch `UUID` captured by value: reading a
+    /// launch-site `var task: Task!` from inside the body raced the assignment
+    /// and crashed on the implicit unwrap.
     private var inFlightTasks: [UUID: Task<Void, Never>] = [:]
     private let inFlightLock = NSLock()
 
@@ -203,21 +156,9 @@ final class BookReturnService: @unchecked Sendable {
     #endif
 
     deinit {
-        // Note: `self.inFlightTasks` strongly retains every in-flight
-        // `Task<Void, Never>` value (which in turn keeps the runtime's
-        // backing Job alive while its body is still suspended). That
-        // means `deinit` will not normally fire while a Task is still
-        // suspended on an `await` — there is no opportunity to cancel
-        // from here. The cancellation seam is therefore
-        // `cancelAllInFlightTasks()` (call it explicitly from
-        // sign-out, library-swap, or any reset path that wants to
-        // abandon pending returns). The defensive guarantee for
-        // already-launched Tasks is the `[weak self]` capture at the
-        // top of each tracked Task body: once the service eventually
-        // does deinit, the body's first `guard let self` short-circuits
-        // and the remaining work unwinds without touching
-        // `bookRegistry` / `localContentService` /
-        // `bookmarkDeletionLog`.
+        // No cancellation here: deinit cannot run while a retained Task is
+        // suspended. `cancelAllInFlightTasks()` is the cancellation seam; the
+        // `[weak self]` guard in each Task body covers a later deinit.
         BookReturnServiceTestHook.recordDeinit()
     }
 
@@ -259,11 +200,7 @@ final class BookReturnService: @unchecked Sendable {
         return Set(inFlightTasks.values)
     }
 
-    /// Wraps a fire-and-forget Task in the retention + auto-removal
-    /// dance. Inserts the handle into `inFlightTasks` before the body
-    /// runs, then removes it when the body returns. The auto-removal
-    /// touches the lock once; auto-removal itself isn't tracked
-    /// because it does no real work beyond a set mutation.
+    /// Launches a Task retained in `inFlightTasks` until its body returns.
     @discardableResult
     private func launchTrackedTask(
         _ body: @escaping @Sendable () async -> Void
@@ -280,11 +217,7 @@ final class BookReturnService: @unchecked Sendable {
         return task
     }
 
-    /// MainActor-isolated sibling of `launchTrackedTask` for the
-    /// branches that already pinned themselves to MainActor (the
-    /// reauthenticator-completion hop, the alert-presentation hop).
-    /// The auto-removal step runs in the closing MainActor scope so
-    /// callers don't have to thread the lock through their UI work.
+    /// MainActor-isolated sibling of `launchTrackedTask`.
     @discardableResult
     private func launchTrackedMainActorTask(
         _ body: @escaping @MainActor @Sendable () async -> Void
@@ -309,13 +242,9 @@ final class BookReturnService: @unchecked Sendable {
             return
         }
 
-        // 3.2.3 Cause 2: cancel any pending throttled remote listening-position
-        // write for this book BEFORE the return cleanup runs, so a queued
-        // snapshot can't flush AFTER `deleteAllBookmarks` deletes the server
-        // position and resurrect it on re-borrow. Fire-and-forget; idempotent;
-        // a no-op when the book isn't the active audiobook session. Covers all
-        // sub-paths (revoke, no-revokeURL, and the error branches) since they
-        // are all reached from here.
+        // Cancel any pending remote listening-position write before cleanup, so
+        // a queued snapshot cannot flush after `deleteAllBookmarks` and restore
+        // the server position on re-borrow. Every return sub-path passes here.
         remotePositionWriteCanceller(identifier)
 
         downloadAnnouncementService.announceReturnStarted(for: book)
@@ -445,17 +374,12 @@ final class BookReturnService: @unchecked Sendable {
                 switch effect {
                 case .updateAndRemoveBook:
                     // serverAuthoritative: every path into this method is a
-                    // CONFIRMED (or treat-as-confirmed) server outcome — a 2xx
-                    // revoke, a no-revokeURL book with no server to confirm
-                    // against, OverDrive answering non-OPDS XML after a successful
-                    // revoke, or the server reporting the loan already gone. The
+                    // confirmed (or treat-as-confirmed) server outcome. The
                     // #18414 guard refuses a non-authoritative empty save over a
-                    // non-empty shelf, so without this flag returning your ONLY
-                    // book leaves it on disk and it resurrects on relaunch.
-                    //
-                    // Deliberately NOT applied to the "Remove from Device" path
-                    // below: there the server return FAILED, so a local removal is
-                    // not a confirmed outcome and must stay refusable.
+                    // non-empty shelf, so without this flag returning the only
+                    // book on the shelf would leave it to reappear on relaunch.
+                    // Not applied to "Remove from Device", where the server
+                    // return failed and the removal must stay refusable.
                     if let returnedBook {
                         self.bookRegistry.updateAndRemoveBook(returnedBook, serverAuthoritative: true)
                     }
@@ -506,8 +430,7 @@ final class BookReturnService: @unchecked Sendable {
             hasOfflineEnqueuer: offlineReturnEnqueuer != nil
         ))
 
-        // Log at the same points the pre-extraction ladder did: parse-fail is a
-        // benign treat-as-success (info), everything else is an error.
+        // Parse-fail is a benign treat-as-success (info); everything else is an error.
         if isOPDSParseFailure {
             Log.info(#file, "Revoke response was not a valid OPDS feed — treating as success and syncing to verify")
         } else {
@@ -524,12 +447,8 @@ final class BookReturnService: @unchecked Sendable {
                                     completion: completion)
 
         case .reauthAndRetry:
-            // swarm_66819d80 Module C: route through AuthCoordinator when it's
-            // wired (production). The coordinator owns mechanism dispatch
-            // (SAML/OIDC modal, basic silent refresh) and calls
-            // `markCredentialsStale()` internally. The legacy
-            // `reauthenticator.authenticateIfNeeded` fallback remains for tests
-            // that haven't been updated to inject a coordinator.
+            // The coordinator (always wired in production) owns mechanism
+            // dispatch and calls `markCredentialsStale()` itself.
             if let coordinator = self.authCoordinator {
                 Log.info(#file, "Auth error on return — dispatching through AuthCoordinator")
                 launchTrackedTask { [weak self] in
@@ -549,11 +468,9 @@ final class BookReturnService: @unchecked Sendable {
                 return
             }
 
-            // Legacy fallback (tests-only). Production AppContainer always
-            // injects the coordinator. Module B broadening preserved: for
-            // browser-based accounts (SAML/OIDC/OAuth-intermediary), mark
-            // credentials stale before reauth dispatch so the stale token
-            // isn't silently reused.
+            // Fallback when no coordinator is injected (tests). Browser-based
+            // accounts mark credentials stale first so the stale token is not
+            // reused.
             let userAccount = userAccountProvider()
             let authDef = userAccount.authDefinition
             let needsBrowserReauth = (authDef?.isBrowserBased == true)
@@ -581,10 +498,9 @@ final class BookReturnService: @unchecked Sendable {
             }
 
         case .enqueueOffline:
-            // Reliability WS-C (INV-3): a genuine offline / no-connection error
-            // is NOT a return failure — the loan is still ours and the revoke
-            // simply couldn't reach the server. Enqueue for a later drain and
-            // inform the patron. Do NOT delete local content or unregister here.
+            // Offline is not a return failure: the loan is still held. Enqueue
+            // for a later drain and tell the patron; do not delete local content
+            // or unregister here.
             if let enqueuer = self.offlineReturnEnqueuer {
                 Log.info(#file, "Offline return for '\(book.title)' — enqueuing for later; no local cleanup")
                 let action = OfflineAction(type: .return, bookID: identifier, bookTitle: book.title)
@@ -719,12 +635,8 @@ final class BookReturnService: @unchecked Sendable {
     private func performPostReturnSyncThen(completion: @escaping @Sendable () -> Void) {
         launchTrackedTask { [weak self] in
             do {
-                // Use the injected `bookRegistry` rather than reaching into
-                // AppContainer here, so unit tests can substitute a registry
-                // double. `syncAsync` is defined on the concrete
-                // `TPPBookRegistry` rather than the protocol; the cast is
-                // safe in production where `bookRegistry` is always the
-                // app-scoped instance constructed by AppContainer._cached.
+                // `syncAsync` exists only on the concrete `TPPBookRegistry`,
+                // which production always injects; test doubles skip the sync.
                 if let registry = self?.bookRegistry as? TPPBookRegistry {
                     _ = try await registry.syncAsync()
                 }
@@ -737,23 +649,13 @@ final class BookReturnService: @unchecked Sendable {
     }
 }
 
-// MARK: - Test hook (swarm_4e47d4d4 F3)
+// MARK: - Test hook
 
-/// Static counter that lets the F3 deinit test prove the service's
-/// deinit ran for a specific instance without relying on weak-ref
-/// timing. Production code only writes to this counter from `deinit`;
-/// nothing else touches it.
-///
-/// Internal-only — accessible from PalaceTests via `@testable import
-/// Palace` but not exported publicly.
+/// Deinit counter so a test can prove the service deinitialized without
+/// relying on weak-ref timing. Production only writes to it from `deinit`.
 internal enum BookReturnServiceTestHook {
-    /// Lock-backed counter holder. Replaces the previous `static var _deinitCount`
-    /// + free-standing `NSLock`: under Swift 6 `complete`-mode a mutable static is
-    /// nonisolated global shared mutable state (a warning even when guarded by a
-    /// sibling lock, because the compiler can't see the pairing). Wrapping the
-    /// count + its lock in one `@unchecked Sendable` holder makes the
-    /// serialization contract explicit and the storage a single immutable `let`.
-    /// Precedent: `LockedFlag` in `TPPAccessibilityAnnouncementCenter`.
+    /// Count and lock in one `@unchecked Sendable` holder: a mutable static
+    /// guarded by a sibling lock still warns under Swift 6 complete checking.
     private final class Counter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

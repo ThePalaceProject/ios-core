@@ -98,10 +98,8 @@ final class DLNavigator: Sendable {
             return
         }
         Task { @MainActor in
-            // swarm_d8f11437 Module A wave 4 — migrated from static
-            // `SignInModalPresenter.presentSignInModalForCurrentAccount`
-            // to the AppContainer-injected `SignInModalSheetPresenter` so
-            // SwiftUI consumers and test seams observe the same instance.
+            // Uses the container's `SignInModalSheetPresenter` so SwiftUI
+            // consumers and test seams observe the same instance.
             AppContainer.production().signInModalSheetPresenter
                 .presentSignInModalForCurrentAccount {
                     let accountList = TPPAccountList { account in

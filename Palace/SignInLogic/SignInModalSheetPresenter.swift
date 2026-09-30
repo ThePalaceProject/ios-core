@@ -2,27 +2,12 @@
 //  SignInModalSheetPresenter.swift
 //  Palace
 //
-//  swarm_18b0d071 Module A — SignInModal SwiftUI presenter foundation
-//  (wave 3 / part 1 of 2).
-//
-//  A `@MainActor ObservableObject` facade over the existing static
-//  `SignInModalPresenter` API. Exposes `@Published presentationState`
-//  for SwiftUI consumers; internally routes through the static API,
-//  which uses `TPPPresentationUtils.safelyPresent` to actually mount
-//  the modal — preserving the HelpSpot 17716 presenter-chain safety
-//  net (Blocker 2 Option c, resolved in the swarm contract).
-//
-//  Wave 3 + 4 history:
-//   - Wave 3 shipped this file (presenter + protocol + state enum + driver
-//     typealias), the AppContainer wiring (`signInModalSheetPresenter`),
-//     and the proof-of-pattern migration of `TPPReauthenticator`.
-//   - Wave 4 migrated the remaining 10 caller sites + replaced
-//     `SignInModalHostingController` with `fileprivate
-//     SignInModalDismissalHosting` (same behavior, file-scope visibility).
-//     The HelpSpot-17716 "fire-once-after-fully-dismissed" invariant is
-//     preserved by the replacement.
-//
-//  Tests: `PalaceTests/SignInLogic/SignInModalLifecycleTests.swift`.
+//  A `@MainActor ObservableObject` facade over the static
+//  `SignInModalPresenter` API. Exposes `@Published presentationState` for
+//  SwiftUI consumers; internally routes through the static API, which mounts
+//  the modal with `TPPPresentationUtils.safelyPresent` to keep the HelpSpot
+//  17716 presenter-chain safety net and its fire-once-after-fully-dismissed
+//  completion.
 //
 
 import Combine
@@ -33,11 +18,8 @@ import PalaceLogging
 // MARK: - SignInPresentationState
 
 /// SwiftUI-observable representation of the sign-in modal's
-/// presentation state. Conforms to `Identifiable` so SwiftUI `.sheet(
-/// item:)` bindings can pin the presentation against a stable id —
-/// even though wave 3 does NOT yet use a SwiftUI sheet binding for the
-/// actual presentation (that's wave 4), the API is shaped to support
-/// it without a follow-up source change.
+/// presentation state. `Identifiable` so a SwiftUI `.sheet(item:)` binding
+/// can pin the presentation against a stable id.
 enum SignInPresentationState: Identifiable, Equatable {
     /// Sign-in modal for the currently-selected library account.
     case forCurrentAccount
@@ -72,10 +54,8 @@ typealias SignInModalPresentationDriver = (
 
 // MARK: - SignInModalSheetPresenting
 
-/// Protocol surface for SwiftUI consumers. Wave 3 surface is sync
-/// (the legacy completion-closure shape — preserves compatibility
-/// with the 10 existing call sites the static API has today). Wave 4
-/// is expected to layer an async variant if needed.
+/// Protocol surface for SwiftUI consumers. Synchronous, with the legacy
+/// completion-closure shape the existing call sites use.
 @MainActor
 protocol SignInModalSheetPresenting: ObservableObject {
     var presentationState: SignInPresentationState? { get }
@@ -154,13 +134,8 @@ final class SignInModalSheetPresenter: NSObject, SignInModalSheetPresenting, Obs
     /// `AppContainer.production()`. Wires the providers to the
     /// container's `accountsManager` and the production driver.
     ///
-    /// `accountsManager` is held strongly via the closure capture —
-    /// matches the static API's existing default-arg pattern
-    /// (`accountsManager: AccountsManager = AppContainer.production().accountsManager`),
-    /// and the presenter itself is held by AppContainer so a
-    /// nilling-out path can't actually occur in production. Eliminating
-    /// the `[weak am]` capture also keeps the mutation surface small
-    /// (no `guard let else { return false }` fallback to harden).
+    /// `accountsManager` is captured strongly: the presenter is held by
+    /// AppContainer, so a nilling-out path cannot occur in production.
     convenience init(appContainer: AppContainer) {
         let accountsManager = appContainer.accountsManager
         self.init(
