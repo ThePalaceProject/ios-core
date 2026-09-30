@@ -7,6 +7,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Extended Sign-In Business Logic Tests
@@ -613,12 +614,58 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     // MARK: - Password Reset Tests
 
-    func testCanResetPassword_dependsOnLibraryConfig() {
-        // This depends on library having password reset link
-        let result = businessLogic.canResetPassword
-        XCTAssertTrue(result == true || result == false, "canResetPassword must return a valid Bool")
-        // Should be consistent across reads (no side effects)
-        XCTAssertEqual(result, businessLogic.canResetPassword, "canResetPassword must be deterministic")
+    /// `canResetPassword` is `validPasswordResetUrl != nil`, and that getter
+    /// resolves a `passwordReset` link off the library's authentication
+    /// document. Both sides are asserted because only the pair discriminates:
+    /// the NYPL fixture carries no `passwordReset` link, so a test that reads
+    /// the stock fixture alone passes whether the lookup works or returns nil
+    /// unconditionally.
+    ///
+    /// The fixture interpolates `OPDS2LinkRel.passwordReset.rawValue` rather
+    /// than spelling the rel out: the real value is `…/patron-password-reset`,
+    /// and a hand-typed `…/password-reset` produced a link the lookup never
+    /// matched. The true-side assertion caught it; a test asserting only the
+    /// false side would have passed vacuously.
+    ///
+    /// Replaces a test named `…_dependsOnLibraryConfig` that never varied the
+    /// library config. Its assertions were `result == true || result == false`
+    /// — the tautology CLAUDE.md forbids by name — plus a determinism re-read.
+    /// It executed the line, so coverage counted it, and it could not fail.
+    func testCanResetPassword_withoutAPasswordResetLink_isFalse() {
+        XCTAssertNil(
+            libraryAccountMock.tppAccount.authenticationDocument?.links?
+                .first(where: { $0.rel == OPDS2LinkRel.passwordReset.rawValue }),
+            "precondition: the stock fixture must carry no password-reset link, or this proves nothing")
+
+        XCTAssertFalse(businessLogic.canResetPassword,
+                       "No password-reset link means the library cannot reset a password")
+    }
+
+    func testCanResetPassword_withAPasswordResetLink_isTrue() throws {
+        let json = """
+        {
+          "id": "https://cm.example.com/BASIC/authentication_document",
+          "title": "Reset-Capable Library",
+          "links": [
+            { "rel": "\(OPDS2LinkRel.passwordReset.rawValue)",
+              "href": "https://example.test/reset" }
+          ],
+          "authentication": [{
+            "type": "http://opds-spec.org/auth/basic",
+            "description": "Basic",
+            "inputs": { "login": { "keyboard": "Default" },
+                        "password": { "keyboard": "Default" } },
+            "labels": { "login": "Barcode", "password": "PIN" }
+          }]
+        }
+        """
+        let data = try XCTUnwrap(json.data(using: .utf8), "fixture is not valid UTF-8")
+        let doc = try XCTUnwrap(OPDS2AuthenticationDocument.fromData(data),
+                                "fixture decode failed")
+        libraryAccountMock.tppAccount.authenticationDocument = doc
+
+        XCTAssertTrue(businessLogic.canResetPassword,
+                      "A library advertising a password-reset link can reset a password")
     }
 
     // MARK: - Sign-Out Cookie Clearing Tests
