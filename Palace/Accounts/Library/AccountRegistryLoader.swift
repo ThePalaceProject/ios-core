@@ -2,33 +2,11 @@
 //  AccountRegistryLoader.swift
 //  Palace
 //
-//  god-class decomposition — Wave 3 / 3a-4 (the fourth, largest, in-target
-//  collaborator split out of `AccountsManager`).
-//
-//  The catalog LOAD orchestration: `loadCatalogs`' stale-while-revalidate pipeline,
-//  the first-page-then-paginate network crawl + its direct-GET fallbacks, the CP-D1
-//  launch preload + slim-snapshot hydration, the owned background-crawl task registry
-//  + its test-boundary drain choreography, and the per-catalog loading-completion
-//  handler dedupe. It ORCHESTRATES the already-extracted collaborators — the disk
-//  cache (`AccountRegistryCaching`, 3a-1), the registry state store
-//  (`AccountRegistryStore`, 3a-2), and the auth-doc state machine (`AuthDocumentLoader`,
-//  3a-3, reached through the injected drive/fetch closures) — so the hub carries none
-//  of the load pipeline.
-//
-//  A `final class @unchecked Sendable` (NOT an actor): `loadCatalogs` and the drain are
-//  called synchronously from init / the currentAccount setter / the test-boundary reset
-//  (which cannot `await`), and the drain depends on a synchronous `registryStore` barrier
-//  read blocking — same class-not-actor rationale as `AccountRegistryStore` /
-//  `AuthDocumentLoader`.
-//
-//  `@unchecked Sendable` invariant: `loadingCompletionHandlers` is read via
-//  `loadingHandlersQueue.sync` / written via `.async(flags:.barrier)`; `ownedCrawlTasks`
-//  is an internally-synchronized `OwnedCrawlTaskRegistry`; `_trackedFirstRunTasks` is
-//  guarded by `_trackedCrawlTasksLock`; `_fetchFromNetworkCount` by its own lock;
-//  `crawlScheduler`/`catalogPreloader`/the injected values are immutable; the DEBUG-only
-//  `backgroundFetchTask` handle is driven only from the test-boundary seams. Every
-//  background crawl `Task { [weak self] … }` captures the loader, whose mutable state is
-//  all so-synchronized.
+//  Catalog load orchestration for `AccountsManager`: stale-while-revalidate,
+//  the paginated crawl, launch preload and slim-snapshot hydration, owned crawl
+//  tasks and their test drain. A class, not an actor: called synchronously.
+//  `@unchecked Sendable`: mutable state is guarded by `loadingHandlersQueue` or
+//  its own lock; the rest is immutable or DEBUG-only test state.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -90,7 +68,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
     private let driveCurrentAccountAuthDoc: () -> Void
     private let fetchAuthDocumentWithStateMachineImpl: (Account, @escaping (Bool) -> Void) -> Void
     /// COPPA age-check needs the owning manager as a `TPPCurrentLibraryAccountProvider`
-    /// (the loader is not that type — architect finding 3).
+    /// (the loader is not that type).
     private let currentLibraryAccountProvider: () -> TPPCurrentLibraryAccountProvider?
 
     /// Resolves the build-time bundled registry snapshot resource. Production binds
@@ -288,12 +266,9 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 Account(publication: $0, imageCache: imageCache)
             }
             guard !accounts.isEmpty else { return false }
-            // CP-D1 (Finding 5): a stale slim file can LACK the now-current account
-            // (currentAccountId ≠ slim set after a mid-session switch). If the current
-            // account is absent, fall through to the full sync hydrate rather than take
-            // the fast path with a slim set that can't resolve `currentAccount` —
-            // otherwise a transient nil-currentAccount launch window (spurious sign-in
-            // modals / empty library UI) that did not exist pre-D1.
+            // A stale slim file can lack the current account (after a mid-session
+            // switch). Fall through to the full hydrate then, or `currentAccount` is
+            // nil during launch (spurious sign-in modals, empty library UI).
             if let currentId = currentAccountIdProvider(),
                !accounts.contains(where: { $0.uuid == currentId }) {
                 return false
@@ -795,23 +770,15 @@ final class AccountRegistryLoader: @unchecked Sendable {
 
     /// Overlay a partial crawl page onto the bytes already cached for its hash.
     ///
-    /// PP-5191. The first-page fast path used to write page 1 verbatim — to disk AND
-    /// over the whole in-memory bucket — clobbering the complete 1142-library bundled
-    /// snapshot that the same `loadCatalogs` call had written moments earlier. Page 1
-    /// is the 100 most-recently-modified of ~1457, so 93% of libraries vanished; a
-    /// patron whose library sat on page 7 was left with an app that could not name it,
-    /// could not show it in Settings, and reported them signed out.
+    /// PP-5191. Page 1 holds only the ~100 most recently modified libraries, so
+    /// writing it alone would drop most of the cached registry. The overlay is
+    /// `isFullCrawl: false`: it updates the rows it carries and removes nothing.
     ///
-    /// The overlay is `isFullCrawl: false` — page 1 UPDATES the rows it carries and
-    /// removes nothing.
+    /// The emitted `numberOfItems` is the network page's, not the base's, so the
+    /// merged feed still reads as partial and `replaceBucket` / the crawl-state
+    /// reset treat it correctly.
     ///
-    /// The emitted `numberOfItems` is the NETWORK PAGE's (1457), never the base's.
-    /// That is what keeps the merged result honestly PARTIAL while it is still short
-    /// of the registry, so INV-2 and the crawl-state reset both see the truth. Taking
-    /// it from the bundled base (1142) would have declared a 1242-row feed complete.
-    ///
-    /// Returns nil when either side cannot be parsed; the caller falls back to the raw
-    /// page, which is no worse than the behaviour this replaces.
+    /// Returns nil when the page cannot be parsed; the caller falls back to the raw page.
     static func mergePartialPage(_ pageData: Data, into existingData: Data?) -> Data? {
         guard let pageFeed = try? OPDS2CatalogsFeed.fromData(pageData) else { return nil }
         guard let existingData,
@@ -840,19 +807,12 @@ final class AccountRegistryLoader: @unchecked Sendable {
 
     /// - Parameters:
     ///   - isCompleteFeed: override for INV-2's "may this write DELETE?" input. **Defaults
-    ///     to `nil`, meaning DERIVE it from `data`** via `feedIsPositivelyComplete`.
-    ///     It used to default to `true`, which silently handed delete authority to every
-    ///     caller that did not pass it — 6 of 8 entry points, including
-    ///     `crawlRemainingPages`' write-back (which clobbered the merged registry with a
-    ///     short crawl seconds after the merge saved it) and the direct-GET fallbacks
-    ///     (whose `/libraries` response carries no `numberOfItems` at all). Deriving
-    ///     from the bytes means a caller cannot forget.
+    ///     to `nil`, meaning derive it from `data`** via `feedIsPositivelyComplete`, so a
+    ///     caller that omits it (e.g. a short crawl write-back, or a direct-GET fallback
+    ///     with no `numberOfItems`) cannot delete libraries.
     ///   - didApplyBucketWrite: fired with whether INV-2 accepted the bucket write.
-    ///     Deliberately SEPARATE from `completion` (PP-5191 R-2): `completion`'s `Bool`
-    ///     means "the feed parsed", and a refused write still parsed and still completes
-    ///     `true` — the registry is loaded, with better data than the incoming write.
-    ///     Overloading one flag with both meanings is the same failure shape this whole
-    ///     changeset is about, and it is the shortcut the next reader will reach for.
+    ///     Separate from `completion` (PP-5191), whose `Bool` means "the feed parsed":
+    ///     a refused write still parsed and still completes `true`.
     func loadAccountSetsAndAuthDoc(
         fromCatalogData data: Data,
         key hash: String,
@@ -870,7 +830,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 uniquingKeysWith: { first, _ in first }
             )
             let newAccounts = feed.catalogs.map { publication -> Account in
-                // CP-D1 (Finding 4): on the slim→full LAUNCH materialization REUSE the
+                // On the slim→full launch materialization, reuse the
                 // existing slim instance so an in-flight slim auth-doc fetch lands on the
                 // current instance (one Account per uuid). Bounded to launch: once
                 // populated (warm / network-refresh), the carry-over loop wins.
@@ -976,11 +936,9 @@ final class AccountRegistryLoader: @unchecked Sendable {
     /// Cancel the in-flight background `loadCatalogs` Task + owned crawl tasks + the
     /// network executor's non-essential tasks. Cooperative — returns immediately.
     ///
-    /// NOTE (Wave 3 / 3a-4): the `_explicitCancelCalled` flag stays on `AccountsManager`
-    /// (the `AuthDocumentLoader.isTornDown` binding reads it) and is set by the HUB facade
-    /// BEFORE this delegates — this body must NOT set it (it can't reach the hub flag) and
-    /// must NOT call a flag-setting cancel, or the torn-down semantics never engage and a
-    /// leaked auth-doc main-hop pollutes the next test.
+    /// `AccountsManager` sets `_explicitCancelCalled` before delegating here; this body
+    /// must not call a flag-setting cancel, or a leaked auth-doc main-hop pollutes the
+    /// next test.
     func cancelBackgroundWork() {
         backgroundFetchTask?.cancel()
         backgroundFetchTask = nil

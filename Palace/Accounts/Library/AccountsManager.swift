@@ -6,9 +6,6 @@ import PalaceBookRegistry
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
-// `CatalogCacheMetadata` and the on-disk catalog cache moved to
-// `AccountRegistryCache.swift` (Wave 3 / 3a-1) — injected via `registryCache`.
-
 @objc protocol TPPCurrentLibraryAccountProvider: NSObjectProtocol {
     var currentAccount: Account? { get }
 }
@@ -43,66 +40,15 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     }
 }
 
-/// The load-completion + crawler-handoff `@unchecked Sendable` carrier boxes moved to
-/// `AccountRegistryLoader.swift` (Wave 3 / 3a-4) with the load pipeline.
-
-/// Manages library accounts asynchronously with authentication & image loading
+/// Manages library accounts asynchronously with authentication & image loading.
 ///
-/// `@unchecked Sendable` rationale (Swift 6 Phase B, Wave-2):
-/// `AccountsManager` is a process-wide singleton owned by `AppContainer` and
-/// shared, by design, across every actor (the background `loadCatalogs` crawl
-/// Tasks, `@MainActor` UI, token-refresh / audiobook / bookmark consumers).
-/// Its four background `Task { [weak self] in … }` crawl/refresh/preload
-/// closures require a `@Sendable` capture of `self` — and they cannot be
-/// rewritten to "snapshot Sendable fields at the site" because each one drives
-/// `self`'s instance I/O pipeline (`registryCache.writeCatalogData`,
-/// `loadAccountSetsAndAuthDoc`, `fallbackFetchFromNetwork`, `triggerCatalogPreload`,
-/// `catalogPreloader`, `currentAccount`), which is the whole purpose of the Task.
-/// So the type itself must be `Sendable`. It is safe to share because EVERY
-/// mutable stored property is synchronized. Full audit (matches #1155's
-/// `TPPUserAccount` and `AccountStateStore`'s own `@unchecked` justification):
-///
-///   Instance mutable state:
-///   - the account-registry state (current hash, `accountSets`, the `accountByUUID`
-///     index, and the slim fallback)  → moved to the injected `AccountRegistryStore`
-///     (Wave 3 / 3a-2), which owns their concurrent `accountSetsLock` sync-read /
-///     barrier-write model; the hub holds the store as an immutable `Sendable` `let`.
-///   - the catalog LOAD state (loading-handler map, owned-crawl registry, first-run
-///     subset, `backgroundFetchTask`)  → moved to the injected `AccountRegistryLoader`
-///     (Wave 3 / 3a-4), which owns its own queues/locks; the hub holds it as a `lazy var`.
-///   - the auth-document fetch state (single-flight map + lock)  → moved to the
-///     injected `AuthDocumentLoader` (Wave 3 / 3a-3), which owns its own `NSLock`; the
-///     hub holds the loader as a `let` built in `init` and no longer names that state.
-///   - the per-account credential state (`userAccounts` cache + its lock,
-///     `lastKnownCurrentUserAccount`, `noAccountPlaceholder`)  → moved to the injected
-///     `AccountCredentialResolver` (Wave 3 / 3a-5), which owns their `NSLock`/lazy
-///     synchronization; the hub holds it as a `let` built in `init`.
-///   - `crawlScheduler`  → immutable `Sendable` `let` bound once from `init`, passed
-///     into the load collaborator.
-///   - `isAccountSwitching`  → storage moved into the lock-backed
-///     `AccountsManagerBoolFlag` holder (`_isAccountSwitching`), so its `Bool`
-///     set/get is serialized by the holder's own `NSLock`; the public
-///     `private(set) var` computed accessor preserves every call site and the
-///     value/timing verbatim (see property below).
-///   - `networkExecutor`  → computed; resolved through the injected provider on
-///     each use (never during init), so the hub stores nothing for it.
-///   - `_explicitCancelCalled`  → `#if DEBUG` test-only; compiled out of release. Set by
-///     the hub cancel/drain facades BEFORE delegating to the load collaborator (so the
-///     3a-3 `AuthDocumentLoader.isTornDown` binding stays byte-identical).
-///
-///   Immutable (`let`) state — inherently safe: `tppAccountUUID`, `ageCheck`,
-///   `settings`, `defaults`, `registryStore` (internally synchronized),
-///   `registryCache`, `crawlScheduler`.
-///
-///   `currentAccountId` is a computed property backed by the injected
-///   `UserDefaults` (`defaults`), which is itself internally thread-safe — no
-///   instance storage is mutated.
-///
-/// NO property uses `nonisolated(unsafe)` and there is no bare `@unchecked`:
-/// every mutable field above has a named synchronization mechanism. Making the
-/// singleton `@MainActor` was rejected — it would move `loadCatalogs` /
-/// `init`'s background dispatch onto the main actor and change load timing,
-/// which is out of scope for this pass.
+/// `@unchecked Sendable`: a process-wide singleton shared across actors (background
+/// crawl Tasks, `@MainActor` UI, token-refresh / audiobook / bookmark consumers),
+/// and its crawl Tasks capture `self`. All mutable state lives in internally
+/// synchronized collaborators (`AccountRegistryStore`, `AccountRegistryLoader`,
+/// `AuthDocumentLoader`, `AccountCredentialResolver`) or behind a lock
+/// (`_isAccountSwitching`); the rest is `let` or `#if DEBUG` test state.
+/// `@MainActor` was not used because it would move `loadCatalogs` onto the main actor.
 @objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider, TPPUserAccountResolving, @unchecked Sendable {
 
     // MARK: – Config / state
@@ -119,14 +65,9 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
 
     let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
-    /// Lock-backed storage for `isAccountSwitching` so the flag is
-    /// concurrency-safe without `nonisolated(unsafe)`. Written from the
-    /// `currentAccount` setter (account-switch path) and the `@MainActor`
-    /// cleanup Task; read from the sign-in-modal presenter. In practice all
-    /// accesses are main-thread, but the holder's `NSLock` makes that safe
-    /// regardless — closing the one un-synchronized-instance-var gap in the
-    /// `@unchecked Sendable` audit above. Value/timing are identical to the
-    /// prior plain `Bool` — only access is serialized.
+    /// Lock-backed storage for `isAccountSwitching`. Written from the
+    /// `currentAccount` setter and the `@MainActor` cleanup Task; read from the
+    /// sign-in-modal presenter.
     private let _isAccountSwitching = AccountsManagerBoolFlag(false)
 
     /// True during an account switch — suppresses sign-in modal presentation
@@ -148,42 +89,27 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// explicit initializer so two tests touching the current-account
     /// key cannot pollute each other. There is NO fallback once injected.
     private let defaults: UserDefaults
-    /// Injected account-switch borrow-reauth circuit-breaker reset (Wave 3 S1).
-    /// Replaces the static `MyBooksDownloadCenter.clearAllBorrowReauthState()`
-    /// call so the money-path clear is spy-testable. See `BorrowReauthResetting`.
+    /// Account-switch borrow-reauth circuit-breaker reset. See `BorrowReauthResetting`.
     private let borrowReauthResetter: any BorrowReauthResetting
-    /// Wave 3 S3 — account-switch cleanup collaborators injected as a frozen bundle (spy-observable);
-    /// the concrete executor TYPE edge is now inverted behind `AccountNetworking` too (3a precondition).
+    /// Account-switch cleanup collaborators. See `AccountSwitchDependencies`.
     private let switchDeps: AccountSwitchDependencies
     /// Resolved through the injected provider on every use, never during init:
     /// AccountsManager is constructed inline by AppContainer._cached's initializer, so
-    /// resolving the executor during init re-enters that lock. Not cached here — a
-    /// cached `lazy var` has no lock, and the provider already returns the container's
-    /// single executor (the same per-use resolution `AccountRegistryLoader` does).
+    /// resolving the executor during init re-enters that lock. Not cached: a `lazy var`
+    /// has no lock.
     private var networkExecutor: any AccountNetworking { switchDeps.networkExecutorProvider() }
-    /// Per-account auth-document fetch + state-machine collaborator (Wave 3 / 3a-3).
-    /// Built in `init` before `super.init()`, with its provider closures reading the
-    /// manager through `AccountsManagerOwnerRef`, so it exists before any path can reach
-    /// it: its single-flight map is per instance, and first access is concurrent on a
-    /// cold launch. The `isTornDown` binding is `#if DEBUG` (reads the DEBUG-only
-    /// `_explicitCancelCalled`); release binds `{ false }` so the DRM build compiles.
+    /// Per-account auth-document fetch. Built in `init` before `super.init()` (its
+    /// closures reach the manager through `AccountsManagerOwnerRef`) because first
+    /// access is concurrent on a cold launch. Release binds `isTornDown` to `{ false }`.
     private let authDocLoader: AuthDocumentLoader
     /// Injectable background-crawl spawn seam (see `CatalogCrawlScheduler`).
     /// Immutable `Sendable` `let`; `.production` by default, recording under test.
     private let crawlScheduler: CrawlTaskScheduler
-    /// Catalog LOAD orchestration + owned background-crawl + drain collaborator
-    /// (Wave 3 / 3a-4). A `lazy var` (not a `let` default arg) because its provider
-    /// closures capture `self`; first access is normally the synchronous preload in
-    /// `init`. It stays a `lazy var` only because its eight provider closures capture
-    /// `self` and are not yet routed through `AccountsManagerOwnerRef` the way
-    /// `authDocLoader`'s are — not because laziness is safe here. It is not: the
-    /// `.TPPUseBetaDidChange` observer is registered BEFORE the preload below, and its
-    /// handler reaches this property from a global queue via `updateAccountSet` ->
-    /// `loadCatalogs`. A Swift `lazy var` has no synchronisation, so two concurrent
-    /// first-touches can both run the initialiser. `init` therefore forces construction
-    /// explicitly before registering that observer; see the call site.
-    /// Orchestrates registryCache / registryStore / authDocLoader (via the injected
-    /// drive/fetch closures).
+    /// Catalog load orchestration, owned background crawl, and drain.
+    /// A `lazy var` because its provider closures capture `self`. A `lazy var` is
+    /// not synchronized and the `.TPPUseBetaDidChange` observer can reach this from
+    /// a global queue, so `init` forces construction before registering that
+    /// observer; see the call site.
     private lazy var registryLoader: AccountRegistryLoader = AccountRegistryLoader(
         registryCache: registryCache,
         registryStore: registryStore,
@@ -205,29 +131,10 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
         },
         currentLibraryAccountProvider: { [weak self] in self }
     )
-    /// On-disk catalog cache collaborator (Wave 3 / 3a-1). Immutable `Sendable`
-    /// `let`; the stateless `DiskAccountRegistryCache` by default, a recording
-    /// double under test. All catalog read/write/staleness/clear disk I/O routes
-    /// here, so the hub carries none of it and a packaged manager names no
-    /// FileManager cache body.
+    /// On-disk catalog cache (`DiskAccountRegistryCache` by default).
     private let registryCache: any AccountRegistryCaching
-    /// Account-registry state + all thread-safe access (Wave 3 / 3a-2): the current
-    /// catalog hash, the `[hash → [Account]]` sets, the O(1) `uuid → Account` index
-    /// rebuilt in-barrier-lockstep with them, and the separate slim launch-hydration
-    /// fallback. Injected `let` — the concrete `AccountRegistryStore` by default, a
-    /// recording double under test. All registry-state concurrency (the concurrent
-    /// `accountSetsLock` sync-read / barrier-write model) lives in the store now, so
-    /// the hub carries none of it. See `AccountRegistryStore.swift` for the
-    /// `@unchecked Sendable` invariant and the class-not-actor rationale.
+    /// Account-registry state and its thread-safe access. See `AccountRegistryStore`.
     private let registryStore: AccountRegistryStore
-
-    // The catalog load orchestration + owned-crawl + drain (the loading-completion
-    // handler map, the owned-task registry, the catalog preloader, the load bodies)
-    // moved to `AccountRegistryLoader.swift` (Wave 3 / 3a-4) — injected via `registryLoader`.
-
-    // The per-account auth-document fetch + state-machine wiring (the single-flight
-    // map + lock, the timeout, and the fetch/drive/terminal logic) moved to
-    // `AuthDocumentLoader.swift` (Wave 3 / 3a-3) — injected via `authDocLoader` below.
 
     /// Alias retained so `AccountsManager.authDocInflightTimeout` keeps resolving for
     /// the wiring-suite tests; the value + the fetch machinery live on `AuthDocumentLoader`.
@@ -240,33 +147,15 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// work from a previously-constructed AccountsManager instance writes
     /// through to `accountSets` / `AccountStateStore.shared` mid-test.
     ///
-    /// Production callers never set this. The suite-level `setUp` of any
-    /// XCTestCase that constructs multiple `AccountsManager()` instances
-    /// should set it to `true` in `setUp` and reset to `false` in `tearDown`
-    /// to keep the flag flip scoped. NOT compiled into release builds.
-    ///
-    /// See `feedback_wiring_suite_test_isolation.md` for the underlying race.
-    ///
-    /// swarm_4b64e4e0 Wave 1d — default value now derives from
-    /// `XCTestConfigurationFilePath` env var. When this process is hosting
-    /// XCTest, the flag defaults to `true` so the very first cached
-    /// `AppContainer.production()` call (which may happen before any test's
-    /// setUp — e.g. via a static `let` or default arg in a class touched by
-    /// the test runner's discovery phase) doesn't fire a background
-    /// `loadCatalogs` Task that races with later test-fixture seeds. Tests
-    /// that need the background `loadCatalogs` to fire (e.g.
-    /// `AppContainerResetTests`) explicitly flip the flag back to `false`
-    /// in their own setUp. Production runs (no `XCTestConfigurationFilePath`
-    /// in the env) keep the original `false` default so the background load
-    /// fires as designed.
+    /// Defaults to `true` when hosted by XCTest (`XCTestConfigurationFilePath`
+    /// set), so the first cached `AppContainer.production()`, which can happen
+    /// before any setUp, does not start a load that races test fixtures. Tests
+    /// that need the background load (e.g. `AppContainerResetTests`) set it to
+    /// `false`. Not compiled into release builds.
     private static let _deferInitialLoadCatalogsForTesting = AccountsManagerBoolFlag(
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     )
-    /// Lock-backed so this test-only flag is concurrency-safe global state
-    /// without `nonisolated(unsafe)`. Storage lives in the `Sendable`
-    /// `AccountsManagerBoolFlag` holder; this computed accessor keeps every
-    /// existing read/write call site unchanged. Read value and timing are
-    /// identical to the prior `static var` — only access is serialized.
+    /// Lock-backed so this test-only global is concurrency-safe.
     internal static var deferInitialLoadCatalogsForTesting: Bool {
         get { _deferInitialLoadCatalogsForTesting.value }
         set { _deferInitialLoadCatalogsForTesting.value = newValue }
@@ -280,30 +169,22 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// and never reads `accountSets` (e.g. `TPPBookRegistryMigrationTests`, which
     /// drives `BookRegistrySync.load(account:)` with a random test UUID) sets this
     /// to `true` in `setUp` to skip the on-disk cached-account load, which can
-    /// consume >5s on memory-pressured CI when the cache holds ~1138 accounts —
-    /// the root of the FLAKE-003 `loadAndWait()` 30s timeout. Scope the flip to
-    /// `setUp`/`tearDown`. NOT compiled into release builds.
+    /// take >5s on memory-pressured CI with ~1138 cached accounts. Scope the flip
+    /// to `setUp`/`tearDown`. Not compiled into release builds.
     private static let _deferDiskCachePreloadForTesting = AccountsManagerBoolFlag(false)
-    /// Lock-backed test-only flag (see `deferInitialLoadCatalogsForTesting`
-    /// above for the holder rationale). Value/timing unchanged.
+    /// Lock-backed test-only flag.
     internal static var deferDiskCachePreloadForTesting: Bool {
         get { _deferDiskCachePreloadForTesting.value }
         set { _deferDiskCachePreloadForTesting.value = newValue }
     }
 
-    /// (The `backgroundFetchTask` handle moved to `AccountRegistryLoader` with the
-    /// crawl/drain machinery — Wave 3 / 3a-4; the hub sets `_explicitCancelCalled` in the
-    /// cancel/drain facades before delegating.)
-
     /// Test-only flag flipped to `true` inside `cancelBackgroundWork()` BEFORE
     /// the `.cancel()` is issued on `backgroundFetchTask`. Used by
     /// `AccountsManagerCancellationTests` to disambiguate "explicit cancel was
-    /// called" from "task handle was nilled out by some other path." swarm_4b64e4e0
-    /// qa-fixup — addresses qa_test concern about the prior single observation
-    /// surface conflating those two semantics.
+    /// called" from "task handle was nilled out by some other path."
     private var _explicitCancelCalled: Bool = false
 
-    /// Test-only: forwards to the loader's single-flight seed (Wave 3 / 3a-3).
+    /// Test-only: forwards to the loader's single-flight seed.
     func _seedInflightAuthDocForTesting(uuid: String, age: TimeInterval) {
         authDocLoader._seedInflightAuthDocForTesting(uuid: uuid, age: age)
     }
@@ -321,10 +202,7 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     static func tornDownProbe(_ owner: AccountsManagerOwnerRef) -> @Sendable () -> Bool { { false } }
     #endif
 
-    // The owned-crawl-task registry, its spawn/first-run-tracking, the XCTest join
-    // seams, and the `_fetchFromNetworkCount` observability moved to
-    // `AccountRegistryLoader.swift` (Wave 3 / 3a-4). The hub keeps the forwarders below
-    // so AppContainer + every test call site stays byte-identical.
+    // Forwarders to `AccountRegistryLoader` for AppContainer and test call sites.
 
     /// Resolves the build-time bundled registry snapshot resource (forwards to the loader,
     /// where the first-run decode reads it). Settable so tests inject a stub.
@@ -358,12 +236,11 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     ///   `currentAccountIdentifierKey` reads/writes. Defaults to `.standard`
     ///   so production callers stay green; tests pass a per-suite instance.
     /// - Parameter borrowReauthResetter: account-switch borrow-reauth reset seam
-    ///   (Wave 3 S1). REAL default keeps every existing call site behavior-identical;
-    ///   tests inject a spy, `AppContainer` passes it explicitly.
+    ///   Tests inject a spy; `AppContainer` passes it explicitly.
     /// - Parameter crawlScheduler: injectable background-crawl spawn seam
-    ///   (PP-4754). `.production` keeps every call site behavior-identical.
-    /// - Parameter switchDependencies: account-switch cleanup seams (Wave 3 S3);
-    ///   `.production` binds the live collaborators (behavior-identical), tests spy.
+    ///   (PP-4754).
+    /// - Parameter switchDependencies: account-switch cleanup collaborators;
+    ///   `.production` binds the live ones, tests spy.
     init(
         defaults: UserDefaults = .standard,
         borrowReauthResetter: any BorrowReauthResetting = DownloadCenterBorrowReauthResetter(),
@@ -394,10 +271,8 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
         self.credentialResolver = AccountCredentialResolver(currentAccountIdProvider: { owner.manager?.currentAccountId })
         super.init()
         owner.manager = self
-        // Seed the registry store's current hash (was the hub's `accountSet` stored
-        // property, now owned by the store — Wave 3 / 3a-2). Written on the store's
-        // barrier; the synchronous `preloadAccountsFromDiskCacheSync` read below
-        // observes it via GCD barrier FIFO ordering (the one deliberate init delta).
+        // Seed the registry store's current hash. The write is synchronous, so the
+        // `preloadAccountsFromDiskCacheSync` read below observes it.
         registryStore.setCurrentHash(
             TPPConfiguration.customUrlHash()
                 ?? (settings.useBetaLibraries
@@ -461,31 +336,25 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
             return
         }
         #endif
-        // Unified background-load arm — PP-4754, owned + drainable. The spawn + the
-        // DEBUG `backgroundFetchTask` handle live on the loader now (Wave 3 / 3a-4).
+        // Owned, drainable background load (PP-4754).
         registryLoader.spawnInitialBackgroundLoad()
     }
 
-    /// Forwards the CP-D1 launch preload to `registryLoader` (Wave 3 / 3a-4). Exposed
-    /// `internal` so contract-snapshot tests can drive the preload path after seeding the
-    /// on-disk cache. The slim-hydration + full-hydrate + slim-snapshot carve/write bodies
-    /// live on the loader.
+    /// Forwards the launch preload to `registryLoader`. `internal` so contract-snapshot
+    /// tests can drive it after seeding the on-disk cache.
     internal func preloadAccountsFromDiskCacheSync() {
         registryLoader.preloadAccountsFromDiskCacheSync()
     }
 
     // MARK: – Account index (static shim)
 
-    /// Pure `uuid → Account` index builder. The implementation and ALL thread-safe
-    /// `accountSets` access moved to `AccountRegistryStore` (Wave 3 / 3a-2); this thin
-    /// static forwards so `AccountsManager.buildAccountIndex(...)` stays a stable name
-    /// for `AccountsManagerAccountIndexTests`.
+    /// Forwards to `AccountRegistryStore.buildAccountIndex`; kept for
+    /// `AccountsManagerAccountIndexTests`.
     static func buildAccountIndex(_ sets: [String: [Account]]) -> [String: Account] {
         AccountRegistryStore.buildAccountIndex(sets)
     }
 
-    /// Static shim retained for `AccountsManagerLaunchSnapshotTests` — the pure raw-JSON
-    /// slim carve moved to `AccountRegistryLoader` (Wave 3 / 3a-4).
+    /// Forwards to `AccountRegistryLoader`; kept for `AccountsManagerLaunchSnapshotTests`.
     static func carveSlimFeed(fromFullCatalogData data: Data, keepUUIDs: Set<String>) -> Data? {
         AccountRegistryLoader.carveSlimFeed(fromFullCatalogData: data, keepUUIDs: keepUUIDs)
     }
@@ -531,23 +400,11 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
                 userAccount(for: newId).invalidateCredentialCaches()
             }
 
-            // Account state-machine wiring (3.2.0): Phase 1 — when the user
-            // switches libraries, terminate any lingering `awaitReady()`
-            // callers on the *prior* account with a definitive answer.
-            // `.detailsEvicted(.libraryDeselected)` is the chosen terminal:
-            //   - `.notLoaded` would leave awaiters hanging until reselect.
-            //   - `.detailsFailed(.accountNotFound)` was the original
-            //     terminal (PR #961) and confused this eviction marker with
-            //     a real HTTP-404 load failure — `driveCurrentAccountAuthDoc
-            //     IfNeeded` had to special-case the conflation. PR #1021
-            //     (Module A, swarm_51f248d5) split the case so the two
-            //     meanings stop sharing storage; the driver READ matches on
-            //     `.detailsEvicted(.libraryDeselected)` directly.
-            // Awaiters on this terminal throw `AccountLoadError.evicted`
-            // (distinct from `.accountNotFound`) so consumers can decide
-            // whether to retry, re-resolve, or simply discard the request.
-            // Re-entering the same UUID later overwrites the marker through
-            // the `.basicInfoLoaded` path on the next preload/loadCatalogs.
+            // On a library switch, give lingering `awaitReady()` callers on the
+            // prior account a definitive terminal. `.notLoaded` would leave them
+            // hanging; `.detailsFailed(.accountNotFound)` would read as a real
+            // 404 (PR #1021). Awaiters throw `AccountLoadError.evicted`. The marker
+            // is overwritten via `.basicInfoLoaded` if the UUID becomes current again.
             if let prev = previousAccountId, prev != newAccountId {
                 switchDeps.accountStateStore.setState(
                     .detailsEvicted(.libraryDeselected(uuid: prev)),
@@ -555,10 +412,9 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
                 )
             }
 
-            // Account state-machine wiring (3.2.0): drive the NEW
-            // currentAccount past `.basicInfoLoaded` after the switch.
-            // Sibling of the `loadCatalogs` warm-path driver (PR #975) —
-            // same disease class, different trigger. Without this, every
+            // Drive the new currentAccount past `.basicInfoLoaded` after the
+            // switch, like the `loadCatalogs` warm-path driver (PR #975).
+            // Without this, every
             // `awaitReady()` caller (audiobook open, token refresh,
             // bookmark sync, CarPlay auth) hangs forever the first time
             // the user opens content on the newly-selected library.
@@ -572,15 +428,9 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
             if Self.shouldFinishSwitchingImmediately(previousAccountId: previousAccountId, newAccountId: newAccountId) {
                 isAccountSwitching = false
             }
-            // CP-D1 (Finding 5): rewrite the slim launch snapshot off-main so it
-            // reflects the newly-selected current account. `slimSnapshotUUIDs()`
-            // is evaluated at write time, so without this a mid-session switch
-            // would leave the slim file listing the PRIOR account — and the next
-            // cold launch would resolve `currentAccount` nil in the
-            // pre-materialization window (self-healed only one launch later).
-            // Off-main + best-effort + XCTest-gated (see the method); no launch
-            // main-thread cost. The `hydrateSlimLaunchSnapshot` current-account
-            // presence check is the belt-and-suspenders if this ever lags.
+            // Rewrite the slim launch snapshot (off-main, best-effort) so it lists
+            // the new current account; otherwise the next cold launch resolves
+            // `currentAccount` nil until the full catalog loads.
             registryLoader.refreshSlimLaunchSnapshotOffMain(hash: registryStore.currentHash)
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         }
@@ -634,8 +484,7 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// `AppContainer.production().audiobookSession.openAudiobook`,
     /// `CarPlayAuthHelper.isAuthenticated`,
     /// `TPPBookRegistry.syncAsync`, `BookRegistrySync.sync`) without
-    /// requiring a real OPDS2 catalog fixture load. Closes the 4 XCTSkip
-    /// blocks the swarm Phase 1 implementers flagged.
+    /// requiring a real OPDS2 catalog fixture load.
     ///
     /// Returns a teardown closure that removes the seeded account and
     /// restores the prior `currentAccountIdentifierKey`. Callers should
@@ -673,15 +522,9 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
 
     // MARK: - Per-Account User Credentials
 
-    /// Per-account credential resolution (Wave 3 / 3a-5): the per-library
-    /// `TPPUserAccount` cache (immutable keys), the `currentUserAccount` ride-out over
-    /// the account-switch nil window, and the fresh-install placeholder moved to the
-    /// injected `AccountCredentialResolver`, which owns the F-034/F-016 invariants. The
-    /// hub keeps the `@objc TPPUserAccountResolving` witnesses below as thin facades.
-    /// Built in `init` before `super.init()` (the authDocLoader precedent): two resolvers
-    /// would each cache their own `TPPUserAccount` per UUID (F-034).
-    /// `currentAccountIdProvider` is a LIVE read (not a snapshot) so the ride-out
-    /// observes the transient nil window in real time.
+    /// Per-account credential resolution; see `AccountCredentialResolver`. Built once
+    /// in `init`: two resolvers would each cache their own `TPPUserAccount` per UUID.
+    /// `currentAccountIdProvider` is a live read so the switch-window ride-out works.
     private let credentialResolver: AccountCredentialResolver
 
     /// Returns a library-scoped `TPPUserAccount` instance (facade → `credentialResolver`).
@@ -698,17 +541,12 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
 
     /// Public catalog-load entrypoint. The stale-while-revalidate pipeline (memory/disk/
     /// network fast paths, the owned background crawl, the loading-handler dedupe) lives on
-    /// `registryLoader` (Wave 3 / 3a-4); this thin facade keeps every call site + test
-    /// (AppContainer, updateAccountSet, the wiring/first-run/cache suites) byte-identical.
+    /// `registryLoader`.
     func loadCatalogs(completion: ((Bool) -> Void)?) {
         registryLoader.loadCatalogs(completion: completion)
     }
 
     // MARK: – Account-switch pure helpers
-    //
-    // The disk-cache helpers that lived here moved to `AccountRegistryCache.swift`
-    // (Wave 3 / 3a-1). These two remain: they are pure switch-pipeline predicates,
-    // not cache I/O, and travel with the current-account extraction later.
 
     /// Pure helper for `cleanupActiveContentBeforeAccountSwitch`'s
     /// `pathCount > 0` guard — extracted so the bound check is testable.
@@ -717,10 +555,7 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     }
 
     /// Pure helper for the `currentAccount.didSet` decision of whether to
-    /// finish the account-switch synchronously. The previous implementation
-    /// had `previousAccountId == newAccountId || previousAccountId == nil`
-    /// inline in the setter; extracting it keeps the equality and identity
-    /// branches testable and kills the surviving == ↔ != mutants.
+    /// finish the account-switch synchronously.
     static func shouldFinishSwitchingImmediately(
         previousAccountId: String?,
         newAccountId: String?
@@ -729,21 +564,13 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     }
 
     // MARK: – Auth Document fetch with state-machine wiring (facades → AuthDocumentLoader)
-    //
-    // The single-flight guard, the `.detailsLoading → .detailsLoaded/.detailsFailed`
-    // transitions, and the `.detailsEvicted` disambiguation moved to
-    // `AuthDocumentLoader.swift` (Wave 3 / 3a-3). The hub keeps thin forwarders so every
-    // call site (the `currentAccount` setter, the warm path) and every test stays byte-
-    // identical.
 
-    /// Static forwarder — `AuthDocumentLoader.fetchCompletionMayWriteTerminal` holds the
-    /// pure guard; retained here because the wiring/snapshot tests call
-    /// `AccountsManager.fetchCompletionMayWriteTerminal`.
+    /// Forwards to `AuthDocumentLoader`; kept for the wiring/snapshot tests.
     static func fetchCompletionMayWriteTerminal(currentState: Account.LoadState) -> Bool {
         AuthDocumentLoader.fetchCompletionMayWriteTerminal(currentState: currentState)
     }
 
-    /// Forwards to `authDocLoader` (Wave 3 / 3a-3). Exposed `internal` so contract-snapshot
+    /// Forwards to `authDocLoader`. Exposed `internal` so contract-snapshot
     /// tests can drive the wiring path directly without the full `loadCatalogs` cycle.
     internal func fetchAuthDocumentWithStateMachine(
         for account: Account,
@@ -752,20 +579,16 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
         authDocLoader.fetchAuthDocumentWithStateMachine(for: account, completion: completion)
     }
 
-    /// Forwards to `authDocLoader` (Wave 3 / 3a-3). Called synchronously from the
-    /// `currentAccount` setter, the slim-hydrate drive, and the `loadCatalogs` warm path
-    /// to close the readiness driver gap; no-op at a terminal state, redrive on a stale
-    /// `.detailsEvicted` marker. The `.detailsEvicted`-vs-`.detailsFailed` disambiguation
-    /// + the forward-compat exhaustiveness guard live in `AuthDocumentLoader`.
+    /// Forwards to `authDocLoader`. Called synchronously from the `currentAccount`
+    /// setter, the slim-hydrate drive, and the `loadCatalogs` warm path.
     internal func driveCurrentAccountAuthDocIfNeeded() {
         authDocLoader.driveCurrentAccountAuthDocIfNeeded()
     }
 
     // MARK: – Parsing & notifying
 
-    /// Facade → `registryLoader.loadAccountSetsAndAuthDoc` (Wave 3 / 3a-4). Exposed
-    /// `internal` so the cache-read + launch-snapshot contract tests can drive registry
-    /// materialization directly; the parse + carry-over + auth-doc-drive body lives on the loader.
+    /// Forwards to `registryLoader`. `internal` so the cache-read and launch-snapshot
+    /// contract tests can drive registry materialization directly.
     internal func loadAccountSetsAndAuthDoc(
         fromCatalogData data: Data,
         key hash: String,
@@ -811,8 +634,7 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     func clearCache() {
         // network cache
         networkExecutor.clearCache()
-        // file caches — the on-disk catalog/metadata/list/crawl sweep now lives on
-        // the injected registry cache (Wave 3 / 3a-1).
+        // file caches
         registryCache.clearFileCaches()
     }
 }
@@ -856,11 +678,8 @@ extension AccountsManager {
     var _registryStoreForTesting: AccountRegistryStore { registryStore }
 
     /// Test-only seam: populate an accountSets bucket without going through
-    /// OPDS2 parsing. Routes through `registryStore.mutate` (the store's barrier)
-    /// so concurrent-access invariants — including the in-barrier `accountByUUID`
-    /// rebuild — are preserved. Used by mutation-killing tests for
-    /// `account(_ uuid:)` — multi-bucket scenarios are not otherwise
-    /// reachable from outside the class.
+    /// OPDS2 parsing, through `registryStore.mutate` so the index stays coherent.
+    /// Multi-bucket scenarios for `account(_ uuid:)` are not otherwise reachable.
     func _testSetAccountSet(_ accounts: [Account], forKey key: String) {
         registryStore.mutate { $0[key] = accounts }
     }
@@ -872,30 +691,16 @@ extension AccountsManager {
     /// Idempotent: safe to call repeatedly. Does NOT mutate persistent state;
     /// only cancels in-flight async work.
     ///
-    /// Production-safe — guarded by `#if DEBUG` and called only from
-    /// `AppContainer._resetForTesting()`. swarm_4b64e4e0 Fix 2 — closes the
-    /// H1 finding from swarm_f88ae9e3 A.
+    /// Cooperative: returns immediately. `_resetForTesting()` uses the
+    /// synchronous `cancelAndDrainBackgroundWork()` instead.
     ///
-    /// This is the COOPERATIVE cancel — it returns immediately. The SYNCHRONOUS
-    /// `cancelAndDrainBackgroundWork()` (which `_resetForTesting()` actually
-    /// calls at every boundary) awaits the full owned set, which drains the
-    /// previously un-awaitable fallback-GET channel. Kept for the
-    /// idempotent/observation-surface tests.
-    ///
-    /// Residual race window (NARROWED to one boundary): if `loadCatalogs` is
-    /// already past the post-await `Task.isCancelled` check inside
-    /// `fetchFromNetwork`, the network response still lands in `accountSets`
-    /// on the OLD AccountsManager instance — but the OLD instance is no
-    /// longer reachable from `AppContainer.production()` post-reset, so the
-    /// write is observable only by code paths holding a strong reference to
-    /// the prior `accountsManager` (vanishingly few in tests; none in
-    /// production). Acceptable per swarm_4b64e4e0 outcome.md.
+    /// A response already past the `Task.isCancelled` check still lands on the
+    /// old instance, which is unreachable from `AppContainer.production()`
+    /// after reset.
     func cancelBackgroundWork() {
         // Flip the hub-owned explicit-cancel flag BEFORE delegating so the observation
         // surface `_backgroundFetchTaskWasExplicitlyCancelled` (which reads this flag)
-        // distinguishes "we called cancel" from "handle nilled by another path." The task/
-        // registry cancel + network cancel live on the loader now (Wave 3 / 3a-4); the loader
-        // body must NOT touch this flag (it can't reach it).
+        // distinguishes "we called cancel" from "handle nilled by another path."
         _explicitCancelCalled = true
         registryLoader.cancelBackgroundWork()
     }
@@ -903,7 +708,7 @@ extension AccountsManager {
     /// Test-only: cancel + synchronously DRAIN the in-flight background crawl (pumping the
     /// run loop) before returning, so no orphan crawl outlives the test boundary. The drain
     /// body lives on the loader; the hub sets `_explicitCancelCalled` FIRST so the torn-down
-    /// semantics engage for the pending auth-doc main-hop (Wave 3 / 3a-4 — the critical seam).
+    /// semantics engage for the pending auth-doc main-hop.
     func cancelAndDrainBackgroundWork(timeout: TimeInterval = 3.0) {
         _explicitCancelCalled = true
         registryLoader.cancelAndDrainBackgroundWork(timeout: timeout)
@@ -916,8 +721,7 @@ extension AccountsManager {
     }
 
     /// Test-only observation surface: `true` iff `cancelBackgroundWork()` was called on this
-    /// instance. Reads the hub-owned `_explicitCancelCalled` flag (stays here so the 3a-3
-    /// `AuthDocumentLoader.isTornDown` binding is byte-identical). swarm_4b64e4e0 qa-fixup Fix 3.
+    /// instance.
     var _backgroundFetchTaskWasExplicitlyCancelled: Bool {
         return _explicitCancelCalled
     }

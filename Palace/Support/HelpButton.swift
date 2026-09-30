@@ -2,15 +2,10 @@
 //  HelpButton.swift
 //  Palace
 //
-//  Shared, flag-gated "Get Help" affordance. One monochrome question-mark
-//  glyph that presents the triage-bot chat (`TriageBotSupportView`) as a sheet,
-//  reused across its entry points (book detail, sign-in).
-//  Settings has its own row (`TPPSettingsView.supportSection`) but resolves
-//  visibility through the SAME `HelpEntryPointPolicy`, so all entry points
-//  appear and vanish together with the master kill-switch (AC-14).
-//
-//  Monochrome by design — CLAUDE.md "Palace chrome is monochrome": the glyph is
-//  `.foregroundStyle(.primary)`, never a `.tint`/`.blue`.
+//  Flag-gated "Get Help" button that presents the triage-bot chat as a sheet
+//  (book detail, sign-in). Settings has its own row but uses the same
+//  `HelpEntryPointPolicy`, so all entry points follow the kill-switch together.
+//  Palace chrome is monochrome: the glyph uses `.primary`, never a tint.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -26,13 +21,11 @@ struct HelpButton: View {
 
     @State private var showHelp = false
 
-    /// Feature-flag read seam (Wave 1b), resolved from the environment.
+    /// Feature-flag read seam, resolved from the environment.
     @Environment(\.appContainer) private var appContainer
 
-    /// Resolve visibility through the shared pure policy so the kill-switch is
-    /// the single source of truth (and unit-tested in `HelpEntryPointPolicyTests`).
-    /// Reading the flag at body-eval time mirrors how
-    /// `TPPSettingsView.supportSection` resolves its row.
+    /// Resolved through the shared policy so the kill-switch is the single
+    /// source of truth.
     private var isVisible: Bool {
         HelpEntryPointPolicy.shouldShowHelp(
             at: entryPoint,

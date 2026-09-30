@@ -136,13 +136,10 @@ private enum StorageKey: String {
     var authDefinition: AccountDetails.Authentication? {
         get {
             guard let read = _authDefinition.read() else {
-                // Phase 2 (swarm_81b5099e follow-up): state-machine-aware
-                // fallback. Returns `nil` until the resolved account is
-                // `.detailsLoaded` — same nil-tolerance as the legacy
-                // `account.details?` read, but no longer races a partially-
-                // loaded auth doc. The fallback only fires when no auth
-                // definition was previously written (e.g. cold-launch
-                // before sign-in), so blocking on the gate is moot anyway.
+                // State-machine-aware fallback: `nil` until the resolved
+                // account is `.detailsLoaded`, so it never reads a partially
+                // loaded auth doc. Only reached when no auth definition was
+                // written yet (e.g. cold launch before sign-in).
                 let accountsManager = AppContainer.production().accountsManager
                 let candidate: Account?
                 if let libraryUUID = self.libraryUUID {
@@ -580,26 +577,11 @@ private enum StorageKey: String {
     /// On bound (per-account) instances the keys are immutable, so this is
     /// inherently race-free without needing a barrier.
     ///
-    /// Cache coherence (CP-D2): this path deliberately does NOT invalidate the
-    /// keychain caches on every read. Each `TPPKeychainVariable` is
-    /// write-through (`write()` updates `cachedValue` AND persists), and
-    /// production keeps exactly one `TPPUserAccount` instance per library UUID
-    /// (`AccountsManager.userAccount(for:)` cache) — the instance that writes
-    /// credentials (sign-in / sign-out via `setBarcode`/`setAuthToken`/
-    /// `removeAll`) is the same instance every reader (`AccountDetailViewModel`,
-    /// `TPPNetworkExecutor`, `TPPNetworkResponder`) reads through. So the cache
-    /// is always coherent without dropping it on every request build. There is
-    /// also no cross-process keychain writer (no app-groups / keychain-sharing /
-    /// extensions in the entitlements), so per-read invalidation was pure
-    /// overhead on the request hot path.
-    ///
-    /// Coherence at the two boundaries where credential state can change out of
-    /// band relative to a given instance's cache is preserved by EVENT-DRIVEN
-    /// invalidation instead: sign-out finalisation (`removeAll()`) and account
-    /// switch (`AccountsManager.currentAccount.didSet` → `invalidateCredentialCaches()`).
-    /// This removes the build-459 staleness (which came from a singleton writer
-    /// vs. per-account reader split that no longer exists) without re-reading
-    /// the keychain on every network request.
+    /// Does not invalidate the keychain caches on every read: each
+    /// `TPPKeychainVariable` is write-through, production keeps one instance per
+    /// library UUID (so writer and readers share the cache), and there is no
+    /// cross-process keychain writer. Caches are invalidated on events instead:
+    /// sign-out (`removeAll()`) and account switch (`invalidateCredentialCaches()`).
     func credentialSnapshot() -> CredentialSnapshot {
         return accountInfoQueue.sync {
             let creds = self.credentials

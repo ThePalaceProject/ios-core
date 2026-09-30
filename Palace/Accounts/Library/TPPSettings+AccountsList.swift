@@ -2,13 +2,10 @@
 //  TPPSettings+AccountsList.swift
 //  Palace
 //
-//  Wave 1a relocation of the second half of TPPSettings+SE.swift (2020).
-//  This is Accounts-domain logic (returns [Account], reads AccountsManager +
-//  AppContainer) that lived in Palace/Settings/ only by cohabitation — moving
-//  it here is what actually dissolves ledger cycle 5's Accounts→Settings edge.
-//  KNOWN WARTS (preserved verbatim; PalaceAccounts-wave debt, not Wave 1a's):
-//  reads/writes UserDefaults.standard directly (bypasses the injected
-//  `defaults`), reaches AppContainer.production(), calls synchronize().
+//  Accounts-domain part of TPPSettings (returns [Account], reads AccountsManager),
+//  kept here so Accounts does not depend on Settings.
+//  Known debt: uses UserDefaults.standard directly (not the injected `defaults`),
+//  reaches AppContainer.production(), and calls synchronize().
 //
 
 import Foundation

@@ -2,22 +2,11 @@
 //  AuthDocumentLoader.swift
 //  Palace
 //
-//  god-class decomposition — Wave 3 / 3a-3 (the third in-target collaborator split
-//  out of `AccountsManager`).
-//
-//  The per-account authentication-document fetch + state-machine wiring: the
-//  single-flight guard, the `.detailsLoading → .detailsLoaded/.detailsFailed`
-//  transitions, and the `.detailsEvicted` disambiguation that keeps a library-switch
-//  cancellation from clobbering the eviction marker. This is the readiness driver
-//  that every `awaitReady()` consumer (audiobook open, token refresh, bookmark sync,
-//  CarPlay auth, sign-in) gates on, extracted behind an injected collaborator so the
-//  hub carries none of it and a packaged `AccountsManager` names none of the state.
-//
-//  A `final class @unchecked Sendable` (NOT an actor): `driveCurrentAccountAuthDocIfNeeded`
-//  is called SYNCHRONOUSLY from the `AccountsManager.currentAccount` property setter,
-//  which cannot `await` — the same class-not-actor rationale as `AccountRegistryStore`.
-//  `@unchecked Sendable` invariant: the only mutable state is `inflightAuthDocFetches`,
-//  read/written exclusively under `inflightAuthDocLock`.
+//  Per-account authentication-document fetch and its `Account.LoadState`
+//  transitions: the readiness driver every `awaitReady()` consumer gates on.
+//  A class, not an actor, because `driveCurrentAccountAuthDocIfNeeded` is called
+//  synchronously from the `AccountsManager.currentAccount` setter.
+//  `@unchecked Sendable`: `inflightAuthDocFetches` is guarded by `inflightAuthDocLock`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -26,9 +15,7 @@ import Foundation
 import PalaceLogging
 
 /// Drives per-account auth-document fetches through the `Account.LoadState` machine
-/// with a per-UUID single-flight guard. See the file header for the class-not-actor
-/// and `@unchecked Sendable` rationale. Injected into `AccountsManager`; tests
-/// construct it directly with spy providers.
+/// with a per-UUID single-flight guard.
 final class AuthDocumentLoader: @unchecked Sendable {
 
     /// How long a single-flight `authentication_document` fetch may remain in-flight
@@ -45,27 +32,15 @@ final class AuthDocumentLoader: @unchecked Sendable {
     private var inflightAuthDocFetches = [String: Date]()
     private let inflightAuthDocLock = NSLock()
 
-    /// Per-uuid load-state store. Read side of the state machine (the terminal WRITE
-    /// goes through `Account._setState`, which sinks to the shared account-state store; in
-    /// production this is the same instance — the read/write asymmetry is prod-identical
-    /// and out of scope, matching the note in `AccountsManagerAuthDocContractTests`).
+    /// Read side of the state machine. Terminal writes go through
+    /// `Account._setState`, which in production reaches the same store.
     private let accountStateStore: AccountStateStore
 
-    /// Resolves the current account to drive. Injected so the loader stays agnostic of
-    /// the defaults-backed `currentAccountId` → `registryStore.account(uuid)` lookup.
     private let currentAccountProvider: () -> Account?
 
-    /// Resolves the signed-in credential state for `Account.loadAuthenticationDocument`.
-    /// `TPPSignedInStateProvider?` (the parameter's own type) — nil once the owning
-    /// manager has been deallocated.
-    ///
-    /// That IS reachable, which an earlier version of this comment denied: it argued the
-    /// manager could not be gone "while the loader (its `lazy var`) is alive to call
-    /// this". The loader is a stored `let` now and reaches the manager through a WEAK
-    /// `AccountsManagerOwnerRef`, so the loader outliving the manager is exactly the
-    /// case the box exists to make safe. `loadAuthenticationDocument(using:)` accepts
-    /// the optional and the completion below is `[weak self]`, so nil is handled rather
-    /// than impossible.
+    /// Signed-in credential state for `Account.loadAuthenticationDocument`. Nil
+    /// once the owning manager is deallocated: the loader reaches it through a
+    /// weak reference and can outlive it.
     private let signedInStateProvider: () -> TPPSignedInStateProvider?
 
     /// Whether the owning manager has been torn down (a DEBUG test-boundary reset). When
@@ -90,8 +65,8 @@ final class AuthDocumentLoader: @unchecked Sendable {
     /// (`.detailsLoaded`/`.detailsFailed`). Returns `false` when the account has since
     /// been evicted by a library switch — the deliberate, newer `.detailsEvicted`
     /// terminal supersedes the in-flight fetch this completion belonged to, and awaiters
-    /// rely on it to fail-fast + redrive on return. Pure so the guard is unit-testable
-    /// without a controllable async fetch. CP-D1 (swarm_27c181b5).
+    /// rely on it to fail fast and redrive on return. Pure so the guard is
+    /// unit-testable without a controllable async fetch.
     static func fetchCompletionMayWriteTerminal(currentState: Account.LoadState) -> Bool {
         if case .detailsEvicted = currentState { return false }
         return true
@@ -166,17 +141,12 @@ final class AuthDocumentLoader: @unchecked Sendable {
                 return
             }
 
-            // A fetch SUPERSEDED by a library switch must not overwrite the eviction
-            // marker the `currentAccount` setter wrote. Sequence (CP-D1, swarm_27c181b5):
-            // the setter cancels this account's in-flight fetch THEN writes
-            // `.detailsEvicted(.libraryDeselected)`; this cancellation completion then
-            // fires ASYNC with `success == false` (NSURLError -999). Without this guard
-            // it clobbers `.detailsEvicted` with `.detailsFailed(.authDocumentFetchFailed)`,
-            // and on switch-back `driveCurrentAccountAuthDocIfNeeded` reads `.detailsFailed`
-            // → the "genuine failure, don't redrive" arm → `awaitReady()` consumers stay
-            // stuck (the regression class PR #1021 split the enum to prevent). Applies to
-            // success too: a fetch that landed just before cancellation must not resurrect
-            // the now-non-current account.
+            // A fetch superseded by a library switch must not overwrite the eviction
+            // marker the `currentAccount` setter wrote. The setter cancels the fetch and
+            // then writes `.detailsEvicted`; the cancellation completion arrives later
+            // with `success == false`. Overwriting with `.detailsFailed` would stop the
+            // redrive on switch-back and leave `awaitReady()` consumers stuck (PR #1021).
+            // A success that lands just before cancellation is dropped for the same reason.
             if AuthDocumentLoader.fetchCompletionMayWriteTerminal(
                 currentState: self.accountStateStore.state(for: account.uuid)
             ) {
@@ -203,29 +173,15 @@ final class AuthDocumentLoader: @unchecked Sendable {
         case .detailsLoaded:
             return // terminal — `awaitReady()` awaiters resolve via the loaded details
         case .detailsEvicted(.libraryDeselected):
-            // `.detailsEvicted(.libraryDeselected)` is the eviction marker the
-            // `currentAccount` setter writes against the PRIOR uuid on a library switch.
-            // If this account is back to being current, that marker is stale — re-drive
-            // so awaitReady() callers (audiobook open, token refresh, bookmark sync,
-            // CarPlay auth) don't throw `.evicted` forever after a swap-away/swap-back.
+            // The setter writes this marker against the prior uuid on a library
+            // switch. If this account is current again the marker is stale, so
+            // re-drive; otherwise `awaitReady()` callers keep throwing `.evicted`.
+            // A genuine 404 is `.detailsFailed(.accountNotFound)` and does not redrive
+            // (PR #1021).
             //
-            // PR #1021 (Module A, swarm_51f248d5) split this case off from
-            // `.detailsFailed(.accountNotFound)` so the eviction marker stops sharing
-            // storage with the genuine HTTP-404 load failure below. Now a real
-            // `.accountNotFound` correctly hits the `.detailsFailed` arm and does NOT
-            // redrive.
-            //
-            // FORWARD-COMPAT (swarm_18b0d071 wave 3 Module B): this arm matches ONLY
-            // `.libraryDeselected` today. When a NEW `AccountEvictionReason` case is
-            // added, the implementer must choose:
-            //   (a) "Re-drive on re-entry" (reversible UX action) — add
-            //       `case .detailsEvicted(.<newReason>):` to THIS arm.
-            //   (b) "Do NOT re-drive" (irreversible) — add a NEW arm that `return`s
-            //       (mirroring `.detailsFailed`).
-            // The `default` case is deliberately NOT added — Swift's exhaustiveness
-            // check fails at compile time when a new reason is added, forcing the
-            // future implementer to make the (a)/(b) decision explicit here rather than
-            // silently inheriting the wrong behaviour from a default fall-through.
+            // No `default`: a new `AccountEvictionReason` must fail to compile here
+            // so its author decides whether it re-drives on re-entry (add it to this
+            // arm) or not (add an arm that returns).
             break
         case .detailsFailed:
             return // genuine load failure — caller must retry explicitly

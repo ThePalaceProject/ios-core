@@ -10,14 +10,9 @@
 import Combine
 import FirebaseCore
 import PalaceBookRegistry
-// `@preconcurrency`: Firebase Messaging's completion handlers (`token { }`) and
-// the `MessagingDelegate` protocol carry `@Sendable`/isolation expectations that
-// `NotificationService` (a non-Sendable `@objcMembers` singleton whose callbacks
-// run on Firebase's own queues) cannot satisfy without a class-level `@MainActor`
-// decision — which is intentionally deferred here (the class is called from the
-// off-main book-registry sync path and from deferred critical-path modules).
-// `@preconcurrency` silences the pre-Swift-6-annotated-API warnings without
-// changing behavior.
+// `@preconcurrency`: Firebase Messaging's handlers carry `@Sendable`/isolation
+// expectations this class cannot meet without class-level `@MainActor`, which it
+// avoids because it is called off-main (e.g. from book-registry sync).
 @preconcurrency import FirebaseMessaging
 import PalaceLogging
 import PalaceBookModel
@@ -92,66 +87,30 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
         /// Whether an attempt is currently in flight for `uuid`.
         ///
-        /// Whether an attempt is currently in flight for `uuid`.
-        ///
-        /// `fileprivate`: the only caller is the enclosing type's
-        /// `isRegistrationClaimed(_:)` forwarder, in this file. NOT `private` —
-        /// a reviewer asserted an outer type can reach a nested type's private
-        /// members and the compiler disagrees ("'isClaimed' is inaccessible due
-        /// to 'private' protection level"), which is why this is measured
-        /// rather than argued. Three successive versions of this comment gave a
-        /// different wrong reason for it being internal; `fileprivate` is the
-        /// narrowest level that actually compiles.
+        /// `fileprivate`, not `private`: the enclosing type's
+        /// `isRegistrationClaimed(_:)` forwarder calls it, and an outer type
+        /// cannot reach a nested type's private members.
         fileprivate func isClaimed(_ uuid: String) -> Bool {
             lock.withLock { inFlight.contains(uuid) }
         }
     }
 
-    // Swift 6 `complete` — `@unchecked Sendable` invariant: `self` is captured into the
-    // Firebase Messaging `@Sendable` completion handlers, the `@MainActor` notification
-    // Tasks, and the `.main` NotificationCenter observers. The immutable deps
-    // (`notificationCenter`, `networkExecutor`, `bookRegistry`,
-    // `skipsProductionAuthSubscription`, `registrationClaims`) are `let`s; the only two
-    // mutable `var`s (`authStateSubscription`, `lastObservedAuthState`) are guarded by
-    // `authStateLock`. Two of the `let`s are not Sendable VALUE types and so carry
-    // their own argument: `accountsManager` is the existential
-    // `any TPPLibraryAccountsProvider & Sendable` — the `& Sendable` is load-bearing
-    // and was added on review, because the bare `@objc` protocol carries no such
-    // constraint, which left this invariant resting on WHO injects rather than on the
-    // type. The constraint is now enforced by the compiler, which is the point:
-    // three successive versions of a hand-written conformer census in this
-    // comment were each wrong, so the census is deleted rather than corrected a
-    // fourth time. `& Sendable` makes the guarantee structural.
-    // The class-level `@MainActor` alternative is intentionally deferred (see the
-    // `@preconcurrency import FirebaseMessaging` note) because callbacks run off-main.
-    // Documented invariant, not a bare waiver.
+    // `@unchecked Sendable`: `self` is captured into Firebase Messaging `@Sendable`
+    // completions, `@MainActor` Tasks, and `.main` NotificationCenter observers.
+    // Dependencies are `let`s (`accountsManager` is constrained `& Sendable`); the
+    // two mutable `var`s are guarded by `authStateLock`. Class-level `@MainActor` is
+    // not used because Firebase callbacks run off-main.
 
     private let notificationCenter = UNUserNotificationCenter.current()
-    /// Typed to the protocol rather than the concrete `AccountsManager`, per the
-    /// CLAUDE.md protocol-DI rule. Everything this class uses —
-    /// `currentAccount`, `currentUserAccount`, `userAccount(for:)` — is a
-    /// protocol member, and `AccountsManager` already conforms, so the retype is
-    /// behaviour-neutral.
-    ///
-    /// The test-only initializer accepts a substitute, and that seam is what
-    /// makes the readiness gate observable at runtime. The observable is CLAIM
-    /// LIFETIME (`RegistrationClaims.isClaimed`) — NOT a read counter on this
-    /// property. Counting was tried twice and defeated twice: `userAccount(for:)`
-    /// is ambiguous because the prologue resolves the same uuid, and counting
-    /// `currentAccount` — even by parity — breaks because the app re-enters
-    /// `updateToken()` through `installNotificationObservers` and
-    /// `decideHoldNavigation` reads this property on its own. Do not rebuild a
-    /// counting test here; see `NotificationServiceReadinessGateTests`.
+    /// Typed to the protocol so tests can substitute it. Tests observe the
+    /// readiness gate through claim lifetime (`RegistrationClaims.isClaimed`), not
+    /// by counting reads of this property, which is also read from other paths;
+    /// see `NotificationServiceReadinessGateTests`.
     private let accountsManager: any TPPLibraryAccountsProvider & Sendable
     private let networkExecutor: TPPNetworkExecutor
     private let bookRegistry: TPPBookRegistryProvider
 
-    /// Guards the two mutable `var`s below (`authStateSubscription`,
-    /// `lastObservedAuthState`) so the class can be `@unchecked Sendable` (see the
-    /// type declaration). Both were previously main-confined by the `@MainActor`
-    /// `UserAccountPublisher` emission, but the class-level `@MainActor` decision is
-    /// deliberately deferred (Firebase callbacks run off-main), so an explicit lock
-    /// makes the confinement sound under `complete` rather than assumed.
+    /// Guards `authStateSubscription` and `lastObservedAuthState`.
     private let authStateLock = NSLock()
     /// Subscription to the auth-state-change publisher. Set in
     /// `subscribeToAuthStateChanges(_:retry:)`. Held to keep the
@@ -177,22 +136,11 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
         installNotificationObservers()
 
-        // swarm_f3b9b087 item #6: subscribe to the existing
-        // `UserAccountPublisher.shared.authStateDidChangePublisher` (the
-        // same surface `HoldsViewModel` and `MyBooksViewModel` already
-        // consume) so that when stale credentials recover to `.loggedIn`,
-        // we re-attempt FCM token registration. Without this, a patron
-        // who briefly entered `.credentialsStale` (e.g. SAML cookie
-        // expired but bearer still fine, then re-auth) would never
-        // re-register their FCM token until app cold-launch / sign-out /
-        // library switch — and the Circulation Manager would never push
-        // hold-availability notifications.
-        //
-        // The hop into `MainActor` is required because
-        // `UserAccountPublisher.shared` is `@MainActor`-isolated and
-        // `NotificationService.init()` is not. The hop happens once at
-        // service construction; the resulting `AnyCancellable` is held
-        // for the service's lifetime.
+        // Re-attempt FCM token registration when stale credentials recover to
+        // `.loggedIn`. Otherwise a patron who passed through `.credentialsStale`
+        // would not re-register until cold launch, sign-out, or library switch,
+        // and would get no hold-availability pushes. The MainActor hop is needed
+        // because `UserAccountPublisher.shared` is `@MainActor`-isolated.
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard !self.skipsProductionAuthSubscription else { return }
@@ -218,15 +166,9 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         onAuthStateRetryRequested: @escaping () -> Void,
         accountsManager: (any TPPLibraryAccountsProvider & Sendable)? = nil
     ) {
-        // NOT `= AppContainer.production().accountsManager` as a default
-        // ARGUMENT. Default arguments are evaluated at the CALL site, so that
-        // shape re-enters AppContainer's unfair lock from whatever context
-        // calls the initializer — the documented launch-abort in
-        // `appcontainer-production-in-default-argument-aborts-launch`. It is
-        // unreachable here today (`NotificationService` is a `static let
-        // shared` outside the container graph, and both callers are tests),
-        // but two independent reviewers flagged the shape, and being safe by
-        // SHAPE beats being safe by audit that the next edit can invalidate.
+        // Resolved here rather than as a default argument: default arguments
+        // are evaluated at the call site, which can re-enter AppContainer's
+        // lock and abort launch.
         self.accountsManager = accountsManager ?? AppContainer.production().accountsManager
         self.networkExecutor = AppContainer.production().networkExecutor
         self.bookRegistry = AppContainer.production().bookRegistry
@@ -468,36 +410,27 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     /// How long to wait for the current account's authentication document
     /// before giving up on this registration attempt.
     ///
-    /// BOUNDED on purpose: an unbounded `awaitReady()` behind a background path
-    /// is the documented HelpSpot #18414 load-forever wedge, and this runs from
-    /// a Firebase callback at launch where nothing is watching.
+    /// Bounded because an unbounded `awaitReady()` on a background path is the
+    /// HelpSpot #18414 load-forever hang.
     ///
-    /// 45s. `docs/architecture/account-state-machine.md` puts the auth-document
-    /// window at "500ms-10s typical, longer on cold network", so a 10s ceiling
-    /// would drop registration for exactly the slow-network patrons who most
-    /// need it. It deliberately EXCEEDS `authDocInflightTimeout` (30s) rather
-    /// than matching it: at exactly 30 the wait would expire in the same instant
-    /// the wedge reclaim becomes available, so it could never benefit from it.
-    /// (That reclaim is demand-driven — it runs when something next drives the
-    /// auth doc — not a timer that self-fires.) Nothing re-fires registration after a
-    /// timeout — the auth-doc drive resolves the ACCOUNT, not this attempt — so
-    /// this budget has to be the last word.
+    /// 45s: the auth document can take over 10s on a cold network
+    /// (`docs/architecture/account-state-machine.md`), and the wait must exceed
+    /// `authDocInflightTimeout` (30s) to benefit from its wedge reclaim. Nothing
+    /// re-fires registration after a timeout, so this budget is final.
     static let accountReadinessTimeout: TimeInterval = 45
 
     /// Coalesces the READINESS WAIT per account. Released when the Task body
     /// returns — i.e. when registration STARTS its network chain, not when the
     /// `/patrons/me/` fetch and PUT finish. So it prevents N concurrent waits
     /// collapsing into N registrations; it does not serialise two triggers that
-    /// both arrive on an already-ready account, which is unchanged from before
-    /// this fix.
+    /// both arrive on an already-ready account.
     private let registrationClaims = RegistrationClaims()
 
     /// Read-only view of the claim table, for the readiness-gate test.
     ///
-    /// The table itself is `private`: it was `internal`, which let any code in
-    /// the module call `claim(_:)` and wedge push registration for that account
-    /// permanently, since only the owning attempt's `defer` ever releases it.
-    /// Tests only ever need to ASK, so only asking is exposed.
+    /// The table itself is `private`: a stray `claim(_:)` would block push
+    /// registration for that account permanently, since only the owning
+    /// attempt's `defer` releases it.
     func isRegistrationClaimed(_ uuid: String) -> Bool {
         registrationClaims.isClaimed(uuid)
     }
@@ -506,27 +439,17 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     ///
     /// Update token when user account changes.
     ///
-    /// Why `hasUpdatedToken` is set only on confirmed success (HelpSpot 17680):
-    /// previously the flag was latched optimistically before `/patrons/me/` was
-    /// even called. When SAML credentials had gone stale, the profile fetch
-    /// returned nil, the device-registration endpoint was never resolved, and
-    /// the FCM token was never sent to the Circulation Manager — so the CM
-    /// could not push hold-availability notifications. The flag stayed `true`,
-    /// blocking every subsequent retry until app cold-launch / sign-out / library
-    /// switch reset it. Now the flag is set only when the token is confirmed
-    /// registered on the server (already-exists OR save succeeded).
+    /// `hasUpdatedToken` is set only once the server confirms the token
+    /// (already exists or save succeeded). Setting it earlier would block every
+    /// retry after a failed profile fetch, e.g. with stale SAML credentials, and
+    /// the patron would get no hold notifications (HelpSpot 17680).
     func updateToken() {
         guard !(accountsManager.currentAccount?.hasUpdatedToken ?? false) else {
             return
         }
 
-        // [FCM_REG] grep marker for support-collected logs. Each branch
-        // below logs its outcome with this prefix so a sysdiagnose from a
-        // patron complaining about missing hold notifications can be
-        // searched for the exact step that blocked registration. The CM
-        // is blind to the SAML-stale-zero-token case (no metric surfaces
-        // it server-side per the cross-platform audit on 2026-05-05) so
-        // these client-side logs are the canonical signal.
+        // [FCM_REG] prefixes every outcome log so support logs show which step
+        // blocked registration; the CM has no server-side signal for it.
         let authState = accountsManager.currentUserAccount.authState
         Log.info(#file, "[FCM_REG] updateToken start — authState=\(authState)")
 
@@ -535,16 +458,10 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             return
         }
 
-        // PP-4958. This used to call `getProfileDocument` immediately, which
-        // returns nil on its FIRST guard when `details` is nil — no network
-        // call, no log line — because the account's authentication document
-        // had not loaded yet. That is where ~53,000 events across ~6,600
-        // patrons a month came from: the FCM registration callback fires at
-        // launch 200-400ms BEFORE the auth document lands, and a library
-        // switch posts `TPPCurrentAccountDidChange` before the new account's
-        // document is fetched. Registration was skipped and never retried,
-        // because the PP-4275 retry needs a transition INTO `.loggedIn` and
-        // refreshing state does not produce one.
+        // PP-4958: wait for the auth document before `getProfileDocument`, which
+        // returns nil without one. The FCM callback fires at launch before the
+        // document lands, and a library switch notifies before the new account's
+        // document is fetched; nothing else would retry registration.
         //
         // `awaitReady` fast-paths when the account is already terminal, so a
         // ready account pays nothing for this.
@@ -561,24 +478,11 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             do {
                 _ = try await account.awaitReady(timeout: Self.accountReadinessTimeout)
             } catch let error as AccountLoadError {
-                // `awaitReady` throws for several reasons and they are NOT
-                // equivalent — three dispositions, not two.
-                //
-                //   .readinessTimedOut — .residual. Waited the full 45s bound
-                //     and the document still had not arrived. Silencing this
-                //     would make the fix unfalsifiable: the metric would fall
-                //     to near-zero whether registration now succeeds or the
-                //     account is simply never driven. Reported under its own
-                //     summary, and low volume by construction.
-                //   .evicted — .quiet. The patron switched library. `AccountsManager`'s
-                //     setter writes `.detailsEvicted(.libraryDeselected)` against
-                //     the PRIOR uuid, `resolveTerminal` surfaces it as
-                //     `AccountLoadError.evicted`, and `AuthDocumentLoader` DOES
-                //     re-drive that case. Reporting it would file false failures
-                //     against the very metric used to verify this fix — and a
-                //     library switch is one of the three events in the evidence
-                //     that motivated the fix.
-                //
+                // Three dispositions:
+                //   .readinessTimedOut — .residual: the 45s bound elapsed. Reported
+                //     under its own summary so a never-driven account stays visible.
+                //   .evicted — .quiet: the patron switched library, and
+                //     `AuthDocumentLoader` re-drives the account if it returns.
                 // Everything else (authDocumentFetchFailed, malformedAuthDocument,
                 // accountNotFound) means the document will not arrive, which is a
                 // genuine registration failure and must stay visible.
@@ -735,21 +639,11 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         }
     }
 
-    /// Latches `hasUpdatedToken = true` on the account once the FCM token is
-    /// confirmed live on the server. Centralized so the success contract has a
-    /// single set-site (see `updateToken`'s doc comment for the why).
-    /// Latches the registration flag on the account the attempt was made FOR,
-    /// not on whatever account happens to be current when the attempt lands.
-    ///
-    /// PP-4958. Registration is now asynchronous — it waits up to
-    /// `accountReadinessTimeout` for the authentication document — so a library
-    /// switch can land between starting an attempt for account A and finishing
-    /// it. Writing `currentAccount?.hasUpdatedToken = true` at that point marks
-    /// account B registered when only A was, and `AccountsManager` clears the
-    /// flag on the OUTGOING account only, so B stays latched-but-unregistered
-    /// and never retries — the silent-suppression class this file already
-    /// carries a HelpSpot 17680 note about. Passing the account through closes
-    /// the window this change opened.
+    /// Latches `hasUpdatedToken = true` once the FCM token is confirmed on the
+    /// server, on the account the attempt was made for rather than the current
+    /// one. Registration is asynchronous (PP-4958), so a library switch can land
+    /// mid-attempt; latching the new current account would leave it marked
+    /// registered and never retried.
     private func markTokenRegistered(for account: Account) {
         account.hasUpdatedToken = true
     }
@@ -874,14 +768,9 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             }
         }
 
-        // Navigate to Holds tab for hold-related notifications.
-        //
-        // Bucket A migration: notification taps are user-initiated, so the
-        // `awaitReady()` window is acceptable. The decision logic is
-        // factored into the static `decideHoldNavigation(...)` seam below
-        // so the swarm Phase 1 state-machine tests can pin every branch
-        // (`.detailsLoaded` + supports / does-not-support, `.detailsFailed`,
-        // nil-account) without a `UNNotificationResponse` round-trip.
+        // Navigate to Holds tab for hold-related notifications. Taps are
+        // user-initiated, so waiting on `awaitReady()` is acceptable; the
+        // decision lives in `decideHoldNavigation(...)` so it is testable.
         if isHoldNotification {
             // Box the non-`Sendable` UNUserNotificationCenter completion handler so
             // it can cross into the `@Sendable @MainActor` navigation Task; it is
@@ -911,14 +800,8 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     // MARK: - Testable seam (Bucket A migration)
     //
-    // The `userNotificationCenter(...didReceive...)` callback above is
-    // hard to unit-test directly — it requires a real
-    // `UNNotificationResponse` (no public constructor) and reaches into
-    // `AppContainer.production().tabRouterHub` for navigation. The
-    // pure-behavior logic for "should I navigate to Holds for this
-    // account state?" is extracted here so the swarm Phase 1 state-machine
-    // tests can pin every branch without an `UNUserNotificationCenter`
-    // round-trip.
+    // `UNNotificationResponse` has no public constructor, so the "navigate to
+    // Holds for this account state?" decision is extracted here for tests.
 
     /// Navigation decision for a hold-related notification tap.
     enum HoldNavigationOutcome: Equatable {

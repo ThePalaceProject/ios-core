@@ -2,25 +2,11 @@
 //  OfflineQueueCoordinator.swift
 //  Palace
 //
-//  Reliability WS-C — seam S2 wiring. Supplies the single executor
-//  closure to `OfflineQueueService` (whose `setExecutor` signature is
-//  FROZEN) and dispatches each queued `OfflineAction` to the existing
-//  public service APIs:
-//
+//  Supplies `OfflineQueueService`'s executor, dispatching queued actions:
 //    .return / .cancelHold -> BookReturnService revoke (via MBDC.returnBook)
 //    .borrow  / .hold      -> MyBooksDownloadCenter.startBorrow
-//
-//  INV-8 (idempotency): actions are deduped by `bookID`+`type`. A queued
-//  action that already succeeded (or is in-flight) is not dispatched a
-//  second time — a partially-succeeded return must not double-apply and
-//  confuse the patron with a spurious "no active loan" error.
-//
-//  The executor returns `true` only on server-confirmed success so the
-//  queue's retry/backoff drives genuine failures.
-//
-//  Registration happens exactly once at launch via `registerExecutor()`,
-//  invoked from `AppContainer` (the composition root). The call lives
-//  here so the seam owner (WS-C) owns the wiring.
+//  Deduped by `bookID`+`type` so a succeeded return is not re-applied. Returns
+//  `true` only on server-confirmed success. Registered once from `AppContainer`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -32,9 +18,7 @@ import PalaceBookRegistry
 // MARK: - OfflineExecutorRegistering
 
 /// Narrow seam the coordinator needs from the queue: install the single
-/// executor closure. Kept separate from `OfflineQueueServiceProtocol` so
-/// the frozen `OfflineQueueService.setExecutor` signature (seam S2) is not
-/// touched and the full queue surface isn't pulled into the coordinator.
+/// executor closure, without pulling in the full queue surface.
 protocol OfflineExecutorRegistering: Sendable {
     func setExecutor(_ executor: @escaping OfflineActionExecutor) async
 }
@@ -92,7 +76,7 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
     func execute(_ action: OfflineAction) async -> Bool {
         let key = Self.dedupeKey(for: action)
 
-        // INV-8: collapse a duplicate (same bookID+type) that already
+        // Collapse a duplicate (same bookID+type) that already
         // succeeded or is in-flight. Treat it as already-done (`true`) so
         // the queue removes it without re-applying the side effect.
         guard await dedupe.begin(key) else {

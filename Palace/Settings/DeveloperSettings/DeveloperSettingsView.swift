@@ -4,13 +4,9 @@
 //
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
-//  SwiftUI reimplementation of `TPPDeveloperSettingsTableViewController` (the
-//  "Testing" screen). Feature-for-feature, pixel-for-pixel port. Only the
-//  ENGINEERING-tier sections live here; the SUPPORT-tier content (Send Error
-//  Logs + Data & Reset) moved to `AppAdvancedSettingsView` per PP-4788.
-//
-//  All state + actions live on the shared `DeveloperSettingsViewModel`, so the
-//  Advanced screen reuses the exact same action code.
+//  The "Testing" screen: engineering-tier sections only. Support-tier content
+//  (Send Error Logs, Data & Reset) is in `AppAdvancedSettingsView` (PP-4788);
+//  both share `DeveloperSettingsViewModel`.
 //
 
 import SwiftUI
@@ -27,15 +23,9 @@ struct DeveloperSettingsView: View {
 
     var body: some View {
         List {
-            // Engineering-tier runtime gate — MUST match the retired UIKit VC's
-            // `visibleSections` filter (audience == .support || showEngineeringTools).
-            // On a production App Store build (showEngineeringTools == false) these
-            // sections are hidden, so a patron who trips the version long-press does
-            // NOT see production-behavior-changing feature-flag toggles. The patron
-            // functions (Send Error Logs, Data & Reset) live in the always-visible
-            // Advanced menu, so nothing patron-facing is lost — the Testing screen
-            // is simply empty on production. On DEBUG / simulator / TestFlight
-            // (showEngineeringTools == true) all sections render.
+            // Hidden on App Store builds so a patron who trips the version
+            // long-press cannot flip behavior-changing flags. Patron functions
+            // live in the always-visible Advanced screen.
             if viewModel.showEngineeringTools {
                 librarySettingsSection
                 triageBotSection
@@ -124,10 +114,8 @@ struct DeveloperSettingsView: View {
 
     // MARK: - Developer Tools (engineering)
 
-    /// Engineering-tier Developer Tools. Only "Email Audiobook Logs" remains here;
-    /// the patron-facing "Send Error Logs" moved to the always-visible Advanced
-    /// screen (PP-4788). Preserves the original DEVELOPER TOOLS section so the
-    /// audiobook-logs export isn't lost in the migration.
+    /// Engineering-tier Developer Tools ("Email Audiobook Logs"); the patron-facing
+    /// "Send Error Logs" is on the Advanced screen (PP-4788).
     @ViewBuilder private var developerToolsSection: some View {
         Section(header: Text("Developer Tools")) {
             DevDisclosureValueRow(title: "Email Audiobook Logs", value: "") {
@@ -174,8 +162,7 @@ struct DeveloperSettingsView: View {
     @ViewBuilder private var pushNotificationTestingSection: some View {
         Section(header: Text("Push Notification Testing")) {
             DevMonospaceValueRow(title: "FCM Token", value: viewModel.fcmToken)
-                // Tapping the FCM row copies the token (verbatim from the UIKit
-                // `.pushNotificationTesting` row-0 handler).
+                // Tapping the FCM row copies the token.
                 .contentShape(Rectangle())
                 .onTapGesture { present { viewModel.copyFCMToken(from: $0) } }
             DevSubtitleDisclosureRow(
@@ -280,8 +267,7 @@ struct DeveloperSettingsView: View {
 #if DEBUG
 /// The Mock Backend disclosure row. Observes `MockBackendService.shared` so the
 /// title/subtitle reflect the active scenario (green title when active), then
-/// pushes `MockBackendPickerView` via a NavigationLink. Verbatim rendering of
-/// `cellForMockBackend`.
+/// pushes `MockBackendPickerView` via a NavigationLink.
 private struct MockBackendRow: View {
     @ObservedObject private var service = MockBackendService.shared
 
