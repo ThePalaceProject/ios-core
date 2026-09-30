@@ -1,0 +1,228 @@
+"""End-to-end wiring test for scripts/ci-run-test-shard.sh, with Xcode stubbed.
+
+prior-art-checked: follows the scripts/tests/ pytest convention; the stubbed-PATH
+shape is the one test_find_test_polluter_end_to_end.py uses.
+
+The planner's own tests prove the plan partitions the classes. This proves the
+shell that CONSUMES the plan: that it hands each class to the right pass, keeps
+the retry scoping, fails the shard when a pass fails, and fails it when a class
+it was given does not appear in the result bundle — plus the clean path, where
+it must pass. `xcodebuild` and `xcrun` are replaced by stubs that record their
+arguments and fabricate a result bundle holding exactly the classes they were
+asked to run (optionally minus one), so every branch runs without a simulator.
+"""
+from __future__ import annotations
+
+import json
+import os
+import stat
+import subprocess
+import textwrap
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[2]
+RUNNER = REPO / "scripts" / "ci-run-test-shard.sh"
+
+XCODEBUILD = textwrap.dedent("""\
+    #!/bin/bash
+    # Records its arguments, then writes a fake bundle: one line per test case,
+    # "Bundle|Class|method|result|message". A class-level -only-testing id runs
+    # one case "t"; a method-level id (the second chance) runs that method.
+    echo "$*" >> "$STUB_LOG"
+    bundle=""; prev=""; ids=()
+    for a in "$@"; do
+      [ "$prev" = "-resultBundlePath" ] && bundle="$a"
+      case "$a" in -only-testing:*) ids+=("${a#-only-testing:}");; esac
+      prev="$a"
+    done
+    mkdir -p "$bundle"; : > "$bundle/cases"
+    failed=0
+    for id in "${ids[@]}"; do
+      [ "$id" = "${STUB_DROP:-}" ] && continue
+      IFS=/ read -r b c m <<< "$id"
+      rerun=0; [ -n "$m" ] && rerun=1; m="${m:-t}"
+      result="Passed"; msg=""
+      if [ "$b/$c" = "${STUB_KILL:-}" ] && { [ $rerun -eq 0 ] || [ -n "${STUB_KILL_AGAIN:-}" ]; }; then
+        result="Failed"; msg="Test exceeded execution time allowance of 2 minutes"
+      fi
+      if [ "$b/$c" = "${STUB_FAIL:-}" ]; then result="Failed"; msg="XCTAssertEqual failed"; fi
+      [ "$result" = "Failed" ] && failed=1
+      echo "$b|$c|$m|$result|$msg" >> "$bundle/cases"
+    done
+    [ $failed -eq 1 ] && exit 65
+    exit "${STUB_XCB_EXIT:-0}"
+    """)
+
+XCRUN = textwrap.dedent("""\
+    #!/bin/bash
+    if [ "$1" = "simctl" ]; then
+      echo "    iPhone 16 Pro (11111111-2222-3333-4444-555555555555) (Shutdown)"; exit 0
+    fi
+    if [ "$1 $2" = "xcresulttool merge" ]; then
+      out="$4"; shift 4; mkdir -p "$out"
+      for b in "$@"; do cat "$b/cases" >> "$out/cases"; done; exit 0
+    fi
+    if [ "$1 $2 $3 $4" = "xcresulttool get test-results tests" ]; then
+      python3 - "$6/cases" <<'PY'
+    import json, sys
+    bundles = {}
+    for line in open(sys.argv[1]).read().splitlines():
+        b, c, m, result, msg = line.split("|")
+        case = {"nodeType": "Test Case", "name": f"{m}()", "nodeIdentifier": f"{c}/{m}()",
+                "result": result, "children": [{"nodeType": "Failure Message", "name": msg}] if msg else []}
+        suites = bundles.setdefault(b, {})
+        suites.setdefault(c, {"nodeType": "Test Suite", "name": c, "children": []})["children"].append(case)
+    print(json.dumps({"testNodes": [{"nodeType": "Unit test bundle", "name": b,
+                                     "children": list(s.values())} for b, s in bundles.items()]}))
+    PY
+      exit 0
+    fi
+    echo "unexpected xcrun $*" >&2; exit 2
+    """)
+
+
+def _exe(path: Path, body: str) -> None:
+    path.write_text(body)
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
+
+
+@pytest.fixture
+def env(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _exe(bin_dir / "xcodebuild", XCODEBUILD)
+    _exe(bin_dir / "xcrun", XCRUN)
+    plan = {
+        "shards": 2,
+        "classes": {"PalaceTests/A": 0, "PalaceTests/Iso": 0, "TenPrintCoverTests/T": 0,
+                    "PalaceTests/B": 1},
+        "isolated": ["PalaceTests/Iso"],
+        "extras": {"streaming-on": 1, "packages": 1},
+        "estimated_seconds": [1, 1], "hashed": [],
+    }
+    (tmp_path / "plan.json").write_text(json.dumps(plan))
+    e = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}",
+         "STUB_LOG": str(tmp_path / "xcodebuild.log"), "SHARD_BUDGET_SECONDS": "120"}
+    return tmp_path, e
+
+
+def _run(tmp_path, env, shard=0, **extra):
+    return subprocess.run(["bash", str(RUNNER), "Fake.xctestrun", str(tmp_path / "plan.json"),
+                           str(shard), str(tmp_path / "out")],
+                          capture_output=True, text=True, env={**env, **extra}, timeout=60)
+
+
+def test_clean_shard_passes_and_reports_every_assigned_class(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e)
+    assert r.returncode == 0, r.stdout + r.stderr
+    report = json.loads((tmp_path / "out/shard-report.json").read_text())
+    assert report["executed"] == ["PalaceTests/A", "PalaceTests/Iso", "TenPrintCoverTests/T"]
+    assert report["missing"] == [] and report["foreign"] == []
+
+
+def test_isolated_classes_go_to_a_serial_pass_and_the_rest_to_the_parallel_one(env):
+    tmp_path, e = env
+    _run(tmp_path, e)
+    calls = (tmp_path / "xcodebuild.log").read_text().splitlines()
+    assert len(calls) == 2
+    parallel, serial = calls
+    assert "-parallel-testing-enabled YES" in parallel
+    assert "-maximum-parallel-testing-workers 2" in parallel, "2 clones per shard, not 4"
+    assert "-only-testing:PalaceTests/A" in parallel and "-only-testing:TenPrintCoverTests/T" in parallel
+    assert "Iso" not in parallel
+    assert "-parallel-testing-enabled NO" in serial
+    assert serial.count("-only-testing:") == 1 and "-only-testing:PalaceTests/Iso" in serial
+
+
+def test_both_passes_keep_retry_scoping_and_timeouts(env):
+    tmp_path, e = env
+    _run(tmp_path, e)
+    for call in (tmp_path / "xcodebuild.log").read_text().splitlines():
+        assert call.startswith("test-without-building -xctestrun Fake.xctestrun")
+        assert "-retry-tests-on-failure -test-iterations 3" in call
+        assert "-test-repetition-relaunch-enabled" not in call
+        assert "-test-timeouts-enabled YES" in call
+        assert "-collect-test-diagnostics on-failure" in call
+
+
+def test_a_shard_with_no_isolated_classes_runs_one_pass(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, shard=1)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len((tmp_path / "xcodebuild.log").read_text().splitlines()) == 1
+
+
+def test_a_class_missing_from_the_bundle_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_DROP="TenPrintCoverTests/T")
+    assert r.returncode == 1
+    assert "TenPrintCoverTests/T" in r.stdout
+    report = json.loads((tmp_path / "out/shard-report.json").read_text())
+    assert report["missing"] == ["TenPrintCoverTests/T"]
+
+
+def test_a_failing_xcodebuild_fails_the_shard_but_still_writes_the_report(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_XCB_EXIT="65")
+    assert r.returncode == 1
+    assert "parallel=65" in r.stdout
+    assert (tmp_path / "out/shard-report.json").exists()
+
+
+def test_single_pass_iteration_mode_omits_the_retry_flags(env):
+    """xcodebuild rejects `-test-iterations 1`; CI_TEST_ITERATIONS=1 must drop both."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, CI_TEST_ITERATIONS="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    for call in (tmp_path / "xcodebuild.log").read_text().splitlines():
+        assert "-retry-tests-on-failure" not in call and "-test-iterations" not in call
+
+
+# --------------------------------------------------------------------------
+# The second chance for allowance kills
+# --------------------------------------------------------------------------
+
+def test_a_kill_that_passes_alone_passes_the_shard_and_says_so(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A")
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = (tmp_path / "xcodebuild.log").read_text().splitlines()
+    rerun = calls[-1]
+    assert rerun.count("-only-testing:") == 1 and "-only-testing:PalaceTests/A/t" in rerun
+    assert "-retry-tests-on-failure" not in rerun, "the second chance runs once"
+    assert "-parallel-testing-enabled NO" in rerun
+    assert "::warning title=Second chance for allowance kills::" in r.stdout
+    assert "passed on the second chance" in r.stdout
+
+
+def test_a_kill_that_repeats_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_KILL_AGAIN="1")
+    assert r.returncode == 1
+    assert "Allowance kill repeated" in r.stdout
+
+
+def test_no_second_chance_when_any_failure_is_not_a_kill(env):
+    """An assertion failure must never be re-run into a pass, and its presence
+    withholds the second chance from the kills beside it too."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_FAIL="TenPrintCoverTests/T")
+    assert r.returncode == 1
+    assert "no second chance" in r.stdout
+    assert len((tmp_path / "xcodebuild.log").read_text().splitlines()) == 2
+
+
+def test_an_ordinary_failure_fails_the_shard_without_a_rerun(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_FAIL="PalaceTests/A")
+    assert r.returncode == 1
+    assert len((tmp_path / "xcodebuild.log").read_text().splitlines()) == 2
+
+
+def test_the_shard_prints_its_memory_summary(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e)
+    assert "Shard 0 runner memory over" in r.stdout
