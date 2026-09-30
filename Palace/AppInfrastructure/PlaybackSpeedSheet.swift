@@ -68,8 +68,10 @@ struct PlaybackSpeedSheet: View {
             // Text is an accessibility element of its own: the header trait
             // A11Y.SWIFTUI.HEADING_STRUCTURE asks for here would never reach
             // VoiceOver. The one element reads "Playback speed: 1.5x".
+            // accesslint:disable A11Y.SWIFTUI.HEADING_STRUCTURE
             Text(Strings.Generic.playbackSpeed)
                 .font(.headline)
+            // accesslint:enable A11Y.SWIFTUI.HEADING_STRUCTURE
             Spacer()
             Text(speedLabel)
                 .font(.system(.title2, design: .rounded, weight: .semibold))

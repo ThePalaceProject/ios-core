@@ -159,6 +159,11 @@ public final class StreamingReaderViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        // `StreamingReaderView` hosts this VC as the root of its own
+        // `UINavigationController`, and that bar carries no other item, so this
+        // title is the only thing naming the screen — in the bar and in
+        // VoiceOver's screen-change announcement.
+        title = viewModel.book.title
         installSubviews()
         bindViewModel()
         webView.navigationDelegate = self
