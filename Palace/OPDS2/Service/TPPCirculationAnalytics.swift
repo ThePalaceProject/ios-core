@@ -7,16 +7,8 @@ import PalaceBookModel
 /// and keeps a local queue of failed attempts to retry them
 /// at a later time.
 ///
-/// Wave 1c (god-class decomposition): relocated from Palace/Logging/ — this is
-/// a circulation-domain network client, not logging (its Logging placement was
-/// the whole Logging↔Network folder cycle #3).
-///
-/// De-objc'd in Wave 1c (standing goal): the `@objcMembers`/`NSObject` shell was
-/// vestigial — every caller is Swift (`BookDetailViewModel`, `CirculationAnalyticsTests`),
-/// there are zero .m/.h/.mm callers, no `#selector`/KVO/bridging-header usage, and
-/// both members (`postEvent`, `addToOfflineAnalyticsQueue`) are plain-Swift static
-/// funcs. The existential-param seam args on `addToOfflineAnalyticsQueue` are now
-/// first-class (no `@objcMembers`-skips-non-representable-member reliance).
+/// A circulation-domain network client, so it lives under OPDS2 rather than
+/// Logging.
 final class TPPCirculationAnalytics {
 
     static func postEvent(_ event: String, withBook book: TPPBook) {
@@ -45,18 +37,11 @@ final class TPPCirculationAnalytics {
                 Log.debug(#file, "Analytics request timed out for event \(event)")
                 return
             }
-            // DEAD-BRANCH REMOVAL (Wave 1c, behavior-preserving): the previous
-            // `handleFailure` gated the offline enqueue on
-            // `NetworkQueue.StatusCodes.contains(httpResponse.statusCode)` —
-            // but StatusCodes are NEGATIVE NSURLError codes and statusCode is a
-            // POSITIVE HTTP status, so the gate was false for every real
-            // response since inception (and on timeout `response` is nil).
-            // Observable behavior is identical without it. Re-wiring the
-            // offline path deliberately (gate on the NSError code, mirroring
-            // TPPAnnotations.swift:319, + dedup/product review) is the filed
-            // follow-up — see the Wave 1c PR's Deferred stanza. The enqueue
-            // shape below stays pinned by the request-shape contract test so
-            // that follow-up lands against a locked contract.
+            // Failures are not enqueued for offline retry. The earlier gate
+            // compared an HTTP status against negative NSURLError codes and so
+            // never enqueued. Re-wiring offline retry (gated on the NSError
+            // code, as TPPAnnotations does) is a pending follow-up; the enqueue
+            // shape below is pinned by a contract test for it.
         }
         task.resume()
     }

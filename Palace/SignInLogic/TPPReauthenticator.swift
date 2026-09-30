@@ -56,8 +56,8 @@ protocol Reauthenticator: NSObject {
     /// Test-only override for the `AppContainer` from which the
     /// `signInModalSheetPresenter` is resolved. Production reads through
     /// `AppContainer.production()`; tests set this to a container built
-    /// via Module B's `withSignInModalSheetPresenter(_:)` modifier so a
-    /// spy presenter can be injected.
+    /// via `withSignInModalSheetPresenter(_:)` so a spy presenter can be
+    /// injected.
     ///
     /// **Scope:** the override is only consulted when XCTest is the host
     /// process (`XCTestConfigurationFilePath` env var is set). In every
@@ -65,12 +65,6 @@ protocol Reauthenticator: NSObject {
     /// is structurally ignored, so the seam cannot leak into user-visible
     /// reauthentication paths even if a developer accidentally writes to
     /// it from non-test code.
-    ///
-    /// swarm_d8f11437 Module A wave 4 — closes wall-failure cs_9a267b63
-    /// (architect rev_bc20951b). Without this seam, the wiring test
-    /// `testReauth_TPPReauthenticator_authenticateIfNeeded_drivesSpyPresenterViaAppContainerSeam`
-    /// cannot drive a spy presenter through the production
-    /// `authenticateIfNeeded` path.
     ///
     /// MUST be reset to nil in test teardown to avoid bleed between tests.
     @MainActor
@@ -99,14 +93,8 @@ protocol Reauthenticator: NSObject {
         Task { @MainActor in
             Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
 
-            // swarm_18b0d071 Module A wave 3 — proof-of-pattern migration
-            // from the static `SignInModalPresenter` API to the
-            // SwiftUI-observable `SignInModalSheetPresenter` facade.
-            // swarm_d8f11437 Module A wave 4 — completes the migration
-            // for the remaining 9 call sites; the test-only
-            // `_testContainerOverride` seam is consulted ONLY when running
-            // under XCTest (not in dev/sim/TestFlight builds), so the
-            // override cannot leak into user-visible reauthentication.
+            // `_testContainerOverride` is consulted only under XCTest, so it
+            // cannot leak into user-visible reauthentication.
             let container = TPPReauthenticator.isRunningUnderXCTest
                 ? (TPPReauthenticator._testContainerOverride ?? AppContainer.production())
                 : AppContainer.production()

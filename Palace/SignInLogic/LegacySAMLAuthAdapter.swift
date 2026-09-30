@@ -3,16 +3,10 @@
 //  The Palace Project
 //
 //  Bridges TPPSignInBusinessLogic to PalaceAuth's SAMLAuthContext +
-//  SAMLWebViewPresenting protocols. The legacy bridge adapters used to live
-//  inside TPPSAMLHelper.swift, but that file moved into the PalaceAuth
-//  package (swarm_ea663ab6, impl 1) and the package can't reach
-//  TPPSignInBusinessLogic, OPDS2SamlIDP, or SignInWebSheetPresenter — those
-//  remain in the main target. So the adapters live here, in main target,
-//  and conform to the public protocols re-exported from PalaceAuth.
-//
-//  Construction site: TPPSignInBusinessLogic's designated init wires
-//  `LegacySAMLAuthContext` and `LegacySAMLWebViewPresenter` into the helper
-//  via `init(universalLinksProvider:context:presenter:)`.
+//  SAMLWebViewPresenting protocols. The adapters live in the main target
+//  because PalaceAuth cannot reach TPPSignInBusinessLogic, OPDS2SamlIDP, or
+//  SignInWebSheetPresenter. TPPSignInBusinessLogic's designated init wires
+//  them into the helper via `init(universalLinksProvider:context:presenter:)`.
 //
 
 import Foundation

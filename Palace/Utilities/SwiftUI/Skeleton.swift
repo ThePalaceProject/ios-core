@@ -1,23 +1,11 @@
 //
-//  Skeleton.swift
-//  Palace
-//
 //  Unified skeleton loading system (PP-4752).
 //
-//  A single source of truth for content-shaped loading placeholders. Every
-//  skeleton in the app is built from the primitives here, so the base color,
-//  the shimmer cadence + direction, and the corner radii are identical
-//  everywhere by construction — they all flow from the `Skeleton` tokens.
-//
-//  Design goals ("great", not "compiles"):
-//    * Scheme-adaptive — reads correct in BOTH light and dark.
-//    * A soft, wide highlight that sweeps DIAGONALLY in a continuous, smooth
-//      loop (not a hard horizontal band).
-//    * Reduce Motion → NO sweep; a calm static base.
-//    * The sweep math is a pure static seam so it is unit-testable without a
-//      SwiftUI host.
-//
-//  Deployment target is iOS 17.
+//  Every content-shaped loading placeholder is built from these primitives, so
+//  base color, shimmer cadence and direction, and corner radii all come from
+//  the `Skeleton` tokens. Scheme-adaptive; a soft diagonal sweep that is
+//  replaced by a static base under Reduce Motion. The sweep math is a pure
+//  static function so it is testable without a SwiftUI host.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

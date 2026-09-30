@@ -11,9 +11,9 @@ import PalaceUtilities
 
     fileprivate weak var lastPresentingViewController: UIViewController?
 
-    /// Composes a problem report email. Wave 1c (cycle 2): the caller snapshots
-    /// the account-derived context (see AccountsManager.problemReportContext)
-    /// — ErrorHandling no longer names AccountsManager/TPPUserAccount.
+    /// Composes a problem report email. The caller snapshots the
+    /// account-derived context (see AccountsManager.problemReportContext) so
+    /// ErrorHandling does not name AccountsManager/TPPUserAccount.
     /// `patronIdentifier`/`libraryName` are deliberately NOT defaulted so every
     /// call site migrates explicitly (a defaulted overload would let a missed
     /// site compile and silently drop the patron ID).

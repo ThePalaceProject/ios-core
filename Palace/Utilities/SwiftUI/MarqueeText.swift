@@ -2,16 +2,10 @@
 //  MarqueeText.swift
 //  Palace
 //
-//  A single line of text that marquee-scrolls horizontally when it is too wide
-//  for the space it is given, and sits still (truncating with an ellipsis) when
-//  it fits. Built for the revised audiobook mini-player (PP-4910), where the
-//  title and author must remain fully readable in a narrow bar.
-//
-//  Accessibility: the scroll is a continuous, decorative animation, so it is
-//  suppressed under Reduce Motion — the text then simply truncates. The whole
-//  view is one VoiceOver element labelled with the full (un-truncated) string,
-//  so a blind patron always hears the complete title/author regardless of the
-//  visible truncation.
+//  One line of text that marquee-scrolls when too wide for its space and
+//  sits still when it fits. Built for the audiobook mini-player (PP-4910).
+//  The scroll is suppressed under Reduce Motion (the text truncates), and the
+//  view is one VoiceOver element labelled with the full string.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -39,9 +33,9 @@ struct MarqueeText: View {
     @State private var animate = false
 
     /// Pure gate: scroll only when the text STRICTLY overflows a measured
-    /// container AND Reduce Motion is off. Factored out so the decision — the
-    /// mutation-testable heart of the marquee — is assertable without a SwiftUI
-    /// host. A `0` container width means "not yet laid out": never scroll.
+    /// container AND Reduce Motion is off. Factored out so it is testable
+    /// without a SwiftUI host. A `0` container width means "not yet laid out":
+    /// never scroll.
     nonisolated static func shouldScroll(textWidth: CGFloat, containerWidth: CGFloat, reduceMotion: Bool) -> Bool {
         guard !reduceMotion else { return false }
         guard containerWidth > 0 else { return false }

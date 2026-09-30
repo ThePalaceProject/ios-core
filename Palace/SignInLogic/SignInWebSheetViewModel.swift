@@ -2,17 +2,11 @@
 //  SignInWebSheetViewModel.swift
 //  The Palace Project
 //
-//  Replaces TPPCookiesWebViewModel + the WKNavigationDelegate logic that
-//  used to live inside TPPCookiesWebViewController. Splits the navigation
-//  policy into pure decision functions so the SAML/SSO modal can be tested
-//  without standing up a real WKWebView.
-//
-//  The view (SignInWebSheet) and its UIViewRepresentable forward navigation
-//  events here; the model decides allow/cancel and dispatches one terminal
-//  callback (loginCompletion, bookFound, problem, or cancel). After any
-//  terminal event fires, subsequent late-arriving events are dropped — this
-//  matches the implicit semantics of the legacy controller (which relied on
-//  programmatic dismissal short-circuiting the delegate chain).
+//  Navigation policy for the SAML/SSO sign-in sheet, as pure decision
+//  functions testable without a WKWebView. The view forwards navigation
+//  events here; the model decides allow/cancel and fires exactly one
+//  terminal callback (loginCompletion, bookFound, problem, or cancel).
+//  Events arriving after a terminal event are dropped.
 //
 
 import Foundation
