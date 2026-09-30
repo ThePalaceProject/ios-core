@@ -3,11 +3,8 @@
 check-opaque-blob-egress.py — flag a whole opaque payload being interpolated
 into something that leaves the device.
 
-No existing detector in `scripts/` covers data egress. The nearest by name are
-`check-pre-ga-crash-triage.py` (triages crash signatures before GA),
-`check-foreign-host-401-scoping.py` (auth dispatch scoping) and
-`check-discipline-nudge.py` (commit advisories); none reads what is being SENT.
-This is a new predicate.
+No other detector in `scripts/` covers data egress; none reads what is being
+SENT. This is a new predicate.
 
 ## The defect this catches
 

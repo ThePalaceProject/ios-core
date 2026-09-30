@@ -30,7 +30,7 @@ Before this phase, wall-failure entries proposed permanent fixes — but the fix
 
 The pattern recurs across the catalog. Examples:
 
-- `2026-05-28-cs847892e8-arch1.md` (fake-wiring-test in `AudiobookSessionManager`) — proposed CLAUDE.md DoD check #7 + skill greps. Same class recurred 1 day later (`2026-05-28-cs9a267b63-arch1.md`, fake-wiring-test in `TPPReauthenticator`). The recurrence was caught only after `scripts/check-test-name-vs-body.py` landed as a runnable detector wired into the Phase 4.5 skeptic-pass.
+- `2026-05-28-cs847892e8-arch1.md` (fake-wiring-test in `AudiobookSessionManager`) — proposed CLAUDE.md DoD check #7 + skill greps. Same class recurred 1 day later (`2026-05-28-cs9a267b63-arch1.md`, fake-wiring-test in `TPPReauthenticator`). The recurrence was caught in review, and a name-vs-body detector was then wired into the Phase 4.5 skeptic-pass (retired 2026-09-30: it never flagged an instance after landing).
 - `2026-06-03-cs_e0f586cc-modC-get-routing.md` (PP-4161 — Module C unit tests pinned destination state without proving production path) — required two layered escalations to catch. The structural fix was check 6.5 in `swarm/SKILL.md` Phase 4.5, not a docs change.
 
 Phase 3.5 normalizes this: every wall-failure that *can* be codified MUST be codified. The wall is the detector, not the postmortem.
@@ -67,12 +67,15 @@ This swarm produced the first detector cohort under Phase 3.5. Each is a runnabl
 
 | ID | Detector | Catches | Source wall-failure |
 |---|---|---|---|
-| B | `scripts/check-foreign-host-401-scoping.py` | 401-as-credentials-stale dispatch from non-account hosts | `2026-06-05-pr1018-icarus-cross-host-logout.md` (PR #1044) |
 | D1 | `scripts/check-lcp-acquisition-recursive.py` | `defaultAcquisition.type ==` predicates that don't recurse through indirect chains | PP-4407 audit |
 | D2 | `scripts/check-swiftui-placeholder-a11y.py` | SwiftUI text fields with placeholder strings but no `a11yLabel` / `accessibilityLabel` | PP-4408 audit |
-| D3 | `scripts/check-completion-nil-error-suppression.py` | `completion?(nil, "msg", "..")` failure-passthrough that drops the error | PP-4419 audit |
-| D4 | `scripts/check-nserror-problemdoc-preservation.py` | `NSError(domain: TPPErrorLogger...)` constructions that discard server problem-doc fields | PP-4400 audit |
-| D5 | `scripts/check-notification-observer-storage.py` | `addObserver` calls whose returned token isn't stored — leaks on dealloc | TPPAppDelegate scan |
+
+Four more from the cohort (B foreign-host 401 scoping, D3 completion-nil-error
+suppression, D4 NSError problem-doc preservation, D5 NotificationCenter observer
+storage) were retired on 2026-09-30. None found a live instance when it landed
+or flagged one afterwards; the two above each found live instances in the tree.
+The wall-failure entries under `.forgeos/wall-failures/` still describe the
+classes.
 
 Each detector ships with:
 
@@ -108,5 +111,4 @@ Borderline cases default to *class* — a false-positive detector that flags one
 - `.forgeos/wall-failures/README.md` — "Detector requirement" subsection
 - `.forgeos/wall-failures/TEMPLATE.md` — `## Detector script` body section
 - `.forgeos/wall-failures/derived-improvements.md` — cluster-fix tracking
-- `docs/architecture/superpartner-spectrum.md` — adjacent pattern (warn-only test-pairing floor)
 - `docs/architecture/critical-path-review-policy.md` — adjacent pattern (push-gate)

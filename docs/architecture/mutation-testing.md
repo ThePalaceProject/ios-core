@@ -454,5 +454,4 @@ tool affordable enough to actually run.
 ## Related docs
 
 - [`critical-path-mutation-coverage.md`](./critical-path-mutation-coverage.md) — which critical-path files are mutation-gated vs contract-snapshot-covered, and the exemption rationale.
-- [`superpartner-spectrum.md`](./superpartner-spectrum.md) — the "is there a test at all?" floor; mutation testing is the "does the test catch bugs?" proof above it.
 - `CLAUDE.md` → "Mutation testing", "TDD & Test Quality", "Definition of Done" check #5 — the policy that consumes this tooling.

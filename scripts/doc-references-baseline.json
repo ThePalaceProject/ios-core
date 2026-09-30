@@ -378,11 +378,6 @@
     },
     {
       "doc": "docs/architecture/phase-3.5-class-scan.md",
-      "kind": "script",
-      "target": "scripts/check-notification-observer-storage.py"
-    },
-    {
-      "doc": "docs/architecture/phase-3.5-class-scan.md",
       "kind": "workflow",
       "target": ".simdrive/replays/chaos/lock-screen-engage.yaml"
     },
