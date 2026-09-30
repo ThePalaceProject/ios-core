@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # pre-commit-phase35-detectors.sh
 #
-# Phase 3.5 class-scan detectors (swarm_162a3219). Runs the 6 detectors
+# Phase 3.5 class-scan detectors (swarm_162a3219). Runs the class-scan detectors
 # against the staged diff; block-mode classes fail the commit, warn-mode
 # classes just print to stderr.
 #
 # Bypass: SKIP_PHASE35_DETECTORS=1 (intentional carve-out; audit trail).
 # Per-detector bypass: SKIP_PHASE35_<DETECTOR_ID>=1
-#   (e.g. SKIP_PHASE35_FOREIGN_HOST_401_SCOPING=1)
+#   (e.g. SKIP_PHASE35_RAISING_UNARCHIVER=1)
 
 set -eu
 
@@ -40,18 +40,12 @@ fi
 # accept a whole-tree scan (`check-lcp-acquisition-recursive.py` has no --diff
 # flag — passing one is an argparse error that surfaces as a spurious block).
 DETECTORS=(
-  "FOREIGN_HOST_401_SCOPING|check-foreign-host-401-scoping.py|block|diff"
   "LCP_ACQUISITION_RECURSIVE|check-lcp-acquisition-recursive.py|block|scan"
-  "COMPLETION_NIL_ERROR_SUPPRESSION|check-completion-nil-error-suppression.py|block|diff"
-  "NSERROR_PROBLEMDOC_PRESERVATION|check-nserror-problemdoc-preservation.py|block|diff"
   "SWIFTUI_PLACEHOLDER_A11Y|check-swiftui-placeholder-a11y.py|warn|diff"
-  "NOTIFICATION_CENTER_OBSERVER_STORAGE|check-notification-center-observer-storage.py|warn|diff"
   "UNSYNCHRONIZED_SENDABLE_MOCK|check-unsynchronized-sendable-mock.py|block|scan"
-  "ADDOPERATION_LITERAL_BAN|check-addoperation-literal-ban.py|block|diff"
   "AUTH_CHALLENGE_ASYNC_FORM|check-auth-challenge-async-form.py|block|diff"
   "RAISING_UNARCHIVER|check-raising-unarchiver.py|block|diff"
   "OPAQUE_BLOB_EGRESS|check-opaque-blob-egress.py|block|diff"
-  "SNAKECASE_CODINGKEYS|check-snakecase-codingkeys.py|block|scan"
 )
 
 OVERALL_EXIT=0

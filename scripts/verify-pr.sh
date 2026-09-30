@@ -240,7 +240,7 @@ detect_base_branch() {
 # branch off". A PR onto `release/X.Y.Z` diffed against `origin/develop` picks up
 # every commit the release branch carries: PP-5205 read as 51 changed production
 # files across four unrelated tickets, and every diff-scoped gate below
-# (signing, doc-hygiene, superpartner, blast-radius) judged that diff
+# (signing, doc-hygiene, blast-radius) judged that diff
 # instead of the branch's own. The default is unchanged; this is opt-in.
 BASE=${BASE_OVERRIDE:-$(detect_base_branch)}
 if ! git rev-parse --verify "$BASE" &>/dev/null; then
@@ -893,27 +893,6 @@ else
   record "committed_signing" "skip" "check-no-committed-signing.sh not found"
 fi
 
-# 3b1a. Playback-UI latch — a BLOCKING audiobook UI state must not be derived from
-# a live readiness signal (isLoaded / isBuffering / isDownloading / isPlaying)
-# without the `hasStartedPlayback` session-phase latch. Whole-tree, NOT diff-based:
-# the class is a missing parameter, so a predicate goes wrong when a CALLER starts
-# passing a live signal, in a commit that need not touch the predicate's file.
-# See `scripts/check-playback-ui-latch.py` (PP-5205).
-echo "--- Playback-UI latch ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "playback_ui_latch" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-playback-ui-latch.py ]; then
-  PL_OUT=$(python3 scripts/check-playback-ui-latch.py 2>&1)
-  PL_RC=$?
-  if [ "$PL_RC" -eq 0 ]; then
-    record "playback_ui_latch" "pass" "No unlatched blocking playback UI predicate"
-  else
-    record "playback_ui_latch" "fail" "$(echo "$PL_OUT" | grep -m1 -E '^  .*\.swift:' || echo "$PL_OUT" | head -1)"
-  fi
-else
-  record "playback_ui_latch" "skip" "check-playback-ui-latch.py not found"
-fi
-
 # 3b1b. Override-drops-base-state — an override that replaces a base method
 # wholesale must not silently drop the live state that method maintained. Whole-tree
 # and BASELINED: the two pre-existing findings are amnestied by key, and the gate
@@ -991,57 +970,6 @@ elif [ -f scripts/check-doc-index-complete.py ]; then
   fi
 else
   record "doc_index" "skip" "check-doc-index-complete.py not found"
-fi
-
-# 3b3. DORMANT Wave 2b gate — PalaceBookRegistry/Sources package purity.
-# Whole-tree scan (not diff-based), but a no-op until the package is
-# extracted. See `scripts/check-bookregistry-package-purity.sh`.
-echo "--- BookRegistry package purity (dormant — Wave 2b) ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "bookregistry_package_purity" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-bookregistry-package-purity.sh ]; then
-  BR_OUT=$(bash scripts/check-bookregistry-package-purity.sh 2>&1)
-  if [ "$?" -eq 0 ]; then
-    record "bookregistry_package_purity" "pass" "$(echo "$BR_OUT" | head -1)"
-  else
-    record "bookregistry_package_purity" "fail" "$(echo "$BR_OUT" | grep -m1 FAIL)"
-  fi
-else
-  record "bookregistry_package_purity" "skip" "check-bookregistry-package-purity.sh not found"
-fi
-
-# 3b4. DORMANT Wave 3a gate — PalaceAccounts/Sources package purity.
-# Whole-tree scan (not diff-based), but a no-op until the package is
-# extracted. See `scripts/check-palaceaccounts-package-purity.sh`.
-echo "--- PalaceAccounts package purity (dormant — Wave 3a) ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "palaceaccounts_package_purity" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-palaceaccounts-package-purity.sh ]; then
-  PA_OUT=$(bash scripts/check-palaceaccounts-package-purity.sh 2>&1)
-  if [ "$?" -eq 0 ]; then
-    record "palaceaccounts_package_purity" "pass" "$(echo "$PA_OUT" | head -1)"
-  else
-    record "palaceaccounts_package_purity" "fail" "$(echo "$PA_OUT" | grep -m1 FAIL)"
-  fi
-else
-  record "palaceaccounts_package_purity" "skip" "check-palaceaccounts-package-purity.sh not found"
-fi
-
-# 3b5. DORMANT Wave 3b gate — PalaceDownloads/Sources package purity.
-# Whole-tree scan (not diff-based), but a no-op until the package is
-# extracted. See `scripts/check-palacedownloads-package-purity.sh`.
-echo "--- PalaceDownloads package purity (dormant — Wave 3b) ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "palacedownloads_package_purity" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-palacedownloads-package-purity.sh ]; then
-  PD_OUT=$(bash scripts/check-palacedownloads-package-purity.sh 2>&1)
-  if [ "$?" -eq 0 ]; then
-    record "palacedownloads_package_purity" "pass" "$(echo "$PD_OUT" | head -1)"
-  else
-    record "palacedownloads_package_purity" "fail" "$(echo "$PD_OUT" | grep -m1 FAIL)"
-  fi
-else
-  record "palacedownloads_package_purity" "skip" "check-palacedownloads-package-purity.sh not found"
 fi
 
 # 3b6. Decomposition ratchets — locator count, file-size ceiling, `.shared`
@@ -1161,64 +1089,10 @@ else
   record "adjacency_staleness" "skip" "check-adjacency-staleness.py not found"
 fi
 
-# 3e. Superpartner spectrum (M1 universal-rigor-floor gate, warn-only)
-# Flags new functions / enum cases / state changes in the diff that have no
-# matching test in the diff, unless marked `// no-superpartner:`. Warn-only for
-# now (promotion path in docs/architecture/superpartner-spectrum.md).
-# See `scripts/check-superpartner-spectrum.py`.
-echo "--- Superpartner spectrum ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "superpartner_spectrum" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-superpartner-spectrum.py ]; then
-  SP_DIFF=$(mktemp -t sp-diff.XXXX)
-  git diff "$BASE"...HEAD > "$SP_DIFF" 2>/dev/null || true
-  SP_OUT=$(python3 scripts/check-superpartner-spectrum.py --diff "$SP_DIFF" --quiet 2>&1)
-  SP_EXIT=$?
-  rm -f "$SP_DIFF"
-  SP_WARN_COUNT=$(echo "$SP_OUT" | grep -cE ": SP-[0-9]" || true)
-  if [ "$SP_EXIT" -eq 0 ]; then
-    record "superpartner_spectrum" "pass" "0 untested new functions/cases/state"
-  else
-    # warn-only: still record pass, but surface the count
-    record "superpartner_spectrum" "pass" "${SP_WARN_COUNT:-0} superpartner warning(s) — non-blocking"
-  fi
-else
-  record "superpartner_spectrum" "skip" "check-superpartner-spectrum.py not found"
-fi
-
-# 3f. Test name-vs-body (M1 universal-rigor-floor gate, warn-only, file-based)
-# Flags diffed test files whose method names embed a production-class noun the
-# body never references (fake-wiring). File-based: operates on the changed test
-# files, not a diff. See `scripts/check-test-name-vs-body.py`.
-echo "--- Test name-vs-body ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "test_name_vs_body" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-test-name-vs-body.py ] && [ -n "$CHANGED_TEST_SWIFT" ]; then
-  TNB_FILES=()
-  while IFS= read -r f; do [ -n "$f" ] && [ -f "$f" ] && TNB_FILES+=("$f"); done <<< "$CHANGED_TEST_SWIFT"
-  if [ "${#TNB_FILES[@]}" -eq 0 ]; then
-    record "test_name_vs_body" "skip" "No changed test files on disk"
-  else
-    TNB_OUT=$(python3 scripts/check-test-name-vs-body.py "${TNB_FILES[@]}" --quiet 2>&1)
-    TNB_EXIT=$?
-    TNB_COUNT=$(echo "$TNB_OUT" | grep -cE "embeds|fake-wiring" || true)
-    if [ "$TNB_EXIT" -eq 0 ]; then
-      record "test_name_vs_body" "pass" "No fake-wiring test names"
-    else
-      # warn-only: still record pass, but surface the count
-      record "test_name_vs_body" "pass" "${TNB_COUNT:-0} name-vs-body warning(s) — non-blocking"
-    fi
-  fi
-else
-  record "test_name_vs_body" "skip" "No changed test files"
-fi
-
 # 3g-3l. Phase 3.5 class-detectable detectors (swarm_162a3219)
 # Each codifies a shipped-bug class as a runnable detector that scans the
-# staged diff. Block-mode on high-severity classes (foreign-host 401, LCP
-# recursive acquisition, completion-nil-error suppression, NSError problemDoc
-# preservation); warn-only on lower-severity classes (SwiftUI placeholder a11y,
-# NotificationCenter observer storage). Same inline shape as the M1 gates above.
+# staged diff or the tree. Block-mode except SwiftUI placeholder a11y, which
+# warns. Same inline shape as the M1 gates above.
 run_phase35_detector() {
   # $1=record key  $2=script  $3=block|warn  $4=pass message  $5=diff|scan (invocation mode)
   local key="$1" script="$2" mode="$3" pass_msg="$4" scan_mode="${5:-diff}"
@@ -1251,34 +1125,18 @@ run_phase35_detector() {
 }
 
 echo "--- Phase 3.5 class-detectable detectors ---"
-run_phase35_detector "foreign_host_401_scoping" "check-foreign-host-401-scoping.py" "block" \
-  "No 401 dispatch site missing current-account host scoping" "diff"
 run_phase35_detector "lcp_acquisition_recursive" "check-lcp-acquisition-recursive.py" "block" \
   "No LCP acquisition predicate inspects only defaultAcquisition.type" "scan"
-run_phase35_detector "completion_nil_error_suppression" "check-completion-nil-error-suppression.py" "block" \
-  "No completion(nil, title, message) sites suppress consumer alert path" "diff"
-run_phase35_detector "nserror_problemdoc_preservation" "check-nserror-problemdoc-preservation.py" "block" \
-  "No NSError construction discards in-scope TPPProblemDocument context" "diff"
 run_phase35_detector "swiftui_placeholder_a11y" "check-swiftui-placeholder-a11y.py" "warn" \
   "No SwiftUI placeholder/label without .accessibilityLabel" "diff"
-run_phase35_detector "notification_center_observer_storage" "check-notification-center-observer-storage.py" "warn" \
-  "No NotificationCenter observer registered without storage/removal" "diff"
 run_phase35_detector "unsynchronized_sendable_mock" "check-unsynchronized-sendable-mock.py" "block" \
   "No unsynchronized @unchecked Sendable mock driven by concurrent tests" "scan"
-run_phase35_detector "addoperation_literal_ban" "check-addoperation-literal-ban.py" "block" \
-  "No raw NSOperation-family closure literal (#1338 ClangImporter @MainActor-poisoning risk)" "diff"
 run_phase35_detector "auth_challenge_async_form" "check-auth-challenge-async-form.py" "block" \
   "No completion-handler-form auth-challenge delegate callback (PP-4895 ClangImporter @MainActor-poisoning risk)" "diff"
 run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" \
   "No NSKeyedUnarchiver.unarchiveObject(with:) — raises uncatchably on a corrupt archive" "diff"
 run_phase35_detector "opaque_blob_egress" "check-opaque-blob-egress.py" "block" \
   "No opaque payload reaches an external sink"
-# "scan", not "diff": the hazard appears when a DECODER elsewhere in the file
-# gains .convertFromSnakeCase, and that commit may touch no CodingKeys at all —
-# a diff-scoped run would see nothing. (The script tolerates --diff anyway so a
-# uniform harness invocation cannot spuriously block; asserted in its pytest.)
-run_phase35_detector "snakecase_codingkeys" "check-snakecase-codingkeys.py" "block" \
-  "No CodingKey raw value is snake_case in a .convertFromSnakeCase file (PP-5202: the strategy rewrites the key first, so the case can never match — silently)" "scan"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"

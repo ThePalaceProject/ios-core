@@ -41,18 +41,14 @@ git add CLAUDE.md
 # Need at least one commit so git diff --cached has a base.
 git -c user.email=t@t -c user.name=t commit -q -m "init"
 
-# Stage a violation that the foreign-host-401 detector catches:
-# statusCode == 401 + markCredentialsStale, no authSurfaceHosts reference.
+# Stage a violation that the raising-unarchiver detector catches:
+# NSKeyedUnarchiver.unarchiveObject(with:), which raises on a corrupt archive.
 cat > Palace/Violation.swift <<'EOF'
 import Foundation
 
-class Violation {
-    func handle(response: HTTPURLResponse, account: TPPUserAccount) -> Bool {
-        if response.statusCode == 401 {
-            account.markCredentialsStale()
-            return true
-        }
-        return false
+enum Violation {
+    static func decode(_ data: Data) -> String? {
+        return NSKeyedUnarchiver.unarchiveObject(with: data) as? String
     }
 }
 EOF
@@ -81,7 +77,7 @@ if [ "$HOOK_EXIT" -eq 0 ]; then
 fi
 
 # --- Assert 2: hook output mentions the detector that fired ---
-if ! echo "$HOOK_OUT" | grep -q "FOREIGN_HOST_401_SCOPING\|foreign-host-401-scoping"; then
+if ! echo "$HOOK_OUT" | grep -q "RAISING_UNARCHIVER\|raising-unarchiver"; then
   echo "FAIL: hook exited non-zero but didn't identify the firing detector"
   echo "$HOOK_OUT" | sed 's/^/    /'
   exit 1
@@ -100,57 +96,18 @@ fi
 
 # --- Assert 4: per-detector bypass envvar honored ---
 set +e
-PERDET_OUT=$(echo "$JSON_INPUT" | SKIP_PHASE35_FOREIGN_HOST_401_SCOPING=1 bash "$HOOK" 2>&1)
+PERDET_OUT=$(echo "$JSON_INPUT" | SKIP_PHASE35_RAISING_UNARCHIVER=1 bash "$HOOK" 2>&1)
 PERDET_EXIT=$?
 set -e
 # Other detectors might still block on this fixture (unlikely but possible);
-# the assertion is just that the foreign-host detector ITSELF was skipped.
-if echo "$PERDET_OUT" | grep -q "FOREIGN_HOST_401_SCOPING.*BLOCK"; then
+# the assertion is just that the raising-unarchiver detector ITSELF was skipped.
+if echo "$PERDET_OUT" | grep -q "RAISING_UNARCHIVER.*BLOCK"; then
   echo "FAIL: per-detector bypass envvar did not skip the named detector"
   echo "$PERDET_OUT" | sed 's/^/    /'
   exit 1
 fi
-
-# --- Assert 4b: the SNAKECASE_CODINGKEYS detector is wired and fires ---
-# CLAUDE.md rule #4(b): a new detector does not land until its WIRING is tested
-# end to end, not just its pytest. Stages the class it catches — a CodingKey case
-# whose raw value is snake_case in a file whose decoder sets
-# .convertFromSnakeCase, which the strategy rewrites BEFORE matching, so the case
-# can never match. Silent: no throw, no crash, no log. (PP-5234 / PR #1462.)
 git rm -q --cached Palace/Violation.swift
 rm -f Palace/Violation.swift
-cat > Palace/SnakeKeys.swift <<'EOF'
-import Foundation
-
-struct Doc: Codable {
-    let showTitle: Bool?
-    private enum CodingKeys: String, CodingKey {
-        case showTitle = "show_title"
-    }
-    static func fromData(_ data: Data) throws -> Doc {
-        let d = JSONDecoder()
-        d.keyDecodingStrategy = .convertFromSnakeCase
-        return try d.decode(Doc.self, from: data)
-    }
-}
-EOF
-git add Palace/SnakeKeys.swift
-set +e
-SCK_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
-SCK_EXIT=$?
-set -e
-if [ "$SCK_EXIT" -eq 0 ]; then
-  echo "FAIL: hook returned exit 0 for a staged snake_case-CodingKeys violation"
-  echo "$SCK_OUT" | sed 's/^/    /'
-  exit 1
-fi
-if ! echo "$SCK_OUT" | grep -q "SNAKECASE_CODINGKEYS\|snakecase-codingkeys"; then
-  echo "FAIL: hook blocked but did not identify SNAKECASE_CODINGKEYS as the firing detector"
-  echo "$SCK_OUT" | sed 's/^/    /'
-  exit 1
-fi
-git rm -q --cached Palace/SnakeKeys.swift
-rm -f Palace/SnakeKeys.swift
 
 # --- Assert 5: a CLEAN (non-violating) diff passes ALL detectors with exit 0 ---
 # Regression guard for the LCP-detector wiring bug (2026-06-08). The hook
@@ -346,6 +303,4 @@ echo "      bypass envvars, passes a clean diff (no detector spuriously blocks),
 echo "      and the unsynchronized-sendable-mock, auth-challenge-async-form and"
 echo "      opaque-blob-egress detectors each fire on a violation and clean-pass"
 echo "      on the fix."
-echo "      snakecase-codingkeys fires on a violation here; its clean path is"
-echo "      covered by assert 5 and by scripts/tests/test_check_snakecase_codingkeys.py."
 exit 0

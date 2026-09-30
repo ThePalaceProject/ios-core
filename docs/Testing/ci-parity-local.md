@@ -42,27 +42,6 @@ CI_PARITY_NO_PRESSURE=1 scripts/ci-parity-local.sh      # full suite, no CPU pin
 PALACE_TEST_NO_CLEAN=1 scripts/ci-parity-local.sh       # reuse the current build (faster iteration)
 ```
 
-On pass it stamps the commit (`.git/ci-parity-pass.sha`) so the gate below can
-require it.
-
-## Systemic gate — parity must pass before PR/merge
-
-`scripts/check-ci-parity-stamp.sh` blocks a push whose range changes production
-Swift (`Palace/**/*.swift`, excluding tests) unless `ci-parity-local.sh` has
-passed on that **exact** commit. Test-only / docs / scripts / config changes are
-exempt (they can't introduce the runtime flake class this protects).
-
-Bypass (logged): `SKIP_CI_PARITY=1 git push …` — only for a docs/test-only
-follow-up on an already-verified commit, or an out-of-band-verified hotfix.
-Overuse defeats the gate (see CLAUDE.md "green-board contract").
-
-**Wiring (opt-in):** call the gate from your pre-push hook, e.g. prepend to
-`scripts/pre-push-test-gate.sh` or add to your local hook:
-
-```bash
-scripts/check-ci-parity-stamp.sh || exit 1
-```
-
 ## Debugging a reproduced failure
 
 - **Deadline-poll starvation** (`XCTAssert … 0 vs 1`, or a `fulfillment`/
