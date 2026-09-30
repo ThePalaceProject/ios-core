@@ -1,0 +1,407 @@
+//
+//  CriticalScreensVoiceOverAuditTests.swift
+//  PalaceTests
+//
+//  Runtime VoiceOver audit of the four critical screens: a catalog lane, book
+//  detail, the EPUB reader chrome, and the audiobook player (full and mini).
+//
+//  Each test mounts the real screen in a real window against fixture books
+//  and spy services, walks the accessibility tree the way VoiceOver does
+//  (`AccessibilityTraversalAudit`), and asserts three things:
+//
+//    1. reachability — every control the screen is expected to offer appears
+//       in the traversal as an actionable element;
+//    2. labels — every actionable element has a non-empty label and a
+//       focusable frame;
+//    3. activation — a VoiceOver double-tap on each one reaches its handler,
+//       proven by a witness (a spy counter, a navigation pop, a presented
+//       sheet) rather than by the activation call's return value alone.
+//
+//  Escapes this is shaped after: a double-tap that did not activate, and a
+//  narrator label that went missing. Both pass unit-level label assertions
+//  while failing a VoiceOver user.
+//
+//  Not covered here (see the report in the PR): the EPUB page content inside
+//  the WKWebView, swipe order, rotors, and anything behind sign-in.
+//
+//  Copyright © 2026 The Palace Project. All rights reserved.
+//
+
+import XCTest
+import SwiftUI
+import UIKit
+import ReadiumShared
+import PalaceAudiobookToolkit
+@testable import Palace
+import PalaceBookModel
+import PalaceUtilities
+
+@MainActor
+final class CriticalScreensVoiceOverAuditTests: XCTestCase {
+
+    private var host: AccessibilityAuditHost?
+
+    override func setUp() {
+        super.setUp()
+        NoNetworkURLProtocol.enable()
+    }
+
+    override class func tearDown() {
+        MainActor.assumeIsolated { AccessibilityRuntime.restore() }
+        super.tearDown()
+    }
+
+    override func tearDown() {
+        host?.tearDown()
+        host = nil
+        NoNetworkURLProtocol.disable()
+        super.tearDown()
+    }
+
+    // MARK: - Catalog lane
+
+    func testCatalogLane_everyControlIsReachableLabeledAndDoubleTapOpensItsOwnBook() {
+        let gatsby = TPPBookMocker.mockBook(identifier: "a11y-lane-gatsby", title: "The Great Gatsby", authors: "F. Scott Fitzgerald")
+        let audiobook = TPPBookMocker.snapshotAudiobook()
+        let untitled = TPPBookMocker.mockBook(identifier: "a11y-lane-untitled", title: "Untitled Work", authors: nil)
+        var selected: [String] = []
+        var moreTapped: [String] = []
+
+        let lane = CatalogLaneRowView(
+            title: "Staff Picks",
+            books: [gatsby, audiobook, untitled],
+            moreURL: URL(string: "https://example.com/lanes/staff-picks"),
+            onSelect: { selected.append($0.identifier) },
+            onMoreTapped: { title, _ in moreTapped.append(title) }
+        )
+        let host = mount(UIHostingController(rootView: lane))
+
+        let moreLabel = String(format: Strings.Generic.moreBooksInLane, "Staff Picks")
+        let report = auditScreen(
+            "Catalog lane",
+            host: host,
+            witnesses: [
+                moreLabel: { moreTapped == ["Staff Picks"] },
+                gatsby.voiceOverLabel: { selected.last == gatsby.identifier },
+                audiobook.voiceOverLabel: { selected.last == audiobook.identifier },
+                untitled.voiceOverLabel: { selected.last == untitled.identifier }
+            ]
+        )
+
+        XCTAssertEqual(selected, [gatsby.identifier, audiobook.identifier, untitled.identifier],
+                       "each cover's double-tap must open that cover's book, once, in lane order")
+        let heading = report.element(labeled: "Staff Picks")
+        XCTAssertNotNil(heading, "the lane title must be reachable")
+        XCTAssertTrue(heading?.traits.contains(.header) ?? false,
+                      "the lane title must be a heading so the VoiceOver heading rotor can jump between lanes")
+    }
+
+    // MARK: - Book detail
+
+    func testBookDetail_everyControlIsReachableLabeledAndActivates() {
+        let (container, coordinator) = makeDetailContainer()
+        coordinator.push(.catalogLaneMore(title: "Staff Picks", url: URL(string: "https://example.com/lanes/staff-picks")!))
+        let book = TPPBookMocker.snapshotEPUB()
+
+        let root = NavigationStack { BookDetailView(book: book) }
+            .environment(\.appContainer, container)
+        let host = mount(UIHostingController(rootView: root))
+        host.settle(0.6)
+
+        let helpLabel = "Get Help — chat with our support bot"
+        auditScreen(
+            "Book detail",
+            host: host,
+            witnesses: [
+                Strings.BookDetailView.more.capitalized: {
+                    AccessibilityTraversalAudit.traverse(host.window)
+                        .contains { $0.label == Strings.BookDetailView.less.capitalized }
+                },
+                Strings.Generic.goBack: { coordinator.path.isEmpty },
+                helpLabel: { host.window.rootViewController?.presentedViewController != nil }
+            ],
+            // `BookDetailView(book:)` builds its view model from
+            // `AppContainer.production()`, whose download center uses its own
+            // URLSession: a double-tap on Borrow would start a real borrow and
+            // download. Borrow is still checked for reachability, label and
+            // frame; its activation is not fired.
+            notFired: [Strings.BookButton.borrow],
+            resetAfterActivation: { host.dismissPresented() }
+        )
+    }
+
+    // MARK: - EPUB reader chrome
+
+    func testEPUBReaderChrome_withVoiceOverChromeShown_everyControlIsReachableLabeledAndActivates() throws {
+        let hub = NavigationCoordinatorHub(tabRouterHub: nil)
+        let coordinator = NavigationCoordinator()
+        hub.register(coordinator, for: nil)
+        coordinator.push(.catalogLaneMore(title: "Staff Picks", url: URL(string: "https://example.com/lanes/staff-picks")!))
+
+        let publication = Publication(manifest: Manifest(
+            metadata: Metadata(title: "Reader Chrome Fixture", languages: ["en"]),
+            readingOrder: [Link(href: "chapter1.xhtml", mediaType: .xhtml)]
+        ))
+        let reader = try TPPEPUBViewController(
+            publication: publication,
+            book: TPPBookMocker.snapshotEPUB(),
+            initialLocation: nil,
+            navigationHub: hub
+        )
+        let nav = UINavigationController(rootViewController: reader)
+        let host = mount(nav)
+        // A sighted tap reveals the navigation bar; VoiceOver adds the
+        // previous/next chapter toolbar. `UIAccessibility.isVoiceOverRunning`
+        // cannot be set from a test, so both are driven through the same
+        // entry points the reader uses.
+        reader.toggleNavigationBar()
+        reader.updateViewsForVoiceOver(isRunning: true)
+        host.settle(0.6)
+
+        let bookmarkStrings = Strings.TPPBaseReaderViewController.self
+        auditScreen(
+            "EPUB reader chrome",
+            host: host,
+            witnesses: [
+                // Previous/next chapter drive the Readium navigator asynchronously;
+                // the witness is that the tap reached their bar button (the audit
+                // fails the activation otherwise), not a page turn.
+                bookmarkStrings.previousChapter: { true },
+                bookmarkStrings.nextChapter: { true },
+                Strings.Generic.goBack: { coordinator.path.isEmpty },
+                Strings.Generic.searchInBook: { reader.presentedViewController != nil },
+                Strings.Generic.tableOfContents: { nav.viewControllers.count == 2 },
+                Strings.TPPEPUBViewController.readerSettings: { reader.presentedViewController != nil },
+                // The fixture book is not in the registry, so saving the
+                // bookmark fails and the reader shows its "Bookmarking Error"
+                // alert. Either that alert or the flipped label proves the
+                // double-tap reached `toggleBookmark`.
+                bookmarkStrings.addBookmark: {
+                    host.settle(0.7)
+                    return nav.presentedViewController is UIAlertController
+                        || AccessibilityTraversalAudit.traverse(host.window)
+                            .contains { $0.label == bookmarkStrings.removeBookmark }
+                }
+            ],
+            resetAfterActivation: {
+                host.dismissPresented()
+                nav.popToRootViewController(animated: false)
+                host.settle(0.2)
+                // Returning from the table of contents re-hides the bar (the
+                // reader's immersive default). VoiceOver keeps it visible via
+                // `isVoiceOverRunning`, which a test cannot set, so show it the
+                // way a tap would.
+                for _ in 0..<2 where nav.isNavigationBarHidden {
+                    reader.toggleNavigationBar()
+                    host.settle(0.1)
+                }
+                reader.updateViewsForVoiceOver(isRunning: true)
+            }
+        )
+    }
+
+    // MARK: - Audiobook player
+
+    func testAudiobookFullPlayer_everyControlIsReachableLabeledAndActivates() {
+        let (presenter, session) = makeAudiobookPresenter()
+        presenter.expand()
+        let host = mount(UIHostingController(rootView: AudiobookMorphingPlayerView(
+            presenter: presenter, progress: presenter.progress, audiobookSession: session)))
+        host.settle(0.8)
+
+        let generic = Strings.Generic.self
+        auditScreen(
+            "Audiobook player (full)",
+            host: host,
+            witnesses: [
+                generic.close: { session.stopPlaybackCallCount == 1 },
+                generic.minimizePlayer: { !presenter.isPlayerExpanded },
+                generic.tableOfContents: { host.window.rootViewController?.presentedViewController != nil },
+                generic.skipBackSeconds(Self.skipInterval(AudiobookSkipIntervalSettings.backKey)): { session.skipBackCallCount == 1 },
+                generic.playAudiobook: { session.togglePlayPauseCallCount == 1 },
+                generic.skipForwardSeconds(Self.skipInterval(AudiobookSkipIntervalSettings.forwardKey)): { session.skipForwardCallCount == 1 },
+                generic.playbackSpeedValue(PlaybackRate.normalTime.displayLabel): { host.window.rootViewController?.presentedViewController != nil },
+                generic.sleepTimer: { host.window.rootViewController?.presentedViewController != nil },
+                generic.addBookmark: {
+                    AccessibilityTraversalAudit.traverse(host.window).contains { $0.label == generic.bookmarkAdded }
+                }
+            ],
+            // AirPlay is the system `AVRoutePickerView`; firing it opens the
+            // system route picker, which the test cannot dismiss. It is still
+            // checked for reachability, label and frame.
+            notFired: [generic.airplay],
+            resetAfterActivation: {
+                host.dismissPresented()
+                presenter.expand()
+            }
+        )
+    }
+
+    func testAudiobookMiniPlayer_everyControlIsReachableLabeledAndActivates() {
+        let (presenter, session) = makeAudiobookPresenter()
+        presenter.minimize()
+        let host = mount(UIHostingController(rootView: AudiobookMorphingPlayerView(
+            presenter: presenter, progress: presenter.progress, audiobookSession: session)))
+        host.settle(0.8)
+
+        let generic = Strings.Generic.self
+        let book = TPPBookMocker.snapshotAudiobook()
+        let nowPlaying = String(format: generic.nowPlayingLabelTitleAndAuthor, book.title, book.authors ?? "")
+        auditScreen(
+            "Audiobook player (mini)",
+            host: host,
+            witnesses: [
+                // Closing from the mini bar asks for confirmation first (PP-4910).
+                generic.closeAudiobookPlayer: { host.window.rootViewController?.presentedViewController is UIAlertController },
+                nowPlaying: { presenter.isPlayerExpanded },
+                generic.skipBackSeconds(Self.skipInterval(AudiobookSkipIntervalSettings.backKey)): { session.skipBackCallCount == 1 },
+                generic.playAudiobook: { session.togglePlayPauseCallCount == 1 },
+                generic.skipForwardSeconds(Self.skipInterval(AudiobookSkipIntervalSettings.forwardKey)): { session.skipForwardCallCount == 1 }
+            ],
+            resetAfterActivation: {
+                host.dismissPresented()
+                presenter.minimize()
+            }
+        )
+    }
+
+    /// The seek bar is the one way to move within a chapter. VoiceOver reaches
+    /// it and reads "Playback position" plus the elapsed value, but it carries
+    /// no `.adjustable` trait and no `accessibilityAdjustableAction`, so a
+    /// swipe up or down does nothing: `PalaceSeekSliderView` is a custom
+    /// `DragGesture` view, not a `Slider`.
+    func testAudiobookFullPlayer_seekBarIsAdjustableWithVoiceOverSwipes() {
+        let (presenter, session) = makeAudiobookPresenter()
+        presenter.expand()
+        let host = mount(UIHostingController(rootView: AudiobookMorphingPlayerView(
+            presenter: presenter, progress: presenter.progress, audiobookSession: session)))
+        host.settle(0.8)
+
+        let seekBar = AccessibilityTraversalAudit.traverse(host.window)
+            .first { $0.label == Strings.Generic.playbackPosition }
+        XCTAssertNotNil(seekBar, "the seek bar must be reachable")
+        guard let seekBar else { return }
+
+        XCTExpectFailure("Known defect on develop: the audiobook seek bar is not adjustable with VoiceOver. Remove this once it is.")
+        XCTAssertTrue(seekBar.traits.contains(.adjustable),
+                      "VoiceOver users seek by swiping up/down on an adjustable element; traits were \(seekBar.traits.rawValue)")
+        XCTAssertTrue(AccessibilityTraversalAudit.adjust(seekBar),
+                      "a VoiceOver increment/decrement must change the seek bar's value")
+    }
+
+    // MARK: - Helpers
+
+    private func mount(_ controller: UIViewController) -> AccessibilityAuditHost {
+        let host = AccessibilityAuditHost(controller)
+        self.host = host
+        return host
+    }
+
+    /// Audits one screen and fails the test for every violation, every
+    /// expected control that is not reachable, and every fired control whose
+    /// witness did not observe its effect.
+    ///
+    /// - Parameters:
+    ///   - witnesses: expected actionable labels, each with a check that its
+    ///     double-tap had the intended effect. Evaluated right after that
+    ///     element is activated.
+    ///   - notFired: expected actionable labels that are checked for
+    ///     reachability, label and frame but not activated.
+    ///   - resetAfterActivation: returns the screen to its audited state so
+    ///     the next element is still on screen.
+    @discardableResult
+    private func auditScreen(
+        _ screen: String,
+        host: AccessibilityAuditHost,
+        witnesses: [String: () -> Bool],
+        notFired: Set<String> = [],
+        resetAfterActivation: @escaping () -> Void = {},
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> AXAuditReport {
+        var observed: [String: Bool] = [:]
+        let report = AccessibilityTraversalAudit.audit(
+            screen: screen,
+            root: host.window,
+            window: host.window,
+            activate: { !notFired.contains($0.label) },
+            afterEachActivation: { element in
+                host.settle(0.3)
+                if let witness = witnesses[element.label] {
+                    observed[element.label] = witness()
+                }
+                resetAfterActivation()
+                host.settle(0.3)
+            }
+        )
+
+        if report.elements.isEmpty {
+            XCTFail("[\(screen)] the accessibility tree is empty; nothing was audited", file: file, line: line)
+        }
+        for violation in report.violations {
+            XCTFail("\(violation)\n--- accessibility tree ---\n\(report.dump)", file: file, line: line)
+        }
+
+        let reachable = Set(report.actionable.map(\.label))
+        for label in (Array(witnesses.keys) + Array(notFired)).sorted() where !reachable.contains(label) {
+            XCTFail("[\(screen)] \"\(label)\" is not reachable as an actionable VoiceOver element\n--- accessibility tree ---\n\(report.dump)",
+                    file: file, line: line)
+        }
+
+        for label in witnesses.keys.sorted() where reachable.contains(label) && observed[label] != true {
+            XCTFail("[\(screen)] double-tap on \"\(label)\" did not produce its effect", file: file, line: line)
+        }
+        return report
+    }
+
+    private func makeDetailContainer() -> (AppContainer, NavigationCoordinator) {
+        let base = makeTestAppContainer()
+        let flags = MockFeatureFlagProvider()
+        flags.isTriageBotEnabled = true
+        let hub = NavigationCoordinatorHub(tabRouterHub: nil)
+        let coordinator = NavigationCoordinator()
+        hub.register(coordinator, for: nil)
+        let container = AppContainer(
+            bookRegistry: base.bookRegistry,
+            networkExecutor: base.networkExecutor,
+            networkQueue: base.networkQueue,
+            reachability: base.reachability,
+            accountsManager: base.accountsManager,
+            settings: base.settings,
+            featureFlags: flags,
+            downloadCenter: base.downloadCenter,
+            downloadAnnouncementService: base.downloadAnnouncementService,
+            debugSettings: base.debugSettings,
+            imageCache: base.imageCache,
+            imageLoader: base.imageLoader,
+            userAccountPublisher: base.userAccountPublisher,
+            opdsFeedService: base.opdsFeedService,
+            readerService: base.readerService,
+            navigationCoordinatorHub: hub,
+            tabRouterHub: base.tabRouterHub,
+            drmAuthorizerProvider: base.drmAuthorizerProvider,
+            authCoordinator: base.authCoordinator
+        )
+        return (container, coordinator)
+    }
+
+    private func makeAudiobookPresenter() -> (AudiobookSessionPresenter, SpyShimSession) {
+        let session = SpyShimSession()
+        let presenter = AudiobookSessionPresenter(sessionManager: session)
+        presenter.adoptBook(TPPBookMocker.snapshotAudiobook())
+        return (presenter, session)
+    }
+
+    /// The player reads skip intervals from `UserDefaults.standard` through
+    /// `@AppStorage`; the expected label follows whatever is stored there.
+    private static func skipInterval(_ key: String) -> Int {
+        UserDefaults.standard.object(forKey: key) as? Int ?? AudiobookSkipIntervalSettings.defaultInterval
+    }
+}
+
+private extension AccessibilityAuditHost {
+    func dismissPresented() {
+        window.rootViewController?.presentedViewController?.dismiss(animated: false)
+        settle(0.2)
+    }
+}
