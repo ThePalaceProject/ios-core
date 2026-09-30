@@ -207,8 +207,7 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         }
     }
 
-    /// A fast operation must return its value, NOT be falsely timed out —
-    /// kills a mutant that always throws / always loses the race.
+    /// A fast operation must return its value, NOT be falsely timed out.
     func testWithTimeout_returnsResultOfFastOperation() async throws {
         let value = try await FirebaseManager.withTimeout(seconds: 5.0) { () async throws -> Int in
             42
@@ -298,8 +297,6 @@ final class RemoteFeatureFlagsTests: XCTestCase {
 
     /// A local override of `true` forces the feature ON regardless of the OFF
     /// default — QA/dev can preview the in-app player before the rollout.
-    /// Kills a mutant that ignores the override and returns the (false in tests)
-    /// Remote Config value.
     func testInAppPlaybackNav_localOverrideTrue_forcesOn() {
         let (flags, suite, name) = makeInAppNavFlags()
         defer { suite.removePersistentDomain(forName: name) }
@@ -491,8 +488,8 @@ final class RemoteFeatureFlagsTests: XCTestCase {
 
     /// The split's core guarantee: the two flags are independent. Forcing the
     /// continuation cards ON while forcing in-app playback nav OFF (and vice
-    /// versa) must be honored — one does not leak into the other. A mutant that
-    /// re-pointed either getter at the wrong override key fails here.
+    /// versa) must be honored — one does not leak into the other, so a getter
+    /// reading the wrong override key fails here.
     func testFlags_continuationAndInAppNav_areIndependent() {
         let (flags, suite, name) = makeInAppNavFlags()
         defer { suite.removePersistentDomain(forName: name) }
@@ -517,10 +514,8 @@ final class RemoteFeatureFlagsTests: XCTestCase {
     /// `withTimeout(0.2s)` should return in well under a second on an idle
     /// machine, and a regression that widened the bound without breaking it
     /// entirely would show up here first. But a wall-clock assertion at that
-    /// tightness measures the runner: on 2026-09-11 this family logged one
-    /// 4.851s sample against a 0.217s median and turned a PR red whose diff
-    /// contained no Swift. CLAUDE.md's CI contract is explicit that a test which
-    /// flips with unrelated load cannot gate CI.
+    /// tightness measures the runner (one 4.851s sample against a 0.217s
+    /// median), and a test that flips with unrelated load cannot gate CI.
     ///
     /// So the sensitive instrument is preserved and made deliberate. Run it with
     /// `TEST_RUNNER_PALACE_STRESS_TIMING=1`, the same shape

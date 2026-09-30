@@ -2,36 +2,15 @@
 //  DownloadAuthChallengeWitnessTests.swift
 //  PalaceTests
 //
-//  PP-4895. When a library serves a book file behind HTTP basic auth, the only
-//  thing standing between the patron and a failed download is the download
-//  center's authentication-challenge delegate callback. URLSession decides
-//  whether to invoke an optional delegate method by asking the delegate
-//  `respondsToSelector:` — so a method that the Swift compiler declined to
-//  register as the protocol witness is not "slightly wrong", it is absent from
-//  the ObjC runtime and is never called. No error, no crash, no log.
-//
-//  That is exactly what an Xcode 26.2 ClangImporter defect can do to this one
-//  method: WebKit annotates `WKNavigationDelegate`'s auth-challenge block
-//  `WK_SWIFT_UI_ACTOR` (@MainActor), Foundation annotates the structurally
-//  identical `URLSessionTaskDelegate` block `NS_SWIFT_SENDABLE`, and whichever
-//  the compiler imports FIRST in a given frontend process wins for both. When
-//  WebKit wins, the requirement surfaces as `@MainActor @Sendable` and the
-//  app's plain `@escaping` handler stops matching. Which side loses is decided
-//  by frontend batch membership, so an unrelated file move can flip it.
-//
-//  The compiler therefore cannot be relied on to guarantee this callback is
-//  reachable. These tests assert the guarantee directly, at the same layer
-//  URLSession uses:
-//    1. the ObjC selector is present in the class's method list — the same
-//       `respondsToSelector:` question URLSession asks of the delegate, and
-//    2. the callback answers a challenge with the patron's stored credential,
-//       cancels rather than replaying a rejected one, defers on TLS trust, and
-//       rejects a protection space it does not handle.
-//
-//  See `.forgeos/intent/pp-4895-async-delegate-auth-challenge.md` for the
-//  measured two-import-order reproduction, and the memory
-//  `webkit-clangimporter-mainactor-poisoning` for the first sighting of this
-//  compiler defect (on a different block shape, #1338).
+//  PP-4895. URLSession calls the download center's auth-challenge delegate
+//  method only if `respondsToSelector:` says it exists. An Xcode 26.2
+//  ClangImporter defect can import this block as `@MainActor @Sendable`
+//  (WebKit's `WK_SWIFT_UI_ACTOR` annotation winning over Foundation's), so the
+//  app's `@escaping` handler stops matching the witness and is never called;
+//  which side wins depends on frontend batch membership (also seen in #1338).
+//  These tests assert the selector is present in the class's method list, and
+//  that the callback answers with the stored credential, cancels rather than
+//  replaying a rejected one, defers on TLS trust, and rejects other spaces.
 //
 
 import XCTest

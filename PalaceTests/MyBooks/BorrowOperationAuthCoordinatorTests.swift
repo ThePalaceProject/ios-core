@@ -2,7 +2,7 @@
 //  BorrowOperationAuthCoordinatorTests.swift
 //  PalaceTests
 //
-//  swarm_66819d80 Module C — caller-migration assertions for
+//  Caller-migration assertions for
 //  `BorrowOperation` when wired with an `AuthCoordinator`.
 //
 //  When the coordinator is injected, the SAML / OAuth-intermediary
@@ -10,7 +10,7 @@
 //  `coordinator.refreshCredentialsIfNeeded(reason:)` instead of the
 //  closure-injected `presentSignInModal`. The OIDC silent-reauth path
 //  retains its `attemptOIDCSilentReauth` body — only the failure
-//  fallback routes through the coordinator (Option A from the contract).
+//  fallback routes through the coordinator.
 //  The per-book circuit breaker (`hasBorrowReauthBeenAttempted`) STAYS.
 //
 
@@ -254,11 +254,6 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
     ///  - Attempt 2: SAML 401 → `handleBorrowAuthErrorIfNeeded` sees the
     ///    breaker armed and returns `.showGenericError` → coordinator is
     ///    NOT called again, fall-through alert fires instead.
-    ///
-    /// Reviewer-fixup (QA-1, swarm_66819d80 Pass 3): prior version of this
-    /// test only ran attempt 1 and asserted modal=1 — second-attempt
-    /// half was just comments. This rewrite drives both attempts and
-    /// pins the breaker contract.
     func testCoordinator_perBookCircuitBreaker_isStillHonored_acrossTwoSeparateAttempts() async throws {
         let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .saml,

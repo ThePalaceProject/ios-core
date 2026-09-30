@@ -4,9 +4,8 @@
 //
 //  Critical-path coverage of AdobeDRMHandler — the bridge between
 //  NYPLADEPTDelegate (Adobe RMSDK) callbacks and Palace's download lifecycle.
-//  Per CLAUDE.md, DRM fulfilment is a critical path: every branch of the
-//  fulfilment-result handler must have a test, and every error path must be
-//  exercised. Tests use a spy delegate (so we never need a real NYPLADEPT)
+//  DRM fulfilment is a critical path, so every branch and error path of the
+//  fulfilment-result handler is exercised. Tests use a spy delegate (so we never need a real NYPLADEPT)
 //  and a real FileManager scoped to a per-test temp directory.
 //
 

@@ -2,8 +2,7 @@
 //  TPPSignInBusinessLogicStateMachineTests.swift
 //  PalaceTests
 //
-//  Bucket A migration tests for TPPSignInBusinessLogic (swarm_81b5099e
-//  Phase 1). Pins the six sub-sites in TPPSignInBusinessLogic.swift that
+//  Migration tests for TPPSignInBusinessLogic. Pins the six sub-sites in TPPSignInBusinessLogic.swift that
 //  used to read `libraryAccount?.details?.<field>` against the
 //  `Account.LoadState` state machine.
 //
@@ -184,7 +183,7 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
     // future refactor switched to force-unwrap or `try!`-await).
 
     func testIsSamlAuth_failedDetailsLoad_returnsFalse() {
-        // Pair-assert that .detailsLoading also returns false — so a mutation
+        // Pair-assert that .detailsLoading also returns false — so a regression
         // that crashes/returns true on .detailsFailed (but not loading) is
         // caught. Pins the contract that NEITHER pre-loaded state surfaces
         // a SAML "yes" answer.
@@ -209,7 +208,7 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
     func testIsSamlPossible_loaded_returnsTrueWhenSamlAuthPresent() {
         // Pair-assert that going BACK to .detailsLoading flips the predicate
         // to false — pinning the contract is state-driven, not latched. A
-        // mutation that latches true after the first .detailsLoaded would be
+        // a regression that latches true after the first .detailsLoaded would be
         // caught here.
         setLoadState(.detailsLoaded(realDetails))
         XCTAssertTrue(businessLogic.isSamlPossible(),

@@ -3,44 +3,15 @@
 //  PalaceTests
 //
 //  Base class for any XCTestCase that exercises `AccountsManager` and
-//  related per-library state-machine wiring. Closes the intra-class
-//  state-pollution gap that Wave 1's `PalaceTestSetup`
-//  XCTestObservation does NOT cover: that observer fires after every
-//  test CASE; it does not pre-clear state for the NEXT test method,
-//  and it does not have a hook into the per-test method's own
-//  `AccountsManager` instance constructor.
-//
-//  Symptom this base addresses: `AccountsManagerStateMachineWiringTests`
-//  has 13 tests; running them in suite order, the terminal test
-//  `testDriveCurrentAccountAuthDoc_terminalState_isNoOp` passes in
-//  isolation but fails when it runs AFTER
-//  `testStartDownload_endToEnd_capturedAccountIdReachesAuthorizationHeader`
-//  in the same class because:
-//
-//    1. Each test method constructs its OWN `AccountsManager()` whose
-//       init kicks off a background `loadCatalogs` that outlives the
-//       test (unless the opt-out flag is set BEFORE init).
-//    2. Combine sinks in the test body retain background work.
-//    3. The instance-level `userAccounts` dictionary on AccountsManager
-//       is per-instance, but the bookkeeping the wiring tests do on
-//       `AccountStateStore.shared` and `UserDefaults` IS process-global.
-//
-//  This base:
-//    - Invokes `SingletonResetRegistry.shared.invokeAll()` on every
-//      setUp so the next test method starts with the same fully-clean
-//      state the post-test observer leaves.
-//    - Defensively flips `AccountsManager.deferInitialLoadCatalogsForTesting`
-//      to `true` BEFORE any helper-minted manager is constructed.
-//    - Owns a protected `cancellables` set that subclasses use for
-//      Combine subscriptions; the base drains it on tearDown so leaks
-//      cannot survive into the next test.
-//    - Tracks every `AccountsManager` minted via `makeFreshAccountsManager`
-//      and calls `cancelBackgroundWork()` on each in tearDown.
-//
-//  Subclasses keep their own setUp/tearDown logic — they MUST call
-//  `super` to inherit these guarantees.
-//
-//  Test-target-only. swarm_4b64e4e0 Wave 1c.
+//  related per-library state-machine wiring. `PalaceTestSetup`'s observer
+//  cleans up after each test; this base also pre-clears state in setUp
+//  (`SingletonResetRegistry.shared.invokeAll()`), pins
+//  `AccountsManager.deferInitialLoadCatalogsForTesting` to `true` before any
+//  helper-minted manager is built, drains `cancellables` in tearDown, and
+//  calls `cancelBackgroundWork()` on every manager minted via
+//  `makeFreshAccountsManager` — because each manager's background
+//  `loadCatalogs` outlives its test and `AccountStateStore.shared` /
+//  `UserDefaults` are process-global. Subclasses MUST call `super`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -203,7 +174,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     /// explicit `UserDefaults` instance. Wires the same opt-out flag pin
     /// + `cancelBackgroundWork()` registration as the no-arg variant.
     ///
-    /// swarm_cd181acd D-cleanup: lets wiring tests seed
+    /// Lets wiring tests seed
     /// `currentAccountIdentifierKey` into a per-test isolated suite (via
     /// `Self.testUserDefaults()`) instead of mutating `UserDefaults.standard`,
     /// so cross-test pollution through that key is structurally
@@ -223,7 +194,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     }
 
     /// DI-aware overload that also injects the account-switch borrow-reauth reset
-    /// seam (`BorrowReauthResetting`, Wave 3 S1). Routes bare `AccountsManager`
+    /// seam (`BorrowReauthResetting`). Routes bare `AccountsManager`
     /// construction through this whitelisted helper so a spy-injected switch test
     /// still gets the `loadCatalogs` opt-out pin + tearDown cancellation, keeping
     /// it off the `AccountsManagerIsolationLint` bare-construction ban.
@@ -264,7 +235,7 @@ class PalaceWiringTestCase: PalaceTestCase {
 
     /// DI-aware overload that injects BOTH the account-switch borrow-reauth reset
     /// seam and the account-switch cleanup collaborators (`AccountSwitchDependencies`,
-    /// Wave 3 S3). Lets the switch-cleanup contract test drive the setter with spies
+    /// see above). Lets the switch-cleanup contract test drive the setter with spies
     /// for every cleanup side effect (image evict, cover reset, account-state store,
     /// nav pop-to-root, network cancel) while keeping the same `loadCatalogs` opt-out
     /// pin + tearDown drain — so it stays off the isolation-lint bare-construction ban.
@@ -289,7 +260,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     }
 
     /// DI-aware overload that injects the disk-cache collaborator
-    /// (`AccountRegistryCaching`, Wave 3 / 3a-1). Lets a test install a recording
+    /// (`AccountRegistryCaching`). Lets a test install a recording
     /// cache to pin the catalog read/write/clear routing while keeping the same
     /// opt-out flag pin + tearDown drain as the other helpers (so it stays off the
     /// `AccountsManagerIsolationLint` bare-construction ban).
@@ -309,7 +280,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     }
 
     /// DI-aware overload that injects the account-registry state collaborator
-    /// (`AccountRegistryStore`, Wave 3 / 3a-2). Lets a test drive registry state
+    /// (`AccountRegistryStore`). Lets a test drive registry state
     /// through an owned store and assert the hub's retrieval facades delegate to it,
     /// while keeping the opt-out flag pin + tearDown drain (so it stays off the
     /// `AccountsManagerIsolationLint` bare-construction ban).

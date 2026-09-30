@@ -2,7 +2,7 @@
 //  LCPAdapterTests.swift
 //  PalaceTests
 //
-//  Behavior tests for `LCPAdapter` — Module C of swarm_5c8ddbd5. Drives the
+//  Behavior tests for `LCPAdapter`. Drives the
 //  three-tier LCP source resolution (local file, license file, license
 //  re-download) and the manifest-load failure branches through spy
 //  collaborators. `LCPAudiobooks` instantiation is itself stubbed via the

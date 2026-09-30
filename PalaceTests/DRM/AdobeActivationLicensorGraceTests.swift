@@ -32,8 +32,7 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
 
     /// In-memory account whose `licensor` can start absent and appear later,
     /// mimicking the profile-document leg completing after the borrow begins.
-    /// Deliberately not a real `TPPUserAccount` — CLAUDE.md forbids tests
-    /// touching keychain state.
+    /// Deliberately not a real `TPPUserAccount`, so tests stay off the keychain.
     private final class LateLicensorAccount: AdobeActivationAccount, @unchecked Sendable {
         private let lock = NSLock()
         private var _userID: String?

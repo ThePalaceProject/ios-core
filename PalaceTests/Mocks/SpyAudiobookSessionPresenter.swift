@@ -2,30 +2,13 @@
 //  SpyAudiobookSessionPresenter.swift
 //  PalaceTests
 //
-//  Module C (swarm_0b7616e7) — spy override of `AudiobookSessionPresenter`
-//  used by `AudiobookSessionManagerPresenterMigrationTests` and any other
-//  test that needs to assert on the migrated presenter-side calls
-//  (`presentOnFirstOpen()`, `expand()`, `minimize()`, `adoptBook(_:)`,
-//  `adoptPlaybackModel(_:)`, `clearActiveSession()`).
-//
-//  The spy subclasses `AudiobookSessionPresenter` (not `final` — see the
-//  CLAUDE.md "Don't make new services final reflexively" memory pin) and
-//  overrides each action method to record call counts + a FIFO log of
-//  adopted book identifiers. Each override invokes `super` so the
-//  published mirror fields (`isPlayerExpanded`, `currentBook`) still get
-//  written — tests can assert on both call counts AND final published
-//  state.
-//
-//  Construction uses the production designated init with a `SpyAudiobook
-//  Session` shim (defined locally because the presenter requires an
-//  `AudiobookSessionManaging` to wire its publisher subscription). The
-//  shim returns a no-op publisher; tests that need to drive state
-//  transitions through the subscription path use the spy session from
-//  `AudiobookSessionPresenterTests.swift` instead.
-//
-//  Module D's tests 12-13 reuse this spy via the
-//  `AppContainer.withAudiobookSessionPresenter(spy)` test seam added to
-//  AppContainer in this same contract.
+//  Spy subclass of `AudiobookSessionPresenter` that records call counts and
+//  a FIFO log of adopted book identifiers. Each override calls `super`, so
+//  the published mirror fields (`isPlayerExpanded`, `currentBook`) are still
+//  written and tests can assert on calls AND published state. Uses a local
+//  no-op `AudiobookSessionManaging` shim; tests that drive the subscription
+//  path use the spy session in `AudiobookSessionPresenterTests.swift`.
+//  Injected via `AppContainer.withAudiobookSessionPresenter(spy)`.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //

@@ -67,7 +67,7 @@ final class TPPReaderPositionReportTests: XCTestCase {
     // MARK: - Percentage rounding / clamping
 
     func testAnnouncement_percentageRoundsToNearestWholePercent() {
-        // 0.455 -> 45.5 -> rounds AWAY from .5 to 46 (kills the truncate mutant,
+        // 0.455 -> 45.5 -> rounds AWAY from .5 to 46 (catches the truncate regression,
         // which would render 45).
         let up = TPPReaderPositionReport.announcement(section: nil, pageLabel: nil, totalProgression: 0.455)
         XCTAssertEqual(up, "46% read")

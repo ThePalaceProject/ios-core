@@ -37,7 +37,7 @@ final class AccountsManagerTests: XCTestCase {
         super.setUp()
         cancellables = Set<AnyCancellable>()
         mockLibraryAccountProvider = TPPLibraryAccountMock()
-        // swarm_cd181acd D-cleanup: no `.standard.removeObject(forKey:)`
+        // No `.standard.removeObject(forKey:)`
         // here. Tests that need an isolated `currentAccountIdentifierKey`
         // suite construct a fresh `AccountsManager(defaults:)` with a
         // per-test `Self.testUserDefaults()`. AppContainer.production()-based
@@ -119,7 +119,7 @@ final class AccountsManagerTests: XCTestCase {
 
     func testCurrentAccountId_AfterExplicitClear_ReturnsNilFromDefaults() {
         // Arrange: AccountsManager backed by an isolated per-test
-        // UserDefaults suite (swarm_cd181acd D-cleanup). Drive via the
+        // UserDefaults suite. Drive via the
         // production seam — defaults.set + defaults.removeObject under
         // currentAccountIdentifierKey — to assert the manager's getter
         // reflects what the injected suite holds.
@@ -143,7 +143,7 @@ final class AccountsManagerTests: XCTestCase {
     }
 
     func testCurrentAccountId_PersistsToUserDefaults() {
-        // Arrange: AccountsManager + isolated suite (swarm_cd181acd D-cleanup).
+        // Arrange: AccountsManager + isolated suite.
         let defaults = Self.testUserDefaults()
         #if DEBUG
         AccountsManager.deferInitialLoadCatalogsForTesting = true

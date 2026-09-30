@@ -16,9 +16,8 @@
 //       sets no `isLoading`, so the Get button would sit unchanged and
 //       tappable for the duration.
 //    3. It clears the spinner if activation throws. Deleting that strands the
-//       spinner for the process lifetime — CLAUDE.md names this exact shape
-//       ("removing `registry.setProcessing(false)` mid-cleanup would leak
-//       forever") as a contract-test case.
+//       spinner for the process lifetime (a leaked
+//       `registry.setProcessing(false)` mid-cleanup).
 //
 //  Note there is deliberately no `#if FEATURE_DRM_CONNECTOR` here. PalaceTests
 //  does not define that flag, so a conditional in TEST source takes the `#else`

@@ -94,8 +94,8 @@ final class UserAccountPublisherTests: XCTestCase {
     func testSignOut_resetsIsSigningOutAfterDelay() async {
         // Round-trip test: signOut sets isSigningOut=true immediately, then
         // asynchronously resets it to false ~100ms later via a deferred Task.
-        // We also pair-assert authState=.loggedOut throughout so a mutation
-        // that resets isSigningOut prematurely (or never) is caught even if
+        // We also pair-assert authState=.loggedOut throughout so resetting
+        // isSigningOut prematurely (or never) is caught even if
         // an awaitCondition were to spuriously flake green.
         publisher.signOut()
         XCTAssertTrue(publisher.isSigningOut,

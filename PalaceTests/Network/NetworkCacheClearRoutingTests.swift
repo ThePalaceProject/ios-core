@@ -2,21 +2,15 @@
 //  NetworkCacheClearRoutingTests.swift
 //  PalaceTests
 //
-//  N1 (swarm_27c181b5 — cache-clear split-brain): the app's hygiene paths
-//  (sign-out, force-reset, memory-pressure cleanup, the 7-day stale wipe) must
-//  clear the network executor's PRIVATE URLCache — the cache that actually
-//  serves feeds (built by `TPPCaching.makeCache`) — NOT `URLCache.shared`.
-//  Before N1 the clears hit `URLCache.shared`, which is a different instance, so
-//  the wipe was a no-op for feeds AND signed-out authenticated responses could
-//  persist in the executor's own disk cache.
+//  The app's hygiene paths (sign-out, force-reset, memory-pressure cleanup,
+//  the 7-day stale wipe) must clear the network executor's private URLCache —
+//  the one that serves feeds (`TPPCaching.makeCache`) — not `URLCache.shared`,
+//  a different instance. Clearing the wrong cache leaves feeds and signed-out
+//  authenticated responses in the executor's disk cache.
 //
-//  These tests pin the redirect behaviorally + structurally:
-//    1. `TPPNetworkExecutor.clearCache()` empties the executor's own URLCache.
-//    2. Clearing `URLCache.shared` does NOT (the split-brain), while the
-//       executor's clearCache() does — proving the redirect is both necessary
-//       and correct.
-//    3. The sign-out / force-reset source sites route through the executor and
-//       no longer clear `URLCache.shared` — a revert to the wrong cache fails.
+//  Pinned: `clearCache()` empties the executor's cache, clearing
+//  `URLCache.shared` does not, and the sign-out / force-reset sites route
+//  through the executor.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

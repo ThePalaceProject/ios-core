@@ -27,7 +27,7 @@
 //  WHAT WE CAN'T TEST:
 //  The actual RMSDK static-destructor budget overrun. That lives in
 //  Adobe-owned C++ binary code initialised at app launch and torn down
-//  by the OS. CLAUDE.md bans live RMSDK calls from unit tests anyway.
+//  by the OS, and unit tests do not make live RMSDK calls.
 //  A device-level integration test in simdrive that backgrounds the
 //  app repeatedly is the proper coverage for the F-001 watchdog
 //  itself; this file is the unit-level scaffolding around it.
@@ -44,8 +44,7 @@ import PalaceBookModel
 @MainActor
 final class AudiobookSessionManagerShutdownTests: XCTestCase {
 
-    /// Locally-constructed session manager — Module B replaced the singleton.
-    /// Module D will idiomize on its pass.
+    /// Locally-constructed session manager (no shared singleton).
     private var manager: AudiobookSessionManager!
     /// Per-test isolated container — built via `makeTestAppContainer()` so
     /// each test method gets a fresh service graph (no cross-test pollution
@@ -315,7 +314,7 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
 
     // MARK: - Background / terminate position persistence (keeper migration)
     //
-    // Phase 3 moved the background/terminate position-persist off the hidden
+    // The background/terminate position-persist moved off the hidden
     // toolkit "keeper" view (an opacity(0) AudiobookPlayerView mounted only for
     // its `setupBackgroundStateHandling()` side effects) and into
     // AudiobookSessionManager. These lock the guard + wiring we CAN exercise

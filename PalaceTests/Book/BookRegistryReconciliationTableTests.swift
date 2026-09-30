@@ -2,39 +2,13 @@
 //  BookRegistryReconciliationTableTests.swift
 //  PalaceTests
 //
-//  A table test over the load-time reconciliation decision, plus the two
-//  properties that make the table trustworthy.
-//
-//  Why this file exists
-//  --------------------
-//  `BookRegistrySync`'s reconciliation is an else-if chain whose arms were
-//  accreted one incident at a time. No arm knows the goal condition; each
-//  encodes "what we saw once and how we patched it". Changing WHEN a state
-//  transition happens changes which arm a record lands in, so a state-machine
-//  change has nonlocal effects by construction.
-//
-//  Three separate defects in this file were found by review rather than by
-//  tests, and all three were the same shape: an arm treated "a file exists" as
-//  "the book is playable", which is false for an LCP audiobook holding only its
-//  `.lcpl` license. Two of them were introduced by the FIX for the previous one,
-//  25 lines away in a neighbouring arm.
-//
-//  Per-arm unit tests would not have caught them. What catches them is asserting
-//  over the whole decision at once, plus:
-//
-//   - CONVERGENCE: reconciliation settles to a fixpoint. The "comes back one
-//     load later" recurrence is a settling failure — arm A wrote a state that
-//     arm B then promoted on the next launch. Note this is convergence, NOT
-//     single-step idempotence: `.SAMLStarted` with content present legitimately
-//     resolves in two passes. The first draft of this file asserted the stricter
-//     property and failed on that legitimate settle, which is the table earning
-//     its keep before it ever guarded a regression.
-//   - THE SAFETY PROPERTY, checked at EVERY step of the settle: no outcome
-//     leaves a book claiming to be playable when its content is absent, with no
-//     recovery scheduled. That is the user-visible defect ("Listen" with no
-//     audio) stated directly, so it holds no matter which arm changes. Checking
-//     only the endpoint would have missed the recurrence, which passed through a
-//     safe-looking intermediate state.
+//  Table test over the load-time reconciliation in `BookRegistrySync`. Its arms
+//  interact, so this asserts over the whole decision at once, plus two properties:
+//   - Convergence: reconciliation settles to a fixpoint (not single-step
+//     idempotence; `.SAMLStarted` with content legitimately takes two passes).
+//   - Safety, at every step of the settle: no outcome claims a book is playable
+//     when its content is absent with no recovery scheduled (e.g. an LCP
+//     audiobook holding only its `.lcpl` license shows "Listen" with no audio).
 //
 
 import XCTest
@@ -50,7 +24,7 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
     private var tempDir: URL!
     /// Per-test container so file-path resolution and the sync manager agree,
     /// and so this file does not reach for `AppContainer.production()`
-    /// (swarm_47883816 work package A).
+    ///.
     private var appContainer: AppContainer!
 
     override func setUpWithError() throws {
@@ -156,7 +130,7 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
 
     /// States `reconcile` must pass through untouched. This became load-bearing
     /// when the entry-state gate was removed from `load()`: every record now
-    /// goes through `reconcile`, so a mutation of the identity branch would
+    /// goes through `reconcile`, so a change to the identity branch would
     /// rewrite every `.holding` record in the registry.
     func testStatesOutsideTheChainAreReturnedUnchanged() {
         let untouched: [TPPBookState] = [.unregistered, .holding, .downloadFailed, .returning, .unsupported]

@@ -2,15 +2,14 @@
 //  MyBooksDownloadCenterConcurrencyTests.swift
 //  PalaceTests
 //
-//  Mutation-killing coverage for the download-concurrency state machine that
+//  Coverage for the download-concurrency state machine that
 //  spans `DownloadCoordinator` (actor) → `DownloadStateManager` →
 //  `DownloadQueueOrchestrator` → `DownloadCancellationHandler`.
 //
 //  Each test pins ONE specific contract (cap enforcement, queue ordering,
 //  slot accounting on failure / cancel, FIFO dequeue, dedup, cold-start
-//  behavior, etc.) so a mutation to the underlying logic flips exactly that
-//  assertion. No tautologies; every test is annotated with the specific
-//  mutant(s) it kills.
+//  behavior, etc.) so a regression in the underlying logic flips exactly that
+//  assertion.
 //
 //  Targets the P0 gap in docs/Testing/Coverage_Roadmap.md §2.2.
 //
@@ -97,33 +96,33 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     // MARK: - 1. Concurrent download limit enforcement
 
-    /// Kills mutants in `canStartDownload`'s `<` (mutate to `<=`, `==`, `>`):
+    /// Pins `canStartDownload`'s strict `<` (against `<=`, `==`, `>`):
     /// at the cap, must reject. Just below the cap, must accept. Just above,
     /// must reject. Each branch is asserted independently.
     func testCanStartDownload_returnsTrueOnlyStrictlyBelowMaxConcurrent() async {
         let coordinator = stateManager.downloadCoordinator
         let max = 3
 
-        // 0 active → can start (kills `< → ==` mutant: would return false)
+        // 0 active → can start (catches `<` → `==`: would return false)
         var can = await coordinator.canStartDownload(maxConcurrent: max)
         XCTAssertTrue(can, "Empty coordinator must accept new downloads when below cap")
 
         await coordinator.registerStart(identifier: "a")
         await coordinator.registerStart(identifier: "b")
 
-        // 2 active, max=3 → still under cap (kills `< → >` mutant)
+        // 2 active, max=3 → still under cap (catches `<` → `>`)
         can = await coordinator.canStartDownload(maxConcurrent: max)
         XCTAssertTrue(can, "At active=2, max=3 (strictly under cap) must accept a new download")
 
         await coordinator.registerStart(identifier: "c")
 
-        // 3 active, max=3 → at cap, must reject (kills `< → <=` mutant)
+        // 3 active, max=3 → at cap, must reject (catches `<` → `<=`)
         can = await coordinator.canStartDownload(maxConcurrent: max)
         XCTAssertFalse(can, "At active=3, max=3 (AT cap) must reject — `<` is strict, not `<=`")
     }
 
-    /// Kills the "off-by-one cap" mutant: simulating N+1 download requests
-    /// when the cap is N must leave exactly N actives and 1 queued. Mutating
+    /// Off-by-one cap: simulating N+1 download requests
+    /// when the cap is N must leave exactly N actives and 1 queued. Changing
     /// `capacity = maxConcurrentDownloads - activeCount` to `+ activeCount`
     /// or to `- activeCount - 1` (off-by-one) flips this assertion.
     func testStartingNPlus1Downloads_LeavesExactlyNActiveAnd1Queued() async {
@@ -154,9 +153,9 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     // MARK: - 2. 1 active completes → 1 queued promotes to active
 
-    /// Kills the `if capacity > 0` guard mutant (e.g. mutating to `>= 0`
-    /// dequeues even at-cap; mutating to `< 0` never dequeues). Also
-    /// kills mutations to `capacity = max - active`.
+    /// Pins the `if capacity > 0` guard (`>= 0`
+    /// dequeues even at-cap; `< 0` never dequeues) and
+    /// `capacity = max - active`.
     func testCompletion_PromotesNextQueuedToActive() async {
         let cap = 1
         stateManager.maxConcurrentDownloads = cap
@@ -192,8 +191,8 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
     /// Pins the contract: when a download fails (the failure path calls
     /// `registerCompletion` via `cleanupDownload`), the coordinator slot is
     /// freed and the orchestrator promotes the next queued book. This
-    /// proves a failed download does NOT poison the slot count. Kills any
-    /// mutant that conditionally skips `registerCompletion` on the failure
+    /// proves a failed download does NOT poison the slot count, and fails if
+    /// `registerCompletion` is conditionally skipped on the failure
     /// branch.
     func testFailure_FreesSlot_AndPromotesQueuedBook() async {
         let cap = 1
@@ -232,8 +231,8 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
     /// End-to-end cancellation: the user cancels an in-flight download → the
     /// cancel-with-task path runs the URLSession cancel completion → which
     /// schedules an actor task that calls `registerCompletion` →
-    /// schedulePendingStartsIfPossible is invoked on the delegate. Kills
-    /// any mutant that drops `registerCompletion` or `schedulePending`
+    /// schedulePendingStartsIfPossible is invoked on the delegate. Fails if
+    /// `registerCompletion` or `schedulePending` is dropped
     /// from the cancel callback.
     func testCancellation_OfActiveDownload_FreesSlotAndSchedulesPendingStarts() async {
         let cap = 1
@@ -262,7 +261,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     /// Wires the full chain: orchestrator owns the queue, cancellation
     /// frees the slot, then the next pump promotes the queued book.
-    /// Kills "cancel succeeds but next queued never starts" mutants.
+    /// Catches "cancel succeeds but next queued never starts".
     func testCancellation_OfActiveDownload_PromotesNextQueuedBook() async {
         let cap = 1
         stateManager.maxConcurrentDownloads = cap
@@ -293,7 +292,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     // MARK: - 5. Queue ordering — FIFO is the pinned contract
 
-    /// Pins FIFO ordering of `dequeuePending`. Kills mutants that swap the
+    /// Pins FIFO ordering of `dequeuePending` against swapping the
     /// dequeue source from `pendingQueue.prefix(capacity)` to `.suffix`,
     /// `.dropFirst`, or `.shuffled()`.
     func testDequeuePending_RemovesBooksInFIFOOrder() async {
@@ -315,7 +314,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
     }
 
     /// Multi-round-trip: enqueue 4, dequeue cap=2, enqueue 1 more, dequeue cap=2.
-    /// FIFO must hold across re-enqueues. Kills mutants that break ordering
+    /// FIFO must hold across re-enqueues, including
     /// when the queue is mutated between dequeues.
     func testQueueOrdering_FIFOSurvivesInterleavedEnqueueAndDequeue() async {
         let coord = stateManager.downloadCoordinator
@@ -339,9 +338,9 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
                        "FIFO: b5 added AFTER b3+b4 must NOT jump ahead — kills mutants that shuffle queue on enqueue")
     }
 
-    /// Kills the `capacity > 0` guard mutant: dequeue with capacity=0 must
-    /// return an empty array AND leave the queue intact. Otherwise a
-    /// mutation to `capacity >= 0` would drain a book per zero-capacity call.
+    /// Pins the `capacity > 0` guard: dequeue with capacity=0 must
+    /// return an empty array AND leave the queue intact. Otherwise
+    /// `capacity >= 0` would drain a book per zero-capacity call.
     func testDequeuePending_zeroCapacity_returnsEmptyAndPreservesQueue() async {
         let coord = stateManager.downloadCoordinator
         let b1 = makeBook()
@@ -355,7 +354,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
                        "Zero-capacity dequeue must NOT remove anything from the queue")
     }
 
-    /// Kills mutants that swap `prefix(capacity)` for `prefix(pendingQueue.count)`
+    /// Catches swapping `prefix(capacity)` for `prefix(pendingQueue.count)`
     /// (which would drain more than the freed-capacity allows). With cap=3,
     /// 1 active, and 4 enqueued, the orchestrator must start EXACTLY 2.
     func testSchedulePendingStartsAsync_HonorsRemainingCapacity_NotQueueSize() async {
@@ -380,8 +379,8 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     /// Pins the dedup contract: `enqueuePending` is idempotent on book
     /// identifier. The two-rapid-tap regression: the user taps download
-    /// twice → only one queued entry should result. Kills any mutant that
-    /// drops the `contains(where:)` guard.
+    /// twice → only one queued entry should result. Pins the
+    /// `contains(where:)` guard.
     func testEnqueuePending_isDedupedByBookIdentifier() async {
         let coord = stateManager.downloadCoordinator
         let book = makeBook()
@@ -410,7 +409,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
     /// state from a previous app session. The Palace contract is "registry
     /// state is restored by BookRegistrySync, but the coordinator is
     /// re-built empty on launch — user must re-trigger downloads."
-    /// Kills any mutant that injects ghost downloads on init.
+    /// Catches ghost downloads injected on init.
     func testColdStart_ofCoordinator_HasNoActiveOrQueuedDownloads() async {
         // Simulate the cold-start: a book that was downloading in a prior
         // session has been re-loaded from disk as .downloading by the
@@ -435,7 +434,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
     /// concurrency cap which always ends with `schedulePendingStartsAsync`.
     /// Pins the contract that the foreground → cap-reapply → queue-pump
     /// chain runs even when actives are AT the cap (so the cap-reapply
-    /// itself doesn't suspend anything). Kills mutants that skip the
+    /// itself doesn't suspend anything). Pins the
     /// `await delegate?.schedulePendingStartsAsync()` tail call.
     func testForegroundReapplyOfCap_AlwaysPumpsThePendingQueue() async {
         // Standup a throttling service against the same stateManager.
@@ -447,7 +446,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         throttle.delegate = throttleSpy
 
         // active=cap → reapply must NOT suspend or resume anything, BUT
-        // must still pump the queue (kills "skip schedulePending when at cap").
+        // must still pump the queue (catches "skip schedulePending when at cap").
         stateManager.maxConcurrentDownloads = 2
         let a1 = makeBook(); let a2 = makeBook()
         await markActive(a1)
@@ -467,7 +466,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     // MARK: - 9. registerCompletion is independent across identifiers
 
-    /// Kills mutants that swap `activeDownloadIdentifiers.remove(identifier)`
+    /// Catches swapping `activeDownloadIdentifiers.remove(identifier)`
     /// for `.removeAll()` (would crater all actives on one completion) or
     /// for a no-op (would never free slots).
     func testRegisterCompletion_RemovesOnlyTheNamedIdentifier() async {
@@ -493,8 +492,8 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         XCTAssertEqual(afterGamma, 0, "Completing gamma must zero the active count")
     }
 
-    /// Kills mutants that make `registerCompletion` for an unknown
-    /// identifier throw, crash, or accidentally decrement the count.
+    /// `registerCompletion` for an unknown
+    /// identifier must not throw, crash, or decrement the count.
     func testRegisterCompletion_unknownIdentifier_isSafeNoOp() async {
         let coord = stateManager.downloadCoordinator
         await coord.registerStart(identifier: "real")
@@ -511,7 +510,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
     /// `reset()` is invoked on account-switch / log-out. If it leaks any
     /// state, the next library inherits ghost downloads. Pins the contract
     /// that activeCount, queueCount, cachedInfo, and redirect attempts ALL
-    /// go to zero. Kills mutants that comment out one of the .removeAll().
+    /// go to zero, so dropping any one of the .removeAll() calls fails.
     func testReset_ClearsActive_Queue_Cache_AndRedirectAttempts() async {
         let coord = stateManager.downloadCoordinator
         let task = StubDownloadTask(taskIdentifier: 7)
@@ -548,7 +547,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     /// Network-redirect retry policy: redirectAttempts is keyed by URLSession
     /// taskIdentifier; clearing one task must NOT affect another's count.
-    /// Kills mutants that mutate `removeValue` to `removeAll`.
+    /// Catches `removeValue` becoming `removeAll`.
     func testRedirectAttempts_perTaskIsolated_andClearable() async {
         let coord = stateManager.downloadCoordinator
 
@@ -570,10 +569,10 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     // MARK: - 12. Concurrent enqueue from many tasks — actor safety
 
-    /// Mutation-tier hard case: spawn many concurrent enqueues of UNIQUE
+    /// Spawn many concurrent enqueues of UNIQUE
     /// books. The actor must serialize them; final queueCount must equal
-    /// the number of unique enqueues. Kills mutations that drop the `actor`
-    /// or replace `pendingQueue.append` with a non-atomic write.
+    /// the number of unique enqueues. Catches dropping the `actor`
+    /// or replacing `pendingQueue.append` with a non-atomic write.
     func testConcurrentEnqueueFromManyTasks_IsActorSerialized() async {
         let coord = stateManager.downloadCoordinator
         let books = (0..<25).map { _ in makeBook() }
@@ -653,7 +652,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         }
 
         // 3. Isolation: the concurrent churn must not have touched the
-        //    unrelated in-flight book (kills mutants that swap the per-id
+        //    unrelated in-flight book (catches swapping the per-id
         //    remove for a removeAll / clobber the whole set on any write).
         XCTAssertTrue(bookRegistry.processing(forIdentifier: inflight.identifier),
                       "A book still in-flight must remain processing — concurrent set/clear on OTHER identifiers must not clear it")
@@ -661,7 +660,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     // MARK: - 13. Orchestrator: empty queue is no-op, never calls delegate
 
-    /// Kills mutants that make `schedulePendingStartsAsync` call the
+    /// `schedulePendingStartsAsync` must not call the
     /// delegate with a default/empty book or with `nil`.
     func testSchedulePendingStartsAsync_emptyQueue_doesNotInvokeDelegate() async {
         stateManager.maxConcurrentDownloads = 4
@@ -677,7 +676,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     /// Pins the "at-cap" guard. With active==max, capacity=0, and even
     /// though the queue is non-empty, the orchestrator must NOT dequeue
-    /// and must NOT call the delegate. Kills mutants on the
+    /// and must NOT call the delegate. Pins the
     /// `guard capacity > 0 else { return }` line.
     func testSchedulePendingStartsAsync_atCap_preservesQueueAndSkipsDelegate() async {
         stateManager.maxConcurrentDownloads = 2
@@ -700,8 +699,8 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
 
     /// End-to-end three-book queue with cap=1 walking through completion +
     /// pump three times. Each completion → exactly one pump dequeues
-    /// exactly one queued book. Kills "drain whole queue on first pump"
-    /// and "skip pump after second completion" mutants.
+    /// exactly one queued book. Catches "drain whole queue on first pump"
+    /// and "skip pump after second completion".
     func testThreeRoundTrips_eachCompletion_promotesExactlyOneQueuedBook() async {
         stateManager.maxConcurrentDownloads = 1
         let a = makeBook(); let b = makeBook(); let c = makeBook()

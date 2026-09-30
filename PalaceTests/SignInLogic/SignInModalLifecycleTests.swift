@@ -2,26 +2,14 @@
 //  SignInModalLifecycleTests.swift
 //  PalaceTests
 //
-//  Wave 3 / part 1 of 2 of the SignInModal SwiftUI refactor
-//  (swarm_18b0d071, Module A). Pins the lifecycle of the new
-//  `SignInModalSheetPresenter` — a `@MainActor ObservableObject`
-//  facade over the existing static `SignInModalPresenter` API.
-//
-//  Per contract A-SignInModal-SheetPresenter.md (resolved Blocker 2
-//  Option c): the new presenter exposes a SwiftUI-observable
-//  `@Published presentationState` but internally still routes through
-//  the static API (which calls `TPPPresentationUtils.safelyPresent`),
-//  preserving the HelpSpot 17716 presenter-chain safety net. The 3
-//  tests below cover:
-//
-//   1. State publish-then-clear lifecycle for `presentForCurrentAccount`.
-//   2. libraryAccountID propagation + `.id` semantics for
-//      `presentSpecific`.
-//   3. Concurrent single-flight collapse (TWO Task.detached calls →
-//      one observed presentation).
+//  Pins the lifecycle of `SignInModalSheetPresenter`, a `@MainActor
+//  ObservableObject` facade over the static `SignInModalPresenter` API.
+//  It publishes `presentationState` for SwiftUI but still routes through
+//  the static API (`TPPPresentationUtils.safelyPresent`), preserving the
+//  HelpSpot 17716 presenter-chain safety net.
 //
 //  Tests use a `SignInModalPresentationDriver` injection seam so the
-//  static API is NOT actually invoked — no UIKit window required.
+//  static API is not invoked and no UIKit window is required.
 //
 
 import XCTest
@@ -93,8 +81,7 @@ final class SignInModalLifecycleTests: XCTestCase {
                                currentAccountID: String? = "test-lib-current",
                                needsAuthForCurrent: Bool = true)
     -> SignInModalSheetPresenter {
-        // swarm_47883816 work package A — replace AppContainer.production()
-        // with a fresh isolated container per call so the presenter does not
+        // A fresh isolated container per call so the presenter does not
         // observe production-singleton state mid-test.
         let container = makeTestAppContainer()
         return SignInModalSheetPresenter(
@@ -107,12 +94,8 @@ final class SignInModalLifecycleTests: XCTestCase {
 
     // MARK: - Test 1 — state publish-then-clear lifecycle
 
-    /// CLAUDE.md DoD #3 — multi-step body claim "single-flight,
-    /// secondPresentationBeforeFirstDismisses, isNoOp" — body
-    /// literally drives a second call BEFORE firing the first
-    /// completion, and asserts the second invocation is suppressed.
-    /// Production seam exercised: the presenter's idempotency guard
-    /// (set `presentationState` only when nil, drop the second call).
+    /// Drives a second call before the first completion fires and asserts
+    /// the presenter's idempotency guard suppresses it.
     ///
     /// Drives concurrent presents through two MainActor `Task { ... }`
     /// blocks so the test exercises the actual race-window the static
@@ -170,12 +153,9 @@ final class SignInModalLifecycleTests: XCTestCase {
 
     // MARK: - Test 2 — dismissAfterPresent_resetsPresentationState
 
-    /// CLAUDE.md DoD #3 — multi-step name "dismissAfterPresent,
-    /// resetsPresentationState" — body literally drives present then
-    /// dismiss (via fake driver completion) and asserts the full state
-    /// stream returns to nil. Kill case: removing the `presentationState
-    /// = nil` clear in the completion handler would observe a stream
-    /// that ends on `.forCurrentAccount`, not `nil`.
+    /// Present then dismiss (via fake driver completion) must return the
+    /// state stream to nil; dropping the clear in the completion handler
+    /// would leave it on `.forCurrentAccount`.
     func testPresenter_dismissAfterPresent_resetsPresentationState() {
         let fakeDriver = FakePresentationDriver()
         // Default: fireCompletionsSynchronously = true — driver fires
@@ -216,21 +196,9 @@ final class SignInModalLifecycleTests: XCTestCase {
     ///   - completion-side: presentationState clears back to nil
     ///   - the caller's completion closure is forwarded and fires once
     ///
-    /// **NOT verified by this test** (per wall-failure entry
-    /// `.forgeos/wall-failures/2026-05-28-cs9a267b63-arch1.md`,
-    /// architect-reviewer rev_bc20951b finding 1):
-    ///   - That `TPPReauthenticator` actually calls this presenter — the
-    ///     migration is a single-line change at `TPPReauthenticator.swift:54`,
-    ///     grep-visible to any reviewer. `TPPReauthenticatorTests` separately
-    ///     covers `TPPReauthenticator.authenticateIfNeeded` behavior.
-    ///   - That the default driver actually reaches `TPPPresentationUtils.safelyPresent` —
-    ///     the default driver wires to `SignInModalPresenter.presentSignInModal(...)`,
-    ///     which is grep-visible at `SignInModalSheetPresenter.swift:DefaultPresentationDriver.makeDefault()`
-    ///     and the static call's existing tests cover the safelyPresent path.
-    ///
-    /// A true production-seam wiring test that drives `TPPReauthenticator().authenticateIfNeeded(...)`
-    /// with a spy presenter requires AppContainer testability changes — deferred
-    /// to wave 4 alongside the remaining 9-caller migration.
+    /// Not verified here: that `TPPReauthenticator` calls this presenter
+    /// (see the wiring test below), or that the default driver reaches
+    /// `TPPPresentationUtils.safelyPresent` (covered by the static API's tests).
     func testPresenter_presentForCurrentAccount_publishesState_invokesDriver_clearsState_firesCompletion() {
         let fakeDriver = FakePresentationDriver()
         let presenter = makePresenter(driver: fakeDriver.makeDriver(),
@@ -314,16 +282,9 @@ final class SignInModalLifecycleTests: XCTestCase {
 
     // MARK: - Wave 4 — state-transition tests (replace deleted predicate coverage)
 
-    /// CLAUDE.md DoD #3 — multi-step claim "idleToPresenting,
-    /// publishesForCurrentAccount, onFirstPresent". The body drives a
-    /// `nil → .forCurrentAccount` transition through the presenter's
-    /// production seam (NOT a direct write to `presentationState`) and
-    /// asserts the publish happened exactly once before the driver's
-    /// completion fires.
-    ///
-    /// Kill case: removing the `self.presentationState = state` line in
-    /// `present(state:libraryID:completion:)` would leave the stream
-    /// empty at this point — the assertion would fail.
+    /// Drives `nil → .forCurrentAccount` through the presenter (not a direct
+    /// write to `presentationState`) and asserts exactly one publish before
+    /// the driver's completion fires.
     func testPresenter_idleToPresenting_publishesForCurrentAccountOnFirstPresent() {
         let fakeDriver = FakePresentationDriver()
         // Hold completion so we can pin the mid-presentation state.
@@ -349,14 +310,9 @@ final class SignInModalLifecycleTests: XCTestCase {
                        "Driver must be invoked with the resolved libraryID")
     }
 
-    /// CLAUDE.md DoD #3 — multi-step claim "presentingToDismissed,
-    /// clearsPresentationState, onDriverCompletion". The body drives
-    /// `nil → .forCurrentAccount → nil` through the production seam by
-    /// firing the held driver completion.
-    ///
-    /// Kill case: removing `self.presentationState = nil` inside the
-    /// driver-completion handler would leave the stream stuck on
-    /// `.forCurrentAccount` — the terminal-state assertion fails.
+    /// Firing the held driver completion drives `nil → .forCurrentAccount → nil`;
+    /// a missing clear in the completion handler would leave the stream on
+    /// `.forCurrentAccount`.
     func testPresenter_presentingToDismissed_clearsPresentationStateOnDriverCompletion() {
         let fakeDriver = FakePresentationDriver()
         fakeDriver.fireCompletionsSynchronously = false
@@ -392,22 +348,9 @@ final class SignInModalLifecycleTests: XCTestCase {
                        "User completion must fire exactly once after the clear")
     }
 
-    /// CLAUDE.md DoD #3 + state-machine wiring round-trip pattern —
-    /// multi-step claim "dismissedToIdle, secondPresentAfterFirstCompletes,
-    /// publishesAgain". The body literally drives:
-    ///   1. present #1
-    ///   2. complete #1 (drain inFlight)
-    ///   3. present #2
-    ///   4. complete #2
-    ///
-    /// This is the **round-trip** pattern called out by CLAUDE.md ("write
-    /// → reset → re-enter via the production seam"). A regression that
-    /// forgets to reset `self.inFlight = false` in the driver completion
-    /// would silently no-op the second present (driver called only once,
-    /// state stream missing the second publish).
-    ///
-    /// Canonical reference for the pattern: `PalaceTests/Accounts/
-    /// AccountsManagerStateMachineWiringTests.swift`, Test 7.
+    /// Round trip: present, complete, present, complete. If the driver
+    /// completion does not reset `inFlight`, the second present becomes a
+    /// no-op (driver called once, second publish missing).
     func testPresenter_dismissedToIdle_secondPresentAfterFirstCompletes_publishesAgain() {
         let fakeDriver = FakePresentationDriver()
         fakeDriver.fireCompletionsSynchronously = false
@@ -496,16 +439,9 @@ final class SignInModalLifecycleTests: XCTestCase {
         }
     }
 
-    /// CLAUDE.md DoD #3 + #7 — multi-step claim "TPPReauthenticator,
-    /// AuthenticateIfNeeded, drivesSpyPresenter, ViaAppContainerSeam".
-    /// Per the wall-failure shape (`2026-05-28-cs9a267b63-arch1.md`), the
-    /// body MUST instantiate `TPPReauthenticator(`, call
-    /// `authenticateIfNeeded(...)`, and observe the AppContainer-injected
-    /// spy presenter receiving the call through Module B's
-    /// `withSignInModalSheetPresenter(_:)` seam.
-    ///
-    /// This is the test wave 3 admitted it couldn't build without the
-    /// AppContainer testability changes Module B provides in wave 4.
+    /// Instantiates `TPPReauthenticator`, calls `authenticateIfNeeded(...)`,
+    /// and observes the AppContainer-injected spy presenter receiving the
+    /// call through the `withSignInModalSheetPresenter(_:)` seam.
     ///
     /// Test-seam: `TPPReauthenticator._testContainerOverride` (DEBUG-only)
     /// is set so the production `authenticateIfNeeded` body reads from

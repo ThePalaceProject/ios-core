@@ -92,7 +92,7 @@ final class BookRegistryStoreTests: XCTestCase {
     /// Lookup guards: nil/empty/unknown identifiers must all resolve to a
     /// safe absent value (nil here). Consolidated so a regression on any
     /// branch (e.g. an early return that only handles nil but not "") fails
-    /// loudly. Also asserts the positive case in the same test so a mutant
+    /// loudly. Also asserts the positive case in the same test so a regression
     /// flipping the lookup-hit path is caught here too.
     func test_bookForIdentifier_returnsNilForUnregisteredOrInvalidInputs() async {
         // Negative cases — three distinct invalid-input shapes.
@@ -101,7 +101,7 @@ final class BookRegistryStoreTests: XCTestCase {
         XCTAssertNil(store.book(forIdentifier: "missing"),   "unknown id → nil")
 
         // Positive case — registered book is retrievable, distinguishing
-        // "always-nil" mutants from real lookup behaviour.
+        // an "always-nil" lookup from real lookup behaviour.
         let book = makeBook(identifier: "registered")
         store.addBook(book, state: .downloadNeeded)
         await store._awaitPendingWritesForTesting()
@@ -112,7 +112,7 @@ final class BookRegistryStoreTests: XCTestCase {
 
     /// Same guard pattern for `state(for:)` — every invalid-input shape must
     /// resolve to `.unregistered`, and the positive case must surface the
-    /// stored state so an "always-unregistered" mutant fails.
+    /// stored state so an "always-unregistered" regression fails.
     func test_state_returnsUnregisteredForUnregisteredOrInvalidInputs() async {
         XCTAssertEqual(store.state(for: nil),       .unregistered, "nil → .unregistered")
         XCTAssertEqual(store.state(for: ""),        .unregistered, "empty → .unregistered")
@@ -251,7 +251,7 @@ final class BookRegistryStoreTests: XCTestCase {
     // MARK: - Processing
 
     /// Processing flag defaults to false for every identifier (registered or
-    /// not). This guards against an "always-true" mutant on the dictionary
+    /// not). This guards against an "always-true" regression on the dictionary
     /// lookup as well as an unintended default of `true`.
     func test_processing_defaultsFalseForUnknownAndRegisteredBooks() async {
         // Unknown identifier — never seen by the store.
@@ -500,7 +500,7 @@ final class BookRegistryStoreTests: XCTestCase {
 
     /// `record(forIdentifier:)` is the lower-level lookup that
     /// `book(forIdentifier:)` and `state(for:)` build on. Same guard contract,
-    /// pinned alongside the positive case so an "always-nil" mutant fails.
+    /// pinned alongside the positive case so an "always-nil" regression fails.
     func test_record_returnsNilForUnregisteredOrInvalidInputs() async {
         XCTAssertNil(store.record(forIdentifier: nil),        "nil → nil")
         XCTAssertNil(store.record(forIdentifier: ""),         "empty → nil")

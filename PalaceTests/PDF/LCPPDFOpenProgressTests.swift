@@ -10,8 +10,7 @@
 //  ceiling). The progress math has to be right or the loading UI
 //  lies to users for the entire decrypt walk.
 //
-//  Phase transitions get round-trip coverage per CLAUDE.md
-//  "Round-trip wiring tests required for state machines":
+//  Phase transitions get round-trip coverage:
 //
 //    .idle → .preparing → .openingPublication → .decryptingContent
 //          (auto-bump on first decrypt) → .extractingToDisk
@@ -19,7 +18,7 @@
 //          → .idle (via finish)
 //
 //  Tests deliberately cover the AUTO-TRANSITION seams — those are
-//  the ones a mutation (flipping the `if phase == X` guard) can
+//  the ones a flipped `if phase == X` guard can
 //  silently break and leave the UI stuck on the wrong status text.
 //
 
@@ -252,7 +251,7 @@ final class LCPPDFOpenProgressTests: XCTestCase {
                        "finish must clear the cross-actor flag so cover prefetch can resume")
     }
 
-    /// Round-trip per CLAUDE.md state-machine rule: begin → work →
+    /// Round-trip: begin → work →
     /// finish → begin again must yield clean state. A bug where
     /// `finish` failed to reset would silently carry counters
     /// across opens.

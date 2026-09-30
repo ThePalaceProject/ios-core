@@ -85,11 +85,8 @@ final class RatingPromptPresenterTests: XCTestCase {
   ///
   /// The deferral behaviour is defined by the order two sleeping hops resume
   /// in, and wall-clock sleeps cannot pin that: hops armed microseconds apart
-  /// for the same duration wake in whichever order the scheduler picks. A
-  /// reviewer measured the previous wall-clock version passing 2 of 12 runs
-  /// against the live defect — which, under `-retry-tests-on-failure`, reports
-  /// a run green roughly 40% of the time with the bug present. Every sleeper
-  /// now parks here until the test resumes it by name.
+  /// for the same duration wake in whichever order the scheduler picks. Every
+  /// sleeper parks here until the test resumes it by name.
   @MainActor
   private final class TestClock {
     private var parked: [CheckedContinuation<Void, Never>] = []
@@ -272,9 +269,7 @@ final class RatingPromptPresenterTests: XCTestCase {
   ///
   /// Both wake orders are driven deliberately. When the stale hop wakes first
   /// it writes its exhausted count over the new trigger's reset; when it wakes
-  /// second the clobber lands on a chain that is already gone. The wall-clock
-  /// version of this test only ever hit one of those by luck — a reviewer
-  /// measured it passing 2 of 12 runs against the live defect.
+  /// second the clobber lands on a chain that is already gone.
   func testDeferralBudget_newTriggerDuringTheReArmWindow_isNotClobbered() async {
     for staleHopWakesFirst in [true, false] {
       clock = TestClock()
@@ -343,7 +338,7 @@ final class RatingPromptPresenterTests: XCTestCase {
     // (or the budget guard) this chain re-arms forever, spinning the main actor
     // for as long as the sheet is up.
     // 1 initial check + maxDeferrals re-arms. This pins the budget VALUE, not
-    // just that it is bounded — a "reset to 1" mutant survives a bound-only check.
+    // just that it is bounded — a "reset to 1" bug passes a bound-only check.
     XCTAssertEqual(modalChecks, 4,
                    "expected 1 + maxDeferrals(3) modal checks, got \(modalChecks)")
   }

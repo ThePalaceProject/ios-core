@@ -128,7 +128,7 @@ final class BookDetailOpenRoutingTests: XCTestCase {
     /// selectRelatedBook, on navigating to a DIFFERENT book, must re-derive
     /// `bookState` from the registry for the NEWLY selected identifier. The
     /// existing suite asserts the book swap + lane-clearing but never the state
-    /// re-derivation — so a mutant that reads the OLD identifier (or skips the
+    /// re-derivation — so a change that reads the OLD identifier (or skips the
     /// state read entirely) would pass there and fail here.
     func testSelectRelatedBook_differentBook_reDerivesBookStateFromRegistryForNewBook() {
         let current = TPPBookMocker.mockBook(identifier: "current-book", title: "Current",

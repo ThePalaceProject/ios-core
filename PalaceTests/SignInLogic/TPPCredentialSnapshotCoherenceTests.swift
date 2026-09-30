@@ -13,7 +13,7 @@
 //  library (a singleton writer + a per-account reader), so the reader's cache
 //  went stale after the writer persisted a change.
 //
-//  Contract as of CP-D2 (swarm_27c181b5 Wave C): production keeps exactly ONE
+//  Contract: production keeps exactly ONE
 //  `TPPUserAccount` per library UUID (`AccountsManager.userAccount(for:)`
 //  cache) and the keychain cache is write-through, so the single production
 //  instance is always self-coherent WITHOUT re-reading the keychain on every

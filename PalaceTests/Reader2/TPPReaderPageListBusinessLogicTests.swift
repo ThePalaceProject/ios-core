@@ -169,7 +169,7 @@ final class TPPReaderPageListBusinessLogicTests: XCTestCase {
         // "07" is numerically 7 but is not an exact string match for "7", so it
         // resolves through the numeric fallback. The nearest preceding numeric
         // <= 7 is "07" itself (value 7). Pins the fallback bound as inclusive
-        // (`<=`): the mutant `<` would skip the numerically-equal page and drift
+        // (`<=`): changing it to `<` would skip the numerically-equal page and drift
         // down to "5".
         let sut = TPPReaderPageListBusinessLogic(publication: makePublication(pages: [
             ("5", "/c.xhtml#p5"),
@@ -221,7 +221,7 @@ final class TPPReaderPageListBusinessLogicTests: XCTestCase {
     // Pure progression-based selection: given each page entry's book
     // progression and the patron's current progression, pick the nearest
     // PRECEDING print page (largest progression <= current). This is the
-    // mutation-tested core behind currentPageLabel(for:).
+    // core behind currentPageLabel(for:).
 
     func testNearestPreceding_picksLargestAtOrBelowCurrent() {
         let progressions: [Double?] = [0.0, 0.25, 0.5, 0.75]
@@ -233,7 +233,7 @@ final class TPPReaderPageListBusinessLogicTests: XCTestCase {
 
     func testNearestPreceding_exactMatchIsInclusive() {
         // current == a boundary's progression must select THAT boundary (<=),
-        // not the prior one. The mutant `<` would drift down to index 1.
+        // not the prior one. Changing it to `<` would drift down to index 1.
         let progressions: [Double?] = [0.0, 0.25, 0.5, 0.75]
         XCTAssertEqual(
             TPPReaderPageListBusinessLogic.nearestPrecedingIndex(progressions: progressions, current: 0.5),
@@ -261,7 +261,7 @@ final class TPPReaderPageListBusinessLogicTests: XCTestCase {
 
     func testNearestPreceding_tiesSelectFirstBoundary() {
         // Two boundaries at the same progression: keep the FIRST (strict `>`).
-        // The mutant `>=` would drift to the last duplicate (index 1).
+        // Changing it to `>=` would drift to the last duplicate (index 1).
         let progressions: [Double?] = [0.3, 0.3]
         XCTAssertEqual(
             TPPReaderPageListBusinessLogic.nearestPrecedingIndex(progressions: progressions, current: 0.5),

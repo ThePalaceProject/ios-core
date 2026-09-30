@@ -69,18 +69,14 @@ final class NotificationServiceTokenTests: XCTestCase {
         XCTAssertEqual(decoded.device_token, longToken)
     }
 
-    // Constant-equals-literal-string tests for HoldNotificationCategoryIdentifier,
-    // CheckOutActionIdentifier, and DefaultActionIdentifier were removed per
-    // CLAUDE.md "Banned test patterns" — they test the compiler, not behavior.
-    // Same with testSharedService_returnsSameAsShared (reflexive identity tautology).
-    // Reviewers rev_8cd9d48c and rev_1d39b5c0 both flagged these in the swarm review.
-    // The substantive coverage lives in `shouldRetryTokenRegistration` below.
+    // Identifier constants are not asserted here (they would test the
+    // compiler); coverage lives in `shouldRetryTokenRegistration` below.
 
     // MARK: - shouldRetryTokenRegistration (pure decision helper, swarm_f3b9b087 item #6)
     //
     // The auth-state-change retry path is driven by a pure decision
-    // helper so mutation testing can pin every branch without standing
-    // up a Combine subscription. The helper answers:
+    // helper so tests can pin every branch without standing up a
+    // Combine subscription. The helper answers:
     // "given an auth-state transition AND the current hasUpdatedToken
     // flag, should the service re-attempt FCM token registration?"
     //

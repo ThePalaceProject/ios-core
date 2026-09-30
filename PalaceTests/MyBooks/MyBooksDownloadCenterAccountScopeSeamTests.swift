@@ -2,33 +2,14 @@
 //  MyBooksDownloadCenterAccountScopeSeamTests.swift
 //  PalaceTests
 //
-//  Wave 3 S2b — proves `MyBooksDownloadCenter` resolves account SCOPE through
-//  the injected `DownloadAccountScopeProviding` seam, NOT a hardcoded
-//  `AccountsManager` / `AppContainer.production()` reach.
-//
-//  Two behavioral pins, both driven by a spy scope so the account-SCOPE reads
-//  under test resolve through the spy — no real AccountsManager, keychain, or
-//  UserDefaults backs the scope path. (MBDC's OTHER init defaults still resolve
-//  `AppContainer.production()` for the credential / networkExecutor / disk-budget
-//  deps, which these tests do not exercise; the shared production graph is not a
-//  freshly-constructed AccountsManager, so there is no isolation-lint concern.)
-//
-//    1. `fileUrl(for:)` value-flow — MBDC's default `BookFileManager` resolves
-//       the on-disk path under the account the injected seam reports. The spy
-//       returns a distinctive id; the account that reaches the file-path
-//       `directoryProvider` MUST be exactly that id. A mutant that reverted the
-//       retype (BookFileManager reading `AppContainer.production()`'s current
-//       account) would resolve a different id here → the assertion fails.
-//
-//    2. `persistStartedTaskRecord` account stamp — the durable started-task
-//       record's `account` is read from the injected seam at persist time. Since
-//       PP-4978 that stamp is read back on the DOWNLOAD path to decide whose
-//       credentials answer a re-issued request's auth challenge, so a wrong stamp
-//       authenticates against the wrong library. (Launch reconciliation itself
-//       never reads `.account` — it matches by `bookID`/`taskIdentifier`.)
-//       Asserted for a single persist, across a mid-session account change
-//       (proving a live read per persist, not an init-time capture), and for the
-//       no-current-account sentinel.
+//  Pins that `MyBooksDownloadCenter` resolves account scope through the injected
+//  `DownloadAccountScopeProviding` seam rather than `AccountsManager` /
+//  `AppContainer.production()`. Driven by a spy scope:
+//    1. `fileUrl(for:)` resolves the on-disk path under the seam's account.
+//    2. `persistStartedTaskRecord` stamps the seam's account, read live per
+//       persist. Since PP-4978 that stamp decides whose credentials answer a
+//       re-issued request's auth challenge, so a wrong stamp authenticates
+//       against the wrong library.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -124,8 +105,7 @@ final class MyBooksDownloadCenterAccountScopeSeamTests: XCTestCase {
     }
 
     /// A second id proves the read is live, not a coincidence: flip the seam and
-    /// the resolved account flips with it. Kills a mutant that captured the id
-    /// once at init instead of reading the seam per call.
+    /// the resolved account flips with it, so capturing the id once at init fails.
     func testFileUrl_tracksInjectedScopeSeamAcrossAccountChange() throws {
         let firstID = "seam-first-\(UUID().uuidString)"
         let secondID = "seam-second-\(UUID().uuidString)"
@@ -170,10 +150,8 @@ final class MyBooksDownloadCenterAccountScopeSeamTests: XCTestCase {
     /// (`MyBooksDownloadCenter.persistStartedTaskRecord`), so this test asserts
     /// the persisted record carries exactly the id the spy reports.
     ///
-    /// A mutant that re-hardcoded the stamp onto a concrete
-    /// `AccountsManager.currentAccountId` — or that stamped the empty-string
-    /// fallback unconditionally — persists a different account than the spy's →
-    /// the assertion fails.
+    /// Reading a concrete `AccountsManager.currentAccountId`, or stamping the
+    /// empty-string fallback unconditionally, persists a different account.
     func testPersistStartedTaskRecord_stampsAccountFromInjectedScopeSeam() throws {
         let accountID = "stamp-lib-\(UUID().uuidString)"
         let spy = SpyDownloadAccountScope(accountID: accountID)

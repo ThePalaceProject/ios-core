@@ -378,8 +378,8 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         // their saved page.
         //
         // Critical: keep totalProgression at 0 AND no cssSelector so
-        // the position-branch is the ONLY accepting path. This pins
-        // the mutant `position > 0 → return true ⇒ return false`.
+        // the position-branch is the ONLY accepting path. This catches
+        // `position > 0 → return true` being changed to `return false`.
         let locations = Locator.Locations(
             totalProgression: 0,
             position: 7
@@ -399,7 +399,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
 
     func testShouldStore_positionZero_doesNotStore() {
         // Boundary guard against the `position > 0 → position >= 0`
-        // mutant. A locator with `position == 0` and no other anchor
+        // regression. A locator with `position == 0` and no other anchor
         // must NOT persist — position 0 is the equivalent of "before
         // page 1".
         let locations = Locator.Locations(

@@ -2,62 +2,15 @@
 //  AudiobookPlaybackRecoveryDecisionTableTests.swift
 //  PalaceTests
 //
-//  Wave 6 decomposition pin for `Palace/Audiobooks/AudiobookSessionManager.swift`
-//  (god-class-decomposition-plan.md §3a-1 "Public API + Manager Binding →
-//  orchestration decision logic → reducer", §5 fleet row "session-state
-//  contract").
-//
-//  WHAT THIS PINS THAT NOTHING ELSE DID
-//
-//  The five playback-failure recovery predicates were each already unit-pinned
-//  in isolation (`AudiobookLoadFailureSAMLReauthTests`,
-//  `AudiobookBearerTokenRecoveryTests`, `AudiobookColdLoadRecoveryTests`,
-//  `OverdriveFulfillmentTests`, `AudiobookVendorRecoveryContractTests`). None of
-//  them reached the PRECEDENCE between the predicates, because the ordering
-//  lived as a chain of early-returning `if` arms inside `handleManagerState` —
-//  which `AudiobookSessionManager.swift` itself records as untestable:
-//  "nothing in PalaceTests drives `handleManagerState`."
-//
-//  Precedence is where the consequential failures live: an OverDrive title whose
-//  signed URL expired on its FIRST play satisfies both the OverDrive arm and the
-//  cold-load arm, and which one wins decides whether the patron gets fresh
-//  signed URLs or a silent re-open of the same dead URL. CLAUDE.md is explicit
-//  that this is a table, not a set of scenarios: "states × events is finite and
-//  enumerable; scenarios are not."
-//
-//  THE TABLE has two axes, because `decide(_:)` answers two questions from one
-//  context and they are NOT the same function of it:
-//
-//   1. WHICH RECOVERY — a linear precedence chain over five predicates. Enumerated
-//      as: each predicate alone; every simultaneously-satisfiable PAIR (the higher
-//      arm must win); each arm's per-session bound spent (must fall THROUGH, not
-//      short-circuit); the one input that splits a decision in two (`contentIsLocal`
-//      under cold-load); and every terminal shape.
-//
-//   2. WHAT IS PUBLISHED — the shipped `willRecover` disjunction
-//      `SAML || OverDrive || coldLoad`, evaluated WHOLE and independently of which
-//      arm the chain selects. Four recoveries imply their published state as a
-//      theorem (`.samlReauth` ⇒ the SAML term held, and so on; `.terminal` ⇒ none
-//      held). `.bearerTokenRefulfill` implies nothing, because it is selected on a
-//      term that is not in the disjunction — so the SAME recovery publishes
-//      `.loading` on a title's first play and `.error` mid-listen. Those two cells
-//      are asserted as a discriminating pair
-//      (`testPublishedState_bearerToken*`); a suite that asserted only one of them
-//      would pass against a reducer that had collapsed the two into one value, and
-//      an earlier revision of this file did exactly that.
-//
-//  EXPECTED VALUES ARE DERIVED FROM THE SHIPPED EXPRESSION, NOT FROM THE REDUCER.
-//  Each `keepsPlayerLoading` below is `SAML || OverDrive || coldLoad` evaluated by
-//  hand against that test's context, where
-//  `coldLoad = !hasEverStartedPlayback && book != nil && !coldLoadAttempted`
-//  (`AudiobookSessionManager+ContentOpenPolicy.swift`). A characterization test
-//  read off the implementation it characterizes is a tautology with extra steps.
-//
-//  SATISFIABILITY IS NOT SYMMETRIC WITH REALISM. One pair below needs a fixture no
-//  circulation manager would emit — a title that is both an OverDrive distributor
-//  and a bearer-token acquisition. It is included and labelled because the reducer
-//  accepts such an input and the ordering must still be defined; it is an ordering
-//  pin, not a field scenario.
+//  Pins the PRECEDENCE between the five playback-failure recovery predicates in
+//  the reducer's `decide(_:)`, and the published `willRecover` state
+//  (`SAML || OverDrive || coldLoad`). Precedence decides, for example, whether an
+//  OverDrive title whose signed URL expired on first play gets fresh URLs or a
+//  re-open of the same dead URL. Each predicate alone is covered by its own suite.
+//  Expected published values are computed by hand from the shipped expression in
+//  `AudiobookSessionManager+ContentOpenPolicy.swift`, not read off the reducer.
+//  One pair (OverDrive distributor + bearer-token acquisition) is not a field
+//  scenario; it pins ordering for an input the reducer accepts.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -404,10 +357,7 @@ final class AudiobookPlaybackRecoveryDecisionTableTests: XCTestCase {
     /// their published state as a theorem.
     ///
     /// A reducer that computed the published state from the recovery CASE cannot
-    /// satisfy both halves at once, whatever value it picks. An earlier revision
-    /// of this file asserted only the mid-listen half and so passed against
-    /// exactly such a reducer, with a 100% mutation kill rate — the mutant that
-    /// would have fixed the bug was killed BY the tests pinning the wrong value.
+    /// satisfy both halves at once, so both are asserted together.
     func testPublishedState_sameBearerTokenRecovery_differsByColdLoadTerm() throws {
         let midListen = try XCTUnwrap(published(
             context(error: httpError(410), book: bearerTokenBook(),

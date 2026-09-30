@@ -2,8 +2,8 @@
 //  TPPAgeCheckStateMachineTests.swift
 //  PalaceTests
 //
-//  Bucket A migration tests for TPPAgeCheck.verifyCurrentAccountAgeRequirement
-//  (swarm_81b5099e Phase 1). The legacy path read
+//  Migration tests for TPPAgeCheck.verifyCurrentAccountAgeRequirement.
+//  The legacy path read
 //  `currentLibraryAccountProvider.currentAccount?.details` directly;
 //  the migrated path awaits `currentAccount.awaitReady()` so age-check
 //  cannot race the auth-doc fetch.

@@ -8,7 +8,7 @@
 //  path, where URLSession is injectable so we can additionally count
 //  HTTP requests fired against the loans URL.
 //
-//  Two contracts pinned per swarm_81b5099e Network-OPDS:
+//  Two contracts pinned:
 //
 //    1. fetchLoans blocks while account state is `.detailsLoading`,
 //       then fires exactly one HTTP request to the loans URL after

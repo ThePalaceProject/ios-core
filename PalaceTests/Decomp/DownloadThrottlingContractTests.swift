@@ -2,28 +2,13 @@
 //  DownloadThrottlingContractTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE test pack for the god-class decomposition campaign
-//  (docs/architecture/god-class-decomposition-plan.md §3a-3 cluster
-//  "Throttling + disk budget" + §5 "throttling … edge tests").
-//
-//  Pins the deterministic slice of `DownloadThrottlingService`'s concurrency
-//  policy (Palace/MyBooks/DownloadThrottlingService.swift): setting the active
-//  cap propagates to the shared `DownloadStateManager`, and EVERY re-application
-//  of the cap ends by asking the delegate (MBDC) to re-pump the pending-download
-//  queue. When this service moves into PalaceDownloads, the cap→pump coupling
-//  must survive — a decomposition that dropped the trailing pump would leave
-//  queued books stranded whenever a slot frees up.
-//
-//  SEAM (documented, not faked): the audiobook-preservation behavior
-//  (`pauseAllDownloads` / over-cap `limitActiveDownloads` suspend NON-audiobook
-//  tasks but never audiobook tasks) is NOT unit-pinned here. Observing it
-//  requires spying `URLSessionTask.suspend()`, but `URLSessionDownloadTask`
-//  cannot be meaningfully subclassed and a freshly-created task already reports
-//  `.suspended`, so "suspended by policy" is indistinguishable from "never
-//  started" at this seam. That branch is exercised on a sim (start N+1 mixed
-//  ebook/audiobook downloads, background, observe the audiobook keeps streaming)
-//  — noted for the extraction wave rather than pinned with a non-deterministic
-//  assertion.
+//  Pins `DownloadThrottlingService`'s cap policy: setting the cap propagates to
+//  `DownloadStateManager`, and every re-application ends by asking the delegate to
+//  re-pump the pending queue. Dropping that pump would strand queued books when a
+//  slot frees (docs/architecture/god-class-decomposition-plan.md §3a-3).
+//  Not pinned: audiobook tasks surviving `pauseAllDownloads`. A fresh
+//  `URLSessionDownloadTask` already reports `.suspended` and cannot be subclassed,
+//  so that branch is verified on a simulator.
 //
 
 import XCTest
@@ -58,7 +43,7 @@ final class DownloadThrottlingContractTests: XCTestCase {
     /// `limitActiveDownloads(max:)` must (1) propagate the new cap to the shared
     /// state manager AND (2) re-pump the pending queue via the delegate. With no
     /// active downloads the suspend/resume body is a no-op, isolating exactly
-    /// these two effects. Kills a mutant that dropped the `maxConcurrentDownloads`
+    /// these two effects. Catches a change that dropped the `maxConcurrentDownloads`
     /// assignment and one that dropped the trailing `schedulePendingStartsAsync`.
     func test_limitActiveDownloads_propagatesCap_andRepumpsPendingQueue() async {
         service.limitActiveDownloads(max: 2)
@@ -74,7 +59,7 @@ final class DownloadThrottlingContractTests: XCTestCase {
 
     /// `resumeIntelligentDownloads()` re-applies the CURRENT cap (giving
     /// previously-suspended tasks a chance to resume) and likewise re-pumps the
-    /// queue — without changing the cap value. Kills a mutant that made resume a
+    /// queue — without changing the cap value. Catches a change that made resume a
     /// no-op (queued books would never restart after a throttle/foreground).
     func test_resumeIntelligentDownloads_reappliesCurrentCap_andRepumps() async {
         stateManager.maxConcurrentDownloads = 3

@@ -123,10 +123,9 @@ final class NetworkResponderAuthChallengeWitnessTests: XCTestCase {
     /// Holds the ONLY strong reference to the account-screen provider, so a test
     /// can decide exactly when it dies. The responder itself holds it weakly, and
     /// the whole point of PP-4969 is what happens after it is gone — so lifetime
-    /// has to be explicit here rather than incidental. (A first version of this
-    /// helper returned a `() -> Void` release closure; discarding that closure in
-    /// the "still alive" test silently dropped the last reference and the provider
-    /// died before the assertion. Hence a named box.)
+    /// has to be explicit here rather than incidental. (A `() -> Void` release
+    /// closure is easy to discard by accident, which drops the last reference
+    /// before the assertion. Hence a named box.)
     private final class ProviderBox {
         var provider: MockCredentialsProvider?
     }

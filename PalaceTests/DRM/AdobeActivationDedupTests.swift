@@ -23,8 +23,8 @@ final class AdobeActivationDedupTests: XCTestCase {
 
     /// In-memory stand-in for the user account.
     ///
-    /// Deliberately NOT a real `TPPUserAccount`. CLAUDE.md forbids tests
-    /// touching real keychain state, and a concurrency test has a specific
+    /// Deliberately NOT a real `TPPUserAccount`: tests stay off the real
+    /// keychain, and a concurrency test has a specific
     /// reason to care: `TPPUserAccount` serializes its credentials through a
     /// synchronous `accountInfoQueue.sync(flags: .barrier)`, so 10 racing
     /// activations would sit in blocking dispatch work on cooperative-pool

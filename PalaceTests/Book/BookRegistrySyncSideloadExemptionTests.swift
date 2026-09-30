@@ -2,24 +2,14 @@
 //  BookRegistrySyncSideloadExemptionTests.swift
 //  PalaceTests
 //
-//  THE critical sync-exemption regression (sideloading-plan.md R1).
+//  Sync exemption for side-loaded books. `sync()` evicts any book NOT in the
+//  loans feed and deletes its content; side-loaded books never appear there, so
+//  `recordsToDelete.subtract(sideloadedIDsProvider())` is what keeps them.
 //
-//  The main registry's server `sync()` evicts any book NOT in the loans feed
-//  and deletes its on-disk content. Side-loaded books are registered
-//  `.downloadSuccessful` but of course never appear in the loans feed, so
-//  without the `recordsToDelete.subtract(sideloadedIDsProvider())` exemption
-//  the next sync silently destroys them.
-//
-//  These tests drive the FULL production `sync()` path — real account
-//  readiness gate, a stubbed loans-feed HTTP response, the real reconciliation
-//  barrier, and a spy download center recording on-disk deletes — with a
-//  mutation-grade contrast: the SAME scenario with an EMPTY exemption set must
-//  evict the same book (proving the exemption, not some other guard, is what
-//  saved it — so removing the `subtract` line fails the first test).
-//
-//  Keychain-gated (credentials must be writable for sync() to reach the feed
-//  fetch) — an environment-capability guard, NOT a host-sign-in-state dodge:
-//  the fixture UUID is unique so credential state is deterministic.
+//  Drives the full production `sync()` path (readiness gate, stubbed loans feed,
+//  reconciliation barrier, spy download center), plus a contrast case with an
+//  EMPTY exemption set that must evict the same book, proving the exemption is
+//  what saved it. Keychain-gated: sync() needs writable credentials to fetch.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -236,10 +226,9 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
   }
 
   func test_sync_withEmptyExemption_evictsTheSameBook_andDeletesItsContent() throws {
-    // Mutation-grade contrast: identical scenario, EMPTY exemption set. Now the
-    // "side-loaded" book is unprotected and MUST be evicted + deleted — this is
-    // what proves the previous test's survival is caused by the exemption
-    // subtract, and kills the "subtract removed" mutant.
+    // Contrast case: identical scenario, EMPTY exemption set. The "side-loaded"
+    // book is now unprotected and MUST be evicted + deleted, proving the previous
+    // test's survival is caused by the exemption subtract.
     let (_, cleanup) = try seedReadyCredentialedAccount()
     defer { cleanup() }
 

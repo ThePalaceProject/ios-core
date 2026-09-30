@@ -212,8 +212,8 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
     }
 
     /// Boundary case — at EXACTLY the threshold (30s) the guard must NOT
-    /// fire. The condition is `> 30`, not `>= 30`. Without this test the
-    /// `>` → `>=` mutant survives. Uses the injected clock so the boundary
+    /// fire. The condition is `> 30`, not `>= 30`; this catches `>` → `>=`.
+    /// Uses the injected clock so the boundary
     /// is exact and reproducible.
     func testDryStreamGuard_doesNotLog_atExactlyThreshold() {
         let t0 = Date()
@@ -225,8 +225,8 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         )
 
         // Pin the clock at EXACTLY 30s after lastUpdateTime. With `>`
-        // (production), 30 > 30 is false → no log. With `>=` (mutant),
-        // 30 >= 30 is true → log. So `count == 0` kills the `>=` mutant.
+        // (production), 30 > 30 is false → no log. With `>=`, 30 >= 30 is
+        // true → log. So `count == 0` catches the `>=` regression.
         coordinator._test_setLastUpdateTime(t0)
         coordinator._test_setLastIsPlaying(true)
         fakeNow.value = t0.addingTimeInterval(30.0)

@@ -25,8 +25,8 @@ final class ReaderChromeToggleFadeTests: XCTestCase {
 
     /// The overlay chrome (book title + position) belongs to immersive reading:
     /// visible when the nav bar is HIDDEN, hidden when it is SHOWN, and always
-    /// hidden under VoiceOver. This table kills the `||` → `&&` and drop-`!`
-    /// mutations of the decision.
+    /// hidden under VoiceOver. This table catches a `||` → `&&` swap or a
+    /// dropped `!` in the decision.
     func test_overlayLabelsHidden_truthTable() {
         // Immersive (bar hidden), VoiceOver off → labels VISIBLE (not hidden).
         XCTAssertFalse(
@@ -39,7 +39,7 @@ final class ReaderChromeToggleFadeTests: XCTestCase {
             TPPBaseReaderViewController.overlayLabelsHidden(navigationBarHidden: false, voiceOverRunning: false),
             "Bar shown + VoiceOver off: overlay labels must hide so they don't duplicate the nav bar. KEY ROW for the || operator.")
 
-        // VoiceOver on, bar hidden → HIDDEN (kills drop-`!`: without `!`, bar
+        // VoiceOver on, bar hidden → HIDDEN (catches drop-`!`: without `!`, bar
         // hidden would force visible even under VoiceOver).
         XCTAssertTrue(
             TPPBaseReaderViewController.overlayLabelsHidden(navigationBarHidden: true, voiceOverRunning: true),

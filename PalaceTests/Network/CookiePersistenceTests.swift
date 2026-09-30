@@ -2,7 +2,7 @@
 //  CookiePersistenceTests.swift
 //  PalaceTests
 //
-//  Mutation-killing tests for SAML cookie persistence across cold-start.
+//  Tests for SAML cookie persistence across cold-start.
 //
 //  Contract pinned here (read from production source — see
 //  `TPPNetworkExecutor.request(for:useTokenIfAvailable:accountId:)` and
@@ -27,7 +27,7 @@
 //   - We construct a SAML user account by writing `.cookies([...])`
 //     into `_credentials` AND setting `_cookies` (the cookie storage is
 //     separate from credentials in the real account model).
-//   - Each test asserts a property that a plausible mutation would flip:
+//   - Each test asserts a property that a plausible regression would flip:
 //     deleting the cold-start install loop, inverting the `isSaml` gate,
 //     replacing `for c in cookies { shared.setCookie(c) }` with a no-op,
 //     etc.
@@ -203,7 +203,7 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 1: setCookies stores and round-trips
     //
-    // Kills: deletion of the `_cookies.write(newValue)` body inside
+    // Catches: deletion of the `_cookies.write(newValue)` body inside
     // `TPPUserAccountMock.setCookies(_:)` (the mock mirror of the real
     // setter). Without storage, `cookies` would return nil and the
     // executor's `if let cookies = snapshot.cookies, !cookies.isEmpty`
@@ -225,7 +225,7 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 2: Cookies survive executor recreation (cold-start)
     //
-    // Kills: any mutation that ties the cookie store to the executor's
+    // Catches a regression that ties the cookie store to the executor's
     // URLSession lifetime. The executor is recreated (simulating cold-
     // start: process restarts, URLSession is gone) but the cookies are
     // owned by the user account, NOT the session, so they must still be
@@ -271,7 +271,7 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 3: Cookies are NOT installed for non-SAML auth
     //
-    // Kills: removal of the `if let authDef = snapshot.authDefinition, authDef.isSaml`
+    // Catches: removal of the `if let authDef = snapshot.authDefinition, authDef.isSaml`
     // guard. If the gate is inverted or deleted, token / basic / oauth
     // accounts would also install cookies, leaking cookies cross-auth.
 
@@ -310,7 +310,7 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 4: Empty cookies array does not crash and is a no-op
     //
-    // Kills: replacement of `if !cookies.isEmpty` with `if cookies.isEmpty`
+    // Catches: replacement of `if !cookies.isEmpty` with `if cookies.isEmpty`
     // (which would dereference a nil/empty collection and either crash or
     // run an empty install loop with side-effects on shared storage state).
 
@@ -329,7 +329,7 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 5: Cookies are re-applied on every request (defensive)
     //
-    // Kills: hoisting the cookie-install loop into a one-shot guard
+    // Catches: hoisting the cookie-install loop into a one-shot guard
     // (e.g. wrapping it in `if !installedOnce { ... installedOnce = true }`).
     // The contract is that every request re-installs — that way a
     // background process or another extension that wipes the shared
@@ -353,7 +353,7 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 6: Updated cookie value replaces the prior one
     //
-    // Kills: replacement of `shared.setCookie(cookie)` with a no-op or
+    // Catches: replacement of `shared.setCookie(cookie)` with a no-op or
     // with `shared.deleteCookie(cookie)`. Setting twice with the same
     // (name, domain, path) tuple must result in the new value being
     // visible on the next request.
@@ -374,7 +374,7 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 7: Cookies install at the right URL scope
     //
-    // Kills: stripping the cookie's domain on install or hardcoding the
+    // Catches: stripping the cookie's domain on install or hardcoding the
     // wrong domain. We assert by querying `cookies(for:)` with a URL
     // whose host matches the cookie's domain — if the install lost the
     // domain, the cookie would be present in `cookies` (unfiltered) but
@@ -393,7 +393,7 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 8: Multiple cookies all install on cold-start
     //
-    // Kills: replacement of the install-loop with a single-cookie
+    // Catches: replacement of the install-loop with a single-cookie
     // first-only install (`shared.setCookie(cookies.first!)`).
 
     func test_MultipleCookies_AllInstalled_AfterColdStart() {
@@ -420,8 +420,8 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 9: Cookie-only credentials carry through credential snapshot
     //
-    // Kills: a snapshot that drops cookies from the credential bundle
-    // (i.e. mutation that returns `cookies: nil` from
+    // Catches: a snapshot that drops cookies from the credential bundle
+    // (i.e. a regression that returns `cookies: nil` from
     // `credentialSnapshot()`). Because `request(for:)` reads cookies
     // from the snapshot, not directly from the account, dropping them
     // there silently disables cold-start cookie sync.
@@ -450,7 +450,7 @@ final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Test 10: Logging out clears cookies and they do NOT re-appear
     //
-    // Kills: `removeAll()` mutation that forgets to clear the cookie slot
+    // Catches a `removeAll()` regression that forgets to clear the cookie slot
     // (i.e. drops `_cookies = nil` from removeAll). After sign-out, the
     // next request must NOT re-install the prior session's cookies.
 

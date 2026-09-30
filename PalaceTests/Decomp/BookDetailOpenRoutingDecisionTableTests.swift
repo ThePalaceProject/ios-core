@@ -2,47 +2,13 @@
 //  BookDetailOpenRoutingDecisionTableTests.swift
 //  PalaceTests
 //
-//  Wave 5 pin-before-extract — the OPEN-ROUTING DECISION TABLE for
-//  `BookDetailViewModel.openBook(_:completion:)`, written against the code as
-//  it stands BEFORE the `BookOpenRouter` extraction (plan §3a-4 / §5, cycle 8).
-//
-//  WHY A TABLE AND NOT SCENARIOS
-//
-//  `TPPBookContentType` has exactly five cases — epub, audiobook, pdf,
-//  unsupported, streamingHTML — so "format → destination" is finite and
-//  enumerable. CLAUDE.md's state-machine rule applies directly: write the table
-//  down and assert every cell, rather than sampling the cells that felt
-//  interesting. `BookDetailOpenRoutingTests` (the earlier pack) asserts two of
-//  the five; this file asserts all five, in both registry states from which
-//  `openBook` is reachable, plus the registry-resolution cell.
-//
-//  THE TABLE THIS PINS (read off the production switch, not modelled)
-//
-//    format         | audiobook session | streamingHTML route | completion
-//    ---------------+-------------------+---------------------+-----------
-//    .audiobook     | opened once       | not pushed          | invoked
-//    .streamingHTML | not opened        | pushed once         | invoked
-//    .unsupported   | not opened        | not pushed          | NOT invoked
-//    .epub / .pdf   | see the exclusion note below
-//
-//  The `.unsupported` row's last cell is the one a reader would get wrong: the
-//  `default:` arm clears `processingButtons` and presents the format error but
-//  never calls `completion`, so a caller holding a spinner on the completion
-//  keeps holding it. That asymmetry is behaviour the extraction must carry over
-//  unchanged, which is exactly why it is pinned here rather than "fixed" mid-move.
-//
-//  OBSERVABILITY, STATED AT THE SCOPE IT WAS MEASURED
-//
-//  Two destinations are observable from a unit seam without executing a reader:
-//  the audiobook session (injected via `audiobookSession:`) and the
-//  streamingHTML route (a real `NavigationCoordinator` registered on the
-//  production hub, the same technique `StreamingReaderPresentationContractTests`
-//  uses). EPUB and PDF route through `BookService` ->
-//  `AppContainer.production().readerService`, which is NOT injected into the
-//  view model — driving them runs the real open pipeline and its failure
-//  recovery. Their cells are covered by the pure `BookOpenRouter` table the
-//  extraction adds. Stated at the scope measured: before that table, the
-//  epub/pdf destinations have no assertion anywhere in the suite.
+//  Pins every cell of `BookDetailViewModel.openBook(_:completion:)` routing
+//  (format → destination), in both registry states that reach it:
+//    .audiobook     → session opened once, completion invoked
+//    .streamingHTML → route pushed once, completion invoked
+//    .unsupported   → format error, completion NOT invoked (a caller's spinner stays)
+//  EPUB/PDF go through `BookService` and the non-injected reader service, so their
+//  cells are covered by the pure `BookOpenRouter` table instead.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

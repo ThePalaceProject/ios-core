@@ -2,8 +2,8 @@
 //  RelatedBooksServiceTests.swift
 //  PalaceTests
 //
-//  The related-works lane derivation, extracted from `BookDetailViewModel` in
-//  Wave 5. These tests could not be written before the extraction: the
+//  The related-works lane derivation, extracted from `BookDetailViewModel`.
+//  These tests could not be written before the extraction: the
 //  derivation's only input was the return value of a concrete `OPDSFeedService`
 //  actor constructed inside the view model, so there was nothing to hand it a
 //  feed through. `RelatedBooksFeedFetcher` is that seam.

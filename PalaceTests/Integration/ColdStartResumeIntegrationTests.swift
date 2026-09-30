@@ -126,8 +126,8 @@ class ColdStartResumeIntegrationTests: PalaceWiringTestCase {
 
     /// `.downloading` with NO file on disk must heal to `.downloadFailed`.
     /// Pins the explicit branch in BookRegistrySync.load (lines 111-118).
-    /// Kills mutant: changing `.downloadFailed` → `.downloading` (i.e., silently
-    /// resuming) when the file is missing.
+    /// Guards against staying `.downloading` (resuming) when the file is
+    /// missing.
     func testColdStart_InflightDownloadWithMissingFile_MarkedFailed() {
         let bookId = "inflight-missing-\(UUID().uuidString)"
         let payload = registryFileJSON(records: [
@@ -214,7 +214,7 @@ class ColdStartResumeIntegrationTests: PalaceWiringTestCase {
     /// Cold-start with a corrupted registry file must produce an EMPTY
     /// in-memory registry — and not crash. Pins BookRegistrySync.load's
     /// `try? JSONSerialization.jsonObject(...)` defensive parse.
-    /// Kills mutant: replacing `try?` with `try!` (would crash).
+    /// A `try!` there would crash.
     func testColdStart_CorruptedRegistryFile_BootsToEmptyState() {
         let garbage = Data("not-valid-json-{[]}".utf8)
         writeRaw(garbage, to: account)
@@ -295,7 +295,6 @@ class ColdStartResumeIntegrationTests: PalaceWiringTestCase {
     /// a token within the refresh-threshold window must report true. The
     /// TPPNetworkExecutor branch on this property is what fires proactive
     /// refresh BEFORE the first user-driven request.
-    /// Kills mutant: flipping the `<=` to `>=` in isTokenNearExpiry.
     func testColdStart_StaleTokenDetectedAsNearExpiry() {
         // Token expiring in 30 seconds — well within the production refresh
         // threshold of 5 minutes.
@@ -323,7 +322,6 @@ class ColdStartResumeIntegrationTests: PalaceWiringTestCase {
 
     /// A fresh token (well outside the refresh window) must NOT trigger
     /// proactive refresh. Pins the negative branch of authTokenNearExpiry.
-    /// Kills the mutant that always returns true.
     func testColdStart_FreshTokenNotMarkedNearExpiry() {
         let freshExpiry = Date().addingTimeInterval(3600) // 1h from now
         let userAccount = accountsManager.userAccount(for: account)

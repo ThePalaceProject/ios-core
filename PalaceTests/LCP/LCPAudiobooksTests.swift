@@ -454,7 +454,7 @@ final class LCPAudiobooksTests: XCTestCase {
         }
     }
 
-    /// A player that does not conform must be rejected. The killable mutant is
+    /// A player that does not conform must be rejected. The regression this catches is
     /// flipping this `return false` — dropping the `as?` guard outright would
     /// not compile, since the binding is used.
     func testSetupStreamingFor_whenPlayerIsNotStreamingCapable_returnsFalse() throws {
@@ -472,7 +472,7 @@ final class LCPAudiobooksTests: XCTestCase {
     }
 
     /// A released instance is a dead one-shot. It must refuse BEFORE handing
-    /// itself to the player — kills a mutant that reorders the release guard
+    /// itself to the player — catches a change that reorders the release guard
     /// after `setStreamingProvider`, which would wire a dead decryptor into a
     /// live player.
     func testSetupStreamingFor_whenReleased_refusesWithoutHandingItselfOver() throws {

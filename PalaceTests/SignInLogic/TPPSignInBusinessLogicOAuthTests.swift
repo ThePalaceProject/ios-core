@@ -2,7 +2,7 @@
 //  TPPSignInBusinessLogicOAuthTests.swift
 //  PalaceTests
 //
-//  Deep, mutation-killing tests for the OAuth / token-flow surface of
+//  Deep tests for the OAuth / token-flow surface of
 //  TPPSignInBusinessLogic. P0 coverage gap per docs/Testing/Coverage_Roadmap.md §2.1.
 //
 //  These tests focus on:
@@ -183,7 +183,7 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
         postOAuthRedirect(url)
 
         // Token and patron must be captured into the businessLogic in-flight state
-        // BEFORE validateCredentials() fires its async network call. If a mutation
+        // BEFORE validateCredentials() fires its async network call. If a change
         // swaps the assignment order (or drops one) this assertion fails.
         XCTAssertEqual(businessLogic.authToken, "clever-token-abc",
                        "access_token from redirect payload must be stored as the in-flight auth token")

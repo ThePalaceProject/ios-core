@@ -2,17 +2,17 @@
 //  TokenRefreshAndRetryQueueTests.swift
 //  PalaceTests
 //
-//  Mutation-killing tests for the token-refresh + 401 retry-queue logic in
+//  Tests for the token-refresh + 401 retry-queue logic in
 //  `TPPNetworkExecutor.refreshTokenAndResume`. Each test pins a specific
-//  branch in the executor's refresh path so a mutation flips behaviour
-//  observable from the test surface. See Coverage_Roadmap §2.1.
+//  branch in the executor's refresh path so a regression there changes
+//  behaviour observable from the test surface. See Coverage_Roadmap §2.1.
 //
 //  Conventions:
 //   - All HTTP is intercepted by `HTTPStubURLProtocol`; no real network.
 //   - The executor under test is constructed via the full-DI initializer
 //     so its `accountsManager` is a `TPPLibraryAccountMock`, decoupled from
 //     `AppContainer.production().accountsManager`.
-//   - Each test comment names the mutant(s) it kills in plain English.
+//   - Each test comment names the regression it catches.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -168,7 +168,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 1: 401-failure path marks credentials stale
     //
-    // Kills: removing the `nsError.code == 401` branch (line 485) — i.e.
+    // Catches: removing the `nsError.code == 401` branch (line 485) — i.e.
     // mutating `==` to `!=`, deleting the markCredentialsStale call, or
     // turning the `if let nsError ... == 401` guard into `true`.
     //
@@ -224,7 +224,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 2: Network-error refresh failure does NOT mark stale
     //
-    // Kills: broadening the `nsError.code == 401` branch to fire on any
+    // Catches: broadening the `nsError.code == 401` branch to fire on any
     // failure (e.g. `nsError.code != 0` or `true`). A transient network
     // error must NOT brand the user as having bad credentials — that
     // would force a sign-in prompt on every offline blip.
@@ -268,7 +268,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 3: 401 with no refresh credentials → no /token attempt
     //
-    // Kills: deletion of the early-return guard on missing barcode/pin
+    // Catches: deletion of the early-return guard on missing barcode/pin
     // (`guard let username = ..., !username.isEmpty, let password = ..., let tokenURL = ...`)
     // and the matching `setRefreshing(false)` release. If the guard is
     // removed/inverted, the executor will either (a) attempt the /token
@@ -335,7 +335,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 4: Concurrent refreshes coalesce — only one /token fires
     //
-    // Kills: removing the atomic `tryClaimRefreshSlot()` check (line 403)
+    // Catches: removing the atomic `tryClaimRefreshSlot()` check (line 403)
     // or replacing `!claimed` with `claimed`. If the single-flight guard
     // is broken, N concurrent refreshes produce N /token requests instead
     // of 1.
@@ -417,8 +417,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // tearDown. We do NOT wait for completions here.
         //
         // The structural single-flight invariant is already pinned by
-        // the `inFlightAttempts == 1` assertion above — that's the
-        // kill-mutation guard. The prior implementation followed this
+        // the `inFlightAttempts == 1` assertion above. An earlier version
+        // followed this
         // with `await fulfillment(of: completions, timeout:)` plus a
         // `tokenRequestCount == 1` belt-and-suspenders check. Both were
         // redundant (single-flight implies single HTTP request), AND
@@ -428,7 +428,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // didn't work either because xcodebuild test doesn't propagate
         // shell env vars into the simulator test process by default.
         //
-        // Net trade: lose ~1 mutation-equivalence check (already covered
+        // Net trade: lose one redundant check (already covered
         // by the structural assertion) in exchange for permanently
         // unblocking CI on a flake that hit every PR.
         releaseGate.signal()
@@ -436,7 +436,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 5: Queued tasks get the NEW token after refresh
     //
-    // Kills: replacement of `self.request(for: originalURL)` (line 461)
+    // Catches: replacement of `self.request(for: originalURL)` (line 461)
     // with a stale `oldTask.originalRequest` reuse, or replacement of
     // `oldTask.cancel()` with `oldTask.resume()`. The retry MUST go out
     // with the freshly-stored bearer, not the original (stale) one.
@@ -506,7 +506,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 6: Single-flight slot is released on success
     //
-    // Kills: deletion of `setRefreshing(false)` (line 471) on the success
+    // Catches: deletion of `setRefreshing(false)` (line 471) on the success
     // path. If the slot stays latched, subsequent refresh attempts will
     // be incorrectly coalesced into the (already-completed) refresh.
 
@@ -549,7 +549,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 7: Retried task identifier is rewired before resume
     //
-    // Kills: deletion of `responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)`
+    // Catches: deletion of `responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)`
     // (line 463). Without that rewire, the new (retried) task lands in
     // the responder with no associated completion, so the success-body
     // delivery never happens — only the cancelled-old-task completion
@@ -629,7 +629,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 8: DELETE 401 short-circuits refresh
     //
-    // Kills: removal of the DELETE early-return in
+    // Catches: removal of the DELETE early-return in
     // `handleExpiredTokenIfNeeded` (line 400-402). The executor itself
     // is invoked through `executeRequest` here so we exercise the
     // delegate path. DELETE 401s must NOT trigger a refresh — they
@@ -680,7 +680,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 9: refresh continuation completes (success-path resume)
     //
-    // Kills: deletion of the `if task == nil { completion?(.success(...)) }`
+    // Catches: deletion of the `if task == nil { completion?(.success(...)) }`
     // block on the success branch (line 473-475). Callers of
     // refreshTokenAndResume that supplied a completion AND nil task
     // expect the success path to call completion exactly once. Skipping

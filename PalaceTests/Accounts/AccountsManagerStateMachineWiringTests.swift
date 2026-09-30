@@ -3,9 +3,8 @@
 //  PalaceTests
 //
 //  Contract-snapshot tests pinning the 4 state-machine wiring transitions
-//  added to AccountsManager in the 3.2.0 swarm (Accounts-Wiring module).
-//  See docs/architecture/account-state-machine.md and the per-swarm
-//  contract at .forgeos/swarms/swarm_81b5099e/contracts/Accounts-Wiring.md.
+//  added to AccountsManager in 3.2.0.
+//  See docs/architecture/account-state-machine.md.
 //
 //  Each test exercises one ADR-mandated transition through the testable
 //  seams (`preloadAccountsFromDiskCacheSync`,
@@ -69,7 +68,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // AFTER the base's drain of cancellables but BEFORE the registry
         // sweep.
         //
-        // NOTE (swarm_4b64e4e0 Wave 1d): we deliberately do NOT set
+        // NOTE: we deliberately do NOT set
         // `AccountsManager.deferInitialLoadCatalogsForTesting = false` here.
         // The post-test observer fires `_resetForTesting()` which rebuilds
         // the cached `AppContainer`; the newly-constructed cached
@@ -84,7 +83,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // `manager.preloadAccountsFromDiskCacheSync()` reading the bundled
         // 1142 instead of the seeded 171, then `account(currentUUID)`
         // returning nil because the bundled set doesn't carry the fixture's
-        // UUID space. See the wave 1d transcript for the full forensic.
+        // UUID space.
         // PalaceTestSetup.bootstrap() pins the flag to true at bundle-load
         // time; PalaceWiringTestCase.setUpWithError repins it on each setUp.
         // Leaving it true on tearDown keeps the inter-test cached-rebuild
@@ -235,7 +234,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     func testLoadCatalogs_currentAccountWithoutDetails_drivesDetailsLoading_thenLoaded() throws {
         let catalogs = try loadFeedCatalogs()
         let firstUUID = catalogs[0].metadata.id
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // Per-test isolated UserDefaults suite
         // wired into the AccountsManager so the
         // `currentAccountIdentifierKey` write below cannot leak across
         // tests via `.standard`.
@@ -320,7 +319,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let catalogs = try loadFeedCatalogs()
         let currentUUID = catalogs[0].metadata.id
 
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // Per-test isolated UserDefaults suite
         // wired into the AccountsManager so the
         // `currentAccountIdentifierKey` write below cannot leak via
         // `.standard`.
@@ -418,7 +417,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let catalogs = try loadFeedCatalogs()
         let currentUUID = catalogs[0].metadata.id
 
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        // Per-test isolated UserDefaults suite.
         let defaults = Self.testUserDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults)
         // Drain the main queue so init's background loadCatalogs has a chance
@@ -609,10 +608,9 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     ///
     /// The entry guard's suppression is synchronous, so this test needs no async,
     /// no network, and no fixture path — a near-clone of Test 3 (above) plus the
-    /// teardown call. Mutation check: negating the entry guard (`if
-    /// _explicitCancelCalled` → `if false`) lets `.detailsLoading` land and
-    /// reddens this test; the order-dependent pollution tests would not reliably
-    /// catch that mutation.
+    /// teardown call. Negating the entry guard (`if _explicitCancelCalled` →
+    /// `if false`) lets `.detailsLoading` land and fails this test; the
+    /// order-dependent pollution tests would not reliably catch that.
     func testFetchAuthDoc_afterCancelBackgroundWork_isInertNoOp_leavesStateNotLoaded() throws {
         // Unique id → a fresh account whose UUID has no prior entry in the shared
         // store, so the precondition below is deterministic regardless of order.
@@ -1007,7 +1005,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     /// took a reference to the prior Account before the switch would hang
     /// forever — the prior UUID's state stream would never transition.
     ///
-    /// PR #1021 (Module A, swarm_51f248d5) split this terminal off from
+    /// PR #1021 split this terminal off from
     /// the formerly-shared `.detailsFailed(.accountNotFound)` so the
     /// eviction marker no longer collides with the genuine HTTP-404 load
     /// failure surfaced from `fetchAuthDocumentWithStateMachine`. See
@@ -1035,7 +1033,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
             XCTFail("Pre-state: accountA must be in .detailsLoaded")
         }
 
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // Per-test isolated UserDefaults suite
         // wired into the AccountsManager so the
         // `currentAccountIdentifierKey` write cannot leak via `.standard`.
         let defaults = Self.testUserDefaults()
@@ -1083,7 +1081,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let priorUUID = catalogs[0].metadata.id
         let newUUID = catalogs[1].metadata.id
 
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        // Per-test isolated UserDefaults suite.
         let defaults = Self.testUserDefaults()
         // Seed disk cache + populate accountSets via preload so the
         // manager's currentAccount accessor can resolve UUIDs back to
@@ -1167,7 +1165,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         accountA.authenticationDocument = authDoc
         accountA._setState(.detailsLoaded(accountA.details!))
 
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        // Per-test isolated UserDefaults suite.
         let defaults = Self.testUserDefaults()
         defaults.set(accountA.uuid, forKey: currentAccountIdentifierKey)
 
@@ -1237,7 +1235,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     /// throw `.evicted` forever on the swap-back — exactly the audiobook-open
     /// "Please sign in" regression observed in field reports.
     ///
-    /// PR #1021 (Module A, swarm_51f248d5) is the structural fix: the eviction
+    /// PR #1021 is the structural fix: the eviction
     /// marker now lives in its own enum case (`.detailsEvicted(.libraryDeselected)`)
     /// rather than sharing storage with `.detailsFailed(.accountNotFound)`.
     /// `driveCurrentAccountAuthDocIfNeeded` matches the new case and redrives;
@@ -1254,7 +1252,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         }
         let currentUUID = catalogs[0].metadata.id
 
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        // Per-test isolated UserDefaults suite.
         let defaults = Self.testUserDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults)
         // Deterministic barrier: `deferInitialLoadCatalogsForTesting` (pinned
@@ -1343,7 +1341,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
     // MARK: - Test 10: real .detailsFailed(.accountNotFound) does NOT redrive (consumer disambiguation)
 
-    /// Contract (Module A semantics test #3, swarm_51f248d5): a genuine
+    /// Contract (PR #1021): a genuine
     /// `.detailsFailed(.accountNotFound)` terminal MUST NOT trigger the
     /// `driveCurrentAccountAuthDocIfNeeded` redrive arm. The redrive is only
     /// for `.detailsEvicted(.libraryDeselected)` — the eviction marker the
@@ -1357,7 +1355,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     /// marker) and the helper had to special-case the conflation, which
     /// caused real `.accountNotFound` failures to also redrive — hammering
     /// the load endpoint into a tight retry loop. Splitting the enum
-    /// (Module A) is the root fix; this test pins the new behavior.
+    /// (PR #1021) is the root fix; this test pins the new behavior.
     ///
     /// Kill case: a regression that re-conflates the two meanings (e.g. by
     /// adding `.detailsFailed(.accountNotFound)` to the redrive arm) would
@@ -1369,7 +1367,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         }
         let currentUUID = catalogs[0].metadata.id
 
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        // Per-test isolated UserDefaults suite.
         let defaults = Self.testUserDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults)
         // Drain the main queue so init's background loadCatalogs has a chance
@@ -1533,7 +1531,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
                        "the re-fired fetch's completion must clear the single-flight slot")
     }
 
-    /// Control (kills the inverse mutant): a RECENT in-flight entry must still
+    /// Control (the inverse case): a RECENT in-flight entry must still
     /// DEDUPE — the second caller returns `completion(true)` WITHOUT re-firing,
     /// leaving the account at `.detailsLoading` (the genuine concurrent-fetch
     /// case). Proves the reclaim is gated on staleness, not unconditional.
@@ -1583,7 +1581,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
     // MARK: - Test 8: startDownload captures currentAccountId once — full A→nil→A→B round-trip
 
-    /// Contract (Module A — `feedback_round_trip_wiring_tests.md`): the
+    /// Contract: the
     /// `DownloadStartCoordinator.startDownloadAsync` seam MUST capture
     /// `accountsManager.currentAccountId` ONCE at the top of the path and
     /// thread that captured id through to bearer-auth. Mid-flight library
@@ -1647,8 +1645,8 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // Coordinator wired so the 4-arg processWithCredentials closure
         // sees the captured accountId. The captured-id reaches the closure
         // ONLY if `startDownloadAsync` captures-once at its top and
-        // threads through — which is exactly the contract Module A is
-        // pinning. We record into `capturedAccountIdsAtBearerAuth` so we
+        // threads through — which is exactly the contract being pinned.
+        // We record into `capturedAccountIdsAtBearerAuth` so we
         // can assert the round-trip post-hoc.
         let coordinator = DownloadStartCoordinator(
             stateManager: stateManager,
@@ -1732,9 +1730,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
     // MARK: - Test 9 — End-to-end: captured accountId → bearerAuthorized → Authorization header
     //
-    // Closes the gap the architect review (rev_ae4426f2) flagged on Test 8:
-    // "the captured id flows from coordinator entry all the way to the
-    //  Authorization header" was not proven. Test 8 stops at the
+    // Test 8 stops at the
     //  processWithCredentials closure boundary (the dispatcher seam) — it
     //  proves CAPTURE. Test 4 in MyBooksDownloadCenterAccountIdThreadingTests
     //  proves bearerAuthorized(request:accountId:) standalone. Neither test

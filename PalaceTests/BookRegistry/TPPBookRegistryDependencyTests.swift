@@ -3,11 +3,11 @@
 //  PalaceTests
 //
 //  Pins down the explicit-AccountsManager-dependency contract introduced
-//  when `TPPBookRegistry.shared` was killed in Phase 6.6.
+//  when `TPPBookRegistry.shared` was removed.
 //
 //  Why these tests matter:
 //
-//  Before 6.6, TPPBookRegistry.init did `self.accountsManager = AppContainer.production().accountsManager`.
+//  Previously TPPBookRegistry.init did `self.accountsManager = AppContainer.production().accountsManager`.
 //  That re-entered AppContainer's static-let dispatch_once during app launch
 //  the moment AccountsManager.shared was killed (PR #884), because
 //  AppContainer._cached had to read TPPBookRegistry.shared. Two singletons
@@ -115,7 +115,7 @@ class TPPBookRegistryDependencyTests: PalaceWiringTestCase {
         )
     }
 
-    /// Regression test for the dispatch_once trap that motivated the 6.6 kill.
+    /// Regression test for the dispatch_once trap that motivated removing the singleton.
     ///
     /// Before this PR: AppContainer._cached read `TPPBookRegistry.shared`,
     /// which triggered TPPBookRegistry.init, which read

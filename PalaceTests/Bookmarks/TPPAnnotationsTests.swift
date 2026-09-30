@@ -834,7 +834,7 @@ final class TPPAnnotationsTests: XCTestCase {
         let manager: AnnotationsManager = concrete
 
         // Protocol dispatch must reach the same value as the concrete call —
-        // a mutant that breaks the witness table or shadows the property
+        // a regression that breaks the witness table or shadows the property
         // would yield divergent results.
         let viaProtocol = manager.syncIsPossibleAndPermitted
         let viaConcrete = concrete.syncIsPossibleAndPermitted
@@ -1260,8 +1260,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     /// both as `(nil, response, error)`. Stubbing `(nil, response, nil)` — an
     /// error-free non-2xx — describes a shape production never emits, and two
     /// tests once passed against it while the behaviour they asserted did not
-    /// exist (PP-4965 review round 2). Build refusals through here so that
-    /// cannot recur.
+    /// exist (PP-4965). Build refusals through here so that cannot recur.
     private func serverRefusal(_ code: Int) -> (Data?, URLResponse?, Error?) {
         (nil,
          httpResponse(code),
@@ -1678,17 +1677,9 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     /// `TPPAnnotations.postReadingPosition` is the SINGLE POST for four
     /// callers — EPUB positions, PDF positions, audiobook listening
     /// positions, and audiobook bookmarks — so the `device:` value it writes
-    /// is this branch's wire-format change for all four. Nothing pinned it:
-    /// the diff-only mutation run covered `TPPLastReadPositionSynchronizer`
-    /// only, so a mutant restoring the old `currentUserAccount.deviceID ?? ""`
-    /// survived here.
-    ///
-    /// Raised by the blast_radius reviewer, who also corrected the reason I
-    /// had recorded for not writing it. I claimed the body was unreachable
-    /// because `URLProtocol` does not expose `httpBody`; that is true of the
-    /// URLProtocol seam and irrelevant here — `RecordingExecutorMock`
-    /// captures the request BEFORE URLSession is involved, which is how
-    /// `testPostAnnotation_RequestShape_…` already reads posted keys.
+    /// is the wire format for all four. This catches a regression back to
+    /// `currentUserAccount.deviceID ?? ""`. `RecordingExecutorMock` captures
+    /// the request before URLSession is involved, so the body is readable.
     ///
     /// Asserts the LITERAL expected bytes rather than comparing against
     /// another `AnnotationDevice.currentID()` call, which would be
@@ -1867,7 +1858,8 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
 // MARK: - Override-Pattern Tests
 //
 // These tests verify the `accountsManagerOverride` / `firebaseDeviceIDOverride`
-// seams introduced by the architectural-triad Phase 4 refactor.
+// seams introduced by the architectural-triad refactor
+// (docs/architecture/architectural-triad.md).
 // They lock in the contract that, when an override is set, TPPAnnotations and
 // AnnotationDevice route through it instead of `*.shared`.
 @MainActor
@@ -2015,7 +2007,7 @@ class AnnotationDeviceIDTests: XCTestCase {
     /// AnnotationDevice.currentID() must be stable across many calls AND
     /// derive from the FirebaseManager deviceID in test environments
     /// (no Adobe DRM). Pin both invariants in one body. Stability across
-    /// 5 calls (instead of 2) catches a mutant that randomly regenerates
+    /// 5 calls (instead of 2) catches a regression that randomly regenerates
     /// after the first call.
     func testAnnotationDeviceID_isStableAndDerivedFromFirebaseInTestEnvironment() {
         let firebaseID = FirebaseManager.shared.deviceID

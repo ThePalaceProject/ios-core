@@ -74,7 +74,7 @@ final class OPDS2FeedContractTests: XCTestCase {
     func testParseAudiobook_IncludesCompleteMetadataAndLinks() throws {
         // The audiobook publication must parse with title, non-empty id, cover
         // images, and at least one acquisition link so it can be rendered and
-        // borrowed. A mutation that stops populating any of these would leave
+        // borrowed. A regression that stops populating any of these would leave
         // the audiobook tab blank or un-borrowable.
         let feed = try decodeFeed(from: "opds2_feed")
         let audiobook = try XCTUnwrap(feed.publications?.last,

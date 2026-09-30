@@ -2,7 +2,7 @@
 //  TPPBookRegistryPersistenceTests.swift
 //  PalaceTests
 //
-//  Deep, mutation-killing persistence tests for TPPBookRegistry and its
+//  Persistence tests for TPPBookRegistry and its
 //  collaborator BookRegistrySync. Covers the P0 gap from
 //  docs/Testing/Coverage_Roadmap.md §2.2:
 //
@@ -99,9 +99,8 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
         return book
     }
 
-    /// Wave-2 (swarm_ad0b4c65): replaced the `wait(for:timeout:30.0)` +
-    /// `RunLoop.current.run(until:+0.1)` settle with a deterministic seam
-    /// join. `sync.load` drives its mutation through
+    /// Waits for the load with a deterministic seam join instead of a
+    /// wall-clock timeout. `sync.load` drives its mutation through
     /// `BookRegistryStore.mutateRegistry`, which enqueues on `store`'s
     /// barrier `syncQueue`; `_awaitPendingWritesForTesting()` drains that
     /// queue (bounded — one trailing barrier hop), which also guarantees the
@@ -127,7 +126,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
 
     // MARK: - Round-trip: save → reload from disk
 
-    /// Kills the mutant: drop the `try registryData.write(to:options:.atomic)` call
+    /// Catches a regression that would drop the `try registryData.write(to:options:.atomic)` call
     /// (or replace JSONSerialization output with empty data). If save is a no-op,
     /// the reload sees nothing and the state assertion below fails.
     func testSave_ThenColdStartLoad_PreservesRecord() async {
@@ -155,7 +154,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
                        "Title field must survive JSON round-trip — kills mutant that drops metadata serialization")
     }
 
-    /// Kills the mutant that flips `.atomic` to a non-atomic write and writes
+    /// Catches a regression that flips `.atomic` to a non-atomic write and writes
     /// partial data on the second save. Persistence must be the LAST-WRITER-WINS
     /// snapshot, not an additive append.
     func testSave_OverwritesPreviousSave_NotAppends() async {
@@ -187,7 +186,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
 
     // MARK: - Corruption resilience
 
-    /// Kills the mutant that replaces `(try? JSONSerialization.jsonObject(...)) as?
+    /// Catches a regression that replaces `(try? JSONSerialization.jsonObject(...)) as?
     /// TPPBookRegistryData` with a force-try — corrupted JSON must not crash;
     /// the registry must come up empty.
     func testLoad_WithCorruptedJSON_RegistryIsEmpty_DoesNotCrash() async {
@@ -216,7 +215,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
                         "Registry must recover (be writable + reloadable) after a corrupted-load")
     }
 
-    /// Kills the mutant that drops the `json.array(for: .records)` nil-check —
+    /// Catches a regression that drops the `json.array(for: .records)` nil-check —
     /// a truncated JSON object that can't be deserialized as a dictionary OR a
     /// dictionary that lacks the `records` key MUST produce empty state.
     func testLoad_WithTruncatedJSON_RegistryIsEmpty_DoesNotCrash() async {
@@ -231,7 +230,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
                       "Truncated/malformed JSON must yield an empty registry — no partial parse, no crash")
     }
 
-    /// Kills the mutant that drops the `let records = json.array(for: .records)`
+    /// Catches a regression that drops the `let records = json.array(for: .records)`
     /// guard — when the file is valid JSON but missing the `records` array, the
     /// registry must come up empty.
     func testLoad_WithJSONMissingRecordsKey_RegistryIsEmpty() async {
@@ -246,7 +245,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
 
     // MARK: - Publisher emissions
 
-    /// Kills the mutant that removes the `store.bookStateSubject.send(...)`
+    /// Catches a regression that removes the `store.bookStateSubject.send(...)`
     /// inside setState — the registry must publish state transitions to
     /// downstream subscribers.
     func testBookStatePublisher_FiresOnDownloadingToDownloadedTransition() async {
@@ -257,7 +256,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
 
         registry.addBook(book, state: .downloading)
 
-        // Wave-2 (swarm_ad0b4c65): `registry.setState` funnels its
+        // `registry.setState` funnels its
         // `store.bookStateSubject.send(...)` through `store.setState`'s
         // barrier `onComplete`, scheduled via `DispatchQueue.main.async`
         // from inside that barrier block — the same S2 seam as
@@ -280,7 +279,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
         registry.removeBook(forIdentifier: book.identifier)
     }
 
-    /// Kills the mutant that flips `nextState != previousState` to `==` (or
+    /// Catches a regression that flips `nextState != previousState` to `==` (or
     /// drops the guard entirely) inside BookRegistryStore.updateBook —
     /// updateBook with the same book must NOT spuriously emit a state event
     /// when its state doesn't change.
@@ -302,7 +301,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
             .store(in: &cancellables)
 
         registry.updateBook(book) // .holding → .holding (no-op transition)
-        // Wave-2 (swarm_ad0b4c65): `TPPBookRegistry.updateBook` decides
+        // `TPPBookRegistry.updateBook` decides
         // whether to schedule `DispatchQueue.main.async { bookStateSubject.send(...) }`
         // SYNCHRONOUSLY inside `store.updateBook`'s barrier `onComplete`
         // (`if nextState != previousState { DispatchQueue.main.async {...} }`)
@@ -321,7 +320,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
 
     // MARK: - Account isolation
 
-    /// Kills the mutant that hard-codes a single registry URL regardless of the
+    /// Catches a regression that hard-codes a single registry URL regardless of the
     /// `account` argument. Writes to account A must NOT be visible when loading
     /// account B's registry.
     func testAccountIsolation_AccountADoesNotLeakIntoAccountB() async {
@@ -377,7 +376,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
                         "Account A's record must remain intact in A's registry after B was saved")
     }
 
-    /// Kills the mutant that swaps `registryUrl(for: account)` to use a captured
+    /// Catches a regression that swaps `registryUrl(for: account)` to use a captured
     /// `self.account` — different accounts must produce different on-disk URLs.
     func testRegistryUrl_DiffersAcrossAccounts() {
         let urlA = sync.registryUrl(for: "account-A-\(UUID().uuidString)")
@@ -391,7 +390,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
 
     // MARK: - Concurrent writes
 
-    /// Kills the mutant that drops the serial `diskWriteQueue` and allows
+    /// Catches a regression that drops the serial `diskWriteQueue` and allows
     /// out-of-order writes — concurrent saves from two queues must converge on
     /// a valid on-disk JSON snapshot that contains the final in-memory state.
     func testConcurrentSaves_ProduceValidJSONOnDisk() async {
@@ -425,7 +424,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
         }
         let waitExp = expectation(description: "All concurrent saves complete")
         group.notify(queue: .main) { waitExp.fulfill() }
-        // UNMAPPED (wave-2 swarm_ad0b4c65): waits on BookRegistrySync's private
+        // Waits on BookRegistrySync's private
         // `diskWriteQueue` draining via `save(for:)` fire-and-forget calls — no
         // catalog seam exists for that queue. Genuinely bounded by a real
         // DispatchGroup.notify, not a settle delay. In an async test method the

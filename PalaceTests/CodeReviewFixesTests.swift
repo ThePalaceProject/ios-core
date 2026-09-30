@@ -97,8 +97,8 @@ final class CodeReviewFixesTests: XCTestCase {
     /// `LockedDictionary` provides thread-safe storage with replace/get
     /// semantics. Lock the basic contract in one body: empty dictionary
     /// returns nil for any key, replace makes keys queryable, and the
-    /// queried value matches what was inserted. Catches a mutant that
-    /// drops the lookup or returns a constant.
+    /// queried value matches what was inserted. Catches a dropped lookup
+    /// or a constant return.
     func testLockedDictionary_getReturnsNilOnMissingAndStoredValueAfterReplace() {
         let locked = LockedDictionary<String, Int>()
 
@@ -146,8 +146,8 @@ final class CodeReviewFixesTests: XCTestCase {
 
     /// Sync accessor must safely return nil for unknown identifiers
     /// (never crash, never invent state). Pin three input shapes — empty
-    /// id, unknown id, multi-call sequence — so a mutant that returns a
-    /// default DownloadInfo on missing keys fails on a distinct row.
+    /// id, unknown id, multi-call sequence — so returning a default
+    /// DownloadInfo on missing keys fails on a distinct row.
     func testDownloadStateManager_syncAccessor_returnsNilForUnknownAndEmptyIdentifiers() {
         let manager = DownloadStateManager()
 

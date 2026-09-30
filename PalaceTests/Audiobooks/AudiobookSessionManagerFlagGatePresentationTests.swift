@@ -139,10 +139,9 @@ final class AudiobookSessionManagerFlagGatePresentationTests: XCTestCase {
     /// the presenter (which was never driven). The underlying non-audio
     /// route must survive — `pop()` removes only the top route (PP-3783).
     ///
-    /// Mutates: if `dismissPlayerOnPhone` always cleared the presenter
-    /// (dropping the flag gate), the stuck `.audio` route would never pop —
-    /// `path.count` would stay 2 and this fails. This is the bug the
-    /// architect review caught: a flag-off open with no programmatic dismiss.
+    /// If `dismissPlayerOnPhone` always cleared the presenter (dropping the
+    /// flag gate), the stuck `.audio` route would never pop — `path.count`
+    /// would stay 2 and this fails: a flag-off open with no programmatic dismiss.
     func testDismissPlayerOnPhone_flagOff_popsAudioRoute_preservesUnderlyingRoute() {
         flagEnabled = false
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)

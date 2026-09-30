@@ -2,7 +2,7 @@
 //  AccountNetworkingSeamTests.swift
 //  PalaceTests
 //
-//  Pins the Wave 3 / 3a `AccountNetworking` seam: `AccountsManager` reaches the
+//  Pins the `AccountNetworking` seam: `AccountsManager` reaches the
 //  shared network executor ONLY through the injected `any AccountNetworking`
 //  provider, never a concrete `TPPNetworkExecutor`. This is the type-inversion that
 //  lets `AccountsManager` move into `PalaceAccounts` without naming a `Palace/Network`
@@ -28,7 +28,7 @@ final class AccountNetworkingSeamTests: PalaceWiringTestCase {
     /// Contract: `AccountsManager.clearCache()` clears the network cache through the
     /// injected `AccountNetworking` seam — not by reaching a concrete executor.
     ///
-    /// Kill case: a mutant that drops the `networkExecutor.clearCache()` call (or
+    /// Regression caught: a change that drops the `networkExecutor.clearCache()` call (or
     /// resolves a real executor instead of the injected provider) → the spy never
     /// records `clearCache` → this fails.
     func testClearCache_routesThroughInjectedAccountNetworking() {
@@ -62,7 +62,7 @@ final class AccountNetworkingSeamTests: PalaceWiringTestCase {
     /// plain conformer would no longer satisfy the provider and this file would fail
     /// to compile.
     ///
-    /// Kill case: dropping the `networkExecutor.cancelNonEssentialTasks()` call on the
+    /// Regression caught: dropping the `networkExecutor.cancelNonEssentialTasks()` call on the
     /// switch-cleanup path → the spy never records `cancelNonEssentialTasks`.
     func testAccountSwitchCancel_routesThroughInjectedAccountNetworking() {
         let aUUID = "urn:uuid:acctnet-A-\(UUID().uuidString)"

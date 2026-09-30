@@ -218,12 +218,9 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
     //      merged page-1 feed is a SUPERSET of it, which removes nothing and is
     //      likewise accepted.
     //
-    // Two earlier revisions of this file claimed to test it. The first seeded a
-    // 3-library bundle and a 1-library page, which merges to a superset — `applied`
-    // was true throughout, so deleting the gate changed nothing. The second seeded the
-    // bucket directly to manufacture a resident set, which sent `loadCatalogs` down
-    // path 1: it asserted "no writes" and got it because NOTHING RAN. Both passed with
-    // the gate deleted, and one of them was cited as a red-proof in a commit body.
+    // Fixtures that look like they reach it do not: a 3-library bundle plus a
+    // 1-library page merges to a superset, and seeding the bucket directly sends
+    // `loadCatalogs` down path 1 so nothing runs.
     //
     // The gate is still correct to keep — it is live whenever the cache write fails,
     // and it becomes live generally the moment any future caller reaches that write
@@ -232,7 +229,7 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
     // fail. What IS reachable and IS tested below: the `didApplyBucketWrite` signal
     // that the gate consumes.
 
-    /// QA round 2, finding A. The background pagination used to undo the merge it was
+    /// The background pagination used to undo the merge it was
     /// meant to complete: its merge base was page 1 rather than the cache we had just
     /// written, its cache write was unconditional, and it passed no completeness — so
     /// the `= true` default licensed INV-2 to delete. Seconds after the merge saved
@@ -292,16 +289,10 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
     }
 
     /// The `?? feedIsPositivelyComplete(feed)` default in `loadAccountSetsAndAuthDoc`
-    /// is the guard for six of the eight entry points, and a `= true` default hid on
-    /// that line for three revisions before QA caught it.
-    ///
-    /// `palace_mutate` cannot cover it: the loader reports `0/36 mutation points on
-    /// changed lines`, and the tool has no `??` operator, so a
-    /// `?? feedIsPositivelyComplete(feed)` -> `?? true` mutant is not in its set. The
-    /// mutation gate therefore reports "nothing to mutate" for this file — which reads
-    /// exactly like a pass. This test is the only thing standing in for it, so it
-    /// deliberately passes NO `isCompleteFeed` argument: it exercises the default path
-    /// a caller gets by forgetting.
+    /// is the guard for six of the eight entry points; a `?? true` default there
+    /// would let a partial feed delete libraries. `palace_mutate` has no `??`
+    /// operator, so this test deliberately passes NO `isCompleteFeed` argument: it
+    /// exercises the default path a caller gets by forgetting.
     func testDerivedCompleteness_aCallerThatPassesNothing_cannotDelete() async throws {
         let hash = registryHashForCurrentConfiguration()
         let store = AccountRegistryStore(currentHash: hash)

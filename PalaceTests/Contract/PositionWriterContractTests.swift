@@ -359,21 +359,12 @@ final class PositionWriterContractTests: XCTestCase {
     ///       capture inside the iOS-only `endBackgroundTask` branch is
     ///       reachable from this test surface, not from the SPM bundle.
     ///
-    /// Module A flagged the `if id != .invalid` guard at
-    /// `RemotePositionWriter.swift:201` as un-killable from the SPM macOS
-    /// runtime (mutant 3). This scenario locks the iOS-host call order:
-    /// `network.post → return`. If the writer's `defer endBackgroundTask`
-    /// is broken into an unconditional call (the mutated branch), the
-    /// post still fires and the snapshot still matches — so this scenario
-    /// alone does NOT kill mutant 3. It DOES however lock the
-    /// post-completes-synchronously contract, which catches the inverse
-    /// regression: removing the `defer` block entirely (which would let
-    /// the begin call leak when `network.post` throws).
-    ///
-    /// See transcript "Gaps for integrator": full mutant-3 kill requires a
-    /// production-code injection seam over `UIApplication.shared`. None
-    /// exists at the time of writing; this scenario is the best
-    /// observable lock from a contract test.
+    /// The `if id != .invalid` guard at `RemotePositionWriter.swift:201` cannot be
+    /// exercised from the SPM macOS runtime, and this scenario does not cover it
+    /// either: an unconditional `endBackgroundTask` still matches the snapshot.
+    /// It does catch removing the `defer` block entirely, which would leak the
+    /// begin call when `network.post` throws. Covering the guard needs an
+    /// injection seam over `UIApplication.shared`.
     func test_backgroundTask_postCompletes_aroundNetworkPost() async throws {
         let log = CallLog()
         let adapter = SpyPositionNetworkAdapter(log: log)

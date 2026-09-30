@@ -26,7 +26,7 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         // disconnected region to be `sending`-passed into the actor init (the
         // test also retains self.userDefaults for cleanup). Shares backing store.
         //
-        // S8 seam (swarm_ad0b4c65 Wave-3): inject a no-op retry backoff so the
+        // Inject a no-op retry backoff so the
         // retry state machine runs with zero wall-clock delay. Because
         // enqueue/retry/networkStatusChanged all `await processQueue()` to full
         // drain, every action reaches its terminal state before the call

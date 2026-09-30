@@ -19,7 +19,7 @@
 //   - For each (auth type, rel) pair, a lookup table says which client-side
 //     property captures it (or explicitly that it's ignored by design).
 //   - If a rel is advertised but nothing is mapped, the test fails with
-//     a message pointing the reviewer at the CM contract change.
+//     a message pointing at the CM contract change.
 //
 
 import XCTest

@@ -9,8 +9,8 @@
 //  auto-reopen on a cold-load `.playbackFailed` before the alert is shown.
 //
 //  Like the OverDrive re-fulfill guard, the full handleManagerState ->
-//  openAudiobook wiring is auth-gated and proven by SoD review + device/sim
-//  validation; here we pin the pure decision predicate (the per-session bound
+//  openAudiobook wiring is auth-gated and validated on device/sim; here we
+//  pin the pure decision predicate (the per-session bound
 //  and the cold-vs-warm distinction) so the recovery semantics can't drift.
 //
 

@@ -137,8 +137,8 @@ final class PalaceErrorExtendedTests: XCTestCase {
     // MARK: - Error Code Range Tests
 
     /// Each PalaceError category occupies its own 1000-block of error codes.
-    /// Lock the blocks together so a mutant that swaps two categories'
-    /// offsets fails on a single test, and so a future engineer adding a new
+    /// Lock the blocks together so swapping two categories' offsets fails
+    /// on a single test, and so a future engineer adding a new
     /// category sees the canonical layout in one place.
     func testErrorCode_categoryOffsetsAreUniqueAndStable() {
         // category → first-case → expected base
@@ -156,8 +156,8 @@ final class PalaceErrorExtendedTests: XCTestCase {
                            "\(block.label) must start at \(block.expectedCode)")
         }
 
-        // Bases are pairwise distinct. A mutant that collapses two ranges
-        // (e.g. parsing at 2000) would fail this set-size invariant.
+        // Bases are pairwise distinct. Collapsing two ranges (e.g. parsing
+        // at 2000) fails this set-size invariant.
         let bases = Set(blocks.map { $0.expectedCode })
         XCTAssertEqual(bases.count, blocks.count,
                        "Each category MUST occupy a distinct error-code range")
@@ -284,15 +284,14 @@ final class PalaceErrorExtendedTests: XCTestCase {
     /// "Cancelled" is the user's choice — surfacing a recovery suggestion for
     /// it would be nagging. Lock the contract on both NetworkError and
     /// DownloadError in one body, AND contrast against a non-cancelled case
-    /// to make sure the "always-nil" mutant fails. This kills the broader
-    /// mutation surface that two single-assertion tests would not.
+    /// so an always-nil getter fails.
     func testCancellation_yieldsNoRecoverySuggestionAcrossNetworkAndDownload() {
         XCTAssertNil(NetworkError.cancelled.recoverySuggestion,
                      "User-cancelled network errors must not show a recovery prompt")
         XCTAssertNil(DownloadError.cancelled.recoverySuggestion,
                      "User-cancelled downloads must not show a recovery prompt")
 
-        // Contrast cases — would fail if a mutant nukes the whole getter.
+        // Contrast cases — fail if the whole getter returns nil.
         XCTAssertNotNil(NetworkError.timeout.recoverySuggestion,
                         "Non-cancelled errors MUST have a recovery suggestion — guards against an always-nil mutant")
         XCTAssertNotNil(DownloadError.insufficientSpace.recoverySuggestion)
@@ -302,8 +301,8 @@ final class PalaceErrorExtendedTests: XCTestCase {
 
     /// PalaceError is a sum type that defers `recoverySuggestion` and
     /// `errorDescription` to the wrapped inner error. Verify the delegation
-    /// across both LocalizedError surfaces in one body so a mutant that
-    /// returns a hard-coded string from PalaceError fails on either probe.
+    /// across both LocalizedError surfaces in one body so a hard-coded
+    /// string from PalaceError fails on either probe.
     func testPalaceError_localizedErrorSurface_delegatesToInnerError() {
         // recoverySuggestion delegation via storage(.permissionDenied)
         let storageError = PalaceError.storage(.permissionDenied)
@@ -318,8 +317,8 @@ final class PalaceErrorExtendedTests: XCTestCase {
                        "errorDescription must come from the wrapped inner error")
 
         // Cross-category sanity: recoverySuggestion of one inner type doesn't
-        // leak when wrapping a different inner type. This catches a mutant
-        // that hardcodes a single inner-error's value.
+        // leak when wrapping a different inner type (no hardcoded single
+        // inner-error value).
         XCTAssertNotEqual(storageError.errorDescription,
                           AuthenticationError.tokenExpired.errorDescription,
                           "Different wrapped inner errors must yield different errorDescription")

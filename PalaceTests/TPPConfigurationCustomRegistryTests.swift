@@ -124,9 +124,9 @@ final class TPPConfigurationCustomRegistryTests: XCTestCase {
   /// test's ISOLATED defaults suite, rather than via `settings.useBetaLibraries`'s
   /// setter. The setter posts `.TPPUseBetaDidChange`, which a live shared
   /// `AccountsManager` observes and turns into a background `loadCatalogs` that
-  /// reads `.standard` and outlives the test — the test-pollution shape CLAUDE.md
-  /// item #2 names. The getter reads this key, so behavior under test is identical
-  /// while the global notification fan-out is avoided.
+  /// reads `.standard` and outlives the test (cross-test pollution). The getter
+  /// reads this key, so behavior under test is identical while the global
+  /// notification fan-out is avoided.
   private func setHiddenLibraries(_ on: Bool) {
     defaults.set(on, forKey: "NYPLUseBetaLibrariesKey")
   }

@@ -2,13 +2,10 @@
 //  AppContainerWithSignInModalSheetPresenterTests.swift
 //  PalaceTests
 //
-//  swarm_d8f11437 Module B — `AppContainer.withSignInModalSheetPresenter(_:)`
-//  testability seam (wave 4).
-//
-//  Pins the testability-seam modifier added to AppContainer so test
-//  callers (Module A's wiring test among them) can inject a spy
-//  `SignInModalSheetPresenter` without disturbing the static cache that
-//  holds the production-resolved presenter. Two tests:
+//  `AppContainer.withSignInModalSheetPresenter(_:)` testability seam, which
+//  lets test callers inject a spy `SignInModalSheetPresenter` without
+//  disturbing the static cache that holds the production-resolved
+//  presenter. Two tests:
 //
 //   1. Override is preferred over the static cache — `AppContainer
 //      .production().withSignInModalSheetPresenter(spy).signInModalSheetPresenter`

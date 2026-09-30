@@ -94,7 +94,7 @@ final class LicensesServiceTests: XCTestCase {
 
     func testLicensesServiceError_licenseError_exposesMessageViaDescriptionVerbatim() {
         // .description must return the caller's message unchanged — used by
-        // UI alerts and Crashlytics. Guards against mutations that prefix,
+        // UI alerts and Crashlytics. Guards against changes that prefix,
         // trim, or otherwise mangle the error text on its way to the user.
         XCTAssertEqual(TPPLicensesServiceError.licenseError(message: "simple").description,
                        "simple")

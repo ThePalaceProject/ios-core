@@ -18,10 +18,9 @@
 //  `SingletonResetRegistry` resetter that calls `removeAll()` on every
 //  minted account at `testCaseDidFinish`.
 //
-//  Per contract C (swarm_47883816), production code is NOT modified —
-//  no `#if DEBUG` init seam, no keychain DI. Isolation is achieved purely
-//  by UUID-namespacing via the existing `StorageKey.keyForLibrary(uuid:)`
-//  path on `TPPUserAccount.swift:25-35`.
+//  Production code needs no `#if DEBUG` init seam or keychain DI:
+//  isolation comes purely from UUID-namespacing via the existing
+//  `StorageKey.keyForLibrary(uuid:)` path.
 //
 
 import Foundation

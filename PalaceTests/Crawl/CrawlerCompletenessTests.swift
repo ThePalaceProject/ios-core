@@ -140,10 +140,9 @@ final class CrawlerCompletenessTests: XCTestCase {
         XCTAssertTrue(LibraryCatalogMerger.feedIsPartial(feed))
     }
 
-    /// Kills the surviving `>=` -> `>` mutant at `LibraryRegistryCrawler.swift:430`.
-    /// The existing V-2 test crawls 3 of a declared 900, where the two operators are
-    /// indistinguishable. Only a walk that lands EXACTLY on the declared total tells
-    /// them apart — and that is the common case for a healthy registry, so under `>`
+    /// Pins the `>=` completeness comparison in `LibraryRegistryCrawler`. A crawl
+    /// of 3 of a declared 900 cannot distinguish `>=` from `>`; only a walk that
+    /// lands EXACTLY on the declared total tells them apart — and that is the common case for a healthy registry, so under `>`
     /// every complete crawl would be misfiled as short and deletions would never
     /// reconcile.
     func testCrawlRemainingPages_reachingExactlyTheDeclaredTotal_isAFullCrawl() async throws {

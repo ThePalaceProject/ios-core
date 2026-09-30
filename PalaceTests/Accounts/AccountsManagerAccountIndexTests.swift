@@ -34,7 +34,7 @@ final class AccountsManagerAccountIndexTests: PalaceWiringTestCase {
     // MARK: - Correctness across buckets
 
     /// `account(_:)` must resolve a UUID that lives in ANY bucket, not only the
-    /// first-enumerated one. Kills a mutation that indexes a single bucket.
+    /// first-enumerated one; catches an index built from a single bucket.
     func testAccount_resolvesUUIDInEitherBucket() {
         let manager = makeFreshAccountsManager()
         let prodA = stubAccount("uuid-prod-A")
@@ -85,8 +85,8 @@ final class AccountsManagerAccountIndexTests: PalaceWiringTestCase {
 
     /// `buildAccountIndex` maps every account by UUID; on a duplicate UUID across
     /// buckets the last-enumerated wins (documented equivalent of the prior
-    /// nondeterministic "first across values"). Kills a mutation that drops
-    /// accounts or mis-keys the index.
+    /// nondeterministic "first across values"). Catches an index that drops
+    /// accounts or mis-keys them.
     func testBuildAccountIndex_mapsAllAccounts() {
         let a = stubAccount("u-1")
         let b = stubAccount("u-2")

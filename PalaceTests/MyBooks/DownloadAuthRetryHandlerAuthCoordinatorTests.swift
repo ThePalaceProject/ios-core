@@ -2,7 +2,7 @@
 //  DownloadAuthRetryHandlerAuthCoordinatorTests.swift
 //  PalaceTests
 //
-//  swarm_66819d80 Module C — caller-migration assertions for
+//  Caller-migration assertions for
 //  `DownloadAuthRetryHandler` when wired with an `AuthCoordinator`.
 //
 //  When the coordinator is injected, the two IdP-dispatch branches

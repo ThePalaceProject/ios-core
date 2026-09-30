@@ -9,15 +9,15 @@
 //
 //  Like the OverDrive re-fulfill guard and the PP-4542 cold-load guard, the full
 //  handleManagerState -> openAudiobook(forceRefulfill:true) -> makeLoader wiring
-//  is auth-gated and proven by SoD review + device/sim validation. Here we pin
+//  is auth-gated and validated on device/sim. Here we pin
 //  the PURE decision predicates so the recovery's:
 //    - trigger classification (which HTTP / URLError signals count as an expired
 //      entitlement),
 //    - vendor allowlist (which vendors are covered vs left on the existing
 //      terminal alert), and
 //    - per-session bound
-//  cannot silently drift. Every assertion below survives a conditional flip in
-//  the production predicate (mutation-killing).
+//  cannot drift. Every assertion below fails if a conditional in the
+//  production predicate is flipped.
 //
 
 import XCTest
@@ -66,7 +66,7 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
 
     func testResourceUnavailable_nonURLDomainWithSameCode_returnsFalse() {
         // Same numeric code but a different domain must NOT match — the domain
-        // check is load-bearing (kills the `domain ==` mutation).
+        // check is load-bearing.
         let sameCodeOtherDomain = NSError(domain: "some.other.domain", code: NSURLErrorResourceUnavailable, userInfo: [:])
         XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: sameCodeOtherDomain),
             "-1008 only counts inside NSURLErrorDomain — a same-numbered code in another domain is unrelated")

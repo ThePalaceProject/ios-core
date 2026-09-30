@@ -12,7 +12,7 @@
 //  delete-on-fail ARE the fix; this test class locks them in so a
 //  refactor can't accidentally regress to "trust the file exists."
 //
-//  Each test surveys mutations on the production code:
+//  What each test catches:
 //   - flip the size threshold → testMissesUnderSizeThreshold breaks
 //   - drop the magic-byte check → testRejectsNonPDFHeader breaks
 //   - skip the on-fail removeItem → assertion that file is GONE breaks

@@ -56,9 +56,8 @@ final class AccountProfileDocumentTests: XCTestCase {
     /// `/patrons/me/` on every cold launch and getting a 401 because
     /// `getProfileDocument` fired the request whenever the auth document
     /// declared a `userProfileUrl`, regardless of whether the current user
-    /// had credentials. Discovered by chaos-qa dogfood-3 + dogfood-5;
-    /// gated in a single chokepoint at the Account extension. This test
-    /// kills the gate-removal mutation on Palace/Accounts/Library/Account+profileDocument.swift.
+    /// had credentials; gated in a single chokepoint at the Account extension
+    /// (Palace/Accounts/Library/Account+profileDocument.swift).
     func testGetProfileDocument_WhenUserAccountHasNoCredentials_CompletesWithNil_DoesNotFetch() {
         let uuid = "urn:uuid:f007-no-creds-\(UUID().uuidString)"
         let publication = OPDS2Publication(
@@ -108,12 +107,8 @@ final class AccountProfileDocumentTests: XCTestCase {
     // deliberate: the decision is worth pinning on its own, in every
     // combination, without dragging networking in. They are NOT the only guard
     // — `getProfileDocument` now takes `performRequest:` and `userAccount:`
-    // seams and is driven in both directions below. An earlier version of this
-    // comment claimed no test could observe whether the request was issued;
-    // that stopped being true when the seams landed.
-    // The F-007 test above claims to "kill the gate-removal mutation";
-    // measured on 2026-09-03 it does not — with the entire credentials gate
-    // deleted, every test in this file still passed, because
+    // seams and is driven in both directions below.
+    // The F-007 test above cannot detect a deleted credentials gate on its own:
     // `https://example.invalid/` fails DNS fast enough to satisfy both a nil
     // result and a sub-second bound whether or not the request was sent.
     // The decision is therefore lifted into `canAuthenticateProfileRequest`
@@ -194,9 +189,8 @@ final class AccountProfileDocumentTests: XCTestCase {
             "There is nothing to refresh without credentials — absence is decisive over repairability")
     }
 
-    /// The cell that was missing through three rounds: credentials present,
-    /// token NOT expired, refresh would repair. Reachable via the
-    /// `isOAuthAndNeedsRefresh` arm. Kills the `||` -> `!=` mutant.
+    /// Credentials present, token not expired, refresh would repair. Reachable
+    /// via the `isOAuthAndNeedsRefresh` arm; catches `||` regressing to `!=`.
     func testCanAuthenticate_credentialsUnexpiredAndRepairable_IsTrue() {
         XCTAssertTrue(
             Account.canAuthenticateProfileRequest(hasCredentials: true,
@@ -208,11 +202,9 @@ final class AccountProfileDocumentTests: XCTestCase {
 
     // MARK: - The gate is REACHED (not just correct)
 
-    // SoD review defeated the gate additively: inserting
-    // `if userAccount.authTokenHasExpired { completion(nil); return }` ABOVE it
-    // re-introduced the round-1 regression with all 42 tests green. Source-text
-    // lints are monotone — they catch deletion, never insertion. Only observing
-    // whether the request was ISSUED catches it, which is what these do.
+    // Source-text lints catch deletion of the gate, never an early return
+    // inserted above it (e.g. `if userAccount.authTokenHasExpired { completion(nil); return }`).
+    // Only observing whether the request was issued catches that.
 
     /// Builds an account whose auth document declares a user-profile URL.
     private func accountWithProfileURL(uuid: String) -> Account {
@@ -240,10 +232,9 @@ final class AccountProfileDocumentTests: XCTestCase {
 
     /// The gate must be REACHED, and when it blocks, no request may be issued.
     ///
-    /// This is what the old F-007 guard only claimed to do. It asserted a nil
-    /// document and sub-second timing against `example.invalid`, both of which
-    /// hold whether or not the request goes out — measured, it survived deleting
-    /// the entire gate. Observing the request directly is the difference.
+    /// The older F-007 guard asserted a nil document and sub-second timing
+    /// against `example.invalid`, both of which hold whether or not the request
+    /// goes out. Observing the request directly closes that gap.
     func testGetProfileDocument_withoutCredentials_issuesNoRequest() {
         let account = accountWithProfileURL(uuid: "urn:uuid:seam-no-creds-\(UUID().uuidString)")
         XCTAssertNotNil(account.details?.userProfileUrl,
@@ -276,22 +267,11 @@ final class AccountProfileDocumentTests: XCTestCase {
                       + "old timing-based guard could not see it.")
     }
 
-    /// THE test the seam existed for, and the one that was missing.
-    ///
-    /// Two independent reviewers found the same live mutant: inserting
-    /// `if userAccount.authTokenHasExpired { completion(nil); return }` above the
-    /// gate survived the entire suite. It re-introduces the round-2 regression —
-    /// blocking an expired-but-repairable token deletes a repair that works,
-    /// because the reactive 401 path refreshes the token and re-drives the task.
-    ///
-    /// Nothing caught it because the only seam test drove the NEGATIVE direction
-    /// (no credentials, where `authTokenHasExpired` is false), and the structural
-    /// lint is monotone so an inserted `if` leaves it green. A guard one level
-    /// away from what it guards — the very defect this file was written to fix.
-    ///
-    /// The account had to become injectable for this to be writable at all: it
-    /// was previously read from the process-wide cache inside the method, so no
-    /// test could stage credentials.
+    /// An expired-but-refreshable token must still issue the request: the
+    /// reactive 401 path refreshes the token and re-drives the task, so blocking
+    /// here (e.g. an inserted `if userAccount.authTokenHasExpired { ... return }`)
+    /// would drop a repair that works. The no-credentials test above cannot
+    /// catch that, because there `authTokenHasExpired` is false.
     func testGetProfileDocument_expiredButRefreshableToken_ISSUESTheRequest() {
         let uuid = "urn:uuid:seam-expired-refreshable-\(UUID().uuidString)"
         let account = accountWithProfileURL(uuid: uuid)
@@ -438,20 +418,10 @@ final class AccountProfileDocumentTests: XCTestCase {
 
     // MARK: - isTokenRefreshRequired: the gate's repairability input
 
-    // SoD review found my first attempt at these was one test written three
-    // times: all three passed `authDefinition: nil`, and the helper's first line
-    // is `guard let authDefinition else { return false }` — so all three hit the
-    // same early return, production always passes non-nil, and NO test reached a
-    // `true` return. A reviewer inverted the token branch AND forced the
-    // non-token branch to `return true` with the suite still green.
-    //
-    // A LATER round caught this comment overclaiming: only the TOKEN branch was
-    // actually addressed. Every fixture here was `tokenAuthDefinition` (isToken)
-    // or nil, so the OAuth arm below `if authDefinition.isToken` — the
-    // `isOAuthAndNeedsRefresh` term — stayed unreached, and the reviewer's
-    // non-token mutant was still live while this text said otherwise. Writing
-    // that a branch is covered does not cover it. The OAuth fixture and the two
-    // tests driving it exist because of that.
+    // The helper's first line is `guard let authDefinition else { return false }`
+    // and production always passes non-nil, so these tests use real definitions:
+    // token-auth for the `isToken` branch, and an OAuth fixture for the non-token
+    // arm below `if authDefinition.isToken`.
 
     /// Builds a token-auth definition the way the contract tests do.
     private func tokenAuthDefinition(tokenURL: String?) -> AccountDetails.Authentication {
@@ -478,8 +448,7 @@ final class AccountProfileDocumentTests: XCTestCase {
     /// Builds an OAuth-with-intermediary definition, which is NOT `isToken`.
     ///
     /// This is the only way to reach the arm below `if authDefinition.isToken`.
-    /// Every other fixture in this file is token-auth or nil, which is exactly
-    /// how a reviewer's non-token `return true` mutant stayed alive.
+    /// Every other fixture in this file is token-auth or nil.
     private func oauthAuthDefinition(tokenURL: String?) -> AccountDetails.Authentication {
         let links = tokenURL.map { """
         , "links": [{ "rel": "authenticate", "href": "\($0)" }]
@@ -510,9 +479,8 @@ final class AccountProfileDocumentTests: XCTestCase {
     /// the conjunct is always false, and the branch reduces in practice to
     /// `tokenExpired && hasCredentials`.
     ///
-    /// That is why a reviewer's non-token `return true` mutant survived: nothing
-    /// could reach the arm through a term that cannot be true. This drives the
-    /// reachable route instead — a non-token definition with an EXPIRED token
+    /// Nothing can reach the arm through a term that cannot be true, so this
+    /// drives the reachable route instead — a non-token definition with an EXPIRED token
     /// credential — so the branch is genuinely pinned.
     ///
     /// The dead conjunct is NOT touched here: `isTokenRefreshRequired` is
@@ -541,9 +509,8 @@ final class AccountProfileDocumentTests: XCTestCase {
     /// The same branch, driven to `false`, so the pair brackets it.
     ///
     /// An unexpired credential on the same non-token definition must report
-    /// false. A mutant hard-coding this branch to `true` fails here; a mutant
-    /// hard-coding it to `false` fails the test above. Neither was detectable
-    /// before, because no test entered this arm at all.
+    /// false. Hard-coding this branch to `true` fails here; hard-coding it to
+    /// `false` fails the test above.
     func testIsTokenRefreshRequired_nonTokenAuthWithUnexpiredCredential_isFalse() {
         let auth = oauthAuthDefinition(tokenURL: "https://example.invalid/authenticate")
         guard auth.isOauth, !auth.isToken else {
