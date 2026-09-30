@@ -2,16 +2,7 @@
 //  LCPPDFs.swift
 //  Palace
 //
-//  Post-migration shell. Historically this file wrapped a
-//  zip→extract→decrypt pipeline for LCP-protected PDFs. With the move
-//  to Readium's PDFNavigator (which streams decrypted pages on demand
-//  via the shared GCDHTTPServer), the archive-extraction and
-//  byte-range-decryption machinery is obsolete.
-//
-//  All that remains is two static predicates used by
-//  `BookFileManager.pathExtension(for:)`, `BookOpenRouter`'s PDF path,
-//  and `BookCellModel.didSelectRead` to decide which PDF pipeline a
-//  book belongs to.
+//  Static predicates that decide which PDF pipeline a book belongs to.
 //
 
 #if LCP
@@ -50,17 +41,12 @@ import PalaceBookModel
     /// - `/groups/` JSON shape (Marketplace): top-level type is
     ///   `application/opds-publication+json` with the LCP license nested in
     ///   `indirectAcquisitions` — matches via recursive walk.
-    /// - OPDS-Catalog wrapping shape (e.g. Power Rangers Unlimited): TPPBook
-    ///   exposes multiple top-level acquisitions, one of which is the OPDS
-    ///   catalog entry and a sibling is the LCP license MIME directly.
-    ///   `defaultAcquisition` returns only the first, so iterating
-    ///   `book.acquisitions` catches the sibling case.
+    /// - OPDS-Catalog wrapping shape: multiple top-level acquisitions with the
+    ///   LCP license MIME as a sibling of the first (PP-4454).
     ///
-    /// Mirror of `LCPAudiobooks.hasLCPAcquisition` (PP-4407 / commit
-    /// `ca2ff13b6`) extended to handle the sibling-acquisition shape that
-    /// surfaced in PP-4454 (Edge of Darkness). The
-    /// `defaultBookContentType == .pdf` clause is required so LCP-typed
-    /// EPUBs and audiobooks do NOT match here — only PDFs.
+    /// Mirrors `LCPAudiobooks.hasLCPAcquisition` (PP-4407). The
+    /// `defaultBookContentType == .pdf` clause keeps LCP EPUBs and audiobooks
+    /// from matching.
     @objc static func hasLCPAcquisition(_ book: TPPBook) -> Bool {
         guard book.defaultBookContentType == .pdf else { return false }
         for acquisition in book.acquisitions {

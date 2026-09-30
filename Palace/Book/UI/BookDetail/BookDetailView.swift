@@ -33,12 +33,8 @@ struct BookDetailView: View {
     @AccessibilityFocusState private var isTitleFocused: Bool
     @State private var initialLayoutComplete: Bool = false
     @State private var currentOrientation: UIDeviceOrientation = UIDevice.current.orientation
-    /// Tracks whether this view instance has already laid out its collapsing
-    /// header. `.onAppear` fires again on back-navigation (e.g. returning from
-    /// the series list), but the ScrollView keeps its scrolled-down position —
-    /// so re-running the expand reset would leave an expanded header stranded
-    /// over scrolled content. Reset the header only on the first appearance and
-    /// preserve the collapsed/expanded state on subsequent re-appearances.
+    /// `.onAppear` fires again on back-navigation while the ScrollView keeps its
+    /// offset, so the collapsing header is reset only on the first appearance.
     @State private var hasAppeared: Bool = false
 
     private let scaleAnimation = Animation.linear(duration: 0.35)
@@ -100,10 +96,6 @@ struct BookDetailView: View {
                 headerColor = Color(viewModel.book.dominantUIColor)
                 lastBookIdentifier = viewModel.book.identifier
 
-                // Only reset the collapsing header on the first appearance.
-                // On back-navigation the ScrollView retains its offset, so
-                // preserving the header state keeps it in sync with the
-                // scroll position instead of snapping back to fully expanded.
                 if !hasAppeared {
                     hasAppeared = true
                     expandHeader()
@@ -134,8 +126,6 @@ struct BookDetailView: View {
                 }
             }
             .onReceive(viewModel.registry.bookStatePublisher.receive(on: RunLoop.main)) { identifier, newState in
-                // Migrated off `.TPPBookRegistryStateDidChange` to the registry's
-                // per-book `bookStatePublisher` (swarm_8ce6f5ae WS3).
                 guard identifier == viewModel.book.identifier else { return }
 
                 // Only handle critical state changes that require navigation
@@ -594,11 +584,7 @@ struct BookDetailView: View {
                     value: book.published?.monthDayYearString,
                     accessibilityID: AccessibilityID.BookDetail.publishedLabel)
 
-            // PP-4463: series row links to the same destination as the bottom
-            // series carousel — CatalogLaneMoreView keyed on book.seriesURL.
-            // Hidden entirely when either the name or the URL is missing so
-            // the Information block stays free of empty rows (AC #2).
-            // Positioned right after PUBLISHED per design.
+            // PP-4463: positioned right after PUBLISHED per design.
             seriesRow(book: book)
 
             infoRow(label: DisplayStrings.publisher.uppercased(),
@@ -697,21 +683,10 @@ struct BookDetailView: View {
     /// The web URL an INFORMATION value should link to, or `nil` when the value
     /// is ordinary metadata and must render as text.
     ///
-    /// The previous test was `URL(string: value)` plus
-    /// `UIApplication.shared.canOpenURL`, which is not a test at all for this
-    /// input. `URL(string:)` accepts almost any string, so "Adventure",
-    /// "English", "August 19, 2025" and a publisher imprint reading
-    /// "LONDON:  WALTER SCOTT, 14 PATERNOSTER SQUARE." all parsed as URLs and
-    /// were then handed to `canOpenURL` — which crosses to SpringBoard, is
-    /// rate-limited and privacy-gated, and refuses unknown schemes out loud
-    /// ("not allowed to query for scheme london"). That fired once per row per
-    /// re-render, on a screen with nine metadata rows.
-    ///
-    /// Every value reaching here comes from `infoRow`: format, audience,
-    /// category, language, narrators, duration, published date, publisher and
-    /// distributor. None is a URL field, so requiring a real web URL loses no
-    /// working link — and `http`/`https` are always openable, so no round-trip
-    /// to SpringBoard is needed to decide.
+    /// Requires an `http`/`https` URL rather than asking `canOpenURL`:
+    /// `URL(string:)` accepts values like "LONDON:  WALTER SCOTT", and
+    /// `canOpenURL` crosses to SpringBoard, is rate-limited, and logs a refusal
+    /// for unknown schemes on every row re-render.
     static func webURL(from value: String) -> URL? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed),
@@ -802,16 +777,10 @@ struct BookDetailView: View {
     /// Whether a button press opens content (reader / player) rather than
     /// acting on the half-sheet.
     ///
-    /// PP-5059: this used to be implicit in a `switch` arm, and it was wrong —
-    /// `.read` and `.listen` shared the arm with the half-sheet-local actions,
-    /// so on iPad (`isFullSize`, no half-sheet) tapping Read did nothing at all.
-    /// The switch already carried an exhaustiveness guard, but exhaustiveness
-    /// only catches a NEW case; it cannot catch an existing case sitting in the
-    /// wrong arm. Pulled out as a value so the routing is asserted rather than
-    /// described in a comment.
-    /// The `.read` / `.listen` arm of `handleButtonAction` must mirror this.
-    /// It is kept as a separate value because a `case _ where` in the switch
-    /// would silently defeat the exhaustiveness guard that file relies on.
+    /// PP-5059: on iPad (`isFullSize`, no half-sheet) Read and Listen must open
+    /// content directly. The `.read` / `.listen` arm of `handleButtonAction` must
+    /// mirror this; it is a separate value because a `case _ where` in the switch
+    /// would defeat its exhaustiveness guard.
     static func opensContentDirectly(_ button: BookButtonType) -> Bool {
         switch button {
         case .read, .listen:
@@ -860,11 +829,8 @@ struct BookDetailView: View {
             }
 
         case .readStreaming:
-            // PP-4161: route straight through the view model — no half-sheet,
-            // no sign-in detour. The reader is presented by
-            // NavigationCoordinator's streamingHTML route; if the user isn't
-            // signed in they wouldn't have a borrowed streaming-HTML book in
-            // the first place (the button only surfaces post-borrow).
+            // PP-4161: no half-sheet or sign-in detour; the button only appears
+            // after a borrow, so the patron is already signed in.
             viewModel.handleAction(for: buttonType)
 
         case .return, .remove, .cancelHold:
@@ -898,18 +864,9 @@ struct BookDetailView: View {
             }
 
         case .read, .listen:
-            // PP-5059: these OPEN the content — they are not half-sheet-local.
-            // They used to share the toggle below, and the comment claimed they
-            // "open the reader" while the code only flipped `showHalfSheet`. On
-            // iPhone that was survivable: the toggle presents the half-sheet,
-            // whose own Read/Listen calls `handleAction` (HalfSheetview), so the
-            // book opened one tap later. On iPad `isFullSize` is true and the
-            // half-sheet is not that path, so the toggle was a no-op and Read
-            // did nothing at all — no reader, no error, no state change.
-            //
-            // Dispatch async for the same reason HalfSheetview does: let any
-            // in-flight sheet dismissal finish before the reader presentation
-            // takes the screen.
+            // PP-5059: these open the content; they are not half-sheet-local.
+            // Dispatch async, as HalfSheetview does, so any in-flight sheet
+            // dismissal finishes before the reader is presented.
             viewModel.showHalfSheet = false
             DispatchQueue.main.async {
                 viewModel.handleAction(for: buttonType)

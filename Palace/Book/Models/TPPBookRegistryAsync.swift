@@ -40,13 +40,10 @@ extension TPPBookRegistry {
     /// - Returns: Tuple of (errorDocument, hasNewBooks)
     /// - Throws: PalaceError if sync fails
     ///
-    /// PHASE 1 (swarm_81b5099e Bucket A): blocks on `Account.awaitReady()`
-    /// before reading `loansUrl`. Pre-Phase-1 this read `currentAccount?
-    /// .loansUrl` directly and threw `.accountNotFound` whenever the auth
-    /// document hadn't finished loading — same systemic race as the
-    /// audiobook open path. The async function already had network-fetch
-    /// timeouts via `OPDSFeedService.fetchFeed`; per the ADR's single-
-    /// timeout policy we do NOT wrap awaitReady() in withTimeout here.
+    /// Awaits `Account.awaitReady()` before reading `loansUrl`, so a sync that
+    /// starts before the auth document has loaded waits instead of throwing
+    /// `.accountNotFound`. Not wrapped in `withTimeout`: the fetch below already
+    /// has its own timeout (single-timeout policy).
     func syncAsync(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
         guard let currentAccount = accountsManager.currentAccount else {
             throw PalaceError.authentication(.accountNotFound)
@@ -88,14 +85,11 @@ extension TPPBookRegistry {
     ///
     /// Returns the error document inside a `SendableErrorDocument` carrier so the
     /// non-Sendable `[AnyHashable: Any]?` can cross the `@MainActor` → nonisolated
-    /// boundary back to `syncAsync` under Swift 6 `complete`. (The value is always
-    /// `nil` on this path — reconciliation surfaces failures by throwing, not via
-    /// an error document — but boxing keeps the crossing sound and future-proof.)
+    /// boundary under Swift 6. The value is currently always `nil` on this path.
     @MainActor
     private func processLoansSync(feed: TPPOPDSFeed) async -> (errorDocument: SendableErrorDocument, hasNewBooks: Bool) {
         var changesMade = false
 
-        // Process entries - use public API
         var newBooks: [TPPBook] = []
         for entry in feed.entries {
             guard let opdsEntry = entry as? TPPOPDSEntry,
@@ -105,18 +99,14 @@ extension TPPBookRegistry {
             newBooks.append(book)
         }
 
-        // Check what changed - compare with current books
         let currentBooks = self.allBooks
         let currentIds = Set(currentBooks.map { $0.identifier })
         let newIds = Set(newBooks.map { $0.identifier })
 
-        // Books to add/update
         for book in newBooks {
             if currentIds.contains(book.identifier) {
-                // Update existing
                 _ = self.updatedBookMetadata(book)
             } else {
-                // Add new - derive initial state from book availability
                 let initialState = TPPBookRegistryRecord.deriveInitialState(for: book)
                 self.addBook(book, state: initialState)
             }

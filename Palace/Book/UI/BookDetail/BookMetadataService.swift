@@ -2,23 +2,12 @@
 //  BookMetadataService.swift
 //  Palace
 //
-//  Metadata hydration for the book detail screen, extracted from
-//  `BookDetailViewModel` (god-class decomposition plan §3a-4 / Wave 5).
-//
-//  Some OPDS servers serve lightweight `<entry>` blocks inside grouped-lane
-//  feeds — they omit `<dcterms:issued>`, `<bibframe:publisher>`,
-//  `<distribution>`, and `<category>`. When a patron lands on the detail view
-//  from a swimlane, the INFORMATION section would render empty rows. Re-fetching
-//  the single-entry feed at `alternateURL` returns the full metadata; the merge
-//  below fills the missing fields in without disturbing navigational state
-//  (acquisitions, related/revoke/report URLs) that the lane entry does populate.
-//
-//  The service owns the fetch and the two pure functions — "does this book need
-//  hydrating" and "how do the two copies merge". The view model keeps the parts
-//  that are view-model state: which book is on screen now, and the write-back to
-//  the registry. That split is why the post-await re-checks (identity, and
-//  needs-hydration again) stay in the view model: they read `self.book`, which
-//  a related-book navigation can change while the fetch is in flight.
+//  Metadata hydration for the book detail screen. Grouped-lane feeds can carry
+//  lightweight entries without issued date, publisher, distributor or
+//  categories; re-fetching the single-entry feed at `alternateURL` fills them in
+//  without disturbing the lane entry's navigational fields. The post-await
+//  re-checks stay in the view model because a related-book navigation can change
+//  `self.book` while the fetch is in flight.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -2,30 +2,11 @@
 //  EPUBPositionDialect.swift
 //  The Palace Project
 //
-//  A reading position or bookmark can reach Palace as either of two JSON
-//  dialects, and both are live on the annotation server today:
-//
-//    Readium `Locator` — what Palace POSTed before PP-5138, and what is
-//    still stored server-side for every position written by a shipped
-//    client:
-//      {"href":…,"type":…,"title":…,
-//       "locations":{"progression":…,"totalProgression":…,"position":…}}
-//
-//    Flat Palace / `mobile-specs` `LocatorHrefProgression` — what the local
-//    book registry stores, what `TPPReadiumBookmark` writes, what older
-//    clients POSTed, and what Palace POSTs as of PP-5138:
-//      {"href":…,"@type":…,"progressWithinChapter":…,
-//       "progressWithinBook":…,"position":…,"cssSelector":…}
-//
-//  This type reads either one, which is what makes the write-side change
-//  safe: positions already stored in the Readium dialect keep resolving.
-//
-//  NOTE: an earlier revision of this comment said the change was "the READ
-//  side only". That stopped being true in commit 595d6b354, which brought
-//  the write side into scope — see the 2026-09-16 amendment in
-//  `.forgeos/intent/pp5138-epub-position-read-dialect.md`. Palace now emits
-//  the flat shape `ThePalaceProject/mobile-specs` specifies and Android
-//  already parses.
+//  Reads a reading position or bookmark in either JSON dialect live on the
+//  annotation server: the Readium `Locator` (nested `locations`, written by
+//  Palace before PP-5138) or the flat `mobile-specs` `LocatorHrefProgression`
+//  (`@type`, `progressWithinChapter`, `progressWithinBook`, …), which the local
+//  registry stores and Palace posts as of PP-5138.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -98,8 +79,7 @@ struct EPUBPositionDialect: Equatable {
     /// JSON numbers arrive as `NSNumber` regardless of whether they were
     /// written as `0.62` or `58`, so both accessors go through it. A direct
     /// `as? Double` on an integer-valued `NSNumber` works, but `as? Int` on a
-    /// fractional one returns nil (Swift checks exactness) — which would
-    /// silently drop a position written as `58.0`.
+    /// fractional one returns nil, which would drop a position written as `58.0`.
     private static func double(_ value: Any?) -> Double? {
         (value as? NSNumber)?.doubleValue
     }
@@ -114,9 +94,7 @@ struct EPUBPositionDialect: Equatable {
     ///
     /// Absent values normalize to zero / empty because the two dialects
     /// disagree about absence: the flat writer coerces a nil progression to
-    /// `0.0` and always emits the key, while the Readium writer omits it. Left
-    /// un-normalized, `0.0` and `nil` would read as different pages and the
-    /// comparison would be as useless as the string equality it replaces.
+    /// `0.0` and always emits the key, while the Readium writer omits it.
     ///
     /// Title and media type are excluded — they describe the position, they
     /// do not locate it.
@@ -142,8 +120,7 @@ struct EPUBPositionDialect: Equatable {
     /// dialect each is written in.
     ///
     /// Falls back to byte equality when either side cannot be parsed, so an
-    /// unrecognized payload is never treated as matching something it does
-    /// not — the pre-PP-5138 behavior, preserved for the unparseable case.
+    /// unrecognized payload is never treated as matching something it does not.
     static func samePosition(_ lhs: String, _ rhs: String) -> Bool {
         guard let left = EPUBPositionDialect(jsonString: lhs),
               let right = EPUBPositionDialect(jsonString: rhs) else {

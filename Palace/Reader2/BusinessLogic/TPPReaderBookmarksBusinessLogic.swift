@@ -17,12 +17,10 @@ import PalaceBookRegistry
 /// for a given book.
 ///
 /// - Note: `@unchecked Sendable` is safe here: the mutable state (`bookmarks`,
-///   `hasAttemptedReauthDuringSync`) is confined to the main thread — this class
-///   is owned and driven by the main-thread reader view controllers
-///   (`TPPBaseReaderViewController`). Injected dependencies are immutable `let`s,
-///   and background `Task`s mutate the registry only via `MainActor.run`. This
-///   lets `self` be captured by the `@Sendable` `MainActor.run` closures in
-///   `postBookmark` without crossing a Sendable boundary.
+///   `hasAttemptedReauthDuringSync`) is confined to the main thread, where the
+///   reader view controllers drive this class. Injected dependencies are
+///   immutable `let`s, and background `Task`s mutate the registry only via
+///   `MainActor.run`.
 class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
 
     var bookmarks: [TPPReadiumBookmark] = []
@@ -127,21 +125,12 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
             return
         }
 
-        // Swift 6 `targeted`: box the non-Sendable `TPPReadiumBookmark` so the
-        // `@Sendable` `Task` / `MainActor.run` closures below capture a Sendable
-        // carrier instead of the raw bookmark. `TPPReadiumBookmark` is genuinely
-        // non-Sendable (10 mutable `var`s) and must NOT be made Sendable — see
-        // `ReadiumBookmarkBox` and Decision 3. Mirrors `ImageCompletionBox`.
+        // See `ReadiumBookmarkBox`.
         let bookmarkBox = ReadiumBookmarkBox(bookmark)
 
-        // PHASE 1 (swarm_81b5099e Bucket A): bookmark posting is best-effort,
-        // silent-failure — on `AccountLoadError` we log and fall back to
-        // local-only persistence (no user-visible surface). Hoisted into a
-        // Task so we can await `Account.awaitReady()` without changing the
-        // sync function signature; pre-Phase-1 this read `currentAccount
-        // .details` directly and silently skipped the server post whenever
-        // the auth document hadn't loaded yet, even if sync permission
-        // would have been granted once details arrived.
+        // Bookmark posting is best-effort: on `AccountLoadError` we log and keep
+        // the bookmark local only. The Task lets us await `Account.awaitReady()`
+        // so the post is not skipped just because the auth document is loading.
         Task { [weak self] in
             guard let self else { return }
             let details: AccountDetails
@@ -165,18 +154,9 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
             TPPAnnotations.postBookmark(bookmarkBox.bookmark, forBookID: self.book.identifier) { response in
                 let serverId = response?.serverId
                 Log.debug(#function, serverId != nil ? "Bookmark upload succeed" : "Bookmark failed to upload")
-                // P4 Swift-6 cross-thread race fix: the bookmark boxed here is
-                // the SAME instance that `addBookmark` appended to the
-                // main-confined `bookmarks` array. This completion fires on the
-                // network-completion thread; writing `annotationId` here while
-                // the main thread reads that array element (`isEqual`,
-                // `updateLocalBookmarks`, `bookmark(at:)`) is a data race. Hop
-                // the mutation + registry add onto the main actor so the write
-                // is serialized with every read of `bookmarks`. Behavior is
-                // preserved: the bookmark still receives its server
-                // `annotationId` and, being the same object the array holds,
-                // remains findable. This mirrors the other two terminal paths,
-                // which already add via `MainActor.run`.
+                // The boxed bookmark is the same instance held in the
+                // main-confined `bookmarks` array, and this completion runs on a
+                // network thread, so write `annotationId` on the main actor.
                 Task { @MainActor in
                     bookmarkBox.bookmark.annotationId = serverId
                     self.bookRegistry.add(bookmarkBox.bookmark, forIdentifier: self.book.identifier)
@@ -220,11 +200,9 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
             return
         }
 
-        // PHASE 1 (swarm_81b5099e Bucket A): same shape as `postBookmark`.
-        // Bookmark deletion sync is best-effort; on `AccountLoadError` we
-        // log and skip the server delete. The deletion log persists so the
-        // next successful sync cleans up. Local registry delete already
-        // ran above — that's the visible-on-device source of truth.
+        // Best-effort, like `postBookmark`: on `AccountLoadError` we log and skip
+        // the server delete. The deletion log persists so the next successful
+        // sync cleans up; the local delete above has already run.
         Task { [weak self] in
             guard let self else { return }
             let details: AccountDetails
@@ -402,14 +380,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
             let canUseExistingCredentials = userAccount.hasBarcodeAndPIN() ||
                 (userAccount.authDefinition?.isOauth == true)
 
-            // Swift 6 `complete`: box the non-Sendable `completion` closure before
-            // the `@Sendable` reauth-completion closure captures it (see
-            // `BookmarkSyncCompletionBox`). `authenticateIfNeeded`'s
-            // `authenticationCompletion` is `@Sendable`, so the trailing closure
-            // is `@Sendable` and cannot capture the raw `(Bool, [TPPReadiumBookmark])
-            // -> Void`. Boxing avoids `@Sendable`-ing `completion` on the
-            // `syncBookmarks`/`handleBookmarksSyncFail` signatures (which would
-            // ripple to every bookmark-sync caller).
+            // See `BookmarkSyncCompletionBox`.
             let completionBox = BookmarkSyncCompletionBox(completion)
             reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: canUseExistingCredentials) { [weak self] in
                 guard let self = self else {
@@ -437,26 +408,13 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
 
 // MARK: - Sendable carrier for `postBookmark`'s @Sendable-closure capture
 
-/// Sendable carrier for the `TPPReadiumBookmark` captured by the `@Sendable`
-/// `Task` closure in `postBookmark`. `TPPReadiumBookmark` has 10 mutable `var`
-/// properties and is genuinely non-Sendable, so we box it rather than mark the
-/// type Sendable — a type-level `@unchecked Sendable` would waive a real race
-/// and ripple `Sendable` onto every bookmark call site (Decision 3).
+/// Sendable carrier for the non-Sendable `TPPReadiumBookmark` captured by the
+/// `@Sendable` `Task` in `postBookmark`.
 ///
-/// INVARIANT — the boxed bookmark is only ever mutated on the main actor:
-/// within a single `postBookmark` `Task`, exactly one of the three terminal
-/// paths runs — the `awaitReady`-failure `MainActor.run` add, the
-/// sync-not-granted `MainActor.run` add, or the `TPPAnnotations.postBookmark`
-/// completion. All three touch the boxed bookmark (and the book registry) on
-/// the main actor: the first two via `MainActor.run`, the third via a
-/// `Task { @MainActor in }` hop (P4 Swift-6 race fix). This matters because the
-/// same `TPPReadiumBookmark` instance is also aliased in the main-confined
-/// `bookmarks` array; confining every mutation of `annotationId` to the main
-/// actor serializes it with every read of that array, closing the cross-thread
-/// race the network-completion thread previously introduced. The `postBookmark`
-/// completion fires at most once, and the three paths are mutually exclusive
-/// early returns, so no two touch the boxed bookmark at the same time. Mirrors
-/// `ImageCompletionBox` in `ImageLoaderImpl`.
+/// Invariant: the boxed bookmark is only mutated on the main actor. Exactly one
+/// of `postBookmark`'s three mutually exclusive terminal paths runs, and each
+/// touches the bookmark on the main actor. This matters because the same
+/// instance is aliased in the main-confined `bookmarks` array.
 private final class ReadiumBookmarkBox: @unchecked Sendable {
     let bookmark: TPPReadiumBookmark
     init(_ bookmark: TPPReadiumBookmark) { self.bookmark = bookmark }
@@ -464,18 +422,10 @@ private final class ReadiumBookmarkBox: @unchecked Sendable {
 
 /// Sendable carrier for the non-Sendable `(Bool, [TPPReadiumBookmark]) -> Void`
 /// bookmark-sync completion captured by the `@Sendable` reauth-completion closure
-/// in `handleBookmarksSyncFail`. `authenticateIfNeeded`'s `authenticationCompletion`
-/// is `@Sendable`, so the trailing closure is `@Sendable` and cannot capture the
-/// raw completion directly. Boxing keeps `syncBookmarks(completion:)` /
-/// `performSyncBookmarks(completion:)` / `handleBookmarksSyncFail(completion:)`
-/// signatures free of `@Sendable` (which would ripple to every bookmark-sync
-/// call site) and does NOT broaden `TPPReadiumBookmark` to `Sendable` (it has 10
-/// mutable `var`s — see `ReadiumBookmarkBox`).
+/// in `handleBookmarksSyncFail`. Boxing keeps `@Sendable` off the bookmark-sync
+/// signatures.
 ///
-/// INVARIANT — the boxed completion is invoked at most once per reauth outcome,
-/// on the reauth-completion path, which `TPPReauthenticator` drives on the main
-/// actor (`authenticateIfNeeded` hops `Task { @MainActor in }`). It is never
-/// invoked concurrently. Mirrors `ReadiumBookmarkBox`.
+/// Invariant: invoked at most once per reauth outcome, on the main actor.
 private final class BookmarkSyncCompletionBox: @unchecked Sendable {
     let call: (Bool, [TPPReadiumBookmark]) -> Void
     init(_ call: @escaping (Bool, [TPPReadiumBookmark]) -> Void) { self.call = call }

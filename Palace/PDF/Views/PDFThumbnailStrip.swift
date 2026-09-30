@@ -143,13 +143,9 @@ private struct PDFThumbnailStripCell: View {
     }
 }
 
-/// Sendable carrier that transports the non-Sendable `PDFKitThumbnailProvider`
-/// across the `@Sendable` background-render closure in `Fetcher.fetch()`.
-/// `PDFKitThumbnailProvider.thumbnail(for:)` is invoked ONLY on
-/// `pdfThumbnailRenderingQueue`, and the rendered image is published back via
-/// the main-queue hop — the provider is never touched concurrently — so
-/// `@unchecked Sendable` is sound. Mirrors `ImageCompletionBox` in
-/// `ImageLoaderImpl`.
+/// Sendable carrier for the non-Sendable `PDFKitThumbnailProvider` in
+/// `Fetcher.fetch()`. Invariant: the provider is only used on
+/// `pdfThumbnailRenderingQueue`, never concurrently.
 private final class ThumbnailProviderBox: @unchecked Sendable {
     let provider: PDFKitThumbnailProvider
     init(_ provider: PDFKitThumbnailProvider) { self.provider = provider }
