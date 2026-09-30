@@ -81,6 +81,20 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     export SIMCTL_CHILD_CI="${CI:-true}"
     export SIMCTL_CHILD_BUILD_CONTEXT="ci"
 
+    # PP-5273: turn off os_log in the app under test. While tests run, os_log
+    # copies every message to the app's stderr with a blocking write into a pipe
+    # the test tooling reads. When that pipe stops draining, every thread that
+    # logs stalls, the main thread included, and XCTest kills whichever test is
+    # running at the 120 s allowance. The spindump of run 36596835929 showed two
+    # clones blocked in that write at the same moment. OS_ACTIVITY_DT_MODE=NO
+    # does NOT stop the copy (measured: 54 vs 56 mirrored lines); disabling
+    # os_log does (0), and the full suite passes with it off (9152, 0 failed),
+    # so no test depends on the app's log. The cost is the app's log lines in
+    # the CI output. Set PALACE_CI_APP_LOGS=1 to keep them when debugging.
+    if [ "${PALACE_CI_APP_LOGS:-0}" != "1" ]; then
+        export TEST_RUNNER_OS_ACTIVITY_MODE=disable
+    fi
+
     # Execution isolation — test-pollution fix (docs/Testing/test-pollution-investigation-handoff.md).
     # CI previously ran serial single-process (all ~7k tests in ONE process/singleton-set), which
     # AMPLIFIES cross-test pollution: an early polluter that aborts mid-teardown leaves a process-global
