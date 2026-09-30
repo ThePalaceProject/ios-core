@@ -1,20 +1,10 @@
-//
 //  TPPLastReadPositionPosterTests.swift
-//  PalaceTests
 //
-//  Tests for `TPPLastReadPositionPoster`. As of the PalaceReadingPosition
-//  migration the poster's job is:
-//
-//  1. Reject locators with zero progression and no CSS selector
-//     (`shouldStore` guard).
-//  2. Save the locator locally via `bookRegistry.setLocation`.
-//  3. Build a `PositionSnapshot` and delegate to the injected
-//     `PositionWriter`.
-//
-//  Throttling/queuing now lives in `PositionWriter`; the writer is
-//  exercised in its own SPM tests. Here we verify the poster's
-//  delegation + the snapshot shape it produces.
-//
+//  `TPPLastReadPositionPoster` rejects locators with zero progression and no CSS
+//  selector (`shouldStore`), saves the locator via `bookRegistry.setLocation`,
+//  and hands a `PositionSnapshot` to the injected `PositionWriter`. Throttling
+//  lives in `PositionWriter` (tested in its package); these tests cover the
+//  poster's delegation and the snapshot shape.
 
 import XCTest
 import ReadiumShared

@@ -1,20 +1,9 @@
-//
 //  AudiobookPlaytimesLifecycleTests.swift
-//  PalaceTests
 //
-//  Round-trip wiring tests for the cross-account scope guard in
-//  AudiobookDataManager.syncValues().
-//
-//  One test covers every vendor: the playtimes upload is downstream of the
-//  Palace circulation-manager `/playtimes/...` REST endpoint, NOT the
-//  audiobook vendor adapter chain (Findaway / OverDrive / LCP / open-access).
-//  All vendors share the same `AudiobookDataManager` queue and the same
-//  upload codepath; the scope guard hinges on `LibraryBook.libraryId`, which
-//  is per-library not per-vendor. ONE round-trip test exercises the guard
-//  for every vendor — there is no vendor-specific control flow to permute.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Round-trip tests for the cross-account scope guard in
+//  AudiobookDataManager.syncValues(). Playtimes upload to the circulation manager
+//  for every vendor through one queue, and the guard keys on
+//  `LibraryBook.libraryId`, so one round trip covers all vendors.
 
 import XCTest
 @testable import Palace

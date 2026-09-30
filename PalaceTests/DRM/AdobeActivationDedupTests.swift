@@ -1,20 +1,10 @@
-//
 //  AdobeActivationDedupTests.swift
-//  PalaceTests
 //
-//  Producer-level coverage for the borrow-time Adobe activation de-duplication
-//  (PP-4952 / Crashlytics `ed05e903c2777582d68747b624e4f548`).
-//
-//  `AdobeActivationCoordinatorTests` proves the GATE works in isolation. This
-//  file proves the gate is actually WIRED into the method borrows call —
-//  `AdobeDRMService.ensureDeviceActivated`. That distinction matters here: the
-//  recurring failure mode in this codebase is a green test on a helper the real
-//  caller bypasses, so these tests drive the production entry point and assert
-//  on how many times the RMSDK seam (`TPPDRMAuthorizing.authorize`) was entered.
-//
-//  Only the SDK seam is mocked. The guard order, licensor parsing, coalescing,
-//  and account write-back are the real production code.
-//
+//  PP-4952: pins that the activation gate is wired into
+//  `AdobeDRMService.ensureDeviceActivated`, the method borrows call, by counting
+//  entries into the RMSDK seam (`TPPDRMAuthorizing.authorize`).
+//  `AdobeActivationCoordinatorTests` covers the gate alone. Only the SDK seam is
+//  mocked; guard order, licensor parsing and account write-back are real.
 
 import XCTest
 @testable import Palace

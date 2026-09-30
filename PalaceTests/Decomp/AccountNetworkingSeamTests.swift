@@ -1,21 +1,10 @@
-//
 //  AccountNetworkingSeamTests.swift
-//  PalaceTests
 //
-//  Pins the `AccountNetworking` seam: `AccountsManager` reaches the
-//  shared network executor ONLY through the injected `any AccountNetworking`
-//  provider, never a concrete `TPPNetworkExecutor`. This is the type-inversion that
-//  lets `AccountsManager` move into `PalaceAccounts` without naming a `Palace/Network`
-//  app-target type (see `AccountNetworking.swift`).
-//
-//  The account-switch cancel path is already pinned by
-//  `AccountsManagerCurrentAccountSwitchContractTests` (whose spy is now a plain
-//  `AccountNetworking` conformer — itself proof the seam removes the concrete
-//  dependency). This file adds the `clearCache()` routing assertion so a regression
-//  that clears caches WITHOUT the injected executor flips red.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins that `AccountsManager` reaches the network executor only through the
+//  injected `any AccountNetworking`, which lets it move into `PalaceAccounts`
+//  without naming an app-target network type. The account-switch cancel path is
+//  covered by `AccountsManagerCurrentAccountSwitchContractTests`; this file adds
+//  `clearCache()` routing through the injected executor.
 
 import XCTest
 import PalaceCatalog

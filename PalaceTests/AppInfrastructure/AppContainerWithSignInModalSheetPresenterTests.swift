@@ -1,20 +1,11 @@
 //
 //  AppContainerWithSignInModalSheetPresenterTests.swift
-//  PalaceTests
 //
-//  `AppContainer.withSignInModalSheetPresenter(_:)` testability seam, which
-//  lets test callers inject a spy `SignInModalSheetPresenter` without
-//  disturbing the static cache that holds the production-resolved
-//  presenter. Two tests:
-//
-//   1. Override is preferred over the static cache — `AppContainer
-//      .production().withSignInModalSheetPresenter(spy).signInModalSheetPresenter`
-//      MUST `===` the spy, and the original `AppContainer.production()`
-//      MUST be unaffected (struct copy-on-modify semantics).
-//   2. When the override is nil (production-shaped container), the
-//      computed property still short-circuits to the same cached
-//      instance across reads — proves the new override-first branch
-//      did NOT break the existing cache short-circuit.
+//  `AppContainer.withSignInModalSheetPresenter(_:)` lets tests inject a spy
+//  presenter without disturbing the static cache of the production one.
+//  Pinned: the override wins over the cache and leaves the original container
+//  unaffected (copy-on-modify); with no override, reads still return the same
+//  cached instance.
 //
 
 import XCTest

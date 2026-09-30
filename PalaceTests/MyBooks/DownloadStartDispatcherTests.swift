@@ -670,7 +670,7 @@ final class DownloadStartDispatcherTests: XCTestCase {
                        "Completion's warn-arm must NOT mutate the registry — it only logs")
     }
 
-    // MARK: - PP-4161 Wave 4 (Path X): streaming-HTML early-return
+    // MARK: - PP-4161: streaming-HTML early-return
     //
     // Production code at DownloadStartDispatcher.swift:192-203 (the 4-arg
     // `processDownloadWithCredentials` variant) gains a streaming-HTML

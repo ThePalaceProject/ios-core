@@ -226,7 +226,7 @@ final class PalaceErrorCategoryTests: XCTestCase {
         }
     }
 
-    // MARK: - OPDS Feed Invalid — swarm_f3b9b087 item #9
+    // MARK: - OPDS Feed Invalid
     //
     // The previous copy was the raw technical string "Invalid OPDS feed",
     // which leaked the protocol name (OPDS) to end users. The new copy is

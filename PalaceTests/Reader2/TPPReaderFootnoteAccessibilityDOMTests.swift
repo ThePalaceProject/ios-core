@@ -1,20 +1,12 @@
-//
 //  TPPReaderFootnoteAccessibilityDOMTests.swift
-//  PalaceTests
 //
-//  PP-4531 — the leg that was missing.
-//
-//  `TPPReaderFootnoteAccessibilityTests` covers the Swift classifier and label
-//  composer. It cannot fail on a DOM defect, because the only thing it asserts
-//  about `annotationJavaScript()` is that its SOURCE TEXT contains some
-//  substrings. That is how the shipped build (480) reached QA labelling zero
-//  elements: `querySelectorAll('[epub\:type]')` matches only attributes in NO
-//  namespace, and Readium serves spine documents as `application/xhtml+xml`, so
-//  WKWebView parses them as XML and `epub:type` is in the OPS namespace.
-//
-//  These tests EXECUTE the production script in a real `WKWebView` against both
-//  parse modes and assert the `aria-label`s VoiceOver would actually read.
-//
+//  PP-4531. `TPPReaderFootnoteAccessibilityTests` checks the Swift classifier and
+//  only the source text of `annotationJavaScript()`, so it cannot catch a DOM
+//  defect. Build 480 labelled zero elements: `[epub\:type]` matches only
+//  un-namespaced attributes, and Readium serves XHTML that WKWebView parses as
+//  XML with `epub:type` in the OPS namespace. These tests run the production
+//  script in a real `WKWebView` in both parse modes and assert the `aria-label`s
+//  VoiceOver reads.
 
 import WebKit
 import XCTest

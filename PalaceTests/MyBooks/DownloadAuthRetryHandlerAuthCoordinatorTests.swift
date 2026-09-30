@@ -311,7 +311,7 @@ final class DownloadAuthRetryHandlerAuthCoordinatorTests: XCTestCase {
     /// guard, a download retry for a book whose library is no longer
     /// active would mark stale + pop the modal for the current account.
     ///
-    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    /// Regression seen in PR #1018 (cross-host logout).
     func testForeignHost_401_SAML_doesNotMarkCredentialsStale_doesNotDispatchCoordinator() async throws {
         let (coordinator, _, modal, userAcctSpy, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .saml,

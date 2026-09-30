@@ -1,26 +1,10 @@
 //
-//  DownloadReissuePersistenceTests.swift
-//  PalaceTests
-//
-//  PP-5023. Every path that starts a download must durably record it.
-//
-//  PP-4997 made launch reconciliation match a persisted record against the live
-//  tasks by URL, and refuse to adopt when two books claim the same URL. That
-//  refusal is computed from persisted records ALONE, so a live task that was
-//  never persisted is invisible to it: if book B is downloading on book A's URL
-//  without a record, A's record sees exactly one live task on its URL and adopts
-//  B's download. The patron gets a title they did not ask for, silently.
-//
-//  Two paths created a task without recording it — the acquisition-link follow-up
-//  in `BackgroundDownloadHandler` and the bearer-token hop in
-//  `RightsManagementDispatcher`. These tests pin that they now record, and that
-//  recording is what closes the wrong-adoption route.
-//
-//  The last two tests are a matched pair: one asserts the fix, the other is the
-//  CONTROL that proves the assertion can fail. Without the control, a test that
-//  declines adoption for some unrelated reason reads exactly like a passing fix.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-5023: every path that starts a download must record it. Launch
+//  reconciliation (PP-4997) refuses adoption when two persisted records share a
+//  URL, so an unrecorded live task on another book's URL gets adopted by that book.
+//  Pins that BackgroundDownloadHandler's acquisition follow-up and
+//  RightsManagementDispatcher's bearer-token hop now record. The last two tests are
+//  a fix/control pair; the control proves the assertion can fail.
 //
 
 import XCTest

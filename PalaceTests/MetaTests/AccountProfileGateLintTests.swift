@@ -1,20 +1,9 @@
 //
-//  AccountProfileGateLintTests.swift
-//  PalaceTests
-//
-//  Meta-test pinning the WIRING of the /patrons/me/ credentials gate:
-//
-//    `Account.getProfileDocument` MUST consult
-//    `canAuthenticateProfileRequest(hasCredentials:tokenHasExpired:tokenRefreshWillRepair:)`
-//    and MUST feed it all three live inputs.
-//
-//  Deleting the whole `if !canAuthenticateProfileRequest(...)` block leaves the
-//  predicate's unit tests green (F-007). `AccountProfileDocumentTests` drives the
-//  gate behaviourally through `performRequest:`/`userAccount:` and is the real
-//  guard; this structural check only detects DELETION, never an `if` inserted
-//  above the gate.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  Structural check that `Account.getProfileDocument` still calls
+//  `canAuthenticateProfileRequest(hasCredentials:tokenHasExpired:tokenRefreshWillRepair:)`
+//  with all three live inputs. Deleting the gate leaves the predicate's unit tests
+//  green (F-007). `AccountProfileDocumentTests` is the behavioural guard; this
+//  check only detects deletion, not an `if` inserted above the gate.
 //
 
 import XCTest

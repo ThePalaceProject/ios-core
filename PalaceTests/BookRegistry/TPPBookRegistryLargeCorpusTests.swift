@@ -1,26 +1,9 @@
-//
 //  TPPBookRegistryLargeCorpusTests.swift
-//  PalaceTests
 //
-//  Tests for the *scale* of BookRegistrySync.save +
-//  load against a real-world worst-case corpus: 5000 books on disk.
-//
-//  Contract under test:
-//    1. Saving 5000 in-memory records produces a complete JSON file (no
-//       truncation, no record loss).
-//    2. Loading 5000 records from disk produces 5000 unique in-memory
-//       records (no record loss, no duplication).
-//    3. The save→load round-trip is fully lossless at scale for the fields
-//       BookRegistryStore exposes (identifier, title, state).
-//    4. Lookup by identifier remains O(1)-ish — every seeded id resolves
-//       to a record after load.
-//
-//  These tests are *correctness at scale*, not perf gates. We pin a generous
-//  wall-clock budget (60s) so a 100x slowdown still fails, but we do not
-//  assert microbenchmark numbers.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Correctness at scale for BookRegistrySync save/load with 5000 books: no record
+//  loss or duplication, lossless round trip for identifier/title/state, and every
+//  seeded id resolves after load. The 60s budget is generous so only a gross
+//  slowdown fails; these are not microbenchmarks.
 
 import XCTest
 @testable import Palace

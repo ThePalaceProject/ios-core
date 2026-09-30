@@ -1,20 +1,9 @@
 //
-//  BackgroundDownloadTokenAccountTests.swift
-//  PalaceTests
-//
-//  PP-4978. When a download is re-issued mid-flight — the follow-up request the
-//  handler builds after an OPDS-entry / rights step — it must carry the
-//  credentials of the library the download was STARTED under, not whichever
-//  library happens to be selected when the follow-up is built.
-//
-//  A patron who switches libraries during a download would otherwise have the
-//  new library's bearer token sent to the original library's server. Same
-//  credential-isolation boundary as the long-standing cross-account leak
-//  invariant in `AccountCredentialResolver` (F-034 / PP-4020), and the same
-//  boundary PP-4969 closed for the challenge-answering half of this flow.
-//
-//  The account a download started under is recoverable from its own durable
-//  started-task record, which is written at download start and keyed by book id.
+//  PP-4978: a download re-issued mid-flight must carry the credentials of the
+//  library it started under, recovered from its started-task record, not the
+//  currently selected library. Otherwise a library switch sends the new library's
+//  bearer token to the original server. Same boundary as F-034 / PP-4020 and
+//  PP-4969.
 //
 
 import XCTest

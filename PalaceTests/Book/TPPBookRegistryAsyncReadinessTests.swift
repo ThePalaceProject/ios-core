@@ -111,14 +111,14 @@ final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
         // graph. Fresh test container traps when seeded account is set to
         // .detailsFailed and syncAsync runs through the downstream state
         // machine. Tracked for follow-up.
-        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production graph
+        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: integration test pins production graph
         let (account, cleanup) = seedAccountIfNeeded(on: accountsMgr,
                                                     fixtureId: "test-registry-async-\(UUID().uuidString)")
         defer { cleanup() }
 
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "test HTTP 503")))
 
-        guard let registry = AppContainer.production().bookRegistry as? TPPBookRegistry else { // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production graph
+        guard let registry = AppContainer.production().bookRegistry as? TPPBookRegistry else { // MIGRATED-DEFERRED: integration test pins production graph
             throw XCTSkip("Production bookRegistry must be the concrete TPPBookRegistry type")
         }
 

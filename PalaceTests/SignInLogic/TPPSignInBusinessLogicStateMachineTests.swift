@@ -1,30 +1,11 @@
-//
 //  TPPSignInBusinessLogicStateMachineTests.swift
-//  PalaceTests
 //
-//  Migration tests for TPPSignInBusinessLogic. Pins the six sub-sites in TPPSignInBusinessLogic.swift that
-//  used to read `libraryAccount?.details?.<field>` against the
-//  `Account.LoadState` state machine.
-//
-//  Each test drives the AccountStateStore directly via `account._setState`
-//  to simulate the three load-readiness windows that previously raced:
-//    1. `.detailsLoading` — the legacy path silently returned nil; the
-//       migration must also return nil/false (sync sites cannot block).
-//    2. `.detailsLoaded(details)` — both legacy and migrated paths
-//       proceed; assert the post-load behavior matches.
-//    3. `.detailsFailed(error)` — legacy returned nil (because
-//       `account.details` was never assigned); migrated path must NOT
-//       crash and must surface the same nil-semantic.
-//
-//  Per ADR `docs/architecture/account-state-machine.md`, the 6 sub-sites
-//  in TPPSignInBusinessLogic.swift are sync `@objc` / property getters
-//  read from SwiftUI render bodies; they peek `loadState` synchronously
-//  rather than `await awaitReady()` to avoid cascading `async` upward
-//  through the entire sign-in UI. The state-machine-aware sync read
-//  preserves the legacy nil-tolerance while routing through the new API.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins the six TPPSignInBusinessLogic sites that read
+//  `libraryAccount?.details?.<field>` against `Account.LoadState`, driven via
+//  `account._setState`: `.detailsLoading` returns nil/false, `.detailsLoaded`
+//  proceeds, `.detailsFailed` returns nil without crashing. The sites are sync
+//  getters read from SwiftUI bodies, so they peek `loadState` rather than
+//  `await awaitReady()` (docs/architecture/account-state-machine.md).
 
 import XCTest
 import PalaceCatalog

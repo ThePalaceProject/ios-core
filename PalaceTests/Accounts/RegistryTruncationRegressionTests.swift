@@ -1,21 +1,12 @@
 //
 //  RegistryTruncationRegressionTests.swift
-//  PalaceTests
 //
-//  PP-5191, the regression proper. Drives the REAL first-page fast path — not a
-//  helper — through the `crawlerFetcher` seam, in the field configuration that
-//  produced HelpSpot 19030 and 19012:
-//
-//    * no usable disk cache (cold, or >24h old, or metadata lost)
-//    * so `loadCatalogs` takes path 3: bundled snapshot, THEN the network
-//    * page 1 arrives carrying a fraction of the registry and declaring the true total
-//    * pagination for the remaining pages FAILS (dropped connection / backgrounded)
-//
-//  Before the fix, page 1 was written verbatim over the whole bucket and the
-//  complete bundled snapshot committed moments earlier was destroyed. A patron
-//  whose library was not among the 100 most-recently-modified was left with an
-//  app that could not name it, could not list it in Settings, and told them to
-//  sign in. On `release/3.3.0` every assertion below fails.
+//  PP-5191 (HelpSpot 19030, 19012). Drives the real first-page fast path via
+//  `crawlerFetcher` with no usable disk cache, so `loadCatalogs` commits the
+//  bundled snapshot and then fetches: page 1 carries part of the registry plus
+//  the true total, and later pages fail. Previously page 1 overwrote the whole
+//  bucket, so a library outside the 100 most recently modified vanished from
+//  the app. Every assertion here fails on `release/3.3.0`.
 //
 
 import XCTest

@@ -1,19 +1,11 @@
-//
 //  NetworkResponderAuthChallengeWitnessTests.swift
-//  PalaceTests
 //
-//  PP-4895. The network layer's authentication-challenge callback is the second
-//  of the app's two challenge sites (the other is the download center, see
-//  `DownloadAuthChallengeWitnessTests` for the full write-up of the compiler
-//  defect these tests exist to out-guard).
-//
-//  In short: URLSession invokes an optional delegate method only when the
-//  delegate answers `respondsToSelector:`, and under Xcode 26.2 a ClangImporter
-//  block-type cache collision with WebKit can leave this method unmatched — and
-//  therefore absent from the ObjC runtime — with no error and no crash. So the
-//  registration is asserted directly instead of being assumed from the fact that
-//  the code compiles.
-//
+//  PP-4895. URLSession calls an optional delegate method only when the delegate
+//  answers `respondsToSelector:`. Under Xcode 26.2 a ClangImporter cache
+//  collision with WebKit can leave the network layer's auth-challenge method
+//  unmatched and absent from the ObjC runtime, with no error. These tests assert
+//  the registration directly. See `DownloadAuthChallengeWitnessTests` for the
+//  download-center counterpart and the full write-up.
 
 import XCTest
 import PalaceNetwork

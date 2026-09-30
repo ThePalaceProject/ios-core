@@ -1,20 +1,11 @@
 //
 //  LCPAcquisitionPredicateTests.swift
-//  PalaceTests
 //
-//  Behavior tests for `LCPAudiobooks.hasLCPAcquisition(_:)` — the recursive
-//  predicate that catches Marketplace audiobooks regardless of which OPDS
-//  feed (XML /loans/ or JSON /groups/) populated the book record.
-//
-//  This is the load-bearing fix that closes the PP-4407 regression class.
-//  Ports the 3.0.3 hotfix logic from commit `ca2ff13b6` (release branch
-//  only — never forward-merged to develop).
-//
-//  File-level guard, NOT `#if LCP`: `hasLCPAcquisition` is `@objc static`
-//  and reachable from the Palace-noDRM build, so its tests live outside the
-//  LCP gate. The LCP MIME constant is a plain string — no Readium link.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  `LCPAudiobooks.hasLCPAcquisition(_:)` recognizes Marketplace audiobooks from
+//  either OPDS feed (XML /loans/ or JSON /groups/), closing the PP-4407 class;
+//  it ports hotfix `ca2ff13b6` (3.0.3 release branch only). File-level guard,
+//  NOT `#if LCP`: the predicate is `@objc static` and reachable from
+//  Palace-noDRM, and the LCP MIME constant is a plain string.
 //
 
 #if LCP

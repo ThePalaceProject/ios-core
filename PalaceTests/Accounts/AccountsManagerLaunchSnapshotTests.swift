@@ -1,36 +1,12 @@
 //
 //  AccountsManagerLaunchSnapshotTests.swift
-//  PalaceTests
 //
-//  CP-D1 (LaunchHydration) tests for the slim launch-snapshot split in
-//  `AccountsManager`. Profiling established that the pre-CP-D1
-//  `preloadAccountsFromDiskCacheSync` cost ~207ms on a fast sim (95ms decode
-//  + 112ms mapping 1142 accounts) on the launch main thread. CP-D1 hydrates
-//  only a SLIM snapshot (current + settings accounts) synchronously and moves
-//  the full 1142-account decode+map OFF-MAIN behind the existing
-//  `Account.awaitReady()` gate.
-//
-//  These tests pin the four contract behaviours:
-//    1. Slim-snapshot correctness — only current + settings accounts hydrate
-//       synchronously; the slim set does NOT leak into `accountSets`.
-//    2. Picker-full-count — `accounts()` reaches the FULL fixture count, not
-//       the slim count, once the full list materializes via the production
-//       seam (so `accountsHaveLoaded` still reflects the full list — the
-//       library-picker truncation guard).
-//    3. Round-trip through the production seam (slim preload → library
-//       reselect away → back → re-drive), NOT `_setState` shortcuts.
-//    4. Consumer smoke — the readiness gate is DRIVEN (not left hanging) for
-//       the current account after cold launch AND after a library swap.
-//  Plus unit coverage of the pure `carveSlimFeed` carve.
-//
-//  Isolation is inherited from `PalaceWiringTestCase` (see its header):
-//  per-test `SingletonResetRegistry.invokeAll()`,
-//  `deferInitialLoadCatalogsForTesting = true`, `cancelBackgroundWork()` on
-//  every helper-minted manager in tearDown, and an Application-Support
-//  `accounts_catalog_*` purge in setUp + tearDown (which also sweeps the
-//  `accounts_catalog_slim_*` files these tests write).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Slim launch-snapshot split in `AccountsManager`: only the current and
+//  settings accounts hydrate synchronously (the full 1142-account decode cost
+//  ~207ms on the launch main thread) and the rest loads off-main behind
+//  `Account.awaitReady()`. Pinned: the slim set does not leak into
+//  `accountSets`; `accounts()` reaches the full count; a library swap
+//  round-trips through the production seam; the readiness gate is driven.
 //
 
 import XCTest

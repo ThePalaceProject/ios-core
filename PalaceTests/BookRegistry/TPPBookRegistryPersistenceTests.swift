@@ -1,34 +1,11 @@
-//
 //  TPPBookRegistryPersistenceTests.swift
-//  PalaceTests
 //
-//  Persistence tests for TPPBookRegistry and its
-//  collaborator BookRegistrySync. Covers the P0 gap from
-//  docs/Testing/Coverage_Roadmap.md §2.2:
-//
-//    - Save → cold-start load round-trip (state preserved across disk)
-//    - Corrupted JSON on load → empty registry, no crash
-//    - Truncated JSON on load → empty registry, no crash
-//    - State-change publisher fires on real transitions
-//    - State-change publisher does NOT fire on a no-op updateBook
-//    - Account isolation: registry A's records don't leak into registry B
-//    - Concurrent writes from two queues converge to a consistent on-disk file
-//
-//  Strategy
-//  --------
-//  Most tests drive BookRegistrySync + BookRegistryStore directly, the actual
-//  persistence layer that TPPBookRegistry delegates to. This lets us pass an
-//  explicit account UUID into save(for:) / load(account:) without touching the
-//  shared AccountsManager singleton. The facade's other behaviors (publisher
-//  emissions, in-memory state) are covered through TPPBookRegistry itself.
-//
-//  Each test uses a unique account UUID (`test-persistence-<UUID>`) so the
-//  on-disk artifacts at
-//    <AppSupport>/<bundleId>/<test-uuid>/registry/registry.json
-//  never collide. tearDown removes the directory.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Persistence tests for TPPBookRegistry / BookRegistrySync: cold-start round trip,
+//  corrupted and truncated JSON, publisher firing only on real transitions,
+//  per-account isolation, and concurrent writers converging. Most tests drive
+//  BookRegistrySync + BookRegistryStore directly with an explicit account UUID so
+//  the shared AccountsManager is not involved; each uses a unique UUID and
+//  tearDown removes its directory.
 
 import XCTest
 import Combine

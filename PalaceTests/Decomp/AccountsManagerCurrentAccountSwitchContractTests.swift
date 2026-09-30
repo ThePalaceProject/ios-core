@@ -152,7 +152,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
         AccountStateStore.shared.reset(for: bUUID)
     }
 
-    // MARK: - Contract 4: spy-order cleanup sequence (Wave 3 S3)
+    // MARK: - Contract 4: spy-order cleanup sequence
 
     /// Contract: on a real switch A → B, the setter drives its cleanup
     /// collaborators in a FIXED order —
@@ -334,7 +334,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
     }
 }
 
-// MARK: - Spies for the Wave 3 S3 switch-cleanup contract
+// MARK: - Spies for the switch-cleanup contract
 
 /// Records `cancelNonEssentialTasks()` into a shared `CallLog`. A plain
 /// `AccountNetworking` conformer — the protocol seam means observing the cancel

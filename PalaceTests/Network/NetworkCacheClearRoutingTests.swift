@@ -1,19 +1,12 @@
-//
 //  NetworkCacheClearRoutingTests.swift
-//  PalaceTests
 //
-//  The app's hygiene paths (sign-out, force-reset, memory-pressure cleanup,
-//  the 7-day stale wipe) must clear the network executor's private URLCache —
-//  the one that serves feeds (`TPPCaching.makeCache`) — not `URLCache.shared`,
-//  a different instance. Clearing the wrong cache leaves feeds and signed-out
-//  authenticated responses in the executor's disk cache.
+//  Sign-out, force-reset, memory-pressure cleanup and the 7-day stale wipe must
+//  clear the network executor's private URLCache (`TPPCaching.makeCache`), not
+//  `URLCache.shared`, which is a different instance. Clearing the wrong one
+//  leaves feeds and authenticated responses in the executor's disk cache.
 //
 //  Pinned: `clearCache()` empties the executor's cache, clearing
-//  `URLCache.shared` does not, and the sign-out / force-reset sites route
-//  through the executor.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  `URLCache.shared` does not, and sign-out / force-reset route through it.
 
 import Foundation
 import XCTest

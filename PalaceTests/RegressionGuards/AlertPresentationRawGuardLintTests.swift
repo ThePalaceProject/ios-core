@@ -1,22 +1,13 @@
-//
 //  AlertPresentationRawGuardLintTests.swift
-//  PalaceTests
 //
-//  Structural regression guard for the fe741015 CACommit crash family
-//  (NSInternalInconsistencyException — "A view controller not containing an
-//  alert controller was asked for its contained alert controller", the #1 crash
-//  on 3.1.0). UIAlertCACommitGuardTests.swift holds the mechanism guard.
-//
-//  The crash is a deferred CA-commit throw, so it cannot be reproduced in a
-//  unit test. This lint pins the invariant instead: the launch/book-open alert
-//  sites must present through `TPPPresentationUtils.safelyPresent` or
-//  `TPPAlertUtils.presentFromViewControllerOrNil` (which wait on the
-//  presenter's `transitionCoordinator`), never a raw `present(alert)`. #1125
-//  covered the main launch paths; this adds the LCP-PDF abort, Readium
-//  module-error, and sync-position nil-coordinator sites.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Structural guard for the fe741015 CA-commit crash family ("A view controller
+//  not containing an alert controller was asked for its contained alert
+//  controller", the top crash on 3.1.0); UIAlertCACommitGuardTests holds the
+//  mechanism guard. The crash cannot be reproduced in a unit test, so this lint
+//  pins that the launch/book-open alert sites present through
+//  `TPPPresentationUtils.safelyPresent` or `presentFromViewControllerOrNil`,
+//  not a raw `present(alert)`. Extends #1125 to the LCP-PDF abort, Readium
+//  module-error and sync-position sites.
 
 import Foundation
 import XCTest

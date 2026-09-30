@@ -1,33 +1,10 @@
-//
 //  TPPBookRegistryIntegrationTests.swift
-//  PalaceTests
 //
-//  Integration tests for the REAL TPPBookRegistry production class.
-//  These tests verify:
-//  - Book state management (addBook, setState, state, removeBook)
-//  - Combine publisher emissions (registryPublisher, bookStatePublisher)
-//  - Persistence (save/load round-trips)
-//  - Location and bookmark management
-//
-//  Synchronization strategy
-//  ========================
-//  All write methods (addBook, setState, removeBook, …) dispatch onto
-//  `syncQueue` with `async(flags: .barrier)`.
-//  All read methods (state(for:), book(forIdentifier:), …) use
-//  `syncQueue.sync` internally (via `performSync`).
-//
-//  Because GCD guarantees that a `.sync` call will drain all previously
-//  enqueued `.async` blocks before executing, a read issued immediately
-//  after a write is deterministic — no `asyncAfter` or `Task.sleep`
-//  synchronization is needed.
-//
-//  Combine publisher tests are an exception: the registry dispatches
-//  publisher emissions to the **main thread** asynchronously.  Those tests
-//  use XCTestExpectation with `.filter{}.first()` subscriptions so they
-//  are fulfilled by the actual event, not by a timer.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Integration tests for TPPBookRegistry: state management, Combine publishers,
+//  save/load round trips, locations and bookmarks. Writes are barrier-async on
+//  `syncQueue` and reads are `syncQueue.sync`, so a read right after a write is
+//  deterministic with no sleeps. Publisher emissions are async on main, so those
+//  tests wait on expectations fulfilled by the event itself.
 
 import XCTest
 import Combine

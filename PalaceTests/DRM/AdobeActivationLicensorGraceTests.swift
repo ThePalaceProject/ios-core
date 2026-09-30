@@ -1,28 +1,10 @@
 //
-//  AdobeActivationLicensorGraceTests.swift
-//  PalaceTests
-//
-//  Regression coverage for the borrow-vs-licensor-save race observed while
-//  validating the Wipro 2.0 DRM connector (PP-5025).
-//
-//  Observed on device and simulator, in this order:
-//
-//      12:09:38.942  No Adobe DRM licensor credentials stored — cannot activate
-//      12:09:38.942  Borrow failed: Device not activated
-//      12:09:51.885  Saving DRM licensor credentials (activation deferred to borrow time)
-//
-//  The licensor arrives on the user-profile-document leg of sign-in, which can
-//  land AFTER the auth gate has already released the queued borrow. The borrow
-//  read `userAccount.licensor`, found nil, and failed outright — thirteen
-//  seconds before the credentials it needed actually arrived. Borrowing again
-//  afterwards worked, which is what made this look like a DRM/connector fault
-//  rather than an ordering bug: it is neither, and it reproduces regardless of
-//  which connector is installed.
-//
-//  The fix gives the licensor a bounded grace period instead of failing on the
-//  first read. These tests pin both halves of that: a licensor that shows up
-//  late is waited for, and a licensor that never shows up still fails with
-//  `.noActivation` — so the guard is delayed, never deleted.
+//  PP-5025: the licensor arrives on the user-profile leg of sign-in, which can
+//  land after the auth gate has released a queued borrow. The borrow read a nil
+//  licensor and failed with "Device not activated" seconds before the credentials
+//  arrived. The fix waits a bounded grace period for the licensor. These pin both
+//  halves: a late licensor is waited for, and one that never arrives still fails
+//  with `.noActivation`.
 //
 
 import XCTest

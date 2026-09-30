@@ -1,23 +1,11 @@
 //
 //  ManagedLibraryDiagnosticsTests.swift
-//  PalaceTests
 //
-//  PP-5221 — what the app tells us when a school's configuration is wrong.
-//
-//  The value being diagnosed is a long hexadecimal identifier an administrator
-//  pastes into a form, so a wrong one is a matter of when, not if. The report
-//  this produces is the whole difference between "we set it up and nothing
-//  happened" and a one-line answer, so two properties have to hold and both are
-//  asserted here as a table rather than as scenarios:
-//
-//  - It distinguishes the cases that lead to different replies. A typo, a
-//    well-formed identifier naming a library we cannot find, and a registry
-//    that has not landed yet are three different conversations.
-//  - It stays quiet otherwise. A report that fires on every slow launch, or
-//    every launch of one misconfigured device forever, is noise nobody reads —
-//    and a channel nobody reads is the same as no channel.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-5221: what the app reports when a school's pasted library identifier is
+//  wrong. Asserted as a table: the report distinguishes a typo, a well-formed
+//  identifier naming an unknown library, and a registry that has not loaded yet
+//  (each needs a different reply), and it stays quiet otherwise, so slow
+//  launches and a permanently misconfigured device do not flood the channel.
 //
 
 import XCTest

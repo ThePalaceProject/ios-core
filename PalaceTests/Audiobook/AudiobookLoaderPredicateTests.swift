@@ -1,22 +1,11 @@
 //
 //  AudiobookLoaderPredicateTests.swift
-//  PalaceTests
 //
-//  Mutation-killing tests for the two deterministic predicates extracted
-//  from AudiobookLoader.swift:
-//
-//    1. `hasRefreshableCredentials(username:pin:tokenURL:)` — gates the
-//       token refresh path on line 109's `tokenURL != nil` clause. Without
-//       a focused test, a flip of that clause goes unnoticed by every
-//       behavioural test in the loader bundle (the surrounding code path needs
-//       AppContainer.production() + the network, which isolated unit tests
-//       refuse to touch).
-//    2. `looksLikeHTMLResponse(_:)` — gates the diagnostic-logging branch
-//       on line 372's `Content-Type contains "html"` check. Same kill-rate
-//       problem: nothing else in the suite drives this with a real
-//       HTTPURLResponse.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  Tests for two predicates extracted from AudiobookLoader, whose surrounding
+//  paths need the production container and network and so are not reached by
+//  unit tests: `hasRefreshableCredentials(username:pin:tokenURL:)`, which gates
+//  token refresh on `tokenURL != nil`, and `looksLikeHTMLResponse(_:)`, which
+//  gates diagnostic logging on a `Content-Type` containing "html".
 //
 
 import XCTest

@@ -1,20 +1,9 @@
-//
 //  CarPlayAuthHelperReadinessTests.swift
-//  PalaceTests
 //
-//  Readiness contract for `CarPlayAuthHelper.isAuthenticated`.
-//  Previously the helper returned `true` for
-//  any account whose `details` was still nil during the cold-launch
-//  window (`treating unloaded details as no-auth-required`), letting
-//  CarPlay try to start playback against a library that DID require
-//  auth — failing later with a bare 401 on the fulfillment URL.
-//
-//  Now the helper is `async` and blocks on awaitReady. On
-//  failure it returns `false` (treat as unauthenticated → CarPlay shows
-//  its existing auth-required alert).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Readiness contract for `CarPlayAuthHelper.isAuthenticated`. It returned `true`
+//  while `details` was still nil at cold launch, so CarPlay started playback on a
+//  library that required auth and later hit a bare 401. It now awaits readiness
+//  and returns `false` on failure, so CarPlay shows its auth-required alert.
 
 import XCTest
 import PalaceCatalog
@@ -108,7 +97,7 @@ final class CarPlayAuthHelperReadinessTests: XCTestCase {
         // makeTestAppContainer() causes a state-machine trap when seeded
         // account is set to .detailsFailed and CarPlayAuthHelper.isAuthenticated
         // reads downstream state. Tracked for follow-up.
-        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production seed graph
+        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: integration test pins production seed graph
         let (currentAccount, cleanup) = seedAccountIfNeeded(on: accountsMgr,
                                                             fixtureId: "test-carplay-auth-\(UUID().uuidString)")
         defer { cleanup() }

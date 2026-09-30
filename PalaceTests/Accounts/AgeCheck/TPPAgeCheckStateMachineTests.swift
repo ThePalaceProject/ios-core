@@ -1,19 +1,11 @@
 //
 //  TPPAgeCheckStateMachineTests.swift
-//  PalaceTests
 //
-//  Migration tests for TPPAgeCheck.verifyCurrentAccountAgeRequirement.
-//  The legacy path read
-//  `currentLibraryAccountProvider.currentAccount?.details` directly;
-//  the migrated path awaits `currentAccount.awaitReady()` so age-check
-//  cannot race the auth-doc fetch.
-//
-//  Tests drive the state machine on the mock provider's account
-//  directly via `account._setState(...)`. The age-check serial queue is
-//  preserved across the await boundary, so completion ordering matches
-//  the legacy behavior exactly.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  `verifyCurrentAccountAgeRequirement` awaits `currentAccount.awaitReady()`
+//  instead of reading `details` directly, so age-check cannot race the auth-doc
+//  fetch. Tests drive the state machine via `account._setState(...)`; the
+//  serial queue is preserved across the await, so completion ordering matches
+//  the legacy behavior.
 //
 
 import XCTest

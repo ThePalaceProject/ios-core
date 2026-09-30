@@ -1,21 +1,9 @@
 //
-//  OIDCReauthAttemptTests.swift
-//  PalaceTests
-//
-//  The borrow flow's OIDC re-auth used to collapse every
-//  ASWebAuthenticationSession error to `false`, which erased the one
-//  distinction that decides what happens next:
-//
-//    code 1  .canceledLogin              — the patron declined. Respect it.
-//    code 3  .presentationContextInvalid — WE failed to present. Retry.
-//
-//  Reading 3 as a decline is what produced the field report on build 499: the
-//  patron never saw a sheet, re-auth silently gave up, credentials stayed
-//  `.credentialsStale`, and the sign-in sheet re-presented on every later
-//  interaction until a relaunch stored a fresh token. "It keeps re-appearing,
-//  but I'm actually logged in after a restart."
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  The borrow flow's OIDC re-auth must distinguish ASWebAuthenticationSession
+//  code 1 (.canceledLogin: the patron declined) from code 3
+//  (.presentationContextInvalid: the app failed to present, so retry). Treating
+//  both as `false` left credentials `.credentialsStale` and re-presented sign-in
+//  on every interaction until relaunch (field report, build 499).
 //
 
 import XCTest

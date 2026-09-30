@@ -1,31 +1,11 @@
-//
 //  BookDetailInfoValueLinkTests.swift
-//  PalaceTests
 //
-//  Pins which INFORMATION values on the book detail screen become tappable
-//  links.
-//
-//  The rows are plain metadata — format, audience, category, language,
-//  narrators, duration, published date, publisher, distributor. None of them is
-//  a URL field. But `URL(string:)` accepts almost any string, so every one of
-//  those values used to parse as a "URL" and get handed to
-//  UIApplication's canOpenURL, which crosses to SpringBoard, is
-//  rate-limited and privacy-gated, and refuses unknown schemes out loud. A
-//  publisher line reading "LONDON:  WALTER SCOTT, 14 PATERNOSTER SQUARE." was
-//  probed as scheme `london`, once per row per re-render.
-//
-//  The strings below are the real values observed on a book detail page, not
-//  invented ones.
-//
-//  NOTE ON PHRASING: the singleton is referred to as "UIApplication's
-//  canOpenURL" rather than by its literal dotted form on purpose.
-//  TearDownRequiredLintTests substring-matches the whole file, comments
-//  included, so writing that form here trips a lint about touching
-//  process-wide state — in a file that has no state at all and no setUp or
-//  tearDown. The lint's coarseness is deliberate (its own docs say finer
-//  scoping "would invite escape hatches"), so the file works around it rather
-//  than the reverse.
-//
+//  Pins which book-detail information values become tappable links. The rows are
+//  plain metadata, but `URL(string:)` accepts almost any string, so each value was
+//  probed with UIApplication's canOpenURL (rate-limited, privacy-gated, and logs
+//  unknown schemes) once per row per render. The strings below are real values.
+//  The singleton is named in prose on purpose: TearDownRequiredLintTests matches
+//  its dotted form anywhere in a file, comments included.
 
 import XCTest
 @testable import Palace

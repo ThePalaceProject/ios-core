@@ -1,21 +1,10 @@
-//
 //  EPUBToolbarToggleTests.swift
-//  PalaceTests
 //
-//  Regression tests for EPUB toolbar tap-to-toggle behavior.
-//
-//  Background: Readium 3.x has two parallel paths for tap delivery:
-//    1. Legacy VisualNavigatorDelegate.navigator(_:didTapAt:) — fires via
-//       setupLegacyInputCallbacks, returns false (does NOT consume the event).
-//    2. Input observer (.tap) registered in TPPEPUBViewController.init.
-//
-//  Both fire for every tap. If both call toggleNavigationBar(), the toolbar
-//  is toggled twice per tap (net: no visible change). The fix is that
-//  TPPEPUBViewController overrides didTapAt as a no-op; only the .tap
-//  observer performs the toggle.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  EPUB toolbar tap-to-toggle. Readium 3.x delivers each tap twice: through the
+//  legacy `navigator(_:didTapAt:)` delegate (which does not consume the event)
+//  and through the `.tap` input observer registered in TPPEPUBViewController.
+//  If both toggled, each tap would toggle twice with no visible change, so
+//  `didTapAt` is a no-op and only the `.tap` observer toggles.
 
 import XCTest
 @testable import Palace

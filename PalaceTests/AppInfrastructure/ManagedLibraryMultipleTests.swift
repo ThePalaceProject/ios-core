@@ -1,19 +1,10 @@
 //
 //  ManagedLibraryMultipleTests.swift
-//  PalaceTests
 //
-//  PP-5070 — configuring more than one library, and the warnings that stop a
-//  half-usable payload from failing in silence.
-//
-//  The two rules worth pinning are asymmetric on purpose:
-//    · an ADDITIONAL library the registry has never heard of is dropped, and
-//      the device is still pointed at the right catalog;
-//    · a SELECTED library the registry has never heard of is `.unresolved`,
-//      and nothing is configured at all.
-//  Getting that backwards either strands a device on no library, or lands a
-//  Middle School device in a catalog nobody chose.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-5070: configuring several libraries. Deliberately asymmetric: an unknown
+//  ADDITIONAL library is dropped and the device still gets the right catalog;
+//  an unknown SELECTED library is `.unresolved` and nothing is configured.
+//  Reversing either strands a device with no library or in the wrong catalog.
 //
 
 import XCTest

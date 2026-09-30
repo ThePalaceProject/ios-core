@@ -1,18 +1,12 @@
 //
 //  SideloadedBookManager.swift
-//  Palace
 //
-//  Orchestrates the side-loading import flow (PP-2677).
-//
-//  Classifies the file (rejecting unsupported types before writing), mints a
-//  synthetic open-access `TPPBook` whose acquisition MIME matches the content
-//  type, copies the file to the fixed side-load account's content path, and
-//  registers the book in `SideloadedBookRegistry` (which is the sync
-//  exemption) and in the main registry as `.downloadSuccessful`. `remove`
-//  reverses this; `rehydrateAtLaunch` re-registers after a cold launch. See
-//  docs/architecture/sideloading-plan.md.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Orchestrates the side-loading import flow (PP-2677): classify the file
+//  (rejecting unsupported types before writing), mint a synthetic open-access
+//  `TPPBook`, copy the file to the side-load account's content path, and
+//  register it in `SideloadedBookRegistry` (the sync exemption) and in the main
+//  registry as `.downloadSuccessful`. `rehydrateAtLaunch` re-registers after a
+//  cold launch. See docs/architecture/sideloading-plan.md.
 //
 
 import Foundation

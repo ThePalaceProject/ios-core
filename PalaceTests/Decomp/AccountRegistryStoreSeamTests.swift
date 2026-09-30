@@ -1,20 +1,9 @@
-//
 //  AccountRegistryStoreSeamTests.swift
-//  PalaceTests
 //
-//  Pins the `AccountRegistryStore` seam: the account-registry state and
-//  its concurrency now live in an injected store, and `AccountsManager`'s retrieval
-//  facades delegate to it.
-//
-//  Two lenses:
-//   1. Concurrency (real store) — the index-coherence-under-barrier invariant, no
-//      torn reads, and slim-fallback isolation. These are the guarantees the
-//      extraction MUST preserve; each catches a specific locking-model regression.
-//   2. Routing (hub delegation) — inject a store, drive state through it, assert the
-//      hub `account(_:)` / `accounts()` / `accountsHaveLoaded` facades reflect it.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins `AccountRegistryStore`, which now holds account-registry state and its
+//  locking. On the real store: index coherence under the barrier, no torn reads,
+//  and slim-fallback isolation. Through the hub: `account(_:)`, `accounts()` and
+//  `accountsHaveLoaded` reflect an injected store.
 
 import XCTest
 import PalaceCatalog

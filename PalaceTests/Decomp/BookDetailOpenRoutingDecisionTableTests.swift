@@ -42,9 +42,9 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
         // StreamingReaderPresentationContractTests.
         pinnedRouter = AppTabRouter()
         pinnedRouter.selected = .myBooks
-        AppContainer.production().tabRouterHub.router = pinnedRouter  // MIGRATED-DEFERRED: swarm_47883816 — BookOpenRouter.presentStreamingReader resolves its coordinator off the PRODUCTION hub, so the production hub IS the contract under test; a makeTestAppContainer() hub is a different object the router never consults.
+        AppContainer.production().tabRouterHub.router = pinnedRouter  // MIGRATED-DEFERRED: BookOpenRouter.presentStreamingReader resolves its coordinator off the PRODUCTION hub, so the production hub IS the contract under test; a makeTestAppContainer() hub is a different object the router never consults.
         coordinator = NavigationCoordinator()
-        AppContainer.production().navigationCoordinatorHub.register(coordinator, for: .myBooks)  // MIGRATED-DEFERRED: swarm_47883816 — same hub, same reason: this is where the router looks.
+        AppContainer.production().navigationCoordinatorHub.register(coordinator, for: .myBooks)  // MIGRATED-DEFERRED: same hub, same reason: this is where the router looks.
     }
 
     override func tearDown() {

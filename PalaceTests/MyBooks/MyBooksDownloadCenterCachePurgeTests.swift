@@ -1,27 +1,9 @@
 //
-//  MyBooksDownloadCenterCachePurgeTests.swift
-//  PalaceTests
-//
-//  PP-5127 — decrypted audiobook chapters outlived the loan.
-//
-//  Protected (LCP) audiobooks are decrypted chapter-by-chapter into flat files
-//  in the app's Caches directory, named for a hash of each track's path. Once
-//  the licence is gone those paths cannot be reconstructed, so
-//  `LocalBookContentService` cannot delete them per track and skips the
-//  toolkit cleanup that would have.
-//
-//  The in-app Return path got away with that because `BookReturnService` also
-//  fires a forced `purgeAllAudiobookCaches`. Every OTHER way a loan ends —
-//  expiry, a return from another device, a librarian revoking it, any
-//  server-driven reconciliation — runs only the per-book delete, so the
-//  decrypted audio stayed on disk after the book left the shelf.
-//
-//  Measured 2026-09-14 on an A1QA loan: a title returned outside the app left
-//  51 playable MP3 files and 1.1 GB behind. The same shape of title returned
-//  inside the app cleared 154 files to zero. Same book, same bytes; the only
-//  difference was which code path ended the loan.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  PP-5127: decrypted LCP audiobook chapters live in Caches under hashed track
+//  paths that can't be rebuilt once the licence is gone. In-app Return also runs
+//  `purgeAllAudiobookCaches`, but expiry, returns from another device, and other
+//  server-driven loan endings ran only the per-book delete, leaving decrypted audio
+//  on disk (measured: 51 MP3s / 1.1 GB left behind vs. 154 -> 0 via in-app Return).
 //
 
 import XCTest

@@ -1,31 +1,8 @@
 //
-//  ColdStartResumeIntegrationTests.swift
-//  PalaceTests
-//
-//  Integration tests for cold-start state reconciliation.
-//
-//  Pins the production contract from
-//  Palace/Book/Models/BookRegistrySync.swift (load(account:setState:completion:)):
-//
-//    * .downloading records whose content file is missing must be healed
-//      to .downloadFailed on load — NOT silently treated as in-flight.
-//    * .downloading records whose content file IS present must be promoted
-//      to .downloadSuccessful (the download completed before the previous
-//      app exit terminated the process).
-//    * Corrupted registry JSON must produce an empty in-memory registry —
-//      no crash, no partial parse.
-//    * Missing registry file must produce an empty registry too.
-//    * Proactive token refresh fires when authTokenNearExpiry returns true —
-//      see TPPNetworkExecutor.executeRequest:executeRequest enableTokenRefresh
-//      branch.
-//
-//  These tests exercise the real BookRegistrySync.load() pipeline against
-//  on-disk fixtures and assert the post-load registry contents.
-//
-//  House rules: hermetic (HTTPStubURLProtocol-only when networking),
-//  temp-dir-scoped account UUIDs, real types, no production code changes.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
+//  Cold-start reconciliation in BookRegistrySync.load, against on-disk fixtures:
+//  .downloading with no content file heals to .downloadFailed; with the file
+//  present it becomes .downloadSuccessful; corrupt or missing registry JSON loads
+//  empty without crashing; proactive token refresh fires near expiry.
 //
 
 import XCTest

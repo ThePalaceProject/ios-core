@@ -1,18 +1,8 @@
 //
-//  RuntimeQuiescenceGateTests.swift
-//  PalaceTests
-//
-//  Self-test for the runtime-quiescence gate: the auditor FAILS a synthetic
-//  polluter and passes on clean state, so a broken detector cannot report green
-//  while catching nothing.
-//
-//  Subclasses `PalaceTestCase` on purpose: `testCaptureDeferFlag_reflectsLive…`
-//  sets the defer flag `false` to prove `captureDeferFlag()` reads live state,
-//  so per `RuntimeQuiescenceLintTests` this class MUST adopt the quiescence
-//  base. It restores the flag via `defer` before tearDown, so the inherited
-//  quiescence assert passes — i.e. this file also dogfoods the gate.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Self-test for the runtime-quiescence gate: the auditor fails a synthetic
+//  polluter and passes on clean state. Subclasses `PalaceTestCase` because one
+//  test flips the defer flag; it restores the flag via `defer` before tearDown,
+//  so the inherited quiescence assert also exercises the gate.
 //
 
 import XCTest

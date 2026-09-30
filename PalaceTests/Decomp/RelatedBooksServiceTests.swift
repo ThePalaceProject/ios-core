@@ -1,20 +1,9 @@
-//
 //  RelatedBooksServiceTests.swift
-//  PalaceTests
 //
-//  The related-works lane derivation, extracted from `BookDetailViewModel`.
-//  These tests could not be written before the extraction: the
-//  derivation's only input was the return value of a concrete `OPDSFeedService`
-//  actor constructed inside the view model, so there was nothing to hand it a
-//  feed through. `RelatedBooksFeedFetcher` is that seam.
-//
-//  Both halves are covered — the pure `lanes(from:registry:authorName:)`
-//  derivation over parsed feed fixtures, and `fetchLanes`' three outcomes
-//  (grouped feed, non-grouped feed, thrown error), which are what decide whether
-//  the screen's existing lanes survive.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Related-works lane derivation extracted from `BookDetailViewModel`, testable via
+//  the `RelatedBooksFeedFetcher` seam. Covers `lanes(from:registry:authorName:)`
+//  over parsed fixtures and `fetchLanes`' grouped / non-grouped / thrown outcomes,
+//  which decide whether the screen's existing lanes survive.
 
 import XCTest
 import PalaceCatalog

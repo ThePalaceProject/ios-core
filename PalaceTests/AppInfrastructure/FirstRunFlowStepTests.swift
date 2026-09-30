@@ -1,18 +1,10 @@
 //
 //  FirstRunFlowStepTests.swift
-//  PalaceTests
 //
-//  PP-5220 — the decision behind "does this patron see the library picker?"
-//
-//  This decision had no tests until now, and it is the one piece of logic in
-//  Palace that can leave a brand-new patron with no library at all, or with
-//  four pickers stacked on top of each other. The second is not hypothetical:
-//  PP-4329 was exactly that, on a fresh install on iOS 26.4.2.
-//
-//  The inputs are finite, so they are asserted as a table rather than as
-//  scenarios. Scenarios are unbounded and would have missed PP-4329 too.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-5220: the decision behind "does this patron see the library picker?" It
+//  can leave a new patron with no library, or with stacked pickers (PP-4329, a
+//  fresh install on iOS 26.4.2). The inputs are finite, so they are asserted as
+//  a table rather than as scenarios.
 //
 
 import XCTest

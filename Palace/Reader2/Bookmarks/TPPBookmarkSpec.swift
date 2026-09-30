@@ -1,31 +1,13 @@
-//
 //  TPPBookmarkSpec.swift
-//  The Palace Project
-//
-//  Created by Ettore Pasquini on 3/24/21.
-//  Copyright © 2021 NYPL Labs. All rights reserved.
-//
 
-/// A type representing the [format](https://github.com/ThePalaceProject/mobile-specs) of bookmark data
-/// shared between clients nd server in the Library Simplified ecosystem.
-///
-/// The structure of this type mimics the structure of the spec, as one
-/// can see from the [provided examples](https://github.com/ThePalaceProject/mobile-specs/blob/main/bookmarks/valid-bookmark-0.json).
-/// All required keys are listed. When a `value` property is present,
-/// it means it's a required fixed value. E.g. the `"type"` key *MUST*
-/// have a value equal to the `"Annotation"` literal. Fields that allow more
-/// more than one fixed value are expressed with enums (e.g. see `Motivation`.)
-///
-/// Bookmarks created inside the R2 reader *MUST* provide a value for all
-/// the keys listed here; exceptions are noted on each individual field.
-///
-/// Bookmarks created inside the R1 reader *MAY* comply to the same spec
-/// and historically some of the key/values overlap, although there has not
-/// been consistence in how those bookmarks are defined, especially
-/// cross-platform.
-///
-/// See the [full spec](https://github.com/ThePalaceProject/mobile-specs)
-/// for more details.
+/// The bookmark data [format](https://github.com/ThePalaceProject/mobile-specs)
+/// shared between clients and server. The structure mirrors the spec (see the
+/// [examples](https://github.com/ThePalaceProject/mobile-specs/blob/main/bookmarks/valid-bookmark-0.json)):
+/// every required key is listed, a `value` property is a required fixed value
+/// (e.g. `"type"` *MUST* be `"Annotation"`), and fields with several allowed
+/// values are enums (e.g. `Motivation`). R2 reader bookmarks *MUST* provide
+/// every key except where a field notes otherwise; R1 bookmarks only partly
+/// overlap and were not consistent across platforms.
 struct TPPBookmarkSpec {
     struct Context {
         /// The key identifying the `Context` section.

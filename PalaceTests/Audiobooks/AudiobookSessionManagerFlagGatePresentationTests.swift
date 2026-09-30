@@ -1,24 +1,10 @@
-//
 //  AudiobookSessionManagerFlagGatePresentationTests.swift
-//  PalaceTests
 //
-//  Pins the flag-gated presentation decision in
-//  `AudiobookSessionManager.presentSession(book:playbackModel:)`:
-//
-//    - `in_app_playback_nav_enabled` ON  → drive the root-level presenter
-//      (`presentOnFirstOpen`), do NOT push an `.audio` route.
-//    - `in_app_playback_nav_enabled` OFF → push the legacy full-screen
-//      `.audio` route on the coordinator, do NOT touch the presenter.
-//
-//  The flag is injected via the manager's `inAppPlaybackNavEnabledProvider`
-//  closure seam so the decision is exercised without touching UserDefaults
-//  / Firebase. Spy strategy mirrors
-//  `AudiobookSessionManagerPresenterMigrationTests`: a spy presenter for the
-//  ON-branch assertion and a real `NavigationCoordinator` + hub for the
-//  OFF-branch observable-state assertion.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Pins the `in_app_playback_nav_enabled` decision in
+//  `AudiobookSessionManager.presentSession(book:playbackModel:)`: ON drives the
+//  root-level presenter and pushes no `.audio` route; OFF pushes the legacy `.audio`
+//  route and leaves the presenter alone. The flag comes from the
+//  `inAppPlaybackNavEnabledProvider` seam, so no UserDefaults or Firebase access.
 
 import XCTest
 import PalaceAudiobookToolkit

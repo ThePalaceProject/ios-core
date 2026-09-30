@@ -1,23 +1,12 @@
 //
 //  AdobeClientToken.swift
-//  Palace
 //
 //  Adobe short client token parsing, ungated so it compiles into Palace-noDRM
-//  (`AdobeDeauthorization` and `AdobeLicensorRefresh` use it from sign-out).
-//  PR CI builds only the DRM scheme, so a gated dependency here would not be
-//  caught.
-//
-//  Format, from the CM's `adobe_vendor_id.py`:
-//
-//      SHORTNAME|expires|patronIdentifier|signature
-//      \___________  ____________________/ \___ ___/
-//                  \/                          v
-//               username                    password
-//
-//  `expires` is a NumericDate (seconds since the epoch, RFC 7519) written by
-//  `_encode_short_client_token` with `expires = {"minutes": 60}`. The final `|`
-//  separates the halves Adobe authenticates with; earlier ones belong to the
-//  username, which is why the split rejoins everything before the last one.
+//  (sign-out uses it); PR CI builds only the DRM scheme. Format, from the CM's
+//  `adobe_vendor_id.py`: `SHORTNAME|expires|patronIdentifier|signature`.
+//  Everything before the last `|` is the username and the rest is the password,
+//  so the split rejoins all earlier parts. `expires` is a NumericDate (epoch
+//  seconds, RFC 7519) set 60 minutes out by `_encode_short_client_token`.
 //
 
 import Foundation

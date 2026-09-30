@@ -1,18 +1,11 @@
 //
 //  AudiobookMorphingPlayerViewTests.swift
-//  PalaceTests
 //
-//  Unit coverage for the pure, testable seams of the custom morphing
-//  audiobook player: the bookmark-error → localized-toast mapping (restores the
-//  toolkit's `BookmarkError.localizedDescription`, which is module-internal and
-//  unreachable from the app), the toast error/success classifier, the adaptive
-//  control metrics (toolkit `controlPanelView` / `playbackControlsView` tiers),
-//  and the rubber-band resistance curve for the interactive pull-down.
-//
-//  The SwiftUI body itself is opaque to XCTest; these static helpers carry the
-//  logic that would otherwise hide inside it, so they are asserted directly.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  Pure seams of the morphing audiobook player: bookmark-error → localized toast
+//  (the toolkit's `BookmarkError.localizedDescription` is module-internal), the
+//  toast error/success classifier, adaptive control metrics, and the pull-down
+//  rubber-band curve. The SwiftUI body is opaque to XCTest, so the logic lives
+//  in these static helpers and is asserted directly.
 //
 
 import XCTest

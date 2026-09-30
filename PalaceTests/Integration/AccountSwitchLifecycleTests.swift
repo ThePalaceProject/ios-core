@@ -1,37 +1,9 @@
 //
-//  AccountSwitchLifecycleTests.swift
-//  PalaceTests
-//
-//  Integration tests for the lifecycle of switching between libraries.
-//
-//  Pinned contracts (verified against production code, not assumed):
-//
-//    1. Per-library credential isolation
-//       AccountsManager.userAccount(for:) returns a distinct TPPUserAccount
-//       per UUID. A credential written to library A's instance MUST NOT
-//       appear in library B's keychain reads — see
-//       Palace/Accounts/Library/AccountsManager.swift:298.
-//
-//    2. Authorization header binds to the request's account
-//       TPPNetworkExecutor.request(for:useTokenIfAvailable:accountId:)
-//       resolves credentials via accountsManager.userAccount(for:) — the
-//       Bearer header is sourced from the SPECIFIC account, never the
-//       last-written shared singleton (see TPPNetworkExecutor.swift:248).
-//
-//    3. Registry files are per-account
-//       BookRegistrySync.registryUrl(for:) → application support directory
-//       partitioned by account UUID. Switching A → B MUST NOT delete or
-//       mutate A's on-disk registry file (BookRegistrySync.swift:48).
-//
-//    4. Switching cancels non-essential in-flight network tasks
-//       AccountsManager.currentAccount.didSet → networkExecutor.cancelNonEssentialTasks()
-//       (AccountsManager.swift:221, TPPNetworkExecutor.swift:191).
-//
-//  House rules: hermetic (HTTPStubURLProtocol-only), real types, temp dirs,
-//  no production-code modifications. Mocks only the network + per-library
-//  account resolver — everything else exercises real code.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
+//  Library-switch lifecycle, hermetic (HTTPStubURLProtocol only). Pins that:
+//  1. each library UUID gets its own TPPUserAccount and keychain credentials;
+//  2. the executor's Bearer header comes from the request's account;
+//  3. switching libraries leaves the other account's registry file untouched;
+//  4. switching cancels non-essential in-flight network tasks.
 //
 
 import XCTest

@@ -1,27 +1,11 @@
-//
 //  BookReturnServiceContractTests.swift
-//  PalaceTests
 //
-//  Contract-snapshot coverage for BookReturnService. The MBDC return-flow
-//  extraction (PR #890) lifted ~230 LOC of nested error-handling branches
-//  into this class; any branch where the call sequence into the registry +
-//  local-content + announcement service changes is a candidate for the
-//  same silent-decomposition class of bug as F-011 / F-014.
-//
-//  Each test pins the contract: for input X, here are the calls in order.
-//  A re-extraction or path-change that drops a setState or moves a
-//  deleteLocalContent before a deleteAllBookmarks trips the diff.
-//
-//  Coverage:
-//    - happy path with revokeURL → setProcessing(true) → fetchFeed →
-//      (cleanup local) → setState(.unregistered) → announceReturnSucceeded
-//    - revokeURL nil → skips network → deleteLocalContent → setState →
-//      announceReturnSucceeded
-//    - parsing error (OverDrive quirk) → treat as success
-//    - no-active-loan problem doc → treat as success
-//    - generic error → setProcessing(false) → announceReturnFailed
-//    - auth error → markCredentialsStale + reauthenticator.authenticateIfNeeded
-//
+//  Contract snapshots for BookReturnService (extracted in PR #890): for each input,
+//  the ordered calls into the registry, local content and announcements. Covers
+//  the revokeURL and no-revokeURL paths, the OverDrive parsing-error and
+//  no-active-loan cases treated as success, generic errors, and auth errors
+//  (markCredentialsStale + reauthentication). Dropping a setState or reordering
+//  cleanup changes the snapshot.
 
 import XCTest
 import PalaceCatalog

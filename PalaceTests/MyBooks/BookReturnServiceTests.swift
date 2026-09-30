@@ -1,25 +1,9 @@
 //
-//  BookReturnServiceTests.swift
-//  PalaceTests
-//
-//  Critical-path coverage for the borrow-return state machine extracted
-//  into BookReturnService. Return is a critical path, so every branch and
-//  error path has a test.
-//
-//  Branches covered:
-//    1. Book not in registry → no-op + completion
-//    2. revokeURL == nil + downloaded → local cleanup, registry remove,
-//       sync, announce success
-//    3. revokeURL == nil + not downloaded → cleanup skips file deletion
-//    4. revokeURL + parsing-error-as-success (PalaceError.parsing
-//       .opdsFeedInvalid) → treat OverDrive's quirky XML response as
-//       success
-//    5. revokeURL + no-active-loan / loan-term-limit problem document →
-//       local cleanup, registry remove, announce success
-//    6. revokeURL + invalid-credentials → reauthenticate + retry
-//    7. revokeURL + generic problem document → present alert (we only
-//       assert announceReturnFailed since UIAlertController presentation
-//       is host-VC dependent and out of scope for unit tests)
+//  Every branch of the BookReturnService return state machine: book not in
+//  registry; no revokeURL (downloaded or not); OverDrive's parse-error-as-success;
+//  no-active-loan / loan-term-limit problem docs treated as returned;
+//  invalid-credentials reauth + retry; and generic problem docs, asserted via
+//  announceReturnFailed since alert presentation needs a host view controller.
 //
 
 import XCTest
@@ -395,7 +379,7 @@ final class BookReturnServiceTests: XCTestCase {
                        "Generic error keeps the book in the registry until user picks an action")
     }
 
-    // MARK: - Task lifecycle (swarm_4e47d4d4 F3 — fire-and-forget retention)
+    // MARK: - Task lifecycle (fire-and-forget retention)
 
     /// The return flow's revokeURL branch (line 154 Task) is the canonical
     /// "hop to cooperative pool then bounce off MainActor for cleanup" path.

@@ -280,7 +280,7 @@ final class SignInModalLifecycleTests: XCTestCase {
         XCTAssertEqual(completionFires, 1)
     }
 
-    // MARK: - Wave 4 — state-transition tests (replace deleted predicate coverage)
+    // MARK: - State-transition tests (replace deleted predicate coverage)
 
     /// Drives `nil → .forCurrentAccount` through the presenter (not a direct
     /// write to `presentationState`) and asserts exactly one publish before
@@ -407,7 +407,7 @@ final class SignInModalLifecycleTests: XCTestCase {
                        "Driver libraryID must be resolved on each present")
     }
 
-    // MARK: - Wave 4 — True production-seam wiring test (closes cs_9a267b63)
+    // MARK: - Production-seam wiring test
 
     /// Spy backed by the real presenter's driver-injection seam. The
     /// `SignInModalSheetPresenter` is `final`, so we can't subclass it;
@@ -460,17 +460,17 @@ final class SignInModalLifecycleTests: XCTestCase {
         // real production class, but its driver is observable.
         let recorder = SpyDriverRecorder()
         let spy = SignInModalSheetPresenter(
-            appContainer: AppContainer.production(), // MIGRATED-DEFERRED: swarm_47883816 — test exercises `_testContainerOverride ?? AppContainer.production()` resolution semantics; the production singleton IS the SUT.
+            appContainer: AppContainer.production(), // MIGRATED-DEFERRED: test exercises `_testContainerOverride ?? AppContainer.production()` resolution semantics; the production singleton IS the SUT.
             currentAccountIDProvider: { "lib-wiring-test" },
             needsAuthProvider: { _ in true },
             driver: recorder.makeDriver()
         )
 
-        // Inject the spy via Module B's `withSignInModalSheetPresenter(_:)`
+        // Inject the spy via the `withSignInModalSheetPresenter(_:)`
         // modifier. The resulting container's computed
         // `signInModalSheetPresenter` returns the spy first (override
         // branch precedes the static cache short-circuit).
-        let testContainer = AppContainer.production().withSignInModalSheetPresenter(spy) // MIGRATED-DEFERRED: swarm_47883816 — withSignInModalSheetPresenter() returns a struct derived FROM the production cache; substituting makeTestAppContainer() would break the seam being tested.
+        let testContainer = AppContainer.production().withSignInModalSheetPresenter(spy) // MIGRATED-DEFERRED: withSignInModalSheetPresenter() returns a struct derived FROM the production cache; substituting makeTestAppContainer() would break the seam being tested.
 
         // Sanity-check the seam itself before driving TPPReauthenticator
         // — pin that the override is actually returned by the computed

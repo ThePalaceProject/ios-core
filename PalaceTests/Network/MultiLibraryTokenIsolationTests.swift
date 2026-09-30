@@ -1,28 +1,9 @@
 //
-//  MultiLibraryTokenIsolationTests.swift
-//  PalaceTests
-//
-//  Tests for the per-library credential boundary in
-//  the Palace network stack. Library A's bearer token MUST NOT bleed
-//  into Library B's outbound requests. Adjacent contracts pinned here:
-//
-//   - 401 with an RFC 7807 problem document body propagates the
-//     problem document into the surfaced NSError via
-//     `NSError.makeFromHTTPResponse` (catches any regression that drops
-//     the problemDocument userInfo key).
-//   - 401 with a problem document body does NOT corrupt the OTHER
-//     library's stored bearer token (this is the cross-library
-//     contamination class that motivated PP-3702).
-//   - Network reachability transition + retry-queue flush: the
-//     executor's retry queue drains exactly once even if the gate
-//     toggles multiple times (i.e. the "drain on reconnect" pattern).
-//   - Idempotency-key + body bytes are preserved on retried POSTs
-//     across an account switch (no library can ever observe another
-//     library's borrow body).
-//
-//  All HTTP is intercepted by HTTPStubURLProtocol.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  Library A's bearer token must not reach Library B's requests (PP-3702). Also
+//  pins: a 401 problem document propagates via `NSError.makeFromHTTPResponse` and
+//  does not corrupt the other library's token; the retry queue drains once per
+//  reconnect; retried POSTs keep their idempotency key and body across an account
+//  switch. All HTTP goes through HTTPStubURLProtocol.
 //
 
 import XCTest

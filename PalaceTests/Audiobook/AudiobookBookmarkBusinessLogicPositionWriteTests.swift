@@ -311,7 +311,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         XCTAssertEqual(spyWriter.savedSnapshots.first?.bookID, bookIdentifier)
     }
 
-    // MARK: - 5. isAtBeginning guard preserved (swarm_f3b9b087 #4)
+    // MARK: - 5. isAtBeginning guard preserved
 
     /// Pin the isAtBeginning predicate: when a save is at the
     /// STRICT-ZERO beginning (track 0 AND playbackTime == 0) AND a
@@ -394,7 +394,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
                           "AnnotationId from the beginning save MUST NOT be committed")
     }
 
-    // MARK: - 6. Timestamp-newer race-check preserved (swarm_f3b9b087 #4)
+    // MARK: - 6. Timestamp-newer race-check preserved
 
     /// Pin the race-check predicate: when a save's
     /// timestamp is genuinely OLDER than the current local timestamp, the

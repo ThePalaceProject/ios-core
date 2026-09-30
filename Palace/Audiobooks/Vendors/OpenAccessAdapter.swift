@@ -1,19 +1,12 @@
 //
 //  OpenAccessAdapter.swift
-//  Palace
 //
 //  Vendor adapter for the open-access network fetch (the fallback). It also
-//  detects a bearer-token wrapper in the fetched body, so loans whose
-//  bearer-token MIME is nested in the indirectAcquisition chain (PP-4631) are
-//  followed to the real manifest when `BearerTokenMIMEGate` does not claim them.
+//  follows a bearer-token wrapper in the fetched body, for loans whose
+//  bearer-token MIME is nested in the indirectAcquisition chain (PP-4631).
 //
-//  Failure mapping:
-//    - network error    → .manifestFetchFailed
-//    - empty/no data    → .manifestFetchFailed
-//    - HTML response    → .manifestFetchFailed (server returned a login page)
-//    - non-dict JSON    → .manifestParseFailed
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Failures: network error, empty data, or HTML (a login page) map to
+//  .manifestFetchFailed; non-dictionary JSON maps to .manifestParseFailed.
 //
 
 import Foundation

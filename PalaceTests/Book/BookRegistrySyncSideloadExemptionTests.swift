@@ -164,7 +164,7 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
     accountsManager.currentAccount?._setState(.detailsLoaded(details))
 
     // Credentials on the instance sync() reads via sharedAccount → production.
-    let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: fixtureId) // MIGRATED-DEFERRED: SUT BookRegistrySync.sync() reads credentials via the production shared account, so credentials must be seeded on the production user account (swarm_495a88d9)
+    let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: fixtureId) // MIGRATED-DEFERRED: SUT BookRegistrySync.sync() reads credentials via the production shared account, so credentials must be seeded on the production user account
     prodUserAccount.setAuthToken("sideload-token", barcode: "bc", pin: "1234",
                                  expirationDate: Date().addingTimeInterval(3600))
 

@@ -1,20 +1,10 @@
-//
 //  AccountRegistryLoaderSeamTests.swift
-//  PalaceTests
 //
-//  Pins the `AccountRegistryLoader` seam: the catalog load orchestration +
-//  owned background-crawl + drain extracted from AccountsManager. Constructs the loader
-//  DIRECTLY with spy providers + a recording `CrawlTaskScheduler` + a stub cache/network,
-//  so the deterministic contracts pin WITHOUT racing a live network:
-//   - the initial-background-load SCHEDULING contract (one detached `.utility` spawn),
-//   - the drain's empty-set path returns promptly (no wall-clock hang),
-//   - `carveSlimFeed` purity (also reached via the retained `AccountsManager` shim).
-//  The broad load-pipeline behaviour + the drain-under-live-crawl are pinned by the
-//  retained (byte-unchanged) AccountsManager suites (cancellation / first-run-decode /
-//  cache-read / wiring), which run through the hub facades in CI.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins `AccountRegistryLoader` (catalog load, background crawl and drain,
+//  extracted from AccountsManager) built directly with spies, a recording
+//  `CrawlTaskScheduler` and stub cache/network: one detached `.utility` spawn for
+//  the initial load, a prompt empty-set drain, and `carveSlimFeed` purity. The
+//  wider load pipeline stays covered by the AccountsManager suites.
 
 import XCTest
 import PalaceCatalog

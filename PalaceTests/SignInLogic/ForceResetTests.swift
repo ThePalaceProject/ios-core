@@ -1,26 +1,11 @@
-//
 //  ForceResetTests.swift
-//  PalaceTests
 //
-//  Locks the patron-self-service "Reset Account" contract:
-//   1. The one-shot ephemeral-session flag (set by `performForceReset`,
-//      consumed by the OIDC sign-in entry points) self-clears on read so
-//      it forces ephemeral cookies for exactly one OIDC session and no more.
-//   2. Reading the flag when it was never set returns false (no-op).
-//   3. Writing-then-reading-twice returns true once and false after.
-//
-//  Why this matters (HelpSpot 17716, PP-4282):
-//  Carissa from support flagged that "delete app + reinstall" doesn't fix
-//  patrons stuck in a weird state. For OIDC libraries this is partially
-//  caused by Safari-shared cookies that survive app deletion (the
-//  `ASWebAuthenticationSession` was created with
-//  `prefersEphemeralWebBrowserSession = false` to support silent borrow
-//  re-auth). The "Reset Account" button defeats that for one cycle by
-//  flipping the flag — but only for one cycle, so silent SSO still works
-//  for normal future borrows.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  "Reset Account" (HelpSpot 17716, PP-4282). OIDC sessions use
+//  `prefersEphemeralWebBrowserSession = false` for silent borrow re-auth, so
+//  Safari cookies survive reinstalling the app. `performForceReset` sets a
+//  one-shot flag that forces an ephemeral session for the next OIDC sign-in only.
+//  Pinned: reading the flag clears it (true once, then false), and reading an
+//  unset flag returns false.
 
 import XCTest
 @testable import Palace

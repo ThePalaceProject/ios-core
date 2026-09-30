@@ -1,31 +1,11 @@
-//
 //  PositionWriterContractTests.swift
-//  PalaceTests
 //
-//  Contract-snapshot tests for `PalaceReadingPosition.RemotePositionWriter`
-//  — the canonical position writer that all three reader formats funnel
-//  through. Locks the call-order contract between the writer and its
-//  injected `PositionNetworkAdapter` + clock.
-//
-//  Why a contract snapshot:
-//
-//  The writer's behavior is a state machine over (lastPostAttempt, queued,
-//  deferredFlushScheduled). Plain unit tests verify outputs; the snapshot
-//  pins the *sequence of calls into the network seam*. A refactor that
-//  silently changes that sequence (e.g. drops the per-book throttle keying,
-//  or stops cancelling the queued snapshot) drifts the snapshot and fails
-//  the test loudly.
-//
-//  Pattern matches `BorrowReducerContractTests.swift`.
-//
-//  **First run:** records baselines at
-//  `__Snapshots__/PositionWriterContractTests/<scenario>.json` and FAILS
-//  with "snapshot recorded — re-run to verify". Review the recorded JSON,
-//  commit, then re-run. Set `CONTRACT_SNAPSHOT_RECORD=1` to deliberately
-//  re-record any time the contract intentionally changes.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Contract snapshots for `PalaceReadingPosition.RemotePositionWriter`, the
+//  position writer all reader formats share. It is a state machine over
+//  (lastPostAttempt, queued, deferredFlushScheduled); the snapshot pins the call
+//  sequence into `PositionNetworkAdapter` and the clock, so dropping per-book
+//  throttle keys or queued-snapshot cancellation fails. First run records
+//  baselines and fails; `CONTRACT_SNAPSHOT_RECORD=1` re-records.
 
 import XCTest
 import PalaceReadingPosition

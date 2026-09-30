@@ -1,21 +1,10 @@
-//
 //  TokenRefreshAndRetryQueueTests.swift
-//  PalaceTests
 //
-//  Tests for the token-refresh + 401 retry-queue logic in
-//  `TPPNetworkExecutor.refreshTokenAndResume`. Each test pins a specific
-//  branch in the executor's refresh path so a regression there changes
-//  behaviour observable from the test surface. See Coverage_Roadmap §2.1.
-//
-//  Conventions:
-//   - All HTTP is intercepted by `HTTPStubURLProtocol`; no real network.
-//   - The executor under test is constructed via the full-DI initializer
-//     so its `accountsManager` is a `TPPLibraryAccountMock`, decoupled from
-//     `AppContainer.production().accountsManager`.
-//   - Each test comment names the regression it catches.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Token-refresh and 401 retry-queue logic in
+//  `TPPNetworkExecutor.refreshTokenAndResume`. Each test pins one branch of the
+//  refresh path and names the regression it catches. HTTP goes through
+//  `HTTPStubURLProtocol`, and the executor is built with the full-DI initializer
+//  so its `accountsManager` is a `TPPLibraryAccountMock`.
 
 import XCTest
 import PalaceAuth

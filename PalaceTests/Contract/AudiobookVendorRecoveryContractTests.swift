@@ -1,21 +1,11 @@
-//
 //  AudiobookVendorRecoveryContractTests.swift
-//  PalaceTests
 //
-//  323-Cause-3 (HelpSpot #18471): a coverage contract for the generalized
-//  mid-listen expired-entitlement recovery. It pins, as a committed JSON
-//  snapshot, WHICH (vendor × failure-signal × cold/mid-listen) scenarios the
-//  new bearer-token re-fulfill recovery claims vs. which are LEFT on the
-//  existing terminal fallback — the exact scope decision this change makes.
-//
-//  The route for each scenario is computed from the PRODUCTION predicate
-//  (`shouldTriggerBearerTokenRefulfillForPlaybackFailure`), not a hard-coded
-//  table, so any drift in the trigger classification or the vendor allowlist
-//  (e.g. someone drops 403, or accidentally lets LCP/Findaway in) changes the
-//  snapshot and fails loudly. The mid-listen dimension proves the exclusion
-//  lift: the covered route fires for BOTH cold (hasEverStartedPlayback == false)
-//  and mid-listen (true) — bounded to one attempt per book per session.
-//
+//  HelpSpot #18471: snapshot of which (vendor x failure signal x cold/mid-listen)
+//  scenarios the bearer-token re-fulfill recovery claims and which stay on the
+//  terminal fallback. Routes come from the production predicate
+//  `shouldTriggerBearerTokenRefulfillForPlaybackFailure`, so a change to the
+//  trigger codes or vendor allowlist changes the snapshot. Covered routes fire for
+//  both cold and mid-listen failures, once per book per session.
 
 import XCTest
 import PalaceCatalog

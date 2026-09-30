@@ -1,22 +1,11 @@
-//
 //  TPPSignInBusinessLogicOAuthTests.swift
-//  PalaceTests
 //
-//  Deep tests for the OAuth / token-flow surface of
-//  TPPSignInBusinessLogic. P0 coverage gap per docs/Testing/Coverage_Roadmap.md §2.1.
-//
-//  These tests focus on:
-//    - OAuth Clever redirect-URL parsing (handleRedirectURL) — token, patron,
-//      error, malformed payload, and prefix/payload mismatch branches.
-//    - Token-flow (`getBearerToken`) — success persists token to userAccount,
-//      401 surfaces a validation error without storing a token, no auth header
-//      is leaked to error path.
-//    - Basic-auth `validateCredentials` success / failure observable effects
-//      (delegate callback ordering, validating-flag round-trip).
-//
-//  Hermetic: HTTPStubURLProtocol for the token endpoint; mock keychain via
-//  TPPUserAccountMock; mock network executor for the userProfile request.
-//
+//  OAuth and token-flow surface of TPPSignInBusinessLogic: Clever redirect
+//  parsing in `handleRedirectURL` (token, patron, error, malformed payload,
+//  prefix mismatch), `getBearerToken` (success persists the token, 401 surfaces
+//  a validation error and stores nothing, no auth header on the error path), and
+//  basic-auth `validateCredentials` callbacks. HTTP is stubbed; keychain and
+//  executor are mocks.
 
 import XCTest
 import PalaceCatalog

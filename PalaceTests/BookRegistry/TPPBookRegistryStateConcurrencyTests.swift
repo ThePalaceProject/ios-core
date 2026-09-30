@@ -1,26 +1,10 @@
-//
 //  TPPBookRegistryStateConcurrencyTests.swift
-//  PalaceTests
 //
-//  Pins the Swift 6 `complete`-mode thread-safety change to `TPPBookRegistry`'s
-//  facade `RegistryState` storage. The facade's `state` moved from an
-//  unsynchronised stored `var` (written from BookRegistrySync's background
-//  Task/main callbacks, read cross-thread by consumers) to a computed property
-//  whose backing `_state` is guarded by `stateLock`, with `syncState`
-//  (`BoolWithDelay`) self-synchronised.
-//
-//  These tests exercise the change through the PRODUCTION SEAM (`reset(_:)`
-//  drives `state = .unloaded`; `registryState` / `isSyncing` read it back) —
-//  NOT via a private `_state` shortcut. They prove:
-//    1. The write→read round-trip is preserved (reset lands `.unloaded`, and the
-//       `state == .syncing ⇒ isSyncing` derivation still yields `false`).
-//    2. Concurrent reads of `registryState` / `isSyncing` interleaved with
-//       `reset(_:)` writes never crash and converge — evidence that
-//       `_state` access is actually serialised. Remove the lock and this test is
-//       the one that turns red under the exclusivity/thread checker.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Pins the lock-guarded `RegistryState` storage on the TPPBookRegistry facade
+//  (Swift 6 complete-mode). Driven through `reset(_:)` and read back through
+//  `registryState` / `isSyncing`: the round trip holds, and concurrent reads
+//  interleaved with resets do not crash. Without `stateLock` the concurrent test
+//  fails under the thread checker.
 
 import XCTest
 @testable import Palace

@@ -1,18 +1,8 @@
 //
-//  BookCellModelStreamingHTMLTests.swift
-//  PalaceTests
-//
-//  PP-4161 coverage for the BookCellModel routing path that lights up when
-//  the user taps `.readStreaming` (or `.read` on a streamingHTML book) from
-//  the My Books cell. BookCellModel.didSelectRead inspects
-//  `book.defaultBookContentType` and routes:
-//    .epub      → readerService.openEPUB
-//    .pdf       → readerService.openPDF (or PDFKit path)
-//    .audiobook → BookService.open (audiobook session)
-//    .streamingHTML → NavigationCoordinator.push(.streamingHTML(...))
-//
-//  This file pins ONLY the streamingHTML path — the other branches are
-//  covered by their respective integration tests.
+//  PP-4161: `BookCellModel.didSelectRead` routes by `defaultBookContentType`;
+//  this file pins only the `.streamingHTML` branch, which pushes
+//  `.streamingHTML(...)` on the NavigationCoordinator. The EPUB, PDF and
+//  audiobook branches are covered by their own integration tests.
 //
 
 import XCTest

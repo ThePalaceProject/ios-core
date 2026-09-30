@@ -1,30 +1,12 @@
 //
 //  AudiobookLoaderOPDSShapeMatrixTests.swift
-//  PalaceTests
 //
-//  The PP-4407 regression matrix for the audiobook vendor adapter chain.
-//
-//  Every row in this matrix corresponds to a real-world OPDS feed shape the
-//  loader has been observed to handle (or misroute) in production. The
-//  tests construct realistic `TPPBook` fixtures, feed them through an
-//  adapter chain whose `canHandle` predicates mirror the production
-//  adapters (LCP > LocalFile > BearerToken > OpenAccess), and assert
-//  which adapter claims the book.
-//
-//  THE LOAD-BEARING ROW IS `testMatrix_OPDS2JSONFeedNestedLCP_routesToLCP`:
-//  the `/groups/` JSON feed shape Marketplace returns, where the LCP MIME
-//  is nested inside `indirectAcquisitions[*].type` instead of at the
-//  acquisition's top-level `type`. Pre-swarm code (and the property-check
-//  loader exercised in the META-TEST below) used only the top-level type,
-//  which misrouted these books to OpenAccess and produced the PP-4407
-//  failure (parse-binary-as-JSON crash, no fallback, no retry surface).
-//
-//  Reference: PP-4407, hotfix commit `ca2ff13b6` on the 3.0.3 release branch
-//  (never forward-merged to develop). `hasLCPAcquisition` ports the
-//  recursive predicate; the adapter chain wires it through the
-//  LCPAdapter's `canHandle`.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-4407 regression matrix: each row is a production OPDS feed shape, routed
+//  through an adapter chain mirroring production (LCP > LocalFile > BearerToken
+//  > OpenAccess). The key row is `testMatrix_OPDS2JSONFeedNestedLCP_routesToLCP`:
+//  Marketplace's `/groups/` feed nests the LCP MIME in
+//  `indirectAcquisitions[*].type`; a top-level-only check routed these books to
+//  OpenAccess and crashed parsing binary as JSON. Ports hotfix `ca2ff13b6` (3.0.3).
 //
 
 import XCTest
@@ -51,11 +33,11 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         try KeychainAvailability.skipIfUnavailable()
-        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: swarm_47883816 — hermetic reset must target the production shared currentUserAccount that AudiobookLoader's token gate reads
+        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: hermetic reset must target the production shared currentUserAccount that AudiobookLoader's token gate reads
     }
 
     override func tearDown() {
-        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: swarm_47883816 — hermetic reset must target the production shared currentUserAccount that AudiobookLoader's token gate reads
+        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: hermetic reset must target the production shared currentUserAccount that AudiobookLoader's token gate reads
         super.tearDown()
     }
 
@@ -210,7 +192,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
         let openAccess = PredicateSpyAdapter(label: "open", predicate: { _ in true })
 
 #if LCP
-        // Property-check predicate — TOP-LEVEL only (the pre-swarm bug).
+        // Property-check predicate — TOP-LEVEL only (the PP-4407 misroute).
         let lcp = PredicateSpyAdapter(label: "lcp-property-check", predicate: { book in
             LCPAudiobooks.canOpenBook(book)
         })
@@ -400,7 +382,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     // red (authTokenHasExpired stays true + resolveCallCount 0) — that's the
     // red-first guarantee that the hermetic reset is load-bearing.
     func testHermeticGuard_clearingExpiredToken_unblocksAdapterRouting() {
-        let account = AppContainer.production().accountsManager.currentUserAccount // MIGRATED-DEFERRED: swarm_47883816 — hermetic guard reads the production shared currentUserAccount that AudiobookLoader's token gate reads
+        let account = AppContainer.production().accountsManager.currentUserAccount // MIGRATED-DEFERRED: hermetic guard reads the production shared currentUserAccount that AudiobookLoader's token gate reads
         account.setAuthToken("stale-token", barcode: "b", pin: "p",
                              expirationDate: Date(timeIntervalSinceNow: -3600)) // expired 1h ago
         XCTAssertTrue(account.authTokenHasExpired,

@@ -349,7 +349,7 @@ final class TokenRefreshInterceptorAuthCoordinatorTests: XCTestCase {
     /// coordinator → modal pops for the wrong account on every
     /// foreign-library download retry.
     ///
-    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    /// Regression seen in PR #1018 (cross-host logout).
     func testForeignHost_401_SAML_doesNotMarkCredentialsStale_doesNotDispatchCoordinator() async throws {
         let (coordinator, _, modal, userAcctSpy, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .saml,

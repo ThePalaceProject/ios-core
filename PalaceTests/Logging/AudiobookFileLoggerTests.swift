@@ -294,7 +294,7 @@ final class AudiobookFileLoggerTests: XCTestCase {
         )
     }
 
-    // MARK: - LogArchiveExporting seam (Wave 1c)
+    // MARK: - LogArchiveExporting seam
 
     /// The exporter seam must surface the same directory the logger writes to —
     /// exercised through a real write against the injected temp root (catches

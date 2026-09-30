@@ -1,29 +1,12 @@
 //
 //  AudiobookLoaderDispatchTests.swift
-//  PalaceTests
 //
-//  Dispatch tests for the AudiobookLoader adapter chain. The vendor adapter
-//  extraction rewrote the loader's source-shape dispatch from two implicit branches inside
-//  `resolveManifestAndDecryptor` + `fetchOpenAccessManifest` into a single
-//  linear chain:
-//
-//      let adapter = adapters.first(where: { $0.canHandle(book) })
-//
-//  These tests inject a custom adapter chain (via `AudiobookLoader(adapters:)`)
-//  and assert the loader dispatches to the right adapter for each shape:
-//  LCP > LocalFile > BearerToken > OpenAccess. If no adapter claims, the
-//  loader surfaces `.manifestFetchFailed` (preserving the original
-//  "no default acquisition URL" failure mode).
-//
-//  The `load(book:completion:)` public API is FROZEN — these tests gate the
-//  call path AudiobookSessionManager.swift:321 depends on.
-//
-//  Companion to:
-//    - AudiobookLoaderOPDSShapeMatrixTests.swift (PP-4407 regression matrix)
-//    - AudiobookLoaderPredicateTests.swift (extracted helpers)
-//    - AudiobookLoaderTests.swift (public API contract — cancel + error)
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  The loader dispatches through one linear adapter chain
+//  (`adapters.first(where: { $0.canHandle(book) })`). These tests inject a
+//  chain via `AudiobookLoader(adapters:)` and assert the order LCP > LocalFile
+//  > BearerToken > OpenAccess, with `.manifestFetchFailed` when none claims.
+//  `load(book:completion:)` is frozen; AudiobookSessionManager depends on it.
+//  See also AudiobookLoaderOPDSShapeMatrixTests and AudiobookLoaderPredicateTests.
 //
 
 import XCTest
@@ -254,7 +237,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
 #endif
 
     /// No adapter claims the book — the loader surfaces `.manifestFetchFailed`.
-    /// This is the pre-swarm "no default acquisition URL" failure mode
+    /// This is the original "no default acquisition URL" failure mode
     /// preserved verbatim. Without this assertion, a regression that
     /// changed the fallback to `.manifestParseFailed` (or worse, succeeded
     /// silently) would not be caught.

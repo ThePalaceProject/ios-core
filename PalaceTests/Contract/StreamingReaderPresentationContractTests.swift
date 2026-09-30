@@ -1,31 +1,11 @@
-//
 //  StreamingReaderPresentationContractTests.swift
-//  PalaceTests
 //
-//  PP-4161 contract-snapshot test pinning the BookDetailViewModel ->
-//  NavigationCoordinator call sequence for the streaming-HTML presentation
-//  flow:
-//
-//      handleAction(.readStreaming)
-//          → processingButtons.insert(.readStreaming)
-//          → coordinator.store(book:)
-//          → coordinator.push(.streamingHTML(BookRoute(id:)))
-//          → processingButtons.remove(.readStreaming)
-//
-//  NavigationCoordinator is `final` so we can't subclass it for spying. The
-//  contract test observes the coordinator's two public side-effects (path
-//  growth + bookById storage) and records them into a CallLog by inspecting
-//  state pre/post call. The snapshot locks the sequence + the route's case
-//  + the BookRoute's id so any refactor that:
-//
-//   - drops `store(book:)` (leaving NavigationHostView's resolveBook nil),
-//   - swaps push order (race against the destination resolver),
-//   - changes the route case from `.streamingHTML`, or
-//   - mutates the BookRoute id
-//
-//  will diff the snapshot and fail loudly — exactly the lesson from F-011
-//  / F-014.
-//
+//  PP-4161: snapshot of the BookDetailViewModel -> NavigationCoordinator sequence
+//  for `.readStreaming`: insert processing button, `store(book:)`,
+//  `push(.streamingHTML(BookRoute(id:)))`, remove processing button.
+//  NavigationCoordinator is final, so the test records its path and bookById
+//  side effects before and after. Dropping `store(book:)`, reordering, or changing
+//  the route case or id changes the snapshot.
 
 import Combine
 import PalacePreferences

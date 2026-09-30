@@ -1,19 +1,10 @@
-//
 //  AudiobookSessionPresenterTests.swift
-//  PalaceTests
 //
-//  Pins the behavior contract for `AudiobookSessionPresenter`, the new
-//  root-level "what's playing right now" surface introduced in P3 of
-//  `docs/architecture/in-app-navigation-during-playback.md`. The presenter
-//  is the SwiftUI-observable bridge between the manager's published state
-//  (`AudiobookSessionManaging.playbackStatePublisher`, `currentBook`,
-//  `playbackModel`) and the mini-player + full-screen-cover views in
-//  `AppTabHostView`: session state transitions, first-open expansion
-//  (F-011), expand/minimize, reader-route visibility, and a round-trip
-//  `expand → minimize → expand` through the production seams.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Pins `AudiobookSessionPresenter`, the root-level bridge between the manager's
+//  published playback state and the mini-player / full-screen cover in
+//  `AppTabHostView` (docs/architecture/in-app-navigation-during-playback.md, P3):
+//  state transitions, first-open expansion (F-011), expand/minimize, reader-route
+//  visibility, and an expand -> minimize -> expand round trip.
 
 import Combine
 import XCTest

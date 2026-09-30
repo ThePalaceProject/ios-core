@@ -1,46 +1,13 @@
 //
 //  BorrowReauthResettingTests.swift
-//  PalaceTests
 //
-//  god-class decomposition Wave 3, seam S1 — the ONE hard, un-inverted
-//  Accounts→Downloads STATIC edge, now injected via `BorrowReauthResetting`.
-//
-//  WHAT THIS PINS
-//  ==============
-//  `AccountsManager.cleanupActiveContentBeforeAccountSwitch(from:to:)` clears the
-//  process-global per-book borrow-reauth circuit breaker on every real library
-//  switch. Wave 3 S1 replaces the static
-//  `MyBooksDownloadCenter.clearAllBorrowReauthState()` call with an injected
-//  `borrowReauthResetter.clearAllBorrowReauthState()`. This suite pins:
-//
-//   1. On a real A→B switch the injected resetter is invoked EXACTLY ONCE, and
-//      the invocation is ordered BEFORE the async navigation cleanup completes
-//      (isAccountSwitching still true, i.e. the clear is synchronous in the
-//      setter, not deferred to the async Task) — spy injection.
-//   2. A redundant same-account reassignment (B→B) does NOT invoke the resetter
-//      (the switch-detection guard) — spy injection.
-//   3. A switch to a nil account (leaving a library) DOES invoke the resetter.
-//   4. END-TO-END WIRING: an `AccountsManager` using the REAL default resetter
-//      (`DownloadCenterBorrowReauthResetter`, the same one `AppContainer` wires)
-//      actually resets `BorrowOperation`'s breaker across a switch — a book whose
-//      breaker has tripped is offered re-auth AGAIN after the switch. This closes
-//      the "forgot to wire a real resetter" gap the default arg would otherwise
-//      mask: a no-op default (FORBIDDEN) or a dropped :995 call fails this test.
-//
-//  The breaker behavior itself (trip on 2nd auth-error, per-book keying, global
-//  clear) is pinned separately by the write-ahead
-//  `AccountSwitchBorrowReauthCouplingContractTests`. Contract 4 here observes it
-//  ONLY as the money-path proof that the injected/default resetter is real.
-//
-//  DETERMINISM: no sleeps, no network. The new account is NOT registered in
-//  `accountSets`, so the setter's `driveCurrentAccountAuthDocIfNeeded()` resolves
-//  nil and fires no network fetch. `fetchBook` throws synchronously; the sign-in
-//  modal completion is recorded but never invoked (no retry recursion). Per-test
-//  isolated `UserDefaults` keeps `currentAccountIdentifierKey` off `.standard`.
-//  The process-global breaker is cleared in setUp AND tearDown.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  A library switch clears the per-book borrow-reauth circuit breaker through
+//  the injected `BorrowReauthResetting` rather than a static download-center
+//  call. Pinned: an A→B switch calls the resetter exactly once, synchronously in
+//  the setter; B→B does not; a switch to nil does; and the real default
+//  `DownloadCenterBorrowReauthResetter` actually re-offers re-auth after a switch,
+//  so a no-op default fails. No sleeps or network; the breaker is cleared in
+//  setUp and tearDown.
 
 import XCTest
 import PalaceCatalog

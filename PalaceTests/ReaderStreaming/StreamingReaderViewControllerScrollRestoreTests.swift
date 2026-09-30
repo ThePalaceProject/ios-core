@@ -1,22 +1,11 @@
-//
 //  StreamingReaderViewControllerScrollRestoreTests.swift
-//  PalaceTests
 //
-//  PP-4161 scroll-restore retry-loop tests for
-//  `StreamingReaderViewController`. Drives the `handleDidFinish` /
-//  `restoreScroll(to:attempt:)` path with a recording `ScriptEvaluating`
-//  stub so we can assert:
-//    1. didFinish with a saved scroll emits a `window.scrollTo(0, y)` JS call.
-//    2. when JS reports actual ≈ target, we do not retry.
-//    3. when JS keeps reporting a mismatch, we retry up to the cap.
-//    4. didFinish with no saved scroll does not emit any JS.
-//
-//  These tests target the layout-race bug Module D's 3rd recording
-//  flagged: setContentOffset at didFinish on the BiblioBoard fulfill URL
-//  gets clobbered by subsequent JS reflows, so we replaced the
-//  UIScrollView-based restore with a JS-based retry loop driven by
-//  `window.scrollTo` + `window.scrollY` polling.
-//
+//  PP-4161. On the BiblioBoard fulfill URL, setting the content offset at
+//  didFinish was undone by later JS reflows, so scroll restore became a JS retry
+//  loop (`window.scrollTo` + `window.scrollY` polling). With a recording
+//  `ScriptEvaluating` stub these tests pin: a saved scroll emits
+//  `window.scrollTo(0, y)`; no retry once actual matches target; retries up to
+//  the cap on mismatch; no JS when nothing is saved.
 
 import CoreGraphics
 import XCTest

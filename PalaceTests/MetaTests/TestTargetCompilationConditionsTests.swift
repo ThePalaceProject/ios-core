@@ -1,23 +1,10 @@
 //
-//  TestTargetCompilationConditionsTests.swift
-//  PalaceTests
-//
-//  Self-hosting guard for the test target's compilation conditions.
-//
-//  `#if` inside a TEST file is evaluated against the TEST target's
-//  SWIFT_ACTIVE_COMPILATION_CONDITIONS — not the app module's. Linking a
-//  DRM-enabled `Palace` makes the symbols resolve, so nothing fails to build,
-//  and the guarded bodies quietly compile to their `#else` — usually
-//  `throw XCTSkip(...)`. A skipped test reports as a PASS.
-//
-//  That is how 27 blocks across 16 files stopped running without anyone
-//  noticing, including Adobe critical-path coverage, and how a call site that
-//  rotted in the Phase 7 decomposition (#890) went months without failing.
-//
-//  There is no lint over build settings, so the repair needs its own guard or
-//  the same silence returns on the next pbxproj merge. This test is that
-//  guard, and it is deliberately self-hosting: it is written in the very
-//  dialect it protects, so it can only pass when the condition is really set.
+//  `#if` in a test file is evaluated against the test target's
+//  SWIFT_ACTIVE_COMPILATION_CONDITIONS, not the app's. When a flag is missing the
+//  guarded bodies compile to their `#else` (usually `throw XCTSkip`), which
+//  reports as a pass; 27 blocks across 16 files stopped running that way. This
+//  guard is written in the same `#if` form, so it only passes when the condition
+//  is really set.
 //
 
 import XCTest

@@ -1,21 +1,12 @@
 //
 //  AccountsManagerAccountIndexTests.swift
-//  PalaceTests
 //
-//  Guards the O(1) `uuid → Account` index behind `AccountsManager.account(_:)`
-//  (hermeticity-leaker-accountdetail-vm). The prior implementation linear-scanned
-//  every bucket of `accountSets` on the MAIN thread for every account-change view
-//  refresh; over the ~1142-account registry snapshot that saturated the main
-//  thread (the post-3.2.0 CI hang class) and cost the live app on every library
-//  switch. These tests pin both the correctness of the index AND that it can
-//  never desync from `accountSets` — the desync test is the structural guard:
-//  remove the `accountByUUID = buildAccountIndex(...)` rebuild inside
-//  `mutateAccountSets` and the reseed test fails (stale lookup survives).
-//
-//  Subclasses PalaceWiringTestCase for `makeFreshAccountsManager()` (pins the
-//  defer flag + cancels background work on teardown) and the quiescence floor.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Guards the O(1) `uuid → Account` index behind `AccountsManager.account(_:)`.
+//  A linear scan of `accountSets` on the main thread for every view refresh
+//  saturated it over the ~1142-account registry. These tests pin the index's
+//  correctness and that it cannot desync from `accountSets`: dropping the
+//  rebuild in `mutateAccountSets` fails the reseed test. Subclasses
+//  PalaceWiringTestCase for `makeFreshAccountsManager()` and teardown drain.
 //
 
 import XCTest

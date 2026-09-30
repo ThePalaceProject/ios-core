@@ -1,20 +1,11 @@
-//
 //  PalaceWiringTestCase.swift
-//  PalaceTests
 //
-//  Base class for any XCTestCase that exercises `AccountsManager` and
-//  related per-library state-machine wiring. `PalaceTestSetup`'s observer
-//  cleans up after each test; this base also pre-clears state in setUp
-//  (`SingletonResetRegistry.shared.invokeAll()`), pins
-//  `AccountsManager.deferInitialLoadCatalogsForTesting` to `true` before any
-//  helper-minted manager is built, drains `cancellables` in tearDown, and
-//  calls `cancelBackgroundWork()` on every manager minted via
-//  `makeFreshAccountsManager` — because each manager's background
-//  `loadCatalogs` outlives its test and `AccountStateStore.shared` /
-//  `UserDefaults` are process-global. Subclasses MUST call `super`.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Base class for tests that exercise `AccountsManager` and per-library state
+//  wiring. Beyond `PalaceTestSetup`'s per-test cleanup it resets singletons in
+//  setUp, pins `deferInitialLoadCatalogsForTesting` before any manager is built,
+//  drains `cancellables` in tearDown, and cancels background work on managers
+//  from `makeFreshAccountsManager`, because `loadCatalogs` outlives the test and
+//  `AccountStateStore.shared` / `UserDefaults` are process-global. Call `super`.
 
 import XCTest
 import Combine

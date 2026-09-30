@@ -1,39 +1,10 @@
-//
 //  AudiobookSessionManagerShutdownTests.swift
-//  PalaceTests
 //
-//  Targets Crashlytics F-001:
-//    Adobe RMSDK background watchdog kill, 47 users / 156 events on 3.0.0
-//
-//  WHAT THE CRASH IS:
-//  iOS watchdog kills the app because applicationDidEnterBackground returns
-//  late. The blocker is RMSDK's C++ static dtors running over the
-//  ~5-second iOS background budget. Audiobook session teardown happens
-//  in the same window — pause + unload + decryptor release — and the
-//  more rapid the background/foreground cycles, the more it stacks
-//  lifecycle work into a single watchdog tick.
-//
-//  WHAT WE TEST:
-//  Two things we CAN exercise from XCTest:
-//    1. AudiobookSessionManager state must stay coherent across rapid
-//       background/foreground cycles. If the state machine ever
-//       deadlocks or asserts during teardown, the watchdog kill
-//       Crashlytics records would be compounded by hangs.
-//    2. stopPlayback (the audiobook-side teardown that runs alongside
-//       RMSDK dtors during background) must complete fast and idempotent.
-//       Repeated stopPlayback calls in tight succession must not pile up
-//       state.
-//
-//  WHAT WE CAN'T TEST:
-//  The actual RMSDK static-destructor budget overrun. That lives in
-//  Adobe-owned C++ binary code initialised at app launch and torn down
-//  by the OS, and unit tests do not make live RMSDK calls.
-//  A device-level integration test in simdrive that backgrounds the
-//  app repeatedly is the proper coverage for the F-001 watchdog
-//  itself; this file is the unit-level scaffolding around it.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Crashlytics F-001: the iOS watchdog kills the app when backgrounding overruns
+//  its budget (Adobe RMSDK static dtors), and audiobook teardown runs in the same
+//  window. These tests pin that session state stays coherent across rapid
+//  background/foreground cycles and that repeated `stopPlayback` calls are fast
+//  and idempotent. The RMSDK budget overrun itself needs a device-level test.
 
 import Combine
 import UIKit

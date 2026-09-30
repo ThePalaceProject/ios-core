@@ -1,24 +1,10 @@
-//
 //  TestAppContainerFactoryTests.swift
-//  PalaceTests
 //
-//  Behavioural contract tests for `makeTestAppContainer()` — the test-only
-//  factory. The factory MUST:
-//
-//   1. Return a fresh AppContainer per call (NOT cached) — distinct
-//      `accountsManager` references across consecutive calls.
-//   2. Leave the production `AppContainer._cached` graph untouched, so a
-//      test that drives the factory does not poison a subsequent test
-//      that reads `AppContainer.production()`.
-//   3. Set `AccountsManager.deferInitialLoadCatalogsForTesting = true`
-//      BEFORE constructing AccountsManager so the factory-minted manager
-//      does not spawn the background `loadCatalogs` Task that pollutes
-//      cross-test state.
-//   4. Accept explicit `accountsManager` / `bookRegistry` overrides so
-//      wiring-case subclasses can hand in pre-configured collaborators.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Contract for the test-only `makeTestAppContainer()`: each call returns a new
+//  container (distinct `accountsManager`); `AppContainer._cached` is untouched;
+//  `deferInitialLoadCatalogsForTesting` is set before AccountsManager is built,
+//  so no background `loadCatalogs` leaks across tests; explicit
+//  `accountsManager` / `bookRegistry` overrides are honored.
 
 import XCTest
 @testable import Palace

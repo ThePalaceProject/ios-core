@@ -1,27 +1,12 @@
-//
 //  TPPUserAccountTestFactory.swift
-//  PalaceTests
 //
-//  Test-only factory that mints `TPPUserAccount` instances under a
-//  UUID-namespaced `libraryUUID`. Each minted account writes its
-//  keychain entries under `"<storageKey>_test-uuid-<UUID>"` — distinct
-//  from the production library's keychain keys, so concurrent or
-//  out-of-order tests cannot pollute each other (or production) via
-//  shared keychain residue.
-//
-//  Background: production code reads accounts through
-//  `AccountsManager.userAccount(for:)`, which caches one instance per
-//  library UUID. Tests that called `TPPUserAccount.sharedAccount(libraryUUID:)`
-//  inherited that cache, so any credential write under the active library
-//  UUID outlived the test. The factory bypasses the cache by constructing
-//  via the internal `init(libraryUUID:)` seam, and registers a
-//  `SingletonResetRegistry` resetter that calls `removeAll()` on every
-//  minted account at `testCaseDidFinish`.
-//
-//  Production code needs no `#if DEBUG` init seam or keychain DI:
-//  isolation comes purely from UUID-namespacing via the existing
-//  `StorageKey.keyForLibrary(uuid:)` path.
-//
+//  Mints `TPPUserAccount`s under a UUID-namespaced `libraryUUID`, so keychain
+//  keys (`"<storageKey>_test-uuid-<UUID>"`) never collide across tests or with
+//  production. `AccountsManager.userAccount(for:)` caches one instance per
+//  library, so credential writes in tests used to outlive the test; the factory
+//  uses the internal `init(libraryUUID:)` and registers a
+//  `SingletonResetRegistry` resetter that calls `removeAll()` on each minted
+//  account. No production DEBUG seam or keychain DI is needed.
 
 import Foundation
 @testable import Palace

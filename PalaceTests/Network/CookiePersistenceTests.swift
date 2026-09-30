@@ -1,38 +1,10 @@
 //
-//  CookiePersistenceTests.swift
-//  PalaceTests
-//
-//  Tests for SAML cookie persistence across cold-start.
-//
-//  Contract pinned here (read from production source — see
-//  `TPPNetworkExecutor.request(for:useTokenIfAvailable:accountId:)` and
-//  `TPPUserAccount.setCookies` / `var cookies`):
-//
-//  1. Cookies stored on the user account via `setCookies(_:)` survive
-//     across recreating the network executor (the cold-start contract:
-//     the URLSession is gone, but the per-account credential snapshot
-//     still returns the stored cookies).
-//  2. On the very next `request(for:)` issued by a freshly-built
-//     executor for a SAML account, those cookies must be installed into
-//     `HTTPCookieStorage.shared` BEFORE the request goes out — so cold-
-//     start cookie sync is observable from the shared storage.
-//  3. The cookies survive `finishTasksAndInvalidate()` + recreate of
-//     the URLSession: ephemeral sessions don't share `HTTPCookieStorage.shared`,
-//     but the executor re-installs them every request anyway.
-//  4. Token credentials never produce a Cookie header on the request,
-//     regardless of cookies on the shared storage — the cookie-install
-//     branch is gated on `authDef.isSaml`.
-//
-//  Coverage notes:
-//   - We construct a SAML user account by writing `.cookies([...])`
-//     into `_credentials` AND setting `_cookies` (the cookie storage is
-//     separate from credentials in the real account model).
-//   - Each test asserts a property that a plausible regression would flip:
-//     deleting the cold-start install loop, inverting the `isSaml` gate,
-//     replacing `for c in cookies { shared.setCookie(c) }` with a no-op,
-//     etc.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  SAML cookie persistence across cold start (`TPPUserAccount.setCookies` and
+//  `TPPNetworkExecutor.request(for:useTokenIfAvailable:accountId:)`): cookies
+//  stored on the account survive executor and URLSession recreation; a fresh
+//  executor installs them into `HTTPCookieStorage.shared` before a SAML request;
+//  token accounts never get a Cookie header (the install is gated on
+//  `authDef.isSaml`).
 //
 
 import XCTest

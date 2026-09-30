@@ -1,29 +1,10 @@
-//
 //  ContractSnapshot.swift
-//  PalaceTests
 //
-//  Snapshot-test helper for the contract-snapshot pattern. Pairs with
-//  `CallLog` to give refactor PRs a structural safety net: when you extract a
-//  class, the contract test asserts that the call sequence into its
-//  dependencies stays identical pre/post-refactor.
-//
-//  See PalaceTests/Contract/README.md for usage.
-//
-//  WHY THIS EXISTS:
-//
-//  3.1.0's Phase 7 PR #890 extracted ~1,524 LOC from MyBooksDownloadCenter
-//  into BorrowReducer + BorrowOperation + BookReturnService + ... The
-//  extraction leaked 4 silent regressions (F-011, F-014, F-016, F-017).
-//  Existing unit tests caught zero of them, because the regressions were
-//  changes-to-call-sequences (a missing arm in a switch, an inverted
-//  conditional in an auto-download chain, a missed observation dependency)
-//  that the per-case unit tests weren't sensitive to.
-//
-//  A contract snapshot records "for input X, dependency Y is called with
-//  args Z, then dependency W with args V". When the extraction changes ANY
-//  of those calls, the snapshot diff fires — pinpointing the call-sequence
-//  drift instead of letting it ship.
-//
+//  Snapshot helper for contract tests: with `CallLog`, asserts that a class's call
+//  sequence into its dependencies stays the same across a refactor. PR #890's
+//  MyBooksDownloadCenter extraction shipped F-011, F-014, F-016 and F-017 — call
+//  sequence changes the per-case unit tests did not detect. Usage is in
+//  PalaceTests/Contract/README.md.
 
 import Foundation
 import XCTest

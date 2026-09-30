@@ -1,21 +1,8 @@
 //
-//  AdobeDRMErrorMappingTests.swift
-//  PalaceTests
-//
-//  PP-3649. The activation failure path threw a hardcoded
-//  `PalaceError.drm(.authenticationFailed)` no matter what Adobe reported, so
-//  every failure showed "Please sign out and sign in again."
-//
-//  For E_ACT_TOO_MANY_ACTIVATIONS that advice is worse than useless: signing
-//  back in consumes ANOTHER activation — the very resource that has run out.
-//  Observed on device 2026-09-09: adobeOriginalCode
-//  `E_ACT_TOO_MANY_ACTIVATIONS ... 7528:528:7528` reached the patron as a
-//  sign-in prompt.
-//
-//  These pin the mapping AT THE SOURCE, which is the last point where the
-//  original NSError still exists — downstream it is a PalaceError and Adobe's
-//  code is gone. A first attempt at this mapped downstream and silently did
-//  nothing for exactly that reason.
+//  PP-3649. Activation failures all surfaced as `.drm(.authenticationFailed)`,
+//  telling patrons to sign in again; for E_ACT_TOO_MANY_ACTIVATIONS that consumes
+//  another activation. These pin the mapping at the source, the last point where
+//  Adobe's original NSError still exists; downstream only the PalaceError remains.
 //
 
 import XCTest

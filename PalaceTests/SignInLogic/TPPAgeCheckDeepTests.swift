@@ -1,24 +1,11 @@
-//
 //  TPPAgeCheckDeepTests.swift
-//  PalaceTests
 //
-//  Deep tests for TPPAgeCheck. The age gate guards
-//  pre-COPPA-style libraries: under-13 patrons must be blocked, over-13
-//  patrons admitted, and a previously-shown-prompt must not be re-shown.
-//
-//  Focus areas:
-//    - isValid() year-range bounds (min boundary, max boundary, below min,
-//      above max).
-//    - didCompleteAgeCheck() decision math — strict >13 not >=13.
-//    - Borderline cases that exercise the exact subtraction at line 102.
-//    - verifyCurrentAccountAgeRequirement() decision tree:
-//        * needsAuth=true → admit
-//        * userAboveAgeLimit=true → admit
-//        * userPresentedAgeCheck=true & below limit → block (no re-prompt)
-//        * nil currentAccount → block defensively
-//    - didFailAgeCheck() must NOT mark userPresentedAgeCheck so the prompt
-//      can re-appear on the next attempt.
-//
+//  TPPAgeCheck blocks under-13 patrons, admits older ones, and does not re-show
+//  a prompt already answered. Covers `isValid()` year bounds, the strict `> 13`
+//  in `didCompleteAgeCheck()` at its boundaries, the
+//  `verifyCurrentAccountAgeRequirement()` decision tree (needsAuth, above limit,
+//  already prompted, nil account), and that `didFailAgeCheck()` leaves
+//  `userPresentedAgeCheck` unset so the prompt can reappear.
 
 import XCTest
 @testable import Palace

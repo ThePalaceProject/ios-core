@@ -1,26 +1,12 @@
-//
 //  CrawlerCompletenessTests.swift
-//  PalaceTests
 //
-//  PP-5191, crawler side. Three rules, each of which fails silently — in the
-//  QUIET direction — if it regresses:
-//
-//    A-4  `numberOfItems` is never carried forward from cache. On the
-//         deletion-reconcile path `feedMetadata` IS the cached feed's metadata,
-//         so inheriting it republishes a stale total: a genuine 1457 -> 1400
-//         shrink emits 1400 against a declared 1457, reads PARTIAL, and is
-//         refused forever. Deletions never reconcile, and it renders as "there
-//         were no deletions".
-//
-//    V-2  A parallel crawl derives its page offsets from the server's declared
-//         total. If the server under-reports it, too few offsets are computed,
-//         nothing throws, and a short list would be published as an
-//         authoritative full crawl under a "pagination complete" log.
-//
-//    B-6  A partial merge must force the next crawl to be full, or bundled rows
-//         become sticky for the 7-day interval — but it must NOT preserve the
-//         discovered facet URL's loss, nor fire when the registry is complete.
-//
+//  PP-5191, crawler side. Each rule fails quietly if it regresses:
+//  A-4: `numberOfItems` is never carried forward from cache, or a real shrink
+//  reads as partial and deletions never reconcile.
+//  V-2: an under-reported server total must not publish a short parallel crawl as
+//  complete.
+//  B-6: a partial merge forces the next crawl to be full, without preserving the
+//  facet URL's loss or firing when the registry is complete.
 
 import XCTest
 import PalaceCatalog

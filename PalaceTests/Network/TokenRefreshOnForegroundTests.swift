@@ -1,25 +1,11 @@
-//
 //  TokenRefreshOnForegroundTests.swift
-//  PalaceTests
 //
-//  Tests for the proactive token-refresh path that
-//  fires *before* the next user-driven request when the app comes
-//  back to foreground. The actual production trigger is the
-//  `authTokenNearExpiry` check in `TPPNetworkExecutor.executeRequest`
-//  (see `Palace/Network/TPPNetworkExecutor.swift` ~lines 207-218).
-//  When that gate is true the executor refreshes the token first and
-//  only then performs the queued data task — i.e. /token MUST hit
-//  the network BEFORE the user's request does.
-//
-//  These tests pin that ordering, the request idempotency contract
-//  for retried POSTs, and the no-double-refresh property when the
-//  user's request fires while a foreground refresh is already in
-//  flight.
-//
-//  All HTTP is intercepted by HTTPStubURLProtocol.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Proactive token refresh when the app returns to foreground. When
+//  `authTokenNearExpiry` is true, `TPPNetworkExecutor.executeRequest` refreshes
+//  first, so /token must hit the network before the patron's request does.
+//  Pins that ordering, idempotency of retried POSTs, and no double refresh when
+//  a request arrives while a foreground refresh is in flight. HTTP is stubbed
+//  with `HTTPStubURLProtocol`.
 
 import XCTest
 import PalaceAuth

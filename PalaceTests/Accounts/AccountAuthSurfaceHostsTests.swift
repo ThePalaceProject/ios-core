@@ -9,7 +9,7 @@
 //  (`TokenRefreshInterceptor`, `DownloadAuthRetryHandler`) to
 //  short-circuit foreign-host 401s as "not our account's session".
 //
-//  Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+//  Guards the cross-host logout regression from PR #1018.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

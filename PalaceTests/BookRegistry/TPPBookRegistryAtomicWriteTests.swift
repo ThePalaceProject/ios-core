@@ -1,32 +1,10 @@
-//
 //  TPPBookRegistryAtomicWriteTests.swift
-//  PalaceTests
 //
-//  Tests for *atomic-write* robustness of
-//  BookRegistrySync.save / saveSync. The contract under test:
-//
-//    1. `Data.write(to:options:.atomic)` writes to a temp file then renames
-//       in a single atomic step. A failure mid-write must NOT leave a
-//       half-written file in place — the prior contents must remain readable,
-//       or the file must not exist.
-//
-//    2. A save that succeeds must produce a single intact JSON file at the
-//       canonical path. There must be NO leftover staging files visible in
-//       the registry directory after the rename completes.
-//
-//    3. saveSync (blocking) and save (queued) both honor the atomic contract.
-//
-//  We exercise the contract by:
-//    - Pre-seeding a valid registry JSON, then forcing an "interrupted" write
-//      by replacing the registry file's parent directory with a read-only
-//      barrier mid-save → the resulting file system state must still be loadable.
-//    - Verifying no .tmp / staging artifacts are left in the registry dir.
-//    - Verifying a successful save → reload → save sequence converges.
-//
-//  These tests do NOT touch production code. They use per-test temp accounts.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Pins atomic-write behavior of BookRegistrySync.save / saveSync: an interrupted
+//  write leaves the prior file readable (or absent), a successful save leaves one
+//  intact JSON file and no staging artifacts, and save and saveSync both honor
+//  this. Interruption is forced by making the registry directory read-only
+//  mid-save. Uses per-test temp accounts.
 
 import XCTest
 @testable import Palace

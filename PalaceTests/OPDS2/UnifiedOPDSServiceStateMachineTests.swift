@@ -1,26 +1,12 @@
-//
 //  UnifiedOPDSServiceStateMachineTests.swift
-//  PalaceTests
 //
-//  Migration coverage for `UnifiedOPDSService.fetchLoans()` to the
-//  Account state machine (`awaitReady()` readiness gate). Mirrors
-//  OPDSFeedServiceStateMachineTests but exercises the OPDS2-preferred
-//  path, where URLSession is injectable so we can additionally count
-//  HTTP requests fired against the loans URL.
-//
-//  Two contracts pinned:
-//
-//    1. fetchLoans blocks while account state is `.detailsLoading`,
-//       then fires exactly one HTTP request to the loans URL after
-//       the state transitions to `.detailsLoaded`. Confirms the
-//       awaitReady gate is the first thing the call awaits — not a
-//       second HTTP attempt or a stale read past nil.
-//    2. fetchLoans surfaces `.detailsFailed` errors instead of falling
-//       through to a `accountNotFound` symptom. No HTTP request must
-//       fire in this case.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  `UnifiedOPDSService.fetchLoans()` against the account state machine's
+//  `awaitReady()` gate, on the OPDS2 path where URLSession is injectable so HTTP
+//  requests to the loans URL can be counted. Pinned:
+//    1. While `.detailsLoading`, fetchLoans waits, then fires exactly one loans
+//       request after `.detailsLoaded`.
+//    2. On `.detailsFailed`, fetchLoans surfaces that error (not
+//       `accountNotFound`) and fires no request.
 
 import XCTest
 @testable import Palace

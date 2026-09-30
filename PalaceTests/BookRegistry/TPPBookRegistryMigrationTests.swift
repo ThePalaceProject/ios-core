@@ -1,26 +1,10 @@
-//
 //  TPPBookRegistryMigrationTests.swift
-//  PalaceTests
 //
-//  Tests for the *format-migration* and *format-upgrade*
-//  paths in BookRegistrySync.load + TPPBookRegistryRecord(record:) +
-//  TPPBook(dictionary:). Each test plants a deliberately-shaped JSON corpus on
-//  disk and pins the load behavior of the current code: what survives, what
-//  defaults are filled, and what gets dropped.
-//
-//  These tests do NOT touch production code. They use a hermetic per-test
-//  account UUID — the on-disk registry file lives under
-//      <AppSupport>/<bundleId>/<test-uuid>/registry/registry.json
-//  and is removed in tearDown.
-//
-//  Companion files (separate test suites):
-//    - TPPBookRegistryAtomicWriteTests   — interrupted writes, atomic rename
-//    - TPPBookRegistryLargeCorpusTests   — 5000-book load/save scaling
-//    - TPPBookRegistryPersistenceTests   — basic save/load/corruption (owned
-//      by a sibling agent — do NOT duplicate)
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Pins format-migration behavior of BookRegistrySync.load,
+//  TPPBookRegistryRecord(record:) and TPPBook(dictionary:): each test plants a
+//  shaped JSON corpus and asserts what survives, what defaults fill in, and what
+//  is dropped. Uses a per-test account UUID removed in tearDown. Atomic writes,
+//  scale and basic persistence live in the sibling TPPBookRegistry*Tests files.
 
 import XCTest
 @testable import Palace

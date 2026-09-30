@@ -1,18 +1,12 @@
 //
 //  SideloadedBookRegistry.swift
-//  Palace
 //
-//  Local-only persistence for side-loaded books (PP-2678), a test-only
-//  capability (docs/architecture/sideloading-plan.md). The second book-state
-//  owner, scoped to side-loaded content; loan state stays in `TPPBookRegistry`
-//  and is never set here (docs/architecture/state-management-doctrine.md).
-//
+//  Local-only persistence for side-loaded books (PP-2678; see
+//  docs/architecture/sideloading-plan.md). Loan state stays in `TPPBookRegistry`.
 //  `BookRegistrySync.sync()` subtracts `identifiers` from its delete set on the
-//  main actor, so a loans feed that never lists a side-loaded book does not
-//  evict it; that read must stay cheap and synchronous. The manifest is a
-//  private JSON file under Application Support, not account-scoped or synced.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  main actor so a loans feed that omits a side-loaded book does not evict it;
+//  that read must stay cheap and synchronous. The manifest is a private JSON
+//  file under Application Support, not account-scoped or synced.
 //
 
 import Foundation

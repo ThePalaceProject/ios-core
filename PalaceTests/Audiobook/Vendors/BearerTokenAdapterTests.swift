@@ -1,23 +1,11 @@
 //
 //  BearerTokenAdapterTests.swift
-//  PalaceTests
 //
-//  Branch tests for `BearerTokenAdapter` — the two-step CM-fulfill flow
-//  carved out of the original `AudiobookLoader.swift` (bearer-token
-//  detection + recursion).
-//
-//  Both legs of the two-step flow are stubbed via constructor-injected
-//  collaborators: the first-leg fetch returns the bearer-token wrapper
-//  JSON, and the manifest fetcher returns the real manifest. Tests drive
-//  every branch the original code took without touching URLSession or
-//  AppContainer.production().
-//
-//  The TPPBook mutation paths (`book.bearerToken` / `book.bearerTokenFulfillURL`)
-//  write to Keychain — the dedicated side-effect test that asserts those
-//  values short-circuits with `KeychainAvailability.skipIfUnavailable()`
-//  so it stays safe on CI hosts without Keychain access.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Branch tests for `BearerTokenAdapter`, the two-step CM-fulfill flow. Both
+//  legs are stubbed through injected collaborators (wrapper JSON, then the real
+//  manifest), so no URLSession or production container is touched. The
+//  side-effect test for `book.bearerToken` / `bearerTokenFulfillURL` writes the
+//  Keychain and skips via `KeychainAvailability.skipIfUnavailable()`.
 //
 
 import XCTest

@@ -1,18 +1,10 @@
 //
 //  AccountsManagerStateMachineWiringTests.swift
-//  PalaceTests
 //
-//  Contract-snapshot tests pinning the 4 state-machine wiring transitions
-//  added to AccountsManager in 3.2.0.
-//  See docs/architecture/account-state-machine.md.
-//
-//  Each test exercises one ADR-mandated transition through the testable
-//  seams (`preloadAccountsFromDiskCacheSync`,
-//  `loadAccountSetsAndAuthDoc`, `fetchAuthDocumentWithStateMachine`).
-//  Direct `account._setState(...)` is used ONLY to set up scenarios that
-//  predate the SUT call — never to bypass it.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Contract-snapshot tests pinning the four state-machine wiring transitions
+//  added to AccountsManager in 3.2.0 (docs/architecture/account-state-machine.md).
+//  Each drives one transition through the testable seams; direct
+//  `account._setState(...)` only sets up scenarios that predate the SUT call.
 //
 
 import XCTest

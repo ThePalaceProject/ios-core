@@ -1,32 +1,10 @@
 //
-//  HalfSheetProgressCueTests.swift
-//  PalaceTests
-//
-//  The half-sheet's progress cue decides whether a patron sees anything at all
-//  while a book transfers. The question it answers is NOT "is a transfer
-//  running" but "is the patron WAITING on one" — those diverged when LCP
-//  streaming shipped.
-//
-//  History, because it reverses twice. While streaming was broken upstream
-//  (readium/swift-toolkit#579) an LCP audiobook's entire `.lcpa` archive — well
-//  over a gigabyte for some Audible-labelled Marketplace titles — had to land
-//  before playback started, so choosing `.idle` during that window made the
-//  sheet look inert and patrons backed out mid-download. That is why the cue
-//  fires on `isDownloadingLCPContent` independently of book state.
-//
-//  PP-4957 turned streaming on (100% in production) and PP-5135 made the
-//  `.lcpa` fetch actually run alongside it, so for a PLAYABLE book the archive
-//  is now a background prefetch for offline use — the patron can listen the
-//  instant Listen appears. Device trace, build 505: tap to audio was 5.45s and
-//  6.29s with the fetch still in flight. Showing a determinate download bar
-//  beside a working Listen button tells the patron to wait for something they
-//  do not need, so that combination is now `.idle`.
-//
-//  The waiting case is unchanged and still pinned below: while the content is
-//  required before playback the book is not yet playable, and the bar stays.
-//
-//  The decision is extracted from the SwiftUI body precisely so it can be
-//  pinned here.
+//  The half-sheet progress cue answers "is the patron waiting on a transfer", not
+//  "is one running". With LCP streaming on (PP-4957) and the `.lcpa` fetch running
+//  alongside it (PP-5135), a playable book's archive download is a background
+//  prefetch, so a download bar next to a working Listen button is `.idle`. While
+//  content is required before playback, the bar stays. The decision is extracted
+//  from the SwiftUI body so it can be pinned here.
 //
 
 import XCTest

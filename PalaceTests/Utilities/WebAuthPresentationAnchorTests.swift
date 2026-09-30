@@ -1,20 +1,10 @@
-//
 //  WebAuthPresentationAnchorTests.swift
-//  PalaceTests
 //
-//  `UIApplication.webAuthPresentationAnchor` is the shared anchor resolver for
-//  all three OIDC re-auth paths. Real `UIWindow`s drive the filter; only the
-//  scene lookup would need a fake. Note a fresh `UIWindow()` defaults to
-//  `isHidden == true`.
-//
-//  What is pinned here is the FILTER, which is the part with logic: a candidate
-//  window must be visible, at `.normal` level, and have a root view controller.
-//  Anchoring to a keyboard, hidden, or rootless window fails differently rather
-//  than better — and the original bug was precisely a fallback that handed iOS
-//  an unusable window.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  `UIApplication.webAuthPresentationAnchor` resolves the anchor for all three
+//  OIDC re-auth paths. Pinned: the window filter, which requires a visible,
+//  `.normal`-level window with a root view controller. The original bug was a
+//  fallback that handed iOS an unusable window. Real `UIWindow`s are used; a
+//  fresh `UIWindow()` starts hidden.
 
 import XCTest
 import UIKit

@@ -1,23 +1,9 @@
 //
-//  AppTabSelectionBindingLintTests.swift
-//  PalaceTests
-//
-//  Meta-test pinning the PP-5051 wiring contract:
-//
-//    BOTH `TabView(selection:)` builders in `AppTabHostView` MUST bind to
-//    `tabSelection`, never to `$router.selected`.
-//
-//  Why this is a structural lint rather than a runtime test: the whole point of
-//  `tabSelection` is that its SETTER observes a write of the CURRENT value —
-//  the tap on the tab you are already on, which is the only one-tap way back to
-//  a tab's root now that switching tabs preserves the stack. `$router.selected`
-//  swallows that write silently. Telling the two apart needs a rendered
-//  `TabView`, and PalaceTests has no SwiftUI host harness, so reverting either
-//  builder to `$router.selected` would delete the gesture with every unit test
-//  still green. Asserting the structure fails the moment either builder is
-//  re-pointed.
-//
-//  Precedent for the shape: the sibling lints in this directory.
+//  PP-5051: both `TabView(selection:)` builders in `AppTabHostView` must bind to
+//  `tabSelection`, not `$router.selected`. Its setter observes a re-tap of the
+//  current tab (the one-tap way back to a tab's root); `$router.selected` drops
+//  that write. Telling them apart needs a rendered TabView, which PalaceTests has
+//  no host for, so this asserts the source structure instead.
 //
 
 import XCTest

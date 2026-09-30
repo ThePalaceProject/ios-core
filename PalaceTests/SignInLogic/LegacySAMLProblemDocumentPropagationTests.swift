@@ -1,23 +1,11 @@
-//
 //  LegacySAMLProblemDocumentPropagationTests.swift
-//  PalaceTests
 //
-//  HelpSpot 17870 — second silent failure surface: when the SAML web-view
-//  sheet encounters a problem-document mid-flow, the
-//  `SignInWebSheetViewModel.problemFoundHandler` is nil and the sheet just
-//  sits there.
-//
-//  These tests pin the `LegacySAMLWebViewPresenter` wiring: a
-//  problem-document handed to the synthesised handler must propagate to
-//  `businessLogic.uiDelegate.businessLogic(_:
-//  didEncounterValidationError:userFriendlyErrorTitle:andMessage:)` with
-//  the problem-doc's title and detail.
-//
-//  Mutation-gate target: removing the `problemFoundHandler:` argument
-//  from the `SignInWebSheetViewModel` construction in
-//  `LegacySAMLWebViewPresenter.presentSAMLWebView(...)` or flipping any
-//  of the title/detail/fallback wiring must fail at least one test here.
-//
+//  HelpSpot 17870: when the SAML web sheet hit a problem document mid-flow,
+//  `SignInWebSheetViewModel.problemFoundHandler` was nil and the sheet stayed
+//  up with no message. Pins `LegacySAMLWebViewPresenter` wiring: the problem
+//  document reaches `businessLogic(_:didEncounterValidationError:
+//  userFriendlyErrorTitle:andMessage:)` with its title and detail, and dropping
+//  the `problemFoundHandler:` argument or the title/detail/fallback wiring fails.
 
 import XCTest
 import PalaceCatalog

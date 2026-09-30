@@ -1,29 +1,9 @@
 //
-//  LCPClientTests.swift
-//  PalaceTests
-//
-//  Critical-path coverage for TPPLCPClient — the Swift wrapper around
-//  R2LCPClient / Botan / LCPWrapper that backs LCP fulfillment + decrypt.
-//
-//  F-002 (Botan/LCP) on Crashlytics: Crashlytics 0ca62d8244, 27 users / 249
-//  events on 3.0.0, all in TPPLCPClient.createContext where Botan's BER
-//  parser threw an uncaught C++ exception. The fix is a two-layer defense:
-//
-//    1) Pre-validate the PEM CRL header BEFORE calling R2LCPClient
-//       (TPPLCPClient.swift:55-60). Rejects HTML/JSON/garbage up front and
-//       throws LCPContextError.invalidPemCrl.
-//    2) Wrap the R2LCPClient call in TPPObjCExceptionCatcher.catchAllExceptions
-//       so any C++ exception that does sneak through Botan's parser surfaces
-//       as LCPContextError.nativeException instead of std::terminate.
-//
-//  These tests exercise the Swift-side guards without hitting R2LCPClient
-//  (which is a private binary framework). The "happy path" createContext +
-//  decrypt with valid context paths are excluded because they would require
-//  a real LCP license signed by an LCP CA — covered by integration tests
-//  in LCPSessionOrphaningTests.swift.
-//
-//  Build gate: TPPLCPClient lives behind `#if LCP` and is only present in
-//  LCP-enabled Palace targets. Tests inherit the gate.
+//  TPPLCPClient guards against Botan's BER parser throwing an uncaught C++
+//  exception in createContext (Crashlytics F-002): the PEM CRL header is
+//  pre-validated, and the R2LCPClient call is wrapped in TPPObjCExceptionCatcher.
+//  These cover the Swift-side guards; the licensed happy path is covered in
+//  LCPSessionOrphaningTests.swift. Gated on `#if LCP`.
 //
 
 #if LCP

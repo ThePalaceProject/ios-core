@@ -1,19 +1,10 @@
-//
 //  BookRegistrySyncReentrancyTests.swift
-//  PalaceTests
 //
-//  Regression coverage for the `saveSync` reentrancy hang (Crashlytics
-//  8afb1c66) introduced by PR #1061. #1061 wrapped `saveSync` in
-//  `diskWriteQueue.sync { ... }` AND moved the registry snapshot inside that
-//  block. `saveSync` is reached from `BookmarkManager.setLocationSync`'s
-//  `onComplete`, which runs inside a `BookRegistryStore.syncQueue` barrier, so
-//  the snapshot's `registrySnapshot() → performSync → syncQueue.sync`
-//  re-entered `syncQueue` from a thread already holding the barrier → deadlock.
-//  The fix snapshots in the caller's context (off `diskWriteQueue`) and makes
-//  the disk write reentrancy-safe.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  `saveSync` reentrancy hang (Crashlytics 8afb1c66, from PR #1061). `saveSync` is
+//  reached from inside a `BookRegistryStore.syncQueue` barrier, so taking the
+//  registry snapshot inside `diskWriteQueue.sync` re-entered `syncQueue` and
+//  deadlocked. The fix snapshots in the caller's context and makes the disk write
+//  reentrancy-safe.
 
 import XCTest
 import PalaceCatalog

@@ -1,24 +1,10 @@
-//
 //  AudiobookLoaderPositionTraceWiringTests.swift
-//  PalaceTests
 //
-//  PP-4963 — the join between the recorder and the session graph.
-//
-//  Every other test in this pack builds a recorder itself and drives it
-//  directly, so all of them stay green while the SHIPPED instrument observes
-//  nothing: the three lines in `AudiobookLoader.finalizeBuild` that construct
-//  the recorder, hand it to the bookmark logic, install that as
-//  `manager.bookmarkDelegate` and subscribe the liveness signal could all be
-//  deleted without a single failure. Mutation does not reach it either — the
-//  defect available here is a deleted CALL, not a flipped operator.
-//
-//  The failure direction is the bad one. `saveReportPayload` returns nil for
-//  everything except `.dry`, `.tickGap` and `.clockRegressed`, so an unwired
-//  recorder emits nothing at all, and nothing at all is also what a healthy
-//  fleet looks like.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  PP-4963: pins the wiring in `AudiobookLoader.finalizeBuild` that constructs the
+//  position-trace recorder, installs it as `manager.bookmarkDelegate` and subscribes
+//  the liveness signal. Other tests drive a recorder they build themselves, so
+//  deleting those calls would go unnoticed. An unwired recorder emits nothing,
+//  which is indistinguishable from a healthy fleet.
 
 import Combine
 import XCTest

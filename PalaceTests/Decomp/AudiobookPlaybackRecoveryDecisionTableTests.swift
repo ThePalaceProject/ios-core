@@ -1,19 +1,11 @@
-//
 //  AudiobookPlaybackRecoveryDecisionTableTests.swift
-//  PalaceTests
 //
-//  Pins the PRECEDENCE between the five playback-failure recovery predicates in
-//  the reducer's `decide(_:)`, and the published `willRecover` state
-//  (`SAML || OverDrive || coldLoad`). Precedence decides, for example, whether an
-//  OverDrive title whose signed URL expired on first play gets fresh URLs or a
-//  re-open of the same dead URL. Each predicate alone is covered by its own suite.
-//  Expected published values are computed by hand from the shipped expression in
-//  `AudiobookSessionManager+ContentOpenPolicy.swift`, not read off the reducer.
-//  One pair (OverDrive distributor + bearer-token acquisition) is not a field
-//  scenario; it pins ordering for an input the reducer accepts.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins precedence among the five playback-failure recovery predicates in
+//  `decide(_:)` and the published `willRecover` (`SAML || OverDrive || coldLoad`);
+//  precedence decides, for example, whether an expired OverDrive URL gets fresh
+//  URLs or a re-open. Expected values are derived by hand from
+//  `AudiobookSessionManager+ContentOpenPolicy.swift`. The OverDrive + bearer-token
+//  pair is not a field scenario; it pins ordering for an accepted input.
 
 import XCTest
 import PalaceCatalog

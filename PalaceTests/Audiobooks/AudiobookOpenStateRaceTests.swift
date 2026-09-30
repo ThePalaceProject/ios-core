@@ -1,38 +1,11 @@
-//
 //  AudiobookOpenStateRaceTests.swift
-//  PalaceTests
 //
-//  F-016 audiobook regression repro.
-//  Pins that the audiobook open path blocks on `Account.awaitReady()`
-//  instead of reading `details?` directly and silently taking the
-//  no-auth-required branch.
-//
-//  Before the fix:
-//    accountsManager.currentAccount.details = nil (still loading)
-//    → isUserAuthenticated() returned true (treating unloaded = no-auth-required)
-//    → audiobook open proceeded with wrong feed-source / file-extension assumption
-//    → user-visible "Audiobook failed to open" with no actionable signal
-//
-//  After the fix:
-//    state == .detailsLoading
-//    → isUserAuthenticated() blocks on awaitReady() until terminal state
-//    → only then evaluates `defaultAuth.needsAuth` against loaded details
-//    → no silent racing past nil
-//
-//  Test strategy: the migrated `AudiobookSessionManager.isUserAuthenticated`
-//  is private and the singleton is hard-wired to AppContainer.production()
-//  so we cannot directly invoke it under a fixture account. We instead
-//  pin the gate contract at libraryMock's account UUID: confirm that
-//  `Account.awaitReady()` (the same primitive `isUserAuthenticated`
-//  consumes) blocks on `.detailsLoading`, throws on `.detailsFailed`,
-//  and returns the matching details on `.detailsLoaded`. A regression
-//  at the production site would have to either (a) drop the awaitReady
-//  call entirely, or (b) ignore its result — both of which would also
-//  fail at the public-API integration step exercised by `openAudiobook`
-//  end-to-end.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  F-016: the audiobook open path must block on `Account.awaitReady()` rather than
+//  read `details` while it is still loading and take the no-auth-required branch.
+//  `AudiobookSessionManager.isUserAuthenticated` is private and the singleton is
+//  bound to AppContainer.production(), so these tests pin the primitive it consumes:
+//  `awaitReady()` blocks on `.detailsLoading`, throws on `.detailsFailed`, and
+//  returns the loaded details on `.detailsLoaded`.
 
 import XCTest
 import PalaceCatalog

@@ -199,7 +199,7 @@ final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
                        "removeBook must broadcast (id, .unregistered) exactly once")
     }
 
-    // MARK: - 4. updateAndRemoveBook (CLAUDE.md return-path contract)
+    // MARK: - 4. updateAndRemoveBook (return-path contract)
 
     /// updateAndRemoveBook fetches the book's thumbnail and broadcasts
     /// `.unregistered`. This pins the return-path contract that the network

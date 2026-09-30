@@ -1,32 +1,10 @@
-//
 //  TPPBookRegistryDependencyTests.swift
-//  PalaceTests
 //
-//  Pins down the explicit-AccountsManager-dependency contract introduced
-//  when `TPPBookRegistry.shared` was removed.
-//
-//  Why these tests matter:
-//
-//  Previously TPPBookRegistry.init did `self.accountsManager = AppContainer.production().accountsManager`.
-//  That re-entered AppContainer's static-let dispatch_once during app launch
-//  the moment AccountsManager.shared was killed (PR #884), because
-//  AppContainer._cached had to read TPPBookRegistry.shared. Two singletons
-//  cross-referencing each other through a third lazy initializer is exactly
-//  the pattern the kill is meant to remove.
-//
-//  These tests verify:
-//   1. The new init takes AccountsManager explicitly (no Foundation default,
-//      no AppContainer lookup).
-//   2. The injected AccountsManager is what mutations and `with(account:)`
-//      thread through (so swapping it actually changes behavior).
-//   3. AppContainer.production() returns the same registry instance every
-//      time — distinct calls don't construct duplicates that would each spawn
-//      their own currentAccountDidChange observer.
-//   4. AppContainer construction itself doesn't deadlock: the regression
-//      contract for the dispatch_once trap that motivated the kill.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Pins that TPPBookRegistry takes AccountsManager explicitly. Reading it through
+//  `AppContainer.production()` from init re-entered AppContainer's dispatch_once
+//  during launch once AccountsManager.shared was removed (PR #884). Covers:
+//  explicit injection, the injected manager driving mutations and `with(account:)`,
+//  AppContainer returning one registry instance, and construction not deadlocking.
 
 import XCTest
 @testable import Palace

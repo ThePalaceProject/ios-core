@@ -1,26 +1,11 @@
-//
 //  AuthDocumentLoaderSeamTests.swift
-//  PalaceTests
 //
-//  Pins the `AuthDocumentLoader` seam: the auth-document fetch +
-//  state-machine wiring extracted from AccountsManager into an injected collaborator.
-//
-//  Constructs `AuthDocumentLoader` DIRECTLY with spy providers + an ISOLATED
-//  `AccountStateStore` (no manager ⇒ no wiring-suite isolation flake). Because
-//  `Account._setState` hard-codes `AccountStateStore.shared`, a *terminal* landed by a
-//  fired fetch is NOT observable through the injected store — so these tests never
-//  assert terminals (that stays with the retained `AccountsManagerAuthDocContractTests`
-//  wiring pin). Instead the injected-store-independent observable is: **was the network
-//  fetch fired?** — captured by whether `signedInStateProvider` is called, which the
-//  loader evaluates synchronously at the `loadAuthenticationDocument(using:)` call site
-//  and ONLY on the non-dedup path. Deterministic, no async race, no `.shared` assertion.
-//
-//  The fired fetches use link-less accounts (no auth-doc URL) so the real
-//  `loadAuthenticationDocument` returns false without network; any `.shared` terminal is
-//  reset in tearDown, and every uuid is unique per test.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins `AuthDocumentLoader` built directly with spies and an isolated
+//  `AccountStateStore`. `Account._setState` writes to the shared store, so
+//  terminals are not observable here; the observable is whether a fetch fired,
+//  seen as a synchronous `signedInStateProvider` call on the non-dedup path.
+//  Terminals stay pinned by `AccountsManagerAuthDocContractTests`. Fired fetches
+//  use link-less accounts (no network), unique uuids, and tearDown resets state.
 
 import XCTest
 import PalaceCatalog

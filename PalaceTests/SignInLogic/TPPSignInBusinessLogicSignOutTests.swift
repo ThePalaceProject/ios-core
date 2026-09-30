@@ -1,28 +1,11 @@
-//
 //  TPPSignInBusinessLogicSignOutTests.swift
-//  PalaceTests
 //
-//  Deep tests for the sign-out surface of
-//  TPPSignInBusinessLogic (extension `+SignOut`). P0 coverage gap per
-//  docs/Testing/Coverage_Roadmap.md §2.1.
-//
-//  Focus areas:
-//    - Sign-out wipes credentials from the (mocked) keychain after device
-//      deauthorization completes.
-//    - Adobe DRM activation state on userAccount is preserved across
-//      re-authentication that happens DURING an in-flight sign-out
-//      (signInGeneration race-condition guard).
-//    - Sign-out drives `deauthorize` exactly once and only after a successful
-//      completion is observed on the network executor — not before.
-//    - Re-entrant `performLogOut()` calls coalesce (no double cleanup).
-//    - 401 on the sign-out request takes the silent-cleanup path
-//      (no `didEncounterSignOutError` shown to the user).
-//    - Sign-out clears the SAML helper state.
-//
-//  Hermetic: TPPRequestExecutorMock for the userProfile request; mock
-//  TPPUserAccountMock for keychain seam; TPPDRMAuthorizingMock for device
-//  deauthorization (with deferred completion support).
-//
+//  Sign-out surface of TPPSignInBusinessLogic (`+SignOut`): credentials are
+//  wiped only after device deauthorization completes; Adobe activation state
+//  survives a re-auth during an in-flight sign-out (signInGeneration guard);
+//  `deauthorize` runs once, after the network call succeeds; re-entrant
+//  `performLogOut()` calls coalesce; a 401 takes the silent-cleanup path; SAML
+//  helper state is cleared. Uses executor, keychain and DRM mocks.
 
 import XCTest
 @testable import Palace

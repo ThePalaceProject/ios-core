@@ -1,21 +1,10 @@
-//
 //  AccountRegistryCacheSeamTests.swift
-//  PalaceTests
 //
-//  Pins the `AccountRegistryCache` seam: `AccountsManager` reaches
-//  the on-disk catalog cache ONLY through the injected `any AccountRegistryCaching`
-//  collaborator, never inline FileManager bodies. This is the extraction that lets
-//  the hub carry no disk-I/O and move into `PalaceAccounts` cleanly.
-//
-//  Two lenses:
-//   1. Routing (spy) — `clearCache()` clears the file caches through the injected
-//      seam (a change that drops the call, or clears inline, flips it red).
-//   2. Behaviour (real impl) — `DiskAccountRegistryCache` round-trips a write→read
-//      and honours the `isBundled` always-stale rule; covers the moved disk bodies
-//      end-to-end (the concrete path the spy tests intentionally bypass).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins that `AccountsManager` reaches the on-disk catalog cache only through the
+//  injected `any AccountRegistryCaching`, so it carries no disk I/O and can move
+//  into `PalaceAccounts`. A spy checks `clearCache()` routes through the seam; the
+//  real `DiskAccountRegistryCache` is checked for write -> read round trips and
+//  the rule that `isBundled` entries are always stale.
 
 import XCTest
 import PalaceCatalog

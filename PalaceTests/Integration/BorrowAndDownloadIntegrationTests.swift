@@ -1,30 +1,8 @@
 //
-//  BorrowAndDownloadIntegrationTests.swift
-//  PalaceTests
-//
-//  Integration tests that wire REAL collaborators across the borrow ->
-//  download -> return arc. Unlike the unit tests under PalaceTests/MyBooks/
-//  which mock the registry, these tests assemble:
-//
-//    * Real `TPPBookRegistry` (constructed against a fresh `AccountsManager`
-//      so cross-test state can't leak)
-//    * Real `TPPNetworkExecutor` with `HTTPStubURLProtocol`-backed
-//      URLSession (so every request is hermetic)
-//    * Real `BorrowOperation` driven by injected fetchBook/alert closures
-//      (the only seams BorrowOperation exposes to its caller — these are
-//      production-shipped closures, not test-only hooks)
-//    * Real `MyBooksDownloadCenter` whose state-manager is observable for
-//      side-effect assertions (state-machine transitions, registry writes)
-//
-//  Only the network layer + DRM are mocked. Disk state (registry persistence)
-//  is allowed to write to the real registry file under the fresh
-//  AccountsManager — registry data lives inside the per-account folder, and
-//  the fresh AccountsManager has no current account, so no real persistence
-//  fires.
-//
-//  SRS: REQ-INTG-BORROW-001 — Borrow + download + return composition
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
+//  Borrow -> download -> return with real TPPBookRegistry (fresh AccountsManager),
+//  TPPNetworkExecutor over HTTPStubURLProtocol, BorrowOperation, and
+//  MyBooksDownloadCenter. Only the network and DRM are mocked; the fresh
+//  AccountsManager has no current account, so no registry persistence fires.
 //
 
 import XCTest

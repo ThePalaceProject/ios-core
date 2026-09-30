@@ -228,7 +228,8 @@ final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
     /// itself works; the responder wiring at line 465 is the structural
     /// pairing.
     ///
-    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    /// See #1044: a 401 from a host outside the current library logged the
+    /// patron out (regression from #1018).
     func testClassifier_seam_401_foreignHost_returnsOk_preservingResponderForeignHostGuard() {
         let classifier = AuthErrorClassifier(
             currentAccountHostsProvider: { Set(["minotaur.dev.palaceproject.io"]) }

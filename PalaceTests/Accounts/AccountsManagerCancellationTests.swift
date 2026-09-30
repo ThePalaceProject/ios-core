@@ -1,19 +1,12 @@
 //
 //  AccountsManagerCancellationTests.swift
-//  PalaceTests
 //
-//  Tests for `AccountsManager.cancelBackgroundWork()` — the DEBUG-only
-//  cooperative-cancellation seam used by `AppContainer._resetForTesting()`
-//  to tell the prior cached AccountsManager's background `loadCatalogs`
-//  Task to bail before a fresh graph is constructed.
-//
-//  Invariants: cancellation reaches the stored `backgroundFetchTask` (flag
-//  flips AND handle is nilled, asserted separately); repeated calls are
-//  idempotent and leave persisted state unchanged; the opt-out instance is a
+//  Tests for `AccountsManager.cancelBackgroundWork()`, the DEBUG-only seam
+//  `AppContainer._resetForTesting()` uses to stop a prior `loadCatalogs` Task.
+//  Invariants: cancellation reaches `backgroundFetchTask` (flag flips and the
+//  handle is nilled); repeated calls are idempotent; the opt-out instance is a
 //  no-op; and the post-resume `Task.isCancelled` guard in `fetchFromNetwork`
 //  blocks the commit when cancelled mid-await.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import XCTest

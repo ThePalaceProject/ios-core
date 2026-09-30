@@ -1,19 +1,9 @@
 //
-//  MyBooksDownloadCenterConcurrencyTests.swift
-//  PalaceTests
-//
-//  Coverage for the download-concurrency state machine that
-//  spans `DownloadCoordinator` (actor) → `DownloadStateManager` →
-//  `DownloadQueueOrchestrator` → `DownloadCancellationHandler`.
-//
-//  Each test pins ONE specific contract (cap enforcement, queue ordering,
-//  slot accounting on failure / cancel, FIFO dequeue, dedup, cold-start
-//  behavior, etc.) so a regression in the underlying logic flips exactly that
-//  assertion.
-//
-//  Targets the P0 gap in docs/Testing/Coverage_Roadmap.md §2.2.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  The download-concurrency state machine across DownloadCoordinator,
+//  DownloadStateManager, DownloadQueueOrchestrator and DownloadCancellationHandler.
+//  Each test pins one contract (cap, ordering, slot accounting on failure/cancel,
+//  FIFO dequeue, dedup, cold start) so a regression flips exactly one assertion.
+//  See docs/Testing/Coverage_Roadmap.md §2.2.
 //
 
 import XCTest

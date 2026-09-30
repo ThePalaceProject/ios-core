@@ -1,34 +1,11 @@
-//
 //  PalaceTestCase.swift
-//  PalaceTests
 //
-//  Opt-in base class that enforces runtime quiescence at the END of every
-//  test method via a plain `tearDownWithError` assertion — the reliable,
-//  in-lifecycle complement to the process-wide gate wired into
-//  `PalaceSingletonResetObserver` (which covers ALL tests but records the
-//  breach from `testCaseDidFinish`, one hop later).
-//
-//  Adopt this base in any new test, and especially in tests that touch the
-//  catalog / accounts / AppContainer graph, so a quiescence regression fails
-//  WITHIN the offending test's own lifecycle — the strongest, earliest,
-//  least-ambiguous signal.
-//
-//  Contract — subclasses that override the lifecycle hooks MUST call
-//  `super.setUpWithError()` / `super.tearDownWithError()` so the quiescence
-//  assertion still runs.
-//
-//  Relationship to PalaceWiringTestCase
-//  ====================================
-//  `PalaceWiringTestCase` is the heavier base for AccountsManager
-//  state-machine wiring tests (pre-test singleton reset, Combine-bag drain,
-//  helper-minted-manager cancellation). `PalaceTestCase` is the lightweight
-//  floor: no setup ceremony, just the post-test quiescence assertion. Tests
-//  that need the wiring guarantees keep subclassing `PalaceWiringTestCase`;
-//  everything else can adopt `PalaceTestCase` for the quiescence floor.
-//
-//  Test-target-only. swarm WS-0 / M0 (3.2.0 release gate).
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Opt-in base class that asserts runtime quiescence in `tearDownWithError`, so a
+//  leak fails inside the offending test rather than one hop later in
+//  `PalaceSingletonResetObserver`. Adopt it in new tests, especially those
+//  touching catalog / accounts / AppContainer. Subclasses must call `super`.
+//  `PalaceWiringTestCase` is the heavier base for AccountsManager wiring tests
+//  (singleton reset, Combine drain, manager cancellation); use it when needed.
 
 import XCTest
 @testable import Palace

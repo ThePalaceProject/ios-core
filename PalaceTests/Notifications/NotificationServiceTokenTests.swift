@@ -72,7 +72,7 @@ final class NotificationServiceTokenTests: XCTestCase {
     // Identifier constants are not asserted here (they would test the
     // compiler); coverage lives in `shouldRetryTokenRegistration` below.
 
-    // MARK: - shouldRetryTokenRegistration (pure decision helper, swarm_f3b9b087 item #6)
+    // MARK: - shouldRetryTokenRegistration (pure decision helper)
     //
     // The auth-state-change retry path is driven by a pure decision
     // helper so tests can pin every branch without standing up a

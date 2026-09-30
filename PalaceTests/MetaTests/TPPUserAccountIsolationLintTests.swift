@@ -1,22 +1,9 @@
 //
-//  TPPUserAccountIsolationLintTests.swift
-//  PalaceTests
-//
-//  Meta-tests that enforce TPPUserAccount-isolation hygiene across
-//  PalaceTests/. They prevent the regression class of "raw
-//  TPPUserAccount.sharedAccount(...)" call sites creeping back in. Tests
-//  mint per-call isolated accounts via
-//  `TPPUserAccountTestFactory.makeIsolated()`; any remaining sharedAccount
-//  call site must be on the whitelist below (and the whitelist is small
-//  and intentional).
-//
-//  Implementation: substring scanning of raw file text. No SwiftSyntax —
-//  the rule surface is narrow, false positives are easy to suppress with
-//  a `// MIGRATED:` comment, and the cost of a heavyweight parser is not
-//  justified.
-//
-//  Sister tests:
-//   - `MockIsolationLintTests` (mock-singleton hygiene, F-008 regression class)
+//  Keeps raw `TPPUserAccount.sharedAccount(...)` call sites out of PalaceTests/.
+//  Tests mint isolated accounts via `TPPUserAccountTestFactory.makeIsolated()`;
+//  any remaining call site must be on the small whitelist below or carry a
+//  `// MIGRATED:` comment. Substring scanning, no SwiftSyntax.
+//  Sibling: `MockIsolationLintTests` (F-008).
 //
 
 import Foundation

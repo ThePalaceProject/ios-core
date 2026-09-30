@@ -362,17 +362,17 @@ class CarPlayOpenAppAlertTests: XCTestCase {
     @MainActor
     func testStatebleed_resetForTesting_rebuildsFreshAudiobookStatics() {
         // Arrange — resolve (and thereby cache) the audiobook statics.
-        let session1 = AppContainer.production().audiobookSession as AnyObject // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
-        let presenter1 = AppContainer.production().audiobookSessionPresenter // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
-        let bootstrapper1 = AppContainer.production().playbackBootstrapper // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let session1 = AppContainer.production().audiobookSession as AnyObject // MIGRATED-DEFERRED: production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let presenter1 = AppContainer.production().audiobookSessionPresenter // MIGRATED-DEFERRED: production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let bootstrapper1 = AppContainer.production().playbackBootstrapper // MIGRATED-DEFERRED: production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
 
         // Act — the test-boundary reset.
         AppContainer._resetForTesting()
 
         // Assert — re-resolving yields FRESH instances; the polluted ones are gone.
-        let session2 = AppContainer.production().audiobookSession as AnyObject // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
-        let presenter2 = AppContainer.production().audiobookSessionPresenter // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
-        let bootstrapper2 = AppContainer.production().playbackBootstrapper // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let session2 = AppContainer.production().audiobookSession as AnyObject // MIGRATED-DEFERRED: production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let presenter2 = AppContainer.production().audiobookSessionPresenter // MIGRATED-DEFERRED: production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let bootstrapper2 = AppContainer.production().playbackBootstrapper // MIGRATED-DEFERRED: production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
 
         XCTAssertFalse(session1 === session2,
                        "reset must rebuild a fresh audiobook session")
@@ -700,7 +700,7 @@ final class CarPlayAudiobookBridgePresenterMigrationTests: XCTestCase {
     // presenter state in setUp/tearDown is the right shape for this
     // production-callsite-without-DI pattern.
 
-    private var presenter: AudiobookSessionPresenter { AppContainer.production().audiobookSessionPresenter } // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (no DI seam at this callsite)
+    private var presenter: AudiobookSessionPresenter { AppContainer.production().audiobookSessionPresenter } // MIGRATED-DEFERRED: production() resolution IS the test contract (no DI seam at this callsite)
 
     override func setUp() async throws {
         try await super.setUp()
@@ -736,7 +736,7 @@ final class CarPlayAudiobookBridgePresenterMigrationTests: XCTestCase {
 
     /// Test 8 — `dismissBookOnPhone()` does NOT clear the session.
     func testCarPlayBridge_dismissBookOnPhone_doesNotKillSession() {
-        let session = AppContainer.production().audiobookSession // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (no DI seam at this callsite)
+        let session = AppContainer.production().audiobookSession // MIGRATED-DEFERRED: production() resolution IS the test contract (no DI seam at this callsite)
 
         // Drive the presenter into an active state via the session's
         // publisher seam — proves the bridge dismiss does NOT touch

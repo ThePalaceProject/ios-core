@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Test double for the consolidated FeatureFlagProviding seam
-//  (PalaceFeatureFlags, Wave 1b). Lets tests control which flag branches
+//  (PalaceFeatureFlags). Lets tests control which flag branches
 //  consumers exercise without reaching RemoteFeatureFlags.shared.
 //
 
