@@ -197,7 +197,7 @@ final class OverdriveDownloadHandler: @unchecked Sendable {
             TPPErrorLogger.logError(error, summary: summary, metadata: [
                 responseHeadersKey: responseHeaders ?? nA,
                 acquisitionURLKey: url?.absoluteString ?? nA,
-                bookKey: book.loggableDictionary,
+                bookKey: book.loggableDictionary(),
                 bookRegistryStateKey: state.stringValue()
             ])
             alertPresenter.failDownloadWithAlert(for: book, withMessage: nil)
@@ -217,7 +217,7 @@ final class OverdriveDownloadHandler: @unchecked Sendable {
             TPPErrorLogger.logError(withCode: .overdriveFulfillResponseParseFail, summary: summaryWrongHeaders, metadata: [
                 responseHeadersKey: responseHeaders ?? nA,
                 acquisitionURLKey: url?.absoluteString ?? nA,
-                bookKey: book.loggableDictionary,
+                bookKey: book.loggableDictionary(),
                 bookRegistryStateKey: state.stringValue()
             ])
             alertPresenter.failDownloadWithAlert(for: book, withMessage: nil)

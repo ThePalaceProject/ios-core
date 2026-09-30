@@ -216,8 +216,24 @@ final class TearDownRequiredLintTests: XCTestCase {
 
   /// True if `source` contains any polluter substring.
   static func containsPolluter(_ source: String) -> Bool {
+    // Comment lines are stripped first, exactly as `declaresXCTestCaseSubclass`
+    // and `declaresTestCaseBaseSubclass` already do. This predicate did not,
+    // and the inconsistency was live: a file whose ONLY `AppContainer.production()`
+    // sat in a doc comment explaining why a seam could not be driven from a unit
+    // test was reported as a violation. The rule is about code that ACQUIRES
+    // process-wide state; a comment acquires nothing, and commented-out code
+    // does not execute.
+    //
+    // This can only ever REDUCE the match set, so it cannot newly redden a
+    // branch — it can only stop the gate firing on prose. Substring matching
+    // inside real code stays deliberately broad, per the note on
+    // `polluterSubstrings`.
+    let code = source
+      .components(separatedBy: "\n")
+      .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+      .joined(separator: "\n")
     for needle in polluterSubstrings {
-      if source.contains(needle) { return true }
+      if code.contains(needle) { return true }
     }
     return false
   }
@@ -330,6 +346,45 @@ final class TearDownRequiredLintTests: XCTestCase {
       Self.hasTearDownOverride(synthetic),
       "Detector must NOT see a tearDown in the violator (there is none)"
     )
+  }
+
+  /// A polluter substring appearing only inside a comment must NOT trip the
+  /// rule. Without this arm the predicate's comment-stripping is unverified,
+  /// and the rule silently fires on documentation.
+  ///
+  /// Real instance (2026-09-29): `AudiobookPlaybackFailureRecordTests.swift`
+  /// declares six XCTestCase classes, has no tearDown, and touches no polluter
+  /// at all — its single `AppContainer.production()` is inside a doc comment
+  /// explaining why the production seam cannot be driven from a unit test.
+  /// The lint failed all three CI iterations on it.
+  func testLintIgnoresAPolluterMentionedOnlyInAComment() {
+    let source = """
+    import XCTest
+    /// The production one reads `AppContainer.production()` and cannot be
+    /// driven from a unit test, so the file-exists side is injected here.
+    // AccountsManager( in a plain comment too
+    final class CommentOnlyTests: XCTestCase {
+      func testSomething() { XCTAssertEqual(1, 1) }
+    }
+    """
+    XCTAssertTrue(Self.declaresXCTestCaseSubclass(source),
+                  "precondition: the fixture must look like a lint target")
+    XCTAssertFalse(Self.containsPolluter(source),
+                   "a polluter named only in a comment acquires no state")
+  }
+
+  /// The paired positive control. Without it, the arm above would still pass
+  /// if `containsPolluter` were gutted to `return false` — a rule that cannot
+  /// fire reports every tree as clean.
+  func testLintStillCatchesTheSamePolluterInRealCode() {
+    let source = """
+    import XCTest
+    final class RealPolluterTests: XCTestCase {
+      func testSomething() { _ = AppContainer.production() }
+    }
+    """
+    XCTAssertTrue(Self.containsPolluter(source),
+                  "the same substring in executable code MUST still trip the rule")
   }
 
   /// Synthetic compliant case: declares `: SomethingTestCase` (NOT
