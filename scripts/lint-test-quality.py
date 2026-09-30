@@ -25,7 +25,7 @@ import re
 import os
 import sys
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 @dataclass
 class Violation:
@@ -318,14 +318,92 @@ def _git_diff(base: str) -> str:
     return ''
 
 
-def run_diff_gate(diff_text: str, quiet: bool = False) -> int:
+def uncommitted_test_files() -> Optional[List[str]]:
+    """Test files modified or untracked in the working tree.
+
+    Returns `[]` for a clean tree and `None` when the question could not be
+    answered (git missing, locked index, non-zero exit). Those two are NOT the
+    same and must not render the same: `[]` means "nothing unscanned", `None`
+    means "unknown whether anything is unscanned", and collapsing them is the
+    §7 refusal-renders-as-success shape this function exists to close.
+
+    `_git_diff` is HEAD-based, so anything not committed is invisible to it and
+    the gate reports a clean scan over work it never read. The pass is true for
+    what was scanned and false for what the author is actually holding.
+
+    Measured cost of not saying so: three consecutive edit-and-recheck rounds on
+    2026-09-29, each reporting the same stale finding, because every fix was in
+    the working tree while the scan read HEAD. The same idiom is in
+    `verify-pr.sh` and `check-doc-hygiene.sh`.
+
+    Parsing uses `--porcelain -z`. Porcelain v1 QUOTES any path containing a
+    space or non-ASCII byte (`"PalaceTests/Spaced Probe.swift"`), so newline
+    parsing drops exactly the paths hardest to notice missing. `-z` never
+    quotes. Note the rename field order flips under `-z`: `XY new\0orig\0`,
+    so the record itself is already the new path.
+    """
+    import subprocess
+    try:
+        out = subprocess.run(
+            ['git', 'status', '--porcelain', '-z', '--', 'PalaceTests'],
+            capture_output=True, text=True, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+    files = []
+    records = [r for r in out.stdout.split('\0') if r]
+    skip_next = False
+    for rec in records:
+        if skip_next:                    # the `orig` half of a -z rename pair
+            skip_next = False
+            continue
+        if len(rec) < 4:
+            continue
+        status, path = rec[:2], rec[3:]
+        if status[0] in ('R', 'C'):      # `XY new\0orig\0` — consume the orig
+            skip_next = True
+        if path.endswith('.swift'):
+            files.append(path)
+    return files
+
+
+_UNCOMMITTED_SENTINEL_CHECKED = False
+
+
+def run_diff_gate(diff_text: str, quiet: bool = False,
+                  uncommitted=None) -> int:
     """Run the diff-scoped STARVE-001 gate over `diff_text`; print findings and
     return the process exit code (1 on any hit, else 0)."""
     findings = lint_starvation_diff(diff_text)
+    # Three states, deliberately distinct: a list of names (dirty), an empty
+    # list (clean), and None (could not determine). Rendering the third as the
+    # second is the failure this gate is about.
+    undetermined = uncommitted is None and _UNCOMMITTED_SENTINEL_CHECKED
+    pending = list(uncommitted) if uncommitted else []
     if not findings:
         if not quiet:
-            print("STARVE-001: no new deadline-poll waits in changed test files.")
+            if pending:
+                print("STARVE-001: no new deadline-poll waits in COMMITTED test "
+                      f"files — {len(pending)} uncommitted file(s) were NOT scanned:")
+                for f in pending[:10]:
+                    print(f"    {f}")
+                if len(pending) > 10:
+                    print(f"    ... and {len(pending) - 10} more")
+                print("  The scan reads `git diff <base>...HEAD`. Commit, then re-run.")
+            elif undetermined:
+                print("STARVE-001: no new deadline-poll waits in COMMITTED test "
+                      "files — could NOT determine whether uncommitted test "
+                      "files exist (`git status` failed).")
+                print("  This is not a clean tree; it is an unanswered question.")
+            else:
+                print("STARVE-001: no new deadline-poll waits in changed test files.")
         return 0
+    if pending:
+        print(f"  NOTE: {len(pending)} uncommitted test file(s) were NOT scanned; "
+              "the lines below are HEAD's, not your working tree's.")
+    elif undetermined:
+        print("  NOTE: could NOT determine whether uncommitted test files exist "
+              "(`git status` failed); the lines below are HEAD's.")
     print(f"STARVE-001: {len(findings)} new deadline-poll wait(s) in changed test files:")
     print("=" * 70)
     for v in findings:
@@ -612,7 +690,9 @@ def main():
         idx = sys.argv.index('--changed')
         nxt = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else ''
         base = nxt if (nxt and not nxt.startswith('-')) else 'origin/develop'
-        sys.exit(run_diff_gate(_git_diff(base), quiet=quiet))
+        globals()['_UNCOMMITTED_SENTINEL_CHECKED'] = True
+        sys.exit(run_diff_gate(_git_diff(base), quiet=quiet,
+                               uncommitted=uncommitted_test_files()))
 
     fix_mode = '--fix' in sys.argv
     # `--per-file` emits one line per violation: <relpath>:<line>:<rule>

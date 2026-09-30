@@ -411,3 +411,191 @@ final class SomeTests: XCTestCase {
 }
 """)
     assert "FLUFF-005" not in _codes(v)
+
+
+# ---------------------------------------------------------------------------
+# The HEAD-blind scan must say what it could not see.
+#
+# `--changed` runs `git diff <base>...HEAD`, so uncommitted work is invisible to
+# it. Before this, the gate printed an unqualified "no new deadline-poll waits"
+# over a working tree it had never read — a verdict about bytes nobody scanned.
+# Measured cost: three consecutive edit-and-recheck rounds on 2026-09-29, each
+# reporting the same stale finding while every fix sat uncommitted.
+#
+# The exit code deliberately does NOT change. CI runs on a clean tree, and
+# failing here would redden the board for an ordinary local edit. What changes is
+# what the pass line CLAIMS.
+
+def test_clean_tree_pass_line_is_unqualified(capsys):
+    rc = _LTQ.run_diff_gate("", quiet=False, uncommitted=[])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "no new deadline-poll waits in changed test files." in out
+    assert "NOT scanned" not in out
+
+
+def test_dirty_tree_pass_line_names_what_was_not_scanned(capsys):
+    rc = _LTQ.run_diff_gate("", quiet=False,
+                            uncommitted=["PalaceTests/A.swift", "PalaceTests/B.swift"])
+    out = capsys.readouterr().out
+    assert rc == 0, "a dirty tree must not redden the gate"
+    assert "COMMITTED" in out, "the pass must say WHICH files it covers"
+    assert "2 uncommitted file(s) were NOT scanned" in out
+    assert "PalaceTests/A.swift" in out and "PalaceTests/B.swift" in out
+    assert "Commit, then re-run." in out
+
+
+def test_dirty_tree_with_findings_warns_the_lines_are_stale(capsys):
+    diff = _new_file_diff("PalaceTests/X.swift",
+                          ["func testX() {", "    wait(for: [e], timeout: 5)", "}"])
+    rc = _LTQ.run_diff_gate(diff, quiet=False, uncommitted=["PalaceTests/X.swift"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "NOT scanned" in out
+    assert "HEAD's, not your working tree's" in out, (
+        "a finding list from HEAD over a dirty tree must say the lines are stale — "
+        "that is what sent an author editing the same line three times"
+    )
+
+
+def test_dirty_tree_does_not_change_the_exit_code_either_way():
+    assert _LTQ.run_diff_gate("", quiet=True, uncommitted=[]) == 0
+    assert _LTQ.run_diff_gate("", quiet=True, uncommitted=["PalaceTests/A.swift"]) == 0
+
+
+def test_uncommitted_test_files_parses_porcelain_shapes(monkeypatch):
+    import subprocess as _sp
+
+    # `--porcelain -z`: NUL-separated, never quoted, and a rename emits TWO
+    # records in the order `XY new`, `orig` — the reverse of the v1 arrow form.
+    class _R:
+        stdout = (
+            " M PalaceTests/Modified.swift\0"
+            "?? PalaceTests/Untracked.swift\0"
+            "?? PalaceTests/Spaced Probe.swift\0"
+            "R  PalaceTests/New.swift\0PalaceTests/Old.swift\0"
+            " M PalaceTests/NotSwift.md\0"
+        )
+
+    monkeypatch.setattr(_sp, "run", lambda *a, **k: _R())
+    files = _LTQ.uncommitted_test_files()
+    assert "PalaceTests/Modified.swift" in files
+    assert "PalaceTests/Untracked.swift" in files
+    assert "PalaceTests/Spaced Probe.swift" in files, (
+        "porcelain v1 QUOTES a spaced path; -z does not. Dropping it would "
+        "omit a file from an announcement whose whole job is naming omissions"
+    )
+    assert "PalaceTests/New.swift" in files, "a rename must report the NEW path — that is what a scan would read"
+    assert "PalaceTests/Old.swift" not in files
+    assert not any(f.endswith(".md") for f in files)
+
+
+def test_uncommitted_test_files_survives_a_missing_git(monkeypatch):
+    import subprocess as _sp
+
+    def _boom(*a, **k):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(_sp, "run", _boom)
+    assert _LTQ.uncommitted_test_files() is None, (
+        "no git must degrade to None ('could not determine'), never to [] "
+        "('clean'). This arm previously asserted [], which pinned a refusal "
+        "that renders as the good outcome — the exact shape the gate exists "
+        "to close. It must still not crash the gate, and it does not."
+    )
+
+
+# --- end-to-end wiring: main() --changed actually CALLS the helper ----------
+#
+# Every other arm here injects `uncommitted=` straight into `run_diff_gate`,
+# which tests the renderer and says nothing about whether main() ever asks git.
+# A reviewer proved the gap mechanically: mutating the call site to
+# `uncommitted=[]` SURVIVED all 27 arms. The announcement would vanish and
+# every run would read clean — which is precisely the failure this change
+# exists to close, reappearing inside the change itself.
+#
+# CLAUDE.md CI rule #4(b) requires a gate's WIRING to be exercised end to end,
+# including the clean path. These three arms run the real script in a real
+# git repo via subprocess, so they fail if the call site stops asking.
+
+
+def _git(repo, *args):
+    subprocess.run(['git', *args], cwd=repo, check=True,
+                   capture_output=True, text=True)
+
+
+def _seed_repo(tmp_path):
+    """A git repo with a committed baseline commit on `origin/develop`."""
+    repo = tmp_path / "repo"
+    (repo / "PalaceTests").mkdir(parents=True)
+    _git(repo.parent, 'init', '-q', str(repo))
+    _git(repo, 'config', 'user.email', 't@t.io')
+    _git(repo, 'config', 'user.name', 't')
+    (repo / "PalaceTests" / "BaseTests.swift").write_text(
+        "import XCTest\nfinal class BaseTests: XCTestCase {}\n")
+    _git(repo, 'add', '-A')
+    _git(repo, 'commit', '-qm', 'base')
+    # `--changed` defaults to origin/develop; give it one that resolves.
+    _git(repo, 'branch', '-f', 'origin/develop')
+    return repo
+
+
+def _run_changed(repo):
+    return subprocess.run(
+        [sys.executable, str(_SCRIPT), '--changed', 'origin/develop'],
+        cwd=repo, capture_output=True, text=True)
+
+
+def test_e2e_changed_announces_an_uncommitted_file_by_name(tmp_path):
+    """The wiring arm. Kills the `uncommitted=[]` call-site mutant."""
+    repo = _seed_repo(tmp_path)
+    (repo / "PalaceTests" / "NewProbe.swift").write_text(
+        "import XCTest\nfinal class NewProbe: XCTestCase {}\n")
+    out = _run_changed(repo).stdout
+    assert "NOT scanned" in out, out
+    assert "NewProbe.swift" in out, out
+    assert "COMMITTED test files" in out, out
+
+
+def test_e2e_changed_announces_a_path_containing_a_space(tmp_path):
+    """Porcelain v1 QUOTES spaced paths; `-z` does not.
+
+    Without `-z` this file is dropped from BOTH the list and the count — an
+    announcement of an omission that silently omits a file. The spaced name is
+    the whole point of the arm, so it must not be 'tidied' to an ordinary one.
+    """
+    repo = _seed_repo(tmp_path)
+    (repo / "PalaceTests" / "Spaced Probe.swift").write_text(
+        "import XCTest\nfinal class SpacedProbe: XCTestCase {}\n")
+    out = _run_changed(repo).stdout
+    assert "Spaced Probe.swift" in out, out
+    assert "1 uncommitted file(s)" in out, out
+
+
+def test_e2e_changed_on_a_clean_tree_says_nothing_about_uncommitted(tmp_path):
+    """The clean-path arm CLAUDE.md #4(b) requires.
+
+    A detector that only ever sees a violation cannot tell you it stays quiet
+    when it should. Without this, 'announce the omission' could fire always.
+    """
+    repo = _seed_repo(tmp_path)
+    out = _run_changed(repo).stdout
+    assert "NOT scanned" not in out, out
+    assert "no new deadline-poll waits in changed test files" in out, out
+
+
+def test_uncommitted_test_files_returns_None_when_git_cannot_answer(tmp_path):
+    """`None` (unknown) must not render as `[]` (clean).
+
+    Pins the §7 rule from the guard-refusal wall entry: name the observable
+    that distinguishes a refusal from the healthy path. The previous arm
+    pinned the indistinguishable behavior as intended, which was wrong.
+    """
+    mod = _load_module()
+    import os
+    cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)            # not a git repo
+        assert mod.uncommitted_test_files() is None
+    finally:
+        os.chdir(cwd)
