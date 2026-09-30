@@ -1224,34 +1224,104 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         try! data.write(to: url)
     }
 
-    /// Runs `action` (a `syncManager.save(...)` that writes on the background
-    /// `diskWriteQueue`) and JOINS its completion by waiting for the
-    /// `.TPPBookRegistryDidChange` notification the save posts on the main
-    /// queue *after* the `write(to:)` lands — rather than polling `fileExists`
-    /// against a wall-clock deadline. The observer is registered before
-    /// `action` runs (and the post can't be serviced until this synchronous
-    /// body yields into `wait(for:)`), so the save's post is captured
-    /// deterministically. This is the success-path join: on the refused-save
-    /// path no notification fires, which is exactly why the absence assertions
-    /// still use `settle()` (there is no positive edge to await).
+    /// Runs `action`, then blocks until `save()`'s disk write has actually
+    /// flushed — so a following assertion may read the file.
     ///
-    /// Replaces the old `waitUntil { fileExists }` RunLoop poll: under CI
-    /// oversubscription the `RunLoop.current.run(until:)` spin could exhaust
-    /// the fixed deadline before the thread was scheduled to service the
-    /// background write, silently asserting against a not-yet-written file.
+    /// This used to wait for a `.TPPBookRegistryDidChange` notification, which is
+    /// not the same event. The expectation set `assertForOverFulfill = false`, so
+    /// ANY posting of that notification satisfied it, including one still in
+    /// flight from an earlier `load()` in the same test. The barrier could return
+    /// before the write landed and the assertion then read the pre-save file.
+    /// Measured on CI run 36482819128:
+    /// `testSchemaMigration_unversionedFileLoads_thenSaveWritesVersion` failed at
+    /// 2.205s reading a nil schemaVersion, then passed at 0.075s on the retry —
+    /// inside a run reported green.
+    ///
+    /// `_awaitPendingDiskWritesForTesting()` drains the serial `diskWriteQueue`,
+    /// so a trailing block resumes strictly after every enqueued write has
+    /// flushed. The wait below is a safety net, not the mechanism: the
+    /// expectation is fulfilled by the drain itself, never by an unrelated post.
+    ///
+    /// Precondition: `action` must enqueue the write SYNCHRONOUSLY. `save()`
+    /// calls `diskWriteQueue.async` on the caller's thread, so FIFO puts the
+    /// write ahead of the drain block. An `action` that deferred the enqueue
+    /// would drain an empty queue and join nothing.
+    ///
+    /// Deliberately synchronous. Making the callers `async` would break the sync
+    /// helpers they share (`snapshotWithOneBook`, `drainMainQueue`), which use
+    /// `wait(for:)` and deadlock when called from an `async` test — the file
+    /// documents that at `XCTestCase+drainMainQueue.swift`.
     private func awaitRegistrySaved(timeout: TimeInterval = 5.0, _ action: () -> Void) {
-        let saved = expectation(description: "registry disk write posted TPPBookRegistryDidChange")
-        saved.assertForOverFulfill = false
-        let token = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryDidChange, object: nil, queue: .main
-        ) { _ in saved.fulfill() }
-        defer { NotificationCenter.default.removeObserver(token) }
+        // Bound ONCE, before the Task, and captured by value. Reading the
+        // implicitly-unwrapped `syncManager` INSIDE the Task is a runner-killer:
+        // on timeout `wait(for:)` records a failure and returns, `tearDown()`
+        // nils the fixture, and the still-live Task then force-unwraps nil.
+        // `XCTestCase+drainMainQueue.swift` documents that exact incident at
+        // `awaitCondition` (CI run 29802862487). Capturing `[syncManager]`
+        // instead is crash-safe but silently inert — an Optional chain would
+        // fulfil the expectation WITHOUT draining. The binding is both.
+        guard let manager = syncManager else {
+            return XCTFail("awaitRegistrySaved called with no syncManager")
+        }
         action()
-        wait(for: [saved], timeout: timeout)
+        let drained = expectation(description: "registry diskWriteQueue drained")
+        let drain = Task { [manager] in
+            await manager._awaitPendingDiskWritesForTesting()
+            drained.fulfill()
+        }
+        // `drained` is fulfilled by a drain of the SERIAL `diskWriteQueue`, not
+        // by a poll on fire-and-forget work. A trailing block on a serial queue
+        // resumes strictly after every enqueued write, so this is the
+        // deterministic join STARVE-001 asks for; the deadline is a safety net
+        // that fails loudly, never the mechanism.
+        wait(for: [drained], timeout: timeout)  // STARVE-001-OK: serial-queue barrier drain, not a poll on fire-and-forget
+        drain.cancel()
     }
 
-    /// Fixed run-loop settle for asserting the ABSENCE of an effect (a refused
-    /// save posts no notification, so there is no positive edge to await).
+    /// Blocks until `BookRegistryStore`'s write barrier has drained.
+    ///
+    /// The sibling of `awaitRegistrySaved` for the in-memory side. Same shape and
+    /// same reason: `_awaitPendingWritesForTesting()` is a `.barrier` block on the
+    /// store's CONCURRENT `syncQueue`, so it resumes after all previously-enqueued
+    /// work and joins rather than polls. The older `wait(for:) + drainMainQueue()`
+    /// pair around `addBook` is a fixed deadline on a completion callback, which is
+    /// what STARVE-001 exists to stop.
+    ///
+    /// It does NOT hop the main queue. `TPPBookRegistry._awaitPendingWritesForTesting`
+    /// (TPPBookRegistry.swift:769-773) composes the store drain THEN a
+    /// `DispatchQueue.main.async` continuation; this helper is the first half only.
+    /// Adequate here — the assertions read the file and `save()` snapshots
+    /// synchronously — but a caller swapping `drainMainQueue()` for this loses
+    /// main-queue delivery.
+    private func awaitStoreWrites(timeout: TimeInterval = 5.0) {
+        guard let store = store else {
+            return XCTFail("awaitStoreWrites called with no store")
+        }
+        let drained = expectation(description: "registry store writes drained")
+        let drain = Task { [store] in
+            await store._awaitPendingWritesForTesting()
+            drained.fulfill()
+        }
+        // `drained` is fulfilled by the store's write BARRIER draining, not by a
+        // poll on fire-and-forget work. See `awaitRegistrySaved` for the shape.
+        wait(for: [drained], timeout: timeout)  // STARVE-001-OK: store write barrier drain, not a poll on fire-and-forget
+        drain.cancel()
+    }
+
+    /// Fixed run-loop settle for asserting the ABSENCE of an effect.
+    ///
+    /// The rationale this used to carry — "a refused save posts no
+    /// notification, so there is no positive edge to await" — was true of the
+    /// old notification barrier and is NOT true of the drain. A refused INV-1
+    /// save still runs its `diskWriteQueue` block and returns without writing,
+    /// which `BookRegistrySync._awaitPendingDiskWritesForTesting()` covers
+    /// explicitly. So a positive edge DOES exist now.
+    ///
+    /// That matters because this is a wall clock guarding an absence: if the
+    /// refused block has not run within `seconds`, the assertion passes without
+    /// the effect ever having been possible. Converting these call sites to the
+    /// drain is a behaviour change to INV-1 tests and wants its own red-first
+    /// cycle — see the commit's Deferred stanza.
     private func settle(_ seconds: TimeInterval = 0.4) {
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
@@ -1280,11 +1350,15 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         XCTAssertTrue(store.allBooks.isEmpty, "precondition: empty in-memory shelf")
 
         // Act: a NON-authoritative save of the empty shelf.
-        // UNJOINABLE: this save is REFUSED by INV-1 (empty + non-authoritative +
-        // rebuild window) so the diskWriteQueue closure returns early WITHOUT
-        // writing or posting `.TPPBookRegistryDidChange`. There is no positive
-        // edge to join — we assert the ABSENCE of a clobber, so a bounded
-        // `settle()` (fixed run-loop drain) is the correct primitive here.
+        // This save is REFUSED by INV-1 (empty + non-authoritative + rebuild
+        // window): the diskWriteQueue closure returns early without writing or
+        // posting `.TPPBookRegistryDidChange`. It DOES still run, so
+        // `awaitRegistrySaved`'s drain would join it — the "no positive edge"
+        // claim this comment used to make was true only of the notification
+        // barrier. `settle()` is kept here for now because switching an INV-1
+        // absence assertion to the drain is a behaviour change that wants its
+        // own red-first cycle; until then this is a wall clock, and a refused
+        // block that has not run within 0.4s passes vacuously.
         syncManager.save(for: account)
         settle()
 
@@ -1427,6 +1501,36 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         let version = RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url))
         XCTAssertEqual(version, RegistryFileRecovery.currentSchemaVersion,
                        "save() must stamp the current schemaVersion into the persisted payload")
+    }
+
+    /// Pins the barrier's contract: it must wait for the DISK WRITE, not for any
+    /// `.TPPBookRegistryDidChange`.
+    ///
+    /// The stray post below is what made the original defect intermittent — a
+    /// notification already in flight from an earlier `load()` satisfied the old
+    /// expectation before `save()`'s write flushed. Posting one explicitly makes
+    /// that race deterministic, so this test fails every time against the old
+    /// notification barrier and passes against the queue drain.
+    func testSaveBarrier_isNotSatisfiedByAnUnrelatedRegistryChangeNotification() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        store.addBook(makeBook(identifier: "barrier-book"), state: .downloadNeeded) { _ in }
+        awaitStoreWrites()
+
+        // A notification of the same name, from something other than this save,
+        // arriving INSIDE the barrier's window. Posting it before the call does
+        // not reproduce anything: the old barrier registered its observer inside
+        // the helper, so an earlier post was never delivered to it. The real
+        // defect was an in-flight post from a previous operation landing here.
+        awaitRegistrySaved {
+            NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+            syncManager.save(for: account)
+        }
+
+        XCTAssertEqual(RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)),
+                       RegistryFileRecovery.currentSchemaVersion,
+                       "the barrier must wait for save()'s disk write, not for an unrelated .TPPBookRegistryDidChange")
     }
 
     func testSchemaMigration_unversionedFileLoads_thenSaveWritesVersion() {
