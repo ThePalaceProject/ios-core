@@ -41,11 +41,6 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
 
     private var host: AccessibilityAuditHost?
 
-    override func setUp() {
-        super.setUp()
-        NoNetworkURLProtocol.enable()
-    }
-
     override class func tearDown() {
         MainActor.assumeIsolated { AccessibilityRuntime.restore() }
         super.tearDown()
@@ -54,7 +49,9 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
     override func tearDown() {
         host?.tearDown()
         host = nil
-        NoNetworkURLProtocol.disable()
+        // No NoNetworkURLProtocol enable/disable here: PalaceTestSetup registers
+        // it once for the whole run, and a disable() would unregister it for
+        // every test that follows.
         super.tearDown()
     }
 
