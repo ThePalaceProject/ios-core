@@ -112,27 +112,17 @@ final class HoldsViewModel: ObservableObject {
             return accountsManager.currentAccount?.needsAuth ?? true
         }
         self.presentSignIn = presentSignIn ?? { completion in
-            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
-            // injected sheet presenter. The presenter resolves
-            // `currentAccountId` from its container's accountsManager,
-            // which is the same `_cached` singleton used everywhere else
-            // (accountsManager was previously captured by the static-API
-            // call; capture removed as the presenter handles resolution).
+            // The presenter resolves `currentAccountId` from its container's
+            // accountsManager, so no account capture is needed here.
             AppContainer.production().signInModalSheetPresenter
                 .presentSignInModalForCurrentAccount(completion: completion)
         }
 
         let environment = HoldsEnvironment(filterBooks: { query, books in
-            // Filter in-place. This runs on the reducer effect's `@Sendable`
-            // (off-main) task, so it never blocks the UI, and a holds list is
-            // tiny — an in-memory title/author substring match. The previous
-            // implementation bridged this through `withCheckedContinuation` +
-            // `DispatchQueue.global(qos:).async`, which made a trivial filter a
-            // VICTIM of global-queue thread-pool exhaustion: under full-suite CI
-            // load, when leaked blocking work saturates the global pool, the
-            // enqueued filter block never runs and `sendAwait(.searchQueryChanged)`
-            // hangs to the 120s execution allowance (the HoldsViewModel flake).
-            // A synchronous filter has no queue dependency and cannot starve.
+            // Filter synchronously on the reducer effect's off-main task; a holds
+            // list is tiny. Hopping to `DispatchQueue.global` here made the filter
+            // starve (and `sendAwait(.searchQueryChanged)` hang) whenever the
+            // global pool was saturated.
             books.filter {
                 $0.title.localizedCaseInsensitiveContains(query) ||
                     ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
@@ -318,9 +308,8 @@ final class HoldsViewModel: ObservableObject {
 
         store.send(.registryChanged(held: allHeld))
 
-        // Badge update — centrally managed by AppTabHostView. Migrated off the
-        // `.TPPBookRegistryStateDidChange` post to the registry's holds-changed
-        // publisher (swarm_8ce6f5ae WS3), which AppTabHostView subscribes to.
+        // AppTabHostView owns the badge and subscribes to the registry's
+        // holds-changed publisher.
         bookRegistry.notifyHoldsChanged()
     }
 

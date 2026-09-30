@@ -2,17 +2,13 @@
 //  LoanEvictionPolicy.swift
 //  Palace
 //
-//  Reliability WS-C — seam S3. The single guardrail behind INV-2:
-//  "Never delete a downloaded file while offline based on a cached
-//  `until` alone."
+//  Invariant: never delete a downloaded file while offline based on a
+//  cached `until` alone.
 //
-//  Pure, no I/O. `MyBooksViewModel` calls `decide(...)` for every
-//  expired-by-cached-`until` book and only deletes local content +
-//  unregisters on `.evict`. Offline-expired books resolve to `.keep`
-//  so the patron's downloaded file survives; online-but-within-grace
-//  resolves to `.confirmWithServer` (keep locally, let the loans-feed
-//  sync reconcile) rather than destroying the file on a possibly-stale
-//  `until` / clock-skewed date.
+//  Pure. `MyBooksViewModel` calls `decide(...)` for every book expired by its
+//  cached `until` and deletes only on `.evict`. Offline resolves to `.keep`;
+//  online within the grace window resolves to `.confirmWithServer`, so a
+//  stale `until` or clock skew never destroys the file.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -32,7 +28,7 @@ enum EvictionDecision: Equatable {
     case confirmWithServer
 }
 
-/// Pure eviction-decision function. See INV-2.
+/// Pure eviction-decision function.
 enum LoanEvictionPolicy {
 
     /// Default grace window applied after a loan's `until` before an
@@ -51,7 +47,7 @@ enum LoanEvictionPolicy {
     ///     still defers to a server confirmation rather than evicting.
     /// - Returns: `.keep`, `.evict`, or `.confirmWithServer`.
     ///
-    /// Decision matrix (INV-2):
+    /// Decision matrix:
     ///   - no expiration            -> `.keep`
     ///   - not yet expired          -> `.keep`
     ///   - expired + offline        -> `.keep`   (never delete offline on cached `until`)
@@ -63,13 +59,11 @@ enum LoanEvictionPolicy {
         isOnline: Bool,
         grace: TimeInterval = defaultGrace
     ) -> EvictionDecision {
-        // No expiry information -> nothing to evict on.
         guard let expiration else { return .keep }
 
-        // Not yet expired (by the cached date) -> keep.
         if now < expiration { return .keep }
 
-        // Expired by the cached `until`. Offline is the INV-2 guard: a
+        // Expired by the cached `until`. Offline is the guard: a
         // stale/early `until`, clock skew, or a server that would still
         // honor the loan must NOT cost the patron their downloaded file.
         guard isOnline else { return .keep }
@@ -79,7 +73,6 @@ enum LoanEvictionPolicy {
             return .evict
         }
 
-        // Online + within grace -> defer to a server confirmation.
         return .confirmWithServer
     }
 }

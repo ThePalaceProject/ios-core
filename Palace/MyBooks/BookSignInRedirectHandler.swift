@@ -2,19 +2,11 @@
 //  BookSignInRedirectHandler.swift
 //  Palace
 //
-//  Owns the SAML web-view + cookie-sync + post-auth retry path that
-//  lived inside MyBooksDownloadCenter as `handleSAMLStartedState` /
-//  `handleLoginCancellation` / `handleBookFound` / `handleProblem` /
-//  `clearAndSetCookies`. This is the slice of the borrow flow that
-//  fires when the server redirects us to the IDP for fresh credentials
-//  mid-download.
-//
-//  Extracted so the SAML state machine (cookie web view → loginCompletion
-//  → bookFound → handleProblem branches) can be reasoned about in one
-//  place. MyBooksDownloadCenter retains 1-line delegators for the two
-//  call sites still inside its borrow flow (`handleSAMLStartedState`
-//  from `handleSAMLStartedState`'s inner branch and `clearAndSetCookies`
-//  from cookie-prep before a download starts).
+//  The SAML web-view, cookie-sync and post-auth retry path: what runs when
+//  the server redirects to the IdP for fresh credentials mid-download
+//  (cookie web view → loginCompletion → bookFound → handleProblem).
+//  MyBooksDownloadCenter delegates `handleSAMLStartedState` and
+//  `clearAndSetCookies` here.
 //
 
 import Foundation

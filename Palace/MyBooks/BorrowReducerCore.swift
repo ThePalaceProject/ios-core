@@ -2,32 +2,13 @@
 //  BorrowReducerCore.swift
 //  Palace
 //
-//  E2 (WS7) pure decision core extracted from `BorrowOperation`.
-//
-//  Per Contract E (swarm_8ce6f5ae), `BorrowOperation` stays as the
-//  EFFECT-RUNNER (it owns `fetchBook`, the 30s `withTimeout`, DRM
-//  `ensureDeviceActivated`, the `MainActor.run` hops, alert/modal presentation,
-//  the async re-auth orchestration, and error logging). This core owns the pure
-//  decisions the operation used to make inline:
-//
-//    - `responseState`        — availability → registry state + the PP-4178
-//                               Loan→Hold race error (the home for the logic
-//                               that `BorrowOperation.borrowResponseState` and
-//                               `MyBooksDownloadCenter` now delegate to).
-//    - `postResponseEffects`  — the ordered post-borrow success plan: the
-//                               PP-4178 race throw, the app-rating note, the
-//                               F-014 auto-download gate, and the hold-position
-//                               sync.
-//    - `alreadyHasActiveLoan` — the SQ-007 suppression predicate (an active-loan
-//                               registry state means a 401 on auto-re-borrow is
-//                               benign, not a credentials problem).
-//
-//  It references NO singletons, `Task`, `Date`, network, or `#if FEATURE_*`
-//  runtime checks. `[Effect]: Equatable` + the pure predicates make the
-//  100%-mutation bar reachable, and `BorrowReducerCoreContractTests` interprets
-//  `postResponseEffects` into a `CallLog` using the same seam labels the
-//  `BorrowOperationContractTests` record — shape-equal to the E1 service
-//  snapshot (the behavior-preservation proof Contract E requires).
+//  Pure borrow decisions. `BorrowOperation` is the effect runner (network,
+//  timeout, DRM activation, main-actor hops, alerts, reauth); this core decides:
+//    - `responseState`: availability → registry state, plus the PP-4178
+//      Loan→Hold race error.
+//    - `postResponseEffects`: the ordered post-borrow success plan.
+//    - `alreadyHasActiveLoan`: the SQ-007 suppression predicate.
+//  No singletons, `Task`, `Date`, network, or feature flags.
 //
 
 import Foundation
@@ -138,8 +119,7 @@ enum BorrowReducerCore {
 
     /// SQ-007: an auth-error on borrow is suppressed (not surfaced as a
     /// credentials problem) when the book is already in the registry with a
-    /// loan-class state — the auto-re-borrow simply wasn't needed. Mirrors
-    /// `BorrowOperation.handleBorrowAuthErrorIfNeeded` :648-658.
+    /// loan-class state — the auto-re-borrow simply wasn't needed.
     static func alreadyHasActiveLoan(state: TPPBookState) -> Bool {
         switch state {
         case .downloadNeeded, .downloading, .downloadSuccessful,

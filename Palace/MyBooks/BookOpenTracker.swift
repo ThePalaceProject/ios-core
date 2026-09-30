@@ -2,38 +2,21 @@
 //  BookOpenTracker.swift
 //  Palace
 //
-//  Records the wall-clock timestamp at which the user opened each book
-//  (audiobook OR ebook). Originally the sort key for the catalog "Continue"
-//  rows (removed in PP-4910), so it is currently write-only: the reader /
-//  audiobook open-paths still record into it, but nothing reads it back
-//  until a future "resume" re-entry point is designed. Kept because the
-//  recording lives in critical-path flows and the data is cheap to retain.
+//  Records when the user last opened each book (audiobook or ebook), as a
+//  `[bookId: Date]` map in `UserDefaults`. It was the sort key for the catalog
+//  "Continue" rows (removed in PP-4910) and is currently write-only.
 //
-//  Historical rationale for existing (still valid if a reader returns): EPUB /
-//  PDF locations don't embed a `timeStamp`, so without this an open would fall
-//  back to `book.updated` (the *catalog* update date, not the read date) and a
-//  stale-but-recently-republished book would wrongly win the "last opened" sort.
-//
-//  Persistence: `UserDefaults` keyed by stable storage key. Map
-//  `[String: Date]` of bookId → last-opened wall-clock date. Survives
-//  app launches; no migration required (a missing entry just means we
-//  fall back to the renderer-specific timestamp the same way we did
-//  before this tracker existed).
+//  EPUB/PDF locations carry no `timeStamp`, so without this a "last opened"
+//  sort would fall back to `book.updated`, the catalog's update date.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation
 
-/// Posted on `.default` notification center every time a book open is
-/// recorded via `BookOpenTracker.recordOpened(_:at:)`. The Continue
-/// row's viewmodel subscribes to this so the row updates immediately
-/// when the user opens a new ebook (without this, the row stayed
-/// stale until the next registry-state change — user feedback:
-/// "the continue cell doesn't update when user starts reading a new
-/// book"). The notification carries the bookId in
-/// `userInfo["bookId"]` for callers that need to filter; the
-/// viewmodel currently re-derives everything, so it doesn't.
+/// Posted on the default notification center each time
+/// `BookOpenTracker.recordOpened(_:at:)` records an open, with the book id in
+/// `userInfo["bookId"]`.
 extension Notification.Name {
     static let palaceBookOpenedDidRecord = Notification.Name("PalaceBookOpenedDidRecord")
 }

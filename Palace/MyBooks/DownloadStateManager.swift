@@ -70,7 +70,7 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
         set { maxConcurrentLock.withLock { _maxConcurrentDownloads = newValue } }
     }
 
-    // MARK: - Durable persistence (seam S1)
+    // MARK: - Durable persistence
 
     /// Crash-durable mirror of the in-flight download records. The
     /// SafeDictionaries above stay the hot cache; this cold store survives a
@@ -80,14 +80,9 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
     /// Per-book transient-transfer retry counter (content transfer only). Reset
     /// on terminal completion so a later independent failure starts fresh.
     ///
-    /// Non-`private` (but only mutated through the `transferRetryAttempts` /
-    /// `incrementTransferRetryAttempts` / `resetTransferRetryAttempts` seam
-    /// below) so tests can await the counter directly on this `SafeDictionary`
-    /// actor — mirroring how the public `taskIdentifierToBook` /
-    /// `bookIdentifierToDownloadInfo` actors are read in tests. Awaiting the
-    /// (Sendable) actor avoids sending the non-Sendable `DownloadStateManager`
-    /// instance across the actor boundary from a `@MainActor` test, which Swift 6
-    /// rejects.
+    /// Non-`private` so `@MainActor` tests can await this Sendable actor
+    /// directly; sending the non-Sendable manager across actors is rejected by
+    /// Swift 6. Mutate only through the retry-attempt methods below.
     let transferRetryCounts = SafeDictionary<String, Int>()
 
     init(taskPersistence: DownloadTaskPersistence = DownloadTaskPersistence()) {
@@ -123,14 +118,8 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
 
     /// Persist a started task so a mid-download kill can be reconciled at launch.
     /// - Parameter task: the live task, so PP-4986 can stamp `account` onto it as
-    ///   well as into the record. Stamping HERE rather than at the call site is
-    ///   deliberate on two counts: it keeps the two writes reading one value (the
-    ///   stamp and the record can never disagree), and it mirrors
-    ///   `persistReissuedTask`, so both download choke points carry provenance the
-    ///   same way instead of one doing it inline in the download center.
-    ///
-    ///   Optional so existing callers and tests that only assert the record are
-    ///   unchanged.
+    ///   well as into the record. Stamping here keeps the stamp and the record
+    ///   reading one value, matching `persistReissuedTask`.
     func persistStartedTask(
         bookID: String,
         taskIdentifier: Int,
@@ -157,52 +146,28 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
     /// Persist a task that REPLACES an in-flight one for a book already being
     /// downloaded — the acquisition-link follow-up and the bearer-token hop.
     ///
-    /// Separate from `persistStartedTask` because of the account field, which is
-    /// load-bearing and easy to corrupt here. `persistStartedTask` stamps the
-    /// CURRENT account and `DownloadTaskPersistence.record` upserts by book id,
-    /// so re-issuing through it would overwrite the account the download STARTED
-    /// under — and `BackgroundDownloadHandler.startedForAccount` reads exactly
-    /// that field to decide which library's credential the next re-issue carries.
-    /// A patron who switched libraries mid-download would then have the newly
-    /// selected library's token sent to the original library's server, which is
-    /// the credential-isolation boundary PP-4978 exists to hold.
+    /// Separate from `persistStartedTask`, which stamps the current account:
+    /// `BackgroundDownloadHandler.startedForAccount` reads the stored account to
+    /// pick which library's credential the next re-issue carries, so overwriting
+    /// it after a mid-download library switch would send the new library's token
+    /// to the original library's server (PP-4978). The account is carried
+    /// forward, never invented; with no record it stays empty, which
+    /// `startedForAccount` degrades to the current account.
     ///
-    /// So the account is CARRIED FORWARD and never invented. With no record to
-    /// carry it from, it is left empty rather than filled with the current
-    /// account: `startedForAccount` already degrades an empty id to today's
-    /// account, so that arm reproduces current behaviour exactly, where a
-    /// current-account stamp would be a new and false claim about history.
+    /// `startedAt` and `expectedBytes` carry forward too (the latter is `nil` in
+    /// every production write).
     ///
-    /// `startedAt` carries forward for the same reason — it names when the
-    /// DOWNLOAD started, not when this hop did. With nothing to carry it falls
-    /// back to now, which is a weaker claim than the carried value but the only
-    /// one available; nothing reads the field today, so the fallback is inert
-    /// rather than load-bearing. `expectedBytes` carries forward for symmetry and
-    /// is `nil` in every production write, so it is currently decorative — stated
-    /// plainly rather than left to look meaningful.
+    /// Uses `DownloadTaskPersistence.upsert` rather than `all()` + `record()`,
+    /// so a concurrent `remove` cannot land between the read and the write.
     ///
-    /// Goes through `DownloadTaskPersistence.upsert` rather than `all()` +
-    /// `record()`: deriving a record from the existing one across two lock
-    /// acquisitions lets a concurrent `remove` land in between and resurrect what
-    /// it deleted.
-    ///
-    /// - Parameter inheritingFrom: the book id whose existing record supplies the
-    ///   carried fields, when the re-issue registers under a DIFFERENT id than the
-    ///   one the download started under. `followAcquisitionLink` re-registers
-    ///   under a book parsed from the server's OPDS entry, whose identifier can
-    ///   differ from the original's; without this the started-under account would
-    ///   be silently dropped on exactly that path.
-    /// - Parameter task: the live re-issued task, so PP-4986 can stamp the
-    ///   INHERITED account onto it. This is the second of the two download-task
-    ///   choke points: `followAcquisitionLink` and the `RightsManagementDispatcher`
-    ///   bearer hop create tasks that never reach
-    ///   `MyBooksDownloadCenter.persistStartedTaskRecord`, and an unstamped task
-    ///   makes the retry rebuild fall back to whatever library is current at
-    ///   refresh time. Stamping here rather than at the two call sites is
-    ///   deliberate: the account being inherited is only known inside the upsert,
-    ///   and the callers would each have to re-derive it.
-    ///
-    ///   Optional so existing tests that only assert the record are unchanged.
+    /// - Parameter inheritingFrom: the book id whose record supplies the carried
+    ///   fields when the re-issue registers under a different id;
+    ///   `followAcquisitionLink` re-registers under the server's OPDS entry id.
+    /// - Parameter task: the live re-issued task, stamped with the inherited
+    ///   account (PP-4986). Re-issued tasks never reach
+    ///   `persistStartedTaskRecord`, and an unstamped task makes the retry rebuild
+    ///   use whichever library is current. The inherited account is only known
+    ///   inside the upsert.
     func persistReissuedTask(
         bookID: String,
         taskIdentifier: Int,
@@ -211,24 +176,17 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
         stampingAccountOn task: URLSessionDownloadTask? = nil
     ) {
         taskPersistence.upsert(bookID: bookID, inheritingFrom: sourceBookID) { existing in
-            // Written as a coalesce rather than `if existing == nil { log }` on
-            // purpose: that form adds a comparison whose ONLY consequence is a log
-            // line, so no assertion can distinguish it and it survives mutation
-            // forever as an unkillable critical-path mutant. This carries the same
-            // diagnostic without the untestable branch.
-            //
-            // The log is not noise-for-its-own-sake: a silent "" here is
-            // indistinguishable from a genuine empty account, and
-            // `startedForAccount` degrades it to the CURRENT library — so this is
-            // the only signal that a re-issue lost its provenance.
+            // A coalesce rather than `if existing == nil { log }` so the log adds
+            // no branch that no assertion could observe. The log matters: an ""
+            // here looks like a genuine empty account, and `startedForAccount`
+            // degrades it to the current library, so this is the only signal that
+            // a re-issue lost its provenance.
             let inheritedAccount = existing?.account ?? {
                 Log.info(#file, "Re-issue for \(bookID) found no record to inherit; account will be empty")
                 return ""
             }()
             // PP-4986: the live task carries the same account the record gets, so
-            // the retry rebuild and `startedForAccount` cannot diverge. An empty
-            // inherited account leaves the task unstamped, which is honest — the
-            // rebuild then logs and falls back deliberately.
+            // the retry rebuild and `startedForAccount` cannot diverge.
             if let task {
                 TaskProvenance.setAccount(inheritedAccount, on: task)
             }
@@ -249,19 +207,11 @@ final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
     /// `keepRecord` is true when the completion left a task still running — today
     /// only the bearer-token hop, which swaps the fulfilment task for a content
     /// task and resumes it. Such a download has not reached a terminal outcome, so
-    /// retiring its record makes a live task invisible to launch reconciliation.
-    /// That was PP-5023's second defect: the record was written by the hop and
-    /// removed roughly 100ms later by the caller's cleanup.
+    /// retiring its record would hide a live task from launch reconciliation
+    /// (PP-5023).
     ///
-    /// Lives here rather than inline in `MyBooksDownloadCenter` because that file
-    /// is frozen by the god-class LOC ratchet, whose instruction is to extract
-    /// into a collaborator rather than grow the hub. The decision belongs beside
-    /// the store it acts on regardless.
-    ///
-    /// NOT the same sequence as `cleanupDownload`, which also resets and removes.
-    /// That one runs on cancel/delete, where no follow-up can be in flight, so it
-    /// needs no `keepRecord` and is deliberately left alone — merging them would
-    /// give the cancel path a parameter it can never use.
+    /// Distinct from `cleanupDownload`, which runs on cancel/delete where no
+    /// follow-up can be in flight.
     func finishTerminalBookkeeping(for bookID: String, keepRecord: Bool) async {
         await resetTransferRetryAttempts(for: bookID)
         guard !keepRecord else { return }
