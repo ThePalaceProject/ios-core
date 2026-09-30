@@ -6,9 +6,12 @@ import PalaceBookModel
 /// Uses a concurrent DispatchQueue with barrier writes for thread safety.
 ///
 /// `@unchecked Sendable` invariant (verified, not waived):
-///   ALL access to the two pieces of mutable state — the `registry`
-///   dictionary and the `processingIdentifiers` set — is funnelled through
-///   `syncQueue`, a *concurrent* queue used as a reader/writer lock:
+///   ALL access to the three pieces of mutable state — the `registry`
+///   dictionary, the `processingIdentifiers` set, and the `announcesChanges`
+///   flag — is funnelled through `syncQueue`, a *concurrent* queue used as a
+///   reader/writer lock. (`announcesChanges` is set and reset inside the single
+///   `performBarrier` block of `mutateRegistry(_:announce:onComplete:)`, and read
+///   by `registry`'s `didSet`, which only runs inside a barrier write.)
 ///     • Every READ (`allBooks`, `heldBooks`, `myBooks`, `record(for:)`,
 ///       `book(for:)`, `state(for:)`, `fulfillmentId(for:)`,
 ///       `processing(for:)`, `readRegistry`, `registrySnapshot`) goes through
@@ -38,6 +41,7 @@ final class BookRegistryStore: @unchecked Sendable {
 
   private var registry = [String: TPPBookRegistryRecord]() {
     didSet {
+      guard announcesChanges else { return }
       let snapshot = registry
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
@@ -46,6 +50,10 @@ final class BookRegistryStore: @unchecked Sendable {
       }
     }
   }
+
+  /// Cleared only for the duration of a `mutateRegistry(_:announce: false)`
+  /// block, which runs inside a barrier, so no other mutation can observe it.
+  private var announcesChanges = true
 
   private var processingIdentifiers = Set<String>()
 
@@ -150,11 +158,21 @@ final class BookRegistryStore: @unchecked Sendable {
     }
   }
 
+  /// - Parameter announce: `false` withholds the `registrySubject` emission and
+  ///   the `TPPBookRegistryDidChange` post for this one mutation. Only for
+  ///   changes no observer renders — a reading position, saved every few seconds
+  ///   of playback (PP-5268). The withheld state is not lost: the next announced
+  ///   mutation publishes a snapshot that includes it.
   func mutateRegistry(
     _ block: @escaping (_ registry: inout [String: TPPBookRegistryRecord]) -> Void,
+    announce: Bool = true,
     onComplete: (() -> Void)? = nil
   ) {
-    performBarrier { block(&self.registry) }
+    performBarrier {
+      self.announcesChanges = announce
+      defer { self.announcesChanges = true }
+      block(&self.registry)
+    }
     if let onComplete = onComplete {
       performBarrier { onComplete() }
     }

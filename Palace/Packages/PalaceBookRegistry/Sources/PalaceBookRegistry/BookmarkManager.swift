@@ -15,21 +15,34 @@ class BookmarkManager {
 
   private let store: BookRegistryStore
   private let save: (String) -> Void
+  /// Persists a change that only moved a reading position. See `setLocation`.
+  private let savePosition: (String) -> Void
   private let saveSync: (String) -> Void
 
-  init(store: BookRegistryStore, save: @escaping (String) -> Void, saveSync: @escaping (String) -> Void) {
+  init(
+    store: BookRegistryStore,
+    save: @escaping (String) -> Void,
+    savePosition: @escaping (String) -> Void,
+    saveSync: @escaping (String) -> Void
+  ) {
     self.store = store
     self.save = save
+    self.savePosition = savePosition
     self.saveSync = saveSync
   }
 
   // MARK: - Location tracking
 
+  /// The periodic position write: audiobooks call it every ~15 seconds of
+  /// playback, and the EPUB and PDF readers as the reader moves. It is
+  /// persisted, but not announced as a shelf change and not copied to the
+  /// last-good backup: every reader of a location pulls it on demand, and
+  /// nothing that observes the shelf renders one (PP-5268).
   func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?) {
     guard !identifier.isEmpty else { return }
     store.mutateRegistry({ registry in
       registry[identifier]?.location = location
-    }, onComplete: { [save] in if let account { save(account) } })
+    }, announce: false, onComplete: { [savePosition] in if let account { savePosition(account) } })
   }
 
   func setLocationSync(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?) {
