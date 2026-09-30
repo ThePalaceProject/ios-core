@@ -2,19 +2,16 @@
 //  AudiobookPlaytimesLifecycleTests.swift
 //  PalaceTests
 //
-//  Round-trip wiring tests for the cross-account scope guard added to
-//  AudiobookDataManager.syncValues() by swarm_162a3219 / Module C (Bug B
-//  per .forgeos/handoffs/2026-06-05-icarus-cross-host-logout-regression.md).
+//  Round-trip wiring tests for the cross-account scope guard in
+//  AudiobookDataManager.syncValues().
 //
-//  CROSS-VENDOR SMOKE RATIONALE — the playtimes upload is downstream of the
+//  One test covers every vendor: the playtimes upload is downstream of the
 //  Palace circulation-manager `/playtimes/...` REST endpoint, NOT the
 //  audiobook vendor adapter chain (Findaway / OverDrive / LCP / open-access).
 //  All vendors share the same `AudiobookDataManager` queue and the same
 //  upload codepath; the scope guard hinges on `LibraryBook.libraryId`, which
 //  is per-library not per-vendor. ONE round-trip test exercises the guard
 //  for every vendor — there is no vendor-specific control flow to permute.
-//  This is documented per `reference_audiobook_toolkit_risk_profile.md` so
-//  the QA reviewer does not block on missing 4-vendor permutations.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -144,9 +141,9 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 
     // MARK: - Test 3: switch back flushes preserved entries (write → reset → re-enter)
 
-    /// SRS: PLAYTIMES-3 — switch-back flushes deferred uploads. The
-    /// CLAUDE.md round-trip wiring rule incarnate: drive enqueue → switch
-    /// away → re-enqueue → switch back → drive seam, prove POST happens.
+    /// SRS: PLAYTIMES-3 — switch-back flushes deferred uploads. Round-trip
+    /// wiring: drive enqueue → switch away → re-enqueue → switch back →
+    /// drive seam, prove POST happens.
     func testPlaytimes_switchBack_flushesPreservedEntries() {
         // (a) library A active, entry A1 enqueued
         let entryA1 = AudiobookTimeEntry(
@@ -296,9 +293,8 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 
     // MARK: - Test 6: queue does not auto-replay foreign uploads
 
-    /// SRS: PLAYTIMES-6 — fast switch-away during sync. The architect
-    /// review (Phase 1a §5) flagged this gap: if `syncValues()` started a
-    /// POST and the user switched mid-flight, the network queue must not
+    /// SRS: PLAYTIMES-6 — fast switch-away during sync. If `syncValues()`
+    /// started a POST and the user switched mid-flight, the network queue must not
     /// resurrect the foreign POST after `cancelNonEssentialTasks()`. We
     /// drive the in-flight scenario by holding the completion handler and
     /// firing the notification before responding.

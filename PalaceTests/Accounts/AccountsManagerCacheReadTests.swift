@@ -2,37 +2,14 @@
 //  AccountsManagerCacheReadTests.swift
 //  PalaceTests
 //
-//  Behavioral tests for the launch-path disk-cache read optimizations in
-//  `AccountsManager` (swarm_27c181b5, module Accounts-Startup):
-//
-//   C1 — `hasCachedCatalogData(hash:)` probes existence with
-//        `FileManager.fileExists` instead of a full `Data(contentsOf:)`, so
-//        the ~2.4MB catalog blob is read off disk exactly once per launch
-//        (by the caller's `readCachedAccountsCatalogData`) rather than twice.
-//        These tests drive the sole production seam onto that path,
-//        `preloadAccountsFromDiskCacheSync()`, and assert the observable
-//        decision surface of `hasCachedCatalogData` (exists+fresh → hydrate;
-//        expired → skip; data-without-metadata → skip). An inverted or broken
-//        `fileExists` gate makes the fresh-cache hydration fail, so these
-//        kill the C1 mutant even though the byte-read *count* is not directly
-//        observable from the test bundle (see read-count note below).
-//
-//   C4 — `loadAccountSetsAndAuthDoc` carries over each old account's
-//        authentication document via a `[uuid: Account]` dictionary built
-//        once, replacing an O(n²) `first(where:)` scan. The carry-over test
-//        assigns a DISTINCT auth doc to every one of the 171 fixture accounts
-//        and asserts each new account receives the exact doc of the old
-//        account with the SAME uuid — a wrong dict lookup would surface as a
-//        mismatched id, so this pins per-uuid correctness across the full set.
-//
-//  Read-count note: `readCachedAccountsCatalogData` reads via
-//  `Data(contentsOf:)` on a `FileManager.default`-derived URL that is not
-//  injectable, and `hasCachedCatalogData` is `private`. Counting byte reads
-//  at runtime would require a production reader seam, which the contract asks
-//  us NOT to add. The single-read property is therefore verified structurally
-//  (the production diff replaces the existence-time `Data(contentsOf:)` with
-//  `FileManager.fileExists`) and behaviorally via the fileExists-gated
-//  hydration below — not via a runtime byte-read spy.
+//  Launch-path disk-cache reads in `AccountsManager`:
+//   C1 — `hasCachedCatalogData(hash:)` probes with `FileManager.fileExists`, so
+//        the ~2.4MB catalog blob is read once per launch. Driven through
+//        `preloadAccountsFromDiskCacheSync()` (exists+fresh → hydrate; expired
+//        or missing metadata → skip). The byte-read count itself is not
+//        observable without a production reader seam, so it is not asserted.
+//   C4 — `loadAccountSetsAndAuthDoc` carries each old account's auth doc over
+//        by uuid; every one of the 171 fixture accounts gets a distinct doc.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -88,7 +65,7 @@ final class AccountsManagerCacheReadTests: PalaceWiringTestCase {
 
     /// exists + fresh metadata → the fileExists-gated preload reads the blob
     /// once and hydrates every seeded account. Inverting/breaking the
-    /// `fileExists` gate makes this hydration fail — the C1 mutant is killed.
+    /// `fileExists` gate makes this hydration fail.
     func testPreload_readsRegistryCacheOnce_hydratesEverySeededAccount() throws {
         let hash: String = accountSetHash
         let expectedCount = try feedAccountCount()
@@ -106,7 +83,6 @@ final class AccountsManagerCacheReadTests: PalaceWiringTestCase {
 
     /// exists but EXPIRED metadata (>24h) → `hasCachedCatalogData` returns
     /// false via `!metadata.isExpired`, so preload skips hydration entirely.
-    /// Kills the `!metadata.isExpired` mutant.
     func testPreload_expiredMetadata_doesNotHydrate() throws {
         let hash: String = accountSetHash
         seedDiskCache(hash: hash, data: feedData, metadataAge: 90_000) // 25h old → expired
@@ -122,7 +98,6 @@ final class AccountsManagerCacheReadTests: PalaceWiringTestCase {
 
     /// data file present but NO metadata file → `hasCachedCatalogData`
     /// returns false on the missing-metadata branch, so preload skips.
-    /// Kills the missing-metadata branch mutant.
     func testPreload_dataPresentButNoMetadata_doesNotHydrate() throws {
         let hash: String = accountSetHash
         // Seed ONLY the data blob; deliberately omit the metadata file.

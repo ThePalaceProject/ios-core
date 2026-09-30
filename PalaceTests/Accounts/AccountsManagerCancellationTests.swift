@@ -7,27 +7,11 @@
 //  to tell the prior cached AccountsManager's background `loadCatalogs`
 //  Task to bail before a fresh graph is constructed.
 //
-//  Verifies the four contract invariants:
-//   1. Calling `cancelBackgroundWork()` flows cancellation through to the
-//      stored `backgroundFetchTask` (the explicit-cancel flag flips AND the
-//      handle is nilled — checked independently so a mutation that drops
-//      ONE of the two effects still fails its dedicated assertion).
-//   2. It's idempotent — repeated calls are safe and don't mutate
-//      persistent state (verified by re-reading a seeded bucket post-cancel
-//      and asserting equality with the pre-cancel snapshot).
-//   3. Calling it on a manager constructed with `deferInitialLoadCatalogsForTesting=true`
-//      (which never allocated a task) does NOT crash and behaves as a no-op
-//      on the task side (the same persisted-state-equality assertion runs).
-//   4. The post-resume cooperative-cancel guard at `fetchFromNetwork`
-//      line 651 (`if Task.isCancelled { return }`) blocks the commit when
-//      the task is cancelled mid-await. Exercised via a controlled Task
-//      injected through `_injectBackgroundFetchTaskForTesting` so the test
-//      drives the suspend-cancel-resume sequence deterministically.
-//
-//  swarm_4b64e4e0 Fix 2 — closes the H1 finding from swarm_f88ae9e3 A.
-//  swarm_4b64e4e0 qa-fixup — addresses qa_test BLOCK on tautology assertions
-//                            + missing race-guard test + conflated observation
-//                            surface.
+//  Invariants: cancellation reaches the stored `backgroundFetchTask` (flag
+//  flips AND handle is nilled, asserted separately); repeated calls are
+//  idempotent and leave persisted state unchanged; the opt-out instance is a
+//  no-op; and the post-resume `Task.isCancelled` guard in `fetchFromNetwork`
+//  blocks the commit when cancelled mid-await.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -174,8 +158,7 @@ class AccountsManagerCancellationTests: PalaceWiringTestCase {
     /// Cancel on a NON-opt-out AccountsManager (one that DID spawn a
     /// background task at init) must cancel the task AND nil out the handle.
     ///
-    /// This is the structural cancellation contract — kill case for THREE
-    /// independent mutations:
+    /// This is the structural cancellation contract; it catches any of:
     ///   - removing `_explicitCancelCalled = true` from `cancelBackgroundWork()`
     ///   - removing `backgroundFetchTask?.cancel()` from `cancelBackgroundWork()`
     ///   - removing `backgroundFetchTask = nil` from `cancelBackgroundWork()`
@@ -199,11 +182,10 @@ class AccountsManagerCancellationTests: PalaceWiringTestCase {
         // The injection seam (`_injectBackgroundFetchTaskForTesting`) is the
         // documented test pin for exercising the live-task cancel path
         // without paying the cost of a real `loadCatalogs()` round-trip or
-        // leaking a real network task across test boundaries. swarm_47883816
-        // Module B switched away from a flag=false helper because that
-        // helper's flag-flip mutation survived testCaseDidFinish observation
-        // (AppContainer._resetForTesting resets the flag to false), polluting
-        // the next test's `makeFreshAccountsManager()` initialization path.
+        // leaking a real network task across test boundaries. A flag=false
+        // helper is not used because AppContainer._resetForTesting resets
+        // the flag, polluting the next test's `makeFreshAccountsManager()`
+        // initialization path.
         let manager = makeFreshAccountsManager()
 
         // Spawn a long-running task that suspends indefinitely so the cancel

@@ -2,35 +2,16 @@
 //  CredentialSnapshotInvalidationTests.swift
 //  PalaceTests
 //
-//  CP-D2 (swarm_27c181b5 Wave C). Locks the behavioural contract after
-//  removing per-read keychain invalidation from
-//  `TPPUserAccount.credentialSnapshot()`:
+//  `TPPUserAccount.credentialSnapshot()` no longer drops the keychain cache per
+//  read; it relies on the write-through keychain cache plus one cached
+//  `TPPUserAccount` per library UUID. Coherence at the out-of-band boundaries
+//  comes from event-driven invalidation: sign-out (`removeAll()`) and account
+//  switch (`AccountsManager.currentAccount.didSet`).
 //
-//    - credentialSnapshot() no longer drops the keychain cache on every
-//      request build. It relies on the WRITE-THROUGH keychain cache
-//      (`TPPKeychainVariable.write()` sets cachedValue AND persists) plus the
-//      one-instance-per-library invariant (`AccountsManager.userAccount(for:)`
-//      caches exactly one `TPPUserAccount` per UUID), so the instance that
-//      writes credentials is the instance every reader reads.
-//    - Coherence at the two out-of-band boundaries is preserved by
-//      EVENT-DRIVEN invalidation instead: sign-out finalisation
-//      (`removeAll()`) and account switch
-//      (`AccountsManager.currentAccount.didSet`).
-//
-//  Isolation posture (integration finding, swarm_27c181b5 Wave C): every test
-//  here drives an ISOLATED fresh `AccountsManager` (via `makeFreshAccountsManager`
-//  + `makeTestAppContainer`) or bare peer `TPPUserAccount` instances — NEVER the
-//  shared production singleton. An earlier revision drove the real
-//  `AccountDetailViewModel` / `currentUserAccount` seam against
-//  `AppContainer.production().accountsManager`; the view-model's init kicks off
-//  an auth-document fetch that left an in-flight `.detailsLoading` transition on
-//  the shared manager, which poisoned the single-flight `.detailsLoading` count
-//  in `AccountsManagerStateMachineWiringTests` when these classes ran first.
-//  Isolating onto a fresh manager (mirroring the account-switch test's
-//  discipline) keeps the SAME real seams (real AccountDetailViewModel, real
-//  credentialSnapshot, real currentUserAccount) while making cross-class bleed
-//  structurally impossible. The tearDown also defensively drains + resets shared
-//  state as belt-and-suspenders.
+//  Every test drives an isolated fresh `AccountsManager` rather than
+//  `AppContainer.production().accountsManager`: the view model's init starts an
+//  auth-document fetch that would otherwise leak `.detailsLoading` onto the
+//  shared manager and pollute `AccountsManagerStateMachineWiringTests`.
 //
 
 import XCTest
@@ -94,7 +75,7 @@ final class CredentialSnapshotInvalidationTests: PalaceWiringTestCase {
 
     // MARK: - 1. Sign-out staleness through the real AccountDetailViewModel surface
 
-    /// Phase 1a amendment #1: sign-out staleness must be proven through the REAL
+    /// Sign-out staleness must be proven through the REAL
     /// build-459 surface — `AccountDetailViewModel` — not two bare TPPUserAccount
     /// instances. A signed-in snapshot must go stale→fresh across sign-out and
     /// must NEVER read "signed in" after sign-out completes. Per-read
@@ -259,7 +240,7 @@ final class CredentialSnapshotInvalidationTests: PalaceWiringTestCase {
 
     // MARK: - 2. Account-switch invalidation through the real currentAccount setter
 
-    /// Phase 1a amendment #2: switching the current library must invalidate the
+    /// Switching the current library must invalidate the
     /// newly-current account's credential cache through the REAL
     /// `AccountsManager.currentAccount` setter — not a shortcut. We prime the new
     /// account's cached instance as signed-out, then write credentials out of

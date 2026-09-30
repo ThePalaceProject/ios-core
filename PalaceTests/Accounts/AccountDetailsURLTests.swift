@@ -28,8 +28,8 @@ final class AccountDetailsURLTests: XCTestCase {
     // the task-isolated `self` into any @MainActor access (Swift 6 data race).
     override func setUp() async throws {
         try await super.setUp()
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults instead
-        // of mutating `.standard`. Every `AccountDetails` constructed in
+        // Per-test isolated UserDefaults instead of mutating `.standard`.
+        // Every `AccountDetails` constructed in
         // this file shares the same per-test suite so persistence reads
         // (eulaIsAccepted, syncPermissionGranted, urlEULA dict, etc.)
         // observe the same store, and the suite is dropped by

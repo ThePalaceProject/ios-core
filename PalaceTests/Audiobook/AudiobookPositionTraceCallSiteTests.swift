@@ -353,7 +353,7 @@ final class UserDefaultsLastLivePositionMarkerStoreTests: XCTestCase {
 
     /// The store's default gate reads the switch, in the store's OWN domain.
     ///
-    /// Three mutations die here: the default closure returning a constant, the
+    /// Catches three regressions: the default closure returning a constant, the
     /// closure reading `DebugSettings()` instead of `DebugSettings(defaults:)`,
     /// and the captured `gateDefaults` being repointed at `.standard` — all
     /// three leave the scoped domain empty.

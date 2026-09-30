@@ -39,7 +39,7 @@
 //       — protects against the "rapid open" race in F-003 from being
 //       compounded by upstream classification flapping.
 //
-//  Documenting the gap up-front per CLAUDE.md: a proper test for the
+//  Known gap: a proper test for the
 //  FAE semaphore-dispose race requires an AudioEnginePlayerWrapping
 //  protocol extracted around `FAEAudioEngine.shared()` so a fake
 //  engine can be substituted at session boundaries. This file is
@@ -277,7 +277,7 @@ final class AudioEngineWrapperTests: XCTestCase {
     /// the chapter-status cache faulting.
     ///
     /// EXPLICIT TOOLKIT-LIMITATION FINDING (2026-05-14):
-    /// During dogfood of this test, an even smaller fixture (readingOrder=[])
+    /// An even smaller fixture (readingOrder=[])
     /// triggered a Swift stdlib `Range requires lowerBound <= upperBound`
     /// fatal inside the toolkit's audiobook construction. That is a real
     /// toolkit-side trap on the empty-TOC path and is logged here as a

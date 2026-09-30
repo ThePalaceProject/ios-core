@@ -2,9 +2,8 @@
 //  AudiobookLoaderDispatchTests.swift
 //  PalaceTests
 //
-//  Dispatch tests for the AudiobookLoader adapter chain. Module D of
-//  swarm_5c8ddbd5 (Audiobook Vendor Adapter Extraction) rewrote the loader's
-//  source-shape dispatch from two implicit branches inside
+//  Dispatch tests for the AudiobookLoader adapter chain. The vendor adapter
+//  extraction rewrote the loader's source-shape dispatch from two implicit branches inside
 //  `resolveManifestAndDecryptor` + `fetchOpenAccessManifest` into a single
 //  linear chain:
 //
@@ -13,7 +12,7 @@
 //  These tests inject a custom adapter chain (via `AudiobookLoader(adapters:)`)
 //  and assert the loader dispatches to the right adapter for each shape:
 //  LCP > LocalFile > BearerToken > OpenAccess. If no adapter claims, the
-//  loader surfaces `.manifestFetchFailed` (preserving the pre-swarm
+//  loader surfaces `.manifestFetchFailed` (preserving the original
 //  "no default acquisition URL" failure mode).
 //
 //  The `load(book:completion:)` public API is FROZEN — these tests gate the

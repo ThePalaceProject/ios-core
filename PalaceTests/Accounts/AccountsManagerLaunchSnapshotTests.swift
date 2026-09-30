@@ -16,7 +16,7 @@
 //    2. Picker-full-count — `accounts()` reaches the FULL fixture count, not
 //       the slim count, once the full list materializes via the production
 //       seam (so `accountsHaveLoaded` still reflects the full list — the
-//       library-picker truncation guard from Phase 1a correction #2).
+//       library-picker truncation guard).
 //    3. Round-trip through the production seam (slim preload → library
 //       reselect away → back → re-drive), NOT `_setState` shortcuts.
 //    4. Consumer smoke — the readiness gate is DRIVEN (not left hanging) for
@@ -207,7 +207,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
 
     // MARK: - 2. Picker-full-count
 
-    /// Contract (Phase 1a correction #2): after the full list materializes via
+    /// Contract: after the full list materializes via
     /// the production seam, `accounts()` reaches the FULL fixture count and
     /// `accountsHaveLoaded` is true — the library picker sees every account, not
     /// the ~2-account slim set. The kill case is a design where the slim set
@@ -254,7 +254,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
 
     // MARK: - 3. Round-trip through the production seam
 
-    /// Contract (CLAUDE.md state-machine round-trip rule): a slim-hydrated
+    /// Contract: a slim-hydrated
     /// current account survives a full library-reselect cycle driven entirely
     /// through production seams — slim preload (WRITE) → switch A→B (setter
     /// evicts A, RESET) → switch B→A (setter re-drives A, RE-ENTER). A must move
@@ -352,7 +352,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
 
     // MARK: - 4. Consumer smoke — readiness gate is driven, not hanging
 
-    /// Contract (CLAUDE.md consumer-smoke rule): the `Account.awaitReady()`
+    /// Contract: the `Account.awaitReady()`
     /// readiness gate — consumed by audiobook open, token refresh, bookmark
     /// sync, CarPlay auth — must be DRIVEN (reach `.detailsLoading` and on to a
     /// terminal) for the current account after cold launch AND after a library
@@ -483,7 +483,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
 
     // MARK: - Finding 4: slim→full instance reuse (no auth-doc split-brain)
 
-    /// Contract (architect Finding 4): `details`/`authenticationDocument` are
+    /// Contract: `details`/`authenticationDocument` are
     /// per-INSTANCE properties, and the slim current-account drive fetches the
     /// auth-doc onto the SLIM instance. When the full list materializes, the
     /// current account must remain the SAME instance the fetch targets — else an
@@ -546,7 +546,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
 
     // MARK: - Finding 5: stale slim snapshot lacking the current account
 
-    /// Contract (architect Finding 5): the slim snapshot is written from the
+    /// Contract: the slim snapshot is written from the
     /// then-current account and is NOT rewritten on a mid-session switch, so a
     /// stale slim file can lack the now-current account. `preloadAccountsFromDiskCacheSync`
     /// must NOT take the slim fast path with a set that can't resolve

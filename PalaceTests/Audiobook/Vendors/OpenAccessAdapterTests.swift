@@ -2,14 +2,13 @@
 //  OpenAccessAdapterTests.swift
 //  PalaceTests
 //
-//  Mutation-killing tests for `OpenAccessAdapter` — the open-access
-//  network-fetch carve-out from pre-swarm `AudiobookLoader.swift` lines
-//  346-396 (minus the bearer-token branch, which lives in
-//  `BearerTokenAdapter`).
+//  Branch tests for `OpenAccessAdapter` — the open-access network fetch
+//  carved out of the original `AudiobookLoader.swift` (minus the
+//  bearer-token branch, which lives in `BearerTokenAdapter`).
 //
-//  Every test drives a single decision point through both branches so the
-//  mutation engine cannot flip a conditional without killing at least one
-//  test. The network collaborator is a constructor-injected stub — zero
+//  Every test drives a single decision point through both branches so a
+//  flipped conditional fails at least one test. The network collaborator
+//  is a constructor-injected stub — zero
 //  real network, zero AppContainer.production() reads.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
@@ -73,9 +72,9 @@ final class OpenAccessAdapterTests: XCTestCase {
     // MARK: - canHandle
 
     /// OpenAccess is the fallback adapter — it MUST accept any book the
-    /// chain hands it. Mutation point: flipping `return true` to `return
-    /// false` would break the loader's fallback path. This test fails the
-    /// mutant by asserting true on a non-LCP, non-local OPDS book.
+    /// chain hands it. Flipping `return true` to `return false` would break
+    /// the loader's fallback path, so this asserts true on a non-LCP,
+    /// non-local OPDS book.
     func testCanHandle_anyOPDSBook_returnsTrueAsFallback() {
         let network = StubNetwork()
         let adapter = OpenAccessAdapter(network: network)
@@ -260,7 +259,7 @@ final class OpenAccessAdapterTests: XCTestCase {
     /// `BearerTokenMIMEGate` does not claim it) must be followed to the real
     /// manifest at the token's `location` — NOT returned verbatim as if the
     /// wrapper were the manifest (which fails decode → "error opening this
-    /// book"). Kills the mutant that drops the bearer-detection branch.
+    /// book"). Catches a dropped bearer-detection branch.
     func testResolveManifest_bearerWrapperWithFetcher_followsSecondLegToRealManifest() {
         let network = StubNetwork()
         let book = makeBook()
@@ -352,8 +351,7 @@ final class OpenAccessAdapterTests: XCTestCase {
 
     /// A plain (non-wrapper) manifest with a fetcher present must still be
     /// returned directly — the bearer branch must not swallow normal
-    /// open-access manifests. Kills the mutant that always takes the bearer
-    /// path regardless of body shape.
+    /// open-access manifests, regardless of body shape.
     func testResolveManifest_plainManifestWithFetcher_returnsDirectlyWithoutSecondLeg() {
         let network = StubNetwork()
         let book = makeBook()

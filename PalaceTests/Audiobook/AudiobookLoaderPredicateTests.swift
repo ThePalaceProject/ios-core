@@ -7,8 +7,8 @@
 //
 //    1. `hasRefreshableCredentials(username:pin:tokenURL:)` — gates the
 //       token refresh path on line 109's `tokenURL != nil` clause. Without
-//       a focused test, that mutation point survives every behavioural
-//       test in the loader bundle (the surrounding code path needs
+//       a focused test, a flip of that clause goes unnoticed by every
+//       behavioural test in the loader bundle (the surrounding code path needs
 //       AppContainer.production() + the network, which isolated unit tests
 //       refuse to touch).
 //    2. `looksLikeHTMLResponse(_:)` — gates the diagnostic-logging branch
@@ -33,10 +33,8 @@ final class AudiobookLoaderPredicateTests: XCTestCase {
 
     private let validTokenURL = URL(string: "https://library.test/token")!
 
-    /// All three components present — the loader's happy path. This is the
-    /// case the mutation on line 109 (`tokenURL != nil` → `== nil`) flips:
-    /// original returns `true`, mutant returns `false`. The assertion
-    /// `XCTAssertTrue` fails the mutant.
+    /// All three components present — the loader's happy path. Catches the
+    /// `tokenURL != nil` → `== nil` flip, which would return `false` here.
     func testHasRefreshableCredentials_allPresent_returnsTrue() {
         XCTAssertTrue(
             AudiobookLoader.hasRefreshableCredentials(
@@ -128,9 +126,7 @@ final class AudiobookLoaderPredicateTests: XCTestCase {
     /// arrives in. The diagnostic-log branch must fire so the message
     /// "Server returned HTML instead of JSON" surfaces in the logs.
     ///
-    /// This is the kill point for the line 372 mutation (`== true` → `!= true`):
-    /// original returns `true`, mutant returns `false`. `XCTAssertTrue` fails
-    /// the mutant.
+    /// Catches the `== true` → `!= true` flip, which would return `false` here.
     func testLooksLikeHTMLResponse_textHTML_returnsTrue() {
         XCTAssertTrue(
             AudiobookLoader.looksLikeHTMLResponse(htmlResponse(contentType: "text/html")),

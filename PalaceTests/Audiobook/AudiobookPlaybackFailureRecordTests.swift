@@ -636,10 +636,10 @@ final class AudiobookContentSourceTests: XCTestCase {
 /// fixed domain/code with no cause. These pin the metadata the session manager
 /// now hands it: which loader step failed, the error that step carried, and the
 /// content source.
-/// Covers the conjunction that a surviving mutant exposed: with `&&` changed to
-/// `||`, every LCP book reported `.lcpLocal` and the streamed/local split — the
-/// most valuable distinction in this field, with streaming at 100% in
-/// production — silently disappeared, and the whole suite stayed green. The
+/// Covers the conjunction: with `&&` changed to `||`, every LCP book would
+/// report `.lcpLocal` and the streamed/local split — the most valuable
+/// distinction in this field, with streaming at 100% in production — would
+/// disappear. The
 /// file-exists side is injected here because the production one reads
 /// `AppContainer.production()` and cannot be driven from a unit test.
 @MainActor

@@ -2,7 +2,7 @@
 //  AudiobookSessionManagerPresenterMigrationTests.swift
 //  PalaceTests
 //
-//  Module C (swarm_0b7616e7) — pins the migration of
+//  Pins the migration of
 //  `AudiobookSessionManager` off `coordinator.pushAudioRoute(...)` /
 //  `coordinator.storeAudioModel(...)` / `coordinator.removeAudioModel(...)`
 //  / `coordinator.popToRoot()` onto the new root-level
@@ -11,8 +11,7 @@
 //  `AudiobookSessionManagerShutdownTests` — those continue to pass
 //  unchanged. This file ADDS the presenter-migration coverage.
 //
-//  Two spy strategies are used per the contract's A1 finding (Module C
-//  contract §"Spy strategy"):
+//  Two spy strategies are used:
 //
 //    Path 1 — `SpyAudiobookSessionPresenter` via the manager's
 //    `audiobookSessionPresenterProvider` closure (the manager's own DI
@@ -255,7 +254,7 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
 
     // MARK: - Nil-book dismiss branch (PR #1230 "✕ did nothing" fix)
 
-    /// BLOCKER coverage (qa_test SoD review of PR #1230): `stopPlayback` with
+    /// PR #1230: `stopPlayback` with
     /// `dismissPhoneUI: true` and NO bound book (`currentBook == nil`) must
     /// STILL clear the presenter on the flag-ON path. This is the exact
     /// regression the fix addressed — gating the whole dismiss behind

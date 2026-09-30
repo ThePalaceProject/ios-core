@@ -5,10 +5,8 @@
 //  Contract tests for the Account.LoadState state machine + awaitReady()
 //  readiness gate. See docs/architecture/account-state-machine.md.
 //
-//  These tests pin the API contract before the 3.2.0 swarm wires the
-//  state machine into AccountsManager.loadCatalogs and migrates ~60
-//  call sites. Each test maps to a specific failure mode the contract
-//  is designed to prevent.
+//  Each test maps to a specific failure mode the contract is designed
+//  to prevent.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -63,7 +61,7 @@ final class AccountStateMachineTests: XCTestCase {
     // MARK: - Initial state
 
     /// Default state for a UUID the state machine has never seen is
-    /// `.notLoaded`. Phase 1 wiring drives every account that flows
+    /// `.notLoaded`. The 3.2.0 wiring drives every account that flows
     /// through `AccountsManager.preloadAccountsFromDiskCacheSync` to
     /// `.basicInfoLoaded`, so the original "first production account
     /// reads .notLoaded" assertion no longer holds — that path is now
@@ -375,7 +373,7 @@ final class AccountStateMachineTests: XCTestCase {
 
     // MARK: - Semantics tests for the .detailsEvicted / .accountNotFound split (PR #1021)
 
-    /// PR #1021 (Module A, swarm_51f248d5) split the dual-meaning
+    /// PR #1021 split the dual-meaning
     /// `.detailsFailed(.accountNotFound)` terminal into two distinct cases.
     /// This test PINS the original semantics: `.detailsFailed(.accountNotFound)`
     /// now means LITERALLY "the load pipeline produced an HTTP 404 /
@@ -407,7 +405,7 @@ final class AccountStateMachineTests: XCTestCase {
         }
     }
 
-    /// PR #1021 (Module A, swarm_51f248d5) added the eviction-marker case.
+    /// PR #1021 added the eviction-marker case.
     /// This test PINS the new semantics: `.detailsEvicted(.libraryDeselected)`
     /// means the user switched libraries away from this account — NOT a
     /// load failure. `awaitReady()` callers throw the NEW

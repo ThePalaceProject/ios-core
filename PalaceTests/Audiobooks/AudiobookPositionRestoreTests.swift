@@ -4,9 +4,8 @@
 //
 //  F-007 / PP-4542 — position-validation + candidate-selection coverage for
 //  AudiobookSessionManager. PR #1028 introduced the stale-position-on-reborrow
-//  hardening (validationFailure / fallback-to-most-recent-bookmark). The
-//  changed lines shipped with a 0% mutation kill rate; these tests pin the
-//  real decisions through the production seams (`validationFailure(for:in:)`,
+//  hardening (validationFailure / fallback-to-most-recent-bookmark). These
+//  tests pin the real decisions through the production seams (`validationFailure(for:in:)`,
 //  `isValidPosition`, `selectMostRecentValidBookmark`, `isUserAuthenticated`)
 //  with constructed TOC + registry + account fixtures — no live Audiobook /
 //  player graph, so the audiobook toolkit's fragility does not leak in.
@@ -105,9 +104,9 @@ final class AudiobookPositionRestoreTests: XCTestCase {
 
     /// A position whose track key IS in the manifest passes the track-key
     /// gate (the only remaining gate for an otherwise-valid position), so
-    /// `validationFailure` returns nil. Pins the `!= nil` predicate: a
-    /// mutation to `== nil` (mutant for line ~1311) would report a spurious
-    /// `.trackKeyNotInManifest` for a key that IS present and fail here.
+    /// `validationFailure` returns nil. Pins the `!= nil` predicate: flipping
+    /// it to `== nil` would report a spurious `.trackKeyNotInManifest` for a
+    /// key that IS present and fail here.
     func testValidationFailure_trackKeyInManifest_returnsNil() {
         let position = TrackPosition(track: tracks.tracks[0], timestamp: 100, tracks: tracks)
         XCTAssertNil(sut.positionResolver.validationFailure(for: position, in: toc),
@@ -116,8 +115,8 @@ final class AudiobookPositionRestoreTests: XCTestCase {
 
     /// A position whose track key is NOT in the manifest must fail with
     /// `.trackKeyNotInManifest`. This is the inverse of the test above and
-    /// is what kills the `!= nil` → `== nil` mutant: under the mutant, an
-    /// absent key would be treated as "matches" and this assertion flips.
+    /// catches the `!= nil` → `== nil` flip: with it, an absent key would be
+    /// treated as "matches" and this assertion fails.
     func testValidationFailure_trackKeyNotInManifest_returnsTrackKeyFailure() throws {
         let foreign = try makeForeignKeyedTrack()
         let position = TrackPosition(track: foreign, timestamp: 100, tracks: tracks)
@@ -132,8 +131,8 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     // MARK: - isValidPosition (line ~1343)
 
     /// `isValidPosition` returns true exactly when `validationFailure == nil`.
-    /// Valid position → true. Kills the `== nil` → `!= nil` mutant at line
-    /// ~1343 (under the mutant a valid position would report invalid).
+    /// Valid position → true. Catches the `== nil` → `!= nil` flip (a valid
+    /// position would report invalid).
     func testIsValidPosition_validPosition_returnsTrue() {
         let position = TrackPosition(track: tracks.tracks[1], timestamp: 50, tracks: tracks)
         XCTAssertTrue(sut.positionResolver.isValidPosition(position, in: toc),
@@ -141,8 +140,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     }
 
     /// Invalid position (negative timestamp) → false. The companion to the
-    /// test above: the pair pins both sides of the `== nil` predicate so the
-    /// inversion mutant cannot survive.
+    /// test above: the pair pins both sides of the `== nil` predicate.
     func testIsValidPosition_negativeTimestamp_returnsFalse() {
         let position = TrackPosition(track: tracks.tracks[0], timestamp: -5, tracks: tracks)
         XCTAssertFalse(sut.positionResolver.isValidPosition(position, in: toc),
@@ -163,7 +161,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     /// ISO8601 `lastSavedTimeStamp`s. The selection must return the
     /// most-recent one (track index 2, the newest stamp).
     ///
-    /// This kills BOTH sort mutants on `candidates.sorted { $0.1 > $1.1 }`:
+    /// Catches both sort regressions on `candidates.sorted { $0.1 > $1.1 }`:
     ///   - `>` → `<` (reverse sort) would return the OLDEST bookmark
     ///     (track 0) — assertion on track index 2 fails.
     ///   - `>` → `>=` (tie-break flip) is covered by the distinct-stamp
@@ -206,8 +204,8 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     /// (`.positionExceedsCap`), so the filter must drop it and the older VALID
     /// bookmark is selected.
     ///
-    /// Kills the `== nil` → `!= nil` mutant on the in-filter
-    /// `validationFailure(...) == nil`: under the mutant the filter inverts —
+    /// Catches the `== nil` → `!= nil` flip on the in-filter
+    /// `validationFailure(...) == nil`: the filter would invert —
     /// it KEEPS the cap-exceeding candidate and DROPS the valid one — so the
     /// newest-but-invalid bookmark would be selected and this assertion flips.
     func testSelectMostRecentValidBookmark_dropsCapExceedingCandidate_keepsValidOlder() {
@@ -261,27 +259,17 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     // These drive `offlineAuthFallback` directly rather than through a fixture.
     // `isUserAuthenticated()` returns false at its FIRST guard unless
     // `currentAccount` resolves, and that getter goes through the registry store,
-    // which this target cannot populate — `accounts()` stays empty even after
-    // `preloadAccountsFromDiskCacheSync()`.
-    //
-    // That is not a detail: it is how the test these replaced passed. It was named
-    // `testIsUserAuthenticated_authDocLoadFailed_returnsFalse` and its comment
-    // claimed to pin the `catch { return false }` branch against a
-    // `return false -> return true` mutant. It never reached that branch. It
-    // asserted false and got it from the nil-account guard, and would have passed
-    // with the whole catch deleted. Rebuilding it on the same fixture reproduced
-    // the same emptiness, which is what sent the decision into a pure function.
+    // which a plain fixture does not populate — `accounts()` stays empty even
+    // after `preloadAccountsFromDiskCacheSync()`.
+    // A fixture-based test would return false from the nil-account guard and
+    // never reach the `catch` branch, so it could not detect a deleted catch.
 
-    // WIRING tests. An earlier revision of this change asserted that no test in
-    // this target could populate `currentAccount`, and recorded that as an
-    // anti-claim. THAT WAS WRONG. `AccountsManager._seedAccountForTesting`
-    // exists, nine suites use it, and
-    // `PalaceTests/Accounts/CredentialSnapshotInvalidationTests` already seeds an
-    // account, parks a terminal state and sets per-uuid credentials. Three
-    // fixture attempts failed and I generalised from that to impossibility
-    // instead of looking for the seam. These cover the catch -> fallback path
-    // that the pure tests below cannot reach, and it is the path the round-2
-    // uuid-scoping bug lived on.
+    // WIRING tests. These seed `currentAccount` via
+    // `AccountsManager._seedAccountForTesting` (as
+    // `PalaceTests/Accounts/CredentialSnapshotInvalidationTests` does), park a
+    // terminal state and set per-uuid credentials. They cover the
+    // catch -> fallback path the pure tests below cannot reach, which is where
+    // the uuid-scoping bug lived.
     //
     // `awaitReady()` resolves a terminal state on its FAST PATH, so parking
     // `.detailsFailed` makes the catch reachable synchronously, with no network.
@@ -513,7 +501,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
 
     func testPreferRemote_remoteNewerByExactly5s_keepsLocal() {
         // Boundary: rule is strict `> 5.0`, so exactly 5s does NOT prefer remote.
-        // Kills a `>` → `>=` mutation of the threshold comparison.
+        // Catches a `>` → `>=` change to the threshold comparison.
         let local = makePosition(savedAt: "2026-01-01T00:00:00Z")
         let remote = makePosition(savedAt: "2026-01-01T00:00:05Z") // +5s exactly
         XCTAssertFalse(AudiobookPositionResolver.preferRemotePosition(local: local, remote: remote))
@@ -526,7 +514,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     }
 
     func testPreferRemote_remoteOlderThanLocal_keepsLocal() {
-        // Negative delta → never prefer remote (kills an `abs()`/sign mutation).
+        // Negative delta → never prefer remote (catches an `abs()`/sign error).
         let local = makePosition(savedAt: "2026-01-01T00:00:10Z")
         let remote = makePosition(savedAt: "2026-01-01T00:00:00Z") // -10s
         XCTAssertFalse(AudiobookPositionResolver.preferRemotePosition(local: local, remote: remote))
@@ -562,8 +550,8 @@ final class AudiobookPositionRestoreTests: XCTestCase {
 
     func testValidatedRemotePosition_remoteKeyInManifest_returnsRemote() {
         // An in-manifest remote position validates → it is honored verbatim,
-        // NOT replaced by the fallback. Kills a mutant that always returns the
-        // fallback (which would defeat cross-device resume entirely).
+        // NOT replaced by the fallback. Always returning the fallback would
+        // defeat cross-device resume entirely.
         let validRemote = TrackPosition(track: tracks.tracks[2], timestamp: 30, tracks: tracks)
         let fallback = TrackPosition(track: tracks.tracks[0], timestamp: 0, tracks: tracks)
 

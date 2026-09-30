@@ -2,14 +2,14 @@
 //  CarPlayAuthHelperReadinessTests.swift
 //  PalaceTests
 //
-//  Readiness contract for `CarPlayAuthHelper.isAuthenticated`
-//  (swarm_81b5099e Bucket A). Pre-Phase-1 the helper returned `true` for
+//  Readiness contract for `CarPlayAuthHelper.isAuthenticated`.
+//  Previously the helper returned `true` for
 //  any account whose `details` was still nil during the cold-launch
 //  window (`treating unloaded details as no-auth-required`), letting
 //  CarPlay try to start playback against a library that DID require
 //  auth — failing later with a bare 401 on the fulfillment URL.
 //
-//  Post-Phase-1 the helper is `async` and blocks on awaitReady. On
+//  Now the helper is `async` and blocks on awaitReady. On
 //  failure it returns `false` (treat as unauthenticated → CarPlay shows
 //  its existing auth-required alert).
 //
@@ -78,7 +78,7 @@ final class CarPlayAuthHelperReadinessTests: XCTestCase {
 
     /// Contract: under `.detailsFailed`, the gate throws — and the
     /// migrated `CarPlayAuthHelper.isAuthenticated` catches that and
-    /// returns `false` (unauthenticated). Pre-Phase-1 it would have
+    /// returns `false` (unauthenticated). Before the fix, it would have
     /// returned `true` because the .details branch had nil details and
     /// the helper fell through to the no-auth-required default.
     func testReadiness_underDetailsFailed_gateThrows() async {

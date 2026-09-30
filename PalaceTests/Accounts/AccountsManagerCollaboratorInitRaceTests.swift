@@ -134,8 +134,8 @@ final class AccountsManagerCollaboratorInitRaceTests: PalaceWiringTestCase {
     /// where nothing else forces construction. If it passed with the preload enabled
     /// it would be asserting the preload, not the fix.
     func testInit_forcesRegistryLoaderBeforeTheObserverCanReachIt() {
-        // BOTH forcing paths must be off or this arm is vacuous. A reviewer found
-        // the second one: `init` also calls `registryLoader.spawnInitialBackgroundLoad()`
+        // BOTH forcing paths must be off or this arm is vacuous:
+        // `init` also calls `registryLoader.spawnInitialBackgroundLoad()`
         // (AccountsManager.swift:466) whenever `deferInitialLoadCatalogsForTesting` is
         // false. Asserting only the preload flag left the arm depending on a separate
         // flip in PalaceWiringTestCase.setUpWithError, which a future edit could remove

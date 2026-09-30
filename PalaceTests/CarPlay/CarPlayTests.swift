@@ -23,8 +23,8 @@ class CarPlayTests: XCTestCase {
 
     func testAudiobookSessionManager_Initialization() {
         // Arrange & Act
-        // Module B: replaced Palace.AudiobookSessionManager.shared with locally-constructed
-        // instance via AppContainer. Module D will idiomize.
+        // A locally-constructed instance via AppContainer rather than
+        // Palace.AudiobookSessionManager.shared.
         let sessionManager = Palace.AudiobookSessionManager(appContainer: makeTestAppContainer())
 
         // Assert - session manager starts with no active book
@@ -663,7 +663,7 @@ class CarPlayPlaybackErrorTests: XCTestCase {
 
 // MARK: - CarPlayAudiobookBridgePresenterMigrationTests
 
-/// swarm_0b7616e7 Module C — pins the migration of
+/// Pins the migration of
 /// `CarPlayAudiobookBridge.dismissBookOnPhone()` off the legacy
 /// `coordinator.removeAudioModel + coordinator.popToRoot` pair onto
 /// `presenter.minimize()`.
@@ -684,18 +684,12 @@ class CarPlayPlaybackErrorTests: XCTestCase {
 ///      CarPlay disconnect is a UI dismiss, not a playback stop. A
 ///      regression that wired dismissBookOnPhone to stopPlayback would
 ///      kill the session and fail.
-///
-/// Test placement note: this is a NEW XCTest class added to the existing
-/// `PalaceTests/CarPlay/CarPlayTests.swift` per the contract's S2 fix
-/// (the canonical CarPlay test home; avoids a phantom-file ref). It
-/// preserves all 7 existing CarPlay test classes.
 @MainActor
 final class CarPlayAudiobookBridgePresenterMigrationTests: XCTestCase {
 
-    // Per qa-reviewer warning on cs_c96660a2 (Phase 5 forge-review):
     // CarPlayAudiobookBridge.dismissBookOnPhone() resolves the presenter
     // via AppContainer.production() — there's no DI seam at the bridge
-    // level (intentional; widening it would touch blast-radius). Tests
+    // level (intentional, to keep the change narrow). Tests
     // therefore share the production presenter cache. Order-independence
     // is restored by explicit setUp/tearDown reset of presenter state.
     //

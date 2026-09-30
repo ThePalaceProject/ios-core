@@ -21,8 +21,7 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
     // MARK: - OwnedCrawlTaskRegistry: self-pruning
 
     /// A registered task that later `complete`s prunes its token — the live set
-    /// returns to zero. Kills a mutant that drops the `removeValue` in
-    /// `complete`.
+    /// returns to zero. Catches a dropped `removeValue` in `complete`.
     func test_registerThenComplete_prunesTokenToZero() {
         let registry = OwnedCrawlTaskRegistry()
         let token = UUID()
@@ -37,8 +36,8 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
 
     /// Insert-vs-complete race: when `complete` runs BEFORE `register` (the task
     /// finished before the spawning code registered it), the tombstone must make
-    /// `register` skip the insert so no finished handle leaks. Kills a mutant
-    /// that removes the `completedBeforeInsert` tombstone guard in `register`
+    /// `register` skip the insert so no finished handle leaks. Catches removal
+    /// of the `completedBeforeInsert` tombstone guard in `register`
     /// (without it, count would be 1 — a permanently-leaked finished task).
     func test_completeBeforeRegister_tombstoneSkipsInsert() {
         let registry = OwnedCrawlTaskRegistry()
@@ -56,7 +55,7 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
     }
 
     /// Completing a LIVE token must not leave a spurious tombstone — a later
-    /// re-registration of that token must succeed. Kills the mutant that flips
+    /// re-registration of that token must succeed. Catches a regression that flips
     /// `complete`'s `tasks.removeValue(...) == nil` to `!= nil` (which would
     /// tombstone a token it just successfully removed, silently dropping a
     /// subsequent registration of that token).
@@ -76,7 +75,7 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
     }
 
     /// Two distinct tokens are tracked independently — completing one does not
-    /// prune the other. Guards against a mutant that clears the whole map on any
+    /// prune the other. Guards against clearing the whole map on any
     /// completion.
     func test_independentTokens_pruneIndependently() {
         let registry = OwnedCrawlTaskRegistry()
@@ -94,9 +93,8 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
 
     // MARK: - OwnedCrawlTaskRegistry: cancellation
 
-    /// `cancelAll()` cancels every live task. Kills a mutant that no-ops
-    /// cancelAll (the suspended task would never observe cancellation and the
-    /// await below would hang the test).
+    /// `cancelAll()` cancels every live task. A no-op cancelAll would leave
+    /// the suspended task waiting forever and hang the await below.
     func test_cancelAll_cancelsEveryLiveTask() async {
         let registry = OwnedCrawlTaskRegistry()
         let suspicious = Task<Void, Never> {

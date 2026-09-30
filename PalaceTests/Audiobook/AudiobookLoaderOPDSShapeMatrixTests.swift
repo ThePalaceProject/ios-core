@@ -2,8 +2,7 @@
 //  AudiobookLoaderOPDSShapeMatrixTests.swift
 //  PalaceTests
 //
-//  The PP-4407 regression matrix. Module D of swarm_5c8ddbd5
-//  (Audiobook Vendor Adapter Extraction).
+//  The PP-4407 regression matrix for the audiobook vendor adapter chain.
 //
 //  Every row in this matrix corresponds to a real-world OPDS feed shape the
 //  loader has been observed to handle (or misroute) in production. The
@@ -21,8 +20,8 @@
 //  failure (parse-binary-as-JSON crash, no fallback, no retry surface).
 //
 //  Reference: PP-4407, hotfix commit `ca2ff13b6` on the 3.0.3 release branch
-//  (never forward-merged to develop). Module C's `hasLCPAcquisition` ports
-//  the recursive predicate; Module D's adapter chain wires it through the
+//  (never forward-merged to develop). `hasLCPAcquisition` ports the
+//  recursive predicate; the adapter chain wires it through the
 //  LCPAdapter's `canHandle`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
@@ -183,7 +182,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
         let openAccess = PredicateSpyAdapter(label: "open", predicate: { _ in true })
 
 #if LCP
-        // LCP uses the recursive predicate Module C ported.
+        // LCP uses the recursive `hasLCPAcquisition` predicate.
         let lcp = PredicateSpyAdapter(label: "lcp", predicate: { book in
             LCPAudiobooks.hasLCPAcquisition(book)
         })
@@ -197,8 +196,8 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
 
     /// Build a chain whose LCP predicate uses the OLD top-level-only
     /// `canOpenBook` instead of the recursive `hasLCPAcquisition`. This
-    /// is the "property-check loader" the meta-test exercises to prove
-    /// the architectural improvement.
+    /// is the "property-check loader" the meta-test exercises to show
+    /// the difference from the recursive predicate.
     private func makePropertyCheckChainSpies() -> (
         lcp: PredicateSpyAdapter?,
         openAccess: PredicateSpyAdapter,
@@ -288,18 +287,10 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
                        "BearerToken must NOT claim this fixture")
     }
 
-    /// Row 3 — META-TEST. **Retired by swarm_162a3219 / Module D1.**
-    ///
-    /// This row originally pinned `canOpenBook`'s narrow top-level
-    /// predicate misrouting Marketplace fixtures to OpenAccess (the
-    /// PP-4407 bug). Module D1 (swarm_162a3219) upgraded `canOpenBook`
-    /// to delegate to `hasLCPAcquisition` — eliminating the divergence.
-    /// Per the original author's documented contingency (case (a)):
-    /// "Row 2 already catches the regression and this row is redundant."
-    ///
-    /// Row 2 (`testMatrix_OPDS2JSONFeedNestedLCP_routesToLCPAdapter`)
-    /// remains as the PP-4407 kill point. Row 3 deleted to honor the
-    /// author's explicit guidance.
+    /// Row 3 — retired. It pinned `canOpenBook`'s narrow top-level
+    /// predicate misrouting Marketplace fixtures to OpenAccess (PP-4407);
+    /// `canOpenBook` now delegates to `hasLCPAcquisition`, so Row 2
+    /// (`testMatrix_OPDS2JSONFeedNestedLCP_routesToLCPAdapter`) covers it.
 #endif
 
     /// Row 4 — Findaway-typed manifest. Findaway DRM is handled inside

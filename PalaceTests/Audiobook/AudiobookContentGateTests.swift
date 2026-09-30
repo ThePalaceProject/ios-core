@@ -233,13 +233,10 @@ final class AudiobookContentGateTests: XCTestCase {
     /// PP-5135, Claim E at THIS site: the open gate must not start a background
     /// archive fetch against the patron's `downloadOnlyOnWiFi` preference.
     ///
-    /// Review found this hole twice, mirrored. The DownloadCentre trigger had a
-    /// surviving mutant on its wifi guard; fixing that left the SAME gap here —
-    /// every other test in this suite sets `downloadOnlyOnWiFi = false`, so
-    /// mutating `downloadOnlyOnWiFi: settings.downloadOnlyOnWiFi` to `false` in
-    /// `AudiobookSessionManager` survived the whole suite. Claim E says "neither
-    /// trigger site"; without this it was verified at one and asserted at the
-    /// other.
+    /// Every other test in this suite sets `downloadOnlyOnWiFi = false`, so
+    /// without this one, hard-coding `downloadOnlyOnWiFi: false` in
+    /// `AudiobookSessionManager` would go unnoticed. Mirrors the DownloadCentre
+    /// trigger's wifi-guard test.
     ///
     /// `isOnWiFi` is not driveable (`public`, not `open`, so `MockReachability`
     /// cannot stub it) and reads a deterministically-`.unsatisfied`

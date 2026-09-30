@@ -2,18 +2,18 @@
 //  AudiobookOpenStateRaceTests.swift
 //  PalaceTests
 //
-//  F-016 → audiobook regression repro for swarm_81b5099e (Bucket A).
+//  F-016 audiobook regression repro.
 //  Pins that the audiobook open path blocks on `Account.awaitReady()`
 //  instead of reading `details?` directly and silently taking the
 //  no-auth-required branch.
 //
-//  Pre-Phase-1 (broken):
+//  Before the fix:
 //    accountsManager.currentAccount.details = nil (still loading)
 //    → isUserAuthenticated() returned true (treating unloaded = no-auth-required)
 //    → audiobook open proceeded with wrong feed-source / file-extension assumption
 //    → user-visible "Audiobook failed to open" with no actionable signal
 //
-//  Post-Phase-1 (fixed):
+//  After the fix:
 //    state == .detailsLoading
 //    → isUserAuthenticated() blocks on awaitReady() until terminal state
 //    → only then evaluates `defaultAuth.needsAuth` against loaded details
@@ -73,10 +73,10 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
     /// auth doc not yet returned).
     ///
     /// EXPECTED: the awaitReady awaiter blocks until the test transitions
-    /// the state. Pre-Phase-1 the audiobook open path's
+    /// the state. Before the fix, the audiobook open path's
     /// `isUserAuthenticated` returned `true` synchronously (no awaiting)
     /// because `details?` was nil and the function fell through to the
-    /// "no auth required" branch. Post-Phase-1 the function awaits and
+    /// "no auth required" branch. After the fix, the function awaits and
     /// only returns once state is terminal.
     func testF016Repro_audiobookOpenAwaitsReadiness_doesNotSilentlyReadPastNilDetails() async throws {
         let account = libraryMock.tppAccount
@@ -91,7 +91,7 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
         let openTaskGateCleared = expectation(description: "gate cleared after state transition")
         let awaiterTask = Task {
             // This is the EXACT call the migrated AudiobookSessionManager
-            // .isUserAuthenticated makes. Pre-Phase-1 this line did not
+            // .isUserAuthenticated makes. Before the fix, this line did not
             // exist; the code read `account.details` directly and bailed
             // to true.
             let resolvedDetails = try await account.awaitReady()
@@ -104,7 +104,7 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
         }
 
         // Verify the gate is BLOCKING — the awaiter has not resolved yet.
-        // Pre-Phase-1 there was no awaiter at all (synchronous code path).
+        // Before the fix, there was no awaiter at all (synchronous code path).
         try await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertFalse(awaiterTask.isCancelled, "Gate must block, not cancel")
 

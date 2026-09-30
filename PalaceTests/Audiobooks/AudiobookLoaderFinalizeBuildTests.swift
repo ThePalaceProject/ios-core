@@ -18,7 +18,7 @@
 //  on lines 511-534 of AudiobookLoader.swift is not directly reachable
 //  here. Those depend on `AppContainer.production().accountsManager /
 //  settings` for time-tracking and download-only-on-wifi, which we
-//  refuse to touch in unit tests (singletons, banned by CLAUDE.md). A
+//  refuse to touch in unit tests (shared singletons). A
 //  proper test for that path needs the AudiobookFactoryProviding
 //  protocol extraction proposed in the seam comment.
 //
@@ -418,10 +418,9 @@ final class AudiobookLoaderFinalizeBuildTests: XCTestCase {
     /// surface `.failure(.factoryFailed)` — NOT `.success` (a playable-looking but
     /// trackless audiobook) and NOT a crash. The guard returns before the
     /// AppContainer.production() reads further down finalizeBuild, so this failure
-    /// path is exercisable without touching singletons. Mutation kill point:
-    /// flipping the guard (`!allTracks.isEmpty` → `allTracks.isEmpty`) makes the
-    /// original zero-track input fall THROUGH the guard into the manager-build
-    /// path instead of failing here, so this assertion breaks the mutant.
+    /// path is exercisable without touching singletons. Flipping the guard
+    /// (`!allTracks.isEmpty` → `allTracks.isEmpty`) would let the zero-track
+    /// input fall THROUGH into the manager-build path and fail this assertion.
     func test_finalizeBuild_zeroTrackAudiobook_failsWithFactoryFailed_notSuccess() throws {
         let loader = AudiobookLoader(adapters: [])
         let bookId = "overdrive-zerotrack-\(UUID().uuidString)"

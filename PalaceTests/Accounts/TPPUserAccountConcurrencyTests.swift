@@ -10,7 +10,7 @@
 //  under contention is a real credential-integrity defect, not a cosmetic race.
 //
 //  This lives in its own test because the existing single-threaded
-//  TPPSignInBusinessLogicSignOutTests coverage kills the arithmetic mutants
+//  TPPSignInBusinessLogicSignOutTests coverage catches arithmetic regressions
 //  (`+= 1` → `+= 0` / no-op) but CANNOT distinguish an atomic locked
 //  read-modify-write from a non-atomic get-then-set (two separate lock
 //  acquisitions = TOCTOU). Only concurrent callers expose that.
