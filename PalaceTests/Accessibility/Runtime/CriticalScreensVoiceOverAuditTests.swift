@@ -205,8 +205,7 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
     func testAudiobookFullPlayer_everyControlIsReachableLabeledAndActivates() {
         let (presenter, session) = makeAudiobookPresenter()
         presenter.expand()
-        let host = mount(UIHostingController(rootView: AudiobookMorphingPlayerView(
-            presenter: presenter, progress: presenter.progress, audiobookSession: session)))
+        let host = mountPlayer(presenter, session)
         host.settle(0.8)
 
         let generic = Strings.Generic.self
@@ -217,9 +216,9 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
                 generic.close: { session.stopPlaybackCallCount == 1 },
                 generic.minimizePlayer: { !presenter.isPlayerExpanded },
                 generic.tableOfContents: { host.window.rootViewController?.presentedViewController != nil },
-                generic.skipBackSeconds(Self.skipInterval(AudiobookSkipIntervalSettings.backKey)): { session.skipBackCallCount == 1 },
+                generic.skipBackSeconds(Self.backSkip): { session.skipBackCallCount == 1 },
                 generic.playAudiobook: { session.togglePlayPauseCallCount == 1 },
-                generic.skipForwardSeconds(Self.skipInterval(AudiobookSkipIntervalSettings.forwardKey)): { session.skipForwardCallCount == 1 },
+                generic.skipForwardSeconds(Self.forwardSkip): { session.skipForwardCallCount == 1 },
                 generic.playbackSpeedValue(PlaybackRate.normalTime.displayLabel): { host.window.rootViewController?.presentedViewController != nil },
                 generic.sleepTimer: { host.window.rootViewController?.presentedViewController != nil },
                 generic.addBookmark: {
@@ -240,8 +239,7 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
     func testAudiobookMiniPlayer_everyControlIsReachableLabeledAndActivates() {
         let (presenter, session) = makeAudiobookPresenter()
         presenter.minimize()
-        let host = mount(UIHostingController(rootView: AudiobookMorphingPlayerView(
-            presenter: presenter, progress: presenter.progress, audiobookSession: session)))
+        let host = mountPlayer(presenter, session)
         host.settle(0.8)
 
         let generic = Strings.Generic.self
@@ -254,9 +252,9 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
                 // Closing from the mini bar asks for confirmation first (PP-4910).
                 generic.closeAudiobookPlayer: { host.window.rootViewController?.presentedViewController is UIAlertController },
                 nowPlaying: { presenter.isPlayerExpanded },
-                generic.skipBackSeconds(Self.skipInterval(AudiobookSkipIntervalSettings.backKey)): { session.skipBackCallCount == 1 },
+                generic.skipBackSeconds(Self.backSkip): { session.skipBackCallCount == 1 },
                 generic.playAudiobook: { session.togglePlayPauseCallCount == 1 },
-                generic.skipForwardSeconds(Self.skipInterval(AudiobookSkipIntervalSettings.forwardKey)): { session.skipForwardCallCount == 1 }
+                generic.skipForwardSeconds(Self.forwardSkip): { session.skipForwardCallCount == 1 }
             ],
             resetAfterActivation: {
                 host.dismissPresented()
@@ -271,8 +269,7 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
     func testAudiobookFullPlayer_seekBarIsAdjustableWithVoiceOverSwipes() {
         let (presenter, session) = makeAudiobookPresenter()
         presenter.expand()
-        let host = mount(UIHostingController(rootView: AudiobookMorphingPlayerView(
-            presenter: presenter, progress: presenter.progress, audiobookSession: session)))
+        let host = mountPlayer(presenter, session)
         host.settle(0.8)
 
         let seekBar = AccessibilityTraversalAudit.traverse(host.window)
@@ -293,34 +290,47 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
                           "the spoken value must follow the step, not wait for playback to catch up")
     }
 
-    /// Mid-chapter (5:00 of a 10:00 chapter), one swipe up seeks by the
-    /// patron's skip-forward interval and VoiceOver reads the target position
-    /// at once, before playback reports it (PP-5280).
-    func testAudiobookFullPlayer_seekBarSwipeUp_seeksBySkipIntervalAndSpeaksTheTarget() throws {
+    /// A 10:00 chapter with forward 45 s and back 10 s. Playback reports 4:50
+    /// while the published fraction still reads 0.50 (the two are published
+    /// separately), so the live-timecode and target branches of the spoken
+    /// value differ. Swipe up moves +45 s, swipe down −10 s, and VoiceOver
+    /// reads each target at once (PP-5280).
+    func testAudiobookFullPlayer_seekBarSwipes_stepByEachDirectionsIntervalAndSpeakTheTarget() throws {
         let (presenter, session) = makeAudiobookPresenter()
-        presenter.progress.chapterOffset = 300
-        presenter.progress.chapterTimeLeft = 300
+        presenter.progress.chapterOffset = 290
+        presenter.progress.chapterTimeLeft = 310
         presenter.progress.chapterProgress = 0.5
         presenter.expand()
-        let host = mount(UIHostingController(rootView: AudiobookMorphingPlayerView(
-            presenter: presenter, progress: presenter.progress, audiobookSession: session)))
-        host.settle(0.8)
+        let host = mountPlayer(presenter, session)
 
-        let seekBar = try XCTUnwrap(AccessibilityTraversalAudit.traverse(host.window)
-            .first { $0.label == Strings.Generic.playbackPosition })
-        XCTAssertEqual(seekBar.object.accessibilityValue, "50%, 5:00")
+        XCTAssertEqual(try seekBarValue(in: host), "50%, 4:50", "idle: VoiceOver reads the live timecode")
 
-        seekBar.object.accessibilityIncrement()
+        let up = 0.5 + Double(Self.forwardSkip) / 600
+        try seekBar(in: host).object.accessibilityIncrement()
         host.settle(0.2)
+        XCTAssertEqual(session.seekFractions.first ?? -1, up, accuracy: 0.000_001, "swipe up moves by the forward interval")
+        XCTAssertEqual(try seekBarValue(in: host), "57%, 5:45", "VoiceOver reads the target, not 4:50")
 
-        let forward = Self.skipInterval(AudiobookSkipIntervalSettings.forwardKey)
-        let target = 0.5 + Double(forward) / 600
-        XCTAssertEqual(session.seekFractions.count, 1)
-        XCTAssertEqual(session.seekFractions.first ?? -1, target, accuracy: 0.000_001)
-        let spoken = AccessibilityTraversalAudit.traverse(host.window)
-            .first { $0.label == Strings.Generic.playbackPosition }?.object.accessibilityValue
-        XCTAssertEqual(spoken, "\(Int(target * 100))%, \(AudiobookMorphingPlayerView.formatTime(Double(300 + forward)))",
-                       "VoiceOver must read the step's target, not the position playback last reported")
+        let down = up - Double(Self.backSkip) / 600
+        try seekBar(in: host).object.accessibilityDecrement()
+        host.settle(0.2)
+        XCTAssertEqual(session.seekFractions.count, 2)
+        XCTAssertEqual(session.seekFractions.last ?? -1, down, accuracy: 0.000_001, "swipe down moves by the back interval")
+        XCTAssertEqual(try seekBarValue(in: host), "55%, 5:35", "the target, rounded to the nearest second")
+    }
+
+    /// Before the chapter length is known there is no honest timecode, so
+    /// VoiceOver reads the percentage alone rather than a made-up 0:00.
+    func testAudiobookFullPlayer_seekBar_withUnknownChapterLength_speaksOnlyThePercentage() throws {
+        let (presenter, session) = makeAudiobookPresenter()
+        presenter.progress.chapterProgress = 0.5
+        presenter.expand()
+        let host = mountPlayer(presenter, session)
+
+        XCTAssertEqual(try seekBarValue(in: host), "50%")
+        try seekBar(in: host).object.accessibilityIncrement()
+        host.settle(0.2)
+        XCTAssertEqual(try seekBarValue(in: host), "55%", "the 5% fallback step, spoken without a timecode")
     }
 
     // MARK: - Helpers
@@ -426,10 +436,34 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
         return (presenter, session)
     }
 
-    /// The player reads skip intervals from `UserDefaults.standard` through
-    /// `@AppStorage`; the expected label follows whatever is stored there.
-    private static func skipInterval(_ key: String) -> Int {
-        UserDefaults.standard.object(forKey: key) as? Int ?? AudiobookSkipIntervalSettings.defaultInterval
+    /// Skip intervals pinned for every player test, distinct so a swapped
+    /// forward/back argument cannot pass.
+    private static let forwardSkip = 45
+    private static let backSkip = 10
+
+    /// Mounts the player with its `@AppStorage` reading an isolated suite
+    /// holding `forwardSkip` / `backSkip`, never `UserDefaults.standard`.
+    private func mountPlayer(_ presenter: AudiobookSessionPresenter, _ session: SpyShimSession) -> AccessibilityAuditHost {
+        let suite = "a11y-audit.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.set(Self.forwardSkip, forKey: AudiobookSkipIntervalSettings.forwardKey)
+        defaults.set(Self.backSkip, forKey: AudiobookSkipIntervalSettings.backKey)
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let player = AudiobookMorphingPlayerView(
+            presenter: presenter, progress: presenter.progress, audiobookSession: session)
+            .defaultAppStorage(defaults)
+        let host = mount(UIHostingController(rootView: player))
+        host.settle(0.8)
+        return host
+    }
+
+    private func seekBar(in host: AccessibilityAuditHost) throws -> AXAuditElement {
+        try XCTUnwrap(AccessibilityTraversalAudit.traverse(host.window)
+            .first { $0.label == Strings.Generic.playbackPosition }, "the seek bar must be reachable")
+    }
+
+    private func seekBarValue(in host: AccessibilityAuditHost) throws -> String? {
+        try seekBar(in: host).object.accessibilityValue
     }
 }
 

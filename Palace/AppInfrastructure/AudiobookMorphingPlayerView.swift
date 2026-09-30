@@ -1719,11 +1719,15 @@ struct AudiobookMorphingPlayerView: View {
     /// chapter elapsed timecode. At the live position it reads the live
     /// timecode; after a VoiceOver step it reads the step's target, so the value
     /// spoken matches where the seek is going before playback catches up.
+    /// Until the chapter length is known there is no timecode to give, so it
+    /// reads the percentage alone.
     private func seekAccessibilityValue(at fraction: Double) -> String {
+        let percent = "\(Int(fraction * 100))%"
+        guard chapterDuration > 0 else { return percent }
         let elapsed = abs(fraction - chapterProgressClamped) < 0.000_001
             ? chapterElapsedString
-            : Self.formatTime(fraction * chapterDuration)
-        return "\(Int(fraction * 100))%, \(elapsed)"
+            : Self.formatTime((fraction * chapterDuration).rounded())
+        return "\(percent), \(elapsed)"
     }
 
     // MARK: - Safe-area insets (window, since the overlay ignores safe area)
