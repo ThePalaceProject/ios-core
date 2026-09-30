@@ -2,7 +2,7 @@
 //  TPPSignInBusinessLogicSignOutTests.swift
 //  PalaceTests
 //
-//  Deep, mutation-killing tests for the sign-out surface of
+//  Deep tests for the sign-out surface of
 //  TPPSignInBusinessLogic (extension `+SignOut`). P0 coverage gap per
 //  docs/Testing/Coverage_Roadmap.md §2.1.
 //
@@ -351,7 +351,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         businessLogic.selectedIDP = nil // can't easily build an OPDS2SamlIDP here;
         // The point of this test is that the assignment in
         // completeLogOutProcess always sets `selectedIDP = nil`. We
-        // verify the post-condition rather than the mutation path.
+        // verify the post-condition rather than the assignment path.
 
         businessLogic.performLogOut()
         awaitDeauthorize()
@@ -418,12 +418,10 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
     /// sign-out completes underneath the sheet and the patron is handed a
     /// sign-in prompt for the library they just left.
     ///
-    /// Nothing about a green suite would show that. The flag WAS flipped to
-    /// true during development for a real reason — the response body carries
-    /// the fresh Adobe licensor — survived a full passing suite, and was caught
-    /// only by a reviewer reading the executor. This asserts what the caller
-    /// actually requested, not what the source says, so an equivalent flip
-    /// through any other route fails too.
+    /// The flag was once flipped to true during development (the response body
+    /// carries the fresh Adobe licensor) and no other test noticed. This asserts
+    /// what the caller actually requested, so an equivalent flip through any
+    /// other route fails too.
     ///
     /// The BORROW path deliberately opts in (`freshLicensorFromProfileDocument`):
     /// prompting re-auth mid-borrow is already this app's design. Sign-out is

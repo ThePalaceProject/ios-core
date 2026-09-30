@@ -2,13 +2,13 @@
 //  MultiLibraryTokenIsolationTests.swift
 //  PalaceTests
 //
-//  Mutation-killing tests for the per-library credential boundary in
+//  Tests for the per-library credential boundary in
 //  the Palace network stack. Library A's bearer token MUST NOT bleed
 //  into Library B's outbound requests. Adjacent contracts pinned here:
 //
 //   - 401 with an RFC 7807 problem document body propagates the
 //     problem document into the surfaced NSError via
-//     `NSError.makeFromHTTPResponse` (kills any mutation that drops
+//     `NSError.makeFromHTTPResponse` (catches any regression that drops
 //     the problemDocument userInfo key).
 //   - 401 with a problem document body does NOT corrupt the OTHER
 //     library's stored bearer token (this is the cross-library
@@ -172,7 +172,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 1: Request built while A is current carries A's bearer
     //
-    // Kills: deletion of the `accountsManager.userAccount(for: resolvedId)`
+    // Catches: deletion of the `accountsManager.userAccount(for: resolvedId)`
     // call in `request(for:)` (replaced with a global / stale account
     // reference). If the executor reads a globally-shared user account
     // instead of the resolved one, B's request could carry A's bearer
@@ -199,7 +199,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 2: GET hits library B's API with library B's bearer (end-to-end)
     //
-    // Kills: mutation that breaks the wire-level authorization on B's
+    // Catches a regression that breaks the wire-level authorization on B's
     // outbound request (e.g. resolving via `AppContainer.production().accountsManager`
     // instead of the injected provider). Inspect via stub responder.
 
@@ -226,7 +226,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 3: Refresh for A's account does NOT touch B's token
     //
-    // Kills: mutation that writes the refreshed bearer back onto the
+    // Catches a regression that writes the refreshed bearer back onto the
     // wrong account (e.g. always writes via
     // `accountsManager.currentUserAccount.setAuthToken` instead of the
     // resolved-by-accountId account). Crucial when refresh runs in
@@ -263,7 +263,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 4: Refresh for A hits A's tokenURL, never B's
     //
-    // Kills: mutation that resolves tokenURL from
+    // Catches a regression that resolves tokenURL from
     // `currentUserAccount` instead of the explicitly-passed
     // `capturedAccountId`. If A's refresh runs while we've already
     // switched currency to B, the tokenURL must still be A's.
@@ -457,7 +457,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 5: Switching currency does not corrupt either token
     //
-    // Kills: mutation that mutates account state on a switch-currency
+    // Catches a regression that mutates account state on a switch-currency
     // operation (e.g. clearing tokens). The two stored bearers must
     // survive any number of switch operations.
 
@@ -478,7 +478,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 6: 401 from A's token endpoint marks ONLY A stale
     //
-    // Kills: mutation that broadens the markCredentialsStale call from
+    // Catches a regression that broadens the markCredentialsStale call from
     // the resolved account to `currentUserAccount` or shared. A
     // wrong-account stale mark would force the user to re-sign-in on
     // a library they didn't even fail on.
@@ -516,7 +516,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 7: 401 with problem document populates NSError.problemDocument
     //
-    // Kills: deletion of the problem-document embedding branch in
+    // Catches: deletion of the problem-document embedding branch in
     // `refreshTokenAndResume` (lines 532-544): when /token returns a
     // problem doc, the failure NSError must carry it under the
     // `problemDocument` userInfo key so downstream UI (sign-in modal)
@@ -569,7 +569,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 8: 401 without a problem doc body falls back to plain NSError
     //
-    // Kills: mutation that ALWAYS embeds a (nil/empty) problem doc on
+    // Catches a regression that ALWAYS embeds a (nil/empty) problem doc on
     // 401 — would mask real generic-401 errors with an empty problem
     // doc and degrade error messaging.
 
@@ -603,7 +603,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 9: TPPProblemDocument.isRecoverableAuthError detection
     //
-    // Kills: mutation of the recoverable-auth path-check in
+    // Catches a regression in the recoverable-auth path-check in
     // TPPProblemDocument (e.g. inverting `contains`). Used by the
     // post-401 path to decide whether to re-auth or surface failure
     // to the user.
@@ -641,7 +641,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 10: Cross-library POST: body and Authorization isolated
     //
-    // Kills: mutation that lets a queued / retried POST land on the
+    // Catches a regression that lets a queued / retried POST land on the
     // wrong library's API endpoint with the other library's bearer.
     // POST body bytes are also pinned (idempotency for retried POSTs).
 
@@ -725,8 +725,8 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
     // The cancellation-on-switch contract: outbound non-audiobook
     // tasks must be cancellable when switching libraries (so they
     // don't complete against the wrong credentials), but audiobook
-    // tasks are preserved. We pin both directions here as a
-    // mutation-killing check on `ActiveTasksStore.cancelNonEssential`.
+    // tasks are preserved. We pin both directions of
+    // `ActiveTasksStore.cancelNonEssential`.
 
     func test_CancelNonEssential_PreservesAudiobookTasks() {
         // Drive the executor's transport. Build two task-like requests
@@ -759,7 +759,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Test 13: cancelNonEssential returns count and clears registry
     //
-    // Kills: mutation that drops the `tasks.removeAll` cleanup in
+    // Catches a regression that drops the `tasks.removeAll` cleanup in
     // ActiveTasksStore.cancelNonEssential — a stale registry would
     // grow unbounded and the next cancel pass would re-cancel
     // already-cancelled tasks.

@@ -2,27 +2,15 @@
 //  TPPNetworkResponderAuthCoordinatorTests.swift
 //  PalaceTests
 //
-//  swarm_66819d80 Module C — caller-migration assertions at the
-//  `TPPNetworkResponder` SEAM. Pins the responder's 401 dispatch
-//  behavior end-to-end through a real URLSession + HTTPStubURLProtocol:
+//  Pins `TPPNetworkResponder`'s 401 dispatch end-to-end through a real
+//  URLSession + HTTPStubURLProtocol (classifier coverage itself lives in
+//  PalaceAuthTests/AuthErrorClassifierTests):
 //
-//   - 401 with maxed retries → completion fires with failure (no
-//     coordinator dispatch — retry budget gates).
-//   - 401 on a cross-domain redirect → no markRetried, no coordinator
-//     dispatch (classifier's `.ok` outcome short-circuits — verifies
-//     the ARCH-3 fix routes the classifier outcome to the actual
-//     decision, NOT just logs it).
-//   - 401 → next 401 on the SAME URL → second attempt fails out
-//     because the URL is already marked retried.
-//
-//  Reviewer-fixup (QA-2, swarm_66819d80 Pass 3): the original test file
-//  duplicated the classifier dispatch coverage that lives in
-//  PalaceAuthTests/AuthErrorClassifierTests and never instantiated
-//  TPPNetworkResponder. This rewrite drives a real responder against a
-//  stubbed URLSession and asserts behavior the responder OWNS:
-//  retry-budget gating + completion handler dispatch + the cross-domain
-//  short-circuit that the ARCH-3 fix now drives via the classifier
-//  outcome (replacing the dead classifier call the architect flagged).
+//   - 401 with maxed retries → completion fails, no coordinator dispatch.
+//   - 401 on a cross-domain redirect → no markRetried, no dispatch (the
+//     classifier's `.ok` outcome drives the decision, not just a log).
+//   - 401 → next 401 on the same URL → second attempt fails out because
+//     the URL is already marked retried.
 //
 
 import XCTest

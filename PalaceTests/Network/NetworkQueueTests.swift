@@ -14,7 +14,7 @@ import PalaceNetwork
 class NetworkQueueTests: XCTestCase {
 
     /// Per-test container — built fresh in `setUp` via the
-    /// `makeTestAppContainer()` factory (swarm_47883816 work package A).
+    /// `makeTestAppContainer()` factory.
     /// Replaces the prior pattern that reached into
     /// `AppContainer.production().networkQueue` on every test method, which
     /// silently shared NetworkQueue state across the suite. NetworkQueue's
@@ -121,8 +121,8 @@ class NetworkQueueTests: XCTestCase {
 
     /// A transport whose every request is intercepted by
     /// `HTTPStubURLProtocol` — no real network. The drain test below actually
-    /// issues requests, and a unit test that talks to the internet is both
-    /// banned by CLAUDE.md and non-deterministic.
+    /// issues requests, and a unit test that talks to the internet is
+    /// non-deterministic.
     private func makeTransport() -> NetworkTransport {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
@@ -135,11 +135,9 @@ class NetworkQueueTests: XCTestCase {
     /// covers a database that opens and then refuses the write — the insert
     /// throws because no table exists yet.
     ///
-    /// Round 3 of review found this path filing under the WRONG code: it used
-    /// the bare `logError(_:summary:metadata:)` overload, which hardcodes
-    /// `code: .ignore`, so the report landed under the raw SQLite code with
-    /// `error_origin = unknown` rather than 916 — while the commit claimed both
-    /// paths reported under 916. Untested code made the false claim possible.
+    /// This path once used the bare `logError(_:summary:metadata:)` overload,
+    /// which hardcodes `code: .ignore`, so the report landed under the raw
+    /// SQLite code with `error_origin = unknown` rather than 916.
     func testAddRequest_WhenInsertThrows_ReportsUnderTheSameDedicatedCode() {
         let spy = ErrorLoggerSpy()
         let dir = NSTemporaryDirectory() + "pp4987-noschema-" + UUID().uuidString
@@ -220,10 +218,8 @@ class NetworkQueueTests: XCTestCase {
     /// The security property, asserted where it actually has to hold: on the
     /// row in the database.
     ///
-    /// Round 4 caught the previous version of this proof testing
-    /// `headersSafeToPersist` in isolation while NOTHING asserted `addRequest`
-    /// calls it — unwiring the call site left every test green. Testing the
-    /// helper is not testing the producer.
+    /// Asserted through `addRequest` rather than on `headersSafeToPersist` in
+    /// isolation, so unwiring the call site fails this test.
     func testAddRequest_NeverPersistsTheCredential_EvenThoughCallersPassIt() {
         let (queue, dir) = makeWritableQueue()
         defer { try? FileManager.default.removeItem(atPath: dir) }
@@ -291,8 +287,7 @@ class NetworkQueueTests: XCTestCase {
     /// would send library B's bearer token to library A's server whenever a
     /// patron queued a write for A and then switched to B — a cross-tenant
     /// credential disclosure, plus a guaranteed 401 for a write that had a
-    /// valid token available. Round 4 of review caught exactly that; the
-    /// codebase already documents the invariant on
+    /// valid token available. The invariant is also documented on
     /// `TPPNetworkExecutor.request(for:accountId:)`.
     func testDrain_SendsEachRowsOwnLibraryCredential_OnTheWire() {
         let seen = SeenAuthorizations()
@@ -318,10 +313,9 @@ class NetworkQueueTests: XCTestCase {
         queue.retryQueue()
         expectEventually("both rows to be retried") { seen.hosts.count >= 2 }
 
-        // Asserted ON THE WIRE, not at the provider. Round 5 caught the
-        // previous version proving only that the right library was ASKED —
-        // deleting the `setValue(...)` that attaches the answer left the whole
-        // suite green. Resolving a credential and sending it are two claims.
+        // Asserted on the wire, not at the provider: resolving the right
+        // library's credential and attaching it via `setValue(...)` are
+        // separate steps, and both must hold.
         XCTAssertEqual(seen.authorization(for: "a.example.org"), "Bearer token-for-lib-A",
                        "Library A's row must be sent with library A's credential")
         XCTAssertEqual(seen.authorization(for: "b.example.org"), "Bearer token-for-lib-B",

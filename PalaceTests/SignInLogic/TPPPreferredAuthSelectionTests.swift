@@ -120,7 +120,7 @@ final class TPPPreferredAuthSelectionTests: XCTestCase {
     // `selectedAuthentication?.isSaml`. After the fix, this must be true
     // for a multi-auth library that includes SAML. Also verify the state
     // transition: selectedAuthentication is nil before auto-selection and
-    // non-nil after (a mutation that made auto-selection a no-op would
+    // non-nil after (a regression that made auto-selection a no-op would
     // pass a looser "isSaml == true" check if the default happened to be
     // SAML, but would fail the nil-to-non-nil transition check).
     func testAfterAutoSelection_SelectedAuthIsSaml_forMultiAuthLibrary() {

@@ -80,13 +80,10 @@ final class ScopedResetTests: XCTestCase {
         )
     }
 
-    /// Mutation guard for the dot-boundary in the parent-domain arm. The match
-    /// is `host.hasSuffix("." + normalized)`. Dropping the leading "." would let
-    /// a cookie domain that is a RAW suffix of the host ("aceproject.io" of
-    /// "palaceproject.io") falsely match and over-clear — the precise
-    /// `*.palaceproject.io` collision this primitive exists to prevent. The
-    /// sibling test doesn't construct a raw-suffix collision, so without this
-    /// the mutant survives. (SoD qa_test review rev_278f26d6.)
+    /// Guards the dot-boundary in the parent-domain arm (`host.hasSuffix("." +
+    /// normalized)`). Dropping the leading "." would let a raw suffix
+    /// ("aceproject.io" of "palaceproject.io") match and over-clear — the
+    /// `*.palaceproject.io` collision this primitive exists to prevent.
     func testHostMatches_rawSuffixWithoutDotBoundary_doesNotMatch() {
         XCTAssertFalse(
             TPPSignInBusinessLogic.hostMatches("aceproject.io", ["palaceproject.io"]),

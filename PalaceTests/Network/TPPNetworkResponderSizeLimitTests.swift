@@ -172,8 +172,8 @@ final class TPPNetworkResponderSizeLimitTests: XCTestCase {
     // MARK: - Boundary — at cap succeeds, one over fails
 
     /// A body exactly AT the cap must still succeed (the guard fires only when
-    /// the projected size STRICTLY EXCEEDS the cap). Kills an off-by-one mutant
-    /// that would flip `>` to `>=` and start refusing legitimate at-limit
+    /// the projected size STRICTLY EXCEEDS the cap). Catches an off-by-one
+    /// regression that would flip `>` to `>=` and start refusing legitimate at-limit
     /// responses.
     func testResponse_exactlyAtCap_succeeds() {
         let atCap = body(ofSize: Int(testCap))
@@ -208,7 +208,7 @@ final class TPPNetworkResponderSizeLimitTests: XCTestCase {
     /// Content-Length header, so it only exercises the running-total branch —
     /// leaving the declared-length branch's off-by-one (`declared > cap` →
     /// `declared >= cap`) unpinned. Here the declared length equals the cap, so
-    /// the original allows it (success) while the `>=` mutant refuses it.
+    /// the correct `>` allows it (success) while `>=` would refuse it.
     func testResponse_declaredContentLengthExactlyAtCap_succeeds() {
         let declared = testCap // exactly at the cap
         let atCap = body(ofSize: Int(testCap))

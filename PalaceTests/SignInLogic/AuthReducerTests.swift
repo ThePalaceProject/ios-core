@@ -17,7 +17,7 @@ final class AuthReducerTests: XCTestCase {
 
     func testAuthDocumentLoadStarted_setsLoadingFlag() {
         // Pair-assert that .authDocumentLoadStarted only touches the loading
-        // flag — no other state changes. A mutation that accidentally also
+        // flag — no other state changes. A regression that accidentally also
         // clears captured credentials or surfaces an error would fail.
         var state = AuthState(capturedBarcode: "12345", lastErrorTitle: "prior-error")
         _ = AuthReducer.reduce(&state, .authDocumentLoadStarted)
@@ -32,7 +32,7 @@ final class AuthReducerTests: XCTestCase {
     func testAuthDocumentLoadCompleted_clearsLoadingFlag() {
         // Pair-assert that the round-trip start→complete leaves the flag false.
         // Drive through both transitions via the reducer (production seam) so
-        // a mutation that wires loadStarted to ALSO clear the flag is caught.
+        // a regression that wires loadStarted to ALSO clear the flag is caught.
         var state = AuthState()
         _ = AuthReducer.reduce(&state, .authDocumentLoadStarted)
         XCTAssertTrue(state.isAuthenticationDocumentLoading,

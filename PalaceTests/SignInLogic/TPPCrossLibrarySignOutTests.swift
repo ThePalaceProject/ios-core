@@ -156,7 +156,7 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
         // if two business-logic instances for different libraries shared a
         // user-account instance, credentials from library A would leak to
         // library B. Assert instance identity AND distinct libraryAccountIDs
-        // so a mutation that re-introduces a shared singleton can't pass this.
+        // so a regression that re-introduces a shared singleton can't pass this.
         XCTAssertFalse(
             activeBusinessLogic.userAccount === targetBusinessLogic.userAccount,
             "Each library should have its own user account instance"

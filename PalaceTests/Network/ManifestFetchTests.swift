@@ -991,7 +991,7 @@ final class LCPLicenseFilePathTests: XCTestCase {
 
     func testLCPLicensePath_everyContentExtensionProducesLcplSibling() {
         // The .lcpl license must live next to the content file regardless of
-        // the content extension (.lcpa, .epub, audiobook, PDF). A mutation that
+        // the content extension (.lcpa, .epub, audiobook, PDF). A regression that
         // hardcoded the mapping for one extension would break download for
         // the others — users would hit "license not found" on open.
         let cases: [(contentPath: String, expectedLicensePath: String)] = [
