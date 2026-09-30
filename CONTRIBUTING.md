@@ -1,9 +1,7 @@
 # Contributing to Palace iOS
 
 Thanks for your interest in The Palace Project. This file is the public-facing
-guide for outside contributors. If you are a maintainer, you will additionally
-use the agent-driven workflow described in `CLAUDE.md` — but none of that is
-required to land a PR from the outside.
+guide for outside contributors.
 
 ## Quick start
 
@@ -47,18 +45,16 @@ Carthage; Apple Silicon builds DRM natively, no Rosetta needed).
    This runs the same battery CI does (build, unit tests, lint, coverage,
    snapshots, accessibility) but skips mutation testing. It is the single
    command outside contributors need to pass before opening a PR.
-3. **Fill out the PR template.** The `Verification` checklist asks for the
-   self-check, before/after screenshots for UI changes, and confirmation that
-   both the `Palace` and `Palace-noDRM` targets build for cross-cutting
-   changes. The "Internal-only checklist" section is for maintainers — leave
-   it blank if it does not apply to you.
+3. **Fill out the PR template.** What, Why, How verified, and optionally Not
+   done — about 20 lines. Attach before/after screenshots for UI changes.
+   Commit and PR conventions are in
+   [`.github/COMMIT_AND_PR_FOR_JIRA.md`](./.github/COMMIT_AND_PR_FOR_JIRA.md).
 4. **Target `develop`.** Never open a PR against `main` directly. Release
    branches are cut from `develop` by maintainers.
 
 ## Local automation vs CI — the honest gap
 
-This repo has three layers of automation. Only the first two matter for
-outside contributors.
+This repo has two layers of automation.
 
 ### CI gates (run on every PR, enforced by GitHub)
 
@@ -88,25 +84,11 @@ Same checks as CI minus mutation testing, all run against a single iPhone
 simulator. Use this before pushing to catch breakage locally instead of
 burning a CI cycle.
 
-### Agent-driven workflow (maintainer-internal, not required for outside PRs)
+## AI-assisted development
 
-The maintainers use a Claude-Code-based agent harness day-to-day. This shows
-up in the codebase as:
-
-- `forge_init`, `forge_propose_changeset`, `forge_release_check` references
-  in `CLAUDE.md` — that is **ForgeOS governance**, an internal changeset and
-  evidence tracker.
-- `harness test`, `harness simdrive` references — that is the **harness**,
-  a local-only orchestration layer at `~/harness/` not in this repo.
-- `simdrive` MCP tools — used internally to drive the iOS simulator for E2E
-  regressions. Both the tooling and its recorded artifacts are maintainer-local;
-  nothing under `.simdrive/` is in this repo and no CI job replays it.
-
-**None of this gates outside PRs.** If you do not have ForgeOS, the harness,
-or simdrive set up, you can ignore every reference to them in `CLAUDE.md`
-and still open a perfectly mergeable PR. The committed git hooks under
-`scripts/git-hooks/` will not call out to any of that internal tooling —
-they degrade to plain Bash checks.
+The maintainers use AI-assisted development. Every change is reviewed and
+tested by the maintainer who lands it, and PRs and commits carry no per-change
+AI attribution.
 
 ## Where to learn more
 
