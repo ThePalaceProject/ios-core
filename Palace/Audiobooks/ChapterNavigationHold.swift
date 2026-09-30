@@ -5,21 +5,9 @@
 //  PP-5205. The hold an explicit chapter selection keeps on the displayed chapter
 //  until the seek it started actually produces a position for that chapter.
 //
-//  `AudiobookSessionManager.currentChapter` is a cache, and before this its only
-//  writer was `handlePositionUpdate` — so tapping a chapter changed nothing until
-//  the seek produced a position, and a seek pauses the player, which is the
-//  absence of exactly that stream. The label sat on the chapter the patron had
-//  left for as long as the seek took, beside chapter-scoped timecodes that had
-//  already moved: those are computed live off the player's position, and that
-//  prefers the seek target. Reported on build 509 as "you land on the previous
-//  chapter and then it switches"; the full-screen "Downloading…" panel used to
-//  cover the window rather than prevent it.
-//
-//  Extracted rather than added to the session manager because that file is under
-//  the Wave 0 god-class LOC freeze — the ratchet exists precisely because every
-//  reliability fix lands inside the hub where the seams are, and this is one.
-//  It owns the mechanism (target key + bound); the DECISIONS stay pure in
-//  `ChapterNavigationPolicy`, which is what the transition-table tests assert.
+//  Without it, the chapter label stays on the previous chapter until the seek
+//  produces a position. This owns the mechanism (target key + timeout); the
+//  decisions are pure in `ChapterNavigationPolicy`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -36,9 +24,7 @@ final class ChapterNavigationHold {
     /// the two layers cannot disagree about when a seek is considered abandoned.
     static let defaultTimeoutSeconds: TimeInterval = 3.0
 
-    /// Injected so a test can assert the bound FIRES without sleeping for the
-    /// production duration. A three-second sleep on a suite that runs three
-    /// iterations is measuring the machine as much as the code.
+    /// Injected so tests need not sleep for the production duration.
     private let timeoutSeconds: TimeInterval
 
     private var targetTrackKey: String?
@@ -74,11 +60,8 @@ final class ChapterNavigationHold {
 
     // MARK: - The same two decisions, keyed on identity rather than on `Chapter`
     //
-    // `Chapter` has no public initialiser, so a test in the app target cannot build
-    // one without a manifest fixture and a live `Audiobook`. These carry the whole
-    // behaviour and take Strings, so the hold — arming, release, the bound, and the
-    // interaction between them — is asserted directly. The two wrappers above are
-    // pure delegation and hold no logic of their own.
+    // `Chapter` has no public initialiser, so the logic lives in these
+    // String-keyed forms; the two wrappers above only delegate.
 
     func beginSelection(
         selectedKey: String,

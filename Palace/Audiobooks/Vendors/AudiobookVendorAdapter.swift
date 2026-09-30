@@ -5,13 +5,8 @@
 //  Vendor-shape dispatch protocol for AudiobookLoader. Replaces the implicit
 //  source-shape branching inside `resolveManifestAndDecryptor` (local file vs
 //  bearer-token vs LCP vs open-access network) with an explicit chain of
-//  adapters consulted in priority order. First match wins.
-//
-//  Module A of swarm_5c8ddbd5 (Audiobook Vendor Adapter Extraction).
-//  Downstream modules B (Network adapters), C (LCPAdapter), and D (loader
-//  dispatch rewrite) consume this protocol. The shape is intentionally
-//  callback-shaped to match the existing loader surface — async/await
-//  modernization is reserved for Swarm 3.
+//  adapters consulted in priority order. First match wins. Callback-shaped to
+//  match the loader's existing surface.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -36,10 +31,7 @@ import PalaceBookModel
 /// - Errors are mapped to existing `AudiobookLoadError` cases — adapters do
 ///   not introduce new error types.
 ///
-/// The protocol is callback-shaped (NOT `async`) because the loader's public
-/// surface is callback-shaped and a concurrent rewrite is out of scope for
-/// this swarm. Swarm 3 will modernize the loader; until then, conform with
-/// `completion(.success(...))` / `completion(.failure(...))`.
+/// Callback-shaped (not `async`) because the loader's public surface is.
 protocol AudiobookVendorAdapter {
 
     /// Returns `true` iff this adapter is responsible for loading `book`.
@@ -68,15 +60,9 @@ protocol AudiobookVendorAdapter {
 
 /// `Sendable` carrier for an `AudiobookVendorAdapter` completion.
 ///
-/// The `resolveManifest` completion is intentionally NOT `@Sendable` — the
-/// protocol is consumed by `AudiobookLoader` (and its test doubles) whose call
-/// sites pass plain callbacks; marking the protocol `@Sendable` would ripple
-/// through the loader's completion chain and every adapter test mock. But each
-/// adapter must hand the completion across a `Task { @MainActor in }` /
-/// `DispatchQueue.main.async` hop to satisfy the "completion fires on main"
-/// contract. Wrapping it in this box lets it cross that `@Sendable` boundary
-/// without the protocol change. Mirrors `SendableDecryptCompletion`
-/// (LCPAudiobooks) and `TokenReadyCompletionBox` (AudiobookLoader).
+/// The `resolveManifest` completion is not `@Sendable` (that would ripple
+/// through the loader and every test mock), but adapters must hop it to main.
+/// This box lets it cross that `@Sendable` boundary.
 ///
 /// - Sendable invariant: `fire(_:)` forwards to the wrapped closure exactly
 ///   once per adapter load (the adapters return after each `completion` call),

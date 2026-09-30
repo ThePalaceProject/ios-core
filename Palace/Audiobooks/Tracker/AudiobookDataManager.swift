@@ -119,29 +119,18 @@ struct AudiobookDataManagerStore: Codable {
 class AudiobookDataManager: @unchecked Sendable {
     private let syncTimeInterval: TimeInterval
     private var subscriptions: Set<AnyCancellable> = []
-    /// Serial dispatch queue that owns all writes to `store`. Exposed at
-    /// internal access so `@testable import` tests can `syncQueue.sync {}`
-    /// to deterministically wait for pending barrier writes to drain
-    /// before asserting against `store` — that race used to be papered
-    /// over with `DispatchQueue.main.asyncAfter` sleeps, which flaked
-    /// under load and were banned by CLAUDE.md.
+    /// Serial dispatch queue that owns all writes to `store`. Internal so
+    /// tests can `syncQueue.sync {}` to wait for pending barrier writes.
     let syncQueue = DispatchQueue(label: "com.audiobook.syncQueue")
     var store = AudiobookDataManagerStore()
     private let audiobookLogger = AudiobookFileLogger.shared
     private let networkService: TPPNetworkExecutor
-    /// Cross-account scope guard for playtimes uploads (Bug B, swarm_162a3219).
+    /// Cross-account scope guard for playtimes uploads (PR #1018 follow-up).
     ///
     /// Returns the UUID of the currently-selected library. The `syncValues()`
     /// loop compares each queued `LibraryBook.libraryId` against this value
-    /// and SKIPS uploads whose library is not the active one — the entries
-    /// stay in the queue and flush on the next sync after the user switches
-    /// back. Default closure reads `AppContainer.production().accountsManager
-    /// .currentAccountId`; tests inject a captured closure so they can flip
-    /// the "current library" mid-test without instantiating the full app
-    /// container or the real `AccountsManager` state machine.
-    ///
-    /// See `.forgeos/handoffs/2026-06-05-icarus-cross-host-logout-regression.md`
-    /// §2 Bug B for the regression that motivated this guard.
+    /// and skips uploads whose library is not the active one; the entries
+    /// stay in the queue and flush after the user switches back.
     private let currentAccountIdProvider: @Sendable () -> String?
     /// Observer token for `.TPPCurrentAccountDidChange` posted by
     /// `AccountsManager.currentAccount.didSet`. Held so the observer is
@@ -210,21 +199,11 @@ class AudiobookDataManager: @unchecked Sendable {
     }
 
     func syncValues(_: Date? = nil) {
-        // Request background task to ensure sync completes even if app is
-        // backgrounded. The identifier is shared-mutable across the expiration
-        // handler, the `syncQueue.async` body, and every per-request POST
-        // completion — all of which are `@Sendable` closures. A lock-backed
-        // reference box makes that sharing race-free (and `Sendable`) rather
-        // than capturing a mutable local `var` by reference across the
-        // concurrency boundaries. Behavior is unchanged: begin once, end once.
+        // Background task so the sync completes if the app is backgrounded.
+        // The identifier is shared across several `@Sendable` closures, so it
+        // lives in a lock-backed token that hops to main for the
+        // `UIApplication` calls. `begin` is enqueued on main before any `end`.
         let backgroundTask = BackgroundTaskToken()
-        // `UIApplication.shared` is `@MainActor`-isolated, so both the
-        // `beginBackgroundTask` and `endBackgroundTask` touches must run on the
-        // main actor. The token owns those hops internally (see `begin`/`end`),
-        // which keeps `syncValues` free of a `@MainActor` annotation that would
-        // ripple to its Combine-sink call sites and tests. The main-queue hops
-        // are FIFO-ordered — `begin` is enqueued here before `syncQueue.async`
-        // can enqueue any `end`, so "begin once, end once" ordering holds.
         backgroundTask.begin(named: "AudiobookTimeSync")
 
         syncQueue.async { [weak self] in
@@ -235,15 +214,10 @@ class AudiobookDataManager: @unchecked Sendable {
 
             let queuedLibraryBooks: Set<LibraryBook> = Set(self.store.queue.map { LibraryBook(time: $0) })
 
-            // Cross-account scope guard (Bug B, swarm_162a3219). A book whose
-            // libraryId does not match the currently-selected library MUST
-            // NOT have its playtimes POSTed — the receiving circulation-
-            // manager host is scoped to that library's credentials and would
-            // 401, mis-attributing the failure to the active account (the
-            // PR #1018 regression that surfaced as a per-minute Icarus
-            // sign-in modal). Skipped entries stay in the queue and flush
-            // when the user switches back. `nil` from the provider (no
-            // active library at all) skips every upload defensively.
+            // Cross-account scope guard: a playtime for another library would
+            // be sent with the wrong credentials, 401, and be attributed to the
+            // active account (PR #1018). Skipped entries stay queued. `nil`
+            // (no active library) skips every upload.
             let activeAccountId = self.currentAccountIdProvider()
             let postableLibraryBooks = queuedLibraryBooks.filter { $0.libraryId == activeAccountId }
             let skippedLibraryBooks = queuedLibraryBooks.subtracting(postableLibraryBooks)
