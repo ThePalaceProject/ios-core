@@ -54,12 +54,7 @@ Refresh the relevant one before a swarm or rigorous-fix run.
 | [`singleton-census.md`](./singleton-census.md) | Captured inventory of `.shared` declarations and reads; feeds the `.shared`-read ratchet. |
 | [`wave3-coupling-map.md`](./wave3-coupling-map.md) | Write-ahead characterization scouting for the decomposition — which seams are genuinely coupled versus incidentally adjacent. |
 | [`wave2b-mutation-baseline.md`](./wave2b-mutation-baseline.md) | Recorded mutation baseline for the Wave 2b surfaces, captured 2026-07-27. A measurement, not a plan. |
-| [`app-target-swift6-modernization-plan.md`](./app-target-swift6-modernization-plan.md) | The app target's route to Swift 6 language mode: phases, gates, and what each one is allowed to defer. |
-| [`swift6-a5-remainder-plan.md`](./swift6-a5-remainder-plan.md) | What phase A5 deliberately left behind, and the order to take it in. |
-| [`swift6-phaseB-followup.md`](./swift6-phaseB-followup.md) | Phase B's residue — the items that outlived the phase. |
-| [`swift6-phaseC-handoff-2026-07-07.md`](./swift6-phaseC-handoff-2026-07-07.md) | Phase C handoff: state at the boundary, and what the next agent needs. |
-| [`swift6-modernization-handoff-2026-07-02.md`](./swift6-modernization-handoff-2026-07-02.md) | Modernization handoff, 2026-07-02. |
-| [`swift6-modernization-handoff-2026-07-06.md`](./swift6-modernization-handoff-2026-07-06.md) | Modernization handoff, 2026-07-06 — supersedes the 07-02 state. |
+| [`swift-concurrency-doctrine.md`](./swift-concurrency-doctrine.md) | How to resolve a concurrency diagnostic: fix by isolation, never `nonisolated(unsafe)`; map shared types before fixing sites. Lifted from the six Swift 6 migration plans when the migration finished at #1199 (`SWIFT_VERSION 6.0` + `complete` on every config, so a violation is now a compile error). Those plans are in git history. |
 
 ## Subsystem designs
 
