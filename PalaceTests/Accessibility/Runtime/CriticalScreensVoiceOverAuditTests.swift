@@ -268,11 +268,9 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
         )
     }
 
-    /// The seek bar is the one way to move within a chapter. VoiceOver reaches
-    /// it and reads "Playback position" plus the elapsed value, but it carries
-    /// no `.adjustable` trait and no `accessibilityAdjustableAction`, so a
-    /// swipe up or down does nothing: `PalaceSeekSliderView` is a custom
-    /// `DragGesture` view, not a `Slider`.
+    /// The seek bar is the one way to move within a chapter. A VoiceOver user
+    /// moves it by swiping up or down, which needs the `.adjustable` trait and
+    /// an adjustable action that seeks the player (PP-5280).
     func testAudiobookFullPlayer_seekBarIsAdjustableWithVoiceOverSwipes() {
         let (presenter, session) = makeAudiobookPresenter()
         presenter.expand()
@@ -285,11 +283,17 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
         XCTAssertNotNil(seekBar, "the seek bar must be reachable")
         guard let seekBar else { return }
 
-        XCTExpectFailure("Known defect on develop: the audiobook seek bar is not adjustable with VoiceOver. Remove this once it is.")
         XCTAssertTrue(seekBar.traits.contains(.adjustable),
                       "VoiceOver users seek by swiping up/down on an adjustable element; traits were \(seekBar.traits.rawValue)")
-        XCTAssertTrue(AccessibilityTraversalAudit.adjust(seekBar),
-                      "a VoiceOver increment/decrement must change the seek bar's value")
+        let spokenBefore = seekBar.object.accessibilityValue
+        seekBar.object.accessibilityIncrement()
+        host.settle(0.2)
+        XCTAssertEqual(session.seekFractions.count, 1, "a VoiceOver swipe up must seek the player once")
+        XCTAssertGreaterThan(session.seekFractions.last ?? 0, 0, "a swipe up from the chapter start must seek forward")
+        let refreshed = AccessibilityTraversalAudit.traverse(host.window)
+            .first { $0.label == Strings.Generic.playbackPosition }
+        XCTAssertNotEqual(refreshed?.object.accessibilityValue, spokenBefore,
+                          "the spoken value must follow the step, not wait for playback to catch up")
     }
 
     // MARK: - Helpers

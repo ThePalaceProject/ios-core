@@ -542,10 +542,15 @@ struct AudiobookMorphingPlayerView: View {
                     get: { chapterProgressClamped },
                     set: { _ in }
                 ),
-                onChange: { audiobookSession.seek(to: $0) }
+                onChange: { audiobookSession.seek(to: $0) },
+                // PP-5280: VoiceOver swipes step by the patron's skip intervals,
+                // the same distances as the transport's skip buttons.
+                chapterDuration: chapterDuration,
+                forwardStepSeconds: skipForwardInterval,
+                backStepSeconds: skipBackInterval,
+                spokenValue: { seekAccessibilityValue(at: $0) }
             )
             .accessibilityLabel(Strings.Generic.playbackPosition)
-            .accessibilityValue(seekAccessibilityValue)
             // Row under the bar: chapter elapsed · chapter name · chapter time-left
             // (mirrors toolkit `playheadOffsetText` / `chapterTitle` / `timeLeftText`).
             // The title is centered in the FULL row width via a ZStack so it stays
@@ -1704,10 +1709,21 @@ struct AudiobookMorphingPlayerView: View {
         "-" + Self.formatTime(max(0, progress.chapterTimeLeft))
     }
 
-    /// Spoken value for the seek slider: percent through the current chapter
-    /// (the scrubber is chapter-scoped) plus the chapter elapsed timecode.
-    private var seekAccessibilityValue: String {
-        "\(Int(chapterProgressClamped * 100))%, \(chapterElapsedString)"
+    /// Length of the current chapter in seconds (elapsed + remaining).
+    private var chapterDuration: TimeInterval {
+        max(0, progress.chapterOffset) + max(0, progress.chapterTimeLeft)
+    }
+
+    /// Spoken value for the seek slider at chapter fraction `fraction`: percent
+    /// through the current chapter (the scrubber is chapter-scoped) plus the
+    /// chapter elapsed timecode. At the live position it reads the live
+    /// timecode; after a VoiceOver step it reads the step's target, so the value
+    /// spoken matches where the seek is going before playback catches up.
+    private func seekAccessibilityValue(at fraction: Double) -> String {
+        let elapsed = abs(fraction - chapterProgressClamped) < 0.000_001
+            ? chapterElapsedString
+            : Self.formatTime(fraction * chapterDuration)
+        return "\(Int(fraction * 100))%, \(elapsed)"
     }
 
     // MARK: - Safe-area insets (window, since the overlay ignores safe area)
@@ -1809,11 +1825,41 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
 /// `DragGesture(minimumDistance: 0)` continuously tracks the finger via a
 /// `tempValue`, and on release the position is committed once through `onChange`
 /// (plus a light seek-commit haptic). The caller supplies `accessibilityLabel`
-/// / `accessibilityValue` at the call site.
+/// at the call site.
+///
+/// VoiceOver (PP-5280): the slider is adjustable. A swipe up or down moves the
+/// position by `forwardStepSeconds` / `backStepSeconds` of the chapter,
+/// clamped to its start and end, and commits through the same path as the end
+/// of a drag, so the player seeks. `spokenValue` renders the value VoiceOver
+/// reads for the displayed position.
 @MainActor
 struct PalaceSeekSliderView: View {
     @Binding var value: Double
     var onChange: (_ value: Double) -> Void
+    /// Chapter length in seconds; converts the step to a chapter fraction.
+    var chapterDuration: TimeInterval = 0
+    var forwardStepSeconds: Int = AudiobookSkipIntervalSettings.defaultInterval
+    var backStepSeconds: Int = AudiobookSkipIntervalSettings.defaultInterval
+    var spokenValue: (Double) -> String = { "\(Int($0 * 100))%" }
+
+    enum StepDirection { case forward, back }
+
+    /// Step used when the chapter length is not known yet: 5% of the chapter.
+    nonisolated static let fallbackStepFraction = 0.05
+
+    /// The chapter fraction one VoiceOver step moves to from `position`.
+    nonisolated static func steppedPosition(
+        from position: Double,
+        direction: StepDirection,
+        stepSeconds: Int,
+        chapterDuration: TimeInterval
+    ) -> Double {
+        let step = chapterDuration.isFinite && chapterDuration > 0
+            ? Double(max(stepSeconds, 0)) / chapterDuration
+            : fallbackStepFraction
+        let target = direction == .forward ? position + step : position - step
+        return min(max(target, 0), 1)
+    }
 
     @State private var tempValue: Double?
     @State private var isDragging: Bool = false
@@ -1866,29 +1912,7 @@ struct PalaceSeekSliderView: View {
                     .onEnded { _ in
                         withAnimation(.easeOut(duration: 0.2)) { isDragging = false }
                         if let finalValue = tempValue {
-                            isCommitting = true
-                            value = finalValue
-                            // Subtle completion haptic on seek commit (toolkit parity).
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onChange(finalValue)
-                            // HOLD the committed thumb position until the LIVE
-                            // playback value converges to the seek target (see
-                            // `.onChange(of: value)` below). Unlike the toolkit —
-                            // whose binding is not a high-frequency player mirror —
-                            // our `value` reads `progress.playbackProgress`, which
-                            // the player republishes every tick. A fixed 0.1s clear
-                            // let a STALE pre-seek tick overwrite the optimistic
-                            // `value = finalValue` before the async seek landed, so
-                            // the thumb snapped back to the old position while time
-                            // moved forward. We instead keep `tempValue` until the
-                            // seek propagates, with a safety timeout so a failed /
-                            // silent seek can never wedge the thumb.
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                if isCommitting {
-                                    tempValue = nil
-                                    isCommitting = false
-                                }
-                            }
+                            commit(finalValue)
                         }
                     }
             )
@@ -1905,10 +1929,59 @@ struct PalaceSeekSliderView: View {
             }
         }
         .frame(height: hitHeight)
+        .accessibilityValue(spokenValue(displayValue))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: step(.forward)
+            case .decrement: step(.back)
+            @unknown default: break
+            }
+        }
     }
 
     private var displayValue: Double {
         tempValue ?? value
+    }
+
+    /// One VoiceOver step from the displayed position, so repeated swipes
+    /// accumulate while the previous seek is still landing.
+    private func step(_ direction: StepDirection) {
+        let target = Self.steppedPosition(
+            from: displayValue,
+            direction: direction,
+            stepSeconds: direction == .forward ? forwardStepSeconds : backStepSeconds,
+            chapterDuration: chapterDuration
+        )
+        tempValue = target
+        commit(target)
+    }
+
+    /// Commits a seek to `finalValue`: the end of a drag and a VoiceOver step
+    /// both land here.
+    private func commit(_ finalValue: Double) {
+        isCommitting = true
+        value = finalValue
+        // Subtle completion haptic on seek commit (toolkit parity).
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        onChange(finalValue)
+        // HOLD the committed thumb position until the LIVE
+        // playback value converges to the seek target (see
+        // `.onChange(of: value)` below). Unlike the toolkit —
+        // whose binding is not a high-frequency player mirror —
+        // our `value` reads `progress.playbackProgress`, which
+        // the player republishes every tick. A fixed 0.1s clear
+        // let a STALE pre-seek tick overwrite the optimistic
+        // `value = finalValue` before the async seek landed, so
+        // the thumb snapped back to the old position while time
+        // moved forward. We instead keep `tempValue` until the
+        // seek propagates, with a safety timeout so a failed /
+        // silent seek can never wedge the thumb.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if isCommitting {
+                tempValue = nil
+                isCommitting = false
+            }
+        }
     }
 
     private func progressWidth(in totalWidth: CGFloat) -> CGFloat {

@@ -203,6 +203,9 @@ final class SpyShimSession: AudiobookSessionManaging {
     func skipBack() { skipBackCallCount += 1 }
     func skipForward() { skipForwardCallCount += 1 }
     func cyclePlaybackRate() -> PlaybackRate { .normalTime }
+    /// Fractions passed to `seek(to:)`, in call order — the scrubber's seek path.
+    private(set) var seekFractions: [Double] = []
+    func seek(to fraction: Double) { seekFractions.append(fraction) }
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {
         stopPlaybackCallCount += 1
         lastStopPlaybackDismissPhoneUI = dismissPhoneUI
