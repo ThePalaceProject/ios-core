@@ -337,7 +337,9 @@ enum AccessibilityTraversalAudit {
 /// and KIF use, through `libAccessibility`'s `_AXSSetAutomationEnabled`.
 ///
 /// The setting is simulator-wide and outlives the process, so `restore()`
-/// puts back the value found at `enable()`.
+/// puts back the value found at `enable()`. A marker file records that this
+/// code turned the flag on, so a run that died before restoring is cleaned
+/// up by the next one instead of leaving the flag on for good.
 @MainActor
 enum AccessibilityRuntime {
     private typealias Getter = @convention(c) () -> Int32
@@ -352,19 +354,51 @@ enum AccessibilityRuntime {
         return (unsafeBitCast(get, to: Getter.self), unsafeBitCast(set, to: Setter.self))
     }()
 
+    /// Where the marker lives: simulator-wide, like the flag itself, so a
+    /// run in a reinstalled app still finds a marker an earlier run left.
+    static var markerDirectory: URL = {
+        if let shared = ProcessInfo.processInfo.environment["SIMULATOR_SHARED_RESOURCES_DIRECTORY"] {
+            return URL(fileURLWithPath: shared)
+        }
+        return FileManager.default.temporaryDirectory
+    }()
+
+    /// Present while a run has turned the flag on and not yet restored it.
+    static var markerURL: URL {
+        markerDirectory.appendingPathComponent("palace-a11y-audit-turned-on-automation")
+    }
+
+    /// The value `restore()` puts back. A marker means an earlier run turned
+    /// the flag on and ended (crashed or was killed) before restoring it, so
+    /// the flag's current "on" is that run's leftover and "off" is restored.
+    nonisolated static func valueToRestore(current: Int32, markerFromUnfinishedRun: Bool) -> Int32 {
+        markerFromUnfinishedRun ? 0 : current
+    }
+
+    static var isEnabled: Bool { (symbols?.get() ?? 0) != 0 }
+
     /// Returns `false` when the runtime cannot be reached; callers fail then,
     /// because every assertion after it would be vacuous.
     @discardableResult
     static func enable() -> Bool {
         guard let symbols else { return false }
-        if original == nil { original = symbols.get() }
+        if original == nil {
+            original = valueToRestore(
+                current: symbols.get(),
+                markerFromUnfinishedRun: FileManager.default.fileExists(atPath: markerURL.path)
+            )
+        }
         if symbols.get() == 0 { symbols.set(1) }
+        if original == 0 {
+            FileManager.default.createFile(atPath: markerURL.path, contents: nil)
+        }
         return symbols.get() != 0
     }
 
     static func restore() {
         guard let symbols, let original else { return }
         symbols.set(original)
+        try? FileManager.default.removeItem(at: markerURL)
         self.original = nil
     }
 }

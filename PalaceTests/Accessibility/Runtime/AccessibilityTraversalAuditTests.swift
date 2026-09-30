@@ -134,6 +134,38 @@ final class AccessibilityTraversalAuditTests: XCTestCase {
         XCTAssertNotEqual(working.level, 0, "a working adjustable must have been adjusted")
     }
 
+    // MARK: - Accessibility runtime flag
+
+    func testValueToRestore_withoutAMarker_isTheValueFoundAtEnable() {
+        XCTAssertEqual(AccessibilityRuntime.valueToRestore(current: 1, markerFromUnfinishedRun: false), 1)
+        XCTAssertEqual(AccessibilityRuntime.valueToRestore(current: 0, markerFromUnfinishedRun: false), 0)
+    }
+
+    /// A marker left by a run that never restored means the flag's "on" is a
+    /// leftover, so restore turns it off.
+    func testValueToRestore_withAMarkerFromAnUnfinishedRun_isOff() {
+        XCTAssertEqual(AccessibilityRuntime.valueToRestore(current: 1, markerFromUnfinishedRun: true), 0)
+    }
+
+    func testRestore_afterAnUnfinishedRunsMarker_turnsTheFlagOffAndRemovesTheMarker() throws {
+        let savedDirectory = AccessibilityRuntime.markerDirectory
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            AccessibilityRuntime.markerDirectory = savedDirectory
+            try? FileManager.default.removeItem(at: directory)
+        }
+        AccessibilityRuntime.restore() // start from no captured state
+        AccessibilityRuntime.markerDirectory = directory
+        FileManager.default.createFile(atPath: AccessibilityRuntime.markerURL.path, contents: nil)
+
+        XCTAssertTrue(AccessibilityRuntime.enable())
+        AccessibilityRuntime.restore()
+
+        XCTAssertFalse(AccessibilityRuntime.isEnabled, "the leftover flag must be turned off")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: AccessibilityRuntime.markerURL.path))
+    }
+
     // MARK: - Helpers
 
     private func audit<V: View>(swiftUI view: V) -> AXAuditReport {
