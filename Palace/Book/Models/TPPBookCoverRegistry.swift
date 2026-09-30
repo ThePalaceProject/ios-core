@@ -118,6 +118,56 @@ actor TPPBookCoverRegistry {
     /// Tracks hosts that are down to skip requests immediately instead of waiting for timeouts
     let hostFailureTracker: HostFailureTracker
 
+    /// How long a URL that answered with a non-image is left alone before being
+    /// asked again (PP-4968).
+    ///
+    /// The refusal below already stops bad bytes being cached, so the cover
+    /// recovers when the host does. What it does not do is stop us ASKING: a
+    /// URL that reliably answers 403 or 404 was re-requested on every
+    /// appearance, which in September 2026 meant 97,320 decode-failure reports
+    /// across 6,604 patrons — 14.7 each — plus a round trip apiece. The two
+    /// live shapes are both persistent rather than transient: BiblioBoard
+    /// 302-redirects covers to a signed CloudFront URL that denies the request,
+    /// and answers 404 for audiobook items that have no thumbnail at all.
+    ///
+    /// Bounded rather than permanent, because `HostFailureTracker` cannot cover
+    /// this case — a 403/404 is a SUCCESSFUL HTTP transaction, so it never
+    /// throws and never reaches the `catch` that records host failures. A
+    /// permanent memo would reintroduce the defect #1405 fixed, where a cover
+    /// that was briefly unavailable never returned for the process lifetime.
+    /// One minute is long enough that scrolling a shelf back and forth costs one
+    /// request rather than one per appearance, and short enough that a patron
+    /// who waits out a transient outage sees the cover without relaunching.
+    static let badResponseRetryInterval: TimeInterval = 60
+
+    /// Ceiling on the backoff below. Bounded rather than permanent so a cover
+    /// added to the catalogue later is still discovered within a session.
+    static let maxBadResponseRetryInterval: TimeInterval = 1800
+
+    /// URLs whose last response could not be an image: when it was last seen,
+    /// and how many consecutive times.
+    ///
+    /// Keyed by URL, never by host — one dead thumbnail must not blank the
+    /// shelf around it.
+    ///
+    /// The strike count exists because the measured population is not
+    /// transient. Of the 12 distinct BiblioBoard cover URLs sampled from
+    /// September 2026's decode failures, all 12 still fail reproducibly — 6
+    /// with 403 (its signed CloudFront redirect denies the request) and 6 with
+    /// 404 ("unable to map thumbnail request … type=AUDIOBOOK"). A flat
+    /// interval would re-request every one of them once per interval for the
+    /// life of the process. Doubling per consecutive failure keeps a genuinely
+    /// transient outage recovering quickly while a URL that is simply not
+    /// served backs off toward the cap.
+    private struct BadResponse {
+        var seenAt: Date
+        var strikes: Int
+    }
+    private var badResponses: [URL: BadResponse] = [:]
+
+    /// Injected so a test can cross `badResponseRetryInterval` without sleeping.
+    private let now: @Sendable () -> Date
+
     /// Retained so the observer is torn down in `deinit`. A Wi-Fi↔cellular
     /// handoff briefly fails in-flight image requests on the old interface; on
     /// any reachability change we clear the circuit breaker so the covers that a
@@ -165,11 +215,13 @@ actor TPPBookCoverRegistry {
     init(
         imageCache: ImageCacheType,
         hostFailureTracker: HostFailureTracker = HostFailureTracker(),
-        urlSession: URLSession = TPPBookCoverRegistry.imageSession
+        urlSession: URLSession = TPPBookCoverRegistry.imageSession,
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.imageCache = imageCache
         self.hostFailureTracker = hostFailureTracker
         self.urlSession = urlSession
+        self.now = now
 
         let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
         if deviceMemoryMB < 2048 {
@@ -399,6 +451,50 @@ actor TPPBookCoverRegistry {
     ///
     /// On a host-level failure, trips the circuit breaker so the remaining books
     /// in a lane skip the network entirely.
+    /// True while `url`'s last non-image response is still inside
+    /// `badResponseRetryInterval`. Expired entries are dropped on read, so the
+    /// table cannot grow without bound across a long browsing session.
+    /// `base * 2^(strikes-1)`, capped. One strike gives the base interval.
+    private static func retryInterval(forStrikes strikes: Int) -> TimeInterval {
+        let exponent = max(0, strikes - 1)
+        // Clamp the shift before it is applied; `pow` on a large exponent
+        // overflows to infinity and would make the backoff permanent.
+        guard exponent < 32 else { return maxBadResponseRetryInterval }
+        let widened = badResponseRetryInterval * TimeInterval(1 << exponent)
+        return min(widened, maxBadResponseRetryInterval)
+    }
+
+    /// True while this URL's last non-image response is still inside its
+    /// current backoff window. An expired record is kept, not dropped — its
+    /// strike count is what widens the next window — but it no longer
+    /// suppresses, so the URL is asked again.
+    private func isWithinBadResponseInterval(_ url: URL) -> Bool {
+        guard let record = badResponses[url] else { return false }
+        let window = Self.retryInterval(forStrikes: record.strikes)
+        return now().timeIntervalSince(record.seenAt) < window
+    }
+
+    private func noteBadResponse(for url: URL) {
+        let strikes = (badResponses[url]?.strikes ?? 0) + 1
+        badResponses[url] = BadResponse(seenAt: now(), strikes: strikes)
+    }
+
+    /// Cleared entirely on a usable response, so a cover that comes back is
+    /// neither held out for the remainder of its window nor carries its old
+    /// strikes into some later, unrelated failure.
+    ///
+    /// Not directly covered by a test, and the reason is a seam rather than an
+    /// oversight: a successful fetch also stores the bytes in `sourceDataCache`,
+    /// so every later request for that URL is served from cache and never
+    /// reaches this path again. The reset only becomes observable once NSCache
+    /// evicts under memory pressure, which a unit test cannot force. A test
+    /// scripting a later failure would measure the positive cache and pass with
+    /// this line deleted — see the note on
+    /// `testRecoveryAfterTwoStrikes_isNotSuppressedByTheWidenedWindow`.
+    private func clearBadResponse(for url: URL) {
+        badResponses[url] = nil
+    }
+
     private func sourceData(for url: URL) async -> Data? {
         let key = url.absoluteString as NSString
         if let cached = sourceDataCache.object(forKey: key) {
@@ -406,6 +502,16 @@ actor TPPBookCoverRegistry {
         }
 
         if await hostFailureTracker.isHostFailing(url.host) {
+            return nil
+        }
+
+        // PP-4968: this URL answered with something that cannot be an image
+        // recently enough that asking again is not worth a round trip. Checked
+        // AFTER the positive cache, so a URL that has since been fetched
+        // successfully is served from cache rather than suppressed, and BEFORE
+        // the in-progress table, so a shelf rendering ten cells at once does not
+        // queue ten doomed requests behind one another.
+        if isWithinBadResponseInterval(url) {
             return nil
         }
 
@@ -459,8 +565,14 @@ actor TPPBookCoverRegistry {
                 guard statusIsUsable, !data.isEmpty else {
                     Log.error(#file, "Unusable image response from \(url) — status \(status.map(String.init) ?? "none"), \(data.count) bytes; not cached")
                     TPPErrorLogger.logImageDecodeFail(url: url)
+                    // Remember the refusal, not the bytes (PP-4968). Without
+                    // this the next appearance of the same dead cover repeats
+                    // the whole exchange, which is what made one unusable cover
+                    // cost 14.7 reports per affected patron.
+                    await self.noteBadResponse(for: url)
                     return nil
                 }
+                await self.clearBadResponse(for: url)
                 await self.hostFailureTracker.recordSuccess(for: url.host)
                 self.sourceDataCache.setObject(data as NSData, forKey: key, cost: data.count)
                 return data

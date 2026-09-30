@@ -88,22 +88,36 @@ final class ScriptedCoverURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+/// A clock the test drives, so a TTL can be crossed without sleeping.
+final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+    init(_ start: Date = Date(timeIntervalSince1970: 1_700_000_000)) { current = start }
+    func now() -> Date { lock.lock(); defer { lock.unlock() }; return current }
+    func advance(_ interval: TimeInterval) { lock.lock(); current += interval; lock.unlock() }
+}
+
 final class CoverSourceBadResponseCacheTests: XCTestCase {
 
     private var registry: TPPBookCoverRegistry!
+    private var clock: TestClock!
 
     override func setUp() {
         super.setUp()
         ScriptedCoverURLProtocol.reset()
+        clock = TestClock()
+        let clock = self.clock!
         registry = TPPBookCoverRegistry(
             imageCache: MockImageCache(),
-            urlSession: ScriptedCoverURLProtocol.makeSession()
+            urlSession: ScriptedCoverURLProtocol.makeSession(),
+            now: { clock.now() }
         )
     }
 
     override func tearDown() {
         ScriptedCoverURLProtocol.reset()
         registry = nil
+        clock = nil
         super.tearDown()
     }
 
@@ -129,13 +143,17 @@ final class CoverSourceBadResponseCacheTests: XCTestCase {
         XCTAssertNil(first, "A zero-length body cannot decode, so no image should come back")
         XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 1)
 
-        // The host recovers and now serves the real cover.
+        // The host recovers and now serves the real cover. The refusal is
+        // remembered for `badResponseRetryInterval`, so recovery happens once
+        // that has passed rather than on the very next scroll — see
+        // `testRepeatedBadResponse_withinRetryInterval_doesNotRefetch` for why.
+        clock.advance(TPPBookCoverRegistry.badResponseRetryInterval + 1)
         ScriptedCoverURLProtocol.script(url, status: 200, body: try validJPEG())
         let second = await registry.fetchImageByURL(url, identifier: "empty-body", isCover: true)
 
         XCTAssertEqual(
             ScriptedCoverURLProtocol.requestCount(for: url), 2,
-            "The empty body must not be cached — the second fetch has to go back to the host"
+            "The empty body must not be cached — once the interval passes the fetch has to go back to the host"
         )
         XCTAssertNotNil(second, "Once the host serves real bytes the cover must appear")
     }
@@ -151,14 +169,190 @@ final class CoverSourceBadResponseCacheTests: XCTestCase {
         XCTAssertNil(first, "An HTML error page is not an image")
         XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 1)
 
+        clock.advance(TPPBookCoverRegistry.badResponseRetryInterval + 1)
         ScriptedCoverURLProtocol.script(url, status: 200, body: try validJPEG())
         let second = await registry.fetchImageByURL(url, identifier: "error-page", isCover: true)
 
         XCTAssertEqual(
             ScriptedCoverURLProtocol.requestCount(for: url), 2,
-            "A non-2xx body must not be cached — the second fetch has to go back to the host"
+            "A non-2xx body must not be cached — once the interval passes the fetch has to go back to the host"
         )
         XCTAssertNotNil(second, "Once the host serves real bytes the cover must appear")
+    }
+
+    // MARK: - PP-4968: a dead cover must stop costing a fetch on every scroll
+
+    /// The defect this pins. BiblioBoard serves 403 (its signed CloudFront
+    /// redirect denies us) and 404 ("unable to map thumbnail request … type=
+    /// AUDIOBOOK") for covers that are simply not there. Those are not transient:
+    /// re-requesting them achieves nothing. Measured in September 2026 the app
+    /// logged 97,320 decode failures across 6,604 users — 14.7 per user — because
+    /// every appearance of a dead cover cost another round trip and another
+    /// report.
+    ///
+    /// Refusing to cache the bad bytes (the behaviour above) is necessary but not
+    /// sufficient: without remembering the REFUSAL, the next scroll repeats the
+    /// whole exchange.
+    func testRepeatedBadResponse_withinRetryInterval_doesNotRefetch() async throws {
+        let url = try XCTUnwrap(URL(string: "https://covers.test/dead-cover.jpg"))
+        ScriptedCoverURLProtocol.script(url, status: 404, body: Data("not here".utf8))
+
+        let first = await registry.fetchImageByURL(url, identifier: "dead", isCover: true)
+        XCTAssertNil(first)
+        XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 1)
+
+        // Three more appearances inside the interval — a patron scrolling the
+        // shelf past the same dead cover.
+        for _ in 0..<3 {
+            clock.advance(2)
+            _ = await registry.fetchImageByURL(url, identifier: "dead", isCover: true)
+        }
+
+        XCTAssertEqual(
+            ScriptedCoverURLProtocol.requestCount(for: url), 1,
+            "A URL known to have answered with a non-image must not be re-requested on every scroll"
+        )
+    }
+
+    /// CONTROL for the test above: the suppression must be time-bounded, or a
+    /// cover that was briefly unavailable would never come back for the process
+    /// lifetime — which is the defect #1405 fixed and must stay fixed.
+    func testBadResponse_afterRetryInterval_isRetriedAndRecovers() async throws {
+        let url = try XCTUnwrap(URL(string: "https://covers.test/transient.jpg"))
+        ScriptedCoverURLProtocol.script(url, status: 500, body: Data("oops".utf8))
+
+        _ = await registry.fetchImageByURL(url, identifier: "transient", isCover: true)
+        XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 1)
+
+        clock.advance(TPPBookCoverRegistry.badResponseRetryInterval + 1)
+        ScriptedCoverURLProtocol.script(url, status: 200, body: try validJPEG())
+        let recovered = await registry.fetchImageByURL(url, identifier: "transient", isCover: true)
+
+        XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 2,
+                       "Past the interval the host must be asked again")
+        XCTAssertNotNil(recovered, "A cover that becomes available again must appear")
+    }
+
+    /// A URL that keeps answering with a non-image is not transient, and the
+    /// measured population is dominated by exactly that: every one of the 12
+    /// distinct BiblioBoard cover URLs sampled from September's events fails
+    /// reproducibly, 6 with 403 and 6 with 404. A flat interval would still
+    /// re-request each of them once per interval forever, so consecutive
+    /// failures widen the window.
+    func testConsecutiveBadResponses_widenTheRetryInterval() async throws {
+        let url = try XCTUnwrap(URL(string: "https://covers.test/permanently-dead.jpg"))
+        ScriptedCoverURLProtocol.script(url, status: 404, body: Data("gone".utf8))
+
+        _ = await registry.fetchImageByURL(url, identifier: "dead", isCover: true)
+        XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 1)
+
+        // Past the FIRST interval: asked again, fails again. That second strike
+        // is what widens the window.
+        clock.advance(TPPBookCoverRegistry.badResponseRetryInterval + 1)
+        _ = await registry.fetchImageByURL(url, identifier: "dead", isCover: true)
+        XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 2)
+
+        // One interval further is now INSIDE the widened window, so no request.
+        clock.advance(TPPBookCoverRegistry.badResponseRetryInterval + 1)
+        _ = await registry.fetchImageByURL(url, identifier: "dead", isCover: true)
+        XCTAssertEqual(
+            ScriptedCoverURLProtocol.requestCount(for: url), 2,
+            "After two consecutive failures the window must be wider than one interval"
+        )
+
+    }
+
+    /// The cap, exercised where it actually bites.
+    ///
+    /// Written after a surviving mutant: deleting `min(widened, max…)` failed no
+    /// test, because the earlier version advanced past the cap while the URL had
+    /// only two strikes — a 120s window that the advance cleared whether or not
+    /// the cap applied. The assertion could not fail.
+    ///
+    /// Six consecutive failures put the UNCAPPED window at 60 * 2^5 = 1920s,
+    /// which is longer than the cap. Advancing just past the cap therefore
+    /// discriminates: capped, the host is asked again; uncapped, it is not.
+    func testBackoffIsCapped_soASuppressedCoverIsEventuallyRetried() async throws {
+        let url = try XCTUnwrap(URL(string: "https://covers.test/capped.jpg"))
+        ScriptedCoverURLProtocol.script(url, status: 404, body: Data("gone".utf8))
+
+        // Strike 1, then five more, each after its own (doubling) window.
+        _ = await registry.fetchImageByURL(url, identifier: "c", isCover: true)
+        var window = TPPBookCoverRegistry.badResponseRetryInterval
+        for _ in 0..<5 {
+            clock.advance(window + 1)
+            _ = await registry.fetchImageByURL(url, identifier: "c", isCover: true)
+            window *= 2
+        }
+        XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 6,
+                       "six consecutive failures recorded")
+
+        // Uncapped this window would be 1920s; capped it is 1800s.
+        XCTAssertGreaterThan(
+            TPPBookCoverRegistry.badResponseRetryInterval * 32,
+            TPPBookCoverRegistry.maxBadResponseRetryInterval,
+            "this test only discriminates while the uncapped window exceeds the cap"
+        )
+        clock.advance(TPPBookCoverRegistry.maxBadResponseRetryInterval + 1)
+        _ = await registry.fetchImageByURL(url, identifier: "c", isCover: true)
+
+        XCTAssertEqual(
+            ScriptedCoverURLProtocol.requestCount(for: url), 7,
+            "Past the cap the host must be asked again — an uncapped backoff would still be suppressing"
+        )
+    }
+
+    /// CONTROL for the backoff: a URL that has been failing must still recover,
+    /// and the backoff must not keep suppressing it once it does.
+    ///
+    /// This asserts recovery after TWO strikes specifically — the widened
+    /// window is where a too-eager backoff would strand a cover that came back.
+    ///
+    /// It deliberately stops at recovery. The obvious next assertion — that a
+    /// LATER failure on the same URL starts from the base interval again —
+    /// cannot be written against this seam: the successful fetch stores the
+    /// bytes in the registry's private `sourceDataCache`, so every subsequent
+    /// request for that URL is served from cache and never reaches the network.
+    /// A test that scripts a later failure therefore measures the positive
+    /// cache, not the backoff, and passes whether or not `clearBadResponse`
+    /// exists. The reset is still correct and still needed — it matters once
+    /// NSCache evicts under memory pressure — but its effect is not observable
+    /// here, and asserting it would be theatre.
+    func testRecoveryAfterTwoStrikes_isNotSuppressedByTheWidenedWindow() async throws {
+        let url = try XCTUnwrap(URL(string: "https://covers.test/recovers.jpg"))
+        ScriptedCoverURLProtocol.script(url, status: 500, body: Data("err".utf8))
+
+        _ = await registry.fetchImageByURL(url, identifier: "r", isCover: true)
+        clock.advance(TPPBookCoverRegistry.badResponseRetryInterval + 1)
+        _ = await registry.fetchImageByURL(url, identifier: "r", isCover: true)
+        XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 2,
+                       "two consecutive failures, so the window is now doubled")
+
+        // Past the DOUBLED window the host is asked again, and it has recovered.
+        clock.advance(TPPBookCoverRegistry.badResponseRetryInterval * 2 + 1)
+        ScriptedCoverURLProtocol.script(url, status: 200, body: try validJPEG())
+        let good = await registry.fetchImageByURL(url, identifier: "r2", isCover: true)
+
+        XCTAssertNotNil(good, "A cover that comes back must appear even after two strikes")
+        XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: url), 3,
+                       "the widened window must expire, not persist")
+    }
+
+    /// The suppression is per-URL, not per-host: one dead cover must not
+    /// suppress a sibling that is served perfectly well. Without this, a single
+    /// bad thumbnail would blank an entire shelf.
+    func testBadResponseForOneURL_doesNotSuppressAnother() async throws {
+        let dead = try XCTUnwrap(URL(string: "https://covers.test/one-dead.jpg"))
+        let alive = try XCTUnwrap(URL(string: "https://covers.test/one-alive.jpg"))
+        ScriptedCoverURLProtocol.script(dead, status: 404, body: Data("gone".utf8))
+        ScriptedCoverURLProtocol.script(alive, status: 200, body: try validJPEG())
+
+        _ = await registry.fetchImageByURL(dead, identifier: "dead", isCover: true)
+        clock.advance(1)
+        let good = await registry.fetchImageByURL(alive, identifier: "alive", isCover: true)
+
+        XCTAssertNotNil(good, "A sibling cover must still load while another URL is suppressed")
+        XCTAssertEqual(ScriptedCoverURLProtocol.requestCount(for: alive), 1)
     }
 
     /// CONTROL. A good response MUST still be cached, otherwise "never cache
