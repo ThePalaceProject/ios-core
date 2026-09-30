@@ -49,6 +49,9 @@ import sys
 import time
 from typing import Callable, Iterable
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sim_lock  # noqa: E402  (shared with verify-pr.sh)
+
 # Derive REPO_ROOT from this script's location (scripts/palace_mutate.py) so the
 # tool works on any host — local dev, GitHub Actions runners, contributors'
 # clones. The previous absolute path silently broke CI: palace_mutate.py would
@@ -104,21 +107,28 @@ def simctl_available_devices() -> str:
         return ""
 
 
-def resolve_sim_id(want: str | None, available: str) -> str | None:
+def resolve_sim_id(want: str | None, available: str,
+                   held: Callable[[str], bool] = lambda _udid: False) -> str | None:
     """The UDID to build against, or None when nothing usable exists.
 
     `want` wins only if it is actually present in `available` — that check is
     the whole point, since a stale UDID is indistinguishable from a good one
-    until xcodebuild fails in a way that blames the diff.
+    until xcodebuild fails in a way that blames the diff. The fallback scan
+    skips any simulator `held` reports as another checkout's.
     """
     if want and want in available:
         return want
     for line in available.splitlines():
         if _IPHONE_RE.search(line):
             found = _UDID_RE.search(line)
-            if found:
+            if found and not held(found.group(0)):
                 return found.group(0)
     return None
+
+
+def _checkout_roots() -> list[str]:
+    """Paths whose simulator locks count as this run's own."""
+    return [os.path.dirname(os.path.dirname(os.path.abspath(__file__))), REPO_ROOT]
 
 
 _RESOLVED_SIM_ID: str | None = None
@@ -130,13 +140,26 @@ def require_sim_id() -> str:
     if _RESOLVED_SIM_ID is not None:
         return _RESOLVED_SIM_ID
     want = os.environ.get("HARNESS_SESSION_SIM_UDID") or SIM_FALLBACK_UDID
-    resolved = resolve_sim_id(want, simctl_available_devices())
+    roots = _checkout_roots()
+    resolved = resolve_sim_id(
+        want, simctl_available_devices(),
+        held=lambda udid: sim_lock.foreign_holder(udid, roots) is not None,
+    )
+    if resolved is not None:
+        holder = sim_lock.foreign_holder(resolved, roots)
+        if holder is not None:
+            sys.stderr.write(
+                f"FATAL: {sim_lock.describe(resolved, holder)}\n"
+                "NOTHING WAS MEASURED.\n"
+            )
+            raise SystemExit(2)
     if resolved is None:
         sys.stderr.write(
             "FATAL: no usable iOS simulator found — NOTHING WAS MEASURED.\n"
             f"  HARNESS_SESSION_SIM_UDID={os.environ.get('HARNESS_SESSION_SIM_UDID', '<unset>')}\n"
             f"  fallback {SIM_FALLBACK_UDID} is not present on this host,\n"
-            "  and no available iPhone simulator matched.\n\n"
+            "  and no available iPhone simulator matched"
+            f"{' that another checkout does not hold' if os.environ.get(sim_lock.LOCK_DIR_ENV) else ''}.\n\n"
             "This is 'could not run', NOT 'mutants survived'. Create a simulator\n"
             "(Xcode > Window > Devices and Simulators), or run under an allocator\n"
             "that exports HARNESS_SESSION_SIM_UDID.\n"

@@ -290,6 +290,12 @@ public final class AudiobookSessionManager: ObservableObject {
     /// `startPlaybackAndSyncPosition`).
     private let readinessTimeout: TimeInterval
 
+    /// PP-5241: recovers the session after iOS resets its media services
+    /// (AVError -11819 / `mediaServicesWereResetNotification`). Observes the
+    /// injected `NotificationCenter`; this manager is its host. See
+    /// `MediaServicesResetRecovery.swift`.
+    private let mediaServicesResetRecovery: MediaServicesResetRecovery
+
     // MARK: - Initialization
 
     /// Designated init — every dependency is explicit. `private` so the
@@ -307,7 +313,8 @@ public final class AudiobookSessionManager: ObservableObject {
         lcpStreamingEnabledProvider: @escaping () -> Bool,
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing,
         playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding,
-        readinessTimeout: TimeInterval
+        readinessTimeout: TimeInterval,
+        notificationCenter: NotificationCenter
     ) {
         self.bookRegistry = bookRegistry
         self.positionResolver = AudiobookPositionResolver(bookRegistry: bookRegistry)
@@ -323,6 +330,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.readinessProbeFactory = readinessProbeFactory
         self.playbackCommandFactory = playbackCommandFactory
         self.readinessTimeout = readinessTimeout
+        self.mediaServicesResetRecovery = MediaServicesResetRecovery(notificationCenter: notificationCenter)
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
         // Note: Remote commands are handled by the toolkit's MediaControlPublisher.
@@ -331,6 +339,7 @@ public final class AudiobookSessionManager: ObservableObject {
         subscribeToPhoneSideErrorAlerts()
         subscribeToBookReturn()
         subscribeToAppLifecyclePositionPersistence()
+        mediaServicesResetRecovery.host = self
     }
 
     /// AppContainer-friendly initializer. Used by future call sites that
@@ -358,7 +367,8 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding = { player in
             ToolkitPlayerCommand(player: player)
         },
-        readinessTimeout: TimeInterval = 2.0
+        readinessTimeout: TimeInterval = 2.0,
+        notificationCenter: NotificationCenter = .default
     ) {
         self.init(
             bookRegistry: appContainer.bookRegistry,
@@ -373,7 +383,8 @@ public final class AudiobookSessionManager: ObservableObject {
             lcpStreamingEnabledProvider: lcpStreamingEnabledProvider,
             readinessProbeFactory: readinessProbeFactory,
             playbackCommandFactory: playbackCommandFactory,
-            readinessTimeout: readinessTimeout
+            readinessTimeout: readinessTimeout,
+            notificationCenter: notificationCenter
         )
     }
 
@@ -657,6 +668,16 @@ public final class AudiobookSessionManager: ObservableObject {
             return .failure(.alreadyLoading)
         }
 
+        // PP-5241: a fresh patron-initiated open ends any media-services-reset
+        // episode. Automatic re-opens (including the reset recovery's own,
+        // which passes `isRecoveryReopen`) must not, or the episode bound
+        // never holds. Below the `.alreadyLoading` guard: a re-tap refused
+        // while the recovery holds `.loading` opens nothing, so it must not
+        // end the episode.
+        if !forceRefulfill && !isColdLoadRecovery && !isRecoveryReopen {
+            mediaServicesResetRecovery.handleSessionEnded()
+        }
+
         let isSameBook = currentBook?.identifier == book.identifier
 
         if state.isActive {
@@ -823,24 +844,6 @@ public final class AudiobookSessionManager: ObservableObject {
                     }
                 }
             }
-        }
-    }
-
-    static func mapLoadError(_ error: AudiobookLoadError) -> AudiobookSessionError {
-        switch error {
-        case .cancelled:
-            return .unknown("Load cancelled")
-        case .tokenRefreshFailed, .missingCredentialsForTokenRefresh:
-            return .notAuthenticated
-        case .manifestFetchFailed, .manifestParseFailed, .manifestSerializationFailed, .manifestDecodingFailed:
-            return .manifestLoadFailed
-        case .lcpNotAvailable, .lcpInstantiationFailed, .lcpDecryptionFailed,
-             .licenseDownloadFailed, .licenseSaveFailed, .missingFulfillURL, .missingContentDirectory:
-            return .manifestLoadFailed
-        case .vendorKeyUpdateFailed(let nsError):
-            return .unknown(nsError.localizedDescription)
-        case .factoryFailed:
-            return .playerCreationFailed
         }
     }
 
@@ -1791,32 +1794,6 @@ public final class AudiobookSessionManager: ObservableObject {
         )
     }
 
-    /// Pure network-rules validator. Extracted for deterministic testing against
-    /// every combination of connectivity + user WiFi-only preference. The rules:
-    ///   - Fully-downloaded books never need the network → no error
-    ///   - Streaming books with no network at all → .networkUnavailable
-    ///   - Streaming books on cellular when the user has WiFi-only enabled
-    ///     → .wifiRequired (refusing to burn their cell data against their
-    ///     stated preference, and surfacing the same "connect to Wi-Fi or
-    ///     change settings" alert the download path uses)
-    static func networkValidationError(
-        bookState: TPPBookState,
-        isConnectedToNetwork: Bool,
-        isOnWiFi: Bool,
-        downloadOnlyOnWiFi: Bool
-    ) -> AudiobookSessionError? {
-        let isFullyDownloaded = bookState == .downloadSuccessful || bookState == .used
-        guard !isFullyDownloaded else { return nil }
-
-        if !isConnectedToNetwork {
-            return .networkUnavailable
-        }
-        if downloadOnlyOnWiFi && !isOnWiFi {
-            return .wifiRequired
-        }
-        return nil
-    }
-
     /// Awaits `account.awaitReady()` so nil `Account.details` during cold
     /// launch is not read as "no auth required" (see
     /// docs/architecture/account-state-machine.md). The 20s session-manager
@@ -1869,6 +1846,8 @@ public final class AudiobookSessionManager: ObservableObject {
         case .playbackBegan(let position):
             Log.debug(#file, "Playback began at: \(position.timestamp)")
             hasEverStartedPlayback = true
+            // PP-5241: the re-established session played; close the episode.
+            mediaServicesResetRecovery.handlePlaybackBegan(bookId: bookId)
             currentPosition = position
             updateNowPlayingInfo(position: position)
             playbackStatePublisher.send(state)
@@ -1915,6 +1894,20 @@ public final class AudiobookSessionManager: ObservableObject {
                 return
             }
 
+            // PP-5241: a media-services reset (-11819) starts a recovery, and
+            // while one runs the dead player's follow-on failures are swallowed.
+            // Read `isPlaying` here, before this arm clears it. The reset itself
+            // is still recorded, so -11819 stays measurable in Crashlytics; only
+            // the dead player's follow-on failures go unrecorded.
+            if let book = currentBook,
+               mediaServicesResetRecovery.handlePlaybackFailure(
+                   book: book,
+                   error: error,
+                   resumePlaying: Self.mediaServicesResetResumePlaying(isPlaying: isPlaying, state: state, bookId: bookId),
+                   record: { sendPlaybackFailureRecordIfNew(error: error, position: position, bookId: bookId) }) {
+                return
+            }
+
             Log.error(#file, "Playback failed at position: \(String(describing: position))")
             isPlaying = false
 
@@ -1932,12 +1925,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // Record a Crashlytics non-fatal with the error code, HTTP status,
             // track URL, and book id. PP-5242: repeats within a minute are not
             // re-sent; see `PlaybackFailureRecordDeduplicator`.
-            let contentSource = Self.contentSource(bound: boundContentSource, failingBookId: bookId)
-            if let record = Self.playbackFailureRecordToSend(
-                error: error, position: position, bookId: bookId, contentSource: contentSource,
-                deduplicator: &playbackFailureDeduplicator, now: Date()) {
-                Self.sendPlaybackFailureRecord(record)
-            }
+            sendPlaybackFailureRecordIfNew(error: error, position: position, bookId: bookId)
 
             switch recovery {
             case .samlReauth:
@@ -2107,6 +2095,27 @@ public final class AudiobookSessionManager: ObservableObject {
 
         // Update Now Playing (debounced in coordinator)
         updateNowPlayingInfo(position: position)
+    }
+
+    /// Sends one playback-failure report, unless PP-5242's deduplicator has
+    /// already sent the same failure within its window.
+    private func sendPlaybackFailureRecordIfNew(error: Error?, position: TrackPosition?, bookId: String) {
+        let contentSource = Self.contentSource(bound: boundContentSource, failingBookId: bookId)
+        if let record = Self.playbackFailureRecordToSend(
+            error: error, position: position, bookId: bookId, contentSource: contentSource,
+            deduplicator: &playbackFailureDeduplicator, now: Date()) {
+            Self.sendPlaybackFailureRecord(record)
+        }
+    }
+
+    /// The PP-5241 recovery host's only session-state write, from outside this
+    /// file where `state` and `isPlaying` are not writable. It can only mark
+    /// the session not playing: the recovery publishes its loading shell and
+    /// its terminal error through here, never a playing state.
+    func publishMediaServicesResetState(_ newState: AudiobookSessionState) {
+        isPlaying = false
+        state = newState
+        playbackStatePublisher.send(state)
     }
 
     private func updateNowPlayingInfo(position: TrackPosition) {

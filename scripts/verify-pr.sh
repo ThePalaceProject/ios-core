@@ -142,6 +142,10 @@ CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks/|SignInLogic/|MyBooks/(Downlo
 # confident wrong diagnosis (machine load) built on top of it. So resolve the id
 # to a device that exists, and if none does, say so instead of proceeding.
 BASELINE_COMPARE="${BASELINE_COMPARE:-false}"
+# When PALACE_SIM_LOCK_DIR names a directory of <UDID>.json lock files, a
+# simulator another checkout holds is skipped by the scan and refused when
+# asked for; scripts/sim_lock.py holds the rule, shared with palace_mutate.py.
+SIM_LOCK_HELPER="$SCRIPT_DIR/sim_lock.py"
 SIM_FALLBACK_UDID="DF4A2A27-9888-429D-A749-2E157A049A37"
 
 # Prints a usable simulator UDID, or nothing.
@@ -156,6 +160,11 @@ resolve_sim_id() {
   printf '%s' "$available" \
     | grep -E "iPhone (1[6-9]|2[0-9])" \
     | grep -oE "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}" \
+    | if [ -n "${PALACE_SIM_LOCK_DIR:-}" ]; then
+        python3 "$SIM_LOCK_HELPER" filter --root "$REPO_ROOT"
+      else
+        cat
+      fi \
     | head -1
 }
 
@@ -168,6 +177,10 @@ if [ -z "$SIM_ID" ]; then
   echo "" >&2
   echo "Create one (Xcode > Window > Devices and Simulators), or run under an" >&2
   echo "allocator that exports HARNESS_SESSION_SIM_UDID." >&2
+  exit 2
+fi
+if [ -n "${PALACE_SIM_LOCK_DIR:-}" ] \
+   && ! python3 "$SIM_LOCK_HELPER" check "$SIM_ID" --root "$REPO_ROOT"; then
   exit 2
 fi
 if [ "$SIM_ID" != "${HARNESS_SESSION_SIM_UDID:-}" ]; then

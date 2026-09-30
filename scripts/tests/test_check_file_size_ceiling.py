@@ -409,7 +409,7 @@ def test_live_allowlist_pins_the_critical_paths(tmp_path):
             caps[path] = int(cap)
 
     expected = {
-        "Palace/Audiobooks/AudiobookSessionManager.swift": 1213,
+        "Palace/Audiobooks/AudiobookSessionManager.swift": 1206,
         "Palace/MyBooks/MyBooksDownloadCenter.swift": 1213,
         "Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift": 1115,
         "Palace/Book/UI/BookDetail/BookDetailViewModel.swift": 867,

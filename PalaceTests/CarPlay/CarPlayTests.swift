@@ -768,3 +768,252 @@ final class CarPlayAudiobookBridgePresenterMigrationTests: XCTestCase {
                        "The full player UI did dismiss (minimize → false), confirming dismissBookOnPhone reached presenter.minimize()")
     }
 }
+
+// MARK: - Template navigation without a nil completion
+
+/// Crashlytics 81c394a96d71333a4f8e8ad0dca4d700 (FATAL, 3.1.0 – 3.2.3):
+/// `NSGenericException: An error was encountered during a template operation,
+/// but no completion block was specified` thrown from
+/// `-[CPInterfaceController _handleCompletion:withSuccess:error:]`.
+/// CarPlay raises that exception whenever a push/pop/dismiss FAILS and the
+/// caller passed `completion: nil`. The production samples show two failures:
+/// "No templates were available to be popped" (a playback error pops Now
+/// Playing after the stack is already at the root; one sample logged 50
+/// errors in 17 ms) and "Attempting to push a template without a root
+/// template" (the chapter-list push).
+///
+/// `FakeCarPlayController` follows that contract: stack changes resolve
+/// asynchronously (as CarPlay's host round-trip does) when `drain()` runs,
+/// and a failing operation with no completion is recorded in `raised`
+/// instead of throwing, so the test can report it.
+@MainActor
+final class CarPlayTemplateNavigatorTests: XCTestCase {
+
+    private final class FakeCarPlayController: CarPlayTemplateNavigating {
+        private(set) var templates: [CPTemplate]
+        var presentedTemplate: CPTemplate?
+        var topTemplate: CPTemplate? { templates.last }
+
+        /// Failures CarPlay would have raised as NSGenericException.
+        private(set) var raised: [String] = []
+        /// Failures delivered to a completion handler instead.
+        private(set) var reported: [String] = []
+        private(set) var popCount = 0
+        private(set) var popToRootCount = 0
+        private var pending: [() -> Void] = []
+
+        init(templates: [CPTemplate]) {
+            self.templates = templates
+        }
+
+        func pushTemplate(_ templateToPush: CPTemplate, animated: Bool, completion: ((Bool, (any Error)?) -> Void)?) {
+            pending.append { [self] in
+                guard !templates.isEmpty else {
+                    return fail("Attempting to push a template without a root template.", completion)
+                }
+                templates.append(templateToPush)
+                completion?(true, nil)
+            }
+        }
+
+        func popTemplate(animated: Bool, completion: ((Bool, (any Error)?) -> Void)?) {
+            popCount += 1
+            pending.append { [self] in
+                guard templates.count > 1 else {
+                    return fail("No templates were available to be popped.", completion)
+                }
+                templates.removeLast()
+                completion?(true, nil)
+            }
+        }
+
+        func popToRootTemplate(animated: Bool, completion: ((Bool, (any Error)?) -> Void)?) {
+            popToRootCount += 1
+            pending.append { [self] in
+                guard templates.count > 1 else {
+                    return fail("No templates were available to be popped.", completion)
+                }
+                templates = [templates[0]]
+                completion?(true, nil)
+            }
+        }
+
+        func dismissTemplate(animated: Bool, completion: ((Bool, (any Error)?) -> Void)?) {
+            pending.append { [self] in
+                guard presentedTemplate != nil else {
+                    return fail("No presented template to dismiss.", completion)
+                }
+                presentedTemplate = nil
+                completion?(true, nil)
+            }
+        }
+
+        /// The system removes a template itself (e.g. the Now Playing screen
+        /// closing when playback fails) ahead of the app's own request.
+        func systemPop() {
+            pending.append { [self] in
+                if templates.count > 1 { templates.removeLast() }
+            }
+        }
+
+        func drain() {
+            while !pending.isEmpty {
+                pending.removeFirst()()
+            }
+        }
+
+        private func fail(_ message: String, _ completion: ((Bool, (any Error)?) -> Void)?) {
+            guard let completion else {
+                raised.append(message)
+                return
+            }
+            reported.append(message)
+            completion(false, NSError(domain: "CarPlayErrorDomain", code: -1,
+                                      userInfo: [NSLocalizedDescriptionKey: message]))
+        }
+    }
+
+    private let root = CPListTemplate(title: "Library", sections: [])
+    /// Stands in for `CPNowPlayingTemplate.shared`, which cannot be touched
+    /// before playback starts; the navigator's predicate identifies it.
+    private let nowPlaying = CPListTemplate(title: "Now Playing", sections: [])
+
+    private func makeNavigator(_ controller: FakeCarPlayController) -> CarPlayTemplateNavigator {
+        let nowPlaying = self.nowPlaying
+        return CarPlayTemplateNavigator(controller: controller, isNowPlaying: { $0 === nowPlaying })
+    }
+
+    // MARK: popNowPlayingIfOnTop
+
+    func testPopNowPlaying_burstOfErrorsBeforeStackUpdates_doesNotRaise() {
+        let controller = FakeCarPlayController(templates: [root, nowPlaying])
+        let navigator = makeNavigator(controller)
+
+        // Two playback errors arrive before CarPlay applies the first pop, so
+        // both see Now Playing on top (the 2026-08-26 sample: 16 ms apart).
+        navigator.popNowPlayingIfOnTop()
+        navigator.popNowPlayingIfOnTop()
+        controller.drain()
+
+        XCTAssertEqual(controller.raised, [], "A failed pop must go to a completion handler, not raise")
+        XCTAssertEqual(controller.reported, ["No templates were available to be popped."])
+        XCTAssertEqual(controller.templates.count, 1, "The first pop still returns to the library")
+    }
+
+    func testPopNowPlaying_whenSystemAlreadyClosedNowPlaying_doesNotRaise() {
+        let controller = FakeCarPlayController(templates: [root, nowPlaying])
+        let navigator = makeNavigator(controller)
+
+        controller.systemPop()
+        navigator.popNowPlayingIfOnTop()
+        controller.drain()
+
+        XCTAssertEqual(controller.raised, [])
+        XCTAssertEqual(controller.templates.count, 1)
+    }
+
+    func testPopNowPlaying_whenNowPlayingIsNotOnTop_doesNotPop() {
+        let chapters = CPListTemplate(title: "Chapters", sections: [])
+        let controller = FakeCarPlayController(templates: [root, nowPlaying, chapters])
+        let navigator = makeNavigator(controller)
+
+        navigator.popNowPlayingIfOnTop()
+        controller.drain()
+
+        XCTAssertEqual(controller.popCount, 0)
+        XCTAssertEqual(controller.templates.count, 3)
+    }
+
+    func testPopNowPlaying_whenOnlyRootIsShowing_doesNotPop() {
+        let controller = FakeCarPlayController(templates: [root])
+        let navigator = makeNavigator(controller)
+
+        navigator.popNowPlayingIfOnTop()
+        controller.drain()
+
+        XCTAssertEqual(controller.popCount, 0)
+        XCTAssertEqual(controller.raised, [])
+    }
+
+    // MARK: push / pop / popToRoot / dismiss
+
+    func testPush_withoutRootTemplate_doesNotRaise() {
+        // 2026-08-15 sample: TOC tapped, chapter-list push failed with
+        // "Attempting to push a template without a root template".
+        let controller = FakeCarPlayController(templates: [])
+        let navigator = makeNavigator(controller)
+
+        navigator.push(CPListTemplate(title: "Chapters", sections: []), operation: "pushTemplate(chapterList)")
+        controller.drain()
+
+        XCTAssertEqual(controller.raised, [])
+        XCTAssertEqual(controller.reported, ["Attempting to push a template without a root template."])
+    }
+
+    func testPush_ontoRoot_addsTemplate() {
+        let chapters = CPListTemplate(title: "Chapters", sections: [])
+        let controller = FakeCarPlayController(templates: [root])
+        let navigator = makeNavigator(controller)
+
+        navigator.push(chapters, operation: "pushTemplate(chapterList)")
+        controller.drain()
+
+        XCTAssertTrue(controller.topTemplate === chapters)
+    }
+
+    func testPop_whenChapterListAlreadyGone_doesNotRaise() {
+        let chapters = CPListTemplate(title: "Chapters", sections: [])
+        let controller = FakeCarPlayController(templates: [root, chapters])
+        let navigator = makeNavigator(controller)
+
+        controller.systemPop()
+        navigator.pop(operation: "popTemplate(chapterList)")
+        controller.drain()
+
+        XCTAssertEqual(controller.raised, [])
+        XCTAssertEqual(controller.templates.count, 1)
+    }
+
+    func testPopToRoot_whenStacked_returnsToRoot() {
+        let controller = FakeCarPlayController(templates: [root, nowPlaying])
+        let navigator = makeNavigator(controller)
+
+        navigator.popToRootIfStacked()
+        controller.drain()
+
+        XCTAssertEqual(controller.templates.count, 1)
+        XCTAssertTrue(controller.topTemplate === root)
+    }
+
+    func testPopToRoot_whenAtRoot_doesNotPop() {
+        let controller = FakeCarPlayController(templates: [root])
+        let navigator = makeNavigator(controller)
+
+        navigator.popToRootIfStacked()
+        controller.drain()
+
+        XCTAssertEqual(controller.popToRootCount, 0)
+    }
+
+    func testPopToRoot_whenStackEmptiesBeforeItApplies_doesNotRaise() {
+        let controller = FakeCarPlayController(templates: [root, nowPlaying])
+        let navigator = makeNavigator(controller)
+
+        controller.systemPop()
+        navigator.popToRootIfStacked()
+        controller.drain()
+
+        XCTAssertEqual(controller.raised, [])
+    }
+
+    func testDismiss_withNothingPresented_doesNotRaise() {
+        let controller = FakeCarPlayController(templates: [root])
+        let navigator = makeNavigator(controller)
+
+        navigator.dismiss(operation: "dismissTemplate(openAppAlert)")
+        controller.drain()
+
+        XCTAssertEqual(controller.raised, [])
+        XCTAssertEqual(controller.reported, ["No presented template to dismiss."])
+    }
+}
