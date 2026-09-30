@@ -19,7 +19,9 @@ import PalaceBookModel
 /// Bridges Readium's `PDFNavigatorViewController` into Palace's reading-position
 /// sync (via `onLocationChange`) without Palace-layer code depending on
 /// Readium types.
+// accesslint:disable A11Y.UIKIT.SCREEN_TITLE - child view controller embedded via `ReadiumPDFContainer` (UIViewControllerRepresentable); it owns no navigation chrome, so a title on it is never displayed or announced; the window closes on the declaration line because that is the only line this rule reports at — note it therefore also hides this class later LOSING its title
 final class ReadiumPDFViewController: UIViewController {
+// accesslint:enable A11Y.UIKIT.SCREEN_TITLE
 
     private let publication: Publication
     private let book: TPPBook

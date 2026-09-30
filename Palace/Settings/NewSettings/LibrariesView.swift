@@ -212,6 +212,7 @@ struct LibrariesView: View {
     @ViewBuilder private func selectionControl(for account: Account, model: LibraryRowPresentation) -> some View {
         // The 22pt glyph sits in a 44pt frame so the tap target meets the
         // WCAG 2.1 AA / HIG minimum without enlarging the drawn control.
+        // accesslint:disable A11Y.SWIFTUI.IMAGE_DECORATIVE - labelled on the enclosing SwiftUI.Group via `.accessibilityLabel(model.selectionAccessibilityLabel)`, which sits outside the detector's scan window after the `Image(`
         let glyph = Image(systemName: model.selectionSymbolName)
             .resizable()
             .frame(width: 22, height: 22)
@@ -219,6 +220,7 @@ struct LibrariesView: View {
             .contentTransition(.symbolEffect(.replace))
             .accessibleAnimation(PalaceMotion.standard, value: model.isCurrentLibrary)
             .frame(width: 44, height: 44)
+            // accesslint:enable A11Y.SWIFTUI.IMAGE_DECORATIVE
 
         // `SwiftUI.Group` qualified: `MyBooksViewModel` declares a module-level
         // `enum Group`, which otherwise shadows it here.
@@ -303,7 +305,7 @@ struct SwitchingOverlayContainer<Content: View>: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isSwitching)
+        .accessibleAnimation(.easeInOut(duration: 0.2), value: isSwitching)
     }
 }
 

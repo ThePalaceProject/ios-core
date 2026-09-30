@@ -98,12 +98,16 @@ struct TPPSettingsView: View {
                 HStack(spacing: 12) {
                     // Monochrome by house convention — Palace chrome does not
                     // tint its affordances.
+                    // accesslint:disable A11Y.SWIFTUI.TOUCH_TARGET_SIZE - 32x32 is the decorative glyph's frame; the tap target is the enclosing NavigationLink row
+                    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - sizes a decorative SF Symbol glyph (accessibilityHidden below), not text, so Dynamic Type does not apply
                     Image(systemName: "building.columns")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.primary)
                         .frame(width: 32, height: 32)
                         .background(Circle().fill(Color.secondary.opacity(0.15)))
                         .accessibilityHidden(true)
+                        // accesslint:enable A11Y.SWIFTUI.TOUCH_TARGET_SIZE
+                        // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(DisplayStrings.libraries)
