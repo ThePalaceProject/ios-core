@@ -160,6 +160,20 @@ final class TPPReaderFootnoteAccessibilityDOMTests: XCTestCase {
     return webView
   }
 
+  /// Stops whatever this test's load left in flight, so a slow navigation
+  /// cannot deliver into the next test. The view itself stays for reuse.
+  override func tearDown() async throws {
+    Self.sharedWebView?.stopLoading()
+    Self.sharedWebView?.navigationDelegate = nil
+    try await super.tearDown()
+  }
+
+  /// Releases the shared view, and its WebContent process, once the class is done.
+  override class func tearDown() {
+    MainActor.assumeIsolated { sharedWebView = nil }
+    super.tearDown()
+  }
+
   /// Load the fixture under `mimeType`, run the PRODUCTION annotation script,
   /// and return the count it reports. Keeps the web view alive for follow-up
   /// `aria-label` probes.
