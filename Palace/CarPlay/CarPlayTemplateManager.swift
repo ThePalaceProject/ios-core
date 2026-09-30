@@ -47,6 +47,7 @@ final class CarPlayTemplateManager: NSObject {
     // MARK: - Properties
 
     private weak var interfaceController: CPInterfaceController?
+    private let navigator: CarPlayTemplateNavigator
     private let imageProvider: CarPlayImageProvider
     private let playerBridge: CarPlayAudiobookBridge
     private var cancellables = Set<AnyCancellable>()
@@ -76,6 +77,7 @@ final class CarPlayTemplateManager: NSObject {
 
     init(interfaceController: CPInterfaceController, accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         self.interfaceController = interfaceController
+        self.navigator = CarPlayTemplateNavigator(controller: interfaceController)
         self.imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
         self.playerBridge = CarPlayAudiobookBridge()
         self.accountsManager = accountsManager
@@ -355,9 +357,7 @@ final class CarPlayTemplateManager: NSObject {
             // AudiobookSessionManager.openAudiobook() handles stopping existing playback internally.
 
             // Pop to root to clear any stacked CarPlay templates (only if not already at root)
-            if let controller = self.interfaceController, controller.templates.count > 1 {
-                controller.popToRootTemplate(animated: false, completion: nil)
-            }
+            self.navigator.popToRootIfStacked()
 
             // Mark as loading to prevent duplicate selections
             self.isLoadingBook = true
@@ -482,8 +482,8 @@ final class CarPlayTemplateManager: NSObject {
                 Strings.CarPlay.OpenApp.messageShortest
             ],
             actions: [
-                CPAlertAction(title: Strings.Generic.ok, style: .default) { _ in
-                    interfaceController.dismissTemplate(animated: true, completion: nil)
+                CPAlertAction(title: Strings.Generic.ok, style: .default) { [navigator] _ in
+                    navigator.dismiss(operation: "dismissTemplate(openAppAlert)")
                 }
             ]
         )
@@ -577,7 +577,7 @@ final class CarPlayTemplateManager: NSObject {
         let section = CPListSection(items: items)
         let chapterTemplate = CPListTemplate(title: Strings.CarPlay.chapters, sections: [section])
 
-        interfaceController?.pushTemplate(chapterTemplate, animated: true, completion: nil)
+        navigator.push(chapterTemplate, operation: "pushTemplate(chapterList)")
     }
 
     private func createChapterItem(chapter: Chapter, index: Int) -> CPListItem {
@@ -595,7 +595,7 @@ final class CarPlayTemplateManager: NSObject {
 
         item.handler = { [weak self] _, completion in
             self?.playerBridge.skipToChapter(at: index)
-            self?.interfaceController?.popTemplate(animated: true, completion: nil)
+            self?.navigator.pop(operation: "popTemplate(chapterList)")
             completion()
         }
 
@@ -737,10 +737,7 @@ final class CarPlayTemplateManager: NSObject {
                 Log.error(#file, "CarPlay: Received playback error: \(error)")
                 self?.handlePlaybackError(error)
                 // Pop back to library if we're showing Now Playing
-                if let controller = self?.interfaceController,
-                   controller.topTemplate is CPNowPlayingTemplate {
-                    controller.popTemplate(animated: true, completion: nil)
-                }
+                self?.navigator.popNowPlayingIfOnTop()
             }
             .store(in: &cancellables)
     }
@@ -801,6 +798,82 @@ extension CarPlayTemplateManager: @preconcurrency CPNowPlayingTemplateObserver {
 
     func nowPlayingTemplateAlbumArtistButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
         // Not used - we don't enable album artist button
+    }
+}
+
+// MARK: - Template navigation
+
+/// The slice of `CPInterfaceController` that `CarPlayTemplateNavigator` drives.
+/// `CPInterfaceController` cannot be constructed in a unit test, so the
+/// navigator depends on this protocol and tests supply a fake that follows the
+/// same contract.
+@MainActor
+protocol CarPlayTemplateNavigating: AnyObject {
+    var topTemplate: CPTemplate? { get }
+    var templates: [CPTemplate] { get }
+    func pushTemplate(_ templateToPush: CPTemplate, animated: Bool, completion: ((Bool, (any Error)?) -> Void)?)
+    func popTemplate(animated: Bool, completion: ((Bool, (any Error)?) -> Void)?)
+    func popToRootTemplate(animated: Bool, completion: ((Bool, (any Error)?) -> Void)?)
+    func dismissTemplate(animated: Bool, completion: ((Bool, (any Error)?) -> Void)?)
+}
+
+extension CPInterfaceController: CarPlayTemplateNavigating {}
+
+/// Issues the navigation-stack operations `CarPlayTemplateManager` performs,
+/// always with a completion handler.
+///
+/// `CPInterfaceController` raises `NSGenericException` ("An error was
+/// encountered during a template operation, but no completion block was
+/// specified") when an operation fails and its completion is nil. Failures
+/// here are expected: stack changes apply asynchronously, so a burst of
+/// playback errors can queue several pops of Now Playing before the first
+/// lands, and the system can close Now Playing itself when playback fails.
+/// Crashlytics 81c394a96d71333a4f8e8ad0dca4d700 records both "No templates
+/// were available to be popped" and "Attempting to push a template without a
+/// root template" raised this way. The completion turns each into a log line.
+@MainActor
+final class CarPlayTemplateNavigator {
+    private weak var controller: CarPlayTemplateNavigating?
+    private let isNowPlaying: (CPTemplate) -> Bool
+
+    init(
+        controller: CarPlayTemplateNavigating,
+        isNowPlaying: @escaping (CPTemplate) -> Bool = { $0 is CPNowPlayingTemplate }
+    ) {
+        self.controller = controller
+        self.isNowPlaying = isNowPlaying
+    }
+
+    func push(_ template: CPTemplate, operation: String) {
+        controller?.pushTemplate(template, animated: true, completion: Self.logFailure(operation))
+    }
+
+    func pop(operation: String) {
+        controller?.popTemplate(animated: true, completion: Self.logFailure(operation))
+    }
+
+    /// Pops to the root template when anything is stacked above it.
+    func popToRootIfStacked() {
+        guard let controller, controller.templates.count > 1 else { return }
+        controller.popToRootTemplate(animated: false, completion: Self.logFailure("popToRootTemplate"))
+    }
+
+    func dismiss(operation: String) {
+        controller?.dismissTemplate(animated: true, completion: Self.logFailure(operation))
+    }
+
+    /// Pops Now Playing back to the library after a playback error.
+    func popNowPlayingIfOnTop() {
+        guard let controller, let top = controller.topTemplate, isNowPlaying(top) else { return }
+        controller.popTemplate(animated: true, completion: Self.logFailure("popTemplate(nowPlaying)"))
+    }
+
+    private static func logFailure(_ operation: String) -> (Bool, (any Error)?) -> Void {
+        { _, error in
+            if let error {
+                Log.warn(#file, "CarPlay: \(operation) failed: \(error)")
+            }
+        }
     }
 }
 
