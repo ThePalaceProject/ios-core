@@ -423,6 +423,10 @@ struct AccountDetailView: View {
                 Image(systemName: "exclamationmark.circle.fill")
                     .foregroundStyle(.red)
                     .font(.footnote)
+                    // The row combines into one element; the message text is
+                    // the announcement, so the glyph must not prefix it with
+                    // the symbol's own description.
+                    .accessibilityHidden(true)
                 Text(viewModel.alertMessage)
                     .palaceFont(.footnote)
                     .foregroundStyle(.red)
@@ -472,25 +476,32 @@ struct AccountDetailView: View {
         .accessibilityRemoveTraits(.isStaticText)
     }
 
+    /// A `Button` rather than a tapped `HStack`: the row opens the age-check
+    /// sheet, so it needs the button role for VoiceOver AND a focusable control
+    /// for Full Keyboard Access, which a bare `.onTapGesture` gives neither.
+    /// `.buttonStyle(.plain)` keeps the row drawn exactly as the surrounding
+    /// list rows, matching `logInSignOutCell`.
     private var ageCheckCell: some View {
-        HStack {
-            Text(DisplayStrings.ageVerification)
-                .font(.system(.body))
-
-            Spacer()
-
-            if settings.userPresentedAgeCheck {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .accessibilityLabel(NSLocalizedString("Verified", comment: "Age check verified"))
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
+        Button(action: {
             if !settings.userPresentedAgeCheck {
                 viewModel.performAgeCheck()
             }
+        }) {
+            HStack {
+                Text(DisplayStrings.ageVerification)
+                    .font(.system(.body))
+
+                Spacer()
+
+                if settings.userPresentedAgeCheck {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .accessibilityLabel(NSLocalizedString("Verified", comment: "Age check verified"))
+                }
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     private var syncToggleCell: some View {

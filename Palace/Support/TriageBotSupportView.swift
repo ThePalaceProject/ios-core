@@ -47,8 +47,12 @@ private struct UnavailableView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.largeTitle)
                 .foregroundStyle(.orange)
+                // The heading below carries the same message; announcing the
+                // glyph as well would say it twice.
+                .accessibilityHidden(true)
             Text("Get Help is temporarily unavailable")
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
             Text("Please force-quit and reopen Palace, then try again. If the problem persists, email support@thepalaceproject.org.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
