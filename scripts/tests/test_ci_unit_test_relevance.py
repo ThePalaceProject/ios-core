@@ -55,6 +55,7 @@ def test_docs_and_agent_metadata_only_is_skipped():
     "Palace.xcconfig",
     ".github/workflows/unit-testing.yml",          # the workflow itself
     ".github/actions/checkout-adobe/action.yml",
+    "scripts/xcode-test-optimized.sh",             # the local mirror of the shard runner
     "some-new-top-level-file.yaml",                # unknown: run rather than guess
 ])
 def test_anything_that_can_change_the_build_or_tests_runs(path):

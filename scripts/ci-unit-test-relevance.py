@@ -59,6 +59,10 @@ SKIPPABLE = (
 ALWAYS_RELEVANT = (
     WORKFLOW,
     ".github/actions/*",
+    # Not run by this workflow any more, but it is the local CI-parity runner
+    # and mirrors the shard runner's flags; a change to it is usually a change
+    # meant for CI too, and running costs less than guessing.
+    "scripts/xcode-test-optimized.sh",
 )
 
 # Files whose scripts/ references define the relevant part of scripts/.
