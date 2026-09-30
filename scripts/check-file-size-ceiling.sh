@@ -35,7 +35,7 @@
 #      Those figures are the baseline's own PHYSICAL line counts (e.g.
 #      AudiobookSessionManager 2764 -> 3093), not the code-line metric this
 #      gate uses — the baseline's banner says the two are not comparable, and
-#      the same file measures 1525 code lines today. An earlier version of this
+#      the same file measures 1213 code lines today. An earlier version of this
 #      comment attributed the increases to releases 3.2.4 / 3.3.0 / 3.3.1,
 #      which appear nowhere in the baseline, called them code lines, and
 #      totalled 474 by omitting the +54 it went on to itemize. The argument for
@@ -81,7 +81,8 @@ read -r -d '' ALLOWLIST <<'EOF'
 # Wave 6 (god-class-decomposition-plan.md §4) moved the playback-failure
 # recovery decision to AudiobookPlaybackRecoveryReducer.swift and the
 # open-time position decision to AudiobookPositionResolver.swift, both
-# in-target and both well under the ceiling. 1546 -> 1234.
+# in-target and both well under the ceiling. 1546 -> 1234, then
+# -> 1213 when PP-5242 moved the failure-record builder out.
 1213 Palace/Audiobooks/AudiobookSessionManager.swift
 1213 Palace/MyBooks/MyBooksDownloadCenter.swift
 1115 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift

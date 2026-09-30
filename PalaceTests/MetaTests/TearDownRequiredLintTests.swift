@@ -348,9 +348,6 @@ final class TearDownRequiredLintTests: XCTestCase {
     )
   }
 
-  /// Synthetic compliant case: declares `: SomethingTestCase` (NOT
-  /// XCTestCase directly). Detector MUST NOT flag it — inheritance
-  /// handles teardown.
   /// A polluter substring appearing only inside a comment must NOT trip the
   /// rule. Without this arm the predicate's comment-stripping is unverified,
   /// and the rule silently fires on documentation.
@@ -390,6 +387,9 @@ final class TearDownRequiredLintTests: XCTestCase {
                   "the same substring in executable code MUST still trip the rule")
   }
 
+  /// Synthetic compliant case: declares `: SomethingTestCase` (NOT
+  /// XCTestCase directly). Detector MUST NOT flag it — inheritance
+  /// handles teardown.
   func testLintAcceptsInheritedTearDown() {
     let inherited = """
     import XCTest

@@ -60,3 +60,14 @@ Counts are inflated by repeat reports of the same failure.
 - Palace/Book/UI/BookDetail/BookService.swift
 - Palace/MyBooks/OverdriveDownloadHandler.swift
 - Palace/MyBooks/LCPFulfillmentHandler.swift
+
+Gate-forced collateral — not part of the fix, each carries its own commit body:
+
+- PalaceTests/MetaTests/TearDownRequiredLintTests.swift — the teardown lint
+  matched a polluter name inside a doc comment in the new test file, so its
+  predicate now strips comments as its two siblings already did. Repo-wide
+  behaviour change, hence listed here rather than left implicit.
+- scripts/check-file-size-ceiling.sh — the allowlist cap for
+  AudiobookSessionManager, re-pinned to the size this branch leaves the file.
+- scripts/tests/test_check_file_size_ceiling.py — the pytest expectation for
+  that cap.
