@@ -629,15 +629,18 @@ final class MediaServicesResetRecoveryCoordinatorTests: XCTestCase {
 
     func testNotification_postedOffMain_stillRecovers() async {
         host.loadedSession = MediaServicesResetSession(book: book, resumePlaying: true)
-        let delivered = expectation(description: "recovery started")
         let center = self.center!
-        DispatchQueue.global().async {
-            center.post(name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
-            DispatchQueue.main.async { delivered.fulfill() }
+        // Post from a background queue, then enqueue the resume on the main
+        // queue from that same queue. The observer's hop to main was enqueued
+        // first, and the main queue runs blocks in order, so the recovery has
+        // started by the time this await returns. No deadline, no polling.
+        await withCheckedContinuation { (resume: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async {
+                center.post(name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
+                DispatchQueue.main.async { resume.resume() }
+            }
         }
-        await fulfillment(of: [delivered], timeout: 2)
-        // The off-main post hops to the main actor; give that hop a turn.
-        for _ in 0..<5 where recovery.recoveryTask == nil { await Task.yield() }
+        XCTAssertNotNil(recovery.recoveryTask, "the off-main post must have started a recovery on main")
         await awaitRecovery()
 
         XCTAssertEqual(host.reestablishCalls.map(\.bookId), ["reset-book"])

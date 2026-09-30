@@ -245,7 +245,12 @@ final class MediaServicesResetRecovery {
                 if Thread.isMainThread {
                     MainActor.assumeIsolated { self?.handleResetNotification() }
                 } else {
-                    Task { @MainActor [weak self] in self?.handleResetNotification() }
+                    // The main queue, not a Task: it runs blocks in order, so
+                    // anything enqueued on it after this post runs after the
+                    // recovery has started. The off-main test joins on that.
+                    DispatchQueue.main.async { [weak self] in
+                        MainActor.assumeIsolated { self?.handleResetNotification() }
+                    }
                 }
             }
     }
