@@ -2,49 +2,13 @@
 //  AudiobookReadinessPlaybackContractTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE decomposition pin pack for
-//  `Palace/Audiobooks/AudiobookSessionManager.swift`, Wave 6 (see
-//  docs/architecture/god-class-decomposition-plan.md §3a-1 row
-//  "Readiness-gate wiring, F-011 (265–291, 1641–1687)" → `PlaybackReadinessGate`
-//  moves to PalaceAudiobookSession; injection stays Shell). §5 names
-//  "readiness-gate characterization (F-011: play deferred until gate opens,
-//  then fires)".
-//
-//  WHY THIS FILE (and how it differs from `AudiobookFirstOpenHangTests`):
-//
-//  `AudiobookFirstOpenHangTests` already mutation-covers the readiness gate
-//  with COUNT assertions (`playAtCallCount == 1` after ready; `== 0` on
-//  timeout; `probe.stopCallCount == 1` via defer). This file does NOT
-//  re-assert those counts. It locks the same wiring as a BYTE-EQUAL call-ORDER
-//  snapshot — the form §5's general contract requires for an extraction gate
-//  ("byte-equal JSON under __Snapshots__/"). The snapshot captures a property
-//  the count tests leave implicit: the exact ORDER
-//  (`probe.start` → `command.play` → `probe.stop`) AND the structural ABSENCE
-//  of `command.play` on the timeout path. When Wave 6 lifts
-//  `PlaybackReadinessGate` into a package and rewires the Shell's injection
-//  seam, this snapshot drifts loudly if the deferral ordering — or the
-//  never-play-on-timeout invariant — changes, even if the per-call counts stay
-//  numerically identical.
-//
-//  The seam under test — `awaitReadinessAndIssueFirstPlay(bookId:
-//  initialPosition:probe:command:budget:)` — is the internal method
-//  `startPlaybackAndSyncPosition` calls at first-open, built from the injected
-//  `readinessProbeFactory` / `playbackCommandFactory`. Both `probe`
-//  (`PlaybackReadinessProbing`) and `command` (`PlaybackEngineCommanding`) are
-//  internal protocols, so recording spies conform directly — no toolkit
-//  `Player` required.
-//
-//  OUT OF SCOPE (stated honestly): LCP first-open reliable-start
-//  (`confirmLCPFirstPlay`, WS-5) is DRM-specific and stays sim-verified; the
-//  non-LCP readiness path is the one with a DRM-free unit seam and is what this
-//  file pins.
-//
-//  ASSERTION FORM: inline `CallLog` method-order equality
-//  (`XCTAssertEqual(log.snapshot().map(\.method), [...])`), NOT file-based
-//  `ContractSnapshot.assert`. The expected sequence is stated explicitly per
-//  test, so the pack is GREEN on first CI run — no external baseline to record.
-//  Wave 6 must keep the sequence identical; a reorder (or a reintroduced blind
-//  play on the timeout path) drifts the array and fails loudly.
+//  Pins the first-open readiness wiring in `AudiobookSessionManager` as call ORDER:
+//  `probe.start` → `command.play` → `probe.stop`, and no `command.play` on the
+//  timeout path (F-011). `AudiobookFirstOpenHangTests` covers the counts; this
+//  catches a reorder that keeps them (docs/architecture/god-class-decomposition-plan.md §3a-1).
+//  Drives `awaitReadinessAndIssueFirstPlay(...)` with spies for the internal probe
+//  and command protocols. LCP first-open (`confirmLCPFirstPlay`) is DRM-specific
+//  and verified on a simulator.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

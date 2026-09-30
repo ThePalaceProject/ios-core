@@ -2,43 +2,14 @@
 //  TPPBookRegistryFacadeContractTests.swift
 //  PalaceTests
 //
-//  PR-W2-pre (god-class decomposition Wave 2) — the facade dependency
-//  call-order contract for `TPPBookRegistry`. This pins the CURRENT behavior of
-//  the facade's per-mutation seams BEFORE the Wave-2b `AccountScopeProviding`
-//  inversion rewrites the class, so that inversion can be proven
-//  behavior-preserving: after 2b, this file must stay green with its assertions
-//  untouched.
-//
-//  WHAT THIS PINS (the two facade-owned seams the 2b rewrite touches):
-//
-//    1. The `imageLoader` dependency call-order — WHICH mutations trigger a
-//       thumbnail fetch, and for WHICH book:
-//         · addBook            → fetches the ADDED book's thumbnail
-//         · removeBook         → fetches the REMOVED book's thumbnail
-//         · updateAndRemoveBook→ fetches the book's thumbnail
-//         · setState / updateBook(no-op) / setFulfillmentId → NEVER fetch
-//       Recorded through an injected `ImageLoading` spy into a `CallLog`, then
-//       asserted inline (no external snapshot baseline — green on first CI run).
-//
-//    2. The `bookStatePublisher` per-mutation emission sequence — the (id, state)
-//       tuple each mutation broadcasts (or, for state-preserving updateBook /
-//       setFulfillmentId, that it broadcasts NOTHING).
-//
-//  These two seams are exactly what the 2b inversion rewrites (the init pair and
-//  the `accountsManager.currentAccount?.uuid` capture sites route through here).
-//  The publisher-emission drop mutant and any change to which book gets a
-//  thumbnail fetch are the specific regressions 2b could introduce silently;
-//  this file is the net.
-//
-//  SCOPE NOTE — the on-disk save half of each mutation is account-gated
-//  (`if let account = accountsManager.currentAccount?.uuid { save }`) and there
-//  is NO facade-level seam to make `currentAccount` non-nil in a unit test
-//  without loading the catalog graph (the setter needs a real `Account` and has
-//  global-singleton side effects). See the `// SEAM:` note below. The disk layer is
-//  already covered directly at the BookRegistrySync/BookRegistryStore level by
-//  TPPBookRegistryPersistenceTests (save round-trip, account isolation,
-//  corruption). The facade-level account-capture flip test (PP-4129) is a
-//  REQUIRED new test in PR-W2b, enabled by the `AccountScopeProviding` stub.
+//  Pins two facade seams of `TPPBookRegistry` that the `AccountScopeProviding`
+//  inversion rewrote:
+//    1. which mutations fetch a thumbnail through `imageLoader`, and for which book
+//       (addBook, removeBook, updateAndRemoveBook do; setState, no-op updateBook,
+//       setFulfillmentId never do);
+//    2. the (id, state) each mutation emits on `bookStatePublisher`, or none.
+//  The on-disk save is account-gated with no facade seam here; see the `// SEAM:`
+//  note below and TPPBookRegistryPersistenceTests.
 //
 //  Copyright 2026 The Palace Project. All rights reserved.
 //
@@ -145,7 +116,7 @@ final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
     // MARK: - 1. addBook
 
     /// addBook fetches the ADDED book's thumbnail exactly once and broadcasts the
-    /// initial state. Kills: dropping `imageLoader.thumbnailImage(for: book)` at
+    /// initial state. Catches: dropping `imageLoader.thumbnailImage(for: book)` at
     /// the top of addBook; dropping the `bookStateSubject.send((id, state))`
     /// re-broadcast; or hard-coding the emitted state to the default instead of
     /// the caller-supplied `.downloading`.
@@ -171,8 +142,8 @@ final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
 
     // MARK: - 2. setState
 
-    /// A legal setState broadcasts the new state and fetches NO thumbnail. Kills:
-    /// dropping the setState `bookStateSubject.send`; and any mutant that adds a
+    /// A legal setState broadcasts the new state and fetches NO thumbnail. Catches:
+    /// dropping the setState `bookStateSubject.send`; and any regression that adds a
     /// spurious thumbnail fetch to the setState path (the facade's setState is
     /// image-agnostic).
     func testSetState_emitsNewState_withoutFetchingThumbnail() async {
@@ -201,7 +172,7 @@ final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
     // MARK: - 3. removeBook
 
     /// removeBook broadcasts `.unregistered` and fetches the REMOVED book's
-    /// thumbnail (the facade re-fetches to refresh any stale cover cell). Kills:
+    /// thumbnail (the facade re-fetches to refresh any stale cover cell). Catches:
     /// dropping the `.unregistered` re-broadcast; emitting a non-`.unregistered`
     /// terminal state; dropping the removed-book thumbnail fetch; or fetching a
     /// different book than the one removed.
@@ -233,7 +204,7 @@ final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
     /// updateAndRemoveBook fetches the book's thumbnail and broadcasts
     /// `.unregistered`. This pins the return-path contract that the network
     /// revoke flow uses `updateAndRemoveBook` (update-then-remove), distinct from
-    /// the plain `removeBook` cleanup path. Kills: dropping the thumbnail fetch;
+    /// the plain `removeBook` cleanup path. Catches: dropping the thumbnail fetch;
     /// emitting a terminal state other than `.unregistered`.
     func testUpdateAndRemoveBook_fetchesThumbnail_andEmitsUnregistered() async {
         let spy = SpyImageLoader()
@@ -260,7 +231,7 @@ final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
     // MARK: - 5. updateBook (state-preserving)
 
     /// A state-preserving updateBook broadcasts NOTHING and fetches no thumbnail.
-    /// Kills the `nextState != previousState` → `==` (or dropped-guard) mutant on
+    /// Catches the `nextState != previousState` → `==` (or dropped-guard) regression on
     /// the updateBook emission, and any spurious thumbnail fetch added to the
     /// updateBook path.
     func testUpdateBook_statePreserving_doesNotEmit_norFetchThumbnail() async {
@@ -287,7 +258,7 @@ final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
     // MARK: - 6. setFulfillmentId
 
     /// setFulfillmentId records a fulfillment id without broadcasting a per-book
-    /// state event and without fetching a thumbnail. Kills a mutant that routes
+    /// state event and without fetching a thumbnail. Catches a change that routes
     /// setFulfillmentId through the state-broadcast path (it must be silent on
     /// bookStatePublisher).
     ///
@@ -295,7 +266,7 @@ final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
     // is gated on `accountsManager.currentAccount?.uuid` being non-nil, which a
     // unit test cannot arrange without loading the catalog graph. The persisted
     // `fulfillmentId` present-on-disk assertion the spec names is therefore
-    // deferred to PR-W2b, where an injected `AccountScopeProviding` stub supplies
+    // left to tests where an injected `AccountScopeProviding` stub supplies
     // a fixed `currentAccountID` (the same seam that enables the PP-4129
     // account-capture flip test). The disk layer itself is already pinned by
     // TPPBookRegistryPersistenceTests via BookRegistrySync/BookRegistryStore.

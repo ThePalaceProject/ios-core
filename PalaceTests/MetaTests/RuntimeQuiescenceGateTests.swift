@@ -2,13 +2,9 @@
 //  RuntimeQuiescenceGateTests.swift
 //  PalaceTests
 //
-//  Self-test for the WS-0 / M0 runtime-quiescence gate. Proves the auditor
-//  actually FAILS a synthetic polluter AND passes on clean state — without
-//  this, a refactor that broke the detector would pass-by-default and the gate
-//  would report green forever while catching nothing (the exact failure mode
-//  `AppContainerIsolationLintTests.testLintCatchesSyntheticViolation` guards
-//  against for the production() lint, and the inert-gate class the green-board
-//  contract exists to prevent).
+//  Self-test for the runtime-quiescence gate: the auditor FAILS a synthetic
+//  polluter and passes on clean state, so a broken detector cannot report green
+//  while catching nothing.
 //
 //  Subclasses `PalaceTestCase` on purpose: `testCaptureDeferFlag_reflectsLive…`
 //  sets the defer flag `false` to prove `captureDeferFlag()` reads live state,

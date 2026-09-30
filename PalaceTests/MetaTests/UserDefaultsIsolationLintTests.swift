@@ -5,11 +5,10 @@ import XCTest
 /// `XCTContext.runActivity` so the test report carries the evidence
 /// but the test itself does NOT fail.
 ///
-/// The rationale matches `swarm_47883816/contracts/D-UserDefaultsIsolation.md`:
-/// existing tests interact with production code that reads
+/// Existing tests interact with production code that reads
 /// `UserDefaults.standard` directly (`AccountsManager`, `CatalogRepository`,
 /// `TPPBookmarkDeletionLog`, etc.) — migrating those tests requires
-/// adding DI to those production classes, which is out of D's scope.
+/// adding DI to those production classes first.
 /// We document the violators here so the future "production DI sweep"
 /// pass has a runnable inventory.
 ///
@@ -30,7 +29,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         // clear its own suite.
         "Support/XCTestCase+testUserDefaults.swift",
 
-        // swarm_cd181acd D-cleanup landed DI seams on AccountDetails,
+        // DI seams now exist on AccountDetails,
         // AccountsManager, TPPBookmarkDeletionLog, CatalogRepository,
         // and TPPSignInBusinessLogic+ForceReset; the eight previously
         // deferred test files now use `Self.testUserDefaults()` and have
@@ -137,8 +136,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         // Edge case: a string literal that happens to contain the
         // banned token but is wrapped in a comment is still flagged.
         // The detector is intentionally regex-grep-flavoured (matches
-        // CLAUDE.md's `grep -rn 'UserDefaults.standard'` invariant)
-        // rather than AST-aware — we want false positives over
+        // a plain `grep -rn 'UserDefaults.standard'`) rather than AST-aware — we want false positives over
         // silent misses.
         let commentedInput = """
         // Pre-existing comment referencing UserDefaults.standard.

@@ -2,13 +2,11 @@
 //  BorrowReducerCoreContractTests.swift
 //  PalaceTests
 //
-//  E2 (WS7) coverage for the pure `BorrowReducerCore` extracted from
-//  `BorrowOperation`. Direct `Equatable` assertions on `responseState`,
-//  `postResponseEffects`, and `alreadyHasActiveLoan` kill mutants (a flipped
-//  F-014 download gate, a dropped race arm, a swapped SQ-007 state). The
-//  `ContractSnapshot` layer interprets `postResponseEffects` into a `CallLog`
-//  using the same seam labels `BorrowOperationContractTests` records, so the
-//  emitted sequence is shape-equal to the E1 service snapshot.
+//  Covers the pure `BorrowReducerCore` extracted from `BorrowOperation`. Direct
+//  `Equatable` assertions on `responseState`, `postResponseEffects`, and
+//  `alreadyHasActiveLoan` catch a flipped F-014 download gate, a dropped race arm,
+//  or a swapped SQ-007 state. The snapshot layer records `postResponseEffects` with
+//  the seam labels `BorrowOperationContractTests` uses, so the two sequences match.
 //
 
 import XCTest

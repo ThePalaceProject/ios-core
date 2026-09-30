@@ -271,7 +271,7 @@ final class BookReturnServiceContractTests: XCTestCase {
     /// contains DetailLoanTermLimitReached`. `noActiveLoan_treatsAsSuccess`
     /// pins the FIRST arm; this pins the SECOND — a problem doc whose *detail*
     /// (not type) signals the loan term expired must ALSO clean up locally and
-    /// announce success. A mutant dropping the `||` detail arm would strand
+    /// announce success. A regression dropping the `||` detail arm would strand
     /// the patron in a generic failure alert instead of a clean return.
     func test_returnBook_loanTermLimitDetail_treatsAsSuccess_cleansUpLocally() async throws {
         let book = Self.makeBook(identifier: "RET-LTL", revokeURL: URL(string: "http://example.com/revoke")!)
@@ -292,7 +292,7 @@ final class BookReturnServiceContractTests: XCTestCase {
 
     // MARK: - Coordinator-routed auth error (E1: AuthCoordinator fan-out)
 
-    /// swarm_66819d80 Module C route: when an `AuthCoordinator` is injected,
+    /// When an `AuthCoordinator` is injected,
     /// an invalid-credentials revoke failure dispatches through
     /// `coordinator.refreshCredentialsIfNeeded(reason: .invalidCredentials)`
     /// instead of the legacy `reauthenticator`. On coordinator SUCCESS the
@@ -382,9 +382,8 @@ final class BookReturnServiceContractTests: XCTestCase {
     // real `AdobeDRMService.shared` singleton (no injected spy seam at this
     // layer), its result is ignored except for an `NSLog`, and it emits NO
     // call into the recorded registry/announce/localContent surface — there is
-    // no deterministic call-sequence contract to lock. Per Contract E's
-    // "inability to write the test IS the test feedback" guidance, this is
-    // recorded as a seam-gap rather than faked. Orchestrator note: drive the
+    // no deterministic call-sequence contract to lock, so this is recorded as a
+    // seam gap rather than faked. Drive the
     // Adobe-DRM loan return on a sim (an Adept-fulfilled EPUB) to cover the
     // returnLoan success/failure NSLog behavior end-to-end.
 

@@ -82,8 +82,7 @@ final class AdobeClientTokenSplitTests: XCTestCase {
     /// (what the CM actually mints) leaves THREE fields in the username, so it
     /// never exercises the edge; a three-segment one leaves exactly two. Without
     /// this, tightening the guard to `> 2` makes every such token report no
-    /// expiry — i.e. never stale — with the suite green. Measured: that mutant
-    /// survived until this test existed.
+    /// expiry — i.e. never stale — with the suite green.
     func test_expiry_threeSegmentToken_stillYieldsAnExpiry() {
         XCTAssertEqual(AdobeClientToken.expiry("PALACE|1893456000|sig"),
                        Date(timeIntervalSince1970: 1_893_456_000))

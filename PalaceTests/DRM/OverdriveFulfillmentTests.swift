@@ -497,7 +497,7 @@ final class OverdriveFulfillmentTests: XCTestCase {
     // audiobook's first track — i.e. the player is handed the FRESH url, not a
     // stale cached-manifest replay. The session wiring (handleManagerState ->
     // openAudiobook(forceRefulfill:true) -> makeLoader) is auth-gated and is
-    // covered by architect SoD review + device validation.
+    // verified on a device.
 
     /// Spy adapter — returns a caller-supplied manifest so the test controls the
     /// track href the loader builds from.

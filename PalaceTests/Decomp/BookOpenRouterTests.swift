@@ -40,7 +40,7 @@ final class BookOpenRouterTests: XCTestCase {
     }
 
     /// The table is a bijection: five content types, five distinct
-    /// destinations. A mutant that routes two formats to the same reader — the
+    /// destinations. A change that routes two formats to the same reader — the
     /// shape a "simplifying" refactor produces — collapses the set and fails
     /// here even if the individual assertion it broke was also edited.
     func testDestination_mapsTheFiveContentTypesToFiveDistinctDestinations() {

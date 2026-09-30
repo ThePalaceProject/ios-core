@@ -7,7 +7,7 @@
 //  (Adobe activation surface) and PP-3649 (on-demand device activation at
 //  borrow time).
 //
-//  Per the CLAUDE.md TDD policy, we mock only the SDK seam — TPPDRMAuthorizing
+//  We mock only the SDK seam — TPPDRMAuthorizing
 //  conforms to NYPLADEPT's public surface, so TPPDRMAuthorizingMock stands in
 //  for the C++ Adobe library in tests. The Swift error-mapping + state-
 //  management glue is the production code under test; we never instantiate

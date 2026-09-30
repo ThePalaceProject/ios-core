@@ -2,8 +2,8 @@
 //  SideloadBoundaryTests.swift
 //  PalaceTests
 //
-//  Boundary tests for the scoped source-of-truth clause (swarm swarm_8ce6f5ae ·
-//  Contract D). `SideloadedBookRegistry` is the documented, probe-guarded SECOND
+//  Boundary tests for the scoped source-of-truth clause.
+//  `SideloadedBookRegistry` is the documented, probe-guarded SECOND
 //  book-state owner, scoped to side-loaded (non-loan) content. These tests pin
 //  the boundary the doctrine declares:
 //
@@ -28,7 +28,7 @@ import PalaceBookRegistry
 // The loan owner already exposes `state(for:)` via `TPPBookRegistryProvider`;
 // the test conforms the mock to the shared read seam so a heterogeneous
 // `[BookStateReading]` can exercise both owners. (Production `TPPBookRegistry`
-// conformance is Contract C's — its file is off-limits here.)
+// does not conform to it.)
 extension TPPBookRegistryMock: BookStateReading {}
 
 @MainActor

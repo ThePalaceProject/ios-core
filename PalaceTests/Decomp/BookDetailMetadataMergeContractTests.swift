@@ -166,7 +166,7 @@ final class BookDetailMetadataMergeContractTests: XCTestCase {
     /// mergeHydratedMetadata always keeps `current.identifier` and `current.title`
     /// regardless of what the fetched entry carries. A silent extraction that
     /// takes `fresh.identifier` here would corrupt the registry key and mis-route
-    /// every subsequent state read — the highest-cost mutation on this path.
+    /// every subsequent state read — the highest-cost regression on this path.
     func testMerge_identityFields_neverTakenFromFresh() async {
         let sparse = makeBook(identifier: "keep-this-id", title: "Keep This Title")
         let fresh = makeBook(

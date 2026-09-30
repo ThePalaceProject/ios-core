@@ -248,8 +248,8 @@ final class LCPClientTests: XCTestCase {
         let facade = client.getSupportedLCPProfileURIs()
         let liblcp = R2LCPClient.getSupportedLCPProfileURIs() ?? []
 
-        // Forwarding contract: facade == exactly what liblcp reports. Kills the
-        // "return Readium's default" and "return []" mutants.
+        // Forwarding contract: facade == exactly what liblcp reports. Catches the
+        // "return Readium's default" and "return []" regressions.
         XCTAssertEqual(facade, liblcp,
                        "Facade must forward R2LCPClient.getSupportedLCPProfileURIs() verbatim, not Readium's hardcoded default")
         // Sanity: this liblcp build advertises the standard production profile.

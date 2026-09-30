@@ -2,33 +2,14 @@
 //  LCPCharacterizationTests.swift
 //  PalaceTests
 //
-//  Mutation-killing characterization coverage for the LCP DRM surface.
-//  Today the DRM characterization posture is "Very Low" — only adversarial
-//  tests exist. This file pins the LCP code paths that production code
-//  relies on, so a regression in:
-//
-//    - License document JSON parsing (TPPLCPLicense, TPPLCPLicenseLink)
-//    - Publication-link resolution (firstLink(withRel:))
-//    - License-fulfillment error mapping (TPPLicensesServiceError)
-//    - PEM-CRL header guard (createContext defense-in-depth, F-002)
-//    - findOneValidPassphrase ObjC exception catcher (FU-2)
-//    - decrypt(...) empty-input + bad-context short-circuits
-//
-//  ...trips a test rather than silently slipping through review.
-//
-//  Hermetic — uses only on-disk fixtures (no R2LCPClient invocations that
-//  require real LCP-CA-signed licenses, no network, no live LCP server).
-//  Tests behind `#if LCP` mirror production gating.
-//
-//  Behavioral targets:
-//    - The FU-2 fix (TPPLCPClient.swift:135-160) wraps
-//      R2LCPClient.findOneValidPassphrase in TPPObjCExceptionCatcher
-//      .catchAllExceptions. Pin that it survives garbage / UTF-8 / NUL
-//      / extremely long inputs — if the wrapper is regressed, the test
-//      process crashes with std::logic_error rather than failing softly.
-//    - The createContext PEM-CRL header guard (TPPLCPClient.swift:55-60)
-//      throws .invalidPemCrl(prefix:) BEFORE Botan ever sees the bytes.
-//      Pin the prefix-bounded shape so log spam can't leak credentials.
+//  Characterization tests for the LCP DRM surface: license JSON parsing
+//  (TPPLCPLicense, TPPLCPLicenseLink), firstLink(withRel:), TPPLicensesServiceError
+//  mapping, the createContext PEM-CRL header guard (F-002; throws
+//  .invalidPemCrl(prefix:) before Botan sees the bytes, prefix-bounded so logs
+//  cannot leak credentials), the ObjC exception catcher around
+//  findOneValidPassphrase (FU-2; garbage/UTF-8/NUL/huge inputs must not crash the
+//  process), and decrypt's empty-input and bad-context short-circuits.
+//  Hermetic: on-disk fixtures only, no R2LCPClient calls or network.
 //
 
 #if LCP
@@ -62,7 +43,7 @@ final class LCPCharacterizationTests: XCTestCase {
     func test_TPPLCPLicense_parsesMinimalValidJSON_succeeds() throws {
         // Characterization: a minimal-but-valid LCP license JSON with the
         // required `id` and a single publication link must produce a non-nil
-        // TPPLCPLicense whose `identifier` matches. A mutant that:
+        // TPPLCPLicense whose `identifier` matches. A change that:
         //   - dropped the id field
         //   - swallowed Codable errors silently and returned a default instance
         //   - re-wrote the keys ("id" → "license_id")
@@ -86,7 +67,7 @@ final class LCPCharacterizationTests: XCTestCase {
         // The firstLink(withRel:) contract: returns the first link whose
         // `rel` matches the queried rel. The publication-link discovery
         // is load-bearing — TPPLicensesService.acquirePublication uses it
-        // to resolve the download URL. A mutant that returned the LAST link
+        // to resolve the download URL. A change that returned the LAST link
         // (instead of the first) would route fulfillment to a CRL/status
         // endpoint, NOT the publication.
         let json: [String: Any] = [
@@ -112,7 +93,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_TPPLCPLicense_returnsNil_whenRelNotFound() throws {
         // The negative contract: querying a rel that doesn't exist returns
-        // nil, NOT a default link. A mutant that returned the first link
+        // nil, NOT a default link. A change that returned the first link
         // regardless of rel would route fulfillment to whatever the server
         // happened to list first (CRL? status?) — caught here.
         let json: [String: Any] = [
@@ -134,7 +115,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_TPPLCPLicense_returnsNil_onMissingRequiredId() throws {
         // The `id` field is non-optional in the Codable struct. A JSON
-        // without it must fail decoding → init? returns nil. A mutant that
+        // without it must fail decoding → init? returns nil. A change that
         // silently defaulted `id` to "" would let downstream code dereference
         // a license with an empty identifier (would never match a registry
         // fulfillment-id lookup, producing silent passphrase-retrieval
@@ -153,7 +134,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_TPPLCPLicense_returnsNil_onCompletelyMalformedJSON() throws {
         // A JSON file whose bytes are not valid JSON at all must produce
-        // nil. A mutant that wrapped this in a try? and silently kept a
+        // nil. A change that wrapped this in a try? and silently kept a
         // partially-initialized object would let downstream code dereference
         // a corrupt license. Pin the all-or-nothing shape.
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).lcpl")
@@ -178,7 +159,7 @@ final class LCPCharacterizationTests: XCTestCase {
     }
 
     func test_TPPLCPLicense_returnsNil_whenFileDoesNotExist() {
-        // A URL pointing to a non-existent file must produce nil. A mutant
+        // A URL pointing to a non-existent file must produce nil. A regression
         // that crashed on the missing-file shape (force-try) would surface
         // as a SIGABRT in production. Pin the graceful nil-return.
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)-does-not-exist.lcpl")
@@ -190,7 +171,7 @@ final class LCPCharacterizationTests: XCTestCase {
     func test_TPPLCPLicense_parsesLinkOptionalFields_preservesNils() throws {
         // The TPPLCPLicenseLink Codable shape declares ALL fields optional
         // except `rel`. A minimal link with only `rel` must still decode,
-        // with all other fields nil. A mutant that required `href` to be
+        // with all other fields nil. A change that required `href` to be
         // present would reject otherwise-valid status-only licenses.
         let json: [String: Any] = [
             "id": "urn:uuid:minimal-link",
@@ -219,7 +200,7 @@ final class LCPCharacterizationTests: XCTestCase {
         // completion handler fires with a TPPLicensesServiceError.licenseError
         // carrying "Reading license file failed". This is load-bearing for
         // LCPLibraryService.fulfill — the NSError it constructs uses this
-        // description string. A mutant that returned a generic message
+        // description string. A change that returned a generic message
         // ("unknown error") would lose triage signal.
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).lcpl")
         try Data("not a license".utf8).write(to: url)
@@ -249,7 +230,7 @@ final class LCPCharacterizationTests: XCTestCase {
         // Contract: when the license parses but has no publication link, the
         // failure message must be distinct from the "Reading license file
         // failed" message — that distinction is how production logs route
-        // the two failure modes to different fix paths. A mutant that
+        // the two failure modes to different fix paths. A change that
         // collapsed both into one message would lose triage signal.
         let json: [String: Any] = [
             "id": "urn:uuid:no-pub-link",
@@ -285,7 +266,7 @@ final class LCPCharacterizationTests: XCTestCase {
     func test_TPPLicensesServiceError_descriptionExposesMessage() {
         // The .description contract: must surface the inner message string
         // so logs can identify which TPPLicensesServiceError case fired. A
-        // mutant that returned a generic constant would lose diagnostics.
+        // regression that returned a generic constant would lose diagnostics.
         let err = TPPLicensesServiceError.licenseError(message: "diag-message-X")
         XCTAssertEqual(err.description, "diag-message-X",
                        "TPPLicensesServiceError.description must surface the inner message — NOT a generic constant")
@@ -295,7 +276,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_pathInZip_routesEpubToMetaInfPath() {
         // Contract: ContentTypeEpubZip publications inject the license at
-        // META-INF/license.lcpl. A mutant that wrote to license.lcpl in
+        // META-INF/license.lcpl. A change that wrote to license.lcpl in
         // the archive root would corrupt the EPUB structure — Readium
         // would refuse to open the book.
         let svc = TPPLicensesService()
@@ -311,7 +292,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_pathInZip_routesAudiobookLCPToRootPath() {
         // Contract: ContentTypeAudiobookLCP publications inject the license
-        // at license.lcpl (root of the archive). A mutant that routed to
+        // at license.lcpl (root of the archive). A change that routed to
         // META-INF would break audiobook fulfillment.
         let svc = TPPLicensesService()
         let link = TPPLCPLicenseLink(rel: "publication",
@@ -326,7 +307,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_pathInZip_returnsNilForUnknownContentType() {
         // Contract: unknown content types return nil → the license is NOT
-        // injected, the publication is stored as-is. A mutant that defaulted
+        // injected, the publication is stored as-is. A change that defaulted
         // to META-INF/license.lcpl for unknown types would corrupt anything
         // that wasn't an EPUB. Pin the nil-return.
         let svc = TPPLicensesService()
@@ -341,7 +322,7 @@ final class LCPCharacterizationTests: XCTestCase {
     }
 
     func test_pathInZip_returnsNilWhenTypeIsMissing() {
-        // The early-return for a link without a type. A mutant that
+        // The early-return for a link without a type. A change that
         // defaulted missing-type to .epub_zip routing would silently inject
         // licenses into binaries.
         let svc = TPPLicensesService()
@@ -355,7 +336,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_createContext_emptyPemCrl_isAcceptedByHeaderGuard() {
         // Boundary: trimmed.isEmpty short-circuits the prefix check, so an
-        // empty pemCrl passes the guard (Botan then receives it). A mutant
+        // empty pemCrl passes the guard (Botan then receives it). A regression
         // that REQUIRED the BEGIN marker even on empty input would reject
         // a legitimate "no CRL" pathway and break LCP fulfillment in
         // environments that don't ship a CRL.
@@ -377,7 +358,7 @@ final class LCPCharacterizationTests: XCTestCase {
     func test_createContext_whitespacePadding_isTrimmedBeforeHeaderCheck() {
         // The pemCrl input is trimmed via trimmingCharacters(in:
         // .whitespacesAndNewlines) BEFORE the prefix check. A real CRL
-        // padded with whitespace must still pass. A mutant that removed
+        // padded with whitespace must still pass. A change that removed
         // the trim would reject `"  -----BEGIN X509 CRL-----..."` even
         // though it's a valid PEM with leading whitespace.
         let withPadding = "\n  -----BEGIN X509 CRL-----\nMIIBjzCB+QIBATANBgkqhkiG9w0BAQUFADCBkjELMAkG==\n-----END X509 CRL-----\n  "
@@ -410,7 +391,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_createContext_prefixCappedAt40Chars_preventsLogSpam() {
         // The prefix-bound contract: log spam from a 1MB HTML response is
-        // bounded to 40 chars. A mutant that removed the .prefix(40) cap
+        // bounded to 40 chars. A change that removed the .prefix(40) cap
         // would dump the entire response into Crashlytics. Pin the cap.
         let longGarbage = String(repeating: "X", count: 5000)
         XCTAssertThrowsError(
@@ -455,7 +436,7 @@ final class LCPCharacterizationTests: XCTestCase {
     func test_findOneValidPassphrase_passphraseContainingUTF8_isHandledWithoutCrashing() {
         // Edge case: a hashed passphrase string that contains UTF-8 multi-
         // byte sequences (e.g., from a unicode source). The wrapper must
-        // not crash on the encoding boundary. A mutant that assumed ASCII-
+        // not crash on the encoding boundary. A change that assumed ASCII-
         // only input might force-bridge to a CString and crash on UTF-8.
         let utf8Hashed = "café-passphrase-🔐-\u{1F600}-\u{00E9}\u{4E2D}\u{6587}"
         let result = client.findOneValidPassphrase(
@@ -479,7 +460,7 @@ final class LCPCharacterizationTests: XCTestCase {
     }
 
     func test_findOneValidPassphrase_extremelyLongPassphrase_isHandledWithoutCrashing() {
-        // Edge case: a hashed passphrase string of 64 KB. A mutant that
+        // Edge case: a hashed passphrase string of 64 KB. A change that
         // stack-allocated the input buffer would overflow the stack. The
         // wrapper must catch any such failure mode.
         let huge = String(repeating: "a", count: 65_536)
@@ -492,7 +473,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_findOneValidPassphrase_multipleGarbageInputs_returnsConsistentNil() {
         // Determinism check: the same garbage input produces the same nil
-        // return across repeated calls. A mutant that introduced a stateful
+        // return across repeated calls. A change that introduced a stateful
         // bug (e.g., a stuck context from a previous call) would surface
         // here as a non-deterministic mix of nil and crashes.
         for _ in 0..<5 {
@@ -509,7 +490,7 @@ final class LCPCharacterizationTests: XCTestCase {
     func test_decrypt_emptyData_returnsNil_priorToReachingR2LCPClient() {
         // Empty-data guard at TPPLCPClient.swift:116-119. Botan would crash
         // attempting to decode 0 bytes (historically observed in 2.x logs).
-        // A mutant that dropped the guard would surface as a crash on the
+        // A change that dropped the guard would surface as a crash on the
         // first empty buffer the reader's prefetch sees.
         let result = client.decrypt(data: Data(), using: NotADRMContextLCPChar())
         XCTAssertNil(result, "Empty data must short-circuit to nil — NEVER reach R2LCPClient.decrypt")
@@ -517,7 +498,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_decrypt_nonDRMContext_returnsNil_priorToForceCastingInsideR2LCPClient() {
         // Type-check guard at TPPLCPClient.swift:111-114. R2LCPClient's
-        // internal `as!` would crash on a non-DRMContext input. A mutant
+        // internal `as!` would crash on a non-DRMContext input. A regression
         // that removed the type check would crash the reader on every
         // decrypt call.
         let nonEmpty = Data([0x10, 0x20, 0x30, 0x40, 0x50])
@@ -528,7 +509,7 @@ final class LCPCharacterizationTests: XCTestCase {
     func test_decryptExtensionOverload_noPriorContext_returnsNil() {
         // The decrypt(data:) extension at TPPLCPClient.swift:163-187 reads
         // self.context. Without a prior createContext, context is nil and
-        // the type cast fails — short-circuits to nil. A mutant that
+        // the type cast fails — short-circuits to nil. A change that
         // bypassed the context check would dereference nil.
         let nonEmpty = Data([0x01, 0x02, 0x03])
         let result = client.decrypt(data: nonEmpty)
@@ -539,7 +520,7 @@ final class LCPCharacterizationTests: XCTestCase {
 
     func test_LCPLibraryService_canFulfill_rejectsEpubAndPdf() {
         // The canFulfill negative contract: the LCP service must NOT claim
-        // ability to fulfill a bare .epub or .pdf. A mutant that returned
+        // ability to fulfill a bare .epub or .pdf. A change that returned
         // true for everything would let a non-LCP file enter the LCP
         // fulfillment path — the user would see a passphrase prompt for
         // a book that has no DRM.
@@ -553,7 +534,7 @@ final class LCPCharacterizationTests: XCTestCase {
     }
 
     func test_LCPLibraryService_canFulfill_acceptsLcplExtensionCaseInsensitively() {
-        // Contract: the extension check is case-insensitive. A mutant that
+        // Contract: the extension check is case-insensitive. A change that
         // restricted to lowercase-only would reject macOS Finder copies
         // that preserve the original case (.LCPL from some servers).
         let svc = LCPLibraryService()
@@ -563,7 +544,7 @@ final class LCPCharacterizationTests: XCTestCase {
     }
 
     func test_LCPLibraryService_licenseExtensionConstant_isLcpl() {
-        // Constant pinning: a mutant that changed the public licenseExtension
+        // Constant pinning: a change that changed the public licenseExtension
         // string would silently break ObjC callers (TPPMyBooksDownloadCenter
         // uses this constant to identify LCP downloads).
         XCTAssertEqual(LCPLibraryService().licenseExtension, "lcpl",

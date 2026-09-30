@@ -4,8 +4,8 @@
 //
 //  Meta-tests that enforce TPPUserAccount-isolation hygiene across
 //  PalaceTests/. They prevent the regression class of "raw
-//  TPPUserAccount.sharedAccount(...)" call sites creeping back in. After
-//  swarm_47883816, tests should mint per-call isolated accounts via
+//  TPPUserAccount.sharedAccount(...)" call sites creeping back in. Tests
+//  mint per-call isolated accounts via
 //  `TPPUserAccountTestFactory.makeIsolated()`; any remaining sharedAccount
 //  call site must be on the whitelist below (and the whitelist is small
 //  and intentional).

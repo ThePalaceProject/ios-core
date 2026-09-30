@@ -27,7 +27,7 @@
 //  raw file text — no SwiftSyntax. The rules are narrow, and a missed
 //  edge case here is a much smaller cost than a swift-syntax dependency.
 //
-//  Scope (swarm_47883816 work package E): walks ALL of `PalaceTests/`
+//  Scope: walks ALL of `PalaceTests/`
 //  recursively, minus:
 //   - The `MetaTests/` directory itself (lint files contain banned
 //     substrings as fixtures — would self-trigger).
@@ -51,8 +51,7 @@ final class MockIsolationLintTests: XCTestCase {
   /// `PalaceTests/` resolved relative to this file's location so the test
   /// works in every checkout (no env vars, no CI-specific paths).
   ///
-  /// **swarm_47883816 work package E** broadened this from `Mocks/` to
-  /// the entire `PalaceTests/` tree. The 3 hygiene rules apply equally
+  /// Covers the entire `PalaceTests/` tree, not just `Mocks/`. The 3 hygiene rules apply equally
   /// to mocks AND to test classes — the F-008 leak class was rooted in
   /// a mock, but the same pattern (stateful Combine sinks, observer
   /// retention, shared singletons without reset) exists in test classes

@@ -136,7 +136,7 @@ final class EPUBToolbarToggleTests: XCTestCase {
 
     /// `TapRegion.classify` divides the viewport into left-edge / center /
     /// right-edge zones based on `edgeThresholdPercent`. Lock all three
-    /// zones at standard 375px width in one body so a mutant that swaps
+    /// zones at standard 375px width in one body so a change that swaps
     /// any zone's branch (e.g. classifies left as right) fails immediately.
     func testTapRegion_classifiesViewportInToThreeZones() {
         let width: CGFloat = 375
@@ -159,7 +159,7 @@ final class EPUBToolbarToggleTests: XCTestCase {
     /// Threshold boundary is the load-bearing decision point — Readium
     /// pages flip vs. toolbar shows depending on this. Pin the exact
     /// threshold AND just-past-threshold AND just-under-threshold (in the
-    /// right zone) on a 400px viewport so a mutant that flips `<=` to `<`
+    /// right zone) on a 400px viewport so a change that flips `<=` to `<`
     /// (or vice versa) fails on the boundary case.
     func testTapRegion_threshold_isInclusiveOnEdgeAndExclusiveAtCenter() {
         let width: CGFloat = 400      // 20% threshold = 80px
@@ -187,7 +187,7 @@ final class EPUBToolbarToggleTests: XCTestCase {
     }
 
     /// Zero-width viewport: classify must not divide-by-zero. Default to
-    /// center (no edge zones to land in). A mutant that produces NaN/.crash
+    /// center (no edge zones to land in). A change that produces NaN/.crash
     /// or returns leftEdge/rightEdge would fail here.
     func testTapRegion_zeroWidthViewport_defaultsToCenter() {
         XCTAssertEqual(

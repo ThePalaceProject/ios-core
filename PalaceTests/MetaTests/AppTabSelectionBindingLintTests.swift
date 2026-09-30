@@ -12,12 +12,10 @@
 //  the tap on the tab you are already on, which is the only one-tap way back to
 //  a tab's root now that switching tabs preserves the stack. `$router.selected`
 //  swallows that write silently. Telling the two apart needs a rendered
-//  `TabView`, and PalaceTests has no SwiftUI host harness; reviewers correctly
-//  observed that reverting either builder to `$router.selected` deletes the
-//  gesture with every unit test still green. The options were (a) build a host
-//  harness, (b) leave the wiring unpinned behind a simulator pass nobody re-runs,
-//  or (c) assert the structure. This is (c) — zero production cost, and it fails
-//  the moment someone re-points either builder.
+//  `TabView`, and PalaceTests has no SwiftUI host harness, so reverting either
+//  builder to `$router.selected` would delete the gesture with every unit test
+//  still green. Asserting the structure fails the moment either builder is
+//  re-pointed.
 //
 //  Precedent for the shape: the sibling lints in this directory.
 //
