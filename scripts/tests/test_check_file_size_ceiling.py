@@ -412,7 +412,7 @@ def test_live_allowlist_pins_the_critical_paths(tmp_path):
         "Palace/Audiobooks/AudiobookSessionManager.swift": 1234,
         "Palace/MyBooks/MyBooksDownloadCenter.swift": 1213,
         "Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift": 1115,
-        "Palace/Book/UI/BookDetail/BookDetailViewModel.swift": 971,
+        "Palace/Book/UI/BookDetail/BookDetailViewModel.swift": 867,
         "Palace/Utilities/Localization/Strings.swift": 875,
         "Palace/Accounts/Library/AccountsManager.swift": 367,
         "Palace/SignInLogic/TPPSignInBusinessLogic.swift": 634,

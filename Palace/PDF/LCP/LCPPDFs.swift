@@ -9,7 +9,7 @@
 //  byte-range-decryption machinery is obsolete.
 //
 //  All that remains is two static predicates used by
-//  `BookFileManager.pathExtension(for:)`, `BookService.presentPDF`,
+//  `BookFileManager.pathExtension(for:)`, `BookOpenRouter`'s PDF path,
 //  and `BookCellModel.didSelectRead` to decide which PDF pipeline a
 //  book belongs to.
 //

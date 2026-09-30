@@ -7,137 +7,33 @@ import PalaceBookModel
 import PalaceBookRegistry
 import PalaceUtilities
 
-/// Dispatches book-open requests to the right reader/player. Owns only the
-/// EPUB and PDF paths directly; audiobook opens delegate to
-/// `AudiobookSessionManager.openAudiobook`, which is the sole owner of the
-/// audiobook lifecycle (manager, decryptor, playback, navigation).
+/// The book-open entry point callers name, plus two audiobook helpers that are
+/// not routing: the open-failure alert and the bearer-token manifest fetch.
 ///
-/// Before this refactor, BookService was a static god-utility that built
-/// audiobook managers and handed them off via AudiobookEvents.managerCreated.
-/// That handoff ran the new open's DRM pipeline while the previous
-/// AudiobookManager was still alive, which caused Readium's
-/// publicationOpener.open() to hang after a few back-to-back audiobook opens.
-/// See AudiobookLoader + AudiobookSessionManager for the new ownership model.
+/// The format -> destination decision and the reader wiring moved to
+/// `BookOpenRouter` (Application layer) in Wave 5, so `open` is a forwarder and
+/// the readers are reachable from one place. Audiobook opens still land on
+/// `AudiobookSessionManager.openAudiobook`, the sole owner of the audiobook
+/// lifecycle (manager, decryptor, playback, navigation) — that ownership is what
+/// keeps a previous session's DRM decryptor from outliving the next open and
+/// hanging Readium's `publicationOpener.open()`. See AudiobookLoader +
+/// AudiobookSessionManager.
 enum BookService {
-    // Main-actor-confined: every mutation already happens on the main thread
-    // (callers are `@MainActor` view models; the safety-release and dispatch
-    // hops run on `DispatchQueue.main`). Isolating the lock to the main actor
-    // documents that invariant and clears the nonisolated-global-mutable-state
-    // warning without changing the threading.
-    @MainActor private static var openingBooks = Set<String>()
-
-    /// Safety cap: if the open pipeline never reports completion (hang, timeout,
-    /// unhandled throw inside a Task), releasing after this window prevents the
-    /// lock from latching permanently and silently swallowing every retry.
-    private static let openLockSafetyRelease: TimeInterval = 30
-
-    /// - parameter onLoadingShellPresented: audiobook-only early hook — fired the
-    ///   moment the morphing player's loading shell is presented (before the
-    ///   PP-4542 content-download wait) so a presenting caller can dismiss its
-    ///   transient UI (BookDetail half-sheet) immediately rather than after full
-    ///   playback readiness. Nil for EPUB/PDF/streaming (they present promptly and
-    ///   rely on `onFinish`). fix/audiobook-first-open-hang.
+    /// Book-open entry point for every caller (BookDetail, My Books, the
+    /// audiobook retry action). Forwards to `BookOpenRouter`, which owns the
+    /// format -> destination decision, the reader wiring and the per-identifier
+    /// reentrancy lock. The signature is unchanged so call sites and
+    /// `BookServiceAudiobookOpenTests` are unaffected by the relocation.
+    ///
+    /// - parameter onLoadingShellPresented: audiobook-only early hook — see
+    ///   `BookOpenRouter.open`.
     @MainActor
     static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry, audiobookSession: AudiobookSessionManaging? = nil, onFinish: (() -> Void)? = nil, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
-        guard !openingBooks.contains(book.identifier) else {
-            Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
-            onFinish?()
-            return
-        }
-
-        openingBooks.insert(book.identifier)
-        scheduleOpenLockSafetyRelease(for: book.identifier)
-        let resolvedBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
-
-        dispatchOpen(resolvedBook, audiobookSession: audiobookSession, onFinish: onFinish, onLoadingShellPresented: onLoadingShellPresented)
-    }
-
-    @MainActor
-    private static func scheduleOpenLockSafetyRelease(for identifier: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + openLockSafetyRelease) {
-            // Runs on the main queue; `assumeIsolated` bridges the non-isolated
-            // dispatch closure to the main actor so the `openingBooks` access is
-            // statically safe without altering the existing timing behavior.
-            MainActor.assumeIsolated {
-                if openingBooks.remove(identifier) != nil {
-                    Log.warn(#file, "⏱️ Open lock for \(identifier) auto-released after \(Int(openLockSafetyRelease))s — pipeline never reported completion")
-                }
-            }
-        }
-    }
-
-    @MainActor
-    private static func dispatchOpen(_ book: TPPBook, audiobookSession: AudiobookSessionManaging? = nil, onFinish: (() -> Void)?, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
-        switch book.defaultBookContentType {
-        case .epub:
-            Task { @MainActor in
-                defer {
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                }
-                AppContainer.production().readerService.openEPUB(book)
-            }
-        case .pdf:
-            Task { @MainActor in
-                presentPDF(book) {
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                }
-            }
-        case .audiobook:
-            // Route through the single audiobook owner. The session manager
-            // stops the previous session (releasing its DRM decryptor) before
-            // loading the new audiobook — the ordering invariant that prevents
-            // a stale LCP Publication from hanging publicationOpener.open().
-            let session = audiobookSession ?? AppContainer.production().audiobookSession
-            Task { @MainActor in
-                defer {
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                }
-                _ = await session.openAudiobook(
-                    book,
-                    startPlaying: true,
-                    onLoadingShellPresented: onLoadingShellPresented
-                )
-            }
-        case .streamingHTML:
-            // PP-4161: streaming-HTML titles route through NavigationCoordinator
-            // directly — no AudiobookSessionManager-style lifecycle owner,
-            // no LCP / DRM grant, no on-disk asset.
-            Task { @MainActor in
-                defer {
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                }
-                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
-                    coordinator.store(book: book)
-                    coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
-                } else {
-                    // PP-5022 — surface the failure instead of finishing silently.
-                    ReaderService.presentUnreachableReaderAlert(for: book, source: "BookService.streamingHTML")
-                }
-            }
-        default:
-            openingBooks.remove(book.identifier)
-            onFinish?()
-        }
-    }
-
-    @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        // Single PDF seam: `ReaderService.openPDF` gates LCP vs plain
-        // internally. LCP-protected PDFs stream through Readium's
-        // publication-open + disk-extract pipeline; plain (non-LCP) PDFs use
-        // PDFKit's `PDFDocument(url:)` mmap path. Routing lives in one place
-        // (ReaderService) so BookDetail, My Books, and the Continue-reading
-        // card can't drift apart — the Continue card previously bypassed this
-        // gate and failed to open plain PDFs. `completion` fires once the open
-        // has been dispatched (immediately for plain; after the async
-        // publication open for LCP — the caller typically holds a loading
-        // indicator on it).
-        AppContainer.production().readerService.openPDF(book) {
-            completion?()
-        }
+        BookOpenRouter.open(book,
+                            bookRegistry: bookRegistry,
+                            audiobookSession: audiobookSession,
+                            onFinish: onFinish,
+                            onLoadingShellPresented: onLoadingShellPresented)
     }
 
     /// Shown when an audiobook open fails. Invoked by
