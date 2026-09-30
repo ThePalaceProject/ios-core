@@ -77,6 +77,32 @@ SERIAL = re.compile(
     r"Test Case '-\[[\w.]*?([\w]+) ([\w]+)\]' (passed|failed) \(([\d.]+) seconds\)"
 )
 
+# XCTest reports a test killed for exceeding its execution-time allowance as an
+# ordinary `failed` iteration whose duration is exactly that allowance: 120 s by
+# default (`-default-test-execution-time-allowance 120` in
+# scripts/xcode-test-optimized.sh), a whole number of minutes when a test raises
+# its own. On 2026-09-29 almost every CI run lost a DIFFERENT test that way, and
+# the spindumps showed the named test was usually not the cause (a log pipe that
+# stopped draining, a clone's app suspended at launch). Label those iterations
+# `killed` so they are not read as the test's own failure (PP-5273).
+ALLOWANCE_MIN_SECONDS = 120.0
+
+
+def iteration_verdict(verdict: str, secs: str) -> str:
+    """-> passed | failed | killed for one iteration."""
+    if verdict != "failed":
+        return verdict
+    seconds = float(secs)
+    on_whole_minute = abs(seconds - round(seconds / 60.0) * 60.0) < 0.0005
+    return "killed" if seconds >= ALLOWANCE_MIN_SECONDS and on_whole_minute else "failed"
+
+
+def failure_label(verdicts: list[str]) -> str:
+    """Heading for a test in the scan: a real failure outranks a kill."""
+    if "failed" in verdicts:
+        return "FAILED AN ITERATION"
+    return "KILLED AT THE TIME LIMIT"
+
 
 # A failure this many times the passing median is a wall-clock event rather
 # than a logic change. 5x is conservative: the observed incident was 22x, and
@@ -121,7 +147,7 @@ def infer_repo() -> str:
 
 def runs(repo: str, workflow: str, limit: int, branch: str | None) -> list[dict]:
     cmd = ["gh", "run", "list", "--repo", repo, "--workflow", workflow,
-           "--limit", str(limit), "--json", "databaseId,headBranch,headSha,conclusion,createdAt"]
+           "--limit", str(limit), "--json", "databaseId,headBranch,headSha,conclusion,createdAt,attempt"]
     if branch:
         cmd += ["--branch", branch]
     import json
@@ -133,8 +159,14 @@ def runs(repo: str, workflow: str, limit: int, branch: str | None) -> list[dict]
         raise SystemExit(2)
 
 
-def log_for(repo: str, run_id: int, use_cache: bool) -> str:
-    cache = os.path.join(tempfile.gettempdir(), f"ci-log-{repo.replace('/', '_')}-{run_id}.txt")
+def log_cache_path(repo: str, run_id: int, attempt: int) -> str:
+    """Cache key includes the attempt: a re-run replaces the run's log."""
+    return os.path.join(tempfile.gettempdir(),
+                        f"ci-log-{repo.replace('/', '_')}-{run_id}-a{attempt}.txt")
+
+
+def log_for(repo: str, run_id: int, use_cache: bool, attempt: int = 1) -> str:
+    cache = log_cache_path(repo, run_id, attempt)
     if use_cache and os.path.exists(cache) and os.path.getsize(cache) > 0:
         return open(cache, encoding="utf-8", errors="replace").read()
     text = sh(["gh", "run", "view", str(run_id), "--repo", repo, "--log"])
@@ -176,10 +208,10 @@ def _iter_results(log: str):
     every deliberately-failing test as a flake forever.
     """
     hits = []
-    for rx, groups in ((PARALLEL, (1, 2, 3)), (SERIAL, (1, 2, 3))):
+    for rx, groups in ((PARALLEL, (1, 2, 3, 5)), (SERIAL, (1, 2, 3, 4))):
         for m in rx.finditer(log):
-            c, meth, verdict = (m.group(g) for g in groups)
-            hits.append((m.start(), f"{c}.{meth}", verdict))
+            c, meth, verdict, secs = (m.group(g) for g in groups)
+            hits.append((m.start(), f"{c}.{meth}", iteration_verdict(verdict, secs)))
     hits.sort(key=lambda h: h[0])
     return hits
 
@@ -226,7 +258,7 @@ def scan_log(log: str) -> dict[str, list[str]]:
     per_test: dict[str, list[str]] = defaultdict(list)
     for _, name, verdict in _iter_results(log):
         per_test[name].append(verdict)
-    return {k: v for k, v in per_test.items() if "failed" in v}
+    return {k: v for k, v in per_test.items() if "failed" in v or "killed" in v}
 
 
 # A window this short cannot support a green verdict on its own. Chosen because
@@ -317,7 +349,7 @@ def run_meta(repo: str, run_id: int) -> dict:
     """
     import json
     out = sh(["gh", "run", "view", str(run_id), "--repo", repo,
-              "--json", "headBranch,headSha,conclusion,createdAt"])
+              "--json", "headBranch,headSha,conclusion,createdAt,attempt"])
     try:
         r = json.loads(out)
     except json.JSONDecodeError:
@@ -326,6 +358,7 @@ def run_meta(repo: str, run_id: int) -> dict:
     r.setdefault("headSha", "?" * 8)
     r.setdefault("conclusion", "?")
     r.setdefault("createdAt", "-" * 16)
+    r.setdefault("attempt", 1)
     r["databaseId"] = run_id
     return r
 
@@ -340,8 +373,9 @@ def run_scan_mode(repo: str, args) -> int:
         return 0
 
     total_masked = 0
+    total_killed_only = 0
     for r in found:
-        log = log_for(repo, r["databaseId"], not args.no_cache)
+        log = log_for(repo, r["databaseId"], not args.no_cache, r.get("attempt") or 1)
         stamp = f"{r['createdAt'][5:16]}  {(r['headBranch'] or '?')[:32]:32s}  run={r['conclusion'] or '-'}"
         try:
             failures = scan_run(log)
@@ -362,8 +396,11 @@ def run_scan_mode(repo: str, args) -> int:
             continue
         total_masked += len(failures)
         for name, verdicts in sorted(failures.items()):
+            label = failure_label(verdicts)
+            if label != "FAILED AN ITERATION":
+                total_killed_only += 1
             where = ", ".join(f"#{i + 1} {v}" for i, v in enumerate(verdicts))
-            print(f"    FAILED AN ITERATION  {name}\n                         {where}")
+            print(f"    {label}  {name}\n                         {where}")
 
     print()
     if total_masked:
@@ -371,6 +408,10 @@ def run_scan_mode(repo: str, args) -> int:
         print("  If the run reported green, retry masked every one of them. A green verdict")
         print("  over a masked failure is not a pass; it is an unread failure. Take each name")
         print("  to `ci-test-history.py <name>` for whose it is, then find-test-polluter.sh.")
+        if total_killed_only:
+            print(f"  {total_killed_only} of them only ever died at the time limit. A kill blames")
+            print("  whatever test was running; read the spindump XCTest attached to it (the")
+            print("  run's test-results artifact) before treating it as that test's defect.")
     else:
         print(scan_clean_verdict_line(window_span(found)))
     return 0
@@ -414,7 +455,7 @@ def main(argv: list[str]) -> int:
     any_seen = False
 
     for r in found:
-        log = log_for(repo, r["databaseId"], not args.no_cache)
+        log = log_for(repo, r["databaseId"], not args.no_cache, r.get("attempt") or 1)
         res = results_for(log, cls, method)
         stamp = f"{r['createdAt'][5:16]}  {r['headSha'][:8]}  {(r['headBranch'] or '?')[:34]:34s}"
         if not log_is_readable(log):
