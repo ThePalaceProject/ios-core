@@ -15,7 +15,7 @@ description: "Critical-path mutation coverage — regex methodology"
 
 **Status:** active maintenance contract for `scripts/verify-pr.sh`.
 **Owner:** anyone modifying critical-path code; re-run the audit per the maintenance section below.
-**Related:** [`mutation-cache/`](../../.forgeos/mutation-cache/) (cache keying), `scripts/palace_mutate.py` (engine), `scripts/resolve-tests-for.py` (test-class resolution).
+**Related:** `.build/mutation-cache/` (cache keying), `scripts/palace_mutate.py` (engine), `scripts/resolve-tests-for.py` (test-class resolution).
 
 ## Context
 
@@ -27,7 +27,7 @@ The regex existed before this ADR but was constructed ad-hoc:
 ^Palace/(Audiobooks|SignInLogic|MyBooks/Download|Book/UI/BookDetail/BookButtonMapper)
 ```
 
-The Phase 7 synthesis audit (`.forgeos/audits/phase7-synthesis-2026-05-26.md`) surfaced the problem: `BookButtonMapper.swift` was added as the most recent regex entry (PR #1003, finding #1) only after a sibling audit caught that it was off the strict path despite being a documented F-011-shape risk surface. The audit closes with "every state-machine wiring site needs the strict gate, but there's no enumeration of what 'every site' means." This ADR is that enumeration.
+The Phase 7 synthesis audit (audit `phase7-synthesis-2026-05-26`) surfaced the problem: `BookButtonMapper.swift` was added as the most recent regex entry (PR #1003, finding #1) only after a sibling audit caught that it was off the strict path despite being a documented F-011-shape risk surface. The audit closes with "every state-machine wiring site needs the strict gate, but there's no enumeration of what 'every site' means." This ADR is that enumeration.
 
 The regex sets the **lower bound** on PR rigor for user-money / access-bearing code paths: sign-in, borrow, download, DRM fulfillment, audiobook playback. Tightening it slows critical PRs on purpose. Loosening it silently regresses the posture audit — which is exactly the failure mode that landed F-011 in PR #990 ("audiobook first-open hang") and the BookButtonMapper gap. The ADR is the maintenance contract so future authors don't trim files from the regex without seeing what they're giving up.
 
@@ -59,7 +59,7 @@ Reproducible walk used to assemble the inclusion list. Anyone re-running the aud
    - Pure value types and enum definitions (e.g. `TPPMyBooksDownloadInfo.swift` — `@objc enum TPPMyBooksDownloadRightsManagement: Int` only) — no mutable behavior to mutate.
    - View-layer files that only render state set elsewhere (e.g. `TPPBookDetailDownloadFailedView.swift`) — covered by snapshot tests, not mutation.
    - Reader2 rendering-side DRM (`Palace/Reader2/ReaderStackConfiguration/AdobeDRM/*`, `Palace/Reader2/ReaderStackConfiguration/LCP/*`) — exempted, see "Exempted files" below.
-4. **Cross-reference against the audit corpus** in `.forgeos/audits/phase7-*.md` and the memory pin `phase7_borrow_path_regressions_2026_05_14.md`. Every file those audits called out as F-011 / F-014 / F-017 risk surface must be in the regex.
+4. **Cross-reference against the audit corpus** (the `phase7-*` audits, kept in the maintainer harness) and the memory pin `phase7_borrow_path_regressions_2026_05_14.md`. Every file those audits called out as F-011 / F-014 / F-017 risk surface must be in the regex.
 5. **Construct a regex** that matches every retained file. Test it against both the retained list (positive cases) and an explicit non-critical sampler (negative cases). The verification commands and output live in the "Verification" section below.
 
 ## Critical-path files
@@ -271,7 +271,7 @@ Re-run the audit when **any** of the following lands on `develop`:
 
 ## See also
 
-- `.forgeos/audits/phase7-synthesis-2026-05-26.md` — the audit that surfaced finding #1 (`BookButtonMapper` off the strict path) and motivated this ADR.
+- audit `phase7-synthesis-2026-05-26` — the audit that surfaced finding #1 (`BookButtonMapper` off the strict path) and motivated this ADR.
 - `feedback_round_trip_wiring_tests.md` (project memory) — the state-machine wiring test pattern that complements the mutation gate on the audit-listed files.
 - CLAUDE.md "Mutation testing" — engine + cache mechanics; this ADR is the **what** gate it applies to.
 - CLAUDE.md "Contract-snapshot tests" — the alternative coverage strategy used for Reader2 and other XCTest-invisible surfaces.

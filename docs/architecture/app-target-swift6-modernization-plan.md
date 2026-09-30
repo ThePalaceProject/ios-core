@@ -116,7 +116,7 @@ confirm 0, then Phase B (`complete` → 0).
 - [ ] `TokenRequest.execute(completion:)` test (qa nit, needs global URLProtocol stub).
 - [ ] stale `cacheQueue` comments in `CatalogRepositoryTests`.
 - [ ] 6 residual hermeticity escape sites (from #1133's `87→6`) — see
-      `.forgeos/intent/palacenetwork-swift6-modernization.md`.
+      intent `palacenetwork-swift6-modernization`.
 - [ ] #3 chaos-replay **activation** (admin-gated; NOT Swift-6): set repo var
       `ENABLE_CHAOS_QA_RUNNER=true`, provision self-hosted `[macos, palace-ios]`
       runner, populate `.simdrive/replays/chaos/` (simdrive).
@@ -223,7 +223,7 @@ PalaceCatalog (redundant `public`, always-true casts).
 ## 7. Key artifacts
 - Plan/tracker/handoff: **this file**.
 - Setter: `scripts/set_strict_concurrency.rb`.
-- Intents: `.forgeos/intent/palace{network,catalog,auth}-swift6-modernization.md`,
-  `.forgeos/intent/accountdetail-leak-cycle-and-hermetic-network.md` (hermeticity).
+- Intents: intent `palace{network,catalog,auth}-swift6-modernization`,
+  intent `accountdetail-leak-cycle-and-hermetic-network` (hermeticity).
 - The #1129 PR body is the canonical isolation playbook + original sizing.
 - Sweep branch (in flight): `feat/swift6-apptarget-sweep` (#1145).

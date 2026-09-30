@@ -20,7 +20,7 @@ When a bug-class is identified during any phase of a fix — not just a single i
 
 1. **Wipe of current survivors** (the originally-reported instance plus any siblings the scan turned up).
 2. **A detector script** at `scripts/check-<wall-id>.py` that catches future instances.
-3. **A wall-failure entry** at `.forgeos/wall-failures/YYYY-MM-DD-<short-id>.md` with `detector_script:` populated (or `no-detector: <specific reason>`).
+3. **A wall-failure entry** (`YYYY-MM-DD-<short-id>`, in the maintainer harness's wall-failure catalog) with `detector_script:` populated (or `no-detector: <specific reason>`).
 
 Without (2), the wall has a hole. Without (3), the lesson is undiscoverable. Without (1), the PR is dishonest. All three are load-bearing.
 
@@ -105,8 +105,6 @@ Borderline cases default to *class* — a false-positive detector that flags one
 
 - `.claude/skills/rigorous-fix/SKILL.md` — Phase 3.5 operational checklist
 - `.claude/skills/swarm/SKILL.md` — Phase 4.0a + Phase 4.5 check 6.4 (class-scan reconciliation)
-- `.forgeos/wall-failures/README.md` — "Detector requirement" subsection
-- `.forgeos/wall-failures/TEMPLATE.md` — `## Detector script` body section
-- `.forgeos/wall-failures/derived-improvements.md` — cluster-fix tracking
+- The wall-failure catalog's README ("Detector requirement"), TEMPLATE (`## Detector script`) and `derived-improvements` list — in the maintainer harness, not this repo
 - `docs/architecture/superpartner-spectrum.md` — adjacent pattern (warn-only test-pairing floor)
 - `docs/architecture/critical-path-review-policy.md` — adjacent pattern (push-gate)

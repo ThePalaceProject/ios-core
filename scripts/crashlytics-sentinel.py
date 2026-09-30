@@ -5,7 +5,7 @@ Background:
     F-004 / F-005 were "NEW in 3.0.0" Crashlytics signatures we only noticed
     weeks after they appeared. This script runs daily (via cron in GitHub
     Actions) and compares the current top-10 issues from Firebase Crashlytics
-    against .forgeos/crashlytics-baseline.json. Any signature that newly
+    against config/ci/crashlytics-baseline.json. Any signature that newly
     entered the top 10 since the baseline is surfaced as YAML on stdout, and
     the script exits 1 so the calling workflow opens a GitHub Issue.
 
@@ -56,7 +56,7 @@ APP_ID = "1:716454087792:ios:11eb8d287ec88c2784f8b5"
 FIREBASE_PROJECT = "the-palace-project"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BASELINE_PATH = REPO_ROOT / ".forgeos" / "crashlytics-baseline.json"
+BASELINE_PATH = REPO_ROOT / "config" / "ci" / "crashlytics-baseline.json"
 
 DEFAULT_SA_PATHS = [
     Path(os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")),
@@ -313,7 +313,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--baseline",
         type=Path,
         default=BASELINE_PATH,
-        help="Path to baseline JSON (default: .forgeos/crashlytics-baseline.json).",
+        help="Path to baseline JSON (default: config/ci/crashlytics-baseline.json).",
     )
     parser.add_argument(
         "--snapshot",

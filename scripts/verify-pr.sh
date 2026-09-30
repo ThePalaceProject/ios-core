@@ -11,8 +11,7 @@
 #                                              #   classes in isolation to distinguish
 #                                              #   pre-existing test-isolation flakes
 #                                              #   from branch-introduced regressions.
-#                                              #   Per .forgeos/wall-failures/ —
-#                                              #   PR #1018 lessons.
+#                                              #   (PR #1018 lessons.)
 #   scripts/verify-pr.sh --baseline-compare    # Adds the ONLY check that can call a
 #                                              #   failure "this branch's": re-run the
 #                                              #   classes that failed in isolation
@@ -208,7 +207,7 @@ count_lines() {
 # origin/develop on essentially every checkout. So a branch cut from a release
 # branch was scored against develop and inherited the entire release delta.
 # Measured 2026-09-14 (PP-5128): a 4-file Reader2 fix off origin/release/3.3.0
-# was judged as 26 production files and failed the intent-recorded leg naming
+# was judged as 26 production files and failed a diff-scoped leg naming
 # files that belong to other people's release commits. Release and hotfix
 # branches are integration branches too, so they are candidates.
 #
@@ -241,7 +240,7 @@ detect_base_branch() {
 # branch off". A PR onto `release/X.Y.Z` diffed against `origin/develop` picks up
 # every commit the release branch carries: PP-5205 read as 51 changed production
 # files across four unrelated tickets, and every diff-scoped gate below
-# (intent, signing, doc-hygiene, superpartner, blast-radius) judged that diff
+# (signing, doc-hygiene, superpartner, blast-radius) judged that diff
 # instead of the branch's own. The default is unchanged; this is opt-in.
 BASE=${BASE_OVERRIDE:-$(detect_base_branch)}
 if ! git rev-parse --verify "$BASE" &>/dev/null; then
@@ -820,7 +819,7 @@ fi
 
 # 3a. Contract reconciliation (M1 universal-rigor-floor gate)
 # Reconciles "removes X" / "deletes X" / "migrates Y to Z" / "renames X to Y" /
-# "adds field A to type B" claims in the commit body / PR body / intent file
+# "adds field A to type B" claims in the commit body
 # against the staged-diff (HEAD vs base). Catches the contract-vs-diff drift
 # class surfaced in waves 1-4. See `scripts/check-contract-reconciliation.py`.
 echo "--- Contract reconciliation ---"
@@ -835,27 +834,11 @@ elif [ -f scripts/check-contract-reconciliation.py ]; then
   # passed regardless of what the commit body claimed. Pass --commit-msg so the
   # gate is no longer decorative.
   git log -1 --format=%B HEAD > "$CR_MSG" 2>/dev/null || echo "" > "$CR_MSG"
-  # Also pass --intent if a matching intent file exists. Match on the commit
-  # subject's first 4 dash-separated tokens (e.g. "[swarm_M1_83be56fc] Module C ..."
-  # → "swarm-m1" matches `.forgeos/intent/swarm-m1-*.md`).
-  CR_INTENT_FLAG=""
-  CR_SUBJECT=$(head -1 "$CR_MSG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
-  if [ -n "$CR_SUBJECT" ] && [ -d .forgeos/intent ]; then
-    # Prefer an intent file present in THIS branch's diff over an old sibling
-    # that merely shares the ticket tokens — an already-merged same-ticket
-    # intent's claims must not gate this diff. Fall back to first match.
-    CR_INTENT_MATCH=""
-    for _c in $(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null); do
-      if grep -qF "${_c#./}" "$CR_DIFF" 2>/dev/null; then CR_INTENT_MATCH="$_c"; break; fi
-    done
-    [ -z "$CR_INTENT_MATCH" ] && CR_INTENT_MATCH=$(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null | head -1)
-    [ -n "$CR_INTENT_MATCH" ] && CR_INTENT_FLAG="--intent $CR_INTENT_MATCH"
-  fi
-  CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --commit-msg "$CR_MSG" $CR_INTENT_FLAG --quiet 2>&1)
+  CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --commit-msg "$CR_MSG" --quiet 2>&1)
   CR_EXIT=$?
   rm -f "$CR_DIFF" "$CR_MSG"
   if [ "$CR_EXIT" -eq 0 ]; then
-    record "contract_reconciliation" "pass" "All commit/PR/intent claims reconciled with diff"
+    record "contract_reconciliation" "pass" "All commit-message claims reconciled with diff"
   else
     record "contract_reconciliation" "fail" "Unreconciled claims: $(echo "$CR_OUT" | head -3 | tr '\n' ' ')"
   fi
@@ -1178,41 +1161,6 @@ else
   record "adjacency_staleness" "skip" "check-adjacency-staleness.py not found"
 fi
 
-# 3d. Intent recorded (M1 universal-rigor-floor gate)
-# Requires a `.forgeos/intent/<name>.md` for diffs ≥10 prod LOC under Palace/.
-# Intent file must have frontmatter (name/created/author) + body sections
-# (## Claims / ## Anti-claims / ## Files in scope), and its `## Files in scope`
-# must name every production file the diff adds code to.
-# See `scripts/check-intent-recorded.py`.
-echo "--- Intent recorded ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "intent_recorded" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-intent-recorded.py ]; then
-  IR_DIFF=$(mktemp -t ir-diff.XXXX)
-  git diff "$BASE"...HEAD > "$IR_DIFF" 2>/dev/null || true
-  # No commit subject is passed: the intent is matched by its `## Files in
-  # scope` against the branch diff, not by its `name:` against HEAD's subject
-  # (PP-5024). Feeding HEAD's subject in made this gate's verdict a function
-  # of how the last commit was worded, on a branch-wide diff.
-  IR_OUT=$(python3 scripts/check-intent-recorded.py --diff "$IR_DIFF" \
-                                                   --quiet 2>&1)
-  IR_EXIT=$?
-  rm -f "$IR_DIFF"
-  if [ "$IR_EXIT" -eq 0 ]; then
-    record "intent_recorded" "pass" "Intent file present (or below threshold)"
-  else
-    # Echo the whole thing: the gate's failure output names the files to add,
-    # the intents that list them but cannot answer for them, and the rule
-    # being applied. `record` keeps only the first lines for the JSON detail,
-    # so without this the author sees a truncated verdict and none of the
-    # diagnosis — an inert explanation is the same as no explanation.
-    echo "$IR_OUT"
-    record "intent_recorded" "fail" "Intent missing/invalid: $(echo "$IR_OUT" | head -3 | tr '\n' ' ')"
-  fi
-else
-  record "intent_recorded" "skip" "check-intent-recorded.py not found"
-fi
-
 # 3e. Superpartner spectrum (M1 universal-rigor-floor gate, warn-only)
 # Flags new functions / enum cases / state changes in the diff that have no
 # matching test in the diff, unless marked `// no-superpartner:`. Warn-only for
@@ -1388,14 +1336,14 @@ fi
 #   --no-enforce-mutations        → ALL changed files advisory (incl. critical)
 #   --mutation-min-kill-rate N    → override the 50% floor
 #
-#   palace_mutate.py uses .forgeos/mutation-cache by default — repeat verify
+#   palace_mutate.py uses .build/mutation-cache by default — repeat verify
 #   runs on the same files are near-instant (cache hit).
 #
-# Per-file per-run JSON reports land at .forgeos/mutation-reports/<slug>.json
+# Per-file per-run JSON reports land at .build/mutation-reports/<slug>.json
 # so the CI workflow can post a comment with the table; the script writes them
 # alongside the aggregated decision so locally you also have the raw data.
 echo "--- Mutation Testing ---"
-MUTATION_REPORTS_DIR=".forgeos/mutation-reports"
+MUTATION_REPORTS_DIR=".build/mutation-reports"
 if [ "$QUICK" = "true" ] && [ "$MUTATION_ONLY" != "true" ]; then
   record "mutation" "skip" "Skipped (--quick mode)"
 elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then

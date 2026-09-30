@@ -122,5 +122,7 @@ their own app. The PRs that delivered the triad work are public:
 [#867](https://github.com/ThePalaceProject/ios-core/pull/867).
 
 Governance and planning artifacts — risk-scored changesets, gate evidence, agent
-run records — are **not** architecture and do not live here. See
-[`../../.forgeos/README.md`](../../.forgeos/README.md).
+run records, intent files, wall-failure write-ups — are **not** architecture and
+are not kept in this repository. They live in the maintainer's local harness;
+their history up to 2026-09-30 is under `.forgeos/` in the repo history. Config
+that CI reads lives in [`config/ci/`](../../config/ci/README.md).

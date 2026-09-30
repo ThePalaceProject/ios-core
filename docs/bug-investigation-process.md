@@ -23,15 +23,15 @@ culture, half **enforced gate** — see "Enforcement".
    simdrive, or otherwise confirm against the real artifact. A passing unit test
    is necessary, not sufficient.
 5. **Record the wall.** If the bug shipped, was a near-miss, or escaped a gate,
-   file a `.forgeos/wall-failures/` entry (see that README) and derive a
+   file a wall-failure entry in the maintainer harness's catalog and derive a
    permanent detector so it can't recur.
 
-## Enforcement (the hook)
+## Enforcement (maintainer harness)
 
-A bug-fix changeset's `.forgeos/intent/<slug>.md` must declare `type: bugfix`
-in frontmatter, which makes the M1 commit gate
-(`scripts/check-intent-recorded.py`, run from the `commit-msg` hook) REQUIRE
-three additional body sections on top of the usual Claims / Anti-claims /
+The repo's own hooks do not enforce this; the maintainer's local harness does.
+A bug-fix intent there declares `type: bugfix` in frontmatter, and the harness's
+intent gate (`~/harness/stacks/ios/forgeos/check-intent-recorded.py`) then
+requires three body sections on top of the usual Claims / Anti-claims /
 Files-in-scope:
 
 - `## Reproduction` — how the bug was reproduced against the real artifact.
@@ -40,10 +40,9 @@ Files-in-scope:
   real-artifact recheck, etc.).
 
 Missing any of these blocks the commit. The rule is opt-in via `type: bugfix`;
-setting it on actual bug fixes is the author's + reviewer's responsibility (and
-a follow-up may auto-flag bug-shaped commits that lack a bugfix intent). The
-self-test `scripts/test_check_intent_recorded.py` plants a `type: bugfix` intent
-missing `## Verification` and asserts the gate rejects it.
+setting it on actual bug fixes is the author's + reviewer's responsibility.
+Contributors without the harness follow the same process and put the three
+sections in the PR description instead.
 
 ## Intent skeleton for a bug fix
 

@@ -109,7 +109,7 @@ Before approving a chunk that looks "new," `grep` the codebase for the same conc
 
 ### J. Skeptic-pass greps — MANDATORY (run literally)
 
-These are derived from wall-failure catalogs (`.forgeos/wall-failures/` in projects that have them — Palace iOS does as of PR #1018). Each grep catches a class of "looks correct but isn't" failure that the other categories miss. Run them on every diff. Block on FAIL. <!-- leak-ok: .forgeos/wall-failures/ is TRACKED in this repo (40 files); the path resolves on a clean clone -->
+These are derived from the project's wall-failure catalog (write-ups of verification that passed while a defect was live). Each grep catches a class of "looks correct but isn't" failure that the other categories miss. Run them on every diff. Block on FAIL.
 
 **J1. SUT instantiation in named test files** (catches fake-test-instantiation — when a test class names a service it never constructs)
 
@@ -181,18 +181,16 @@ Run before declaring audit complete. These are the universal floor — every dif
 python3 scripts/check-contract-reconciliation.py --quiet ; CR_EXIT=$?
 python3 scripts/check-blast-radius.py --quiet            ; BR_EXIT=$?
 python3 scripts/check-adjacency-staleness.py --quiet     ; AS_EXIT=$?
-python3 scripts/check-intent-recorded.py --quiet         ; IR_EXIT=$?
 ```
 
 Block-on-FAIL rules (exit 1 means a real finding):
 - `check-contract-reconciliation.py` exit 1 → **BLOCK**. The diff doesn't deliver what the commit/PR body / contract claims.
 - `check-blast-radius.py` exit 1 → **BLOCK**. New public API surface, `#if DEBUG` on production paths, test-only AppContainer init params, or discarded function results without `// TODO(ticket):` justification.
 - `check-adjacency-staleness.py` exit 1 → **WARN-ONLY**. Adjacent docs/tests stale relative to the change; surface to user but don't block.
-- `check-intent-recorded.py` exit 1 → **BLOCK only when added prod-LOC ≥ 10**. Smaller diffs skip the intent requirement.
 
 For diffs ≥10 prod LOC under `Palace/`, an advisory blast-radius pass (API surface, call-site census, downstream effects) is worth running if a reviewer agent for it is configured in this environment. It is OPTIONAL and read-only — this skill is single-author, so there is no SoD denial. If no such agent is available, do the same pass yourself against the checklist above and say so in the summary; do not block on its absence.
 
-This `J.5` floor was added 2026-05-28 as the universal-rigor remediation derived from waves 1-4 (M1 swarm `swarm_M1_83be56fc`). Without it, every commit went through the J1-J5 greps but the 4 wave-derived scripts ran only when the author opted into a heavier review path.
+This `J.5` floor was added 2026-05-28 as the universal-rigor remediation derived from waves 1-4 (M1 swarm `swarm_M1_83be56fc`). Without it, every commit went through the J1-J5 greps but the wave-derived scripts ran only when the author opted into a heavier review path.
 
 ## 4. Report
 
