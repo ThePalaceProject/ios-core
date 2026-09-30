@@ -18,7 +18,7 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     private let settingsKey = TPPSettings.downloadOnlyOnWiFiKey
     private var settings: TPPSettings!
     /// Per-test isolated UserDefaults — injected into `TPPSettings`
-    /// via the swarm_47883816 Module D production DI seam. No write
+    /// via its production DI seam. No write
     /// here touches `.standard`; the resetter wipes the suite at the
     /// end of every test.
     private var isolatedDefaults: UserDefaults!
@@ -50,9 +50,9 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     /// Setting persists to the injected UserDefaults synchronously
     /// through the `TPPSettings` getter/setter bridge. Lock the full
     /// toggle cycle (off→on→off) plus a fresh-instance read against
-    /// the SAME suite after each write to catch a mutant that caches
-    /// the value in memory but drops the UserDefaults write (which
-    /// would silently revert on app relaunch).
+    /// the SAME suite after each write to catch caching the value in
+    /// memory without the UserDefaults write (which would revert on
+    /// app relaunch).
     func testSetting_persistsToUserDefaultsAcrossToggleCycle() {
         // Toggle on: in-memory + UserDefaults must agree.
         settings.downloadOnlyOnWiFi = true
@@ -100,10 +100,8 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     // MARK: - Reachability isOnWiFi
 
-    // TODO(swarm_47883816-A-followup): migrate to `makeTestAppContainer()`
-    // once Module A's TestAppContainerFactory lands. Until then these
-    // tests still call `AppContainer.production()` — that's a separate
-    // polluter category tracked by Module A's contract, not Module D's.
+    // TODO: migrate to `makeTestAppContainer()`. These tests still call
+    // `AppContainer.production()`.
     func testReachability_isOnWiFi_returnsBool() {
         // isOnWiFi must return a Bool without crashing. In CI the interface is
         // unknown, but we can verify the value is consistent with the detailed status.
@@ -115,8 +113,7 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
                        "isOnWiFi must be idempotent: repeated calls must return the same value")
     }
 
-    // TODO(swarm_47883816-A-followup): migrate to `makeTestAppContainer()`
-    // once Module A's TestAppContainerFactory lands.
+    // TODO: migrate to `makeTestAppContainer()`.
     func testReachability_isOnWiFi_consistentWithDetailedStatus() {
         let detailed = AppContainer.production().reachability.getDetailedConnectivityStatus()
         let isWiFi = AppContainer.production().reachability.isOnWiFi

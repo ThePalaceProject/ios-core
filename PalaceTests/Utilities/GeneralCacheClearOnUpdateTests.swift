@@ -2,7 +2,7 @@
 //  GeneralCacheClearOnUpdateTests.swift
 //  PalaceTests
 //
-//  Tests for the launch-path cache purge (swarm_27c181b5, Startup-AppLifecycle).
+//  Tests for the launch-path cache purge.
 //  `GeneralCache.clearCacheOnUpdate` keeps the version gate + flag write
 //  SYNCHRONOUS (nothing on the launch path may block on it) while the actual
 //  Caches-dir purge is dispatched off-main. These tests drive the injectable
@@ -56,8 +56,8 @@ final class GeneralCacheClearOnUpdateTests: XCTestCase {
     }
 
     /// When the stored version already matches, neither the purge nor a flag
-    /// re-write happens. Kills the `previous != current` -> `==` mutant and the
-    /// mutant that drops the guard and always purges.
+    /// re-write happens (the `previous != current` guard must not always
+    /// purge).
     func testGeneralCache_clearOnUpdate_sameVersion_doesNotPurge() {
         defaults.set("2.0 (20)", forKey: GeneralCache<String, Data>.cacheVersionKey)
 

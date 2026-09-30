@@ -63,26 +63,14 @@ class PalaceTestSetup: NSObject {
         // executor's config via AppContainer's non-DEBUG test seam.
         AppContainer.testExecutorProtocolClasses = [NoNetworkURLProtocol.self]
 
-        // swarm_4b64e4e0 Wave 1d fix — pin the
-        // `deferInitialLoadCatalogsForTesting` flag to `true` BEFORE any test
-        // can lazy-trigger `AppContainer.production()`. Without this, the
-        // very first cached AppContainer (built by any incidental
-        // `AppContainer.production()` call — there are dozens of default-arg
-        // sites) fires its `AccountsManager.init` background `loadCatalogs`
-        // Task with the flag at its default `false`. That Task then runs the
-        // bundled-registry cold-load path and the network refresh, writing
-        // 1142+ bundled account entries to `accounts_catalog_<hash>.json`
-        // on disk — OVERWRITING any 171-account fixture seed a wiring test
-        // later writes to the same hash, mid-test. The result is the failure
-        // mode `testDriveCurrentAccountAuthDoc_terminalState_isNoOp` ::
-        // `Setup: currentAccount must resolve after preload` — the test's
-        // explicit `preloadAccountsFromDiskCacheSync()` parses the BUNDLED
-        // 1142 accounts (none of which carry the fixture's UUID space) and
-        // `account(currentUUID)` returns nil. Tests that need the background
-        // `loadCatalogs` to fire (e.g. `AppContainerResetTests`) explicitly
-        // flip the flag back to `false` in their own setUp. Wiring suite
-        // tests inherit `true` and stay deterministic. See the wave 1d
-        // transcript for the full forensic.
+        // Pin `deferInitialLoadCatalogsForTesting` to `true` before any test
+        // can lazy-trigger `AppContainer.production()`. Otherwise the first
+        // cached container's `AccountsManager.init` background `loadCatalogs`
+        // writes the bundled registry to `accounts_catalog_<hash>.json`,
+        // overwriting a fixture seed a wiring test later writes to the same
+        // hash, so `account(currentUUID)` returns nil mid-test. Tests that
+        // need the background load (e.g. `AppContainerResetTests`) flip the
+        // flag back to `false` in their own setUp.
         #if DEBUG
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
@@ -137,8 +125,7 @@ class PalaceTestSetup: NSObject {
     /// resetters then clear residue that may have been written via
     /// direct singleton mutation in the just-finished test.
     ///
-    /// `AppContainer._resetForTesting()` is owned by Module B
-    /// (swarm_4b64e4e0). The registration closure references the symbol
+    /// The registration closure references `AppContainer._resetForTesting()`
     /// at the body, NOT at registration time — so as long as the symbol
     /// exists when the bundle loads (which is also when the closure
     /// would first run), the registry resolves. The `#if DEBUG` guard
@@ -177,14 +164,10 @@ class PalaceTestSetup: NSObject {
 
         registry.register("AppContainer._resetForTesting") {
             #if DEBUG
-            // Module B's `Palace/AppInfrastructure/AppContainer.swift`
-            // exposes `internal static func _resetForTesting()` under
-            // `#if DEBUG`. The function is `@MainActor`-isolated so we hop
-            // to MainActor synchronously via `MainActor.assumeIsolated` —
-            // the observer's `testCaseDidFinish(_:)` already runs on the
-            // main thread (XCTest dispatches it there), so the assumption
-            // is sound at runtime. swarm_4b64e4e0 Module A integrated with
-            // Module B.
+            // `AppContainer._resetForTesting()` is `@MainActor`-isolated, so
+            // hop synchronously via `MainActor.assumeIsolated` — the
+            // observer's `testCaseDidFinish(_:)` already runs on the main
+            // thread (XCTest dispatches it there), so the assumption is sound.
             MainActor.assumeIsolated {
                 AppContainer._resetForTesting()
             }

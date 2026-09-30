@@ -4,7 +4,7 @@
 //
 //  Exhaustive behavior tests for the app-rating eligibility policy (PP-4088).
 //  Each criterion is exercised individually + at its boundary so a flipped
-//  comparison or negated guard in the policy is caught (mutation coverage).
+//  comparison or negated guard in the policy is caught.
 //
 
 import XCTest

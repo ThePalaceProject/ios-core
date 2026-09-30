@@ -25,7 +25,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
     var mockRegistry: TPPBookRegistryMock!
     var mockImageCache: MockImageCache!
     var cancellables: Set<AnyCancellable>!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     var appContainer: AppContainer!
 
     override func setUp() {
@@ -68,11 +68,8 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
     // this for itself. It briefly inherited a `false` protocol default, which
     // turned a required multi-gigabyte wait into a blank sheet on My Books.
     //
-    // Tested here because review found this property uncovered — the fifth
-    // instance in one change of a pure rule being covered while the code
-    // computing its input was not. `palace_mutate` cannot generate the relevant
-    // mutant either (it does not mutate unary `!`), so nothing mechanical
-    // covers it.
+    // Tested here directly: the pure rule was covered but the code computing
+    // its input was not.
 
     func testContentRequiredBeforePlayback_isTrueWhenLCPStreamingIsOff() {
         let book = createBook(title: "Streaming Off")
@@ -666,7 +663,7 @@ final class BookButtonMapperViewModelTests: XCTestCase {
 final class CatalogLaneMoreFilterStateTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     private var appContainer: AppContainer!
 
     override func setUp() {
@@ -849,7 +846,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
     var mockRegistry: TPPBookRegistryMock!
     var mockImageCache: MockImageCache!
     var cancellables: Set<AnyCancellable>!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     var appContainer: AppContainer!
 
     override func setUp() {
@@ -978,7 +975,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
 @MainActor
 final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     var appContainer: AppContainer!
 
     override func setUp() {
@@ -1058,7 +1055,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 @MainActor
 final class FacetViewModelLogoDelegateTests: XCTestCase {
 
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     var appContainer: AppContainer!
 
     override func setUp() {

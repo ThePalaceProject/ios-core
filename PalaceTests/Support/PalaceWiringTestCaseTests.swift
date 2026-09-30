@@ -15,8 +15,6 @@
 //  test-method timing (which is at the mercy of XCTest's bundle
 //  ordering).
 //
-//  Test-target-only. swarm_4b64e4e0 Wave 1c.
-//
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
@@ -121,7 +119,7 @@ final class PalaceWiringTestCaseTests: XCTestCase {
     /// hook list and calls `cancelBackgroundWork()` on each.
     ///
     /// We use the `_backgroundFetchTaskWasExplicitlyCancelled` observation
-    /// surface (introduced by swarm_4b64e4e0 Fix 2) to distinguish "we
+    /// surface to distinguish "we
     /// called cancel" from "the task handle was nilled by some other path."
     func testTearDown_cancelsBackgroundWorkOnRegisteredManagers() throws {
         let probe = Probe()

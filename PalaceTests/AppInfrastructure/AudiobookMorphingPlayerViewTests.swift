@@ -2,7 +2,7 @@
 //  AudiobookMorphingPlayerViewTests.swift
 //  PalaceTests
 //
-//  Unit coverage for the pure, mutation-testable seams of the custom morphing
+//  Unit coverage for the pure, testable seams of the custom morphing
 //  audiobook player: the bookmark-error → localized-toast mapping (restores the
 //  toolkit's `BookmarkError.localizedDescription`, which is module-internal and
 //  unreachable from the app), the toast error/success classifier, the adaptive
@@ -36,7 +36,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         XCTAssertEqual(V.bookmarkErrorMessage(for: BookmarkError.bookmarkFailedToSave),
                        Strings.Generic.bookmarkFailedToSave,
                        "`.bookmarkFailedToSave` must map to the couldn't-be-saved copy")
-        // The two arms must be distinct — a mutation collapsing them is caught.
+        // The two arms must be distinct.
         XCTAssertNotEqual(V.bookmarkErrorMessage(for: BookmarkError.bookmarkAlreadyExists),
                           V.bookmarkErrorMessage(for: BookmarkError.bookmarkFailedToSave),
                           "The two BookmarkError cases must surface different copy")
@@ -114,8 +114,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         XCTAssertEqual(m.transportHeight, 56)
     }
 
-    /// The narrow boundary is `< 370`: 369 is narrow, 370 is standard. Kills a
-    /// `<` → `<=` mutation on the tier threshold.
+    /// The narrow boundary is `< 370`: 369 is narrow, 370 is standard.
     func testControlMetrics_narrowBoundary_isStrictlyLessThan370() {
         XCTAssertTrue(V.ControlMetrics(width: 369, landscape: false).narrow,
                       "369pt must be the narrow tier")
@@ -236,8 +235,8 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
 
     /// Pre-bind, the session rate is the meaningless 1.0× default (no player yet)
     /// — the chip must KEEP its fallback rather than be pinned to that default,
-    /// so the bind-time re-sync can later show the real restored rate. Kills a
-    /// mutation that swaps the ternary (would clobber the chip with 1.0×).
+    /// so the bind-time re-sync can later show the real restored rate (a
+    /// swapped ternary would clobber the chip with 1.0×).
     func testDisplayRate_unboundKeepsFallback() {
         XCTAssertEqual(
             V.displayRate(sessionRate: .normalTime, isBound: false, fallback: .doubleTime),
@@ -441,8 +440,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     }
 
     /// Full enumeration: 2^4 input combinations at `forceSkeletons: false`, plus the
-    /// override. States x events, not sampled scenarios — CLAUDE.md's rule exists
-    /// because the cell that ships is the one nobody sampled.
+    /// override: the whole states × events table, not sampled scenarios.
     func testLoadingOverlayState_fullTable() {
         var seen: [Overlay: Int] = [:]
         for loaded in [true, false] {
@@ -494,7 +492,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
 
     /// Every state is covered by the arming rule — a state added later without a
     /// decision here silently inherits `false` and takes its failure path with it.
-    /// PP-5205 round 3. `loadingTimedOut` is a LATCH, and nothing cleared it when the
+    /// PP-5205: `loadingTimedOut` is a LATCH, and nothing cleared it when the
     /// player recovered on its own — only arming and Retry did. A stall that fired the
     /// 30s timer and then came good left it true, and the mid-session arm reads it
     /// BEFORE `isDownloading` (unlike the pre-playback arm, where a healthy download

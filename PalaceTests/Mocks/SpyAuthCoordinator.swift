@@ -7,8 +7,6 @@
 //  and let the production AuthCoordinator be constructed against test-only
 //  collaborators so each migrated caller can be asserted in isolation.
 //
-//  swarm_66819d80 Module C — caller migration test infrastructure.
-//
 
 import Foundation
 @testable import PalaceAuth

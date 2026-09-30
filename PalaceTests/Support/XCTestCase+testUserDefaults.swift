@@ -33,11 +33,10 @@ extension UserDefaults: @retroactive @unchecked Sendable {}
 ///    closure resets every suite the test owns when it runs.
 ///
 /// Why we do NOT touch `.standard`:
-///  - The whole point of swarm_47883816 is to stop tests from polluting
-///    one another via `UserDefaults.standard`. A helper that fell back
-///    to `.standard` under any condition would reintroduce that
-///    pollution silently. There is no fallback — the suite is always
-///    fresh.
+///  - The helper exists to stop tests from polluting one another via
+///    `UserDefaults.standard`; any fallback to `.standard` would
+///    reintroduce that pollution. There is no fallback — the suite is
+///    always fresh.
 ///
 /// Usage:
 /// ```swift

@@ -2,7 +2,7 @@
 //  SideloadedLaneTests.swift
 //  PalaceTests
 //
-//  Module D (swarm_495a88d9 / PP-2679): the "Side Loaded" catalog lane.
+//  PP-2679: the "Side Loaded" catalog lane.
 //
 //  Covers two layers:
 //   1. The pure `MappedCatalog.toCatalogContent(prepending:)` bridge — proves the
@@ -11,8 +11,8 @@
 //      un-injected baseline (lane ABSENT).
 //   2. The `CatalogViewModel` wiring — proves the single choke-point helper
 //      `withSideloadedLane(_:)` runs on the load path AND, critically, on the
-//      `applyFacet` cache-HIT synchronous fast path (:283) that a per-site patch
-//      would silently miss.
+//      `applyFacet` cache-HIT synchronous fast path that a per-site patch
+//      would miss.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

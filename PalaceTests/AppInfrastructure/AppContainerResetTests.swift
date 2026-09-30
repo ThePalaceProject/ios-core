@@ -7,10 +7,6 @@
 //  AccountsManager test opt-out enabled, so the next test runs against a
 //  freshly-built graph with no in-flight background `loadCatalogs` race.
 //
-//  swarm_4b64e4e0 Fix 2 — closes the H1 finding from swarm_f88ae9e3 A
-//  (the `static let _cached` AccountsManager() that spawned a
-//  process-lifetime background loadCatalogs Task without the opt-out).
-//
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
@@ -136,11 +132,10 @@ final class AppContainerResetTests: PalaceTestCase {
     /// `true` (the task handle is nil because the init returned before the
     /// dispatch).
     ///
-    /// Kill case: a regression that flips the flag AFTER `_buildCachedAppContainer`
-    /// runs (or flips it `false` BEFORE the rebuild) leaves the new
-    /// AccountsManager spawning the background fetch — observable as
-    /// `_backgroundFetchTaskIsCancelledOrCleared == false` if mutation
-    /// reorders the lines.
+    /// Flipping the flag AFTER `_buildCachedAppContainer` runs (or to `false`
+    /// BEFORE the rebuild) leaves the new AccountsManager spawning the
+    /// background fetch — observable as
+    /// `_backgroundFetchTaskIsCancelledOrCleared == false`.
     func testResetForTesting_disablesBackgroundLoadCatalogs() {
         // Arrange: ensure we start from a normal state (flag false, prior
         // graph cached).

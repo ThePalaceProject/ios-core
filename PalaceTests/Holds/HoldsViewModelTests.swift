@@ -20,7 +20,7 @@ final class HoldsViewModelTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
     private var mockRegistry: TPPBookRegistryMock!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A) —
+    /// Per-test isolated AppContainer —
     /// replaces AppContainer.production() reads in createViewModel/makeSignedInViewModel.
     private var appContainer: AppContainer!
 
@@ -406,7 +406,7 @@ final class HoldsSyncFailureTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
     private var mockRegistry: TPPBookRegistryMock!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A) —
+    /// Per-test isolated AppContainer —
     /// replaces AppContainer.production() reads in createViewModel/makeSignedInViewModel.
     private var appContainer: AppContainer!
 

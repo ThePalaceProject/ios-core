@@ -2,8 +2,8 @@
 //  NotificationServiceStateMachineTests.swift
 //  PalaceTests
 //
-//  Bucket A migration tests for NotificationService hold-notification
-//  navigation (swarm_81b5099e Phase 1). Targets the
+//  Tests for NotificationService hold-notification navigation against the
+//  account state machine. Targets the
 //  `decideHoldNavigation(currentAccount:)` testable seam extracted from
 //  the `userNotificationCenter(_:didReceive:...)` delegate body — the
 //  delegate itself is impossible to unit-test directly because

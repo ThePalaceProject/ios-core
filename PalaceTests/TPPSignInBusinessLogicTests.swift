@@ -34,7 +34,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
             uiDelegate: uiDelegate,
             drmAuthorizer: drmAuthorizer)
 
-        // Bucket A migration (swarm_81b5099e): drive the state machine to
+        // Drive the state machine to
         // `.detailsLoaded` so the sub-sites that now read `loadedAccountDetails`
         // (selectedAuthentication, makeRequest, registrationIsPossible,
         // isSamlPossible, selectPreferredAuthIfNeeded, shouldShowEULALink)
@@ -561,8 +561,8 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         XCTAssertFalse(received, "a hung operation must surface the timeoutValue (false) so borrow retries")
         XCTAssertTrue(onTimeoutFired, "onTimeout hook must fire on the timeout path")
         // Lower bound only. It is starvation-safe (a starved host makes the wait
-        // LONGER, never shorter) and still kills the mutant that fires the
-        // timeout immediately. An upper bound would be a wall-clock deadline in
+        // LONGER, never shorter) and still fails if the timeout fires
+        // immediately. An upper bound would be a wall-clock deadline in
         // disguise — the thing STARVE-001 exists to remove.
         XCTAssertGreaterThanOrEqual(elapsed, 0.25, "must actually wait ~the timeout before giving up")
     }
@@ -612,7 +612,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         // Edge: a zero timeout must not crash (max(0,timeout)) and must still
         // deliver exactly one completion — either the racing operation's value
         // or the timeoutValue, never both. At `timeout: 0` the timer wins and
-        // the operation callback is the LOSER, so the mutant this test kills is
+        // the operation callback is the LOSER, so this test catches
         // a broken `TPPOnceGuard` letting the loser fire a second completion.
         var count = 0
         // Signals that the losing racer has finished AND that any (incorrectly

@@ -128,7 +128,7 @@ final class AlertModelRetryTests: XCTestCase {
         // The contract is small but load-bearing: HalfSheetView decides which
         // UI to render with `if errorAlert.secondaryButtonTitle != nil`.
         // Lock all three constructors against that decision in one test so a
-        // mutant that flips the nil-check survives only briefly.
+        // flipped nil-check fails here.
         let retryable = AlertModel.retryable(title: "T", message: "M") {}
         let maxRetries = AlertModel.maxRetriesExceeded(title: "T")
         let plain = AlertModel(title: "T", message: "M")

@@ -41,8 +41,8 @@ class String_NYPLAdditionsTests: XCTestCase {
     /// decoding must yield the original. Pin both directions in one body
     /// AND assert the encoded form has none of the file-system-unsafe
     /// characters that the variant exists to avoid (`/`, `+`, `=`).
-    /// A mutant that produces correctly-decoded but file-system-unsafe
-    /// output fails on the unsafe-char absence check.
+    /// Correctly-decoded but file-system-unsafe output fails the
+    /// unsafe-char absence check.
     func testFileSystemSafeBase64_encodeAndDecodeRoundTripWithoutUnsafeChars() {
         let original = "ynJZEsWMnTudEGg646Tmua" as NSString
         let encoded = original.fileSystemSafeBase64EncodedString(
