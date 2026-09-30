@@ -64,10 +64,15 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     var navigator: UIViewController & Navigator
     private var tocBarButton: UIBarButtonItem?
     private var bookmarkBarButton: UIBarButtonItem?
+    // `makeNavigationBarButtons()` sets this button's `accessibilityLabel` on
+    // creation and `updateBookmarkButton(withState:)` re-sets it on every
+    // toggle; the declaration itself carries no title to read.
+    // accesslint:disable A11Y.UIKIT.BUTTON_MISSING_LABEL
     /// The bookmark bar button is hosted as a custom-view `UIButton` so the
     /// add-confirmation bounce can animate its view (a plain `UIBarButtonItem`
     /// exposes no animatable view). Same asset art / target-action as before.
     private var bookmarkButton: UIButton?
+    // accesslint:enable A11Y.UIKIT.BUTTON_MISSING_LABEL
     private(set) var stackView: UIStackView!
     private(set) var navigatorContainer: UIView!
     private(set) lazy var positionLabel = UILabel()
