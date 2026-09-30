@@ -230,9 +230,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         )
     }
 
-    /// Kills the mutant "load() ignores `presence`". The previous wiring test
-    /// used a book with nothing on disk, so hardcoding `presence: .absent`
-    /// produced the same answer and survived.
+    /// Catches `load()` ignoring `presence`. A book with nothing on disk cannot
+    /// tell that apart from a hardcoded `presence: .absent`.
     func test_load_downloadingWithContentOnDisk_persistsDownloadSuccessful() throws {
         let (account, url) = makeIsolatedAccount()
         defer { cleanupAccount(url) }
@@ -293,8 +292,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         return (sync, spy, localStore)
     }
 
-    /// Kills the mutant "load() computes `schedulesContentRedownload` and never
-    /// acts on it". A license with no `.lcpa` is the exact 3.2.3 defect: the
+    /// Catches `load()` computing `schedulesContentRedownload` without acting
+    /// on it. A license with no `.lcpa` is the exact 3.2.3 defect: the
     /// patron holds a book that cannot play, and only this scheduling recovers it.
     func test_load_licenseWithoutContent_schedulesTheContentRedownload() async throws {
         let account = "brs-test-\(UUID().uuidString)"
@@ -397,7 +396,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         func set(_ v: Int) { lock.withLock { _value = v } }
     }
 
-    /// Kills the mutant "load() drops the orphan-redownload block". Content gone
+    /// Catches `load()` dropping the orphan-redownload block. Content gone
     /// from disk with no license is a different recovery path from the one above.
     func test_load_contentMissingEntirely_schedulesTheOrphanRedownload() async throws {
         let account = "brs-test-\(UUID().uuidString)"
@@ -421,7 +420,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
                        "content gone from disk must schedule exactly one orphan re-download")
     }
 
-    /// Kills the mutant "load() ignores `isDownloadInFlight`". `load()` is not
+    /// Catches `load()` ignoring `isDownloadInFlight`. `load()` is not
     /// launch-only — the app delegate runs it on every foreground — so during a
     /// multi-minute `.lcpa` transfer a warm load must leave the healthy
     /// in-flight download alone rather than declare it failed.
@@ -1256,8 +1255,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         // implicitly-unwrapped `syncManager` INSIDE the Task is a runner-killer:
         // on timeout `wait(for:)` records a failure and returns, `tearDown()`
         // nils the fixture, and the still-live Task then force-unwraps nil.
-        // `XCTestCase+drainMainQueue.swift` documents that exact incident at
-        // `awaitCondition` (CI run 29802862487). Capturing `[syncManager]`
+        // `XCTestCase+drainMainQueue.swift` documents the same crash at
+        // `awaitCondition`. Capturing `[syncManager]`
         // instead is crash-safe but silently inert — an Optional chain would
         // fulfil the expectation WITHOUT draining. The binding is both.
         guard let manager = syncManager else {

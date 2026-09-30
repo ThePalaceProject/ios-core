@@ -24,7 +24,7 @@ final class TPPBookmarkDeletionLogTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // swarm_cd181acd D-cleanup: construct a fresh TPPBookmarkDeletionLog
+        // Construct a fresh TPPBookmarkDeletionLog
         // backed by a per-test UserDefaults suite (instead of mutating the
         // `.shared` singleton's `.standard` backing store). The injected
         // suite is wiped by `SingletonResetRegistry` when the test finishes.

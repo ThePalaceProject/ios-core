@@ -615,7 +615,7 @@ final class TPPBookTests: XCTestCase {
     }
 
     /// PP-4161: a plain EPUB book must NOT report isStreamingHTML.
-    /// Catches a mutant that flipped the predicate to always-true.
+    /// Catches a regression that flipped the predicate to always-true.
     func testTPPBook_isStreamingHTML_epubOnly_returnsFalse() {
         let book = makeBook()
         XCTAssertFalse(book.isStreamingHTML,
@@ -624,7 +624,7 @@ final class TPPBookTests: XCTestCase {
     }
 
     /// PP-4161: a book with NO acquisitions (unsupported content type)
-    /// must NOT report isStreamingHTML. Catches a mutant that returned
+    /// must NOT report isStreamingHTML. Catches a regression that returned
     /// `defaultBookContentType != .epub` style negation.
     func testTPPBook_isStreamingHTML_unsupported_returnsFalse() {
         let book = makeBook(acquisitions: [])
@@ -972,12 +972,12 @@ final class TPPBookTests: XCTestCase {
     /// `mergingPreservingMetadata` is the registry-merge guard — when the
     /// fresh catalog hit comes back lean (empty summary or empty categories),
     /// it must NOT overwrite the richer existing record. Lock both fields'
-    /// preservation contract in one body so a mutant that overrides one but
+    /// preservation contract in one body so a regression that overrides one but
     /// not the other fails on a single test.
     /// `mergingPreservingMetadata` is the registry-merge guard — when the
     /// fresh catalog hit comes back lean (empty summary or empty categories),
     /// it must NOT overwrite the richer existing record. Lock both fields'
-    /// preservation contract in one body so a mutant that overrides one but
+    /// preservation contract in one body so a regression that overrides one but
     /// not the other fails on a single test.
     func test_mergingPreservingMetadata_preservesRichSelfFieldsWhenFreshIsEmpty() {
         let selfBook = makeBook(

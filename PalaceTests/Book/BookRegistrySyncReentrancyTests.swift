@@ -143,12 +143,12 @@ final class BookRegistrySyncReentrancyTests: XCTestCase {
     /// `syncQueue` barrier, never via `diskWriteQueue`), the write MUST be
     /// routed through `diskWriteQueue.sync` so it lands FIFO-last after any
     /// in-flight async `save(for:)` writes to the same URL. If the guard is
-    /// inverted (the `!=`→`==` mutant), `saveSync` runs its write INLINE,
+    /// inverted (`!=` → `==`), `saveSync` runs its write INLINE,
     /// bypassing the queue, and the trailing async writes clobber it — exactly
     /// the disk-write race #1061 closed. Distinguishes the two by record count:
     /// the async saves persist a 1-record snapshot; `saveSync` persists a
     /// 2-record snapshot taken after a second book is added. Original ⇒ the
-    /// 2-record snapshot wins (written last); mutant ⇒ a 1-record async write
+    /// 2-record snapshot wins (written last); inverted ⇒ a 1-record async write
     /// clobbers it.
     func testSaveSync_writeRoutesThroughDiskWriteQueue_landsAfterInFlightAsyncSaves() throws {
         let (account, url) = isolatedAccount()

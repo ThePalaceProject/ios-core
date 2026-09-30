@@ -74,8 +74,8 @@ final class ButtonStateMonotonicClampTests: XCTestCase {
 
     /// PASS — eviction (`.downloadSuccessful → .downloadNeeded`, DiskBudgetManager
     /// LRU) must show Download, NOT a stranded Listen on an evicted file.
-    /// Mutates: a broad monotonicity clamp that held ANY backward move would keep
-    /// `.downloadSuccessful` here → fails. (blast_radius finding.)
+    /// A broad monotonicity clamp that held ANY backward move would keep
+    /// `.downloadSuccessful` here and fail this test.
     func testCell_evictionToDownloadNeeded_showsDownload_notStrandedListen() {
         let (model, book) = makeCell(state: .downloadSuccessful)
         settleThrottle()
@@ -106,9 +106,8 @@ final class ButtonStateMonotonicClampTests: XCTestCase {
     // MARK: - BookCellModel — latch DROPS on reset states (proven via re-read)
 
     /// DROP — after Listen is returned (.unregistered), a SUBSEQUENT `.downloading`
-    /// must NOT be held (the latch dropped). This is the mutant-killing reset test:
-    /// deleting the `default: listenLatched = false` branch would hold Listen here.
-    /// (qa finding — the prior reset tests never drove a post-reset progress read.)
+    /// must NOT be held (the latch dropped). Deleting the
+    /// `default: listenLatched = false` branch would hold Listen here.
     func testCell_returnThenReDownload_latchDropped_showsDownloading() {
         let (model, book) = makeCell(state: .downloadSuccessful)
         settleThrottle()

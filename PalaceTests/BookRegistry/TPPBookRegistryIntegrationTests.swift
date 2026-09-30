@@ -216,7 +216,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
                                           title: "Publisher Add Test",
                                           distributorType: .EpubZip)
 
-        // Wave-2 (swarm_ad0b4c65): `addBook` funnels `registrySubject.send(...)`
+        // `addBook` funnels `registrySubject.send(...)`
         // through `store`'s barrier `didSet` (`DispatchQueue.main.async` from
         // inside the barrier). Capture instead of `expectation.fulfill()`,
         // join via the S2 seam, then assert synchronously.
@@ -844,7 +844,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             }
             .store(in: &cancellables)
 
-        // Wave-2 (swarm_ad0b4c65): burst of adds — each `addBook` enqueues a
+        // Burst of adds — each `addBook` enqueues a
         // barrier on the SAME store syncQueue (FIFO), so a single S2 seam
         // join after the whole burst drains every one of them; the
         // subsequent main-queue drain flushes all the resulting
@@ -894,7 +894,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
         registry.removeBook(forIdentifier: book.identifier)
         registry.addBook(book, state: .holding)
 
-        // Wave-2 (swarm_ad0b4c65): all seven writes above are enqueued FIFO
+        // All seven writes above are enqueued FIFO
         // on the same store syncQueue; one S2 seam join + main drain waits
         // for every one of their publisher emissions to land.
         await registry._awaitPendingWritesForTesting()
@@ -939,7 +939,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             }
         }
 
-        // Wave-2 (swarm_ad0b4c65): all mutations above are enqueued FIFO on
+        // All mutations above are enqueued FIFO on
         // the same store syncQueue; the S2 seam join + main drain waits for
         // every one of them (including the last book's) to have emitted.
         await registry._awaitPendingWritesForTesting()

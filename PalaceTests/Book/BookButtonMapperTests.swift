@@ -155,7 +155,7 @@ final class BookButtonMapperExtendedTests: XCTestCase {
 
     /// `stateForAvailability(nil)` short-circuits to nil — distinct branch
     /// from any availability variant. Pin it AND assert the convenience
-    /// behaviour: `nil` is the only input that yields `nil`. A mutant that
+    /// behaviour: `nil` is the only input that yields `nil`. A regression that
     /// returns nil from any availability instance would fail the
     /// convenience cross-check.
     func testStateForAvailability_nilInputReturnsNil_butValidAvailabilityDoesNot() {
@@ -214,7 +214,7 @@ final class BookButtonMapperExtendedTests: XCTestCase {
     /// availability variants must each map to their canonical button state.
     /// Pin the equality + the cross-pair inequalities (Reserved must NOT
     /// match Ready/Unlimited even though Ready and Unlimited share the
-    /// canBorrow result). Catches a mutant that maps Reserved to canBorrow
+    /// canBorrow result). Catches a regression that maps Reserved to canBorrow
     /// (which would silently surface a borrow button on a held title).
     func testStateForAvailability_unlimitedReservedReady_dispatchTableIsExact() {
         let unlimited = BookButtonMapper.stateForAvailability(
@@ -229,7 +229,7 @@ final class BookButtonMapperExtendedTests: XCTestCase {
         XCTAssertEqual(reserved,  .holdingFrontOfQueue)
         XCTAssertEqual(ready,     .canBorrow)
 
-        // Reserved must NOT collapse into the canBorrow group — a mutant
+        // Reserved must NOT collapse into the canBorrow group — a regression
         // doing that would silently let users borrow a held title.
         XCTAssertNotEqual(reserved, unlimited,
                           "Reserved (still in queue) must NOT be conflated with Unlimited (borrowable)")

@@ -221,7 +221,7 @@ final class BookmarkManagerTests: XCTestCase {
 
     /// Missing-book lookup contracts in one place — `location(forIdentifier:)`
     /// AND the empty/nil readout paths all return absent values without
-    /// inventing entries. A mutant that returns a default `TPPBookLocation`
+    /// inventing entries. A regression that returns a default `TPPBookLocation`
     /// for missing keys fails on the first nil-assertion.
     func test_missingBook_locationAndBookmarkLookups_returnAbsentValues() {
         // Pure read on an empty manager — none of these may invent state.
@@ -253,7 +253,7 @@ final class BookmarkManagerTests: XCTestCase {
 
     /// setLocationSync mirrors setLocation but on the sync queue — empty
     /// identifier must also short-circuit, neither calling saveSync NOR
-    /// triggering the async save path (mutant that conflates the two
+    /// triggering the async save path (a regression that conflates the two
     /// would fire the wrong save).
     func test_setLocationSync_emptyIdentifier_neitherSyncNorAsyncSaveFires() {
         manager.setLocationSync(makeLocation(), forIdentifier: "", account: testAccount)
@@ -343,7 +343,7 @@ final class BookmarkManagerTests: XCTestCase {
     // (Missing-book readiumBookmarks coverage now lives in
     // test_missingBook_locationAndBookmarkLookups_returnAbsentValues above —
     // covering location, readiumBookmarks AND genericBookmarks together so
-    // a mutant that returns nil-for-one-but-default-for-another fails.)
+    // a regression that returns nil-for-one-but-default-for-another fails.)
 
     func test_addReadiumBookmark_toMissingBook_doesNotCrash() {
         let bookmark = makeReadiumBookmark()
