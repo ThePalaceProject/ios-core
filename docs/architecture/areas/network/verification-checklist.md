@@ -222,7 +222,7 @@ that only asserts the document decoded. Keep `CodingKeys` raw values camelCase. 
 designed and written but deliberately split into its own PR (see the wall-failure entry's
 "Detector script — QUEUED" section for the matching rule and the false-positive trap). Until it
 lands, this is a review-time check. Full forensic:
-`.forgeos/wall-failures/2026-09-23-pr1462-snakecase-codingkeys.md`.
+wall-failure `2026-09-23-pr1462-snakecase-codingkeys`.
 
 **No custom `encode(to:)` — deliberately.** `init(from:)` keys on the POST-strategy camelCase
 name, so the synthesized encoder round-trips through a plain `JSONDecoder`. A hand-written

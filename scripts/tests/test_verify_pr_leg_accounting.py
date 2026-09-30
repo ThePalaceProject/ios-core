@@ -174,13 +174,14 @@ def test_attack_a_declared_leg_records_nothing_is_caught():
 
 
 def test_attack_c_undeclared_leg_records_nothing_is_caught():
-    """The hardcoded list omitted `intent_recorded` — a blocking gate whose
-    siblings were declared. Derivation covers every key or none."""
+    """The first hardcoded list omitted a blocking gate whose siblings were
+    declared. Derivation covers every key or none; `blast_radius` is a blocking
+    gate declared the same way."""
     keys = every_declared_key()
-    assert "intent_recorded" in keys, "intent_recorded is not being derived"
-    fails, out = drive([rec(k) for k in keys if k != "intent_recorded"])
+    assert "blast_radius" in keys, "blast_radius is not being derived"
+    fails, out = drive([rec(k) for k in keys if k != "blast_radius"])
     assert fails >= 1, out
-    assert "intent_recorded" in out
+    assert "blast_radius" in out
 
 
 def test_a_legitimate_skip_still_accounts_for_itself():

@@ -35,7 +35,7 @@ review.
 
 It does **not** prove your test is any good. A test can mention a function and
 still not really exercise it (we've shipped exactly those — see the
-`.forgeos/wall-failures/` catalog). Proving a test actually catches bugs is a
+wall-failure catalog in the maintainer harness). Proving a test actually catches bugs is a
 different, slower tool: **mutation testing** (`scripts/palace_mutate.py`), which
 runs before release.
 
@@ -130,7 +130,7 @@ high tier rarely false-alarms):
 
 If this check **passes** a change that later regresses because new code shipped
 without a real test, that's a hole in the check itself. File it under
-`.forgeos/wall-failures/` per the catalog protocol and propose the fix (a new
+the wall-failure catalog per its protocol and propose the fix (a new
 code kind to detect, a tighter matching rule) that closes the hole — not just
 "be more careful next time."
 

@@ -149,11 +149,13 @@ Signing.local.xcconfig
 *.mobileprovision
 *.p12
 
-# Swarm campaign records are RUNTIME artifacts written by the orchestrator.
-# They are never committed (scripts/check-doc-hygiene.sh blocks them); the
-# historical ones live at tag archive/forgeos-swarms-2026-08-24. See
-# .forgeos/README.md.
-.forgeos/swarms/
+# Maintainer governance records (intent files, wall-failures, swarm runs,
+# reviews). Written by the maintainer's local harness and kept there, not in
+# this repo; config that CI or a contributor needs lives in config/ci/. No
+# trailing slash, so a `.forgeos` symlink into the harness is ignored too. The
+# history is in git up to the commit that added this line, and the swarm
+# archive at tag archive/forgeos-swarms-2026-08-24.
+/.forgeos
 
 # Private maintainer skills/agents. These instruct an agent to call ForgeOS MCP
 # tools, /forge-review and forge-* reviewers that DO NOT EXIST on a clean clone.

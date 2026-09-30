@@ -92,7 +92,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 |--------|--------------|-----------|
 | `snapshot-library-registry.py` | Snapshots the library registry JSON and diffs against live; surfaces account/auth-doc drift. | dev/local, drift-investigation |
 | `check_registry_snapshot_freshness.sh` | CI guard that fails if the committed registry snapshot is older than the live registry. | `ledger.yml` |
-| `export-module-contracts.py` | Emits module public-API contracts to `.forgeos/contracts/<module>.json`; consumed by the architect agent and `verify-pr.sh --check`. | dev/local, swarm |
 | `crashlytics-sentinel.py` | Compares Crashlytics issue counts week-over-week and alerts on new top issues. | `crashlytics-sentinel.yml` |
 
 ### Release and TestFlight
@@ -132,6 +131,13 @@ switched off for this project, so they were not running for maintainers either.
 The rule they failed is the one this repository already states: only tooling any
 contributor can run unaided belongs here. `verify-pr.sh`, the standalone
 detectors, and `palace_mutate.py` pass that test and stay.
+
+On 2026-09-30 the `.forgeos/` records themselves (intent files, wall-failures,
+changesets, reviews, module contracts) followed, to
+`~/harness/projects/ios-core/forgeos/`, along with the two scripts that only
+read or write them: `check-intent-recorded.py` and `export-module-contracts.py`
+(now in `~/harness/stacks/ios/forgeos/`). The config files CI reads moved to
+`config/ci/`; see its README.
 
 
 The previous one-shot bootstrap scripts (`forgeos-bootstrap-palace-evolution.sh`,

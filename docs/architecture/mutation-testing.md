@@ -277,14 +277,14 @@ promotes every changed file to strict.
 
 There are two caches, by design:
 
-- **Whole-file cache** (`.forgeos/mutation-cache/<leaf>.<key>.json`): keyed by
+- **Whole-file cache** (`.build/mutation-cache/<leaf>.<key>.json`): keyed by
   file SHA + test selection + seed + max-mutations + diff flags. If the exact
   file content + selection was already run, the whole report is reused
   instantly (the verbatim summary line `verify-pr.sh` greps for is preserved in
   the cached branch). All-or-nothing: any edit invalidates the whole report.
 
 - **Per-mutant incremental cache**
-  (`.forgeos/mutation-cache/mutants/<leaf>.json`): finer-grained. The mutant key
+  (`.build/mutation-cache/mutants/<leaf>.json`): finer-grained. The mutant key
   (`compute_mutant_key`) is *content-addressed by local context* — the stripped
   line text, its immediate neighbours (`context_before`/`context_after`), and the
   operator delta — **not** by line number. So editing one function does not
@@ -355,7 +355,7 @@ a `>` vs `>=` on a loop bound that can never hit the boundary value. No test can
 ever kill them because they change no observable behavior. Re-flagging them every
 run is noise. A human can review one once and add it to a per-file suppression
 list at
-`.forgeos/mutation-suppressions/<file-leaf>.json`, a JSON list of
+`config/ci/mutation-suppressions/<file-leaf>.json`, a JSON list of
 `{"line_text", "original", "mutated", "reason"}` entries. A suppressed mutant is
 recorded `suppressed`, never run, and never counted as survived/killed.
 

@@ -3,8 +3,9 @@
 _checklib.py — shared primitives for the M1 pre-commit / verify-pr checks.
 
 Extracted from the byte-identical copies that lived in check-blast-radius.py,
-check-adjacency-staleness.py, check-intent-recorded.py,
-check-superpartner-spectrum.py, and check-contract-reconciliation.py.
+check-adjacency-staleness.py, check-superpartner-spectrum.py, and
+check-contract-reconciliation.py (and check-intent-recorded.py, which now lives
+in the maintainer harness with its own copy of this module).
 
 Three things live here, and only these three:
 

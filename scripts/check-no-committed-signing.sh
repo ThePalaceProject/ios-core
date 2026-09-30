@@ -22,7 +22,7 @@
 # Exit 0 = clean; 1 = signing info found; 2 = usage/error.
 #
 # Allowlist (optional): OBJC unrelated — NO_SIGNING_ALLOWLIST (default
-#   .forgeos/committed-signing-allowlist.txt); one substring per line, '#' comments.
+#   config/ci/committed-signing-allowlist.txt); one substring per line, '#' comments.
 
 set -uo pipefail
 
@@ -40,7 +40,7 @@ else
   DIFF="$(git diff --cached 2>/dev/null)"
 fi
 
-ALLOW="${NO_SIGNING_ALLOWLIST:-.forgeos/committed-signing-allowlist.txt}"
+ALLOW="${NO_SIGNING_ALLOWLIST:-config/ci/committed-signing-allowlist.txt}"
 
 # PATH-AWARE: only evaluate ADDED lines that belong to a signing-bearing build
 # file (project.pbxproj / *.xcconfig / *.entitlements / *.plist). This is what
