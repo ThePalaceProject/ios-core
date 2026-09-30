@@ -105,6 +105,12 @@ if ! run_m1_check "opaque_blob_egress" "scripts/check-opaque-blob-egress.py"; th
   M1_FAIL=$((M1_FAIL + 1))
 fi
 
+# Source comments follow the writing conventions in CLAUDE.md: no run IDs,
+# harness paths or reviewer narratives, and short file headers. Added lines only.
+if ! run_m1_check "comment_hygiene" "scripts/check-comment-hygiene.py"; then
+  M1_FAIL=$((M1_FAIL + 1))
+fi
+
 # Repo rule: never commit code-signing info (team ID / provisioning profile) and
 # never add Automatic signing. Bash detector (not python), so invoked directly
 # rather than via run_m1_check. Diff-based — blocks NEW signing info only.

@@ -89,12 +89,13 @@ Refresh the relevant one before a swarm or rigorous-fix run.
 
 | Doc | What it covers |
 |---|---|
+| [`testing-rules-rationale.md`](./testing-rules-rationale.md) | The incidents behind the full-suite, green-board, mutation and detector-admission rules in `CLAUDE.md`. |
 | [`mutation-testing.md`](./mutation-testing.md) | First-principles rationale for the mutation-testing system (`palace_mutate.py` and friends) — and what a mutation score cannot tell you. |
 | [`critical-path-mutation-coverage.md`](./critical-path-mutation-coverage.md) | The regex methodology for deciding which surfaces are critical-path, with the recorded run that established the baseline. |
 | [`phase-3.5-class-scan.md`](./phase-3.5-class-scan.md) | The wall-as-detector pattern: turning a class of failure into a mechanical pre-commit check. |
 | [`runtime-quiescence-gate.md`](./runtime-quiescence-gate.md) | The runtime-quiescence gate: what it asserts and why a timeout is a failure even at zero assertions. |
 | [`runtime-quiescence-gate-backlog.md`](./runtime-quiescence-gate-backlog.md) | Land-ready quiescence designs not blocking the current release. |
-| [`pr-report-contract.md`](./pr-report-contract.md) | What a PR body must claim and how those claims are reconciled against the diff. |
+| [`pr-report-contract.md`](./pr-report-contract.md) | Principles for the CI-generated PR comments. Its authored-body format is superseded by the short PR template and the writing conventions in `CLAUDE.md`. |
 | [`readium-money-path-validation.md`](./readium-money-path-validation.md) | One entry per Readium pin, added in the change that moves it. Readium renders and decrypts borrowed content, so a bump can break borrow/fulfillment/playback with no compile error. |
 | [`readium-upgrade-validation.md`](./readium-upgrade-validation.md) | The validation procedure a Readium upgrade must pass before the pin moves. |
 | [`lcp-device-id-migration-validation.md`](./lcp-device-id-migration-validation.md) | Why the LCP device-registration-slot criterion cannot be tested from the app, how Readium's device-ID migration and Palace's license migration interact to create the risk, and the on-device procedure that closes it. |

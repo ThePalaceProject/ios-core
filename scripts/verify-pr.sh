@@ -935,6 +935,24 @@ else
   record "doc_hygiene" "skip" "check-doc-hygiene.sh not found"
 fi
 
+# 3b2-bis. Comment hygiene — source comments in Palace/ and PalaceTests/ follow
+# the writing conventions. Scoped to lines changed since the merge-base with
+# $BASE (including uncommitted edits); tooling-checks.yml runs the whole tree.
+echo "--- Comment hygiene ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "comment_hygiene" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-comment-hygiene.py ]; then
+  CH_OUT=$(python3 scripts/check-comment-hygiene.py --base "$BASE" --quiet 2>&1)
+  CH_RC=$?
+  if [ "$CH_RC" -eq 0 ]; then
+    record "comment_hygiene" "pass" "No banned comment patterns on changed lines"
+  else
+    record "comment_hygiene" "fail" "$(printf '%s\n' "$CH_OUT" | sed -n '1p')"
+  fi
+else
+  record "comment_hygiene" "skip" "check-comment-hygiene.py not found"
+fi
+
 # 3b2a. Doc references resolve — every script, workflow, and source path a doc
 # names must exist. Whole-tree (NOT diff-based): a doc goes stale when the CODE
 # moves, and that commit touches no docs at all, so a diff-scoped check would

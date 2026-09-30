@@ -46,6 +46,7 @@ DETECTORS=(
   "AUTH_CHALLENGE_ASYNC_FORM|check-auth-challenge-async-form.py|block|diff"
   "RAISING_UNARCHIVER|check-raising-unarchiver.py|block|diff"
   "OPAQUE_BLOB_EGRESS|check-opaque-blob-egress.py|block|diff"
+  "COMMENT_HYGIENE|check-comment-hygiene.py|block|diff"
 )
 
 OVERALL_EXIT=0

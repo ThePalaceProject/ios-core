@@ -63,7 +63,8 @@ When you flag this, propose **inlining** the abstraction back into its caller.
 ### D. Comments that don't earn their keep
 Per the system prompt: comments only when the WHY is non-obvious. Flag:
 - Comments that restate WHAT (`// increment i` next to `i += 1`).
-- Comments referencing tickets / PRs / "the new flow" (rot fast; belongs in commit/PR body).
+- Comments that narrate history ("the new flow", "after the refactor", who found what in review). That belongs in the PR.
+- Anything `scripts/check-comment-hygiene.py --base origin/develop` reports: run/campaign IDs, internal tooling paths, reviewer-role or review-round narratives, citations of CLAUDE.md, file headers over ~10 lines. Jira keys, PR numbers and `docs/architecture/` links are fine.
 - Doc comments on private helpers whose name already says it.
 - Multi-line block comments on something a one-liner could cover.
 
@@ -109,7 +110,7 @@ Before approving a chunk that looks "new," `grep` the codebase for the same conc
 
 ### J. Skeptic-pass greps — MANDATORY (run literally)
 
-These are derived from the project's wall-failure catalog (write-ups of verification that passed while a defect was live). Each grep catches a class of "looks correct but isn't" failure that the other categories miss. Run them on every diff. Block on FAIL.
+Each grep catches a class of "looks correct but isn't" failure that the other categories miss. Run them on every diff. Block on FAIL.
 
 **J1. SUT instantiation in named test files** (catches fake-test-instantiation — when a test class names a service it never constructs)
 
@@ -153,17 +154,17 @@ git diff --cached -U500 | \
 
 **J4. Scope-deferral protocol compliance** (catches silent partial-shipping)
 
-If the diff is partial relative to the user's original task, the commit body MUST include a `**Scope:**` / `**Not done:**` / `**Deferred:**` stanza. The pre-commit hook enforces this for ≥50 prod LOC; J4 reinforces for smaller diffs that are still task-partial.
+If the diff is partial relative to the user's original task, say so: one `Scope: ...` or `Not done: ...` line in the commit body, and a Not done section in the PR. Keep it to what is missing, not a narrative.
 
 ```bash
 # For any task-partial diff: check that the commit body has the deferral stanza
-git log -1 --format=%B 2>/dev/null | grep -E "\*\*(Scope|Not done|Deferred):\*\*" || \
+git log -1 --format=%B 2>/dev/null | grep -E "^(\*\*)?(Scope|Not done|Deferred):" || \
   echo "WARN J4: no scope-stanza — only acceptable if the diff is the complete task scope"
 ```
 
 **J5. Mutation evidence for critical-path changes** (catches the half-done test that mutation would have killed if it'd been run)
 
-If the diff touches a critical path (project-specific — Palace iOS examples: `Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`, `Palace/Packages/PalaceAuth/`), the commit body or PR description must paste a mutation kill rate from `palace_mutate.py --diff-only` (or the project's equivalent).
+If the diff touches a critical path (project-specific — Palace iOS examples: `Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`, `Palace/Packages/PalaceAuth/`), the PR's How verified section carries one line of mutation evidence from `palace_mutate.py --diff-only`, e.g. `mutation: 14/14 killed on changed lines`. One line, not a table.
 
 ```bash
 git diff --cached --name-only | grep -E "<critical-path-pattern>" && \
@@ -188,9 +189,9 @@ Block-on-FAIL rules (exit 1 means a real finding):
 - `check-blast-radius.py` exit 1 → **BLOCK**. New public API surface, `#if DEBUG` on production paths, test-only AppContainer init params, or discarded function results without `// TODO(ticket):` justification.
 - `check-adjacency-staleness.py` exit 1 → **WARN-ONLY**. Adjacent docs/tests stale relative to the change; surface to user but don't block.
 
-For diffs ≥10 prod LOC under `Palace/`, an advisory blast-radius pass (API surface, call-site census, downstream effects) is worth running if a reviewer agent for it is configured in this environment. It is OPTIONAL and read-only — this skill is single-author, so there is no SoD denial. If no such agent is available, do the same pass yourself against the checklist above and say so in the summary; do not block on its absence.
+For diffs ≥10 prod LOC under `Palace/`, an advisory blast-radius pass (API surface, call-site census, downstream effects) is worth running if a reviewer agent for it is configured in this environment. It is OPTIONAL and read-only. If no such agent is available, do the same pass yourself against the checklist above and say so in the summary; do not block on its absence.
 
-This `J.5` floor was added 2026-05-28 as the universal-rigor remediation derived from waves 1-4 (M1 swarm `swarm_M1_83be56fc`). Without it, every commit went through the J1-J5 greps but the wave-derived scripts ran only when the author opted into a heavier review path.
+When you write up findings or a commit, follow "Writing conventions" in `CLAUDE.md`: describe the change, and keep review verdicts and script output out of commit and PR text.
 
 ## 4. Report
 

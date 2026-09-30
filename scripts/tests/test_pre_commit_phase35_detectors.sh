@@ -298,7 +298,40 @@ if [ "$ACF_CLEAN_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: 8 assertions — hook blocks violations, identifies detector, honors both"
+# --- Assert 9: COMMENT_HYGIENE fires on a run ID in an added comment, and ---
+# clears when the comment explains the code instead.
+cat > Palace/Commented.swift <<'EOF'
+import Foundation
+// Extracted in swarm_47883816 B3.
+struct Commented {}
+EOF
+git add Palace/Commented.swift
+set +e
+CH_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+CH_EXIT=$?
+set -e
+if [ "$CH_EXIT" -eq 0 ] || ! echo "$CH_OUT" | grep -q "COMMENT_HYGIENE"; then
+  echo "FAIL: comment-hygiene violation did not block (exit $CH_EXIT)"
+  echo "$CH_OUT" | sed 's/^/    /'
+  exit 1
+fi
+cat > Palace/Commented.swift <<'EOF'
+import Foundation
+// Retries once because the server returns 503 on a cold start (PP-1234).
+struct Commented {}
+EOF
+git add Palace/Commented.swift
+set +e
+CH_CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+CH_CLEAN_EXIT=$?
+set -e
+if [ "$CH_CLEAN_EXIT" -ne 0 ]; then
+  echo "FAIL: a clean comment spuriously blocked (exit $CH_CLEAN_EXIT)"
+  echo "$CH_CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+
+echo "PASS: 9 assertions — hook blocks violations, identifies detector, honors both"
 echo "      bypass envvars, passes a clean diff (no detector spuriously blocks),"
 echo "      and the unsynchronized-sendable-mock, auth-challenge-async-form and"
 echo "      opaque-blob-egress detectors each fire on a violation and clean-pass"
