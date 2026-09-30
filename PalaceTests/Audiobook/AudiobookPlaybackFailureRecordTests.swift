@@ -392,6 +392,87 @@ final class PlaybackFailureRecordDeduplicatorTests: XCTestCase {
                        "and the second record carries its own cause, not the first's")
     }
 
+    /// Domain alone must discriminate, asserted through the producer.
+    ///
+    /// `testDifferentDomain_SameCode_IsRecorded` covers this at `evaluate`, but
+    /// it passes explicit `domain:`/`code:` arguments, so it holds whether or
+    /// not the producer threads the real ones. Replacing
+    /// `domain: nsError?.domain` with a constant left the whole suite green.
+    /// Same shape as the underlying-cause gap fixed earlier, one field over.
+    func testRecordToSend_SameCodeDifferentDomain_BothReachTheSink() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        let avf = NSError(domain: "AVFoundationErrorDomain", code: -11800)
+        let url = NSError(domain: "NSURLErrorDomain", code: -11800)
+        let first = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: avf, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0)
+        let second = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: url, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0.addingTimeInterval(2))
+        XCTAssertNotNil(first)
+        XCTAssertNotNil(second, "same code in a different domain is a different failure")
+    }
+
+    /// And code alone, likewise through the producer: replacing
+    /// `code: nsError?.code` with a constant also left the suite green.
+    func testRecordToSend_SameDomainDifferentCode_BothReachTheSink() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        let unknown = NSError(domain: "AVFoundationErrorDomain", code: -11800)
+        let notReady = NSError(domain: "AVFoundationErrorDomain", code: -11819)
+        let first = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: unknown, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0)
+        let second = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: notReady, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0.addingTimeInterval(2))
+        XCTAssertNotNil(first)
+        XCTAssertNotNil(second, "a different code in the same domain is a different failure")
+    }
+
+    /// The cause's two fields, separately. `SameTopLevelDifferentCause` varies the
+    /// cause in domain AND code at once, so it holds when either field alone is a
+    /// constant — the other still tells the two failures apart. These two vary one
+    /// field at a time, which is what pins each of them individually.
+    func testRecordToSend_SameUnderlyingCodeDifferentUnderlyingDomain_BothReachTheSink() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        let osStatus = NSError(
+            domain: "AVFoundationErrorDomain", code: -11800,
+            userInfo: [NSUnderlyingErrorKey: NSError(domain: "NSOSStatusErrorDomain", code: -12881)]
+        )
+        let url = NSError(
+            domain: "AVFoundationErrorDomain", code: -11800,
+            userInfo: [NSUnderlyingErrorKey: NSError(domain: "NSURLErrorDomain", code: -12881)]
+        )
+        let first = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: osStatus, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0)
+        let second = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: url, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0.addingTimeInterval(2))
+        XCTAssertNotNil(first)
+        XCTAssertNotNil(second, "the same cause code in a different cause domain is a different failure")
+    }
+
+    func testRecordToSend_SameUnderlyingDomainDifferentUnderlyingCode_BothReachTheSink() {
+        var dedupe = PlaybackFailureRecordDeduplicator()
+        let mediaReset = NSError(
+            domain: "AVFoundationErrorDomain", code: -11800,
+            userInfo: [NSUnderlyingErrorKey: NSError(domain: "NSOSStatusErrorDomain", code: -12881)]
+        )
+        let decodeFailed = NSError(
+            domain: "AVFoundationErrorDomain", code: -11800,
+            userInfo: [NSUnderlyingErrorKey: NSError(domain: "NSOSStatusErrorDomain", code: -12911)]
+        )
+        let first = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: mediaReset, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0)
+        let second = AudiobookSessionManager.playbackFailureRecordToSend(
+            error: decodeFailed, position: nil, bookId: "a", contentSource: .lcpStreamed,
+            deduplicator: &dedupe, now: t0.addingTimeInterval(2))
+        XCTAssertNotNil(first)
+        XCTAssertNotNil(second, "a different cause code in the same cause domain is a different failure")
+    }
+
     /// The other side: identical top level AND identical cause still collapses,
     /// or the key would never suppress anything under AVFoundation.
     func testRecordToSend_SameTopLevelSameCause_IsStillSuppressed() {
