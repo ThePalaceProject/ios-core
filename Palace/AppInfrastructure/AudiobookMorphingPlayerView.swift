@@ -1374,6 +1374,12 @@ struct AudiobookMorphingPlayerView: View {
         // Revised layout (PP-4910): close (✕) at the LEADING edge, then the
         // cover, the marquee title/author, and the rewind / play-pause / forward
         // transport controls at the TRAILING edge. No progress bar.
+        //
+        // The `.onTapGesture` at the foot of this chain catches the gaps
+        // between the controls; the HStack is not an accessibility element of
+        // its own, and `.isButton` on a container propagates to the five child
+        // buttons that already carry their own labels and traits.
+        // accesslint:disable A11Y.SWIFTUI.MISSING_TRAITS
         HStack(spacing: 12) {
             // Close — presents the "Stop Playback?" confirmation rather than
             // stopping instantly, since closing tears the session down.
@@ -1448,6 +1454,7 @@ struct AudiobookMorphingPlayerView: View {
         // Tap anywhere else / pull up on the bar → expand.
         .contentShape(Rectangle())
         .onTapGesture { expand() }
+        // accesslint:enable A11Y.SWIFTUI.MISSING_TRAITS
         .gesture(expandDrag)
         .alert(Strings.Generic.stopPlaybackTitle, isPresented: $showStopConfirmation) {
             Button(Strings.Generic.stopPlaybackCancel, role: .cancel) { }

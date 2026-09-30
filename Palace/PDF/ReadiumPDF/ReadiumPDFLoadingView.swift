@@ -39,13 +39,14 @@ struct ReadiumPDFLoadingView: View {
             .ignoresSafeArea()
 
             // Title as a faded watermark behind the foreground content.
-            // Large display weight, low opacity — present but not loud.
+            // Large display weight, low opacity — present but not loud. Sized
+            // to the screen rather than to body copy: it already shrinks to 50%
+            // to fit four lines, and the same title is repeated below in a
+            // Dynamic-Type .headline.
+            // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - fixed display geometry
             Text(book.title)
-                // Display watermark sized to the screen rather than to body
-                // copy: it already shrinks to 50% to fit four lines, and the
-                // same title is repeated below in a Dynamic-Type .headline.
-                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - fixed display geometry
                 .font(.system(size: 56, weight: .heavy, design: .serif))
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 .foregroundStyle(.white.opacity(0.08))
                 .multilineTextAlignment(.center)
                 .lineLimit(4)
@@ -61,8 +62,13 @@ struct ReadiumPDFLoadingView: View {
                     .shadow(color: .black.opacity(0.6), radius: 12, y: 6)
 
                 VStack(spacing: 6) {
+                    // The enclosing ZStack combines its children and supplies
+                    // one label, so this Text is not its own element: `.isHeader`
+                    // here lands on the whole loading overlay.
+                    // accesslint:disable A11Y.SWIFTUI.HEADING_STRUCTURE
                     Text(book.title)
                         .font(.headline)
+                        // accesslint:enable A11Y.SWIFTUI.HEADING_STRUCTURE
                         .foregroundStyle(.white.opacity(0.95))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)

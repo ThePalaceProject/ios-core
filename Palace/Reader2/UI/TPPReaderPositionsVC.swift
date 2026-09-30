@@ -80,6 +80,9 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
         return Tab(rawValue: segmentedControl.selectedSegmentIndex) ?? .toc
     }
 
+    // The initialiser below sets `accessibilityLabel` on the button it builds;
+    // the rule reads the property name and the local is `button`.
+    // accesslint:disable A11Y.UIKIT.BUTTON_MISSING_LABEL
     /// "Go to Page" prompt entry point, shown as the Pages-tab table header so
     /// it works in both pushed and popover presentations (no nav-bar dependency).
     private lazy var goToPageButton: UIButton = {
@@ -92,6 +95,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
         button.frame = CGRect(x: 0, y: 0, width: tableView.bounds.width, height: 44)
         return button
     }()
+    // accesslint:enable A11Y.UIKIT.BUTTON_MISSING_LABEL
 
     /// Uses default storyboard.
     static func newInstance() -> TPPReaderPositionsVC {

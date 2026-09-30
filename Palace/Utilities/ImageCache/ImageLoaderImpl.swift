@@ -80,9 +80,9 @@ public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
     }
 
     /// Returns the cached cover image at the display size if already populated,
-    /// otherwise delegates to the registry. Matches the registry's keying
-    /// (`<identifier>_<px>px`) so a cache pre-warmed by an earlier read at the
-    /// same display height is honored without re-fetch.
+    /// otherwise delegates to the registry. Uses the registry's own sizing and
+    /// key helpers so a cache pre-warmed by an earlier read at the same display
+    /// height is honored without re-fetch.
     public func coverImage(for book: TPPBook, displayPoints: CGFloat) async -> UIImage? {
         // A non-finite / non-positive display size (a view mid-layout) would trap at
         // `Int(neededPixels)` below. Fall back to the unsized cover. PP-4772 / 077218fc.
@@ -90,8 +90,8 @@ public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
             return await coverImage(for: book)
         }
         let scale = await MainActor.run { UIScreen.main.scale }
-        let neededPixels = min(displayPoints * scale * 1.5, 1200)
-        let key = "\(book.identifier)_\(Int(neededPixels))px"
+        let neededPixels = TPPBookCoverRegistry.decodePixels(displayPoints: displayPoints, scale: scale)
+        let key = TPPBookCoverRegistry.sizedCoverKey(identifier: book.identifier, pixels: neededPixels)
         if let cached = cache.get(for: key) {
             return cached
         }

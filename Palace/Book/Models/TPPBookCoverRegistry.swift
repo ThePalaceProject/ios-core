@@ -321,6 +321,12 @@ actor TPPBookCoverRegistry {
         min(displayPoints * scale, 1200)
     }
 
+    /// Cache key for a cover decoded at `pixels` (from `decodePixels`). Shared
+    /// with `ImageLoader`'s cache short-circuit so both look up the same entry.
+    static func sizedCoverKey(identifier: String, pixels: CGFloat) -> String {
+        "\(identifier)_\(Int(pixels))px"
+    }
+
     /// Fetches a cover decoded at the minimum pixel size needed for a given display size.
     /// Pass the view's point height (or width); the method converts to pixels using screen scale
     /// and clamps to a sensible max. Use this instead of `coverImage(for:)` when you know
@@ -334,7 +340,7 @@ actor TPPBookCoverRegistry {
         }
         let scale = await MainActor.run { UIScreen.main.scale }
         let neededPixels = Self.decodePixels(displayPoints: displayPoints, scale: scale)
-        let key = "\(book.identifier)_\(Int(neededPixels))px"
+        let key = Self.sizedCoverKey(identifier: book.identifier, pixels: neededPixels)
 
         if let cached = await imageCache.getAsync(for: key) { return cached }
 
