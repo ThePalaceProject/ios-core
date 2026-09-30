@@ -15,6 +15,10 @@ public nonisolated final class MockImageCache: ImageCacheType, @unchecked Sendab
 
     public private(set) var setKeys: [String] = []
     public private(set) var removedKeys: [String] = []
+    /// Keys read through `getAsync` — the path `TPPBookCoverRegistry` uses —
+    /// kept apart from synchronous `get` reads so a test can tell whether a
+    /// lookup was satisfied before the registry was consulted.
+    public private(set) var asyncGetKeys: [String] = []
     public private(set) var cleared: Bool = false
 
     public var now: Date = Date()
@@ -58,6 +62,7 @@ public nonisolated final class MockImageCache: ImageCacheType, @unchecked Sendab
     }
 
     public func getAsync(for key: String) async -> UIImage? {
+        sync { asyncGetKeys.append(key) }
         return get(for: key)
     }
 
@@ -89,6 +94,7 @@ public nonisolated final class MockImageCache: ImageCacheType, @unchecked Sendab
         sync {
             setKeys.removeAll()
             removedKeys.removeAll()
+            asyncGetKeys.removeAll()
             cleared = false
         }
     }
