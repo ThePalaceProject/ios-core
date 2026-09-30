@@ -293,6 +293,36 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
                           "the spoken value must follow the step, not wait for playback to catch up")
     }
 
+    /// Mid-chapter (5:00 of a 10:00 chapter), one swipe up seeks by the
+    /// patron's skip-forward interval and VoiceOver reads the target position
+    /// at once, before playback reports it (PP-5280).
+    func testAudiobookFullPlayer_seekBarSwipeUp_seeksBySkipIntervalAndSpeaksTheTarget() throws {
+        let (presenter, session) = makeAudiobookPresenter()
+        presenter.progress.chapterOffset = 300
+        presenter.progress.chapterTimeLeft = 300
+        presenter.progress.chapterProgress = 0.5
+        presenter.expand()
+        let host = mount(UIHostingController(rootView: AudiobookMorphingPlayerView(
+            presenter: presenter, progress: presenter.progress, audiobookSession: session)))
+        host.settle(0.8)
+
+        let seekBar = try XCTUnwrap(AccessibilityTraversalAudit.traverse(host.window)
+            .first { $0.label == Strings.Generic.playbackPosition })
+        XCTAssertEqual(seekBar.object.accessibilityValue, "50%, 5:00")
+
+        seekBar.object.accessibilityIncrement()
+        host.settle(0.2)
+
+        let forward = Self.skipInterval(AudiobookSkipIntervalSettings.forwardKey)
+        let target = 0.5 + Double(forward) / 600
+        XCTAssertEqual(session.seekFractions.count, 1)
+        XCTAssertEqual(session.seekFractions.first ?? -1, target, accuracy: 0.000_001)
+        let spoken = AccessibilityTraversalAudit.traverse(host.window)
+            .first { $0.label == Strings.Generic.playbackPosition }?.object.accessibilityValue
+        XCTAssertEqual(spoken, "\(Int(target * 100))%, \(AudiobookMorphingPlayerView.formatTime(Double(300 + forward)))",
+                       "VoiceOver must read the step's target, not the position playback last reported")
+    }
+
     // MARK: - Helpers
 
     private func mount(_ controller: UIViewController) -> AccessibilityAuditHost {
