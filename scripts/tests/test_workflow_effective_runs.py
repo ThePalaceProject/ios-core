@@ -363,15 +363,17 @@ def test_the_gates_own_workflow_yields_its_exact_run_count():
     build-and-test job was split into changes / build / test shards / gate /
     report / publish-report jobs: the new jobs' shell bodies (changed-file
     classification, build-for-testing, enumeration and planning, product
-    packaging, the gate's verdict) are what the extra lines are. That is the cost of the arm, and it
+    packaging, the gate's verdict) are what the extra lines are. It moved from 214
+    to 215 when each shard started checking out the mobile-specs submodule that
+    BookmarkSpecConformanceTests reads. That is the cost of the arm, and it
     is the point: a silent change to what the gate can see is exactly what the
     other two forms failed to catch.
     """
     from pathlib import Path
     wf = Path(__file__).resolve().parent.parent.parent / ".github" / "workflows" / "unit-testing.yml"
     runs = effective_runs(wf.read_text())
-    assert len(runs) == 214, (
-        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 214. "
+    assert len(runs) == 215, (
+        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 215. "
         "If a step was added or removed this is correct — update the number. "
         "If nothing changed in the workflow, the extractor's view of it did."
     )

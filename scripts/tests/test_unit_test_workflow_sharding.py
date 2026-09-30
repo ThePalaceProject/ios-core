@@ -113,3 +113,37 @@ def test_the_shard_runner_keeps_retry_scoping():
     retry = [ln for ln in code if ln.strip().startswith("RETRY_ITER_ARGS=(-retry")]
     assert retry and "-test-iterations" in retry[0]
     assert not [ln for ln in code if "-test-repetition-relaunch-enabled" in ln]
+
+
+def _submodule_paths():
+    text = (REPO / ".gitmodules").read_text()
+    return re.findall(r"^\s*path\s*=\s*(\S+)\s*$", text, flags=re.M)
+
+
+def _submodules_read_by_tests():
+    """Submodule paths that a PalaceTests source names in a string literal,
+    e.g. BookmarkSpecConformanceTests reading "mobile-specs/bookmarks" through
+    #filePath. Those files exist at run time only if the job checked them out."""
+    subs = _submodule_paths()
+    found = set()
+    for f in (REPO / "PalaceTests").rglob("*.swift"):
+        text = f.read_text(errors="ignore")
+        for s in subs:
+            if re.search(r'"' + re.escape(s) + r'(/[^"]*)?"', text):
+                found.add(s)
+    return found
+
+
+def test_the_census_of_submodules_read_by_tests_finds_the_spec_corpus():
+    """Guards the census below against matching nothing and passing vacuously."""
+    assert "mobile-specs" in _submodules_read_by_tests()
+
+
+def test_each_shard_checks_out_every_submodule_the_tests_read():
+    """The shard checkout has no submodules (the tests run from built products),
+    so a test reading a submodule's files through #filePath fails on whichever
+    shard it lands on. Run 36787452931: five BookmarkSpecConformanceTests failed
+    all three iterations on shard 2 because mobile-specs was absent."""
+    run = _run_text("test")
+    for sub in sorted(_submodules_read_by_tests()):
+        assert re.search(r"git\b.*\bsubmodule update --init\b.*\b" + re.escape(sub) + r"\b", run), sub

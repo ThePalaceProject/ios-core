@@ -283,6 +283,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # BookmarkSpecConformanceTests reads the mobile-specs corpus from the
+      # checkout through #filePath, so the one submodule the tests read has to
+      # be here. It is public; .gitmodules names it by SSH, which this job has
+      # no key for, hence the https rewrite.
+      - name: Check out the submodules the tests read
+        run: git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --depth 1 mobile-specs
+
       - name: Download test products
         uses: actions/download-artifact@v8
         with:
