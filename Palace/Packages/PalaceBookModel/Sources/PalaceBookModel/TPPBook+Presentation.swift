@@ -16,14 +16,9 @@ import PalaceLogging
 // MARK: - Cover Image Fetching & Cache
 
 extension TPPBook {
-    /// Routes cover/thumbnail loads through the `ImageLoading` umbrella so this
-    /// file no longer reaches for `TPPBookCoverRegistry.shared` /
-    /// `TPPBookCoverRegistryBridge.shared` directly. Wave 2a inverted the former
-    /// `AppContainer.production().imageLoader` reach through
-    /// `TPPBookImageContext`, which the composition root configures once at
-    /// bootstrap (before any TPPBook is constructed). Returns `nil` only in
-    /// unit tests that never configure the context — in which case the network
-    /// fetch branches below no-op and the injected cache-hit paths still run.
+    /// The loader configured on `TPPBookImageContext` at bootstrap, before any
+    /// TPPBook exists. `nil` only in unit tests that never configure it, where
+    /// the network fetches below no-op and the cache-hit paths still run.
     var imageLoader: ImageLoading? {
         TPPBookImageContext.imageLoader()
     }

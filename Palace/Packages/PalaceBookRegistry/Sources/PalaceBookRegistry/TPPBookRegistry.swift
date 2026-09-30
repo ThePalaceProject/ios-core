@@ -227,12 +227,8 @@ private final class BoolWithDelay: @unchecked Sendable {
 /// `var accountDidChangeCancellable` is written once during `init`'s
 /// `setupAccountDidChangeObserver()` (on the constructing thread, before the
 /// instance escapes) and only read/torn-down thereafter, so it carries no
-/// cross-thread write race. This is a documented invariant, not a bare waiver.
-// De-objc (god-class decomp Wave 2b prep): dropped `@objcMembers` + `NSObject`
-// superclass + `@objc` on `RegistryState`. The entire ObjC surface is vestigial —
-// zero `.m`/`.h` references to the class, the notifications, or `TPPBookRegistrySyncing`;
-// zero selector/`NSClassFromString` dispatch (verified at branch tip). Removing NSObject
-// also removes the two `super.init()` calls below.
+/// cross-thread write race.
+// Not an NSObject: no Objective-C code references this class or its notifications.
 public class TPPBookRegistry: @unchecked Sendable {
     public static let syncFailureErrorDocumentKey = "TPPBookRegistrySyncFailureErrorDocument"
 
@@ -248,8 +244,7 @@ public class TPPBookRegistry: @unchecked Sendable {
 
     // MARK: - External dependencies
 
-    /// Value-only account scope (god-class decomposition Wave 2b — the Book→Accounts
-    /// inversion). The facade reads only `currentAccountID` (synchronously, at every
+    /// Value-only account scope. The facade reads only `currentAccountID` (synchronously, at every
     /// mutation dispatch — the PP-4129 capture discipline) and subscribes to
     /// `accountDidChangePublisher`; no Account/AccountsManager type crosses the boundary.
     private let accountScope: any AccountScopeProviding
@@ -330,12 +325,9 @@ public class TPPBookRegistry: @unchecked Sendable {
             stateLock.lock()
             _state = newValue
             stateLock.unlock()
-            // Same side effects the former `didSet` performed, in the same order,
-            // now outside the lock. `syncState` is self-synchronised so it needs
-            // no help from `stateLock`. The former async `NotificationCenter.post`
-            // of `.TPPBookRegistryStateDidChange` is replaced by feeding the
-            // Combine `registryStateSubject` (its publisher delivers on `.main`),
-            // completing the dual-write kill (swarm_8ce6f5ae WS3).
+            // Side effects run outside the lock; `syncState` is self-synchronised.
+            // State changes are published only through `registryStateSubject`
+            // (delivered on `.main`), not a notification.
             syncState.value = (newValue == .syncing)
             registryStateSubject.send(newValue)
         }
@@ -424,7 +416,7 @@ public class TPPBookRegistry: @unchecked Sendable {
 
     // MARK: - Init
 
-    /// Construct the app-scoped registry (god-class decomposition Wave 2b init shape).
+    /// Construct the app-scoped registry.
     /// `accountScope` is the value-only account surface (inversion); `dependencies`
     /// carries the lazily-resolved external collaborators (download service, loans
     /// fetcher, sideload set, directory rule, availability hook) — supplied by the

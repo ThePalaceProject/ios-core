@@ -2,17 +2,11 @@
 //  AuthCoordinator.swift
 //  PalaceAuth
 //
-//  The single public re-auth entrypoint. Every network consumer that
-//  observes `AuthOutcome.reauthRequired(...)` calls
-//  `refreshCredentialsIfNeeded(reason:)` and awaits the result. The
-//  coordinator internally dispatches to the appropriate mechanism (silent
-//  token refresh, SAML web sheet, OIDC ASWebAuthenticationSession, basic
-//  prompt) based on the active library's authentication type — callers
-//  do NOT know which mechanism fires.
-//
-//  Single-flighted: concurrent calls during an in-flight refresh receive
-//  the same outcome the in-flight refresh produces. Eliminates the
-//  thundering-herd of N callers all triggering N modals.
+//  The single re-auth entrypoint. Consumers that observe
+//  `AuthOutcome.reauthRequired(...)` call `refreshCredentialsIfNeeded(reason:)`;
+//  the coordinator picks the mechanism (silent refresh, SAML sheet, OIDC, basic
+//  prompt) from the active library's auth type. Single-flighted, so N concurrent
+//  401s produce one modal, not N.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -217,10 +211,9 @@ public actor AuthCoordinator {
         )
     }
 
-    /// Token-refresh outcome (proactive or coordinator-driven). Module C
-    /// invokes this from `TokenRefreshInterceptor` after every refresh
-    /// completes, so the dashboard sees the silent-refresh failure rate
-    /// independently of coordinator dispatch.
+    /// Token-refresh outcome (proactive or coordinator-driven), called by
+    /// `TokenRefreshInterceptor` after every refresh so the silent-refresh
+    /// failure rate is visible independently of coordinator dispatch.
     public func recordTokenRefreshCompleted(
         succeeded: Bool,
         statusCode: Int?,
@@ -283,7 +276,7 @@ public actor AuthCoordinator {
 
     /// Reset the cooldown / in-flight state. Used by tests that want to
     /// drive a second refresh inside the same actor. Not part of the
-    /// production surface — call sites in Module C should NOT use this.
+    /// production surface.
     internal func resetForTesting() {
         inFlightRefresh = nil
         lastFailureTimestamp = nil
@@ -294,11 +287,9 @@ public actor AuthCoordinator {
     /// is the coordinator-mediated sign-out used by `ForceReset`.
     public func signOut() async {
         userAccount.markCredentialsStale()
-        // The coordinator does NOT call into the modal presenter on sign
-        // out — sign-out is a state mutation, not a re-auth. The actual
-        // keychain wipe + IdP logout (where applicable) is owned by
-        // `TPPSignInBusinessLogic+SignOut`, which Module C does NOT
-        // migrate (explicit off-limits in the contract).
+        // No modal on sign-out: it is a state change, not a re-auth. The
+        // keychain wipe and IdP logout are owned by
+        // `TPPSignInBusinessLogic+SignOut`.
     }
 
     // MARK: - Internal dispatch
@@ -318,8 +309,6 @@ public actor AuthCoordinator {
         // Mark stale so other consumers gate on the refresh outcome.
         userAccount.markCredentialsStale()
 
-        // Decide silent-refresh vs modal based on the (reason, mechanism)
-        // tuple. The table below is the dispatch matrix from the contract.
         let routing = Self.route(reason: reason, mechanism: mechanism)
 
         switch routing {
@@ -392,7 +381,7 @@ public actor AuthCoordinator {
         return success ? .success(()) : .failure(.userCancelled)
     }
 
-    /// Dispatch table from the contract. Pure function for ease of testing.
+    /// Dispatch table for (reason, mechanism). Pure for testability.
     /// - `.silentRefresh` → call reauthenticator silently; fall back to
     ///   modal if it returns false.
     /// - `.modal` → present modal directly.

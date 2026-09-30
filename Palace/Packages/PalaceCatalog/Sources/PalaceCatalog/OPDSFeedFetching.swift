@@ -12,10 +12,8 @@ import Foundation
 /// standing up the full actor + URL stack. Production code passes an
 /// `OPDSFeedService` instance that satisfies this protocol via its conformance.
 ///
-/// Relocated to PalaceCatalog (god-class decomposition Wave 2b) so it sits beside
-/// the `TPPOPDSFeed` it returns — this lets the PalaceBookRegistry package depend
-/// on the feed-fetch seam without an edge back into the app target. `OPDSFeedService`
-/// (the live actor) stays app-side and conforms across the package boundary.
+/// Lives beside `TPPOPDSFeed` so PalaceBookRegistry can depend on it without an
+/// edge into the app target, where `OPDSFeedService` conforms.
 public protocol OPDSFeedFetching: Sendable {
     func fetchFeed(from url: URL) async throws -> TPPOPDSFeed
     /// Cache-control-aware form. `BookRegistrySync`'s loans sync passes

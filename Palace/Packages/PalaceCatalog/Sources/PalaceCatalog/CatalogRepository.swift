@@ -125,7 +125,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         now().timeIntervalSince(entry.timestamp) > 86400
     }
 
-    // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup to inject UserDefaults for per-test isolation. Default `.standard` preserves all production callers.
+    // PUBLIC_INTENT: `defaults` is injectable for per-test UserDefaults isolation; `.standard` keeps production callers unchanged.
     public init(api: CatalogAPI, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = { Date() }
@@ -139,7 +139,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     /// account/library UUID. Pass a closure rather than a snapshot so that
     /// the repository sees the *current* account each call — the value
     /// changes when the user switches libraries.
-    // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup; same rationale as the no-accountID overload above.
+    // PUBLIC_INTENT: injectable `defaults`, same rationale as the overload above.
     public init(api: CatalogAPI, accountID: @escaping @Sendable () -> String?, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = { Date() }
@@ -153,7 +153,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     /// should use `init(api:)` which defaults `now` to `Date.init`. This overload
     /// is `public` only to be reachable from `PalaceTests` (which imports
     /// `PalaceCatalog` without `@testable`).
-    // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup; same rationale. Test-only initializer reachable from PalaceTests without @testable.
+    // PUBLIC_INTENT: test-only initializer reachable from PalaceTests without @testable.
     public init(api: CatalogAPI, now: @escaping @Sendable () -> Date, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = now
@@ -166,7 +166,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     /// Test-only initializer that injects both a clock and an account-ID
     /// provider. Used by cache-isolation tests to simulate library switches
     /// deterministically.
-    // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup; same rationale. Test-only initializer for cache-isolation tests.
+    // PUBLIC_INTENT: test-only initializer for cache-isolation tests.
     public init(api: CatalogAPI, accountID: @escaping @Sendable () -> String?, now: @escaping @Sendable () -> Date, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = now
@@ -224,17 +224,11 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             // Clear URLCache to prevent stale/corrupted HTTP responses from causing parsing crashes
             // in legacy OPDS code. Our memory cache is preserved for stale-while-revalidate.
             //
-            // N1 NOTE (swarm_27c181b5): OPDS feeds are actually served from the
-            // network executor's PRIVATE URLCache (see `TPPCaching.makeCache`),
-            // NOT from `URLCache.shared`, so this wipe is effectively a no-op for
-            // feed responses. `CatalogRepository` lives in the PalaceCatalog SPM
-            // package and only holds a `CatalogAPI` whose `NetworkClient` surface
-            // (`send` only) exposes no cache-clear seam, and the package cannot
-            // reach `AppContainer.production().networkExecutor` without an
-            // inverted app-target dependency. Routing this site correctly needs a
-            // `clearCache()` on the `NetworkClient` protocol — deferred rather
-            // than introduce a bad dependency here. The privacy-critical clears
-            // (sign-out / force-reset) already route through the executor.
+            // Known gap: OPDS feeds are served from the network executor's
+            // private URLCache (`TPPCaching.makeCache`), not `URLCache.shared`,
+            // so this wipe does not reach feed responses. Fixing it needs a
+            // `clearCache()` on `NetworkClient`; this package cannot reach the
+            // executor. Sign-out and force-reset clear through the executor.
             URLCache.shared.removeAllCachedResponses()
         }
         if daysSinceLastLaunch >= 1 {

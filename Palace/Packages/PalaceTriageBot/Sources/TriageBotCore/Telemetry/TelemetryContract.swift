@@ -4,7 +4,7 @@ import Foundation
 /// attach to a ``TelemetryEvent``. Every value behind these keys is an id, a
 /// count, or an enum `rawValue` — **never** free text (a user-typed symptom
 /// description, an email address, a library barcode). Because the key space is a
-/// finite enum, a reviewer can audit exactly what leaves the device, and
+/// finite enum, it states exactly what can leave the device, and
 /// ``TelemetryContract`` drops any key not listed here before an event reaches an
 /// analytics backend.
 ///
