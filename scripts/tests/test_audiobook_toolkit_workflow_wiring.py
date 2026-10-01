@@ -8,7 +8,9 @@ the only place CI executes it from this repo. Three properties, parsed as YAML:
   2. it checks out the toolkit submodule (and only that one);
   3. the result bundle the test step writes is the one the gate step reads,
      and the gate runs after the tests. xcodebuild exits 0 when a scheme
-     selects no tests, so without the gate an empty run is green.
+     selects no tests, so without the gate an empty run is green;
+  4. AudioEngine (Findaway's licensed SDK) is fetched only in same-repo runs,
+     and a fork PR gets a job that says the tests were skipped.
 
 prior-art-checked: this pins a public GitHub workflow; the pattern follows
 test_nodrm_workflow_wiring.py, and the test runs on a clean ubuntu runner.
@@ -40,10 +42,45 @@ def _triggers() -> dict:
     return on
 
 
-def _steps() -> list[dict]:
+_TEST_JOB = "toolkit-tests"
+_FORK_JOB = "toolkit-tests-skipped-on-fork"
+_REPO_NAME = "ThePalaceProject/ios-core"
+
+
+def _jobs() -> dict:
     jobs = _doc()["jobs"]
-    assert len(jobs) == 1, f"expected one job, found {list(jobs)}"
-    return next(iter(jobs.values()))["steps"]
+    assert set(jobs) == {_TEST_JOB, _FORK_JOB}, f"unexpected jobs: {list(jobs)}"
+    return jobs
+
+
+def _steps() -> list[dict]:
+    return _jobs()[_TEST_JOB]["steps"]
+
+
+def _evaluate(condition: str, event: str, head_repo: str | None) -> bool:
+    """Evaluate a job `if:` for one event, over the few contexts it may use."""
+    expr = condition.strip()
+    if expr.startswith("${{") and expr.endswith("}}"):
+        expr = expr[3:-2]
+    contexts = {
+        "github.event.pull_request.head.repo.full_name": repr(head_repo),
+        "github.event_name": repr(event),
+        "github.repository": repr(_REPO_NAME),
+    }
+    for name, value in contexts.items():
+        expr = expr.replace(name, value)
+    expr = expr.replace("||", " or ").replace("&&", " and ")
+    leftover = re.sub(r"'[^']*'|None|==|!=|\bor\b|\band\b|[()\s]", "", expr)
+    assert not leftover, f"condition uses something this test cannot evaluate: {leftover!r}"
+    return bool(eval(expr, {"__builtins__": {}}))  # noqa: S307 - vetted above
+
+
+# (event, head repo of the PR or None, is the run trusted)
+_RUNS = [
+    ("pull_request", _REPO_NAME, True),
+    ("pull_request", "someone/ios-core", False),
+    ("workflow_dispatch", None, True),
+]
 
 
 def _index_running(fragment: str) -> int:
@@ -120,3 +157,22 @@ def test_test_step_runs_the_whole_toolkit_scheme():
     assert "ios-audiobooktoolkit/PalaceAudiobookToolkit.xcodeproj" in run
     assert re.search(r"-scheme\s+PalaceAudiobookToolkit\b", run)
     assert "-only-testing" not in run, "the job runs the whole toolkit suite, not a subset"
+
+
+# --- 4. AudioEngine stays out of fork PRs -----------------------------------
+
+@pytest.mark.parametrize("event,head_repo,trusted", _RUNS)
+def test_tests_and_audioengine_fetch_run_only_in_same_repo_runs(event, head_repo, trusted):
+    condition = str(_jobs()[_TEST_JOB].get("if", ""))
+    assert condition, "the toolkit-tests job has no `if:`; fork PRs would fetch AudioEngine"
+    assert _evaluate(condition, event, head_repo) is trusted
+    _index_running("scripts/fetch-audioengine.sh")
+
+
+@pytest.mark.parametrize("event,head_repo,trusted", _RUNS)
+def test_fork_pr_gets_a_visible_skip_and_nothing_else(event, head_repo, trusted):
+    job = _jobs()[_FORK_JOB]
+    assert _evaluate(str(job.get("if", "")), event, head_repo) is (not trusted)
+    runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
+    assert "::notice::toolkit tests skipped on fork PRs" in runs
+    assert "fetch-audioengine" not in runs and "xcodebuild" not in runs

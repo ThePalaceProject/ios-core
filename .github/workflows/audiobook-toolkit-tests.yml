@@ -13,6 +13,11 @@ name: Audiobook Toolkit Tests
 #
 # Triggered only when the pin (or this job's own inputs) changes. Nothing in
 # Palace/ is compiled into the toolkit, so app changes cannot change its result.
+#
+# AudioEngine is Findaway's licensed SDK, so it is fetched only in same-repo
+# runs, matching Android (which fetches Findaway only in builds of main). A
+# pull request from a fork skips the tests and says so in its own job, rather
+# than failing or reading as a run that tested something.
 on:
   pull_request:
     paths:
@@ -29,6 +34,7 @@ permissions:
 
 jobs:
   toolkit-tests:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: macos-15
     timeout-minutes: 40
     steps:
@@ -112,3 +118,10 @@ jobs:
           name: toolkit-test-log
           path: ${{ runner.temp }}/toolkit-test.log
           retention-days: 7
+
+  toolkit-tests-skipped-on-fork:
+    name: toolkit tests skipped (fork PR, licensed AudioEngine)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::toolkit tests skipped on fork PRs (licensed AudioEngine)"
