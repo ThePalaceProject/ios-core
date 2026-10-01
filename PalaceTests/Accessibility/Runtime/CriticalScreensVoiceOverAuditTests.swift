@@ -253,8 +253,17 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
     /// A book with no author still gets a title-only label with no instruction
     /// in it, and the same expand hint (PP-5294).
     func testAudiobookMiniPlayer_withNoAuthor_labelsTheTitleAloneAndHintsTheExpand() throws {
+        try assertMiniPlayerLabelsTheTitleAlone(authors: nil)
+    }
+
+    /// An empty author string takes the same title-only label, not "by " with nothing after it.
+    func testAudiobookMiniPlayer_withAnEmptyAuthor_labelsTheTitleAlone() throws {
+        try assertMiniPlayerLabelsTheTitleAlone(authors: "")
+    }
+
+    private func assertMiniPlayerLabelsTheTitleAlone(authors: String?) throws {
         let (presenter, session) = makeAudiobookPresenter()
-        presenter.adoptBook(TPPBookMocker.mockBook(identifier: "a11y-mini-no-author", title: "Untitled Work", authors: nil))
+        presenter.adoptBook(TPPBookMocker.mockBook(identifier: "a11y-mini-no-author", title: "Untitled Work", authors: authors))
         presenter.minimize()
         let host = mountPlayer(presenter, session)
 
