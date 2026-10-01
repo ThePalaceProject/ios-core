@@ -16,6 +16,15 @@ import PalaceKeychain
 @MainActor
 final class TPPUserAccountConcurrencyTests: XCTestCase {
 
+  /// Raw keychain keys a test wrote through `TPPKeychain.shared`.
+  private var rawKeysToRemove: [String] = []
+
+  override func tearDown() {
+    rawKeysToRemove.forEach { TPPKeychain.shared.removeObject(forKey: $0) }
+    rawKeysToRemove = []
+    super.tearDown()
+  }
+
   /// Concurrent increments must each count exactly once.
   ///
   /// Mutant killed: replacing the locked RMW in `incrementSignInGeneration()`
@@ -98,13 +107,14 @@ final class TPPUserAccountConcurrencyTests: XCTestCase {
   /// earlier build stored. Keys carry the library UUID, except for NYPL's.
   func testKeychainKeys_carryLibraryUUID_exceptForNYPL() {
     let libraryUUID = "test-uuid-\(UUID().uuidString)"
+    let libraryKey = "TPPAccountDeviceIDKey_\(libraryUUID)"
+    let nyplKey = "TPPAccountDeviceIDKey"
+    rawKeysToRemove = [libraryKey, nyplKey]
+
     let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: libraryUUID)
     account.setDeviceID("device-library")
-    XCTAssertEqual(TPPKeychain.shared.object(forKey: "TPPAccountDeviceIDKey_\(libraryUUID)") as? String,
-                   "device-library")
+    XCTAssertEqual(TPPKeychain.shared.object(forKey: libraryKey) as? String, "device-library")
 
-    // The factory's teardown `removeAll()` clears these keys again.
-    let nyplKey = "TPPAccountDeviceIDKey"
     let nypl: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: AccountsManager.TPPAccountUUIDs[0])
     nypl.setDeviceID("device-nypl")
     XCTAssertEqual(TPPKeychain.shared.object(forKey: nyplKey) as? String, "device-nypl")
