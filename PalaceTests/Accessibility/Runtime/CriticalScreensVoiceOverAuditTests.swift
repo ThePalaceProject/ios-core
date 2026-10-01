@@ -250,6 +250,21 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
         XCTAssertEqual(report.element(labeled: nowPlaying)?.object.accessibilityHint, generic.expandPlayerHint)
     }
 
+    /// A book with no author still gets a title-only label with no instruction
+    /// in it, and the same expand hint (PP-5294).
+    func testAudiobookMiniPlayer_withNoAuthor_labelsTheTitleAloneAndHintsTheExpand() throws {
+        let (presenter, session) = makeAudiobookPresenter()
+        presenter.adoptBook(TPPBookMocker.mockBook(identifier: "a11y-mini-no-author", title: "Untitled Work", authors: nil))
+        presenter.minimize()
+        let host = mountPlayer(presenter, session)
+
+        let label = String(format: Strings.Generic.nowPlayingCompactLabel, "Untitled Work")
+        let element = try XCTUnwrap(AccessibilityTraversalAudit.traverse(host.window).first { $0.label == label },
+                                    "the mini player must read \"\(label)\"")
+        XCTAssertNil(AccessibilityTraversalAudit.hintPhrase(in: element.label))
+        XCTAssertEqual(element.object.accessibilityHint, Strings.Generic.expandPlayerHint)
+    }
+
     /// The seek bar is the one way to move within a chapter. A VoiceOver user
     /// moves it by swiping up or down, which needs the `.adjustable` trait and
     /// an adjustable action that seeks the player (PP-5280).
