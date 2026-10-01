@@ -34,6 +34,10 @@ XCODEBUILD = textwrap.dedent("""\
     # first time only (always, with STUB_HANG_AGAIN): the class is absent and a
     # System Failures case is recorded, as on run 36797084975.
     # STUB_SYSFAIL_ONLY: record that runner failure once, losing nothing.
+    # STUB_CRASH=<n>: the first n invocations abort the way Xcode 26.3's
+    # XCTHarness does (PRs #1562, #1565): the INTERNAL ERROR marker, exit 134,
+    # and a bundle directory with nothing readable in it. STUB_CRASH_FAILED
+    # also prints a failed test before the abort; STUB_CRASH_EXIT overrides 134.
     echo "$*" >> "$STUB_LOG"
     bundle=""; prev=""; ids=()
     for a in "$@"; do
@@ -41,6 +45,16 @@ XCODEBUILD = textwrap.dedent("""\
       case "$a" in -only-testing:*) ids+=("${a#-only-testing:}");; esac
       prev="$a"
     done
+    crashes="$STUB_LOG.crashes"
+    n=$(cat "$crashes" 2>/dev/null || echo 0)
+    if [ "$n" -lt "${STUB_CRASH:-0}" ]; then
+      echo $((n + 1)) > "$crashes"
+      mkdir -p "$bundle"
+      [ -n "${STUB_CRASH_FAILED:-}" ] && echo "Test case 'A.t()' failed on 'Clone 1 of iPhone 16 Pro - Palace (123)' (0.010 seconds)"
+      echo "** INTERNAL ERROR: Uncaught exception **"
+      echo "Uncaught Exception: Unexpected operation <IDERunOperation: 0x1; state = aReF!C>, current operation is (null)"
+      exit "${STUB_CRASH_EXIT:-134}"
+    fi
     mkdir -p "$bundle"; : > "$bundle/cases"
     failed=0
     hung="$STUB_LOG.hung"
@@ -62,7 +76,7 @@ XCODEBUILD = textwrap.dedent("""\
         result="Failed"; msg="Test exceeded execution time allowance of 2 minutes"
       fi
       if [ "$b/$c" = "${STUB_FAIL:-}" ]; then result="Failed"; msg="XCTAssertEqual failed"; fi
-      [ "$result" = "Failed" ] && failed=1
+      [ "$result" = "Failed" ] && { failed=1; echo "Test case '$c.$m()' failed on 'Clone 1 of iPhone 16 Pro - Palace (123)' (0.010 seconds)"; }
       echo "$b|$c|$m|$result|$msg" >> "$bundle/cases"
     done
     [ $failed -eq 1 ] && exit 65
@@ -75,10 +89,14 @@ XCRUN = textwrap.dedent("""\
       echo "    iPhone 16 Pro (11111111-2222-3333-4444-555555555555) (Shutdown)"; exit 0
     fi
     if [ "$1 $2" = "xcresulttool merge" ]; then
-      out="$4"; shift 4; mkdir -p "$out"
+      out="$4"; shift 4
+      # A bundle xcodebuild abandoned has no Info.plist, and merge refuses it.
+      for b in "$@"; do [ -e "$b/cases" ] || { echo "error: $b is not a result bundle" >&2; exit 1; }; done
+      mkdir -p "$out"
       for b in "$@"; do cat "$b/cases" >> "$out/cases"; done; exit 0
     fi
     if [ "$1 $2 $3 $4" = "xcresulttool get test-results tests" ]; then
+      [ -e "$6/cases" ] || { echo "error: $6 is not a result bundle" >&2; exit 1; }
       python3 - "$6/cases" <<'PY'
     import json, sys
     bundles = {}
@@ -304,3 +322,67 @@ def test_a_runner_failure_that_lost_no_class_still_fails_and_says_why(env):
     assert "The test runner hung before establishing connection." in r.stdout
     assert "every assigned class ran" in r.stdout
 
+
+
+# --------------------------------------------------------------------------
+# xcodebuild's own crash: one retry of the pass, never of a test failure
+# --------------------------------------------------------------------------
+
+def _bundle_of(call):
+    args = call.split()
+    return args[args.index("-resultBundlePath") + 1]
+
+
+def _selection(call):
+    return sorted(a for a in call.split() if a.startswith("-only-testing:"))
+
+
+def test_an_xcodebuild_internal_error_is_retried_once_and_the_shard_passes(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = _calls(tmp_path)
+    assert len(calls) == 3, "crashed parallel pass, its retry, then the serial pass"
+    crashed, retry, serial = calls
+    assert _selection(retry) == _selection(crashed), "the retry runs the same classes"
+    assert "-parallel-testing-enabled YES" in retry
+    assert _bundle_of(retry) != _bundle_of(crashed), "the retry writes a fresh bundle"
+    assert "-parallel-testing-enabled NO" in serial
+    assert "::warning title=xcodebuild crashed; retrying the pass once::" in r.stdout
+    assert "exit 134" in r.stdout
+    report = json.loads((tmp_path / "out/shard-report.json").read_text())
+    assert report["missing"] == []
+
+
+def test_the_internal_error_marker_alone_triggers_the_retry(env):
+    """Same crash, different exit code: the marker is the signal too."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", STUB_CRASH_EXIT="65")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len(_calls(tmp_path)) == 3
+
+
+def test_an_internal_error_that_repeats_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="2")
+    assert r.returncode == 1
+    assert len(_calls(tmp_path)) == 2, "retried once, not again, and nothing after"
+    assert "::error title=xcodebuild crashed again::" in r.stdout
+    assert "Shard 0 passed" not in r.stdout
+
+
+def test_a_test_failure_with_exit_65_is_not_retried(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_FAIL="PalaceTests/A")
+    assert r.returncode == 1
+    assert len(_calls(tmp_path)) == 2
+    assert "xcodebuild crashed" not in r.stdout
+
+
+def test_a_crash_after_a_test_failed_is_not_retried(env):
+    """A retry could turn the failed test green, so the crash is not excused."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", STUB_CRASH_FAILED="1")
+    assert r.returncode == 1
+    assert len(_calls(tmp_path)) == 1
+    assert "retrying the pass once" not in r.stdout

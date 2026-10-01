@@ -29,6 +29,14 @@ maybe_clean() {
         xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
     fi
 }
+# $1 = what ran, $2 = xcodebuild's exit code. A check mark only for 0.
+exit_status_line() {
+    if [ "$2" -eq 0 ]; then
+        echo "✅ $1 (exit code: $2)"
+    else
+        echo "🔴 $1 failed (exit code: $2)"
+    fi
+}
 
 # Clean up any previous test results
 rm -rf TestResults.xcresult
@@ -260,7 +268,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         exit 1
     fi
 
-    echo "✅ Parallel tests executed on: $SIMULATOR_NAME (exit code: $TEST_EXIT_CODE)"
+    exit_status_line "Parallel tests executed on: $SIMULATOR_NAME" "$TEST_EXIT_CODE"
 
     # --- Serial isolated pass for the scheduling-sensitive infra tests ---
     # Runs the `-skip-testing`'d tests NOT under parallel oversubscription, then
@@ -291,7 +299,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         ENABLE_TESTABILITY=YES
     SERIAL_EXIT_CODE=$?
     set -e
-    echo "✅ Serial isolated tests executed (exit code: $SERIAL_EXIT_CODE)"
+    exit_status_line "Serial isolated tests executed" "$SERIAL_EXIT_CODE"
 
     # Merge serial results into TestResults.xcresult so the downstream
     # Parse-Test-Results fail-gate counts the isolated tests (not un-gated).
@@ -400,7 +408,7 @@ else
             TEST_EXIT_CODE=$?
             
             if [ -d "TestResults.xcresult" ]; then
-                echo "✅ Tests executed with: $SIM (exit code: $TEST_EXIT_CODE)"
+                exit_status_line "Tests executed with: $SIM" "$TEST_EXIT_CODE"
                 break
             else
                 echo "❌ Simulator $SIM unavailable, trying next..."
