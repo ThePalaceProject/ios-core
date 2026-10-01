@@ -2,83 +2,17 @@
 //  TPPSignInFlowCharacterizationTests.swift
 //  PalaceTests
 //
-//  RUNNING THESE: `-only-testing` matches <bundle>/<XCTestCase subclass>, NOT a
-//  file, so
-//      -only-testing:PalaceTests/TPPSignInFlowCharacterizationTests
-//  matches nothing and reports `Executed 0 tests` with `** TEST SUCCEEDED **`
-//  and exit 0. That happened here while verifying R3, on the one measurement
-//  this pack's credibility rests on; the executed count is what caught it, not
-//  the exit code. Always read the count. CLAUDE.md: "a run that says 0 tests
-//  executed is a misconfiguration, not a clean pass".
+//  Characterization pack (part 3) for the TPPSignInBusinessLogic
+//  decomposition; see docs/architecture/god-class-decomposition-plan.md.
+//  Every expectation was READ OFF the current implementation, including
+//  behaviour that may be wrong: suspected defects carry a `SUSPECT:` comment
+//  and are reported separately rather than fixed here.
 //
-//  Enumerate rather than trust a number in a comment — a count here goes stale
-//  the moment a class is added, and an undercount produces exactly the
-//  false-complete run this note exists to prevent:
-//      grep -nE '^(final )?class .*: SignInFlowFixture' <this file>
-//  As of 2026-09-29 that is FOUR runnable classes totalling 36 tests —
-//  SignInReadinessRaceCharacterizationTests (8),
-//  SignInTokenErrorCharacterizationTests (12),
-//  SignInCredentialSideEffectCharacterizationTests (6),
-//  SignInStatePrecedenceCharacterizationTests (10) — plus `SignInFlowFixture`,
-//  the base, which XCTest discovers with zero test methods.
+//  "Targets a hand-written mutant that ..." below means a shape reasoned by
+//  hand, not one a tool generated and not part of any score — palace_mutate's
+//  operators cannot express them. Exactly one, R3, is measured.
 //
-//  ON THE MUTANT COMMENTS BELOW: "Targets a hand-written mutant that ..." means
-//  exactly that — a shape I reasoned the test should catch, NOT a mutant any
-//  tool generated and NOT part of any score. `scripts/palace_mutate.py`'s
-//  operator table is cmp / bool / bound / retval / assign only (its
-//  `_MUTATORS`), so it structurally cannot produce "deletes the guard",
-//  "removes the catch-arm post", or "calls validateCredentials() on the failure
-//  arm". CLAUDE.md: a hand-authored mutant is an illustration, not a score —
-//  reading these as evidence inherits my blind spots exactly, which is the
-//  failure that rule exists to stop. Exactly ONE is measured: R3, which says
-//  KILLS and carries its run.
-//
-//  An earlier version of this header pointed at "the 80.0% in the commit body"
-//  as the tool's figure. No commit body in this branch's range contains it —
-//  the section was amended away — so the citation pointed at nothing, which is
-//  the same defect this pack was written to characterize. The number is not
-//  restated here: quoting a mutation score with no surviving
-//  total/killed/survived/errored breakdown is an unfalsifiable claim. Re-run
-//  `palace_mutate.py` and paste the invocation with its counts if the figure
-//  is wanted.
-//
-//  CHARACTERIZATION PACK (part 3) — Wave 4 prerequisite for the
-//  `TPPSignInBusinessLogic` decomposition
-//  (docs/architecture/god-class-decomposition-plan.md §4 "Wave 4", §5 row
-//  "TPPSignInBusinessLogic").
-//
-//  Parts 1 and 2 (TPPSignInBusinessLogicCharacterizationTests,
-//  TPPSignInCapabilitiesCharacterizationTests, landed in PR #1329) pin the
-//  SignInRequestService / CredentialStore / AuthCapabilities / Adobe-skip
-//  clusters. This file pins the branches a measured census found with no
-//  test anywhere in PalaceTests:
-//
-//    - `awaitReadyThenRetryLogIn` — the readiness-race retry added for the
-//      3.2.0 basic/token silent-no-op regression (build 476 → 479). Grep
-//      across PalaceTests/ for `awaitReadyThenRetry` / `isAwaitingReadiness`
-//      returned zero hits before this file.
-//    - Token-request ERROR branches: `getBearerToken`'s failure arm is
-//      exercised in TPPSignInBusinessLogicOAuthTests, but nothing asserts
-//      which user-facing message the failure is classified into. The
-//      transient-vs-credential-rejection fork (HelpSpot 18046) was pinned
-//      only at the pure `userFacingSignInError` level, never through the
-//      token path that produces it.
-//    - `updateUserAccount`'s two side-effect gates: the
-//      current-library-only `bookRegistry.sync()` call and the in-flight
-//      state clear.
-//    - `isSignedIn()`'s three-way precedence and `selectedAuthentication`'s
-//      four-way resolution ladder.
-//
-//  Characterization discipline: every expectation here was READ OFF the
-//  current implementation, including behaviour that may be wrong. Suspected
-//  defects are flagged in comments marked `SUSPECT:` and reported separately
-//  rather than fixed here.
-//
-//  Hermetic: TPPRequestExecutorMock (no URLSession), TPPUserAccountMock (no
-//  keychain — see its "Variable redefinitions to avoid keychain" section),
-//  TokenRefresherMock (no network), a local counting registry spy. No
-//  `.shared` production singletons, no UserDefaults.
-//
+//  Hermetic: no URLSession, keychain, `.shared` singleton or UserDefaults.
 
 import XCTest
 import PalaceCatalog
@@ -702,8 +636,8 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
     // mock returns `tppAccount.uuid` from both `tppAccountUUID` and
     // `currentAccountId`, so the earlier form of this test asserted
     // `lastAccountId == businessLogic.libraryAccountID` where both sides were
-    // the same value and the mutant survived. The PP-4986 seam is exactly the
-    // one Wave 4 (iii) will move, so an unpinned cell here is expensive.
+    // the same value and the mutant survived. The PP-4986 seam is one the
+    // sign-in extraction will move, so an unpinned cell here is expensive.
     func test_getBearerToken_routesAccountIdToItsOwnLibrary() async {
         let other = businessLogicForOtherLibrary()
         await refreshFailing(with: httpError(401), on: other)
