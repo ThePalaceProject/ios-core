@@ -17,7 +17,7 @@
 # runner: the same retry scoping (no -test-repetition-relaunch-enabled; see
 # scripts/tests/test_xcode_test_retry_scoping.py), a parallel pass followed by
 # a serial pass for scripts/ci-isolated-serial-tests.txt, the same os_log
-# suppression (PP-5273), and the same per-test allowances. Two things differ:
+# suppression (PP-5273), and the same per-test allowances. These things differ:
 #
 #   * 2 parallel workers per shard, not 4. The 2026-09 hang census traced the
 #     allowance kills to memory pressure on the 3-CPU / 7 GB runner (compressor
@@ -26,6 +26,8 @@
 #     it no longer needs 4 of them. CI_TEST_WORKERS overrides.
 #   * One second chance for allowance kills (see second_chance below).
 #   * One relaunch for classes a test runner never ran (see relaunch below).
+#   * One retry of a pass that xcodebuild itself crashed with no test failure
+#     recorded (see run_pass below).
 #
 # prior-art-checked: xcode-test-optimized.sh builds and tests in one
 # `xcodebuild test`; it cannot run against prebuilt products or a class subset.
@@ -43,7 +45,8 @@ DIAG_PY="$HERE/ci-runner-diagnostics.py"
 mkdir -p "$OUT"
 rm -rf "$OUT/parallel.xcresult" "$OUT/serial.xcresult" "$OUT/rerun.xcresult" \
        "$OUT/relaunch-parallel.xcresult" "$OUT/relaunch-serial.xcresult" \
-       "$OUT/TestResults.xcresult" "$OUT/merged.xcresult" "$OUT/memory-samples.txt"
+       "$OUT/TestResults.xcresult" "$OUT/merged.xcresult" "$OUT/memory-samples.txt" \
+       "$OUT"/*-crash-retry.xcresult "$OUT"/*.log
 
 SIMULATOR_ID=$(python3 "$HERE/ci-resolve-simulator.py") || exit 1
 WORKERS="${CI_TEST_WORKERS:-2}"
@@ -120,24 +123,60 @@ if [ ${#PARALLEL_ARGS[@]} -eq 0 ] && [ ${#SERIAL_ARGS[@]} -eq 0 ]; then
     exit 1
 fi
 
-# $1 = bundle path, $2 = retry|once, rest = extra xcodebuild args. Echoes the
-# exit code; xcodebuild's own output goes to stderr so it still reaches the log.
-run_pass() {
-    local bundle="$1" mode="$2"; shift 2
-    local retry=()
-    if [ "$mode" = "retry" ]; then retry=(${RETRY_ITER_ARGS[@]+"${RETRY_ITER_ARGS[@]}"}); fi
+# $1 = bundle path, $2 = retry|once, rest = extra xcodebuild args. Sets
+# PASS_EXIT to xcodebuild's exit code.
+#
+# One retry for xcodebuild's own crash. On Xcode 26.3, XCTHarness sometimes
+# aborts mid-pass with "** INTERNAL ERROR: Uncaught exception **" /
+# "Unexpected operation <IDERunOperation ...>" and exit 134 (PRs #1562 and
+# #1565), leaving a result bundle with no Info.plist that nothing downstream
+# can read. When the log has that marker or exit 134 and no test-failure line,
+# the same pass (same classes, same flags) runs once more into a fresh bundle.
+# A crash after a test failed is not retried, because a retry could turn that
+# failure green; a second crash fails the shard.
+XCB_INTERNAL_ERROR='\*\* INTERNAL ERROR: Uncaught exception \*\*'
+XCB_TEST_FAILED="Test [Cc]ase '[^']+' failed"
+PASS_EXIT=0
+run_xcodebuild() {  # $1 = bundle, $2 = log, rest = xcodebuild args
+    local bundle="$1" log="$2"; shift 2
+    rm -rf "$bundle"
     set +e
     xcodebuild test-without-building \
         -xctestrun "$XCTESTRUN" \
         -destination "id=$SIMULATOR_ID" \
         -resultBundlePath "$bundle" \
         -enableCodeCoverage YES \
-        ${retry[@]+"${retry[@]}"} \
-        "${TIMEOUT_ARGS[@]}" \
-        "$@" >&2
-    local rc=$?
+        "$@" 2>&1 | tee "$log"
+    PASS_EXIT=${PIPESTATUS[0]}
     set -e
-    echo "$rc"
+}
+xcodebuild_crashed() {  # $1 = log; exit status of the pass in PASS_EXIT
+    [ "$PASS_EXIT" -ne 0 ] || return 1
+    [ "$PASS_EXIT" -eq 134 ] || grep -qE "$XCB_INTERNAL_ERROR" "$1"
+}
+run_pass() {
+    local bundle="$1" mode="$2"; shift 2
+    local retry=()
+    if [ "$mode" = "retry" ]; then retry=(${RETRY_ITER_ARGS[@]+"${RETRY_ITER_ARGS[@]}"}); fi
+    local args=(${retry[@]+"${retry[@]}"} "${TIMEOUT_ARGS[@]}" "$@")
+    local name; name="$(basename "$bundle" .xcresult)"
+    local log="$OUT/$name.log"
+    run_xcodebuild "$bundle" "$log" "${args[@]}"
+    xcodebuild_crashed "$log" || return 0
+    if grep -qE "$XCB_TEST_FAILED" "$log"; then
+        echo "::error title=xcodebuild crashed after a test failed::shard $SHARD, $name pass: xcodebuild exited $PASS_EXIT after recording a test failure. Not retrying, because a retry could hide that failure."
+        exit 1
+    fi
+    echo "::warning title=xcodebuild crashed; retrying the pass once::shard $SHARD, $name pass: xcodebuild exited $PASS_EXIT with no test failure recorded (exit 134 or '** INTERNAL ERROR: Uncaught exception **', an XCTHarness crash). Its result bundle is unreadable, so the same classes run once more into a fresh bundle."
+    local fresh="$OUT/$name-crash-retry.xcresult"
+    rm -rf "$bundle"
+    run_xcodebuild "$fresh" "$OUT/$name-crash-retry.log" "${args[@]}"
+    if xcodebuild_crashed "$OUT/$name-crash-retry.log"; then
+        echo "::error title=xcodebuild crashed again::shard $SHARD, $name pass: the retry also crashed (exit $PASS_EXIT). Failing the shard."
+        exit 1
+    fi
+    if [ -d "$fresh" ]; then mv "$fresh" "$bundle"; fi
+    echo "Shard $SHARD, $name pass: the retry after the crash exited $PASS_EXIT"
 }
 
 merge_into_results() {  # bundles... -> $OUT/TestResults.xcresult
@@ -152,10 +191,11 @@ merge_into_results() {  # bundles... -> $OUT/TestResults.xcresult
 
 PARALLEL_EXIT=0
 if [ ${#PARALLEL_ARGS[@]} -gt 0 ]; then
-    PARALLEL_EXIT=$(run_pass "$OUT/parallel.xcresult" retry \
+    run_pass "$OUT/parallel.xcresult" retry \
         -parallel-testing-enabled YES \
         -maximum-parallel-testing-workers "$WORKERS" \
-        "${PARALLEL_ARGS[@]}")
+        "${PARALLEL_ARGS[@]}"
+    PARALLEL_EXIT=$PASS_EXIT
     echo "Parallel pass exit code: $PARALLEL_EXIT"
     [ -d "$OUT/parallel.xcresult" ] || { echo "🔴 ERROR: parallel pass wrote no result bundle"; exit 1; }
 fi
@@ -163,7 +203,8 @@ fi
 SERIAL_EXIT=0
 if [ ${#SERIAL_ARGS[@]} -gt 0 ]; then
     echo "🧵 Serial isolated pass: ${SERIAL_ARGS[*]}"
-    SERIAL_EXIT=$(run_pass "$OUT/serial.xcresult" retry -parallel-testing-enabled NO "${SERIAL_ARGS[@]}")
+    run_pass "$OUT/serial.xcresult" retry -parallel-testing-enabled NO "${SERIAL_ARGS[@]}"
+    SERIAL_EXIT=$PASS_EXIT
     echo "Serial pass exit code: $SERIAL_EXIT"
     [ -d "$OUT/serial.xcresult" ] || { echo "🔴 ERROR: serial pass wrote no result bundle"; exit 1; }
 fi
@@ -203,15 +244,17 @@ if [ "$LOST_COUNT" -gt 0 ]; then
     RELAUNCH_EXIT=0
     RELAUNCH_BUNDLES=()
     if [ ${#LOST_PARALLEL[@]} -gt 0 ]; then
-        e=$(run_pass "$OUT/relaunch-parallel.xcresult" retry \
+        run_pass "$OUT/relaunch-parallel.xcresult" retry \
             -parallel-testing-enabled YES \
             -maximum-parallel-testing-workers "$WORKERS" \
-            "${LOST_PARALLEL[@]}")
+            "${LOST_PARALLEL[@]}"
+        e=$PASS_EXIT
         if [ "$e" -ne 0 ]; then RELAUNCH_EXIT=$e; fi
         if [ -d "$OUT/relaunch-parallel.xcresult" ]; then RELAUNCH_BUNDLES+=("$OUT/relaunch-parallel.xcresult"); fi
     fi
     if [ ${#LOST_SERIAL[@]} -gt 0 ]; then
-        e=$(run_pass "$OUT/relaunch-serial.xcresult" retry -parallel-testing-enabled NO "${LOST_SERIAL[@]}")
+        run_pass "$OUT/relaunch-serial.xcresult" retry -parallel-testing-enabled NO "${LOST_SERIAL[@]}"
+        e=$PASS_EXIT
         if [ "$e" -ne 0 ]; then RELAUNCH_EXIT=$e; fi
         if [ -d "$OUT/relaunch-serial.xcresult" ]; then RELAUNCH_BUNDLES+=("$OUT/relaunch-serial.xcresult"); fi
     fi
@@ -247,7 +290,8 @@ if [ "$TEST_EXIT" -ne 0 ]; then
             IDS=()
             for a in "${KILL_ARGS[@]}"; do IDS+=("${a#-only-testing:}"); done
             echo "::warning title=Second chance for allowance kills::shard $SHARD: ${#IDS[@]} test(s) were killed at the execution-time allowance, which -retry-tests-on-failure does not retry. Re-running only those, once, in a fresh test process: ${IDS[*]}"
-            RERUN_EXIT=$(run_pass "$OUT/rerun.xcresult" once -parallel-testing-enabled NO "${KILL_ARGS[@]}")
+            run_pass "$OUT/rerun.xcresult" once -parallel-testing-enabled NO "${KILL_ARGS[@]}"
+            RERUN_EXIT=$PASS_EXIT
             echo "Second-chance pass exit code: $RERUN_EXIT"
             if [ -d "$OUT/rerun.xcresult" ]; then
                 xcrun xcresulttool get test-results tests --path "$OUT/rerun.xcresult" > "$OUT/rerun-tests.json"

@@ -6,10 +6,9 @@
 //  loans feed and deletes its content; side-loaded books never appear there, so
 //  `recordsToDelete.subtract(sideloadedIDsProvider())` is what keeps them.
 //
-//  Drives the full production `sync()` path (readiness gate, stubbed loans feed,
-//  reconciliation barrier, spy download center), plus a contrast case with an
-//  EMPTY exemption set that must evict the same book, proving the exemption is
-//  what saved it. Keychain-gated: sync() needs writable credentials to fetch.
+//  Drives production `sync()` with a contrast case (EMPTY exemption evicts the
+//  same book). Keychain-gated. The loans feed is in memory: a first URLProtocol
+//  load waits on CFNetwork starting a default-QoS thread, up to 17.6s under TSan.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -29,7 +28,38 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
   private var accountsManager: AccountsManager!
   private var spyContentService: SpyLocalContentService!
   private var downloadCenter: MyBooksDownloadCenter!
-  private var savedProtocolClasses: [AnyClass]!
+  private var feedFetcher: LoansFeedFetcher!
+
+  // MARK: - Loans feed fetcher
+
+  /// Serves the loans fixture from memory and records the URLs sync() asked
+  /// for, so a test can tell that sync() resolved the account's loans URL.
+  final class LoansFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _requestedURLs: [URL] = []
+    private let feedXML: String
+
+    init(feedXML: String) { self.feedXML = feedXML }
+
+    var requestedURLs: [URL] {
+      lock.lock(); defer { lock.unlock() }
+      return _requestedURLs
+    }
+
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
+      try await fetchFeed(from: url, resetCache: false)
+    }
+
+    func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
+      lock.withLock { _requestedURLs.append(url) }
+      guard let xml = TPPXML.xml(withData: Data(feedXML.utf8)),
+            let feed = TPPOPDSFeed(xml: xml) else {
+        throw NSError(domain: "LoansFeedFetcher", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "loans fixture did not parse"])
+      }
+      return feed
+    }
+  }
 
   // MARK: - Spy
 
@@ -50,21 +80,7 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
   override func setUpWithError() throws {
     try super.setUpWithError()
 
-    // Route the SHARED network executor (used by TPPOPDSFeed.withURL inside
-    // the loans fetch) through the HTTP stub so we control the loans feed.
-    savedProtocolClasses = AppContainer.testExecutorProtocolClasses
-    AppContainer.testExecutorProtocolClasses = [HTTPStubURLProtocol.self, NoNetworkURLProtocol.self]
-    AppContainer._rebuildCachedForTestProtocols()
-
-    HTTPStubURLProtocol.register { [loansURLString] request in
-      guard request.url?.absoluteString.contains("/loans") == true else { return nil }
-      return HTTPStubURLProtocol.StubbedResponse(
-        statusCode: 200,
-        headers: ["Content-Type": "application/atom+xml"],
-        body: Data(Self.loansFeedXML.utf8)
-      )
-    }
-
+    feedFetcher = LoansFeedFetcher(feedXML: Self.loansFeedXML)
     let appContainer = makeTestAppContainer()
     accountsManager = appContainer.accountsManager
     store = BookRegistryStore()
@@ -76,10 +92,7 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
   }
 
   override func tearDownWithError() throws {
-    HTTPStubURLProtocol.removeAllHandlers()
-    AppContainer.testExecutorProtocolClasses = savedProtocolClasses
-    AppContainer._rebuildCachedForTestProtocols()
-    savedProtocolClasses = nil
+    feedFetcher = nil
     downloadCenter = nil
     spyContentService = nil
     store = nil
@@ -179,7 +192,7 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
       store: store,
       accountsManager: accountsManager,
       downloadCenterProvider: { [downloadCenter] in downloadCenter! },
-      opdsFeedServiceProvider: { OPDSFeedService() },
+      opdsFeedServiceProvider: { [feedFetcher] in feedFetcher! },
       sideloadedIDsProvider: { sideloadedIDs }
     )
   }
@@ -194,6 +207,8 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
     )
     wait(for: [exp], timeout: 10.0)
     drainMainQueue()
+    XCTAssertEqual(feedFetcher.requestedURLs.map(\.absoluteString), [loansURLString],
+                   "sync() must fetch the loans URL from the account's auth document, once")
     XCTAssertEqual(received.last, .synced,
                    "sync() must reach reconciliation (.synced); got \(received)")
   }

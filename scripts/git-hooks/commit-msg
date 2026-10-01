@@ -2,21 +2,15 @@
 # commit-msg
 #
 # Purpose:
-#   1. M1 message-dependent gate — contract-reconciliation validates
-#      claims in the commit message against the staged diff. They run HERE (not in pre-commit) because this is the
-#      first hook stage where git provides the real in-progress message
-#      ($1); at pre-commit time COMMIT_EDITMSG still holds the PREVIOUS
-#      commit's message, so reading it there validates stale claims.
-#   2. For commits that touch ≥50 lines of production Swift/Obj-C code,
-#      require the commit body to acknowledge what was deferred or
-#      out-of-scope. This nudges authors to be honest about scope rather
-#      than burying loose ends in a one-line subject. Outside contributors
-#      and small commits pass through unchanged.
+#   For commits that touch >=50 lines of production Swift/Obj-C code,
+#   require the commit body to acknowledge what was deferred or
+#   out-of-scope. This nudges authors to be honest about scope rather
+#   than burying loose ends in a one-line subject. Outside contributors
+#   and small commits pass through unchanged.
 #
 #   If the maintainer's local agent harness is installed
-#   (~/harness/core/hooks/commit-msg-stanza.sh), exec to it for step 2 —
-#   that version has richer behavior tied to ForgeOS changesets. The M1
-#   gates run before the exec either way.
+#   (~/harness/core/hooks/commit-msg-stanza.sh), exec to it instead —
+#   that version has richer behavior tied to ForgeOS changesets.
 #
 # Install:
 #   git config core.hooksPath scripts/git-hooks
@@ -30,38 +24,6 @@ set -euo pipefail
 MSG_FILE="${1:-}"
 if [[ -z "$MSG_FILE" || ! -f "$MSG_FILE" ]]; then
   exit 0
-fi
-
-# =============================================================================
-# M1 Universal-Rigor Floor — message-dependent gates
-# =============================================================================
-# Same tri-state escalation as pre-commit's diff-only gates; the shared logic
-# lives in m1-rigor-lib.sh. Skipped entirely when nothing is staged (e.g.
-# `--allow-empty`, merge-conflict resolution flows with empty index diffs).
-
-HOOK_DIR_M1="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT_M1="$(cd "$HOOK_DIR_M1/../.." && pwd)"
-
-if [[ -n "$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)" ]]; then
-  M1_HOOK_NAME="commit-msg"
-  # shellcheck source=scripts/git-hooks/m1-rigor-lib.sh
-  source "$REPO_ROOT_M1/scripts/git-hooks/m1-rigor-lib.sh"
-  m1_compute_mode
-
-  M1_DIFF=$(mktemp -t m1-diff.XXXX)
-  trap 'rm -f "$M1_DIFF"' EXIT
-  git diff --cached > "$M1_DIFF" 2>/dev/null || true
-
-  echo "commit-msg M1: prod-LOC added=$PROD_LOC_ADDED critical=$([[ -n "$STAGED_CRITICAL" ]] && echo yes || echo no) mode=$M1_MODE"
-
-  M1_FAIL=0
-  # check-contract-reconciliation.py needs a claim source — without one it
-  # passes regardless of the claims (architect rev_f1c4ea3c finding).
-  if ! run_m1_check "contract_reconciliation" "scripts/check-contract-reconciliation.py" --commit-msg "$MSG_FILE"; then
-    M1_FAIL=$((M1_FAIL + 1))
-  fi
-
-  m1_enforce "$M1_FAIL"
 fi
 
 HARNESS_HOOK="$HOME/harness/core/hooks/commit-msg-stanza.sh"

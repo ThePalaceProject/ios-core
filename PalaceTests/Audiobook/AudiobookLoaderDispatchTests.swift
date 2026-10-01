@@ -6,6 +6,8 @@
 //  chain via `AudiobookLoader(adapters:)` and assert the order LCP > LocalFile
 //  > BearerToken > OpenAccess, with `.manifestFetchFailed` when none claims.
 //  `load(book:completion:)` is frozen; AudiobookSessionManager depends on it.
+//  Every loader here gets its own account through `makeLoader`, so the
+//  pre-chain token gate never reads the shared container (PP-5295).
 //  See also AudiobookLoaderOPDSShapeMatrixTests and AudiobookLoaderPredicateTests.
 //
 
@@ -68,6 +70,17 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         return TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
     }
 
+    /// Loader whose token gate reads `account` instead of the shared
+    /// container's current account (PP-5295). The default is a keychain-free
+    /// mock with no credentials, so the gate passes and the chain runs no
+    /// matter what an earlier test left on the shared account.
+    private func makeLoader(
+        _ adapters: [AudiobookVendorAdapter],
+        account: TPPUserAccount = TPPUserAccountMock()
+    ) -> AudiobookLoader {
+        AudiobookLoader(adapters: adapters, currentUserAccount: { account })
+    }
+
     /// Drive `load()` and capture the result. The dispatch is async — we
     /// fulfill the expectation when the loader's outer completion fires.
     /// `manifestStub` is intentionally not a real audiobook manifest, so a
@@ -90,6 +103,28 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         return captured
     }
 
+    // MARK: - Token gate reads the injected account (PP-5295)
+
+    /// An expired token with no token URL to refresh against fails the load
+    /// with `.missingCredentialsForTokenRefresh` before any adapter is asked.
+    func testLoad_injectedAccountExpiredWithoutTokenURL_failsBeforeAnyAdapter() {
+        let expired = TPPUserAccountMock()
+        expired.setAuthToken("stale", barcode: "b", pin: "p",
+                             expirationDate: Date(timeIntervalSinceNow: -3600))
+        let openAccess = SpyAdapter(label: "open", handles: true,
+                                    stubbedResult: .success((json: manifestStub, decryptor: nil)))
+        let loader = makeLoader([openAccess], account: expired)
+
+        let result = runLoad(loader: loader, book: makeBook())
+
+        guard case .failure(.missingCredentialsForTokenRefresh) = result else {
+            XCTFail("expected .missingCredentialsForTokenRefresh, got \(String(describing: result))")
+            return
+        }
+        XCTAssertEqual(openAccess.canHandleCallCount, 0,
+                       "The token gate fails before the adapter chain is consulted")
+    }
+
     // MARK: - Dispatch routing tests
 
 #if LCP
@@ -106,7 +141,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
                                      stubbedResult: .success((json: manifestStub, decryptor: nil)))
         let openAccess = SpyAdapter(label: "open", handles: true,
                                     stubbedResult: .success((json: manifestStub, decryptor: nil)))
-        let loader = AudiobookLoader(adapters: [lcp, localFile, bearerToken, openAccess])
+        let loader = makeLoader([lcp, localFile, bearerToken, openAccess])
 
         _ = runLoad(loader: loader, book: makeBook())
 
@@ -134,9 +169,9 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
 #if LCP
         let lcp = SpyAdapter(label: "lcp", handles: false,
                              stubbedResult: .failure(.lcpNotAvailable))
-        let loader = AudiobookLoader(adapters: [lcp, localFile, bearerToken, openAccess])
+        let loader = makeLoader([lcp, localFile, bearerToken, openAccess])
 #else
-        let loader = AudiobookLoader(adapters: [localFile, bearerToken, openAccess])
+        let loader = makeLoader([localFile, bearerToken, openAccess])
 #endif
 
         _ = runLoad(loader: loader, book: makeBook())
@@ -161,9 +196,9 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
 #if LCP
         let lcp = SpyAdapter(label: "lcp", handles: false,
                              stubbedResult: .failure(.lcpNotAvailable))
-        let loader = AudiobookLoader(adapters: [lcp, localFile, bearerToken, openAccess])
+        let loader = makeLoader([lcp, localFile, bearerToken, openAccess])
 #else
-        let loader = AudiobookLoader(adapters: [localFile, bearerToken, openAccess])
+        let loader = makeLoader([localFile, bearerToken, openAccess])
 #endif
 
         _ = runLoad(loader: loader, book: makeBook())
@@ -190,9 +225,9 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
 #if LCP
         let lcp = SpyAdapter(label: "lcp", handles: false,
                              stubbedResult: .failure(.lcpNotAvailable))
-        let loader = AudiobookLoader(adapters: [lcp, localFile, bearerToken, openAccess])
+        let loader = makeLoader([lcp, localFile, bearerToken, openAccess])
 #else
-        let loader = AudiobookLoader(adapters: [localFile, bearerToken, openAccess])
+        let loader = makeLoader([localFile, bearerToken, openAccess])
 #endif
 
         _ = runLoad(loader: loader, book: makeBook())
@@ -221,7 +256,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
                                      stubbedResult: .success((json: manifestStub, decryptor: nil)))
         let openAccess = SpyAdapter(label: "open", handles: true,
                                     stubbedResult: .success((json: manifestStub, decryptor: nil)))
-        let loader = AudiobookLoader(adapters: [lcp, localFile, bearerToken, openAccess])
+        let loader = makeLoader([lcp, localFile, bearerToken, openAccess])
 
         _ = runLoad(loader: loader, book: makeBook())
 
@@ -246,7 +281,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
                                    stubbedResult: .failure(.manifestParseFailed))
         let openAccess = SpyAdapter(label: "open", handles: false,
                                     stubbedResult: .failure(.manifestFetchFailed))
-        let loader = AudiobookLoader(adapters: [localFile, openAccess])
+        let loader = makeLoader([localFile, openAccess])
 
         let result = runLoad(loader: loader, book: makeBook())
 
@@ -272,7 +307,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     func testLoad_cancelDuringDispatch_surfacesCancelled() {
         let openAccess = SpyAdapter(label: "open", handles: true,
                                     stubbedResult: .success((json: manifestStub, decryptor: nil)))
-        let loader = AudiobookLoader(adapters: [openAccess])
+        let loader = makeLoader([openAccess])
 
         let exp = expectation(description: "load completes")
         exp.assertForOverFulfill = false

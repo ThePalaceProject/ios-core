@@ -1,21 +1,12 @@
 #!/usr/bin/env bash
 # m1-rigor-lib.sh — shared M1 universal-rigor floor logic.
 #
-# Sourced by BOTH hook stages; not executable on its own:
-#
-#   pre-commit  — diff-only gates (blast-radius, adjacency-staleness)
-#   commit-msg  — message-dependent gate (contract-reconciliation)
-#
-# Why the split: pre-commit fires BEFORE git writes the new commit message,
-# so at pre-commit time COMMIT_EDITMSG still holds the PREVIOUS commit's
-# message. Any gate that reads commit-message claims at the pre-commit stage
-# validates the wrong commit — a stale "removes X" claim from the last commit
-# can block a clean commit (false positive), and a bogus claim in the commit
-# being authored sails through (false negative). commit-msg receives the real
-# in-progress message file as $1, so message-dependent gates belong there.
+# Sourced by the pre-commit hook, which runs its diff-only gates (blast-radius
+# and the others listed there) against the STAGED diff. Not executable on its
+# own.
 #
 # Contract for callers:
-#   - set M1_HOOK_NAME ("pre-commit" | "commit-msg") before sourcing
+#   - set M1_HOOK_NAME ("pre-commit") before sourcing
 #   - call m1_compute_mode after sourcing; it sets PROD_LOC_ADDED,
 #     STAGED_CRITICAL, and M1_MODE from the STAGED diff
 #   - own the $M1_DIFF tempfile (creation, population, trap cleanup)

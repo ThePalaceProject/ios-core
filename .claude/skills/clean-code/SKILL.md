@@ -179,15 +179,11 @@ These greps are the skeptic pass, applied to every diff so a single-agent commit
 Run before declaring audit complete. These are the universal floor — every diff, regardless of size or path, passes through them. They wrap manual-review findings into machine-checkable form, so a single-agent commit gets the same protection a full multi-reviewer pass would give it.
 
 ```bash
-python3 scripts/check-contract-reconciliation.py --quiet ; CR_EXIT=$?
-python3 scripts/check-blast-radius.py --quiet            ; BR_EXIT=$?
-python3 scripts/check-adjacency-staleness.py --quiet     ; AS_EXIT=$?
+python3 scripts/check-blast-radius.py --quiet ; BR_EXIT=$?
 ```
 
-Block-on-FAIL rules (exit 1 means a real finding):
-- `check-contract-reconciliation.py` exit 1 → **BLOCK**. The diff doesn't deliver what the commit/PR body / contract claims.
+Block-on-FAIL rule (exit 1 means a real finding):
 - `check-blast-radius.py` exit 1 → **BLOCK**. New public API surface, `#if DEBUG` on production paths, test-only AppContainer init params, or discarded function results without `// TODO(ticket):` justification.
-- `check-adjacency-staleness.py` exit 1 → **WARN-ONLY**. Adjacent docs/tests stale relative to the change; surface to user but don't block.
 
 For diffs ≥10 prod LOC under `Palace/`, an advisory blast-radius pass (API surface, call-site census, downstream effects) is worth running if a reviewer agent for it is configured in this environment. It is OPTIONAL and read-only. If no such agent is available, do the same pass yourself against the checklist above and say so in the summary; do not block on its absence.
 

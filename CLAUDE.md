@@ -159,7 +159,7 @@ python3 scripts/palace_mutate.py --file Palace/Path/ChangedFile.swift --tests Pa
 - A kill rate is not coverage. Also ask which reachable (state, event) pairs have no test.
 - **State machines:** when a state enum is mutated by more than one method, write the states × events table and assert every cell. When a fix adds a state dimension, say what it does to every existing cell.
 - **Shared helpers:** a behavior change needs a census of every caller and what each now does differently.
-- The audiobook toolkit cannot build standalone. Mutate it with `--repo-root`, `--project PalaceAudiobookToolkit.xcodeproj`, `--scheme PalaceAudiobookToolkit`, and `PALACE_MUTATE_DERIVED_DATA_PATH` pointing at a DerivedData that already built `PalaceUIKit`; otherwise every mutant errors.
+- Mutate the audiobook toolkit with `--repo-root <toolkit checkout>`, `--project PalaceAudiobookToolkit.xcodeproj` and `--scheme PalaceAudiobookToolkit`. It builds from its own checkout (PalaceUIKit was vendored into it, PP-4953); its one outside input is `AudioEngine.xcframework` in `../Carthage/Build` relative to that checkout, which `scripts/fetch-audioengine.sh` fills when run from this repo's root. Without it every mutant errors.
 
 ### Contract-snapshot tests
 
