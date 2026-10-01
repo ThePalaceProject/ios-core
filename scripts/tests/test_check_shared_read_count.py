@@ -147,3 +147,41 @@ def test_live_repo_baseline_passes():
     """Checked-in baseline must PASS against today's Palace/ tree."""
     r = subprocess.run(["bash", str(_SCRIPT)], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_live_baseline_has_zero_slack():
+    """The checked-in baseline must EQUAL today's measured count, not merely bound it.
+
+    `test_live_repo_baseline_passes` above asserts exit 0, which the gate also
+    returns when the tree is BELOW baseline. The gate prints "Ratchet baseline
+    down to N" in that case and the advisory feeds nothing — it does not touch
+    the exit code, so accumulated slack is invisible to the whole suite. A
+    ratchet with slack is not a ratchet: reads removed by one wave silently
+    fund reads added by the next, and the baseline stops describing the tree.
+
+    Asserting the advisory empty also closes the direction that actually bit.
+    On 2026-09 commit a0968e652 raised this baseline 164 -> 167 in the same
+    commit as the code needing it — the one edit to the file carrying no
+    rationale line — after the gate failed and told the author to inject the
+    dependency via an AppContainer seam instead. With this arm, a raise above
+    the measured count fails here even though the gate itself still exits 0.
+
+    It does NOT close the two-sided edit where new reads are added and the
+    baseline is raised to exactly match: the tree then measures its new
+    baseline, no slack, `==` satisfied. Nothing inside the tree can catch that,
+    because every in-tree record of the old value is editable in the same
+    commit. Closing it needs the baseline compared against the BASE branch's
+    committed copy, which the PR cannot rewrite. Not done here — it turns on
+    origin/develop being reliably fetched in CI and locally, and a ratchet that
+    silently skips when the ref is missing is worse than none. Same survivor,
+    and for the same reason, as the one named in
+    test_check_file_size_ceiling.py::test_live_allowlist_has_zero_slack.
+    """
+    r = subprocess.run(["bash", str(_SCRIPT)], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    slack = [ln.strip() for ln in r.stdout.splitlines() if "Ratchet baseline down to" in ln]
+    assert not slack, (
+        "`.shared` reads are below the checked-in baseline. Lower the integer in "
+        "scripts/godclass-shared-read-baseline.txt to the measured count and add a "
+        "rationale line saying which change removed them:\n  " + "\n  ".join(slack)
+    )
