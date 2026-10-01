@@ -1,0 +1,21 @@
+# Test classes the ThreadSanitizer CI job runs (.github/workflows/tsan.yml).
+# Resolved by `python3 scripts/tsan-lane.py suites`.
+#
+#   glob:  <pattern>   every XCTestCase subclass declared in a matching file
+#   class: <Name>      one class, named explicitly
+#
+# Globs are relative to the repo root; `**` crosses directories. A glob that
+# matches no file, or a class that no PalaceTests file declares, is an error:
+# -only-testing ignores a name that matches nothing, so a renamed suite would
+# otherwise drop out of the job without a sign.
+
+glob: PalaceTests/**/*Concurrency*Tests.swift
+glob: PalaceTests/**/*Race*Tests.swift
+glob: PalaceTests/**/*Reentrancy*Tests.swift
+glob: PalaceTests/**/*PoolStarvation*Tests.swift
+glob: PalaceTests/**/*Cancellation*Tests.swift
+glob: PalaceTests/**/*BookRegistrySync*Tests.swift
+
+# Concurrency suites whose file names the globs do not match.
+class: AudiobookFirstOpenHangTests
+class: MyBooksDownloadCenterAccountIdThreadingTests

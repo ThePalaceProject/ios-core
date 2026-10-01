@@ -1,0 +1,183 @@
+name: Thread Sanitizer
+
+# Runs the concurrency suites under ThreadSanitizer. The suites are listed in
+# scripts/tsan-suites.txt (globs plus an allowlist) and resolved by
+# scripts/tsan-lane.py, whose logic and this file's wiring are pinned by
+# scripts/tests/test_tsan_lane.py.
+#
+# The job fails when any of these is true:
+#   * the build or a test fails (xcodebuild's own exit status);
+#   * the log holds a ThreadSanitizer report. TSan reports a race and lets the
+#     test continue, so a race in a passing test does not change the exit
+#     status; the log scan is what catches it;
+#   * a selected suite is missing from the result bundle. -only-testing
+#     ignores a name that matches nothing.
+on:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+concurrency:
+  group: tsan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tsan:
+    runs-on: macos-26
+    # A TSan build does not share products with the plain Debug build, so this
+    # is a full build plus a 5-15x slower test run.
+    timeout-minutes: 120
+    steps:
+      - name: Set up Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26'
+
+      - name: Verify Xcode Version
+        run: xcodebuild -version
+
+      - name: Checkout main repo and submodules
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Resolve suites
+        id: suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tsan-lane.py suites > "$RUNNER_TEMP/tsan-suites.txt"
+          echo "TSan suites ($(wc -l < "$RUNNER_TEMP/tsan-suites.txt" | tr -d ' ')):"
+          cat "$RUNNER_TEMP/tsan-suites.txt"
+
+      - name: Cache Swift packages
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build
+            SourcePackages
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Cache TSan DerivedData
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/tsan-derived-data
+          key: ${{ runner.os }}-tsan-deriveddata-${{ github.head_ref || github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-tsan-deriveddata-${{ github.head_ref || github.ref_name }}
+            ${{ runner.os }}-tsan-deriveddata-develop
+            ${{ runner.os }}-tsan-deriveddata-
+
+      - name: Checkout Certificates
+        uses: actions/checkout@v7
+        with:
+          repository: ThePalaceProject/mobile-certificates
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          path: ./mobile-certificates
+
+      - name: Checkout Adobe RMSDK
+        uses: ./.github/actions/checkout-adobe
+        with:
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Setup repo with DRM
+        run: ./scripts/setup-repo-drm.sh
+        env:
+          BUILD_CONTEXT: ci
+
+      - name: Build non-Carthage 3rd party dependencies
+        run: ./scripts/build-3rd-party-dependencies.sh
+        env:
+          BUILD_CONTEXT: ci
+
+      - name: Run concurrency suites under ThreadSanitizer
+        id: tsan
+        timeout-minutes: 90
+        shell: bash
+        env:
+          BUILD_CONTEXT: ci
+          # Enables the load-sensitive variants that are skipped in the main
+          # test job (see AccountRegistryStorePoolStarvationTests). xcodebuild
+          # forwards only TEST_RUNNER_-prefixed variables to the test process.
+          TEST_RUNNER_PALACE_STRESS_POOL: '1'
+          # Replaces the TSAN_OPTIONS xcodebuild sets, keeping its values except
+          # halt_on_error. With halt_on_error=1 a race aborts the test host from
+          # inside TSan's report path, and the host hangs there instead of
+          # exiting (measured locally: 30+ minutes, past the test allowance).
+          # With 0 the run completes, every race is logged, and the log check
+          # below fails the job.
+          TEST_RUNNER_TSAN_OPTIONS: 'ignore_interceptors_accesses=1:color=never:halt_on_error=0'
+          # Same as scripts/xcode-test-optimized.sh (PP-5273): os_log mirrors
+          # to a blocking stderr pipe that can stall the test host. TSan writes
+          # its reports to stderr directly, so they are unaffected.
+          TEST_RUNNER_OS_ACTIVITY_MODE: disable
+          SIMCTL_CHILD_CI: 'true'
+          SIMCTL_CHILD_GITHUB_ACTIONS: 'true'
+          SIMCTL_CHILD_BUILD_CONTEXT: ci
+        run: |
+          set -uo pipefail
+          SUITES=()
+          ONLY_ARGS=()
+          while IFS= read -r c; do
+            SUITES+=("$c")
+            ONLY_ARGS+=("-only-testing:PalaceTests/$c")
+          done < "$RUNNER_TEMP/tsan-suites.txt"
+          [ ${#ONLY_ARGS[@]} -gt 0 ] || { echo "::error::no suites resolved"; exit 1; }
+
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
+            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
+          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+
+          RESULT="$RUNNER_TEMP/TestResults-tsan.xcresult"
+          LOG="$RUNNER_TEMP/tsan.log"
+          rm -rf "$RESULT"
+          xcodebuild test \
+            -project Palace.xcodeproj \
+            -scheme Palace \
+            -destination "id=$SIMULATOR_ID" \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/tsan-derived-data" \
+            -resultBundlePath "$RESULT" \
+            -enableThreadSanitizer YES \
+            "${ONLY_ARGS[@]}" \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 300 \
+            -maximum-test-execution-time-allowance 600 \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            ONLY_ACTIVE_ARCH=YES > "$LOG" 2>&1
+          XCB_EXIT=$?
+          grep -E "^Test Suite|Executed|\*\* TEST|error:|ThreadSanitizer" "$LOG" | tail -200 || true
+
+          FAILED=0
+          python3 scripts/tsan-lane.py check-log "$LOG" || FAILED=1
+          if [ -d "$RESULT" ]; then
+            xcrun xcresulttool get test-results tests --path "$RESULT" > "$RUNNER_TEMP/tsan-tests.json"
+            python3 scripts/tsan-lane.py check-ran "$RUNNER_TEMP/tsan-tests.json" "${SUITES[@]}" || FAILED=1
+          else
+            echo "::error::the run produced no result bundle"
+            FAILED=1
+          fi
+          if [ "$XCB_EXIT" -ne 0 ]; then
+            echo "::error::xcodebuild exited $XCB_EXIT"
+            FAILED=1
+          fi
+          exit $FAILED
+
+      - name: Upload TSan log and results
+        if: ${{ failure() && steps.tsan.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tsan-results
+          path: |
+            ${{ runner.temp }}/tsan.log
+            ${{ runner.temp }}/TestResults-tsan.xcresult
+          retention-days: 7
