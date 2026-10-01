@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import PalaceKeychain
 @testable import Palace
 
 @MainActor
@@ -43,20 +44,9 @@ final class TPPUserAccountConcurrencyTests: XCTestCase {
     )
   }
 
-  /// The first touch of an account's keychain storage can come from several
-  /// threads at once: `TPPNetworkExecutor.executeRequest` reads
-  /// `authDefinition` and `credentials` from whichever thread issued the
-  /// request, and a fresh instance (the no-account placeholder on first
-  /// launch, or a library just added) has never been touched. Every thread
-  /// must end up sharing ONE keychain variable per key.
-  ///
-  /// When two threads each build a variable for the same key and the later
-  /// store wins, a write made through the discarded variable is invisible to
-  /// the survivor's cache, so the account reads back no credentials although
-  /// the keychain holds them. ThreadSanitizer reports the unsynchronized first
-  /// access itself (CI run 36934646693: `_authDefinition.getter`), which is
-  /// why this class is in the TSan lane; the assertion below catches the lost
-  /// write when the interleaving lands without TSan.
+  /// A new account's first touch can come from several threads at once, as in
+  /// `TPPNetworkExecutor.executeRequest`. Runs in the ThreadSanitizer lane,
+  /// which reported lazily built keychain variables racing here (CI run 36934646693).
   func testFirstTouchFromConcurrentThreads_writeIsVisibleToEveryLaterRead() {
     let accountCount = 100
     let threadsPerAccount = 8
@@ -102,5 +92,21 @@ final class TPPUserAccountConcurrencyTests: XCTestCase {
 
     XCTAssertEqual(reader.authToken, "second",
                    "after invalidation the account must re-read the keychain")
+  }
+
+  /// Keychain keys are a persistence contract: an updated app must find what an
+  /// earlier build stored. Keys carry the library UUID, except for NYPL's.
+  func testKeychainKeys_carryLibraryUUID_exceptForNYPL() {
+    let libraryUUID = "test-uuid-\(UUID().uuidString)"
+    let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: libraryUUID)
+    account.setDeviceID("device-library")
+    XCTAssertEqual(TPPKeychain.shared.object(forKey: "TPPAccountDeviceIDKey_\(libraryUUID)") as? String,
+                   "device-library")
+
+    // The factory's teardown `removeAll()` clears these keys again.
+    let nyplKey = "TPPAccountDeviceIDKey"
+    let nypl: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: AccountsManager.TPPAccountUUIDs[0])
+    nypl.setDeviceID("device-nypl")
+    XCTAssertEqual(TPPKeychain.shared.object(forKey: nyplKey) as? String, "device-nypl")
   }
 }
