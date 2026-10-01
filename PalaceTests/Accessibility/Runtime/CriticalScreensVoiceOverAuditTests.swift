@@ -2,29 +2,12 @@
 //  CriticalScreensVoiceOverAuditTests.swift
 //  PalaceTests
 //
-//  Runtime VoiceOver audit of the four critical screens: a catalog lane, book
-//  detail, the EPUB reader chrome, and the audiobook player (full and mini).
-//
-//  Each test mounts the real screen in a real window against fixture books
-//  and spy services, walks the accessibility tree the way VoiceOver does
-//  (`AccessibilityTraversalAudit`), and asserts three things:
-//
-//    1. reachability — every control the screen is expected to offer appears
-//       in the traversal as an actionable element;
-//    2. labels — every actionable element has a non-empty label and a
-//       focusable frame;
-//    3. activation — a VoiceOver double-tap on each one reaches its handler,
-//       proven by a witness (a spy counter, a navigation pop, a presented
-//       sheet) rather than by the activation call's return value alone.
-//
-//  Escapes this is shaped after: a double-tap that did not activate, and a
-//  narrator label that went missing. Both pass unit-level label assertions
-//  while failing a VoiceOver user.
-//
-//  Not covered here (see the report in the PR): the EPUB page content inside
-//  the WKWebView, swipe order, rotors, and anything behind sign-in.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  VoiceOver audit of the catalog lane, book detail, EPUB reader chrome and
+//  audiobook player: every expected control is reachable, labelled, and a
+//  double-tap reaches its handler, proven by a witness rather than the
+//  activation call's return value. Shaped after #819 (double-tap that did
+//  nothing) and #811 (missing narrator label). Not covered: WKWebView page
+//  content, swipe order, rotors, anything behind sign-in.
 //
 
 import XCTest

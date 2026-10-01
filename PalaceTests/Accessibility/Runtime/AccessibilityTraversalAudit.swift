@@ -2,38 +2,11 @@
 //  AccessibilityTraversalAudit.swift
 //  PalaceTests
 //
-//  Runtime accessibility audit for a live view hierarchy. Hosts nothing by
-//  itself: a test mounts a real screen in a real `UIWindow` (see
-//  `AccessibilityAuditHost`), and this type walks the accessibility tree the
-//  way VoiceOver does, then activates every actionable element the way a
-//  VoiceOver double-tap does.
-//
-//  Why in-process rather than XCUITest: the unit-test bundle runs inside the
-//  Palace app process, so screens can be mounted with fixture models and spy
-//  services (no network, no library credentials, no sign-in), and CI already
-//  runs this bundle. SwiftUI materialises its accessibility nodes for a hosted
-//  view in this process (verified on the iOS 26 simulator), so the tree read
-//  here is the tree UIKit's accessibility runtime hands to VoiceOver.
-//
-//  What "VoiceOver-like" means here:
-//    - traversal: an element with `isAccessibilityElement == true` is a leaf;
-//      otherwise its `accessibilityElements` (or the indexed container API),
-//      and otherwise its subviews. Hidden views, zero-alpha views and subtrees
-//      with `accessibilityElementsHidden` are skipped. When a sibling sets
-//      `accessibilityViewIsModal`, only that sibling is traversed.
-//    - activation: VoiceOver's double-tap first calls `accessibilityActivate()`.
-//      When that returns `false`, VoiceOver taps the element's
-//      `accessibilityActivationPoint`. The audit models the tap by hit-testing
-//      the window at that point and sending `.touchUpInside` to the control
-//      the hit lands in — but only when that control belongs to the element.
-//      A hit that lands in a different control, or in nothing, is a failure:
-//      that is the "double-tap does nothing" shape.
-//
-//  What it does not model: the ordering heuristics VoiceOver applies to
-//  swipe navigation, rotors, focus movement, and anything drawn inside a
-//  WKWebView (the EPUB page content). Those remain simdrive/manual territory.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Walks a live view hierarchy's accessibility tree the way VoiceOver does and
+//  activates every actionable element the way a double-tap does: first
+//  `accessibilityActivate()`, then a hit-test at the activation point that must
+//  land in the element's own control. Runs in-process so screens use fixtures
+//  and spies. Not modelled: swipe order, rotors, focus, WKWebView page content.
 //
 
 import UIKit
