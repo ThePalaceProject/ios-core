@@ -23,7 +23,7 @@ env:
   # How many matrix jobs run the tests. Chosen from measured cost and wall
   # clock; see the PR that introduced sharding for the N=2/3/4 comparison.
   # The plan, the matrix and the gate all read this one number.
-  UNIT_TEST_SHARDS: 3
+  UNIT_TEST_SHARDS: 2
 
 jobs:
 
