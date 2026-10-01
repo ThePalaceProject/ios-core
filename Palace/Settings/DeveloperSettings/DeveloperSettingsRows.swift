@@ -204,7 +204,7 @@ struct DevRegistryDebuggingRow: View {
                         .minimumScaleFactor(0.5)
                 }
                 VStack(spacing: 0) {
-                    TextField("host, or full https:// URL", text: $input)
+                    TextField("Library registry", text: $input, prompt: Text("host, or full https:// URL"))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
                         .frame(minWidth: 120)

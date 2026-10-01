@@ -120,7 +120,10 @@ jobs:
           SIMCTL_CHILD_GITHUB_ACTIONS: 'true'
           SIMCTL_CHILD_BUILD_CONTEXT: ci
         run: |
-          set -uo pipefail
+          # `shell: bash` runs as `bash -e -o pipefail`. Turn errexit off so a
+          # failing xcodebuild still reaches the log scan, the suite check and
+          # the exit-status message below; the step's result comes from FAILED.
+          set +e -uo pipefail
           SUITES=()
           ONLY_ARGS=()
           while IFS= read -r c; do

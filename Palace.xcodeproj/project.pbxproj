@@ -329,6 +329,7 @@
 		2836D78E5B36EE1E4454FF73 /* AccountsManagerOwnerRef.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B20F0E3180C575377ECB40E /* AccountsManagerOwnerRef.swift */; };
 		2852B3BF49CF7C61548AD428 /* ErrorLogging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 821943DED462B52FCCF8555A /* ErrorLogging.swift */; };
 		2884699FF9E46A68BEACB258 /* AppRatingServiceOverrideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703200C275C44EC99D42144B /* AppRatingServiceOverrideTests.swift */; };
+		289312F561CE054F5FB0D354 /* CarPlayTemplateNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E55B9CD7590DDA681123E7 /* CarPlayTemplateNavigator.swift */; };
 		28C3A73CCDA85DD1F28457ED /* AccountsManager+TPPCurrentLibraryAccountProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8673802153960A8CA7EAE753 /* AccountsManager+TPPCurrentLibraryAccountProviding.swift */; };
 		28E3A953BE971D4599DF4015 /* AccountsManagerLaunchSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D95C7D4851A9F69D7295499 /* AccountsManagerLaunchSnapshotTests.swift */; };
 		28E3C3E2BA711555366DA228 /* BackgroundReconciliationContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC1DC02848D158E774C79F0A /* BackgroundReconciliationContractTests.swift */; };
@@ -1371,6 +1372,7 @@
 		D19CE930C954410A845200318 /* RDServicesStubs.m in Sources */ = {isa = PBXBuildFile; fileRef = 75305888F6A941DDA9EEE592 /* RDServicesStubs.m */; };
 		D1A2B3C4E5F6071800000002 /* MyBooksDownloadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C4E5F6071800000001 /* MyBooksDownloadQueue.swift */; };
 		D1A2B3C4E5F6071800000003 /* MyBooksDownloadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C4E5F6071800000001 /* MyBooksDownloadQueue.swift */; };
+		D1B2A796BCFDED01FA05CD1A /* CarPlayTemplateCompletionLintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 616D237B8B4DB3257AA11038 /* CarPlayTemplateCompletionLintTests.swift */; };
 		D20C7AC21C7E40368F44EC00 /* SignInModalSAMLOIDCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9308AC13830467FB0C7F3F7 /* SignInModalSAMLOIDCTests.swift */; };
 		D2307088F7248473A8F3C712 /* ChapterScrubberModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF8934E72C8D342C58B2984 /* ChapterScrubberModel.swift */; };
 		D2435465A1B2C3D4E5F60718 /* OverdriveDownloadHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3465465A1B2C3D4E5F60829 /* OverdriveDownloadHandler.swift */; };
@@ -1921,6 +1923,7 @@
 		E861F14A001F228C7E96F790 /* KeyboardVoiceOverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71C8FF18A443133C015DA8 /* KeyboardVoiceOverTests.swift */; };
 		E883A9AFB563DC24E8D14FE7 /* TPPDRMAuthorizingMockTimeoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A15614542FBD2EF5F52E9D /* TPPDRMAuthorizingMockTimeoutTests.swift */; };
 		E8944692AB2F4E38D06AA65D /* FirstRunFlowStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 243C7D164AC43169AED924A2 /* FirstRunFlowStep.swift */; };
+		E8CBE19A0E49D3DD81B96A76 /* TPPSignInFlowCharacterizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD35C80E936FC28DE7C9FA71 /* TPPSignInFlowCharacterizationTests.swift */; };
 		E8F4F608916F148D95AA5187 /* AppTabSelectionBindingLintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 770553F23A591DE687F5BB0E /* AppTabSelectionBindingLintTests.swift */; };
 		E91B4ADED23243A6914C3DEA /* PDFExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80EA8E55783D47B7A773164F /* PDFExtensionsTests.swift */; };
 		E923603E530E5424A0CC311E /* MockBackgroundDownloadDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79DE74A085DC8D24F0CC2348 /* MockBackgroundDownloadDelegate.swift */; };
@@ -1983,6 +1986,7 @@
 		F3D0B1820DA683D0A25A3D50 /* DownloadTransferRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645A5614EC730C72D2EAA1B1 /* DownloadTransferRetryTests.swift */; };
 		F44DED83ED7B4324B4C605D6 /* CarPlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2634B33D2AE74BF5948971BA /* CarPlayTests.swift */; };
 		F4565465A1B2C3D4E5F6071A /* OverdriveDownloadHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3465465A1B2C3D4E5F60829 /* OverdriveDownloadHandler.swift */; };
+		F47092822CD45C9D469DF925 /* CarPlayTemplateNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E55B9CD7590DDA681123E7 /* CarPlayTemplateNavigator.swift */; };
 		F4CD3922F3950DEEFCDBFEAA /* BookFileManagerAccountScopingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B0842274F19EF54B4FC5686 /* BookFileManagerAccountScopingTests.swift */; };
 		F516D06B9979F4625E8BD312 /* PalacePDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 060B04F768844865F55ED1A1 /* PalacePDFView.swift */; };
 		F54239DDA912F713D8B6695D /* PalaceAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -2496,6 +2500,7 @@
 		235EA7E92C25400C81AC469D /* AdvancedSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedSettingsView.swift; sourceTree = "<group>"; };
 		239DE8E32B9D206786CE8E13 /* BookmarkBusinessLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookmarkBusinessLogicTests.swift; sourceTree = "<group>"; };
 		23D80DA377151AE41BEF67F7 /* PerformanceReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceReport.swift; sourceTree = "<group>"; };
+		23E55B9CD7590DDA681123E7 /* CarPlayTemplateNavigator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CarPlayTemplateNavigator.swift; sourceTree = "<group>"; };
 		23EE1204A0914891AF2B954A /* AccountDetailView+Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AccountDetailView+Constants.swift"; sourceTree = "<group>"; };
 		243C7D164AC43169AED924A2 /* FirstRunFlowStep.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FirstRunFlowStep.swift; sourceTree = "<group>"; };
 		2503724327198C2971FEA98D /* ChapterScrubberReadoutTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ChapterScrubberReadoutTests.swift; sourceTree = "<group>"; };
@@ -2710,6 +2715,7 @@
 		60385D9D3FD8ED6E19C7608D /* AppContainer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		60FB7A3D7F1E7AEABAA4A45E /* Reader2BookmarkContractTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Reader2BookmarkContractTests.swift; sourceTree = "<group>"; };
 		61585F7AD2A0D6CDAF2EF098 /* PerformanceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceMonitor.swift; sourceTree = "<group>"; };
+		616D237B8B4DB3257AA11038 /* CarPlayTemplateCompletionLintTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CarPlayTemplateCompletionLintTests.swift; sourceTree = "<group>"; };
 		62109F72FDCCBBEAB6766F0D /* TPPNetworkResponderRetryBufferTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPNetworkResponderRetryBufferTests.swift; sourceTree = "<group>"; };
 		6211117BB49A585DF3837932 /* TPPReaderSectionResolverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPReaderSectionResolverTests.swift; sourceTree = "<group>"; };
 		6264EE86B60659F794A006A0 /* AudiobookVendorAdapterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookVendorAdapterTests.swift; sourceTree = "<group>"; };
@@ -3194,6 +3200,7 @@
 		BCBB89B94951DC9D48B72BA9 /* AudiobookPositionTraceReportTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookPositionTraceReportTests.swift; sourceTree = "<group>"; };
 		BCEAFA525379AFA3FE0553DE /* PDFKitThumbnailProviderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PDFKitThumbnailProviderTests.swift; sourceTree = "<group>"; };
 		BCF823FA44324FF95C558932 /* AppLaunchTrackerWiringTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLaunchTrackerWiringTests.swift; sourceTree = "<group>"; };
+		BD35C80E936FC28DE7C9FA71 /* TPPSignInFlowCharacterizationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPSignInFlowCharacterizationTests.swift; sourceTree = "<group>"; };
 		BD8A6CD8712B3CCDDF937A39 /* LibrariesSectionViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LibrariesSectionViewModel.swift; sourceTree = "<group>"; };
 		BDDA22B0012345CAFEBABE02 /* BookDetailMetadataHydrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailMetadataHydrationTests.swift; sourceTree = "<group>"; };
 		BE020244923A658A8CB9EE39 /* AuthFlowSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowSecurityTests.swift; sourceTree = "<group>"; };
@@ -4265,6 +4272,7 @@
 				4A205AE4E64F493223CDC87E /* LibraryIconInertLintTests.swift */,
 				0C7343F7F5D76FC021B30F14 /* AccountProfileGateLintTests.swift */,
 				B2D9C3E8809CCAB846971242 /* OIDCReauthWiringLintTests.swift */,
+				616D237B8B4DB3257AA11038 /* CarPlayTemplateCompletionLintTests.swift */,
 			);
 			name = MetaTests;
 			path = MetaTests;
@@ -6357,6 +6365,7 @@
 				2C47D71BD301628D62E5A9F3 /* BookDetailOpenRoutingDecisionTableTests.swift */,
 				2D7A4FFF539B2C6B8ECB1850 /* BookOpenRouterTests.swift */,
 				5F78F41F40C32E170046D830 /* RelatedBooksServiceTests.swift */,
+				BD35C80E936FC28DE7C9FA71 /* TPPSignInFlowCharacterizationTests.swift */,
 			);
 			name = Decomp;
 			path = Decomp;
@@ -6956,6 +6965,7 @@
 				CPTB00010000FILEREF01 /* CarPlayTemplateBuilder.swift */,
 				06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */,
 				639A868F3BDA4A7F97660BEA /* CarPlayImageProvider.swift */,
+				23E55B9CD7590DDA681123E7 /* CarPlayTemplateNavigator.swift */,
 			);
 			path = CarPlay;
 			sourceTree = "<group>";
@@ -8425,6 +8435,8 @@
 				89DF2A8C18E01153A4E7E515 /* AudiobookPlaybackFailureRecordTests.swift in Sources */,
 				8C878CFDE42B82A752DDEA16 /* MediaServicesResetRecoveryTests.swift in Sources */,
 				1D0EF39016F5650B63FC093C /* StreamingReaderViewControllerTitleTests.swift in Sources */,
+				E8CBE19A0E49D3DD81B96A76 /* TPPSignInFlowCharacterizationTests.swift in Sources */,
+				D1B2A796BCFDED01FA05CD1A /* CarPlayTemplateCompletionLintTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9002,6 +9014,7 @@
 				506A594F25B5C8CBF896B466 /* MediaServicesResetRecovery.swift in Sources */,
 				FB837C8F7FCE83E4CAFFC0A5 /* AudiobookSessionManager+MediaServicesReset.swift in Sources */,
 				6585EF05F21AAAA4C2EF4455 /* AudiobookSessionManager+ErrorMapping.swift in Sources */,
+				F47092822CD45C9D469DF925 /* CarPlayTemplateNavigator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9582,6 +9595,7 @@
 				23A57B77923D4CD5F6678B23 /* MediaServicesResetRecovery.swift in Sources */,
 				94757973B316BA103D235125 /* AudiobookSessionManager+MediaServicesReset.swift in Sources */,
 				50C6BDB2E7120C4BADED9818 /* AudiobookSessionManager+ErrorMapping.swift in Sources */,
+				289312F561CE054F5FB0D354 /* CarPlayTemplateNavigator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -23,4 +23,12 @@
 #   matching, so a `.shared` named in a doc/line comment (like the S2b rationale prose
 #   above) is no longer counted as a read. Re-baselined 213 -> 164 by that recount alone:
 #   a pure measurement correction, not 49 removed reads.
-167
+# Wave 7 sweep: 167 -> 162, measured on bf7b12d82. This is accumulated drift from
+#   the waves that landed after the 167 was written, not one identified change;
+#   no per-wave attribution is claimed here because none was measured. The 167
+#   itself was a RAISE (164 -> 167, a0968e652) made in the same commit as the
+#   code that needed it, which is the one edit to this file with no rationale
+#   line; later waves removed more than it added, so that debt nets out here.
+#   test_live_baseline_has_zero_slack now fails on any slack OR any raise above
+#   the measured count, so this number must be re-measured, not estimated.
+162
