@@ -188,8 +188,9 @@ final class AudiobookLoader {
             return
         }
 
-        let accountId = AppContainer.production().accountsManager.currentAccount?.uuid
-        AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil, accountId: accountId) { result in
+        let container = AppContainer.production()
+        let accountId = container.accountsManager.currentAccount?.uuid
+        container.networkExecutor.refreshTokenAndResume(task: nil, accountId: accountId) { result in
             switch result {
             case .success:
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
