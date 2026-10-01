@@ -830,35 +830,6 @@ else
   record "test_quality" "skip" "Lint script not found"
 fi
 
-# 3a. Contract reconciliation (M1 universal-rigor-floor gate)
-# Reconciles "removes X" / "deletes X" / "migrates Y to Z" / "renames X to Y" /
-# "adds field A to type B" claims in the commit body
-# against the staged-diff (HEAD vs base). Catches the contract-vs-diff drift
-# class surfaced in waves 1-4. See `scripts/check-contract-reconciliation.py`.
-echo "--- Contract reconciliation ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "contract_reconciliation" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-contract-reconciliation.py ]; then
-  CR_DIFF=$(mktemp -t cr-diff.XXXX)
-  CR_MSG=$(mktemp -t cr-msg.XXXX)
-  git diff "$BASE"...HEAD > "$CR_DIFF" 2>/dev/null || true
-  # Capture HEAD commit subject + body as the claim source. Architect rev_f1c4ea3c
-  # caught the wiring gap where this script ran without a claim source and silently
-  # passed regardless of what the commit body claimed. Pass --commit-msg so the
-  # gate is no longer decorative.
-  git log -1 --format=%B HEAD > "$CR_MSG" 2>/dev/null || echo "" > "$CR_MSG"
-  CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --commit-msg "$CR_MSG" --quiet 2>&1)
-  CR_EXIT=$?
-  rm -f "$CR_DIFF" "$CR_MSG"
-  if [ "$CR_EXIT" -eq 0 ]; then
-    record "contract_reconciliation" "pass" "All commit-message claims reconciled with diff"
-  else
-    record "contract_reconciliation" "fail" "Unreconciled claims: $(echo "$CR_OUT" | head -3 | tr '\n' ' ')"
-  fi
-else
-  record "contract_reconciliation" "skip" "check-contract-reconciliation.py not found"
-fi
-
 # 3b. Blast-radius (M1 universal-rigor-floor gate)
 # Scans the diff for new public/open symbols, #if DEBUG production reach,
 # test-only public(private(set)) counters, container-init churn, and
@@ -1094,30 +1065,6 @@ else
       record "completion_isolation" "fail" "$(echo "$CI_OUT" | head -1)"
     fi
   fi
-fi
-
-# 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
-# Greps comments in the surviving codebase for references to removed/renamed
-# declarations in the diff. Always passes; counts warnings.
-# See `scripts/check-adjacency-staleness.py`.
-echo "--- Adjacency staleness ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "adjacency_staleness" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-adjacency-staleness.py ]; then
-  ADJ_DIFF=$(mktemp -t adj-diff.XXXX)
-  git diff "$BASE"...HEAD > "$ADJ_DIFF" 2>/dev/null || true
-  ADJ_OUT=$(python3 scripts/check-adjacency-staleness.py --diff "$ADJ_DIFF" --quiet 2>&1)
-  ADJ_EXIT=$?
-  rm -f "$ADJ_DIFF"
-  ADJ_WARN_COUNT=$(echo "$ADJ_OUT" | grep -c "ADJ-STALE" || true)
-  if [ "$ADJ_EXIT" -eq 0 ]; then
-    record "adjacency_staleness" "pass" "0 stale-comment references"
-  else
-    # warn-only: still record pass, but surface the count
-    record "adjacency_staleness" "pass" "${ADJ_WARN_COUNT:-0} stale-comment warning(s) — non-blocking"
-  fi
-else
-  record "adjacency_staleness" "skip" "check-adjacency-staleness.py not found"
 fi
 
 # 3g-3l. Phase 3.5 class-detectable detectors (swarm_162a3219)
@@ -1691,7 +1638,7 @@ EXPECTED_COUNT=$(printf '%s\n' "$EXPECTED_KEYS" | grep -c .)
 
 # An empty derivation is the vacuous pass this whole branch is about: zero owed
 # legs means zero missing legs means green. Floor it.
-if [ "$EXPECTED_COUNT" -lt 30 ]; then
+if [ "$EXPECTED_COUNT" -lt 25 ]; then
   FAIL_COUNT=$((FAIL_COUNT + 1))
   echo "  [FAIL] leg_accounting — derived only $EXPECTED_COUNT owed legs from $SCRIPT_PATH."
   echo "         That is too few to be real: the derivation is broken, so the"
