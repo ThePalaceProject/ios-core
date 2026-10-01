@@ -25,10 +25,10 @@ all defined in `CLAUDE.md`:
 - **Contract-snapshot tests** — for state machines that emit ordered dependency
   calls (`Borrow`, `BookReturn`, `DownloadStart`, `BorrowReducer`). Framework in
   `PalaceTests/Contract/`.
-- **Definition of Done (11 checks)** — SUT-instantiation, function-result usage,
+- **Definition of Done (9 checks)** — SUT-instantiation, function-result usage,
   multi-step body, scope-coverage, mutation, build + `verify-pr.sh`,
-  wiring-coverage, contract reconciliation, blast-radius, adjacency, and
-  test-pairing. Paste evidence before declaring work done.
+  wiring-coverage, blast-radius, and test-pairing. Paste evidence before
+  declaring work done.
 - **State-machine wiring tests** must drive full round-trips through the
   production seam, not direct `_setState` shortcuts.
 

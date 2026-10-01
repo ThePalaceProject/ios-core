@@ -2,9 +2,9 @@
 """
 _checklib.py — shared primitives for the M1 pre-commit / verify-pr checks.
 
-Extracted from the byte-identical copies that lived in check-blast-radius.py,
-check-adjacency-staleness.py and check-contract-reconciliation.py (check-intent-recorded.py
-now lives in the maintainer harness with its own copy of this module).
+Extracted from byte-identical copies in the diff-mode checks; check-blast-radius.py
+and the other diff-mode detectors import it (check-intent-recorded.py lives in the
+maintainer harness with its own copy of this module).
 
 Three things live here, and only these three:
 
