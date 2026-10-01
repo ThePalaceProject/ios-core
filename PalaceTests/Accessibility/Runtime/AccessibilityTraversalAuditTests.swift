@@ -134,6 +134,65 @@ final class AccessibilityTraversalAuditTests: XCTestCase {
         XCTAssertNotEqual(working.level, 0, "a working adjustable must have been adjusted")
     }
 
+    // MARK: - Screen settling between activations
+
+    /// A control whose activation shows a modal overlay that removes itself a
+    /// moment later, like a menu that animates closed. The next control must
+    /// still be found and activated once the overlay is gone, rather than be
+    /// reported missing because it was looked up mid-dismissal.
+    func testNextControl_isActivatedAfterAModalOverlayFinishesDismissing() {
+        let opener = TapCountingControl(frame: CGRect(x: 40, y: 100, width: 120, height: 44))
+        opener.accessibilityLabel = "Sleep timer"
+        let next = TapCountingControl(frame: CGRect(x: 40, y: 200, width: 120, height: 44))
+        next.accessibilityLabel = "Add bookmark"
+        let controller = UIViewController()
+        controller.view.backgroundColor = .white
+        [opener, next].forEach(controller.view.addSubview)
+        opener.onTap = { [weak controller] in
+            guard let view = controller?.view else { return }
+            let overlay = UIView(frame: view.bounds)
+            overlay.accessibilityViewIsModal = true
+            view.addSubview(overlay)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { overlay.removeFromSuperview() }
+        }
+        let host = AccessibilityAuditHost(controller)
+        self.host = host
+
+        let report = AccessibilityTraversalAudit.audit(screen: "fixture", root: host.window, window: host.window)
+
+        XCTAssertEqual(report.violations, [])
+        XCTAssertEqual(next.taps, 1)
+    }
+
+    /// A control that never comes back is still reported, with the tree as
+    /// it is at that moment, so the failure shows what replaced it.
+    func testNextControl_thatNeverReturns_isReportedWithTheCurrentTree() {
+        let opener = TapCountingControl(frame: CGRect(x: 40, y: 100, width: 120, height: 44))
+        opener.accessibilityLabel = "Sleep timer"
+        let next = TapCountingControl(frame: CGRect(x: 40, y: 200, width: 120, height: 44))
+        next.accessibilityLabel = "Add bookmark"
+        let controller = UIViewController()
+        controller.view.backgroundColor = .white
+        [opener, next].forEach(controller.view.addSubview)
+        opener.onTap = { [weak controller] in
+            guard let view = controller?.view else { return }
+            let overlay = TapCountingControl(frame: view.bounds)
+            overlay.accessibilityLabel = "Menu"
+            overlay.accessibilityViewIsModal = true
+            view.addSubview(overlay)
+        }
+        let host = AccessibilityAuditHost(controller)
+        self.host = host
+
+        let report = AccessibilityTraversalAudit.audit(screen: "fixture", root: host.window, window: host.window)
+
+        XCTAssertEqual(next.taps, 0)
+        guard case .activationFailed(let reason)? = report.violations.first?.kind else {
+            return XCTFail("expected an activation failure, got \(report.violations)")
+        }
+        XCTAssertTrue(reason.contains("\"Menu\""), "the failure must show the tree that replaced it: \(reason)")
+    }
+
     // MARK: - Accessibility runtime flag
 
     func testValueToRestore_withoutAMarker_isTheValueFoundAtEnable() {
@@ -190,6 +249,7 @@ final class AccessibilityTraversalAuditTests: XCTestCase {
 /// at its activation point.
 private final class TapCountingControl: UIControl {
     private(set) var taps = 0
+    var onTap: (() -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -201,7 +261,10 @@ private final class TapCountingControl: UIControl {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    @objc private func tapped() { taps += 1 }
+    @objc private func tapped() {
+        taps += 1
+        onTap?()
+    }
 }
 
 /// An adjustable element whose increment/decrement moves `level` by `step`.

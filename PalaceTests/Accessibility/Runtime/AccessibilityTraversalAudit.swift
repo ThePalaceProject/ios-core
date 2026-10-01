@@ -273,6 +273,23 @@ enum AccessibilityTraversalAudit {
 
     // MARK: - Audit
 
+    /// How long the audit waits for the screen to return to an element after
+    /// the previous activation's reset.
+    static let settleTimeout: TimeInterval = 2
+
+    /// The live element with `element`'s label and tree position, waiting up to
+    /// `settleTimeout` while the run loop lets dismissals finish.
+    private static func waitForElement(matching element: AXAuditElement, in root: UIView) -> AXAuditElement? {
+        let deadline = Date().addingTimeInterval(settleTimeout)
+        while true {
+            if let live = traverse(root).first(where: { $0.label == element.label && $0.path == element.path }) {
+                return live
+            }
+            if Date() >= deadline { return nil }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+    }
+
     /// Traverses `root`, then checks every actionable element for a label, a
     /// focusable frame, and a working activation.
     ///
@@ -302,11 +319,15 @@ enum AccessibilityTraversalAudit {
             guard shouldActivate(element) else { continue }
 
             // An earlier activation may have navigated away and back, which
-            // rebuilds bar-button views. Activate the element as it exists
-            // now, matched by label and position in the tree.
-            guard let element = traverse(root).first(where: { $0.label == element.label && $0.path == element.path }) else {
+            // rebuilds bar-button views, or opened a menu that is still
+            // animating closed (a modal overlay hides its siblings until it
+            // leaves; on iOS 18 that outlasts a fixed settle). Activate the
+            // element as it exists once it is back, matched by label and
+            // position in the tree.
+            guard let element = waitForElement(matching: element, in: root) else {
+                let now = traverse(root).map { "  \($0.displayName) \($0.path)" }.joined(separator: "\n")
                 violations.append(.init(screen: screen, element: element.displayName,
-                                        kind: .activationFailed("no longer in the accessibility tree after the previous control was activated and the screen reset")))
+                                        kind: .activationFailed("no longer in the accessibility tree \(settleTimeout)s after the previous control was activated and the screen reset; tree now:\n\(now)")))
                 continue
             }
 
