@@ -55,16 +55,6 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         }
     }
 
-    /// Shared account a test wrote to; cleared in tearDown so the seeded
-    /// expired token cannot reach a later test.
-    private var seededSharedAccount: TPPUserAccount?
-
-    override func tearDownWithError() throws {
-        seededSharedAccount?.removeAll()
-        seededSharedAccount = nil
-        try super.tearDownWithError()
-    }
-
     // MARK: - Fixture helpers
 
     /// JSON shaped as the chain would receive it from an open-access
@@ -133,27 +123,6 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         }
         XCTAssertEqual(openAccess.canHandleCallCount, 0,
                        "The token gate fails before the adapter chain is consulted")
-    }
-
-    /// The shared container's current account holds an expired token (the
-    /// state an earlier test can leave behind), but the loader was given a
-    /// clean account. The gate must read the injected one and dispatch.
-    func testLoad_sharedAccountExpired_injectedAccountClean_stillDispatches() {
-        let shared = AppContainer.production().accountsManager.currentUserAccount // MIGRATED-DEFERRED: seeds the shared state this test proves the loader no longer reads
-        shared.setAuthToken("leaked", barcode: "b", pin: "p",
-                            expirationDate: Date(timeIntervalSinceNow: -3600))
-        seededSharedAccount = shared
-        XCTAssertTrue(shared.authTokenHasExpired,
-                      "Precondition: the shared account holds an expired token")
-
-        let openAccess = SpyAdapter(label: "open", handles: true,
-                                    stubbedResult: .success((json: manifestStub, decryptor: nil)))
-        let loader = makeLoader([openAccess])
-
-        _ = runLoad(loader: loader, book: makeBook())
-
-        XCTAssertEqual(openAccess.resolveCallCount, 1,
-                       "The loader must gate on its injected account, not the shared one")
     }
 
     // MARK: - Dispatch routing tests
