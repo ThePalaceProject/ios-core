@@ -195,6 +195,7 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
         auditScreen(
             "Audiobook player (full)",
             host: host,
+            checkTouchTargets: true,
             witnesses: [
                 generic.close: { session.stopPlaybackCallCount == 1 },
                 generic.minimizePlayer: { !presenter.isPlayerExpanded },
@@ -228,9 +229,10 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
         let generic = Strings.Generic.self
         let book = TPPBookMocker.snapshotAudiobook()
         let nowPlaying = String(format: generic.nowPlayingLabelTitleAndAuthor, book.title, book.authors ?? "")
-        auditScreen(
+        let report = auditScreen(
             "Audiobook player (mini)",
             host: host,
+            checkTouchTargets: true,
             witnesses: [
                 // Closing from the mini bar asks for confirmation first (PP-4910).
                 generic.closeAudiobookPlayer: { host.window.rootViewController?.presentedViewController is UIAlertController },
@@ -244,6 +246,8 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
                 presenter.minimize()
             }
         )
+        // PP-5294: what activating it does is the hint, read after a pause.
+        XCTAssertEqual(report.element(labeled: nowPlaying)?.object.accessibilityHint, generic.expandPlayerHint)
     }
 
     /// The seek bar is the one way to move within a chapter. A VoiceOver user
@@ -329,6 +333,7 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
     /// witness did not observe its effect.
     ///
     /// - Parameters:
+    ///   - checkTouchTargets: also fail every actionable element under 44x44 pt.
     ///   - witnesses: expected actionable labels, each with a check that its
     ///     double-tap had the intended effect. Evaluated right after that
     ///     element is activated.
@@ -340,6 +345,7 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
     private func auditScreen(
         _ screen: String,
         host: AccessibilityAuditHost,
+        checkTouchTargets: Bool = false,
         witnesses: [String: () -> Bool],
         notFired: Set<String> = [],
         resetAfterActivation: @escaping () -> Void = {},
@@ -351,6 +357,7 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
             screen: screen,
             root: host.window,
             window: host.window,
+            checkTouchTargets: checkTouchTargets,
             activate: { !notFired.contains($0.label) },
             afterEachActivation: { element in
                 host.settle(0.3)
