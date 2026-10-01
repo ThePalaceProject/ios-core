@@ -1,12 +1,12 @@
 # Local CI-parity test harness
 
-**Goal:** reproduce GitHub Actions `macos-15` test conditions on a local
+**Goal:** reproduce GitHub Actions `macos-26` test conditions on a local
 (many-core) Mac so CI-only flakes/crashes reproduce and verify **before** a
 PR/merge — instead of costing a ~45-minute GitHub cycle each.
 
 ## Why a fast Mac hides CI failures
 
-GitHub's `macos-15` runners have **~3 vCPUs**. A dev Mac has many more (24+).
+GitHub's `macos-26` runners have **~3 vCPUs**. A dev Mac has many more (24+).
 `scripts/xcode-test-optimized.sh` requests `-maximum-parallel-testing-workers 4`.
 On the 3-core runner that **oversubscribes the CPU**, so:
 

@@ -81,7 +81,7 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
@@ -90,7 +90,7 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: 'latest-stable'
+          xcode-version: '26'
 
       # The shards select this exact version: products built by one Xcode are
       # not guaranteed to run under another, and `latest-stable` is resolved
@@ -147,10 +147,7 @@ jobs:
       - name: Select simulator
         id: sim
         run: |
-          xcrun simctl list devices available | grep iPhone | head -10
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
-            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
-          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          SIMULATOR_ID=$(python3 scripts/ci-resolve-simulator.py) || exit 1
           echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
 
       # Same build settings as scripts/xcode-test-optimized.sh: ad-hoc signed
@@ -262,7 +259,7 @@ jobs:
   test:
     needs: [changes, build]
     if: needs.changes.outputs.run == 'true'
-    runs-on: macos-15
+    runs-on: macos-26
     name: test (shard ${{ matrix.shard }})
     # The shard budget inside ci-run-test-shard.sh interrupts xcodebuild at
     # 30 minutes so the result bundle is still written; this is the backstop.
@@ -422,9 +419,7 @@ jobs:
           ON_SKIP_ARGS=(
           )
 
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
-            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
-          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          SIMULATOR_ID=$(python3 scripts/ci-resolve-simulator.py) || exit 1
 
           RESULT="$RUNNER_TEMP/TestResults-streaming-on.xcresult"
           rm -rf "$RESULT"
@@ -652,7 +647,7 @@ jobs:
   report:
     needs: [changes, build, test]
     if: always() && needs.changes.outputs.run == 'true' && needs.build.result != 'skipped' && needs.build.result != 'cancelled'
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     permissions:
       contents: read
@@ -661,7 +656,7 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: ${{ needs.build.outputs.xcode || 'latest-stable' }}
+          xcode-version: ${{ needs.build.outputs.xcode || '26' }}
 
       - name: Checkout
         uses: actions/checkout@v7

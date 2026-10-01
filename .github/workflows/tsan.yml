@@ -132,9 +132,7 @@ jobs:
           done < "$RUNNER_TEMP/tsan-suites.txt"
           [ ${#ONLY_ARGS[@]} -gt 0 ] || { echo "::error::no suites resolved"; exit 1; }
 
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
-            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
-          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          SIMULATOR_ID=$(python3 scripts/ci-resolve-simulator.py) || exit 1
 
           RESULT="$RUNNER_TEMP/TestResults-tsan.xcresult"
           LOG="$RUNNER_TEMP/tsan.log"
