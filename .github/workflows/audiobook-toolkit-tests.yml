@@ -1,0 +1,114 @@
+name: Audiobook Toolkit Tests
+# Runs PalaceAudiobookToolkit's XCTest suite against the commit this repo pins
+# as the ios-audiobooktoolkit submodule. The Palace scheme does not include
+# PalaceAudiobookToolkitTests, so before this workflow those tests ran only by
+# hand.
+#
+# The toolkit builds from a checkout of itself (PalaceUIKit was vendored into
+# it, PP-4953). Its one outside input is AudioEngine.xcframework, which its
+# project reads from ../Carthage/Build; from this repo's root that is
+# Carthage/Build, which scripts/fetch-audioengine.sh fills. So no DRM setup,
+# no private submodules and no secrets: the job checks out one public
+# submodule and builds one small project.
+#
+# Triggered only when the pin (or this job's own inputs) changes. Nothing in
+# Palace/ is compiled into the toolkit, so app changes cannot change its result.
+on:
+  pull_request:
+    paths:
+      - 'ios-audiobooktoolkit'
+      - '.github/workflows/audiobook-toolkit-tests.yml'
+      - 'scripts/fetch-audioengine.sh'
+      - 'scripts/xcresult_summary.py'
+  workflow_dispatch:
+concurrency:
+  group: audiobook-toolkit-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+
+jobs:
+  toolkit-tests:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
+      - name: Checkout (no submodules)
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      # Only the toolkit. The other submodules are private DRM repos this job
+      # does not need, so it runs without a token and on fork PRs too.
+      - name: Check out the pinned audiobook toolkit
+        run: |
+          git submodule update --init ios-audiobooktoolkit
+          echo "toolkit at $(git -C ios-audiobooktoolkit rev-parse HEAD)"
+
+      - name: Cache AudioEngine
+        id: audioengine
+        uses: actions/cache@v6
+        with:
+          path: Carthage/Build
+          key: audioengine-${{ hashFiles('scripts/fetch-audioengine.sh') }}
+
+      - name: Fetch AudioEngine
+        if: steps.audioengine.outputs.cache-hit != 'true'
+        run: ./scripts/fetch-audioengine.sh
+
+      - name: Cache Swift packages
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/spm
+          key: toolkit-spm-${{ hashFiles('ios-audiobooktoolkit/PalaceAudiobookToolkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            toolkit-spm-
+
+      - name: Select simulator
+        id: sim
+        run: |
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
+            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
+          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Run toolkit tests
+        timeout-minutes: 30
+        shell: bash
+        # `shell: bash` runs with -eo pipefail; +e so the status is read from
+        # PIPESTATUS (xcodebuild's, not tee's) and the rollup still prints.
+        run: |
+          set +e
+          xcodebuild test \
+            -project ios-audiobooktoolkit/PalaceAudiobookToolkit.xcodeproj \
+            -scheme PalaceAudiobookToolkit \
+            -destination "id=${{ steps.sim.outputs.id }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/spm" \
+            -resultBundlePath "$RUNNER_TEMP/ToolkitTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee "$RUNNER_TEMP/toolkit-test.log"
+          status=${PIPESTATUS[0]}
+          echo "---- rollup ----"
+          grep -E -A1 "^Test Suite 'All tests'" "$RUNNER_TEMP/toolkit-test.log"
+          grep -E "\*\* TEST" "$RUNNER_TEMP/toolkit-test.log"
+          echo "xcodebuild exit status: $status"
+          exit "$status"
+
+      # xcodebuild exits 0 when the scheme selects no tests, so the step above
+      # cannot tell an empty run from a green one. The result bundle can.
+      - name: Require executed tests and no failures
+        if: ${{ !cancelled() }}
+        run: python3 scripts/xcresult_summary.py --path "$RUNNER_TEMP/ToolkitTests.xcresult" --mode gate
+
+      - name: Upload test log
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolkit-test-log
+          path: ${{ runner.temp }}/toolkit-test.log
+          retention-days: 7
