@@ -1,6 +1,18 @@
 {
   "architectureStyle": "layered",
   "componentRoots": [
+    "Palace/Packages/PalaceAuth",
+    "Palace/Packages/PalaceBookModel",
+    "Palace/Packages/PalaceBookRegistry",
+    "Palace/Packages/PalaceCatalog",
+    "Palace/Packages/PalaceFeatureFlags",
+    "Palace/Packages/PalaceKeychain",
+    "Palace/Packages/PalaceLogging",
+    "Palace/Packages/PalaceNetwork",
+    "Palace/Packages/PalacePreferences",
+    "Palace/Packages/PalaceReadingPosition",
+    "Palace/Packages/PalaceTriageBot",
+    "Palace/Packages/PalaceUtilities",
     "Palace",
     "Palace/Accounts",
     "Palace/AppInfrastructure",

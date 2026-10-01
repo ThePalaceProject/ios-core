@@ -301,3 +301,48 @@ def test_workflow_readsXcodebuildExitDirectly_notThroughAPipe():
     xcb_last_line = next(ln for ln in run.splitlines() if "ONLY_ACTIVE_ARCH=YES" in ln)
     assert "|" not in xcb_last_line
     assert 'if [ "$XCB_EXIT" -ne 0 ]' in run
+
+
+def _run_tsan_step_with_failing_xcodebuild(tmp_path: Path) -> subprocess.CompletedProcess:
+    """Run the step's script the way Actions runs `shell: bash` (bash -e -o
+    pipefail), with xcodebuild stubbed to exit 65 and every other tool stubbed
+    to record its arguments."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "calls.log"
+    stubs = {
+        "xcodebuild": "exit 65",
+        "xcrun": 'if [ "$1" = simctl ]; then '
+                 'echo "iPhone 16 (00000000-0000-0000-0000-000000000000) (Shutdown)"; '
+                 'elif [ "$1" = xcresulttool ]; then echo "{}"; fi',
+        "python3": "exit 0",
+    }
+    for name, body in stubs.items():
+        stub = bin_dir / name
+        stub.write_text(f'#!/bin/bash\necho "{name} $*" >> "{calls}"\n{body}\n')
+        stub.chmod(0o755)
+    runner_temp = tmp_path / "runner"
+    runner_temp.mkdir()
+    (runner_temp / "tsan-suites.txt").write_text("SomeConcurrencyTests\n")
+    (runner_temp / "TestResults-tsan.xcresult").mkdir()
+    script = tmp_path / "step.sh"
+    # The step deletes the bundle before the run; the stub xcodebuild does not
+    # recreate it, so recreate it after the rm to exercise the check-ran path.
+    script.write_text(_tsan_step()["run"].replace(
+        'rm -rf "$RESULT"', 'rm -rf "$RESULT"; mkdir -p "$RESULT"'))
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "RUNNER_TEMP": str(runner_temp)}
+    proc = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", str(script)],
+                          capture_output=True, text=True, env=env, cwd=tmp_path)
+    proc.calls = calls.read_text() if calls.exists() else ""
+    return proc
+
+
+def test_workflow_failingXcodebuild_underActionsErrexit_stillRunsTheChecks(tmp_path):
+    # Actions runs `shell: bash` as `bash -e -o pipefail`. If errexit is still
+    # on when xcodebuild fails, the step ends at that line and the log scan,
+    # the suite check and the exit-status message never run.
+    proc = _run_tsan_step_with_failing_xcodebuild(tmp_path)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "python3 scripts/tsan-lane.py check-log" in proc.calls
+    assert "python3 scripts/tsan-lane.py check-ran" in proc.calls
+    assert "::error::xcodebuild exited 65" in proc.stdout

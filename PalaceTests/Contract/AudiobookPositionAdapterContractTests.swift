@@ -267,11 +267,27 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         TrackPosition(track: tracks.tracks[trackIndex], timestamp: time, tracks: tracks)
     }
 
-    /// Drive `saveListeningPosition` and wait for the async Task to drain.
-    private func saveAndWait(position: TrackPosition, timeout: TimeInterval = 2.0) {
+    /// Drive `saveListeningPosition`, wait for its completion, and require that
+    /// the completion ran on the main thread: the toolkit's `@MainActor`
+    /// `AudiobookManager` supplies it, like every other bookmark-delegate completion.
+    @discardableResult
+    private func saveAndWait(
+        position: TrackPosition,
+        timeout: TimeInterval = 2.0,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> String? {
         let exp = expectation(description: "saveListeningPosition completes")
-        sut.saveListeningPosition(at: position) { _ in exp.fulfill() }
+        var serverID: String?
+        var deliveredOnMain = false
+        sut.saveListeningPosition(at: position) { id in
+            serverID = id
+            deliveredOnMain = Thread.isMainThread
+            exp.fulfill()
+        }
         wait(for: [exp], timeout: timeout)
+        XCTAssertTrue(deliveredOnMain, "saveListeningPosition completion ran off the main thread", file: file, line: line)
+        return serverID
     }
 
     // MARK: - 1. Local-first → writer.save → registry-second commit
@@ -292,6 +308,32 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         saveAndWait(position: p)
 
         ContractSnapshot.assert(log, named: "audiobookSave_localFirstThenWriter")
+    }
+
+    // MARK: - Completion delivery on the writer's nil and error exits
+
+    func test_audiobookSave_whenWriterThrottles_completesOnMainWithNoServerID() {
+        writer.outcome = .throttled
+
+        let serverID = saveAndWait(position: position(trackIndex: 1, time: 100.0))
+
+        XCTAssertNil(serverID)
+    }
+
+    func test_audiobookSave_whenUploadFails_completesOnMainWithNoServerID() {
+        writer.outcome = .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
+
+        let serverID = saveAndWait(position: position(trackIndex: 1, time: 100.0))
+
+        XCTAssertNil(serverID)
+    }
+
+    func test_audiobookSave_whenUploadSucceeds_completesOnMainWithTheServerID() {
+        writer.outcome = .success("server-delivered-id")
+
+        let serverID = saveAndWait(position: position(trackIndex: 1, time: 100.0))
+
+        XCTAssertEqual(serverID, "server-delivered-id")
     }
 
     // MARK: - 2. isAtBeginning guard — second registry write is suppressed
@@ -347,7 +389,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
             self.innerRegistry.setLocation(laterLoc, forIdentifier: self.bookIdentifier)
         }
         let p = position(trackIndex: 0, time: 0)  // strict zero → guard fires
-        saveAndWait(position: p)
+        XCTAssertEqual(saveAndWait(position: p), "server-beginning-id")
 
         ContractSnapshot.assert(log, named: "audiobookSave_preservesIsAtBeginningGuard")
     }
@@ -398,7 +440,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         }
 
         let p = position(trackIndex: 0, time: 5.0)
-        saveAndWait(position: p)
+        XCTAssertEqual(saveAndWait(position: p), "server-stale-id")
 
         ContractSnapshot.assert(log, named: "audiobookSave_preservesTimestampNewerRace")
     }

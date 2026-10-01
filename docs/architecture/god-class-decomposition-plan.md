@@ -417,6 +417,54 @@ In-target decomposition per §3a-1 first (reducer, position resolver, readiness 
 ### Wave 7 — Sweep + declare
 Remaining `.shared` census rows dispositioned; `AppContainer.production()` locator count → allowlist-only; ledger `componentRoots` updated to package-first; ratchet thresholds converted from "trend-down" to "hard ceiling"; ADR finalized into `docs/architecture/` with the before/after ledger runs as evidence.
 
+**Status bf7b12d82: two of the five criteria are met; the two counting criteria and
+the ADR are not.**
+
+*Hard ceiling — met.* Both count ratchets now fail on slack, not just on growth.
+`check-file-size-ceiling.sh` already had `test_live_allowlist_has_zero_slack`;
+the `.shared` and locator gates printed a "Ratchet baseline down to N" advisory
+that touched nothing, so a baseline could sit above the tree indefinitely. Each
+now has a `test_live_baseline_has_zero_slack` arm asserting that advisory empty.
+Both baselines were carrying slack and are ratcheted to the measured values:
+`.shared` 167 → 162, locator 256 → 249.
+
+That also closes a direction that had already been used. Commit `a0968e652`
+raised the `.shared` baseline 164 → 167 in the same commit as the code that
+needed it — the one edit to that file with no rationale line — after the gate
+failed and told the author to inject the dependency instead. Later waves removed
+more than it added, so the debt nets out at 162 rather than needing to be repaid.
+The **two-sided** edit is still open: add reads and raise the baseline to exactly
+match, and nothing in the tree objects, because every in-tree record of the old
+value is editable in the same commit. Closing it needs the baseline compared
+against the base branch's committed copy. Not done, for the reason already
+written up in `test_check_file_size_ceiling.py::test_live_allowlist_has_zero_slack`
+— a ratchet that silently skips when the ref is missing is worse than none.
+
+*Ledger `componentRoots` — met.* It listed 29 app-target paths and none of the
+twelve extracted packages, so the instrument measuring the decomposition could
+not see anything the decomposition produced. Now package-first: the twelve
+`Palace/Packages/*` roots lead, app-target paths follow. `layerOverrides` is
+deliberately left alone — the real package DAG has same-layer edges
+(`PalaceBookModel → PalaceCatalog`, `PalaceBookRegistry → both`) and
+`allowedEdges` permits none, so hand-assigning layers would either invent
+violations or show the layer model needs an intra-layer rule. That is a question
+for a ledger run, and the run is in CI.
+
+*The two counts — not met, and they are the wave.* Measured on bf7b12d82:
+**162** `.shared` reads and **249** out-of-allowlist locator uses across 93 files,
+the largest single file holding 16. "Allowlist-only" means driving the second to
+roughly zero. This is the plan's own "4+ weeks combined" category and no cheap
+win exists in the distribution; it is a long tail, not a few hot spots.
+
+*ADR — not written, deliberately.* It is the "declare" half of "sweep + declare"
+and the sweep is not done; an ADR written now would record an incomplete state
+and be rewritten. The before/after ledger evidence it calls for also does not
+exist yet — there is no local ledger runner, only the CI job.
+
+*Inherited from Wave 5:* cycle 7's navigation inversion, in the two shapes
+described above — the destination provider, and relocating the
+`CatalogViewModel.makeBook(from:bookRegistry:)` reach out of `RelatedBooksService`.
+
 **Rough shape of effort:** Waves 0–1 ≈ 2 weeks; Wave 2 ≈ 2–3 weeks (churn-heavy); Wave 3 ≈ 3–4 weeks (the risky middle); Waves 4–6 ≈ 4+ weeks combined; total a solid quarter of fleet-time. Consistent with the triad's observed pace (Phases 1–5 took ~a month of comparable scope).
 
 ---

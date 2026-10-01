@@ -151,6 +151,12 @@ import PalaceUtilities
         // the bookmark is owned exclusively by that Task from here on.
         let completionBox = StringCompletionBox(completion)
         let audioBookmarkBox = AudioBookmarkBox(audioBookmark)
+        // This Task runs off the main actor, and the caller (the toolkit's
+        // `@MainActor` AudiobookManager) expects its closure on main, as with
+        // every other bookmark-delegate completion here (PP-4955).
+        let complete: @Sendable (String?) async -> Void = { serverID in
+            await MainActor.run { completionBox.call?(serverID) }
+        }
 
         let writeTask = Task { [weak self] in
             guard let self else { return }
@@ -159,7 +165,7 @@ import PalaceUtilities
                 guard let serverID = try await self.positionWriter.save(snapshot) else {
                     // Throttled or queued — local position is already saved,
                     // and the writer will flush later. Nothing else to do here.
-                    completionBox.call?(nil)
+                    await complete(nil)
                     return
                 }
 
@@ -183,7 +189,7 @@ import PalaceUtilities
                         Log.warn(#file, "⚠️ Race condition detected: Local position is newer. Keeping local.")
                         Log.warn(#file, "  Sent: track=\(sentTrackKey), time=\(sentPlaybackTime), timestamp=\(sentTimestamp)")
                         Log.warn(#file, "  Current local: track=\(currentBookmark.chapter ?? "?"), timestamp=\(currentLocalTimestamp)")
-                        completionBox.call?(serverID)
+                        await complete(serverID)
                         return
                     }
 
@@ -200,7 +206,7 @@ import PalaceUtilities
                             Log.warn(#file, "⚠️ Prevented 'beginning' position from overwriting progress!")
                             Log.warn(#file, "  Attempting to save: track 0, time \(sentPlaybackTime)")
                             Log.warn(#file, "  Current position: track \(currentTrackIndex)")
-                            completionBox.call?(serverID)
+                            await complete(serverID)
                             return
                         }
                     }
@@ -212,10 +218,10 @@ import PalaceUtilities
 
                 self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
                 Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
-                completionBox.call?(serverID)
+                await complete(serverID)
             } catch {
                 Log.warn(#file, "⚠️ Server sync failed, but local position was already saved: \(error)")
-                completionBox.call?(nil)
+                await complete(nil)
             }
         }
         onStateQueue { self._positionWriteTaskForTesting = writeTask }
@@ -768,7 +774,7 @@ private final class AudioBookmarkBox: @unchecked Sendable {
 
 /// Sendable carrier for a non-Sendable `String?` completion closure captured by
 /// the `@Sendable` `Task` in `saveListeningPosition`. Invariant: invoked only
-/// inside that Task.
+/// on the main actor, through that Task's `MainActor.run` hop.
 private final class StringCompletionBox: @unchecked Sendable {
     let call: ((String?) -> Void)?
     init(_ call: ((String?) -> Void)?) { self.call = call }

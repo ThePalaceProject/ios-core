@@ -19,4 +19,8 @@
 #   named in a doc/line comment (e.g. the S2b AccountScope rationale prose above) is no
 #   longer counted — it is documentation, not a locator call. Re-baselined 302 -> 256 by
 #   that recount alone: a pure measurement correction, not 46 removed call sites.
-256
+# Wave 7 sweep: 256 -> 249, measured on bf7b12d82. Accumulated drift across the
+#   waves that landed after the 2026-07-31 recount; no per-wave attribution is
+#   claimed because none was measured. test_live_baseline_has_zero_slack now
+#   fails on any slack, so this number must be re-measured, not estimated.
+249

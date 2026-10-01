@@ -29,6 +29,14 @@ maybe_clean() {
         xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
     fi
 }
+# $1 = what ran, $2 = xcodebuild's exit code. A check mark only for 0.
+exit_status_line() {
+    if [ "$2" -eq 0 ]; then
+        echo "✅ $1 (exit code: $2)"
+    else
+        echo "🔴 $1 failed (exit code: $2)"
+    fi
+}
 
 # Clean up any previous test results
 rm -rf TestResults.xcresult
@@ -119,68 +127,24 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1 || true
     fi
 
-    # Scheduling-sensitive infra tests that must run OUTSIDE the 4-clone parallel
-    # run. Under parallel-sim-clone oversubscription (workers > runner cores) the
-    # cooperative pool starves so badly that these tests' OWN internal wait
-    # timeouts starve too, and they hang to the 120s executionTimeAllowance —
-    # even though they pass deterministically when not oversubscribed (they can't
-    # be reproduced on a single local clone that owns its pool). They are NOT
-    # skipped/weakened: the parallel run below `-skip-testing`s them, then a
-    # dedicated SERIAL pass (`-parallel-testing-enabled NO`) runs them FULLY and
-    # the results are MERGED back into TestResults.xcresult so the downstream
-    # fail-gate counts them. Owner decision after CI runs 29805821296 / 29810471358.
-    #
-    # De-flake convergence (DEFLAKE-PLAN, 2026-07-23): the god-class decomposition
-    # campaign needs a green board to land the keystone waves. The recurring red is
-    # "clone-wedge collateral" — a leaked cross-test job wedges a per-clone global
-    # (cooperative pool / main run loop / the AppContainer.production() singleton
-    # graph); a wandering victim then hangs to the 120s executionTimeAllowance and
-    # fails all retries because retries rerun in the SAME wedged clone process. Two
-    # named classes below are PERMANENT isolations (real WKWebView/WebContent process
-    # contention that can't be seam-fixed); the rest are TEMPORARY quarantine until
-    # their per-test hermetic-DI/bounded-await fixes land (P1/P2 in DEFLAKE-PLAN),
-    # then remove them here. This is the owner-approved serial-isolation mechanism —
-    # tests still RUN and still GATE (merged into TestResults.xcresult), so this is
-    # not a skip-allowlist and does not violate the green-board "no flake memos" rule.
-    ISOLATED_SERIAL_TESTS=(
-        "PalaceTests/ImageCacheContinuationTests"
-        "PalaceTests/PoolResponsivenessProbeTests"
-        # Permanent — real WKWebView + WebContent process spawn under clone contention.
-        "PalaceTests/SignInWebSheetIntegrationTests"
-        # Temporary — remove each as its per-test fix lands (DEFLAKE-PLAN §3 / P1-P2):
-        "PalaceTests/AccountAwareNetworkTests"
-        "PalaceTests/AccountsManagerTests"
-        "PalaceTests/BookmarkDeletionLogTests"
-        "PalaceTests/MultiLibraryTokenIsolationTests"
-        # Signing the test host (PP-5058) surfaced this one. `measure {}`
-        # re-establishes the test-runner connection for its iterations, and a
-        # signed app installs more slowly than an unsigned one; under 4 parallel
-        # clones the reconnect exceeded its timeout and the runner "hung before
-        # establishing connection". Measured: the class's other 6 tests ran and
-        # passed in that same run, and only `testRFC1123Performance` was absent
-        # from the bundle — 8621 distinct tests against 8622 on the unsigned
-        # baseline. Running it serially keeps it gating rather than skipping it.
-        "PalaceTests/Date_NYPLAdditionsTests"
-        # Temporary — added 2026-09-02 from run 33669583217, where each of these
-        # failed exactly ONE of three iterations. Under `-test-iterations 3` a
-        # single stumble relaunches the WHOLE plan, so that run sampled the
-        # parallel leg at 2.94x (25,094 executions of 8,531 distinct tests):
-        # ~23 of its 35 test-minutes were re-runs, which is what pushed the step
-        # past its 60-minute budget. On a 10x-billed macOS runner that is roughly
-        # 230 wasted billable minutes per affected run.
-        #
-        # Load-sensitive, not broken: `ci-test-history.py BookRegistrySyncTests`
-        # shows it passing across a dozen runs at 0.01-0.5s, its one failure
-        # taking 2.501s — a 100x slowdown, i.e. measuring the machine rather than
-        # the code. That is exactly the class this list exists for.
-        #
-        # Evidence is a SINGLE run for three of these four classes, so this is a
-        # quarantine to stop the credit bleed, not a verdict on them. Remove each
-        # as its per-test fix lands.
-        "PalaceTests/BookRegistrySyncTests"
-        "PalaceTests/LCPFulfillmentHandlerTests"
-        "PalaceTests/PalacePreferencesSettingsRoundTripTests"
-    )
+    # Scheduling-sensitive classes that run in a SERIAL pass outside the 4-clone
+    # parallel run. The list and the reasons for each entry live in
+    # scripts/ci-isolated-serial-tests.txt, which the sharded CI workflow reads
+    # too, so both paths isolate the same classes. An empty or missing list is
+    # an error: it would move every one of them into the parallel run silently.
+    ISOLATED_LIST="$(cd "$(dirname "$0")" && pwd)/ci-isolated-serial-tests.txt"
+    ISOLATED_SERIAL_TESTS=()
+    if [ -f "$ISOLATED_LIST" ]; then
+        while IFS= read -r _line || [ -n "$_line" ]; do
+            _line="${_line%%#*}"
+            _line="$(printf '%s' "$_line" | tr -d '[:space:]')"
+            if [ -n "$_line" ]; then ISOLATED_SERIAL_TESTS+=("$_line"); fi
+        done < "$ISOLATED_LIST"
+    fi
+    if [ ${#ISOLATED_SERIAL_TESTS[@]} -eq 0 ]; then
+        echo "🔴 ERROR: no isolated-serial classes read from $ISOLATED_LIST"
+        exit 1
+    fi
     ISOLATED_SKIP_ARGS=()
     ISOLATED_ONLY_ARGS=()
     for _t in "${ISOLATED_SERIAL_TESTS[@]}"; do
@@ -304,7 +268,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         exit 1
     fi
 
-    echo "✅ Parallel tests executed on: $SIMULATOR_NAME (exit code: $TEST_EXIT_CODE)"
+    exit_status_line "Parallel tests executed on: $SIMULATOR_NAME" "$TEST_EXIT_CODE"
 
     # --- Serial isolated pass for the scheduling-sensitive infra tests ---
     # Runs the `-skip-testing`'d tests NOT under parallel oversubscription, then
@@ -335,7 +299,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         ENABLE_TESTABILITY=YES
     SERIAL_EXIT_CODE=$?
     set -e
-    echo "✅ Serial isolated tests executed (exit code: $SERIAL_EXIT_CODE)"
+    exit_status_line "Serial isolated tests executed" "$SERIAL_EXIT_CODE"
 
     # Merge serial results into TestResults.xcresult so the downstream
     # Parse-Test-Results fail-gate counts the isolated tests (not un-gated).
@@ -444,7 +408,7 @@ else
             TEST_EXIT_CODE=$?
             
             if [ -d "TestResults.xcresult" ]; then
-                echo "✅ Tests executed with: $SIM (exit code: $TEST_EXIT_CODE)"
+                exit_status_line "Tests executed with: $SIM" "$TEST_EXIT_CODE"
                 break
             else
                 echo "❌ Simulator $SIM unavailable, trying next..."
