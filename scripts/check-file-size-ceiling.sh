@@ -86,7 +86,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # when PP-5241 moved its recovery host and two pure error mappers out.
 1206 Palace/Audiobooks/AudiobookSessionManager.swift
 1213 Palace/MyBooks/MyBooksDownloadCenter.swift
-1115 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
+1047 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 875  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 367 under this metric, not 366: #1520 landed
