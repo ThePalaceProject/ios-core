@@ -622,7 +622,11 @@ final class CarPlayTemplateManager: NSObject {
 
         Log.info(#file, "CarPlay: Pushing Now Playing template")
         navigator.push(nowPlayingTemplate, operation: "pushTemplate(nowPlaying)") { [weak self] error in
-            guard error == nil else { return }
+            if let error {
+                // Error level so the failure reaches the on-device error log.
+                Log.error(#file, "CarPlay: Failed to push Now Playing: \(error)")
+                return
+            }
             Log.info(#file, "CarPlay: Now Playing template pushed successfully")
             self?.isShowingNowPlaying = true
             // NowPlayingCoordinator handles the Now Playing state via AudiobookSessionManager

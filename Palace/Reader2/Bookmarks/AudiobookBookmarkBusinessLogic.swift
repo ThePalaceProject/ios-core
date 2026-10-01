@@ -774,7 +774,7 @@ private final class AudioBookmarkBox: @unchecked Sendable {
 
 /// Sendable carrier for a non-Sendable `String?` completion closure captured by
 /// the `@Sendable` `Task` in `saveListeningPosition`. Invariant: invoked only
-/// inside that Task.
+/// on the main actor, through that Task's `MainActor.run` hop.
 private final class StringCompletionBox: @unchecked Sendable {
     let call: ((String?) -> Void)?
     init(_ call: ((String?) -> Void)?) { self.call = call }

@@ -10,18 +10,20 @@ import XCTest
 /// `CPInterfaceController` raises `NSGenericException` when a template
 /// operation fails and its completion is nil (PP-5276). `CarPlayTemplateNavigator`
 /// always passes one, so these checks pin that every operation under
-/// `Palace/CarPlay/` goes through it. A direct call elsewhere could omit the
+/// `Palace/` goes through it. A direct call elsewhere could omit the
 /// completion (the parameter defaults to nil), which no unit test can observe
 /// because `CPInterfaceController` cannot be built in a test.
 final class CarPlayTemplateCompletionLintTests: XCTestCase {
 
-    private static let carPlayRoot: URL = {
+    private static let palaceRoot: URL = {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // MetaTests/
             .deletingLastPathComponent()   // PalaceTests/
             .deletingLastPathComponent()   // repo root
-            .appendingPathComponent("Palace/CarPlay")
+            .appendingPathComponent("Palace")
     }()
+
+    private static let carPlayRoot = palaceRoot.appendingPathComponent("CarPlay")
 
     private static let navigatorFile = "CarPlayTemplateNavigator.swift"
 
@@ -45,10 +47,11 @@ final class CarPlayTemplateCompletionLintTests: XCTestCase {
     }
 
     func testOnlyTheNavigatorCallsTemplateOperations() throws {
-        let sources = try carPlaySources()
-        XCTAssertNotNil(sources[Self.navigatorFile], "\(Self.navigatorFile) moved; this lint no longer guards anything")
+        let sources = try swiftSources(under: Self.palaceRoot)
+        let navigatorPath = "CarPlay/" + Self.navigatorFile
+        XCTAssertNotNil(sources[navigatorPath], "\(navigatorPath) moved; this lint no longer guards anything")
 
-        let offenders = sources.filter { $0.key != Self.navigatorFile }.flatMap { name, lines in
+        let offenders = sources.filter { $0.key != navigatorPath }.flatMap { name, lines in
             operationLines(lines).map { "\(name):\($0.offset + 1): \($0.element.trimmingCharacters(in: .whitespaces))" }
         }
 
@@ -76,6 +79,18 @@ final class CarPlayTemplateCompletionLintTests: XCTestCase {
             let text = try String(contentsOf: Self.carPlayRoot.appendingPathComponent(name), encoding: .utf8)
             sources[name] = text.components(separatedBy: .newlines)
         }
+        return sources
+    }
+
+    /// Every Swift file under `root`, recursively, keyed by path relative to `root`.
+    private func swiftSources(under root: URL) throws -> [String: [String]] {
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+        var sources: [String: [String]] = [:]
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let relative = url.path.replacingOccurrences(of: root.path + "/", with: "")
+            sources[relative] = try String(contentsOf: url, encoding: .utf8).components(separatedBy: .newlines)
+        }
+        XCTAssertGreaterThan(sources.count, 100, "resolved too few Swift files under \(root.path)")
         return sources
     }
 

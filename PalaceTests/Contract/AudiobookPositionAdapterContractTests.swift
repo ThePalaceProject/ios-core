@@ -389,7 +389,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
             self.innerRegistry.setLocation(laterLoc, forIdentifier: self.bookIdentifier)
         }
         let p = position(trackIndex: 0, time: 0)  // strict zero → guard fires
-        saveAndWait(position: p)
+        XCTAssertEqual(saveAndWait(position: p), "server-beginning-id")
 
         ContractSnapshot.assert(log, named: "audiobookSave_preservesIsAtBeginningGuard")
     }
@@ -440,7 +440,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         }
 
         let p = position(trackIndex: 0, time: 5.0)
-        saveAndWait(position: p)
+        XCTAssertEqual(saveAndWait(position: p), "server-stale-id")
 
         ContractSnapshot.assert(log, named: "audiobookSave_preservesTimestampNewerRace")
     }
