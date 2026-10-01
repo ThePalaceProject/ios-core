@@ -9,7 +9,8 @@
 #
 # Algorithm:
 #   1. Compute changed Swift files: `git diff --name-only @{u}..HEAD`
-#      filtered to `Palace/**/*.swift`.
+#      filtered to `Palace/**/*.swift`. If any changed, run
+#      `scripts/check-file-size-ceiling.sh`; a non-zero exit blocks the push.
 #   2. For each changed file, derive a test class via the same lookup
 #      logic used by `scripts/regression-report.sh::derive_test_class_for`
 #      — Foo.swift -> Foo*Tests.swift, then first XCTestCase subclass
@@ -145,6 +146,28 @@ CHANGED_FILES="$(git diff --name-only "$RANGE" -- 'Palace/*.swift' 2>/dev/null |
 if [[ -z "$CHANGED_FILES" ]]; then
   echo "[pre-push-test-gate] No Palace/*.swift files changed in $RANGE — nothing to test." >&2
   exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# 1b. File-size ceiling — before the targeted tests, so it runs even when no
+#     test class can be derived. A few seconds, and it is the same check CI runs.
+# ---------------------------------------------------------------------------
+# Pushes that change no Palace/*.swift returned above, so they skip this.
+CEILING_SCRIPT="$REPO_DIR/scripts/check-file-size-ceiling.sh"
+if [[ -f "$CEILING_SCRIPT" ]]; then
+  echo "[pre-push-test-gate] Palace/*.swift changed — checking the file-size ceiling…" >&2
+  if bash "$CEILING_SCRIPT" "$REPO_DIR" >&2; then
+    :
+  else
+    rc=$?
+    echo "" >&2
+    echo "[pre-push-test-gate] file-size ceiling FAILED (exit $rc) — push blocked." >&2
+    echo "[pre-push-test-gate] A Swift file under Palace/ is over the ceiling or over its allowlisted cap" >&2
+    echo "[pre-push-test-gate] (details above). Bring it back under by extracting code; the allowlist" >&2
+    echo "[pre-push-test-gate] only ratchets down. Re-check with: bash scripts/check-file-size-ceiling.sh" >&2
+    echo "[pre-push-test-gate] To bypass: SKIP_PRE_PUSH_TESTS=1 git push ..." >&2
+    exit 1
+  fi
 fi
 
 # ---------------------------------------------------------------------------
