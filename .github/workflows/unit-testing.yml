@@ -1,142 +1,126 @@
 name: Unit Tests
 on:
+  # No `paths-ignore`. A workflow skipped by a path filter never reports its
+  # checks, so a required check would sit at "Expected — waiting" forever on a
+  # docs-only PR. The `changes` job below decides instead, and the
+  # `build-and-test` gate reports success when nothing relevant changed.
   pull_request:
-    # Skip the full macOS build/test job for changes that cannot regress runtime
-    # behavior. scripts/** is deliberately NOT ignored — the test invocation lives
-    # there. Mirrors verify-pr.sh's docs-only fast-path.
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
   workflow_dispatch:
+    inputs:
+      shards:
+        description: 'Number of test shards (for measuring the shard count; the default is UNIT_TEST_SHARDS)'
+        required: false
+        default: ''
+      workers:
+        description: 'Parallel test workers per shard (the default is 2)'
+        required: false
+        default: ''
 concurrency:
   group: unit-tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+env:
+  # How many matrix jobs run the tests. Chosen from measured cost and wall
+  # clock; see the PR that introduced sharding for the N=2/3/4 comparison.
+  # The plan, the matrix and the gate all read this one number.
+  UNIT_TEST_SHARDS: 2
+
 jobs:
 
   # NOTE: Standalone QAAtlas and AccessLint jobs have been consolidated into
   # the Ledger Analysis workflow (ledger.yml) which now integrates both tools.
   # See: https://github.com/mauricecarrier7/ledger-dist
 
-  build-and-test:
+  # Decide whether this PR can change the unit-test result at all. Everything
+  # runs unless every changed path is on the skippable list in
+  # scripts/ci-unit-test-relevance.py (other workflows, tooling pytests, docs,
+  # agent metadata). Any failure to list the changed files runs the suite.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            scripts
+            .github
+            Palace.xcodeproj
+      - name: Decide whether the unit tests must run
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "Not a pull request (${{ github.event_name }}); running."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The files API returns at most 3000 entries; a list that long may be
+          # truncated, and a truncated list cannot prove anything is skippable.
+          if ! gh api "repos/${{ github.repository }}/pulls/$PR/files" --paginate \
+                --jq '.[].filename' > changed.txt; then
+            echo "::warning::could not list the PR's changed files; running the unit tests"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          COUNT=$(wc -l < changed.txt | tr -d ' ')
+          echo "$COUNT changed file(s)"
+          if [ "$COUNT" -ge 3000 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 scripts/ci-unit-test-relevance.py --changed changed.txt --github-output
+
+  # Build once. The products, the .xctestrun and the shard plan go up as one
+  # artifact that every shard downloads, so a re-run shard does not rebuild.
+  build:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-15
-    # Cap the whole job. The test step has its own bound (see below), but the
-    # ~15 post-processing steps (xcresult parse, snapshot find, Pages deploy)
-    # are unbounded — a hang there could otherwise burn the 360-min default.
-    # 105 = the test step's 75 plus the ~15 of post-processing, plus slack;
-    # +25 for the streaming-ON leg's own bound.
-    timeout-minutes: 130
-    permissions:
-      contents: write
-      pull-requests: write
-      pages: write
-      id-token: write
+    timeout-minutes: 60
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      xcode: ${{ steps.xcode.outputs.version }}
     steps:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: 'latest-stable'
 
-      - name: Verify Xcode Version
-        run: xcodebuild -version
-        
+      # The shards select this exact version: products built by one Xcode are
+      # not guaranteed to run under another, and `latest-stable` is resolved
+      # per runner.
+      - name: Record Xcode version
+        id: xcode
+        run: |
+          xcodebuild -version
+          echo "version=$(xcodebuild -version | awk 'NR==1 {print $2}')" >> "$GITHUB_OUTPUT"
+
       - name: Checkout main repo and submodules
         uses: actions/checkout@v7
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-          
+
+      # Package checkouts only (DerivedData/SourcePackages — the Crashlytics
+      # build phase finds its script there), keyed on the lockfile. SPM checks every checkout out at the
+      # revision Package.resolved pins, so a restored cache cannot change what
+      # is built. DerivedData is deliberately NOT cached: this workflow cleaned
+      # before every build to defeat stale-DerivedData false greens, so the
+      # cache restored objects the build then discarded (measured: restore
+      # ~0 min, save ~1 min per run, no compile reused).
       - name: Cache Swift packages
         uses: actions/cache@v6
         with:
-          path: |
-            .build
-            SourcePackages
-            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          path: ${{ runner.temp }}/dd/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
-            
-      - name: Cache Xcode DerivedData
-        uses: actions/cache@v6
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          # Key on the branch name only (NOT run_number). A run_number suffix made
-          # every run save a fresh ~1.8 GiB cache that never key-hit again, so the
-          # repo blew GitHub's 10 GiB cache cap and LRU-evicted the warm caches —
-          # producing 25-46 min cold rebuilds. Branch-only keying updates ONE cache
-          # per branch in place (actions/cache skips save on an exact key hit, so
-          # this warms once then reuses). We deliberately do NOT key on pbxproj —
-          # every file-add edit would invalidate the whole cache.
-          # Tradeoff: within a long-lived branch the cache isn't re-saved (exact
-          # hit skips save), and develop's base cache freezes at its first snapshot
-          # — a dedicated develop-push cache-warm job is the proper follow-up. Even
-          # frozen, a weeks-old DerivedData saves most recompilation vs a cold run.
-          key: ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}
-          restore-keys: |
-            ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}
-            ${{ runner.os }}-deriveddata-develop
-            ${{ runner.os }}-deriveddata-
-            
-      - name: Cache Test History
-        uses: actions/cache@v6
-        with:
-          path: .test-history
-          key: test-history-${{ github.head_ref || github.ref_name }}
-          restore-keys: |
-            test-history-${{ github.head_ref || github.ref_name }}
-            test-history-develop
-            test-history-
-            
-      # Fast, DRM-free gate for the PalaceTriageBot SPM package. Runs the
-      # UIKit-free Core tests (TriageBotCore) via `swift test` before the ~40min
-      # app build+test, so a broken package reddens the board in seconds instead
-      # of blocking behind the full xcodebuild run. Targets that import UIKit
-      # (TriageBotIOS / parts of TriageBotUI) do not build under macOS
-      # `swift test` and are exercised by the app build; this step is Core-only.
-      - name: Run PalaceTriageBot package tests
-        run: swift test --package-path Palace/Packages/PalaceTriageBot
-
-      # The other host-buildable packages. These test targets have existed since
-      # extraction but ran NOWHERE: the only schemes are Palace / Palace-noDRM, so
-      # xcodebuild never saw them, and the only `swift test` step was TriageBot's.
-      # PalaceAuthTests (116 tests) had been dark since 2026-05-12 — a gate that
-      # cannot fail reports a pass. Measured on 2026-09-25: Auth 116, ReadingPosition
-      # 20, Logging 8, all green in well under a minute combined.
-      #
-      # PalaceKeychain is deliberately NOT here. It builds, then HANGS: its tests
-      # guard with KeychainAvailability.skipIfUnavailable(), which probes by writing
-      # to the keychain. That guard was written for the iOS Simulator, where an
-      # unentitled host returns -34018 and the skip fires. On an unsigned macOS
-      # `swift test` binary the same call blocks on a UI authorization prompt
-      # instead of erroring, so the guard itself never returns. Wiring it here
-      # would hang CI for the step timeout. Tracked in the Phase A notes.
-      # Paths are written out in full, deliberately. A `for pkg in ...` loop
-      # builds the path at runtime, so check-package-tests-wired.sh cannot see
-      # which packages this step covers — and a gate that cannot see the thing
-      # it guards is the defect this whole step exists to fix. Explicit wins.
-      - name: Run PalaceAuth package tests
-        run: swift test --package-path Palace/Packages/PalaceAuth
-
-      - name: Run PalaceLogging package tests
-        run: swift test --package-path Palace/Packages/PalaceLogging
-
-      - name: Run PalaceReadingPosition package tests
-        run: swift test --package-path Palace/Packages/PalaceReadingPosition
-
-      # PalaceUtilities is the Phase B1 extraction: the Foundation-only core of
-      # Palace/Utilities, with no package dependencies at all. Foundation-only
-      # is what makes it host-buildable, which is what makes this step possible;
-      # the UIKit and Strings-dependent halves stayed in the app target for
-      # exactly that reason. 153 tests, under a second.
-      - name: Run PalaceUtilities package tests
-        run: swift test --package-path Palace/Packages/PalaceUtilities
-
-      # The package suite above runs RedactionCorpusTests, but a deny-list guard
-      # is only worth its ability to fail. --self-test disables redaction to prove
-      # the guard goes red on an un-redacted corpus, catching a guard that has
-      # silently stopped guarding. Build products are warm from the step above.
-      - name: Verify TriageBot redaction leak gate
-        run: bash scripts/triage-corpus-check.sh --self-test
 
       - name: Checkout Certificates
         uses: actions/checkout@v7
@@ -144,62 +128,233 @@ jobs:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
-          
+
       - name: Checkout Adobe RMSDK
         uses: ./.github/actions/checkout-adobe
         with:
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-          
+
       - name: Setup repo with DRM
         run: ./scripts/setup-repo-drm.sh
         env:
           BUILD_CONTEXT: ci
-          
+
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
           BUILD_CONTEXT: ci
-          
-      - name: List available simulators for debugging
-        run: xcrun simctl list devices available | grep iPhone | head -10
-        
-      - name: Run Palace unit tests
-        id: tests
-        # 75, not 60. MEASURED 2026-09-15 across three runs of the same suite:
-        #   1x depth (no test failed an iteration)  9,200 executions  30 min
-        #   3x depth (a test failed an iteration)  26,118 executions  53 min
-        #   2x depth, hit the old 60-min wall      17,594 executions  60 min
-        # A clean pass is 30 minutes. `-test-iterations 3` repeats the WHOLE
-        # plan when any single test fails an iteration, which adds 23-30, so a
-        # 60-minute bound could not fit the retry policy this same workflow
-        # configures. PR #1472 died here twice on different flakes, each of
-        # which PASSED on retry — the tests were fine, the clock was not.
-        #
-        # This is a bound, not the fix. The fix is to make a retry re-run the
-        # FAILING tests instead of all 9,100; ~2/3 of the wall-clock in any run
-        # that flakes once is re-running tests that already passed. Tracked
-        # separately — do not raise this number again in its place.
-        timeout-minutes: 75
-        # tee to a log so the @objc-witness-drift gate below can scan the build
-        # warnings. `set -o pipefail` is set EXPLICITLY here: GitHub's default
-        # bash shell does NOT enable pipefail, so `cmd | tee` returns tee's exit
-        # 0 and masks a non-zero exit from the script — which is how a failing
-        # build passed as a green step even after the script correctly exited 1
-        # (the third masking layer). With pipefail, the pipeline's status is the
-        # script's, so `steps.tests.outcome` reflects a real failure and the
-        # "Fail if tests failed" gate fires.
+
+      - name: Select simulator
+        id: sim
+        run: |
+          xcrun simctl list devices available | grep iPhone | head -10
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
+            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
+          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
+
+      # Same build settings as scripts/xcode-test-optimized.sh: ad-hoc signed
+      # (an unsigned host has no keychain-access-group and 15 classes skip,
+      # PP-5058), Debug, -Onone, testability on. No `xcodebuild clean`: the
+      # DerivedData directory is new on every runner.
+      - name: Build for testing
+        id: build
+        timeout-minutes: 45
         shell: bash
         run: |
           set -o pipefail
-          ./scripts/xcode-test-optimized.sh 2>&1 | tee build-output.log
+          rm -rf "$RUNNER_TEMP/BuildResults.xcresult"
+          xcodebuild build-for-testing \
+            -project Palace.xcodeproj \
+            -scheme Palace \
+            -destination "id=${{ steps.sim.outputs.id }}" \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -resultBundlePath "$RUNNER_TEMP/BuildResults.xcresult" \
+            -enableCodeCoverage YES \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            ONLY_ACTIVE_ARCH=YES \
+            GCC_OPTIMIZATION_LEVEL=0 \
+            SWIFT_OPTIMIZATION_LEVEL=-Onone \
+            ENABLE_TESTABILITY=YES 2>&1 | tee build-output.log
+
+      # Fails the job when a build warning shows an `@objc` optional-protocol
+      # method that "nearly matches" its requirement by the same name — i.e. the
+      # method silently is NOT the delegate witness and the callback is skipped
+      # at runtime (the Xcode-26.2 WKNavigationDelegate sign-in break, #1205).
+      # Benign different-name nearly-matches (e.g. CarPlay) are ignored.
+      - name: Guard against @objc witness drift (silent delegate skip)
+        if: always() && steps.build.outcome != 'skipped'
+        run: scripts/check-objc-witness-nearly-matches.sh build-output.log
+
+      # The report job parses this bundle for the build errors when the build
+      # fails, which is how the PR comment shows them.
+      - name: Upload build results
+        if: failure() && steps.build.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-results
+          path: ${{ runner.temp }}/BuildResults.xcresult
+          retention-days: 7
+          overwrite: true
+
+      # The class list comes from the BUILT bundles, not from grepping source:
+      # it is exactly what xcodebuild would run unsharded. The planner fails
+      # if a class would land in no shard or two, or if an isolated-serial
+      # name matches nothing.
+      - name: Enumerate tests and plan the shards
+        id: plan
+        run: |
+          set -euo pipefail
+          SHARDS="${{ github.event.inputs.shards }}"
+          SHARDS="${SHARDS:-$UNIT_TEST_SHARDS}"
+          XCTESTRUN=$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 1 -name "*.xctestrun" | head -1)
+          [ -f "$XCTESTRUN" ] || { echo "::error::build-for-testing produced no .xctestrun"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/plan"
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
+            -destination "id=${{ steps.sim.outputs.id }}" \
+            -enumerate-tests \
+            -test-enumeration-style flat \
+            -test-enumeration-format json \
+            -test-enumeration-output-path "$RUNNER_TEMP/plan/enumeration.json"
+          python3 scripts/ci-test-shards.py plan \
+            --enumeration "$RUNNER_TEMP/plan/enumeration.json" \
+            --shards "$SHARDS" \
+            --out "$RUNNER_TEMP/plan/shard-plan.json"
+          echo "shards=$(python3 -c "import json,sys; print(json.dumps(list(range(int(sys.argv[1])))))" "$SHARDS")" >> "$GITHUB_OUTPUT"
+
+      # Everything test-without-building needs, and nothing it does not:
+      # object files, module interfaces and dSYMs stay behind (~350 MB).
+      # zstd, because upload-artifact's zip does not keep symlinks and is slow.
+      - name: Package test products
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/dd/Build"
+          tar -cf - --exclude '*.o' --exclude '*.swiftmodule' --exclude '*.dSYM' Products \
+            | zstd -T0 -3 -q -o "$RUNNER_TEMP/plan/Products.tar.zst"
+          ls -la "$RUNNER_TEMP/plan"
+
+      - name: Upload test products
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-products
+          path: ${{ runner.temp }}/plan
+          retention-days: 3
+          compression-level: 0
+          overwrite: true
+
+      # Small and separate, so the gate can check the plan without the products.
+      - name: Upload shard plan
+        uses: actions/upload-artifact@v7
+        with:
+          name: shard-plan
+          path: ${{ runner.temp }}/plan/shard-plan.json
+          retention-days: 14
+          overwrite: true
+
+  # One job per shard. A failed shard re-runs alone (`gh run rerun --failed`)
+  # against the build artifact above; nothing is rebuilt.
+  test:
+    needs: [changes, build]
+    if: needs.changes.outputs.run == 'true'
+    runs-on: macos-15
+    name: test (shard ${{ matrix.shard }})
+    # The shard budget inside ci-run-test-shard.sh interrupts xcodebuild at
+    # 30 minutes so the result bundle is still written; this is the backstop.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.build.outputs.shards) }}
+    steps:
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ needs.build.outputs.xcode }}
+
+      # No submodules and no token: the tests run from the built products. The
+      # repo is here for the scripts, the package tests, and the lint tests
+      # that read Palace/ and PalaceTests/ sources through #filePath.
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # BookmarkSpecConformanceTests reads the mobile-specs corpus from the
+      # checkout through #filePath, so the one submodule the tests read has to
+      # be here. It is public; .gitmodules names it by SSH, which this job has
+      # no key for, hence the https rewrite.
+      - name: Check out the submodules the tests read
+        run: git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --depth 1 mobile-specs
+
+      - name: Download test products
+        uses: actions/download-artifact@v8
+        with:
+          name: test-products
+          path: ${{ runner.temp }}/plan
+
+      - name: Unpack test products
+        id: plan
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/Build"
+          zstd -dc "$RUNNER_TEMP/plan/Products.tar.zst" | tar -xf - -C "$RUNNER_TEMP/Build"
+          XCTESTRUN=$(find "$RUNNER_TEMP/Build/Products" -maxdepth 1 -name "*.xctestrun" | head -1)
+          [ -f "$XCTESTRUN" ] || { echo "::error::no .xctestrun in the test products"; exit 1; }
+          PLAN="$RUNNER_TEMP/plan/shard-plan.json"
+          {
+            echo "xctestrun=$XCTESTRUN"
+            echo "plan=$PLAN"
+            echo "streaming_on=$(python3 scripts/ci-test-shards.py extra --plan "$PLAN" --shard ${{ matrix.shard }} streaming-on)"
+            echo "packages=$(python3 scripts/ci-test-shards.py extra --plan "$PLAN" --shard ${{ matrix.shard }} packages)"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Run test shard
+        id: tests
+        timeout-minutes: 40
+        shell: bash
         env:
           BUILD_CONTEXT: ci
+          CI_TEST_WORKERS: ${{ github.event.inputs.workers || '2' }}
+        run: |
+          set -o pipefail
+          scripts/ci-run-test-shard.sh \
+            "${{ steps.plan.outputs.xctestrun }}" \
+            "${{ steps.plan.outputs.plan }}" \
+            "${{ matrix.shard }}" \
+            "$RUNNER_TEMP/shard-out"
         continue-on-error: true
 
-      # R7a: production runs `lcp_audiobook_streaming_enabled` ON, and the step
-      # above runs every test with it pinned OFF (PalaceTests/PalaceTestSetup.swift).
+      # One screen that separates a runner stall from a code hang, so nobody
+      # has to download the xcresult to find out. The 2026-09 census traced the
+      # allowance kills to memory pressure on this 3-CPU / 7 GB runner; each
+      # spindump XCTest attached to a failure is summarized in one line.
+      - name: Runner memory and hang diagnostics
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 scripts/ci-runner-diagnostics.py memory-summary "$RUNNER_TEMP/shard-out/memory-samples.txt"
+          echo "--- now"
+          memory_pressure -Q || true
+          sysctl vm.swapusage || true
+          vm_stat | head -14 || true
+          RESULT="$RUNNER_TEMP/shard-out/TestResults.xcresult"
+          if [ -d "$RESULT" ]; then
+            rm -rf "$RUNNER_TEMP/failure-attachments"; mkdir -p "$RUNNER_TEMP/failure-attachments"
+            xcrun xcresulttool export attachments --path "$RESULT" \
+              --output-path "$RUNNER_TEMP/failure-attachments" --only-failures > /dev/null || true
+            python3 scripts/ci-runner-diagnostics.py spindump-summary --attachments "$RUNNER_TEMP/failure-attachments"
+          fi
+
+      # R7a: production runs `lcp_audiobook_streaming_enabled` ON, and the shard
+      # passes run every test with it pinned OFF (PalaceTests/PalaceTestSetup.swift).
       # This leg re-runs the flag consumers' suites with PALACE_TEST_LCP_STREAMING=on
-      # against the products the step above built.
+      # against the same prebuilt products. It runs on the one shard the plan
+      # assigns it to (`extras.streaming-on`), weighted like a class.
       #
       # Which suites: every Palace/ file that reads the flag (the census below)
       # names a type — the file name up to any `+Extension` suffix. The leg runs
@@ -226,7 +381,7 @@ jobs:
       # None are excluded today.
       - name: Run LCP-streaming flag consumers' suites with the flag ON
         id: tests_streaming_on
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.plan.outputs.streaming_on == 'true' }}
         timeout-minutes: 25
         shell: bash
         env:
@@ -275,10 +430,8 @@ jobs:
           rm -rf "$RESULT"
           set +e
           xcodebuild test-without-building \
-            -project Palace.xcodeproj \
-            -scheme Palace \
+            -xctestrun "${{ steps.plan.outputs.xctestrun }}" \
             -destination "id=$SIMULATOR_ID" \
-            -configuration Debug \
             -resultBundlePath "$RESULT" \
             "${ONLY_ARGS[@]}" \
             ${ON_SKIP_ARGS[@]+"${ON_SKIP_ARGS[@]}"} \
@@ -321,6 +474,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-results-streaming-on
+          overwrite: true
           path: ${{ runner.temp }}/TestResults-streaming-on.xcresult
           retention-days: 7
         continue-on-error: true
@@ -330,56 +484,305 @@ jobs:
       # method silently is NOT the delegate witness and the callback is skipped
       # at runtime (the Xcode-26.2 WKNavigationDelegate sign-in break, #1205).
       # Benign different-name nearly-matches (e.g. CarPlay) are ignored.
-      - name: Guard against @objc witness drift (silent delegate skip)
-        if: always()
-        run: scripts/check-objc-witness-nearly-matches.sh build-output.log
+      # Host-buildable Swift packages, on the shard the plan gives them to
+      # (`extras.packages`). These test targets are not in the Palace scheme,
+      # so xcodebuild never runs them; before 2026-09-25 PalaceAuthTests (116
+      # tests) ran nowhere. Measured 2026-09-25: Auth 116, ReadingPosition 20,
+      # Logging 8, all green in well under a minute combined.
+      #
+      # PalaceKeychain is deliberately NOT here. It builds, then HANGS: its tests
+      # guard with KeychainAvailability.skipIfUnavailable(), which probes by writing
+      # to the keychain. That guard was written for the iOS Simulator, where an
+      # unentitled host returns -34018 and the skip fires. On an unsigned macOS
+      # `swift test` binary the same call blocks on a UI authorization prompt
+      # instead of erroring, so the guard itself never returns. Wiring it here
+      # would hang CI for the step timeout. Tracked in the Phase A notes.
+      # Paths are written out in full, deliberately. A `for pkg in ...` loop
+      # builds the path at runtime, so check-package-tests-wired.sh cannot see
+      # which packages this step covers.
+      - name: Run PalaceTriageBot package tests
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        run: swift test --package-path Palace/Packages/PalaceTriageBot
 
+      - name: Run PalaceAuth package tests
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        run: swift test --package-path Palace/Packages/PalaceAuth
+
+      - name: Run PalaceLogging package tests
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        run: swift test --package-path Palace/Packages/PalaceLogging
+
+      - name: Run PalaceReadingPosition package tests
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        run: swift test --package-path Palace/Packages/PalaceReadingPosition
+
+      # PalaceUtilities is the Phase B1 extraction: the Foundation-only core of
+      # Palace/Utilities, with no package dependencies at all. 153 tests, under
+      # a second.
+      - name: Run PalaceUtilities package tests
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        run: swift test --package-path Palace/Packages/PalaceUtilities
+
+      # The package suite above runs RedactionCorpusTests, but a deny-list guard
+      # is only worth its ability to fail. --self-test disables redaction to prove
+      # the guard goes red on an un-redacted corpus, catching a guard that has
+      # silently stopped guarding.
+      - name: Verify TriageBot redaction leak gate
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        run: bash scripts/triage-corpus-check.sh --self-test
+
+      - name: Collect Snapshot Failures
+        if: always()
+        id: snapshots
+        run: |
+          mkdir -p snapshot-failures
+          find /Users/runner/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" -type f 2>/dev/null | head -50 | while read -r file; do
+            cp "$file" snapshot-failures/ 2>/dev/null || true
+          done
+          COUNT=$(find snapshot-failures -maxdepth 1 -name "*.png" | wc -l | tr -d ' ')
+          echo "Snapshot files found: $COUNT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Snapshot Failures
+        if: always() && steps.snapshots.outputs.count != '0'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: snapshot-failures-shard-${{ matrix.shard }}
+          path: snapshot-failures/
+          retention-days: 14
+          if-no-files-found: ignore
+          overwrite: true
+
+      # Archive failures are not test failures (PP-4988): continue-on-error.
+      - name: Upload Test Results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-out/TestResults.xcresult
+          retention-days: 14
+          if-no-files-found: ignore
+          overwrite: true
+
+      # NOT continue-on-error: the gate cannot prove this shard ran its classes
+      # without it, and it must then fail rather than assume.
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shard-report-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-out/shard-report.json
+          retention-days: 14
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Fail if tests failed
+        if: steps.tests.outcome == 'failure' || steps.tests_streaming_on.outcome == 'failure'
+        run: exit 1
+
+  # The single required check. It passes when every shard passed and the shard
+  # reports together account for every planned class exactly once, or when the
+  # `changes` job found nothing that can affect the tests (build and test then
+  # report `skipped`, which this job reads as a pass only in that case).
+  build-and-test:
+    needs: [changes, build, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Evaluate
+        id: eval
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RUN: ${{ needs.changes.outputs.run }}
+          BUILD: ${{ needs.build.result }}
+          TEST: ${{ needs.test.result }}
+        run: |
+          echo "changes=$CHANGES run=$RUN build=$BUILD test=$TEST"
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::could not decide whether the tests must run (changes job: $CHANGES)"; exit 1
+          fi
+          if [ "$RUN" = "false" ]; then
+            if [ "$BUILD" = "skipped" ] && [ "$TEST" = "skipped" ]; then
+              echo "No changed path can affect the unit tests; build and test were skipped."
+              echo "verify=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::tests were not required but build=$BUILD test=$TEST"; exit 1
+          fi
+          if [ "$BUILD" != "success" ]; then echo "::error::build: $BUILD"; exit 1; fi
+          if [ "$TEST" != "success" ]; then echo "::error::one or more test shards: $TEST"; exit 1; fi
+          echo "verify=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.eval.outputs.verify == 'true'
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
+
+      - name: Download shard plan
+        if: steps.eval.outputs.verify == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: shard-plan
+          path: plan
+
+      - name: Download shard reports
+        if: steps.eval.outputs.verify == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: shard-report-*
+          path: reports
+
+      - name: Every planned class ran in exactly one shard
+        if: steps.eval.outputs.verify == 'true'
+        run: |
+          set -euo pipefail
+          REPORTS=()
+          while IFS= read -r r; do REPORTS+=("$r"); done < <(find reports -name shard-report.json | sort)
+          printf '%s\n' "${REPORTS[@]}"
+          python3 scripts/ci-test-shards.py verify-union --plan plan/shard-plan.json "${REPORTS[@]}"
+
+  # Merges the shard bundles and produces the same reports, PR comment and
+  # artifacts the single job did. It does not gate: the pass/fail verdict is
+  # the shards' and `build-and-test`'s. Runs on macOS only because xcresulttool
+  # does; publishing to Pages happens on Linux in `publish-report`.
+  report:
+    needs: [changes, build, test]
+    if: always() && needs.changes.outputs.run == 'true' && needs.build.result != 'skipped' && needs.build.result != 'cancelled'
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ needs.build.outputs.xcode || 'latest-stable' }}
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cache Test History
+        uses: actions/cache@v6
+        with:
+          path: .test-history
+          key: test-history-${{ github.head_ref || github.ref_name }}
+          restore-keys: |
+            test-history-${{ github.head_ref || github.ref_name }}
+            test-history-develop
+            test-history-
+
+      - name: Download shard results
+        if: needs.build.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: test-results-shard-*
+          path: shard-results
+
+      - name: Download shard plan
+        if: needs.build.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: shard-plan
+          path: plan
+
+      - name: Download shard reports
+        if: needs.build.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: shard-report-*
+          path: shard-reports
+
+      # Whether every planned class ran. Coverage and "all passed" mean nothing
+      # over a run that lost classes to a runner failure, and without this the
+      # loss reads as a coverage drop (run 36797084975). The gate's own check;
+      # here it only decides what the report may claim.
+      - name: Check every planned class ran
+        id: completeness
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            { echo "complete=false"; echo "reason=the build did not succeed, so no test ran"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          REPORTS=()
+          while IFS= read -r r; do REPORTS+=("$r"); done < <(find shard-reports -name shard-report.json 2>/dev/null | sort)
+          if [ ! -f plan/shard-plan.json ]; then
+            { echo "complete=false"; echo "reason=the shard plan could not be downloaded"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if OUT=$(python3 scripts/ci-test-shards.py verify-union --plan plan/shard-plan.json ${REPORTS[@]+"${REPORTS[@]}"}); then
+            echo "$OUT"
+            echo "complete=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$OUT"
+            REASON=$(echo "$OUT" | sed -n 's/^::error:://p' | cut -c1-600 | paste -sd ';' -)
+            { echo "complete=false"; echo "reason=${REASON:-the shard reports do not account for every planned class}"; } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download build results
+        if: needs.build.result == 'failure'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: build-results
+          path: build-results/BuildResults.xcresult
+
+      - name: Download snapshot failures
+        if: needs.build.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: snapshot-failures-shard-*
+          path: snapshot-failures
+          merge-multiple: true
+
+      # One bundle for the parsers, as the single job had: the shard bundles
+      # merged, or the build's own bundle when the build failed.
       - name: Find Test Results
         if: always()
         id: find_results
         run: |
-          echo "Looking for xcresult bundles..."
-          echo "Current directory: $(pwd)"
-          echo "Directory contents:"
-          ls -la | head -20
-          
-          # Check current directory
-          if [ -d "TestResults.xcresult" ]; then
-            echo "✅ Found: ./TestResults.xcresult"
-            echo "xcresult size: $(du -sh TestResults.xcresult)"
-            echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
-            echo "found=true" >> $GITHUB_OUTPUT
-            
-            # Quick check of what's inside
-            echo "=== Quick xcresult summary ==="
-            xcrun xcresulttool get test-results summary --path TestResults.xcresult 2>&1 | head -30 || echo "Could not get summary"
+          set -uo pipefail
+          if [ -d build-results/BuildResults.xcresult ]; then
+            echo "path=build-results/BuildResults.xcresult" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          
-          # Search in common locations
-          echo "Searching for xcresult in current directory tree..."
-          FOUND=$(find . -name "*.xcresult" -type d 2>/dev/null | head -1)
-          if [ -n "$FOUND" ]; then
-            echo "✅ Found: $FOUND"
-            echo "path=$FOUND" >> $GITHUB_OUTPUT
-            echo "found=true" >> $GITHUB_OUTPUT
+          # upload-artifact stores a directory's CONTENTS, so each shard bundle
+          # arrives as shard-results/test-results-shard-N/ holding Info.plist.
+          # Give each one back its .xcresult name before merging.
+          mkdir -p bundles
+          BUNDLES=()
+          for d in shard-results/test-results-shard-*; do
+            [ -f "$d/Info.plist" ] || continue
+            mv "$d" "bundles/$(basename "$d").xcresult"
+            BUNDLES+=("bundles/$(basename "$d").xcresult")
+          done
+          echo "shard bundles: ${#BUNDLES[@]}"
+          if [ ${#BUNDLES[@]} -eq 0 ]; then
+            echo "❌ No xcresult found"
+            echo "found=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          
-          # Search in DerivedData
-          echo "Searching in DerivedData..."
-          FOUND=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -type d 2>/dev/null | head -1)
-          if [ -n "$FOUND" ]; then
-            echo "✅ Found in DerivedData: $FOUND"
-            cp -r "$FOUND" ./TestResults.xcresult
-            echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
-            echo "found=true" >> $GITHUB_OUTPUT
-            exit 0
+          if [ ${#BUNDLES[@]} -eq 1 ]; then
+            cp -R "${BUNDLES[0]}" TestResults.xcresult
+          else
+            xcrun xcresulttool merge --output-path TestResults.xcresult "${BUNDLES[@]}"
           fi
-          
-          echo "❌ No xcresult found anywhere!"
-          echo "found=false" >> $GITHUB_OUTPUT
-          
+          echo "path=TestResults.xcresult" >> "$GITHUB_OUTPUT"
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          xcrun xcresulttool get test-results summary --path TestResults.xcresult 2>&1 | head -30 || true
+
       - name: Parse Test Results
         if: always()
         id: parse_results
@@ -476,40 +879,40 @@ jobs:
         if: always() && steps.find_results.outputs.found == 'true' && steps.coverage.outputs.coverage != 'N/A'
         id: coverage_gate
         continue-on-error: true
-        run: python3 scripts/enforce_coverage_floors.py coverage-data.json --floors scripts/coverage-floors.json
+        env:
+          COMPLETE: ${{ steps.completeness.outputs.complete }}
+          REASON: ${{ steps.completeness.outputs.reason }}
+        run: |
+          # steps.completeness.outputs.complete: coverage from a run that lost
+          # classes is lower for that reason alone, so the floors are not
+          # compared; the reason is reported in their place.
+          if [ "$COMPLETE" != "true" ]; then
+            echo "::error title=Coverage floors not evaluated::not every planned test class ran: ${REASON:-unknown}"
+            exit 1
+          fi
+          python3 scripts/enforce_coverage_floors.py coverage-data.json --floors scripts/coverage-floors.json
 
-      - name: Collect Snapshot Failures
+      - name: Process Snapshot Failures
         if: always()
         id: snapshots
         run: |
-          mkdir -p snapshot-failures
-          
-          echo "Searching for snapshot failures..."
-          
-          # Search multiple locations
-          find /Users/runner/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" -type f 2>/dev/null | head -50 | while read -r file; do
-            cp "$file" snapshot-failures/ 2>/dev/null || true
-          done
-          
-          find ~/Library/Developer/Xcode/DerivedData -name "*.png" -path "*Failures*" -type f 2>/dev/null | head -50 | while read -r file; do
-            cp "$file" snapshot-failures/ 2>/dev/null || true
-          done
-          
-          # Count what we found
-          COUNT=$(ls -1 snapshot-failures/*.png 2>/dev/null | wc -l | tr -d ' ')
+          COUNT=$(find snapshot-failures -maxdepth 1 -name "*.png" 2>/dev/null | wc -l | tr -d ' ')
           echo "Total snapshot files found: $COUNT"
-          
           if [ "$COUNT" -gt "0" ]; then
-            echo "found=true" >> $GITHUB_OUTPUT
-            echo "count=$COUNT" >> $GITHUB_OUTPUT
-            
-            # Process snapshots to generate viewer and comparisons
+            { echo "found=true"; echo "count=$COUNT"; } >> "$GITHUB_OUTPUT"
             python3 scripts/process-snapshots.py snapshot-failures || true
           else
-            echo "found=false" >> $GITHUB_OUTPUT
-            echo "count=0" >> $GITHUB_OUTPUT
+            { echo "found=false"; echo "count=0"; } >> "$GITHUB_OUTPUT"
           fi
-          
+
+      - name: Report URL
+        id: report_url
+        if: always()
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          echo "report_url=https://${REPO_OWNER}.github.io/${REPO_NAME}/test-reports/${{ github.run_number }}/" >> "$GITHUB_OUTPUT"
+
       - name: Generate Test Reports
         if: always()
         continue-on-error: true
@@ -561,9 +964,25 @@ jobs:
           TEST_COUNT_CHANGE="${{ steps.history.outputs.test_count_change }}"
           BUILD_STATUS="${{ steps.parse_results.outputs.build_status }}"
           BUILD_ERRORS="${{ steps.parse_results.outputs.build_errors }}"
+          RUNNER_FAILURES="${{ steps.parse_results.outputs.runner_failures }}"
+          COMPLETE="${{ steps.completeness.outputs.complete }}"
+          INCOMPLETE_REASON="${{ steps.completeness.outputs.reason }}"
           
           echo "## 🧪 Palace Unit Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Runner failures are not test failures: a test runner that never
+          # connected or died, named as such so the failure list is not read
+          # as a test regression.
+          {
+            if [ "$COMPLETE" != "true" ] && [ "$BUILD_STATUS" != "failed" ]; then
+              printf '### ⚠️ NOT EVERY TEST RAN\n\n%s\n\n' "$INCOMPLETE_REASON"
+            fi
+            if [ -n "$RUNNER_FAILURES" ]; then
+              printf '<details open>\n<summary><strong>Runner failures (not test failures)</strong></summary>\n\n'
+              printf "\`\`\`\n%s\n\`\`\`\n</details>\n\n" "$RUNNER_FAILURES"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
           
           # Check for build failure first
           if [ "$BUILD_STATUS" = "failed" ]; then
@@ -584,7 +1003,9 @@ jobs:
             fi
           elif [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
             # Header with counts
-            if [ "$FAILED" = "0" ]; then
+            if [ "$FAILED" = "0" ] && [ "$COMPLETE" != "true" ]; then
+              echo "### ⚠️ NO TEST FAILED, BUT NOT EVERY TEST RAN" >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$FAILED" = "0" ]; then
               echo "### ✅ ALL TESTS PASSED" >> $GITHUB_STEP_SUMMARY
             else
               echo "### ❌ $FAILED TEST(S) FAILED" >> $GITHUB_STEP_SUMMARY
@@ -630,7 +1051,7 @@ jobs:
             fi
           else
             # 0 tests - check why
-            if [ "${{ steps.tests.outcome }}" = "success" ]; then
+            if [ "${{ needs.test.result }}" = "success" ]; then
               echo "### ✅ ALL TESTS PASSED" >> $GITHUB_STEP_SUMMARY
             elif [ "$BUILD_STATUS" = "failed" ] || [ -n "$BUILD_ERRORS" ]; then
               echo "### 🔴 BUILD FAILED - No tests ran" >> $GITHUB_STEP_SUMMARY
@@ -756,7 +1177,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           
-          REPORT_URL="${{ steps.deploy_report.outputs.report_url }}"
+          REPORT_URL="${{ steps.report_url.outputs.report_url }}"
           if [ -n "$REPORT_URL" ]; then
             echo "### 🔗 [View Interactive Report]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -778,6 +1199,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
+          overwrite: true
           name: test-report
           path: test-report/
           retention-days: 14
@@ -788,6 +1210,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
+          overwrite: true
           name: test-data
           path: |
             test-data.json
@@ -800,6 +1223,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
+          overwrite: true
           name: snapshot-failures
           path: snapshot-failures/
           retention-days: 14
@@ -823,6 +1247,7 @@ jobs:
         id: upload_results
         uses: actions/upload-artifact@v7
         with:
+          overwrite: true
           name: test-results
           path: ${{ steps.find_results.outputs.path }}
           retention-days: 14
@@ -845,88 +1270,6 @@ jobs:
             echo "This is tracked as **PP-4988** and is not a test failure."
           } >> "$GITHUB_STEP_SUMMARY"
           
-      - name: Deploy Report to GitHub Pages
-        if: always()
-        continue-on-error: true
-        id: deploy_report
-        run: |
-          # Create report directory structure
-          REPORT_DIR="test-reports/${{ github.run_number }}"
-          mkdir -p "$REPORT_DIR"
-          
-          # Copy reports
-          cp test-report/test-report.html "$REPORT_DIR/" 2>/dev/null || true
-          cp test-report/TEST_RESULTS.md "$REPORT_DIR/" 2>/dev/null || true
-          cp test-data.json "$REPORT_DIR/" 2>/dev/null || true
-          cp coverage-data.json "$REPORT_DIR/" 2>/dev/null || true
-          
-          # Copy snapshot viewer if exists
-          if [ -f "snapshot-failures/snapshot-viewer.html" ]; then
-            cp snapshot-failures/snapshot-viewer.html "$REPORT_DIR/"
-            cp snapshot-failures/*.png "$REPORT_DIR/" 2>/dev/null || true
-          fi
-          
-          # Create index.html that redirects to the report
-          cat > "$REPORT_DIR/index.html" << 'INDEXEOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta http-equiv="refresh" content="0; url=test-report.html">
-            <title>Redirecting to Test Report</title>
-          </head>
-          <body>
-            <p>Redirecting to <a href="test-report.html">Test Report</a>...</p>
-          </body>
-          </html>
-          INDEXEOF
-          
-          # Create root index listing recent reports
-          mkdir -p test-reports
-          cat > test-reports/index.html << 'ROOTINDEXEOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Palace iOS Test Reports</title>
-            <style>
-              body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; background: #0d1117; color: #f0f6fc; }
-              h1 { color: #58a6ff; }
-              a { color: #58a6ff; }
-              .report-link { display: block; padding: 10px; margin: 5px 0; background: #161b22; border-radius: 6px; text-decoration: none; }
-              .report-link:hover { background: #21262d; }
-            </style>
-          </head>
-          <body>
-            <h1>🧪 Palace iOS Test Reports</h1>
-            <p>Recent test reports from CI runs:</p>
-            <div id="reports"></div>
-            <script>
-              // This will be populated by the actual report links
-              document.getElementById('reports').innerHTML = '<p>Browse to a specific run number: <code>/test-reports/{run-number}/</code></p>';
-            </script>
-          </body>
-          </html>
-          ROOTINDEXEOF
-          
-          # Output the report URL
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
-          REPORT_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/test-reports/${{ github.run_number }}/"
-          echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
-          echo "Report will be available at: $REPORT_URL"
-          
-      - name: Publish to GitHub Pages
-        if: always()
-        continue-on-error: true
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./test-reports
-          destination_dir: test-reports
-          keep_files: true
-          
-      # Same principle as the artifact upload above: failing to POST a summary
-      # comment is not a test failure. Seen reddening a board on
-      # fix/pp-4971-rate-aware-time-remaining while the suite itself was green.
       - name: Post PR Comment with Results
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
@@ -941,7 +1284,7 @@ jobs:
             const skipped = '${{ steps.parse_results.outputs.skipped }}';
             const duration = '${{ steps.parse_results.outputs.duration }}';
             const passRate = '${{ steps.parse_results.outputs.pass_rate }}';
-            const testOutcome = '${{ steps.tests.outcome }}';
+            const testOutcome = '${{ needs.test.result }}';
             const failedTests = `${{ steps.parse_results.outputs.failed_tests }}`;
             const classSummary = `${{ steps.parse_results.outputs.class_summary }}`;
             const snapshotCount = '${{ steps.snapshots.outputs.count }}';
@@ -955,8 +1298,11 @@ jobs:
             const testCountChange = '${{ steps.history.outputs.test_count_change }}';
             const buildStatus = '${{ steps.parse_results.outputs.build_status }}';
             const buildErrors = `${{ steps.parse_results.outputs.build_errors }}`;
+            const runnerFailures = `${{ steps.parse_results.outputs.runner_failures }}`;
+            const complete = '${{ steps.completeness.outputs.complete }}' === 'true';
+            const incompleteReason = `${{ steps.completeness.outputs.reason }}`;
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const reportUrl = '${{ steps.deploy_report.outputs.report_url }}';
+            const reportUrl = '${{ steps.report_url.outputs.report_url }}';
             
             let body = '## 🧪 Unit Test Results\n\n';
             
@@ -977,7 +1323,9 @@ jobs:
               }
             } else if (tests !== '0' && tests !== '') {
               // Status header
-              if (failed === '0') {
+              if (failed === '0' && !complete) {
+                body += `### ⚠️ NO TEST FAILED, BUT NOT EVERY TEST RAN\n\n`;
+              } else if (failed === '0') {
                 body += `### ✅ ALL TESTS PASSED\n\n`;
               } else {
                 body += `### ❌ ${failed} TEST${failed === '1' ? '' : 'S'} FAILED\n\n`;
@@ -989,6 +1337,22 @@ jobs:
                 coverageDisplay = ` | 📈 ${coverage} coverage`;
               }
               body += `**${tests} tests** | **${passed} passed** | **${failed} failed** | **${skipped} skipped** | ⏱️ ${duration} | 📊 ${passRate}${coverageDisplay}\n\n`;
+
+              // A runner failure is not a test failure; name it as one, and say
+              // when it cost tests, since coverage is then lower for that reason.
+              if (!complete) {
+                body += `**Not every test ran.** ${incompleteReason}\n\n`;
+                body += `Coverage below is from the tests that did run; the floors were not compared.\n\n`;
+              }
+              if (runnerFailures && runnerFailures.trim()) {
+                body += `<details open>\n<summary><strong>Runner failures (not test failures)</strong></summary>\n\n`;
+                body += '```\n' + runnerFailures.trim() + '\n```\n';
+                body += `A test runner that never connected or stopped responding. `;
+                body += complete
+                  ? `The tests it was given were relaunched and ran.\n`
+                  : `The tests it was given did not all run.\n`;
+                body += `</details>\n\n`;
+              }
               
               // Full per-class matrix — ALWAYS collapsed, never dumped open
               // (pr-report-contract.md §1, decision-first). ~900 green rows are
@@ -1172,9 +1536,116 @@ jobs:
               });
             }
           
-      - name: Fail if tests failed
-        if: steps.tests.outcome == 'failure' || steps.tests_streaming_on.outcome == 'failure'
-        run: exit 1
+  # Pages publishing clones the gh-pages branch, which took ~3.3 minutes of the
+  # macOS job; it needs nothing from macOS, so it runs here.
+  publish-report:
+    needs: report
+    if: always() && needs.report.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download reports
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: test-report
+          path: test-report
 
-  # Note: The AccessLint GitHub Action handles PR comments and artifact upload automatically
-  # This combined-report job is no longer needed since AccessLint posts its own comment
+      - name: Download report data
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: test-data
+          path: .
+
+      - name: Download snapshot viewer
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: snapshot-failures
+          path: snapshot-failures
+
+      - name: Deploy Report to GitHub Pages
+        if: always()
+        continue-on-error: true
+        id: deploy_report
+        run: |
+          # Create report directory structure
+          REPORT_DIR="test-reports/${{ github.run_number }}"
+          mkdir -p "$REPORT_DIR"
+          
+          # Copy reports
+          cp test-report/test-report.html "$REPORT_DIR/" 2>/dev/null || true
+          cp test-report/TEST_RESULTS.md "$REPORT_DIR/" 2>/dev/null || true
+          cp test-data.json "$REPORT_DIR/" 2>/dev/null || true
+          cp coverage-data.json "$REPORT_DIR/" 2>/dev/null || true
+          
+          # Copy snapshot viewer if exists
+          if [ -f "snapshot-failures/snapshot-viewer.html" ]; then
+            cp snapshot-failures/snapshot-viewer.html "$REPORT_DIR/"
+            cp snapshot-failures/*.png "$REPORT_DIR/" 2>/dev/null || true
+          fi
+          
+          # Create index.html that redirects to the report
+          cat > "$REPORT_DIR/index.html" << 'INDEXEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta http-equiv="refresh" content="0; url=test-report.html">
+            <title>Redirecting to Test Report</title>
+          </head>
+          <body>
+            <p>Redirecting to <a href="test-report.html">Test Report</a>...</p>
+          </body>
+          </html>
+          INDEXEOF
+          
+          # Create root index listing recent reports
+          mkdir -p test-reports
+          cat > test-reports/index.html << 'ROOTINDEXEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Palace iOS Test Reports</title>
+            <style>
+              body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; background: #0d1117; color: #f0f6fc; }
+              h1 { color: #58a6ff; }
+              a { color: #58a6ff; }
+              .report-link { display: block; padding: 10px; margin: 5px 0; background: #161b22; border-radius: 6px; text-decoration: none; }
+              .report-link:hover { background: #21262d; }
+            </style>
+          </head>
+          <body>
+            <h1>🧪 Palace iOS Test Reports</h1>
+            <p>Recent test reports from CI runs:</p>
+            <div id="reports"></div>
+            <script>
+              // This will be populated by the actual report links
+              document.getElementById('reports').innerHTML = '<p>Browse to a specific run number: <code>/test-reports/{run-number}/</code></p>';
+            </script>
+          </body>
+          </html>
+          ROOTINDEXEOF
+          
+          # Output the report URL
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPORT_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/test-reports/${{ github.run_number }}/"
+          echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
+          echo "Report will be available at: $REPORT_URL"
+          
+      - name: Publish to GitHub Pages
+        if: always()
+        continue-on-error: true
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./test-reports
+          destination_dir: test-reports
+          keep_files: true
+          
+      # Same principle as the artifact upload above: failing to POST a summary
+      # comment is not a test failure. Seen reddening a board on
+      # fix/pp-4971-rate-aware-time-remaining while the suite itself was green.
