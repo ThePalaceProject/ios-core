@@ -806,6 +806,23 @@ final class CarPlayTemplateNavigatorTests: XCTestCase {
             self.templates = templates
         }
 
+        func setRootTemplate(_ rootTemplate: CPTemplate, animated: Bool, completion: ((Bool, (any Error)?) -> Void)?) {
+            pending.append { [self] in
+                templates = [rootTemplate]
+                completion?(true, nil)
+            }
+        }
+
+        func presentTemplate(_ templateToPresent: CPTemplate, animated: Bool, completion: ((Bool, (any Error)?) -> Void)?) {
+            pending.append { [self] in
+                guard presentedTemplate == nil else {
+                    return fail("A template is already presented.", completion)
+                }
+                presentedTemplate = templateToPresent
+                completion?(true, nil)
+            }
+        }
+
         func pushTemplate(_ templateToPush: CPTemplate, animated: Bool, completion: ((Bool, (any Error)?) -> Void)?) {
             pending.append { [self] in
                 guard !templates.isEmpty else {
@@ -1015,5 +1032,202 @@ final class CarPlayTemplateNavigatorTests: XCTestCase {
 
         XCTAssertEqual(controller.raised, [])
         XCTAssertEqual(controller.reported, ["No presented template to dismiss."])
+    }
+
+    func testDismiss_whenAlertPresented_clearsItAndReportsSuccess() {
+        let controller = FakeCarPlayController(templates: [root])
+        controller.presentedTemplate = CPListTemplate(title: "Alert", sections: [])
+        let navigator = makeNavigator(controller)
+        var outcomes: [String] = []
+
+        navigator.dismiss(operation: "dismissTemplate(alert)") { error in
+            outcomes.append(error == nil ? "success" : "failure")
+        }
+        controller.drain()
+
+        XCTAssertNil(controller.presentedTemplate)
+        XCTAssertFalse(navigator.hasPresentedTemplate)
+        XCTAssertEqual(outcomes, ["success"], "The caller's outcome runs once, with no error")
+    }
+
+    func testDismiss_withNothingPresented_passesTheErrorToTheCaller() {
+        let controller = FakeCarPlayController(templates: [root])
+        let navigator = makeNavigator(controller)
+        var receivedError: (any Error)?
+
+        navigator.dismiss(operation: "dismissTemplate(alert)") { receivedError = $0 }
+        controller.drain()
+
+        XCTAssertEqual((receivedError as NSError?)?.localizedDescription, "No presented template to dismiss.")
+    }
+
+    // MARK: setRoot / present
+
+    func testSetRoot_onEmptyStack_installsRootSoALaterPushSucceeds() {
+        let controller = FakeCarPlayController(templates: [])
+        let navigator = makeNavigator(controller)
+        let chapters = CPListTemplate(title: "Chapters", sections: [])
+        var rootOutcome: [Bool] = []
+
+        navigator.setRoot(root, operation: "setRootTemplate(library)") { rootOutcome.append($0 == nil) }
+        navigator.push(chapters, operation: "pushTemplate(chapterList)")
+        controller.drain()
+
+        XCTAssertEqual(rootOutcome, [true])
+        XCTAssertEqual(controller.templates.count, 2)
+        XCTAssertTrue(controller.templates.first === root)
+        XCTAssertTrue(controller.topTemplate === chapters)
+        XCTAssertEqual(navigator.templateCount, 2)
+    }
+
+    func testSetRoot_replacesAStackedNavigationWithTheNewRoot() {
+        let controller = FakeCarPlayController(templates: [root, nowPlaying])
+        let navigator = makeNavigator(controller)
+        let renamedLibrary = CPListTemplate(title: "Other Library", sections: [])
+
+        navigator.setRoot(renamedLibrary, operation: "setRootTemplate(new library)")
+        controller.drain()
+
+        XCTAssertEqual(controller.templates.count, 1)
+        XCTAssertTrue(controller.topTemplate === renamedLibrary)
+    }
+
+    func testPresent_whenNothingPresented_presentsAndReportsSuccess() {
+        let controller = FakeCarPlayController(templates: [root])
+        let navigator = makeNavigator(controller)
+        let alert = CPListTemplate(title: "Alert", sections: [])
+        var outcomes: [Bool] = []
+
+        navigator.present(alert, operation: "presentTemplate(errorAlert)") { outcomes.append($0 == nil) }
+        controller.drain()
+
+        XCTAssertTrue(controller.presentedTemplate === alert)
+        XCTAssertTrue(navigator.hasPresentedTemplate)
+        XCTAssertEqual(outcomes, [true])
+    }
+
+    func testPresent_whenAModalIsAlreadyPresented_reportsTheRejectionInsteadOfRaising() {
+        // Two error channels race a second alert while the first is up
+        // (TestFlight crash 9A269135 at CPInterfaceController.m:481).
+        let controller = FakeCarPlayController(templates: [root])
+        let navigator = makeNavigator(controller)
+        let first = CPListTemplate(title: "First", sections: [])
+        var secondOutcome: [Bool] = []
+
+        navigator.present(first, operation: "presentTemplate(errorAlert)")
+        navigator.present(CPListTemplate(title: "Second", sections: []), operation: "presentTemplate(errorAlert)") {
+            secondOutcome.append($0 == nil)
+        }
+        controller.drain()
+
+        XCTAssertEqual(controller.raised, [])
+        XCTAssertEqual(controller.reported, ["A template is already presented."])
+        XCTAssertEqual(secondOutcome, [false], "The rejected present hands its error to the caller")
+        XCTAssertTrue(controller.presentedTemplate === first)
+    }
+
+    func testPush_whenItFails_passesTheErrorToTheCaller() {
+        let controller = FakeCarPlayController(templates: [])
+        let navigator = makeNavigator(controller)
+        var outcomes: [Bool] = []
+
+        navigator.push(nowPlaying, operation: "pushTemplate(nowPlaying)") { outcomes.append($0 == nil) }
+        controller.drain()
+
+        XCTAssertEqual(outcomes, [false])
+    }
+
+    func testPush_whenItSucceeds_runsTheCallerOutcomeWithoutAnError() {
+        let controller = FakeCarPlayController(templates: [root])
+        let navigator = makeNavigator(controller)
+        var outcomes: [Bool] = []
+
+        navigator.push(nowPlaying, operation: "pushTemplate(nowPlaying)") { outcomes.append($0 == nil) }
+        controller.drain()
+
+        XCTAssertEqual(outcomes, [true])
+        XCTAssertTrue(navigator.isNowPlayingOnTop)
+    }
+
+    // MARK: Empty stack
+
+    func testEmptyStack_noPopIsIssuedAndNowPlayingIsNotOnTop() {
+        let controller = FakeCarPlayController(templates: [])
+        let navigator = makeNavigator(controller)
+
+        navigator.popNowPlayingIfOnTop()
+        navigator.popToRootIfStacked()
+        controller.drain()
+
+        XCTAssertEqual(controller.popCount, 0)
+        XCTAssertEqual(controller.popToRootCount, 0)
+        XCTAssertEqual(navigator.templateCount, 0)
+        XCTAssertFalse(navigator.isNowPlayingOnTop)
+        XCTAssertEqual(controller.raised, [])
+    }
+
+    func testEmptyStack_explicitPopIsReportedNotRaised() {
+        let controller = FakeCarPlayController(templates: [])
+        let navigator = makeNavigator(controller)
+
+        navigator.pop(operation: "popTemplate(chapterList)")
+        controller.drain()
+
+        XCTAssertEqual(controller.raised, [])
+        XCTAssertEqual(controller.reported, ["No templates were available to be popped."])
+    }
+
+    // MARK: Deallocated controller
+
+    func testDeallocatedController_everyOperationIsANoOpAndNoOutcomeRuns() {
+        var controller: FakeCarPlayController? = FakeCarPlayController(templates: [root, nowPlaying])
+        let navigator = makeNavigator(controller!)
+        XCTAssertTrue(navigator.isAttached)
+        XCTAssertTrue(navigator.isNowPlayingOnTop)
+        weak var released = controller
+        controller = nil
+        XCTAssertNil(released, "precondition: the navigator must not keep the controller alive")
+        var outcomes = 0
+
+        navigator.setRoot(root, operation: "setRootTemplate(library)") { _ in outcomes += 1 }
+        navigator.push(nowPlaying, operation: "pushTemplate(nowPlaying)") { _ in outcomes += 1 }
+        navigator.present(nowPlaying, operation: "presentTemplate(errorAlert)") { _ in outcomes += 1 }
+        navigator.dismiss(operation: "dismissTemplate(alert)") { _ in outcomes += 1 }
+        navigator.pop(operation: "popTemplate(chapterList)")
+        navigator.popToRootIfStacked()
+        navigator.popNowPlayingIfOnTop()
+
+        XCTAssertEqual(outcomes, 0)
+        XCTAssertFalse(navigator.isAttached)
+        XCTAssertNil(navigator.templateCount)
+        XCTAssertFalse(navigator.hasPresentedTemplate)
+        XCTAssertFalse(navigator.isNowPlayingOnTop)
+    }
+
+    // MARK: Production Now Playing predicate
+
+    func testDefaultPredicate_popsTheSystemNowPlayingTemplate() {
+        let controller = FakeCarPlayController(templates: [root, CPNowPlayingTemplate.shared])
+        let navigator = CarPlayTemplateNavigator(controller: controller)
+
+        XCTAssertTrue(navigator.isNowPlayingOnTop)
+        navigator.popNowPlayingIfOnTop()
+        controller.drain()
+
+        XCTAssertEqual(controller.popCount, 1)
+        XCTAssertTrue(controller.topTemplate === root)
+    }
+
+    func testDefaultPredicate_leavesAListTemplateOnTopInPlace() {
+        let chapters = CPListTemplate(title: "Chapters", sections: [])
+        let controller = FakeCarPlayController(templates: [root, chapters])
+        let navigator = CarPlayTemplateNavigator(controller: controller)
+
+        XCTAssertFalse(navigator.isNowPlayingOnTop)
+        navigator.popNowPlayingIfOnTop()
+        controller.drain()
+
+        XCTAssertEqual(controller.popCount, 0)
+        XCTAssertTrue(controller.topTemplate === chapters)
     }
 }
