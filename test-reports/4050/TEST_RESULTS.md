@@ -1,6 +1,6 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-10-01 16:06:50 UTC
+**Generated:** 2026-10-01 17:32:27 UTC
 **Commit:** `d9444ffeb384`
 **Branch:** `chore/retire-expired-detectors`
 
