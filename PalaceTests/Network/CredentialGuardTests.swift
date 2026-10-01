@@ -354,20 +354,35 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
     }
 }
 
+// MARK: - Executor factory
+
+/// Stubbed-transport executor whose token reads and writes go to a
+/// keychain-free mock account. With the production accounts manager, a
+/// successful `executeTokenRefresh` stores a real token on the shared current
+/// account, and once it expires later tests that gate on it fail (PP-5295).
+@MainActor
+private func makeStubbedExecutorWithIsolatedAccount() -> TPPNetworkExecutor {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [HTTPStubURLProtocol.self]
+    let userAccount = TPPUserAccountMock()
+    let accounts = TPPLibraryAccountMock()
+    accounts.userAccountResolver = { _ in userAccount }
+    return TPPNetworkExecutor(
+        credentialsProvider: nil,
+        cachingStrategy: .ephemeral,
+        sessionConfiguration: config,
+        accountsManager: accounts,
+        delegateQueue: nil
+    )
+}
+
 // MARK: - Network Executor Token Refresh Guards
 
 @MainActor
 final class NetworkExecutorCredentialGuardTests: XCTestCase {
 
     private func makeExecutor() -> TPPNetworkExecutor {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
-        return TPPNetworkExecutor(
-            credentialsProvider: nil,
-            cachingStrategy: .ephemeral,
-            sessionConfiguration: config,
-            delegateQueue: nil
-        )
+        makeStubbedExecutorWithIsolatedAccount()
     }
 
     override func setUp() {
@@ -606,14 +621,7 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
 final class ConcurrentTokenRefreshTests: XCTestCase {
 
     private func makeExecutor() -> TPPNetworkExecutor {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
-        return TPPNetworkExecutor(
-            credentialsProvider: nil,
-            cachingStrategy: .ephemeral,
-            sessionConfiguration: config,
-            delegateQueue: nil
-        )
+        makeStubbedExecutorWithIsolatedAccount()
     }
 
     override func setUp() {
@@ -911,14 +919,7 @@ final class CredentialEdgeCaseTests: XCTestCase {
 final class TokenRefreshIntegrationTests: XCTestCase {
 
     private func makeExecutor() -> TPPNetworkExecutor {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
-        return TPPNetworkExecutor(
-            credentialsProvider: nil,
-            cachingStrategy: .ephemeral,
-            sessionConfiguration: config,
-            delegateQueue: nil
-        )
+        makeStubbedExecutorWithIsolatedAccount()
     }
 
     override func setUp() {

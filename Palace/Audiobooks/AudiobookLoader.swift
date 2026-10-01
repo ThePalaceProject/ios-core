@@ -76,8 +76,19 @@ final class AudiobookLoader {
     /// the default chain via `Self.makeProductionAdapters()`.
     private let adapters: [AudiobookVendorAdapter]
 
-    init(adapters: [AudiobookVendorAdapter]? = nil) {
+    /// The account whose token gates `load` (PP-5295). Called once per `load`,
+    /// not at init, so the account current at open time is the one checked.
+    /// Tests inject an account so the gate does not depend on whatever the
+    /// shared container's current account holds.
+    private let currentUserAccount: () -> TPPUserAccount
+
+    init(
+        adapters: [AudiobookVendorAdapter]? = nil,
+        currentUserAccount: (() -> TPPUserAccount)? = nil
+    ) {
         self.adapters = adapters ?? Self.makeProductionAdapters()
+        self.currentUserAccount = currentUserAccount
+            ?? { AppContainer.production().accountsManager.currentUserAccount }
     }
 
     /// Re-fulfill loader (PP-4800). Bypasses `LocalFileAdapter` so an already-
@@ -158,8 +169,7 @@ final class AudiobookLoader {
     // MARK: - Token refresh
 
     private func refreshTokenIfNeeded(for book: TPPBook, completion: @escaping (Result<Void, AudiobookLoadError>) -> Void) {
-        let accountsManager = AppContainer.production().accountsManager
-        let userAccount = accountsManager.currentUserAccount
+        let userAccount = currentUserAccount()
         guard userAccount.authTokenHasExpired else {
             completion(.success(()))
             return
@@ -178,7 +188,9 @@ final class AudiobookLoader {
             return
         }
 
-        AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil, accountId: accountsManager.currentAccount?.uuid) { result in
+        let container = AppContainer.production()
+        let accountId = container.accountsManager.currentAccount?.uuid
+        container.networkExecutor.refreshTokenAndResume(task: nil, accountId: accountId) { result in
             switch result {
             case .success:
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
