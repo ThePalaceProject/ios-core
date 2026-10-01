@@ -503,3 +503,92 @@ def test_cli_verify_union_exit_codes(tmp_path):
     assert missing.returncode == 1
     none = _cli("verify-union", "--plan", str(tmp_path / "plan.json"))
     assert none.returncode == 1, "no reports at all must fail, not pass vacuously"
+
+
+# --------------------------------------------------------------------------
+# Runner failures: a test host that never connected, or died
+# --------------------------------------------------------------------------
+#
+# Verbatim from `xcresulttool get test-results tests` on run 36797084975
+# (PR #1562): xcodebuild files a test runner that never connected under a
+# pseudo-suite "System Failures" in the bundle it was meant to run. The classes
+# that runner was given are simply absent from the tree.
+
+SYSTEM_FAILURES_SUITE = {
+    "nodeType": "Test Suite", "name": "System Failures", "children": [
+        {"name": "Palace (36741) encountered an error",
+         "nodeIdentifier": "Palace (36741) encountered an error",
+         "nodeType": "Test Case", "result": "Failed",
+         "children": [{"name": "The test runner hung before establishing connection.",
+                       "nodeType": "Failure Message"}]}]}
+
+
+def _with_system_failure(doc: dict, bundle="PalaceTests") -> dict:
+    for plan in doc["testNodes"]:
+        for b in plan["children"]:
+            if b["name"] == bundle:
+                b["children"].append(json.loads(json.dumps(SYSTEM_FAILURES_SUITE)))
+                return doc
+    raise AssertionError(f"no bundle {bundle}")
+
+
+def test_system_failures_are_read_as_runner_failures_with_their_reason():
+    doc = _with_system_failure(_tests_doc({"PalaceTests/A": ["Passed"]}))
+    assert shards.system_failures(doc) == [{
+        "bundle": "PalaceTests", "name": "Palace (36741) encountered an error",
+        "message": "The test runner hung before establishing connection."}]
+
+
+def test_a_bundle_without_system_failures_reports_none():
+    assert shards.system_failures(_tests_doc({"PalaceTests/A": ["Failed"]})) == []
+
+
+def test_the_system_failures_suite_is_not_a_class_the_shard_ran():
+    """Before: verify-shard listed it as a class 'assigned elsewhere', which
+    named the wrong cause."""
+    plan = _small_plan()
+    mine = shards.shard_classes(plan, 0, "all")
+    doc = _with_system_failure(_tests_doc({c: ["Passed"] for c in mine}))
+    r = shards.verify_shard(plan, 0, doc)
+    assert r["foreign"] == [] and r["missing"] == []
+    assert r["system_failures"] == shards.system_failures(doc)
+
+
+def test_a_runner_failure_is_not_a_test_failure_for_the_second_chance():
+    """A kill beside a runner failure still gets its second chance; the runner
+    failure is handled by relaunching what never ran, not by re-running a test."""
+    doc = _with_system_failure(_doc(_case("S/testA()", "Failed", [KILL])))
+    assert shards.kill_rerun_candidates(doc) == (shards.KILLS_ONLY, ["PalaceTests/S/testA"])
+    only_runner = _with_system_failure(_doc(_case("S/testA()", "Passed")))
+    assert shards.kill_rerun_candidates(only_runner) == (shards.KILLS_NONE, [])
+
+
+def test_lost_classes_are_the_assigned_ones_absent_from_the_bundle_split_by_pass():
+    timings = {"class_scale": 1.0, "extras": {"streaming-on": 1.0, "packages": 1.0},
+               "classes": {"A": 5.0, "B": 4.0, "C": 3.0, "T": 1.0}}
+    plan = shards.build_plan(["PalaceTests/A", "PalaceTests/B", "PalaceTests/C",
+                              "TenPrintCoverTests/T"], timings, 1, ["PalaceTests/C"])
+    par = shards.shard_classes(plan, 0, "parallel")
+    ser = shards.shard_classes(plan, 0, "serial")
+    assert len(par) == 3 and ser == ["PalaceTests/C"]
+    doc = _with_system_failure(_tests_doc({par[0]: ["Passed"]}))
+    assert shards.lost_classes(plan, 0, doc, "parallel") == par[1:]
+    assert shards.lost_classes(plan, 0, doc, "serial") == ser
+    everything = _tests_doc({c: ["Passed"] for c in par + ser})
+    assert shards.lost_classes(plan, 0, everything, "parallel") == []
+    assert shards.lost_classes(plan, 0, everything, "serial") == []
+
+
+def test_cli_lost_prints_only_testing_args_and_runner_failures_print_their_reason(tmp_path):
+    plan = _small_plan()
+    par = shards.shard_classes(plan, 0, "parallel")
+    (tmp_path / "plan.json").write_text(json.dumps(plan))
+    (tmp_path / "tests.json").write_text(json.dumps(_with_system_failure(_tests_doc({par[0]: ["Passed"]}))))
+    r = _cli("lost", "--plan", str(tmp_path / "plan.json"), "--shard", "0",
+             "--tests-json", str(tmp_path / "tests.json"), "--kind", "parallel")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == [f"-only-testing:{c}" for c in par[1:]]
+    r = _cli("runner-failures", "--tests-json", str(tmp_path / "tests.json"))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == ("PalaceTests: Palace (36741) encountered an error: "
+                                "The test runner hung before establishing connection.")

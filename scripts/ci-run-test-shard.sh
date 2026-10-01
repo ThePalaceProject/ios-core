@@ -25,6 +25,7 @@
 #     clone is a whole simulated device; a shard runs a third of the suite, so
 #     it no longer needs 4 of them. CI_TEST_WORKERS overrides.
 #   * One second chance for allowance kills (see second_chance below).
+#   * One relaunch for classes a test runner never ran (see relaunch below).
 #
 # prior-art-checked: xcode-test-optimized.sh builds and tests in one
 # `xcodebuild test`; it cannot run against prebuilt products or a class subset.
@@ -41,6 +42,7 @@ SHARDS_PY="$HERE/ci-test-shards.py"
 DIAG_PY="$HERE/ci-runner-diagnostics.py"
 mkdir -p "$OUT"
 rm -rf "$OUT/parallel.xcresult" "$OUT/serial.xcresult" "$OUT/rerun.xcresult" \
+       "$OUT/relaunch-parallel.xcresult" "$OUT/relaunch-serial.xcresult" \
        "$OUT/TestResults.xcresult" "$OUT/merged.xcresult" "$OUT/memory-samples.txt"
 
 SIMULATOR_ID=$(xcrun simctl list devices available \
@@ -97,9 +99,18 @@ SHARD_BUDGET_SECONDS="${SHARD_BUDGET_SECONDS:-1800}"
   pkill -INT -f "xcodebuild test-without-building" || true ) &
 WATCHDOG=$!
 cleanup() {
+    # Only the passing verdict at the end sets SHARD_PASSED. Anything else that
+    # ends the script is a failure: /bin/bash 3.2 reports an unbound-variable
+    # abort under `set -u` as status 0, even to this trap.
+    local rc=$?
+    if [ "$rc" -eq 0 ] && [ "${SHARD_PASSED:-0}" != 1 ]; then
+        echo "🔴 shard $SHARD: the script stopped before reaching a verdict"
+        rc=1
+    fi
     kill "$WATCHDOG" "$SAMPLER" 2>/dev/null || true
     python3 "$DIAG_PY" sample "$OUT/memory-samples.txt" --once >/dev/null 2>&1 || true
     python3 "$DIAG_PY" memory-summary "$OUT/memory-samples.txt" | sed "s/^/Shard $SHARD /" || true
+    exit "$rc"
 }
 trap cleanup EXIT
 
@@ -175,6 +186,57 @@ xcrun xcresulttool get test-results tests --path "$OUT/TestResults.xcresult" > "
 TEST_EXIT=0
 if [ "$PARALLEL_EXIT" -ne 0 ] || [ "$SERIAL_EXIT" -ne 0 ]; then TEST_EXIT=1; fi
 
+# relaunch: a test runner that never connects or dies ("The test runner hung
+# before establishing connection", "(ipc/mig) server died") takes the classes it
+# was given with it, and xcodebuild does not hand them to another runner (run
+# 36799592179: 162 of 516 classes; run 36797084975). Relaunch exactly the
+# shard's classes that are absent from the bundle, once, with the pass settings
+# they had. It never re-runs a test that ran, so it cannot turn a failure into
+# a pass; whether the original non-zero exit is then explained is decided below
+# from the merged bundle.
+read_lost() {  # $1 = parallel|serial
+    python3 "$SHARDS_PY" lost --plan "$PLAN" --shard "$SHARD" --tests-json "$OUT/tests.json" --kind "$1"
+}
+RUNNER_FAILURES=$(python3 "$SHARDS_PY" runner-failures --tests-json "$OUT/tests.json")
+LOST_PARALLEL=()
+while IFS= read -r a; do LOST_PARALLEL+=("$a"); done < <(read_lost parallel)
+LOST_SERIAL=()
+while IFS= read -r a; do LOST_SERIAL+=("$a"); done < <(read_lost serial)
+LOST_COUNT=$(( ${#LOST_PARALLEL[@]} + ${#LOST_SERIAL[@]} ))
+RUNNER_RECOVERED=0
+if [ "$LOST_COUNT" -gt 0 ]; then
+    REASON="${RUNNER_FAILURES:-no runner failure is recorded in the result bundle}"
+    echo "::warning title=Runner failure: relaunching classes that never ran::shard $SHARD: $LOST_COUNT class(es) never ran, which is a runner failure, not a test failure. Recorded: ${REASON//$'\n'/ | }. Relaunching them once."
+    echo "Relaunching:" ${LOST_PARALLEL[@]+"${LOST_PARALLEL[@]}"} ${LOST_SERIAL[@]+"${LOST_SERIAL[@]}"}
+    RELAUNCH_EXIT=0
+    RELAUNCH_BUNDLES=()
+    if [ ${#LOST_PARALLEL[@]} -gt 0 ]; then
+        e=$(run_pass "$OUT/relaunch-parallel.xcresult" retry \
+            -parallel-testing-enabled YES \
+            -maximum-parallel-testing-workers "$WORKERS" \
+            "${LOST_PARALLEL[@]}")
+        if [ "$e" -ne 0 ]; then RELAUNCH_EXIT=$e; fi
+        if [ -d "$OUT/relaunch-parallel.xcresult" ]; then RELAUNCH_BUNDLES+=("$OUT/relaunch-parallel.xcresult"); fi
+    fi
+    if [ ${#LOST_SERIAL[@]} -gt 0 ]; then
+        e=$(run_pass "$OUT/relaunch-serial.xcresult" retry -parallel-testing-enabled NO "${LOST_SERIAL[@]}")
+        if [ "$e" -ne 0 ]; then RELAUNCH_EXIT=$e; fi
+        if [ -d "$OUT/relaunch-serial.xcresult" ]; then RELAUNCH_BUNDLES+=("$OUT/relaunch-serial.xcresult"); fi
+    fi
+    echo "Relaunch exit code: $RELAUNCH_EXIT"
+    if [ ${#RELAUNCH_BUNDLES[@]} -gt 0 ]; then
+        merge_into_results "$OUT/TestResults.xcresult" "${RELAUNCH_BUNDLES[@]}"
+        xcrun xcresulttool get test-results tests --path "$OUT/TestResults.xcresult" > "$OUT/tests.json"
+    fi
+    STILL_LOST=$( { read_lost parallel; read_lost serial; } | wc -l | tr -d ' ')
+    if [ "$RELAUNCH_EXIT" -eq 0 ] && [ "$STILL_LOST" -eq 0 ]; then
+        RUNNER_RECOVERED=1
+        echo "::warning title=Runner failure recovered::shard $SHARD: the $LOST_COUNT class(es) the runner lost ran on relaunch and passed."
+    else
+        echo "::error title=Runner failure not recovered::shard $SHARD: after one relaunch, $STILL_LOST class(es) still did not run (relaunch exit $RELAUNCH_EXIT)."
+    fi
+fi
+
 # second_chance: `-retry-tests-on-failure` never retries a test XCTest killed at
 # its execution-time allowance (0 of 28 in the 2026-09 census), so one runner
 # stall fails the shard. When EVERY failure in the shard is such a kill, re-run
@@ -210,7 +272,17 @@ if [ "$TEST_EXIT" -ne 0 ]; then
             fi
             ;;
         3) echo "Not every failure in shard $SHARD was an allowance kill; no second chance." ;;
-        *) echo "xcodebuild failed but the bundle names no failed test (a crash or an infrastructure failure); no second chance." ;;
+        4)
+            if [ "$RUNNER_RECOVERED" -eq 1 ]; then
+                TEST_EXIT=0
+                echo "Shard $SHARD: the only failure was the runner failure, and every class it lost passed on relaunch."
+            elif [ -n "$RUNNER_FAILURES" ] && [ "$LOST_COUNT" -eq 0 ]; then
+                echo "::error title=Runner failure::shard $SHARD: ${RUNNER_FAILURES//$'\n'/ | }. It lost no class (every assigned class ran), so nothing was relaunched, but which tests the failure cost cannot be read from the bundle; re-run the shard."
+            else
+                echo "xcodebuild failed but the bundle names no failed test (a crash or an infrastructure failure); no second chance."
+            fi
+            ;;
+        *) echo "xcodebuild failed but the failed tests could not be read from the bundle; no second chance." ;;
     esac
 fi
 
@@ -222,4 +294,5 @@ if [ "$TEST_EXIT" -ne 0 ] || [ "$VERIFY_EXIT" -ne 0 ]; then
     echo "🔴 Shard $SHARD failed (parallel=$PARALLEL_EXIT serial=$SERIAL_EXIT verify=$VERIFY_EXIT)"
     exit 1
 fi
+SHARD_PASSED=1
 echo "✅ Shard $SHARD passed"

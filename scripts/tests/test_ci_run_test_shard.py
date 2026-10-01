@@ -30,6 +30,10 @@ XCODEBUILD = textwrap.dedent("""\
     # Records its arguments, then writes a fake bundle: one line per test case,
     # "Bundle|Class|method|result|message". A class-level -only-testing id runs
     # one case "t"; a method-level id (the second chance) runs that method.
+    # STUB_HANG=<Bundle/Class>: the runner given that class never connects, the
+    # first time only (always, with STUB_HANG_AGAIN): the class is absent and a
+    # System Failures case is recorded, as on run 36797084975.
+    # STUB_SYSFAIL_ONLY: record that runner failure once, losing nothing.
     echo "$*" >> "$STUB_LOG"
     bundle=""; prev=""; ids=()
     for a in "$@"; do
@@ -39,8 +43,18 @@ XCODEBUILD = textwrap.dedent("""\
     done
     mkdir -p "$bundle"; : > "$bundle/cases"
     failed=0
+    hung="$STUB_LOG.hung"
+    if [ -n "${STUB_SYSFAIL_ONLY:-}" ] && [ ! -e "$hung" ]; then
+      touch "$hung"; failed=1
+      echo "PalaceTests|System Failures|Palace (36741) encountered an error|Failed|The test runner hung before establishing connection." >> "$bundle/cases"
+    fi
     for id in "${ids[@]}"; do
       [ "$id" = "${STUB_DROP:-}" ] && continue
+      if [ "$id" = "${STUB_HANG:-}" ] && { [ ! -e "$hung" ] || [ -n "${STUB_HANG_AGAIN:-}" ]; }; then
+        touch "$hung"; failed=1
+        echo "PalaceTests|System Failures|Palace (36741) encountered an error|Failed|The test runner hung before establishing connection." >> "$bundle/cases"
+        continue
+      fi
       IFS=/ read -r b c m <<< "$id"
       rerun=0; [ -n "$m" ] && rerun=1; m="${m:-t}"
       result="Passed"; msg=""
@@ -70,7 +84,8 @@ XCRUN = textwrap.dedent("""\
     bundles = {}
     for line in open(sys.argv[1]).read().splitlines():
         b, c, m, result, msg = line.split("|")
-        case = {"nodeType": "Test Case", "name": f"{m}()", "nodeIdentifier": f"{c}/{m}()",
+        name, ident = (m, m) if c == "System Failures" else (f"{m}()", f"{c}/{m}()")
+        case = {"nodeType": "Test Case", "name": name, "nodeIdentifier": ident,
                 "result": result, "children": [{"nodeType": "Failure Message", "name": msg}] if msg else []}
         suites = bundles.setdefault(b, {})
         suites.setdefault(c, {"nodeType": "Test Suite", "name": c, "children": []})["children"].append(case)
@@ -226,3 +241,66 @@ def test_the_shard_prints_its_memory_summary(env):
     tmp_path, e = env
     r = _run(tmp_path, e)
     assert "Shard 0 runner memory over" in r.stdout
+
+
+# --------------------------------------------------------------------------
+# Runner failures: classes a test runner never ran are relaunched once
+# --------------------------------------------------------------------------
+
+def _calls(tmp_path):
+    return (tmp_path / "xcodebuild.log").read_text().splitlines()
+
+
+def test_classes_lost_to_a_hung_runner_are_relaunched_once_and_the_shard_passes(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/A")
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = _calls(tmp_path)
+    assert len(calls) == 3
+    relaunch = calls[-1]
+    assert relaunch.count("-only-testing:") == 1 and "-only-testing:PalaceTests/A" in relaunch
+    assert "-parallel-testing-enabled YES" in relaunch
+    assert "-retry-tests-on-failure -test-iterations 3" in relaunch
+    assert "::warning title=Runner failure" in r.stdout
+    assert "The test runner hung before establishing connection." in r.stdout
+    report = json.loads((tmp_path / "out/shard-report.json").read_text())
+    assert report["missing"] == [] and report["foreign"] == []
+    assert "PalaceTests/A" in report["executed"]
+    assert report["system_failures"][0]["message"] == "The test runner hung before establishing connection."
+
+
+def test_a_lost_isolated_class_is_relaunched_serially(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/Iso")
+    assert r.returncode == 0, r.stdout + r.stderr
+    relaunch = _calls(tmp_path)[-1]
+    assert relaunch.count("-only-testing:") == 1 and "-only-testing:PalaceTests/Iso" in relaunch
+    assert "-parallel-testing-enabled NO" in relaunch
+
+
+def test_a_runner_failure_that_repeats_on_relaunch_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/A", STUB_HANG_AGAIN="1")
+    assert r.returncode == 1
+    assert len(_calls(tmp_path)) == 3, "relaunched once, not again"
+    assert "Runner failure not recovered" in r.stdout
+    report = json.loads((tmp_path / "out/shard-report.json").read_text())
+    assert report["missing"] == ["PalaceTests/A"]
+
+
+def test_a_relaunch_does_not_excuse_a_test_failure_elsewhere_in_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/A", STUB_FAIL="TenPrintCoverTests/T")
+    assert r.returncode == 1
+    assert "-only-testing:PalaceTests/A" in _calls(tmp_path)[2]
+
+
+def test_a_runner_failure_that_lost_no_class_still_fails_and_says_why(env):
+    """Nothing to relaunch, and the bundle cannot say which tests it cost."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_SYSFAIL_ONLY="1")
+    assert r.returncode == 1
+    assert len(_calls(tmp_path)) == 2
+    assert "The test runner hung before establishing connection." in r.stdout
+    assert "every assigned class ran" in r.stdout
+

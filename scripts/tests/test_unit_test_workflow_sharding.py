@@ -147,3 +147,37 @@ def test_each_shard_checks_out_every_submodule_the_tests_read():
     run = _run_text("test")
     for sub in sorted(_submodules_read_by_tests()):
         assert re.search(r"git\b.*\bsubmodule update --init\b.*\b" + re.escape(sub) + r"\b", run), sub
+
+
+def _step(job, name):
+    found = [s for s in _steps(job) if s.get("name") == name]
+    assert len(found) == 1, f"{job}: expected one step named {name!r}, found {len(found)}"
+    return found[0]
+
+
+def test_the_report_job_checks_that_every_planned_class_ran():
+    """Coverage measured over a run that lost classes reads as a coverage drop
+    (run 36797084975: three floors 'failed' after a runner hang)."""
+    step = next(s for s in _steps("report") if s.get("id") == "completeness")
+    assert "scripts/ci-test-shards.py verify-union" in step["run"]
+    assert "complete=" in step["run"] and "reason" in step["run"]
+    downloads = {s["with"].get("name") or s["with"].get("pattern")
+                 for s in _steps("report") if "download-artifact" in s.get("uses", "")}
+    assert {"shard-plan", "shard-report-*"} <= downloads
+
+
+def test_coverage_floors_are_not_evaluated_on_an_incomplete_run_and_say_why():
+    step = _step("report", "Enforce Coverage Floors")
+    run = step["run"]
+    assert "steps.completeness.outputs.complete" in run
+    assert "Coverage floors not evaluated" in run and "exit 1" in run, \
+        "an incomplete run must report the reason, not skip the floor silently"
+    assert "scripts/enforce_coverage_floors.py" in run
+
+
+def test_runner_failures_are_named_separately_in_the_summary_and_the_pr_comment():
+    for name in ("Generate GitHub Step Summary", "Post PR Comment with Results"):
+        s = _step("report", name)
+        text = s.get("run") or s["with"]["script"]
+        assert "steps.parse_results.outputs.runner_failures" in text, name
+        assert "steps.completeness.outputs.complete" in text, name

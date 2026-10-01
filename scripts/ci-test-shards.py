@@ -32,6 +32,9 @@ Subcommands:
   kills          list the tests killed at the execution-time allowance, for
                  the shard's one second chance
   check-rerun    confirm every second-chance test ran and passed
+  lost           print the -only-testing arguments for this shard's classes
+                 that are absent from its result bundle (a runner failure)
+  runner-failures  print the runner failures the result bundle records
 
 Assignment is longest-processing-time-first over the historical per-class
 seconds, which is deterministic: ties break on the class name and then the
@@ -234,16 +237,49 @@ def _cases(node):
             yield from _cases(ch)
 
 
+# xcodebuild files a test runner that never connected, or that died, as a
+# "test case" named "<Host> (<pid>) encountered an error" under this
+# pseudo-suite of the bundle it was meant to run (run 36797084975: "The test
+# runner hung before establishing connection."). It is not a class and not a
+# test; the classes that runner was given are simply absent from the tree.
+SYSTEM_FAILURES = "System Failures"
+
+
+def system_failures(tests_doc: dict) -> list[dict]:
+    """-> [{"bundle", "name", "message"}] for each runner failure recorded."""
+    out = []
+
+    def walk(node, bundle=None):
+        nt = node.get("nodeType")
+        if nt == "Unit test bundle":
+            bundle = node.get("name")
+        if nt == "Test Suite" and node.get("name") == SYSTEM_FAILURES:
+            for case in _cases(node):
+                msgs = _messages(case)
+                out.append({"bundle": bundle, "name": str(case.get("name", "")),
+                            "message": "; ".join(msgs)})
+            return
+        for ch in node.get("children", []) or []:
+            walk(ch, bundle)
+
+    for n in tests_doc.get("testNodes", []) or []:
+        walk(n)
+    return out
+
+
 def suite_results(tests_doc: dict) -> dict[str, list[str]]:
     """-> {"Target/Class": [result per test case]} from
     `xcresulttool get test-results tests` JSON. A suite with no test cases
-    under it is omitted: it did not run anything."""
+    under it is omitted: it did not run anything. The System Failures
+    pseudo-suite is omitted too: see system_failures()."""
     out: dict[str, list[str]] = {}
 
     def walk(node, bundle=None):
         nt = node.get("nodeType")
         if nt == "Unit test bundle":
             bundle = node.get("name")
+        if nt == "Test Suite" and node.get("name") == SYSTEM_FAILURES:
+            return
         if nt == "Test Suite" and bundle:
             rs = [str(c.get("result")) for c in _cases(node)]
             if rs:
@@ -271,7 +307,16 @@ def verify_shard(plan: dict, shard: int, tests_doc: dict) -> dict:
     ran = present - skipped
     return {"shard": shard, "assigned": sorted(assigned), "executed": sorted(ran),
             "skipped_only": sorted(skipped),
-            "missing": sorted(assigned - present), "foreign": sorted(present - assigned)}
+            "missing": sorted(assigned - present), "foreign": sorted(present - assigned),
+            "system_failures": system_failures(tests_doc)}
+
+
+def lost_classes(plan: dict, shard: int, tests_doc: dict, kind: str) -> list[str]:
+    """-> this shard's classes of `kind` (parallel|serial) that are absent from
+    the bundle. A runner that never connected leaves exactly these behind, and
+    xcodebuild does not hand them to another runner."""
+    present = set(suite_results(tests_doc))
+    return [c for c in shard_classes(plan, shard, kind) if c not in present]
 
 
 def verify_union(plan: dict, reports: list[dict]) -> list[str]:
@@ -339,6 +384,8 @@ def final_failures(tests_doc: dict) -> list[dict]:
         nt = node.get("nodeType")
         if nt == "Unit test bundle":
             bundle = node.get("name")
+        if nt == "Test Suite" and node.get("name") == SYSTEM_FAILURES:
+            return  # runner failures, not tests: system_failures() reports them
         if nt == "Test Case":
             if node.get("result") == "Failed":
                 ident = str(node.get("nodeIdentifier", ""))
@@ -556,6 +603,16 @@ def main(argv: list[str]) -> int:
     c.add_argument("--tests-json", required=True, help="the second-chance run's test tree")
     c.add_argument("ids", nargs="+", help="Bundle/Class/method identifiers that were re-run")
 
+    lo = sub.add_parser("lost", help="print -only-testing args for this shard's classes "
+                        "of one kind that are absent from the bundle")
+    lo.add_argument("--plan", required=True)
+    lo.add_argument("--shard", type=int, required=True)
+    lo.add_argument("--tests-json", required=True)
+    lo.add_argument("--kind", choices=("parallel", "serial"), required=True)
+
+    rf = sub.add_parser("runner-failures", help="print each runner failure the bundle records")
+    rf.add_argument("--tests-json", required=True)
+
     t = sub.add_parser("timings")
     t.add_argument("--repo", default="ThePalaceProject/ios-core")
     t.add_argument("--workflow", default="Unit Tests")
@@ -611,6 +668,12 @@ def main(argv: list[str]) -> int:
             for p in problems:
                 print(f"::error::{p}")
             return 1 if problems else 0
+        elif args.cmd == "lost":
+            for c in lost_classes(_load(args.plan), args.shard, _load(args.tests_json), args.kind):
+                print(f"-only-testing:{c}")
+        elif args.cmd == "runner-failures":
+            for f in system_failures(_load(args.tests_json)):
+                print(f"{f['bundle']}: {f['name']}: {f['message']}")
         elif args.cmd == "timings":
             previous = _load(args.out) if os.path.exists(args.out) else {}
             doc = regenerate_timings(args.repo, args.workflow, args.limit, previous)
