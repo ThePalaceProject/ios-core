@@ -190,62 +190,78 @@ struct SeekSliderHold: Equatable {
         let generation: Int
     }
 
-    private(set) var heldPosition: Double?
-    private(set) var isDragging = false
-    private(set) var isCommitting = false
-    /// Where the displayed position was when the current hold began; the hold
-    /// releases only on a live value nearer the target than half the move.
-    private(set) var commitOrigin: Double = 0
+    /// One phase at a time, so a drag cannot coexist with a pending hold that a
+    /// tick or a timer would release out from under the finger (PP-5293).
+    enum Phase: Equatable {
+        case idle
+        /// The finger is down; `position` is nil only before its first report.
+        case dragging(position: Double?)
+        /// `target` is shown until live playback reaches it. `origin` is where
+        /// the displayed position was, so the release rule can size the move.
+        case holding(target: Double, origin: Double)
+    }
+
+    private(set) var phase: Phase = .idle
     /// Identifies the latest commit, so only its safety timer can release.
     private(set) var generation = 0
+
+    var heldPosition: Double? {
+        switch phase {
+        case .idle: return nil
+        case .dragging(let position): return position
+        case .holding(let target, _): return target
+        }
+    }
+
+    var isDragging: Bool {
+        if case .dragging = phase { return true }
+        return false
+    }
 
     func displayed(live: Double) -> Double {
         heldPosition ?? live
     }
 
+    /// The finger went down. It takes over from any pending hold, keeping the
+    /// thumb where the hold had it until the finger's position arrives.
     mutating func beginDrag() {
-        isDragging = true
+        phase = .dragging(position: heldPosition)
     }
 
     mutating func drag(to position: Double) {
-        heldPosition = position
+        phase = .dragging(position: position)
     }
 
-    /// The finger lifted. Returns the seek to send, or nil when there is no
-    /// position to commit.
+    /// The finger lifted. Returns the seek to send, or nil when no drag with a
+    /// position is in progress.
     mutating func endDrag(live: Double) -> Commit? {
-        isDragging = false
-        guard let position = heldPosition else { return nil }
+        guard case .dragging(let position) = phase else { return nil }
+        phase = .idle
+        guard let position else { return nil }
         return commit(position, from: live)
     }
 
-    /// A VoiceOver step to `target`, from the displayed position.
+    /// A VoiceOver step to `target`, from the displayed position. Ignored while
+    /// a finger is down, since the lift commits the finger's position.
     mutating func step(to target: Double, live: Double) -> Commit? {
-        let origin = displayed(live: live)
-        heldPosition = target
-        return commit(target, from: origin)
+        guard !isDragging else { return nil }
+        return commit(target, from: displayed(live: live))
     }
 
     mutating func liveTick(_ live: Double) {
-        guard isCommitting, let target = heldPosition else { return }
-        if PalaceSeekSliderView.holdReleases(live: live, target: target, origin: commitOrigin) {
-            release()
-        }
+        guard case .holding(let target, let origin) = phase,
+              PalaceSeekSliderView.holdReleases(live: live, target: target, origin: origin) else { return }
+        phase = .idle
     }
 
     mutating func timerFired(generation fired: Int) {
-        if isCommitting && generation == fired { release() }
+        guard case .holding = phase, generation == fired else { return }
+        phase = .idle
     }
 
     private mutating func commit(_ target: Double, from origin: Double) -> Commit {
         generation += 1
-        commitOrigin = origin
-        isCommitting = true
+        phase = .holding(target: target, origin: origin)
         return Commit(target: target, generation: generation)
-    }
-
-    private mutating func release() {
-        heldPosition = nil
-        isCommitting = false
     }
 }
