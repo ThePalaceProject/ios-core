@@ -827,13 +827,10 @@
 /* Support bot: be told when a known issue is resolved. */
 "Notify me" = "Avvisami";
 
-/* VoiceOver: Combined accessibility label for the audiobook mini-player, including title and author */
-"Now playing: %1$@ by %2$@. Double-tap to expand." = "In riproduzione: %1$@ di %2$@. Tocchi due volte per espandere.";
+/* VoiceOver: Accessibility label for the audiobook mini-player's title, including the author */
+"Now playing: %1$@ by %2$@" = "In riproduzione: %1$@ di %2$@";
 
-/* VoiceOver: Combined accessibility label for the audiobook mini-player when no author is available */
-"Now playing: %1$@. Double-tap to expand." = "In riproduzione: %1$@. Tocchi due volte per espandere.";
-
-/* VoiceOver: Accessibility label for the collapsed audiobook pill; %@ is the book title */
+/* VoiceOver: Accessibility label for the audiobook mini-player's title when no author is available; %@ is the book title */
 "Now playing: %@" = "In riproduzione: %@";
 
 /* Button to dismiss announcement alert */

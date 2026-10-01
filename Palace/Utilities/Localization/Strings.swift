@@ -241,12 +241,8 @@ struct Strings {
         static let dismissPlayer = NSLocalizedString("Dismiss player", comment: "VoiceOver: Done button on the full audiobook player, dismisses to the mini-player")
         // Accessibility - Audiobook mini-player
         static let nowPlayingLabelTitleAndAuthor = NSLocalizedString(
-            "Now playing: %1$@ by %2$@. Double-tap to expand.",
-            comment: "VoiceOver: Combined accessibility label for the audiobook mini-player, including title and author"
-        )
-        static let nowPlayingLabelTitleOnly = NSLocalizedString(
-            "Now playing: %1$@. Double-tap to expand.",
-            comment: "VoiceOver: Combined accessibility label for the audiobook mini-player when no author is available"
+            "Now playing: %1$@ by %2$@",
+            comment: "VoiceOver: Accessibility label for the audiobook mini-player's title, including the author"
         )
         static let expandPlayerHint = NSLocalizedString(
             "Expands the full audiobook player",
@@ -259,7 +255,7 @@ struct Strings {
         )
         static let nowPlayingCompactLabel = NSLocalizedString(
             "Now playing: %@",
-            comment: "VoiceOver: Accessibility label for the collapsed audiobook pill; %@ is the book title"
+            comment: "VoiceOver: Accessibility label for the audiobook mini-player's title when no author is available; %@ is the book title"
         )
         static let restoreAudiobookPlayerHint = NSLocalizedString(
             "Shows the full audiobook player controls",

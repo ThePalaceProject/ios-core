@@ -58,6 +58,8 @@ struct AXAuditViolation: CustomStringConvertible, Equatable {
         case zeroSizeFrame
         case activationFailed(String)
         case adjustableDoesNotAdjust
+        case touchTargetTooSmall(CGSize)
+        case labelContainsHint(String)
     }
 
     let screen: String
@@ -74,6 +76,10 @@ struct AXAuditViolation: CustomStringConvertible, Equatable {
             return "[\(screen)] \(element): double-tap does not activate (\(reason))"
         case .adjustableDoesNotAdjust:
             return "[\(screen)] \(element): adjustable element's value does not change on increment or decrement"
+        case .touchTargetTooSmall(let size):
+            return "[\(screen)] \(element): touch target is \(Int(size.width))x\(Int(size.height)) pt, under the 44x44 pt minimum"
+        case .labelContainsHint(let phrase):
+            return "[\(screen)] \(element): label contains the hint text \"\(phrase)\"; VoiceOver reads hints from accessibilityHint"
         }
     }
 }
@@ -263,10 +269,25 @@ enum AccessibilityTraversalAudit {
         }
     }
 
+    /// Apple's minimum touch target (Human Interface Guidelines, "Accessibility").
+    static let minimumTouchTarget = CGSize(width: 44, height: 44)
+
+    /// Instructions VoiceOver already speaks from the hint or the trait; in a
+    /// label they are read twice, and they cannot be turned off in settings.
+    nonisolated static let hintPhrases = ["double-tap", "double tap", "tap to "]
+
+    /// The first hint phrase `label` contains, compared case-insensitively.
+    nonisolated static func hintPhrase(in label: String) -> String? {
+        let lowered = label.lowercased()
+        return hintPhrases.first { lowered.contains($0) }
+    }
+
     /// Traverses `root`, then checks every actionable element for a label, a
     /// focusable frame, and a working activation.
     ///
     /// - Parameters:
+    ///   - checkTouchTargets: also report actionable elements whose frame is
+    ///     under `minimumTouchTarget` in either dimension.
     ///   - activate: whether to fire actions. Elements for which it returns
     ///     `false` are still checked for label and frame.
     ///   - afterEachActivation: runs after every activation, so the caller can
@@ -275,6 +296,7 @@ enum AccessibilityTraversalAudit {
         screen: String,
         root: UIView,
         window: UIWindow,
+        checkTouchTargets: Bool = false,
         activate shouldActivate: (AXAuditElement) -> Bool = { _ in true },
         afterEachActivation: (AXAuditElement) -> Void = { _ in }
     ) -> AXAuditReport {
@@ -286,8 +308,15 @@ enum AccessibilityTraversalAudit {
             if element.label.isEmpty {
                 violations.append(.init(screen: screen, element: element.displayName, kind: .missingLabel))
             }
+            if let phrase = hintPhrase(in: element.label) {
+                violations.append(.init(screen: screen, element: element.displayName, kind: .labelContainsHint(phrase)))
+            }
             if element.frame.width < 1 || element.frame.height < 1 {
                 violations.append(.init(screen: screen, element: element.displayName, kind: .zeroSizeFrame))
+            } else if checkTouchTargets,
+                      element.frame.width < minimumTouchTarget.width || element.frame.height < minimumTouchTarget.height {
+                violations.append(.init(screen: screen, element: element.displayName,
+                                        kind: .touchTargetTooSmall(element.frame.size)))
             }
             guard shouldActivate(element) else { continue }
 

@@ -109,6 +109,48 @@ final class AccessibilityTraversalAuditTests: XCTestCase {
         XCTAssertEqual(report.violations.map(\.kind), [.zeroSizeFrame])
     }
 
+    func testTouchTargetCheck_reportsAControlUnder44ptInEitherDimension() {
+        let small = TapCountingControl(frame: CGRect(x: 40, y: 100, width: 18, height: 18))
+        small.accessibilityLabel = "Close"
+        let short = TapCountingControl(frame: CGRect(x: 40, y: 200, width: 120, height: 43))
+        short.accessibilityLabel = "Chapters"
+        let large = TapCountingControl(frame: CGRect(x: 40, y: 300, width: 44, height: 44))
+        large.accessibilityLabel = "Play"
+        let report = audit(uiKit: [small, short, large], activate: false, checkTouchTargets: true)
+
+        XCTAssertEqual(report.violations.map(\.element), ["\"Close\"", "\"Chapters\""])
+        XCTAssertEqual(report.violations.map(\.kind), [.touchTargetTooSmall(CGSize(width: 18, height: 18)),
+                                                      .touchTargetTooSmall(CGSize(width: 120, height: 43))])
+    }
+
+    /// Screens that have not adopted the size rule are not held to it.
+    func testTouchTargetCheck_isOffUnlessRequested() {
+        let small = TapCountingControl(frame: CGRect(x: 40, y: 100, width: 18, height: 18))
+        small.accessibilityLabel = "Close"
+
+        XCTAssertEqual(audit(uiKit: [small], activate: false).violations, [])
+    }
+
+    func testLabelWithHintText_isReported() {
+        let expand = TapCountingControl(frame: CGRect(x: 40, y: 100, width: 300, height: 44))
+        expand.accessibilityLabel = "Now playing: Moby Dick. Double-tap to expand."
+        let plain = TapCountingControl(frame: CGRect(x: 40, y: 200, width: 300, height: 44))
+        plain.accessibilityLabel = "Now playing: Moby Dick"
+        let report = audit(uiKit: [expand, plain], activate: false)
+
+        XCTAssertEqual(report.violations.map(\.kind), [.labelContainsHint("double-tap")])
+        XCTAssertEqual(report.violations.map(\.element), ["\"\(expand.accessibilityLabel ?? "")\""])
+    }
+
+    func testHintPhrase_matchesEachPhraseCaseInsensitively_andNotOrdinaryWords() {
+        typealias A = AccessibilityTraversalAudit
+        XCTAssertEqual(A.hintPhrase(in: "Book. DOUBLE-TAP to open"), "double-tap")
+        XCTAssertEqual(A.hintPhrase(in: "Double tap to open"), "double tap")
+        XCTAssertEqual(A.hintPhrase(in: "Tap to retry"), "tap to ")
+        XCTAssertNil(A.hintPhrase(in: "Desktop tools"))
+        XCTAssertNil(A.hintPhrase(in: "Skip forward 30 seconds"))
+    }
+
     func testModalSibling_hidesTheOtherSiblingsFromTraversal() {
         let behind = TapCountingControl(frame: CGRect(x: 40, y: 100, width: 120, height: 44))
         behind.accessibilityLabel = "Behind"
@@ -233,13 +275,14 @@ final class AccessibilityTraversalAuditTests: XCTestCase {
         return AccessibilityTraversalAudit.audit(screen: "fixture", root: host.window, window: host.window)
     }
 
-    private func audit(uiKit views: [UIView], activate: Bool = true) -> AXAuditReport {
+    private func audit(uiKit views: [UIView], activate: Bool = true, checkTouchTargets: Bool = false) -> AXAuditReport {
         let controller = UIViewController()
         controller.view.backgroundColor = .white
         views.forEach(controller.view.addSubview)
         let host = AccessibilityAuditHost(controller)
         self.host = host
         return AccessibilityTraversalAudit.audit(screen: "fixture", root: host.window, window: host.window,
+                                                 checkTouchTargets: checkTouchTargets,
                                                  activate: { _ in activate })
     }
 }
