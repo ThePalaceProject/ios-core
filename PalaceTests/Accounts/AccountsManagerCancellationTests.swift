@@ -339,7 +339,25 @@ class AccountsManagerCancellationTests: PalaceWiringTestCase {
         // the main thread after issuing cancel.
         actor ContinuationBox {
             var continuation: CheckedContinuation<Void, Never>?
-            func set(_ c: CheckedContinuation<Void, Never>) { continuation = c }
+            private var onSet: (@Sendable () -> Void)?
+
+            func set(_ c: CheckedContinuation<Void, Never>) {
+                continuation = c
+                onSet?()
+                onSet = nil
+            }
+
+            /// Signal when the continuation lands, instead of polling for it.
+            ///
+            /// Fires IMMEDIATELY if it is already set. That branch is the whole
+            /// point: a barrier whose predicate is already true when you install
+            /// it never delivers, and the test then waits out its timeout and
+            /// passes for the wrong reason — the inert-barrier shape this repo
+            /// has hit before.
+            func whenSet(_ callback: @escaping @Sendable () -> Void) {
+                if continuation != nil { callback() } else { onSet = callback }
+            }
+
             func take() -> CheckedContinuation<Void, Never>? {
                 let c = continuation
                 continuation = nil
@@ -393,23 +411,19 @@ class AccountsManagerCancellationTests: PalaceWiringTestCase {
 
         manager._injectBackgroundFetchTaskForTesting(controlledTask)
 
-        // Brief wait so the controlledTask actually enters the suspend point
-        // (sets the continuation in the box) before we cancel. Without this,
+        // Wait for the controlledTask to actually enter the suspend point
+        // (set the continuation in the box) before we cancel. Without this,
         // a too-fast `cancelBackgroundWork()` would cancel before suspend
         // and `withCheckedContinuation` would re-check `Task.isCancelled`
         // semantics differently.
+        //
+        // Signalled, not polled. This was a 10ms spin with a 2s budget — a
+        // wall-clock deadline on async work, which starves under the two
+        // parallel sim clones on CI and is the `parallel-clone-starvation`
+        // class. `whenSet` delivers on the same call stack as `set`.
         let suspendReached = expectation(description: "controlled task reached suspend point")
-        Task {
-            // Spin until the continuation is set.
-            for _ in 0..<200 { // 200 * 10ms = 2s budget
-                if await box.continuation != nil {
-                    suspendReached.fulfill()
-                    return
-                }
-                try? await Task.sleep(nanoseconds: 10_000_000)
-            }
-        }
-        wait(for: [suspendReached], timeout: 3.0)
+        Task { await box.whenSet { suspendReached.fulfill() } }
+        wait(for: [suspendReached], timeout: 5.0)   // STARVE-001-OK: signalled by ContinuationBox.whenSet, not polled
 
         // Act: cancel the in-flight task via the production seam. This
         // exercises `cancelBackgroundWork()` against our controlled Task.
