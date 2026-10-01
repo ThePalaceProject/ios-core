@@ -2,22 +2,11 @@
 //  DownloadStartReducer.swift
 //  Palace
 //
-//  E2 (WS7) pure decision core extracted from `DownloadStartDispatcher`.
-//
-//  Per Contract E (swarm_8ce6f5ae) the dispatcher stays as the EFFECT-RUNNER;
-//  this reducer owns only the branch SELECTION and the ORDER effects run in.
-//  It is pure: inputs are precomputed values (enums / Bools / book-derived
-//  facts), the output is an ordered, `Equatable` effect plan. The reducer
-//  references NO singletons, `Task`, `Date`, `URLSession`, request construction,
-//  logging, or `#if FEATURE_*` runtime checks — Overdrive / streaming / Wi-Fi
-//  applicability all arrive as precomputed Bools from the dispatcher.
-//
-//  Behavior-preservation proof: `DownloadStartReducerContractTests` interprets
-//  each emitted plan into a `CallLog` using the SAME collaborator labels as
-//  `DownloadStartDispatcherContractTests`, so the reducer's emitted sequence is
-//  shape-equal to the E1 dispatcher service snapshot. `[Effect]: Equatable`
-//  makes the 100%-mutation bar reachable — a dropped case, flipped guard, or
-//  swapped order produces an unequal array.
+//  Pure decision core for `DownloadStartDispatcher`, which runs the effects.
+//  This reducer owns only branch selection and effect order. Inputs are
+//  precomputed values (OverDrive / streaming / Wi-Fi arrive as Bools); the
+//  output is an ordered, `Equatable` effect plan. No singletons, `Task`,
+//  `Date`, `URLSession`, logging, or feature flags.
 //
 
 import Foundation
@@ -45,8 +34,7 @@ enum DownloadStartReducer {
 
     /// Open-access (or no-login) titles with no borrow link are downloadable
     /// immediately — seed `.downloadNeeded`. Everything else stays unregistered
-    /// (the borrow path owns it). Mirrors `DownloadStartDispatcher
-    /// .processUnregisteredState` L150.
+    /// (the borrow path owns it).
     static func reduceUnregistered(_ input: UnregisteredInput) -> UnregisteredDecision {
         if !input.hasBorrowLink && (input.hasOpenAccess || !input.loginRequired) {
             return .seedDownloadNeeded
@@ -69,7 +57,7 @@ enum DownloadStartReducer {
     }
 
     enum CredentialsRoute: Equatable {
-        /// Streaming-HTML title — no downloadable asset (PP-4161 Path X).
+        /// Streaming-HTML title — no downloadable asset (PP-4161).
         case noop
         /// `.unregistered` / `.holding` → borrow before download.
         case startBorrow
@@ -81,9 +69,8 @@ enum DownloadStartReducer {
         case fallThroughToRegular
     }
 
-    /// Selection order matches `DownloadStartDispatcher
-    /// .processDownloadWithCredentials` L202-219: streaming skip → borrow-state
-    /// route → Overdrive-audiobook divert → regular.
+    /// Selection order: streaming skip → borrow-state route →
+    /// OverDrive-audiobook divert → regular.
     static func routeWithCredentials(_ input: CredentialsInput) -> CredentialsRoute {
         if input.isStreamingHTML {
             return .noop
@@ -141,8 +128,7 @@ enum DownloadStartReducer {
         case addDownloadTask
     }
 
-    /// Selection order matches `DownloadStartDispatcher.processRegularDownload`
-    /// L253-319: re-borrow-on-expired → auto-borrow-on-`.downloadNeeded` →
+    /// Selection order: re-borrow-on-expired → auto-borrow-on-`.downloadNeeded` →
     /// Wi-Fi guard → request resolution → reclaim → SAML vs normal download.
     static func reduceRegular(_ input: RegularInput) -> [Effect] {
         if input.isExpired && input.hasBorrowLink {

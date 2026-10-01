@@ -2,12 +2,9 @@
 //  LCPAdapter.swift
 //  Palace
 //
-//  LCP `AudiobookVendorAdapter` implementation. Wraps the LCP source-load +
-//  license-redownload logic carved verbatim from pre-swarm AudiobookLoader.swift
-//  (lines 149-164 + 222-341). Module C of swarm_5c8ddbd5. `canHandle` delegates
-//  to `LCPAudiobooks.hasLCPAcquisition(_:)` — the recursive predicate that
-//  catches the Marketplace OPDS-shape regression PP-4407 (kill point lives in
-//  `LCPAcquisitionPredicateTests`). Constructor-style DI; entire file is
+//  LCP `AudiobookVendorAdapter`: source load plus license re-download.
+//  `canHandle` delegates to `LCPAudiobooks.hasLCPAcquisition(_:)`, the recursive
+//  predicate that handles the Marketplace OPDS shape (PP-4407). The file is
 //  `#if LCP`-gated so Palace-noDRM excludes it.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
@@ -77,13 +74,7 @@ final class LCPAdapter: AudiobookVendorAdapter {
         for book: TPPBook,
         completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
     ) {
-        // Box the non-`@Sendable` completion once. The LCP flow hands it across
-        // the `prepareLCPSource` callback, `LCPAudiobooks.contentDictionary`
-        // (whose completion IS `@Sendable`), and the `finishOnMain`
-        // `DispatchQueue.main.async` hop — all `@Sendable` boundaries. Boxing
-        // avoids marking the `AudiobookVendorAdapter` protocol `@Sendable`
-        // (which would ripple to the loader + adapter test mocks). See
-        // `AudiobookAdapterCompletionBox`.
+        // Boxed once: the completion crosses several `@Sendable` boundaries.
         let completionBox = AudiobookAdapterCompletionBox(completion)
         prepareLCPSource(for: book) { [weak self] sourceResult in
             guard let self else { LCPAdapter.finishOnMain(completionBox, .failure(.cancelled)); return }
@@ -98,9 +89,8 @@ final class LCPAdapter: AudiobookVendorAdapter {
 
     // MARK: - LCP source preparation
     //
-    // Three-tier source resolution carved verbatim from pre-swarm
-    // AudiobookLoader.swift (lines 222-241): local .lcpa, else cached .lcpl
-    // sibling, else re-download .lcpl from the book's fulfill URL.
+    // Three-tier source resolution: local .lcpa, else cached .lcpl sibling,
+    // else re-download .lcpl from the book's fulfill URL.
 
     private func prepareLCPSource(
         for book: TPPBook,
@@ -195,22 +185,15 @@ final class LCPAdapter: AudiobookVendorAdapter {
         return fileManager.fileExists(atPath: license.path) ? license : nil
     }
 
-    /// Force completion onto the main thread — `AudiobookVendorAdapter`
-    /// contract requires completion fires on main exactly once. Takes the
-    /// `Sendable` completion box so the (possibly off-main) callers can hop to
-    /// main via `DispatchQueue.main.async` without capturing the raw
-    /// non-`@Sendable` completion across that boundary.
+    /// Completes on the main thread, as the `AudiobookVendorAdapter` contract
+    /// requires.
     private static func finishOnMain(
         _ completionBox: AudiobookAdapterCompletionBox,
         _ result: AudiobookAdapterCompletionBox.Outcome
     ) {
         if Thread.isMainThread { completionBox.fire(result) }
         else {
-            // The `Outcome` payload carries `[String: Any]` (manifest) and a
-            // `DRMDecryptor?` (toolkit protocol), neither Sendable-audited, so
-            // capturing `result` directly into the `main.async` `@Sendable`
-            // closure trips `sending 'result' risks data races`. Box it for the
-            // single main hop — the outcome is produced once and consumed once.
+            // The payload is not Sendable; box it for the single main hop.
             let outcomeBox = LCPOutcomeBox(result)
             DispatchQueue.main.async { completionBox.fire(outcomeBox.value) }
         }
@@ -220,15 +203,9 @@ final class LCPAdapter: AudiobookVendorAdapter {
 /// `Sendable` carrier for an `AudiobookAdapterCompletionBox.Outcome` crossing
 /// the `finishOnMain` `DispatchQueue.main.async` hop.
 ///
-/// The outcome's success payload holds a non-Sendable `[String: Any]` manifest
-/// and an un-audited `DRMDecryptor?`; boxing lets it cross the main hop without
-/// a `sending` diagnostic while keeping the `AudiobookVendorAdapter` completion
-/// (and its loader/test call sites) free of a `@Sendable` requirement.
-///
 /// - Sendable invariant: `value` is set once at init and only read on the main
-///   thread thereafter — the outcome is not mutated after boxing, so there is
-///   no shared mutation. The `@unchecked` waiver covers only the un-audited
-///   payload types. Mirrors `ManifestJSONBox` (AudiobookVendorAdapter).
+///   thread thereafter. The `@unchecked` waiver covers the non-Sendable
+///   manifest dictionary and `DRMDecryptor?` payload.
 private struct LCPOutcomeBox: @unchecked Sendable {
     let value: AudiobookAdapterCompletionBox.Outcome
     init(_ value: AudiobookAdapterCompletionBox.Outcome) {

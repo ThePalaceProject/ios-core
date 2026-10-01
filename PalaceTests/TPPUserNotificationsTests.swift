@@ -24,17 +24,17 @@ final class TPPUserNotificationsTests: XCTestCase {
     /// AND from background queues (the singleton is used from arbitrary
     /// callers including push-notification handlers). Pin both shapes —
     /// a single-thread identity check + concurrent-access identity from
-    /// multiple Tasks. Catches a mutant that swaps `static let` for
-    /// per-call construction (which would silently work in single-thread
-    /// scenarios but break observers across queues).
+    /// multiple Tasks. Catches swapping `static let` for per-call
+    /// construction (which works single-threaded but breaks observers
+    /// across queues).
     func testSharedInstance_isStableAcrossCallsAndConcurrentAccess() async {
         // Same-thread: two consecutive lookups yield the same instance.
         XCTAssertTrue(NotificationService.shared === NotificationService.shared,
                       "Repeated reads must yield the same instance")
 
         // Concurrent reads from multiple Tasks must also see the same
-        // instance — guards against a mutant that uses lazy var (which
-        // can race) instead of static let.
+        // instance — guards against a lazy var (which can race) in place
+        // of static let.
         async let a: ObjectIdentifier = ObjectIdentifier(NotificationService.shared)
         async let b: ObjectIdentifier = ObjectIdentifier(NotificationService.shared)
         async let c: ObjectIdentifier = ObjectIdentifier(NotificationService.shared)
@@ -60,9 +60,8 @@ final class TPPUserNotificationsTests: XCTestCase {
 
     func testUpdateAppIconBadge_withEmptyArray_isIdempotentAndCrashFree() {
         // First and second empty-array calls must both complete without
-        // throwing. Replaces the `XCTAssertTrue(true)` tautology with
-        // XCTAssertNoThrow so a mutant that throws on empty input fails
-        // here instead of mysteriously timing out.
+        // throwing. XCTAssertNoThrow makes a throw on empty input fail
+        // here instead of timing out.
         XCTAssertNoThrow(NotificationService.updateAppIconBadge(heldBooks: []),
                          "First empty-array call must not throw")
         XCTAssertNoThrow(NotificationService.updateAppIconBadge(heldBooks: []),
@@ -258,15 +257,14 @@ final class TPPUserNotificationsTests: XCTestCase {
     /// a test, but we can verify the class-level @objc surface (which is
     /// what AppDelegate's NSSelectorFromString dispatch hits) is intact.
     /// Pin BOTH the selector existing AND the metaclass responding —
-    /// guards against a mutant that drops @objc, which would still
-    /// compile but silently break the AppDelegate dispatch.
+    /// dropping @objc still compiles but breaks the AppDelegate dispatch.
     func testRequestAuthorization_isExposedAsObjcSelectorOnService() {
         let selector = #selector(NotificationService.requestAuthorization)
         XCTAssertTrue(NotificationService.responds(to: selector),
                       "Class-level responder must expose requestAuthorization")
         // Selector name must be the canonical "requestAuthorization" — a
-        // mutant that renamed the method while keeping the @objc binding
-        // pointing at a different selector would fail this string check.
+        // rename that points the @objc binding at a different selector
+        // fails this string check.
         XCTAssertEqual(NSStringFromSelector(selector), "requestAuthorization",
                        "Selector name must be the canonical 'requestAuthorization'")
     }

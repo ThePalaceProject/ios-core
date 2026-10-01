@@ -54,8 +54,7 @@ final class ProblemReportEmailTests: XCTestCase {
     /// Body has a fixed structure: two leading newlines (so the user can
     /// type their message above), then a `---` separator, then the device-info
     /// labels in a known order. Lock the whole structure in one test so a
-    /// mutant that drops a label, reorders fields, or swaps the separator
-    /// fails on a single assertion.
+    /// dropped label, reordered field, or swapped separator fails here.
     func testGenerateBody_includesEnvironmentFieldsInExpectedStructure() {
         let body = emailService.generateBody(book: nil)
 
@@ -77,8 +76,8 @@ final class ProblemReportEmailTests: XCTestCase {
         XCTAssertTrue(body.contains("Height: \(UIScreen.main.nativeBounds.height)"),
                       "Height field must reflect the live screen height")
 
-        // Order matters: Platform comes before OS, OS comes before Height. A
-        // mutant that swaps any pair would fail one of these.
+        // Order matters: Platform comes before OS, OS comes before Height. Swapping
+        // any pair fails one of these.
         guard
             let platformIdx = body.range(of: "Platform: iOS")?.lowerBound,
             let osIdx = body.range(of: "OS:")?.lowerBound,
@@ -96,7 +95,7 @@ final class ProblemReportEmailTests: XCTestCase {
 
     /// Regression test for PP-3651: patron ID must be appended when provided
     /// and entirely omitted (no label leak) when nil. Both branches in one
-    /// test so a mutant that always-prints or always-omits fails here.
+    /// test so always-printing or always-omitting fails here.
     func testPP3651_generateBody_includesPatronIDOnlyWhenProvided() {
         let withPatron = emailService.generateBody(book: nil, patronIdentifier: "23333098765432")
         let withoutPatron = emailService.generateBody(book: nil, patronIdentifier: nil)

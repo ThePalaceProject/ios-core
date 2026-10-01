@@ -884,13 +884,10 @@ extension TPPNetworkExecutor {
                             await MainActor.run {
                                 // capturedAccountId is bound at refresh-start time by the closure
                                 // capture, so this mark-stale is already scoped to the originating
-                                // account, not the current account at 401-receipt time. See
-                                // .forgeos/changesets/fix-icarus-cross-host-logout/fix-contract.md.
+                                // account, not the current account at 401-receipt time.
                                 // no-host-scoping: closure-bound capturedAccountId (see comment above)
                                 self.accountsManager.userAccount(for: capturedAccountId ?? self.accountsManager.currentAccountId ?? "").markCredentialsStale()
                                 if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
-                                    // swarm_d8f11437 Module A wave 4 — migrated to
-                                    // AppContainer-injected sheet presenter.
                                     AppContainer.production().signInModalSheetPresenter
                                         .presentSignInModalForCurrentAccount(completion: nil)
                                 }
@@ -1176,7 +1173,7 @@ extension TPPNetworkExecutor {
     }
 }
 
-// Wave 1c (cycle 3): package-protocol seam — authorized-request derivation for
+// Package-protocol seam — authorized-request derivation for
 // the circulation-analytics offline enqueue. Distinct name: `request(for:)`'s
 // defaulted `useTokenIfAvailable` param means it cannot witness a protocol
 // requirement directly.

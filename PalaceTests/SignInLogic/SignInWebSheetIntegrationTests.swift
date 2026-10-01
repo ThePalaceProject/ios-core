@@ -1,26 +1,11 @@
-//
 //  SignInWebSheetIntegrationTests.swift
-//  PalaceTests
 //
-//  Integration tests that drive a real WKWebView through SignInWebViewCoordinator
-//  to verify the end-to-end navigation policy pipeline:
-//
-//    WKNavigationDelegate -> SignInWebSheetViewModel.decideAction(...) ->
-//    decisionHandler(.cancel) -> async cookie store query ->
-//    SignInWebSheetViewModel.recordLoginCompletion(...)
-//
-//  These complement SignInWebSheetViewModelTests (which exercise the
-//  decision logic in pure isolation) by catching wiring regressions —
-//  e.g., a deadlock between the WKWebView's decisionHandler timeout and
-//  the Coordinator's async cookie fetch, or the coordinator being
-//  deallocated mid-flight.
-//
-//  CI-safe: uses XCTestExpectation + data: URL fixtures, no sleeps,
-//  no network access. The data: URL fixture redirects to a fake
-//  universal-links URL via JavaScript so WebKit invokes the navigation
-//  policy delegate without us having to construct WKNavigationAction
-//  manually (it has no public initializer).
-//
+//  Drives a real WKWebView through SignInWebViewCoordinator to cover the wiring
+//  that SignInWebSheetViewModelTests cannot: navigation delegate ->
+//  `decideAction` -> `.cancel` -> async cookie query -> `recordLoginCompletion`,
+//  including decisionHandler/cookie-fetch deadlocks and mid-flight
+//  deallocation. A data: URL fixture redirects to a fake universal link via JS,
+//  since WKNavigationAction has no public initializer. No sleeps, no network.
 
 import XCTest
 import WebKit

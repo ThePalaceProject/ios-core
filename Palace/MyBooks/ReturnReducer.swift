@@ -2,28 +2,14 @@
 //  ReturnReducer.swift
 //  Palace
 //
-//  E2 (WS7) pure decision core extracted from `BookReturnService`.
-//
-//  Per Contract E (swarm_8ce6f5ae), `BookReturnService` stays as the
-//  EFFECT-RUNNER (it owns the async revoke fetch, the `setProcessing`
-//  lifecycle, the `TPPAnnotations.deleteAllBookmarks` callback nesting, the
-//  post-return sync, the re-auth recursion, and all alert/offline I/O). This
-//  reducer owns the pure branch SELECTION that the service used to make inline:
-//
-//    - `startRoute`     — no-revokeURL cleanup vs. network revoke.
-//    - `classifyError`  — the revoke-failure ladder (parse-fail-as-success /
-//                         loan-gone / re-auth / offline-enqueue / generic).
-//    - `cleanupEffects` — the ordered "treat-as-success" teardown sequence
-//                         shared by the no-revokeURL, OPDS-parse-fail, and
-//                         loan-gone paths (deduplicated here so all three
-//                         cannot drift apart).
-//
-//  It references NO singletons, network, keychain, `Task`, `Date`, or
-//  `#if FEATURE_*` runtime checks — DRM/offline applicability arrive as facts.
-//  `[Effect]: Equatable` + enum decisions make the 100%-mutation bar reachable.
-//  `ReturnReducerContractTests` interprets `cleanupEffects` into a `CallLog`
-//  using the same labels `BookReturnServiceContractTests` records, proving the
-//  emitted teardown is shape-equal to the E1 service snapshot.
+//  Pure return decisions. `BookReturnService` runs the effects (revoke fetch,
+//  processing flag, bookmark deletion, sync, reauth, alerts); this decides:
+//    - `startRoute`: no-revokeURL cleanup vs. network revoke.
+//    - `classifyError`: parse-fail-as-success / loan-gone / reauth /
+//      offline-enqueue / generic.
+//    - `cleanupEffects`: the ordered treat-as-success teardown, shared by every
+//      success path so they cannot diverge.
+//  No singletons, network, `Task`, `Date`, or feature flags.
 //
 
 import Foundation

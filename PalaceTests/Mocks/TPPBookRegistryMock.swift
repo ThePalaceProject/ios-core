@@ -13,7 +13,7 @@ import PalaceBookModel
 /// (ba4a03c69). Concurrency tests may legitimately share one instance across
 /// tasks/threads.
 ///
-/// Locking rules (architect-reviewed, fix/sync-mock-race-segv-bookmark-keys):
+/// Locking rules:
 /// - Public methods take the lock EXACTLY ONCE and delegate any work shared
 ///   between public entry points to private UNLOCKED `_`-prefixed helpers
 ///   (`preloadData` → `_addGenericBookmark`). No public method calls another

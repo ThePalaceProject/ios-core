@@ -8,8 +8,7 @@
 import Foundation
 import Combine
 
-/// The complete account-scope surface the registry consumes (god-class
-/// decomposition Wave 2b — the Book→Accounts dependency inversion). Deliberately
+/// The complete account-scope surface the registry consumes. Deliberately
 /// value-only: no `Account`, `AccountDetails`, `AccountsManager`, or
 /// `TPPUserAccount` type ever crosses this boundary. Adapted app-side by
 /// `AccountsManagerAccountScopeAdapter`.

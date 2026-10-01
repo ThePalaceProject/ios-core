@@ -1,32 +1,11 @@
-//
 //  LockIsolated.swift
-//  PalaceTests
 //
-//  Swift 6 concurrency-safe holder for test-infrastructure state that used to
-//  live in a `static var`. Under Swift 6 language mode, a mutable `static var`
-//  is "nonisolated global shared mutable state" and is rejected — even for the
-//  serial/lock-guarded registries our test stubs rely on (HTTPStubURLProtocol
-//  handlers, stubbed sessions, mock singletons, etc.).
-//
-//  The migration pattern (chosen over `nonisolated(unsafe)`, which would merely
-//  silence the check) is:
-//
-//      // before — flagged as unsafe global mutable state:
-//      static var requestHandlers: [String: Handler] = [:]
-//
-//      // after — genuinely safe, and every existing call site is unchanged:
-//      private static let _requestHandlers = LockIsolated<[String: Handler]>([:])
-//      static var requestHandlers: [String: Handler] {
-//          get { _requestHandlers.value }
-//          set { _requestHandlers.value = newValue }
-//      }
-//
-//  The `static let` binding is immutable (safe); all mutation flows through the
-//  lock. The public `static var` is *computed* — it holds no storage of its own,
-//  so it is not global mutable state, and callers keep writing `Type.requestHandlers`.
-//
-//  `@unchecked Sendable` is sound here because every access to the wrapped value
-//  goes through `lock`, which the compiler cannot see but the type guarantees.
+//  Swift 6 rejects a mutable `static var` as shared global state, including the
+//  lock-guarded registries test stubs rely on. Instead of `nonisolated(unsafe)`,
+//  store the value in a `private static let _x = LockIsolated(...)` and expose a
+//  computed `static var x { get { _x.value } set { _x.value = newValue } }`, so
+//  call sites are unchanged. `@unchecked Sendable` holds because every access to
+//  the wrapped value goes through `lock`.
 import Foundation
 
 final class LockIsolated<Value>: @unchecked Sendable {

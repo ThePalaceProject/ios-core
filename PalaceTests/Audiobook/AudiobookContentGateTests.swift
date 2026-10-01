@@ -1,26 +1,12 @@
 //
 //  AudiobookContentGateTests.swift
-//  PalaceTests
 //
-//  Regression coverage for 323-Cause-1: the LCP-audiobook cold-open dead-end.
-//
-//  The bug: an LCP audiobook flips to `.downloadSuccessful` the instant its
-//  tiny `.lcpl` license lands, but the real `.lcpa` content downloads
-//  SEPARATELY and can permanently fail to arrive. The old pre-open gate only
-//  POLLED for the content file (`awaitAudiobookContentLocal` — "a wait, not a
-//  trigger"). With no download in flight, that poll spun the full 180s window
-//  then surfaced "Audiobook Unavailable" — forever. This was the #1-volume
-//  patron complaint ("spins then unavailable").
-//
-//  The fix: `gateOnLCPContentDownload` now TRIGGERS the content download (via
-//  the idempotent `redownloadLCPContentFile` self-heal seam) BEFORE awaiting,
-//  so the `.lcpa` actually lands. The "Audiobook Unavailable" dead-end is only
-//  reachable AFTER a real trigger + a genuine timeout.
-//
-//  These tests pin (1) the pure gate predicate, (2) that the gate TRIGGERS the
-//  download when content is missing rather than only polling, (3) that the
-//  unavailable outcome is never reached without a trigger, and (4) the ordered
-//  trigger → await contract via a snapshot.
+//  LCP-audiobook cold-open dead-end: the book is `.downloadSuccessful` once the
+//  `.lcpl` license lands, but the `.lcpa` content downloads separately and may
+//  never arrive. The gate used to only poll for it, so it spun 180s and showed
+//  "Audiobook Unavailable". `gateOnLCPContentDownload` now triggers the download
+//  first. Pinned: the gate predicate, the trigger when content is missing, no
+//  unavailable outcome without a trigger, and the trigger → await order.
 //
 
 import XCTest
@@ -233,13 +219,10 @@ final class AudiobookContentGateTests: XCTestCase {
     /// PP-5135, Claim E at THIS site: the open gate must not start a background
     /// archive fetch against the patron's `downloadOnlyOnWiFi` preference.
     ///
-    /// Review found this hole twice, mirrored. The DownloadCentre trigger had a
-    /// surviving mutant on its wifi guard; fixing that left the SAME gap here —
-    /// every other test in this suite sets `downloadOnlyOnWiFi = false`, so
-    /// mutating `downloadOnlyOnWiFi: settings.downloadOnlyOnWiFi` to `false` in
-    /// `AudiobookSessionManager` survived the whole suite. Claim E says "neither
-    /// trigger site"; without this it was verified at one and asserted at the
-    /// other.
+    /// Every other test in this suite sets `downloadOnlyOnWiFi = false`, so
+    /// without this one, hard-coding `downloadOnlyOnWiFi: false` in
+    /// `AudiobookSessionManager` would go unnoticed. Mirrors the DownloadCentre
+    /// trigger's wifi-guard test.
     ///
     /// `isOnWiFi` is not driveable (`public`, not `open`, so `MockReachability`
     /// cannot stub it) and reads a deterministically-`.unsatisfied`

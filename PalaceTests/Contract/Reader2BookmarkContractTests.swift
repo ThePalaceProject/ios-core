@@ -2,34 +2,12 @@
 //  Reader2BookmarkContractTests.swift
 //  PalaceTests
 //
-//  Contract-snapshot tests for `TPPReaderBookmarksBusinessLogic`. Reader2
-//  is XCTest-invisible (Readium 3.x WKWebView), so these tests drive the
-//  business-logic class through its public dependency seams with co-located
-//  spies. No WKWebView, NavigatorViewController, or `TPPAnnotations` static
-//  surface is instantiated — the scenarios pin behavior that the
-//  no-current-account fall-through path generates, where the registry is
-//  the sole observable side effect.
-//
-//  Source contract: `.forgeos/swarms/swarm_eefef87a/contracts/D-Reader2ContractSnapshots.md`
-//
-//  Scenarios:
-//    1. `test_bookmarkSave_writesToRegistry_thenAnnotations`
-//         — addBookmark with progression-bearing locator → factory resolves
-//           the bookmark → bookRegistry.add fires (local-only fall-through).
-//    2. `test_bookmarkSave_failureFromRegistry_doesNotEnqueueAnnotation`
-//         — addBookmark with progression-less locator → factory returns nil
-//           → NO bookRegistry.add. The "failureFromRegistry" framing in the
-//           contract title is interpreted as factory-fail (which is the
-//           registry-facing failure surface for this code path).
-//    3. `test_bookmarkDelete_removesFromRegistry_thenAnnotationsDelete`
-//         — deleteBookmark(at:) → didDeleteBookmark → bookRegistry.delete.
-//           With no annotationId and no currentAccount, the server-side
-//           delete arm is bypassed and the registry write is the only call.
-//
-//  **First run:** records baselines at
-//  `__Snapshots__/Reader2BookmarkContractTests/<scenario>.json` and FAILS
-//  with "snapshot recorded — re-run to verify". Set
-//  `CONTRACT_SNAPSHOT_RECORD=1` to deliberately re-record.
+//  Contract snapshots for `TPPReaderBookmarksBusinessLogic` on the no-current-account
+//  path, where the registry is the only observable effect: add with a progression
+//  locator writes to the registry; add without one writes nothing; delete removes
+//  from the registry and skips the server arm. No WKWebView is instantiated.
+//  First run records `__Snapshots__/Reader2BookmarkContractTests/<scenario>.json`
+//  and fails; set `CONTRACT_SNAPSHOT_RECORD=1` to re-record.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -239,21 +217,10 @@ final class Reader2BookmarkContractTests: XCTestCase {
     /// `totalProgression` both non-nil), the factory returns nil, the
     /// business logic returns nil, and NO `bookRegistry.add` fires.
     ///
-    /// The "failureFromRegistry" framing in the contract title is
-    /// interpreted as factory-fail (the registry-facing failure surface
-    /// for this code path — the factory is what gates writes into the
-    /// registry from `addBookmark`).
-    ///
-    /// Regression caught: a refactor that fabricates a partial bookmark
-    /// from a nil-progression locator would grow the snapshot with a
-    /// `registry.add` line. (See `swarm_f3b9b087` "opens at chapter 1"
-    /// regression — the same pre-render-junk hazard that
-    /// `shouldStore` guards against on the position side.)
-    /// QA review rev_0d6da02f rename: the test name previously said
-    /// "failureFromRegistry" but the scenario actually pins
-    /// TPPBookmarkR3Location FACTORY rejection on a nil-progression locator
-    /// (registry is never reached). The behavior is correct; the name now
-    /// matches what's actually tested.
+    /// The `TPPBookmarkR3Location` factory rejects a nil-progression locator, so
+    /// `addBookmark` never reaches the registry. A refactor that fabricated a
+    /// partial bookmark here would add a `registry.add` line to the snapshot; it is
+    /// the same pre-render-junk hazard `shouldStore` guards on the position side.
     func test_bookmarkSave_locatorFactoryRejects_doesNotEnqueueAnnotation() async throws {
         let businessLogic = TPPReaderBookmarksBusinessLogic(
             book: book,

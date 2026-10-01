@@ -14,8 +14,8 @@ final class IntExtensionsTests: XCTestCase {
 
   /// `Int.ordinal()` follows English ordinal rules: 1st/2nd/3rd, then
   /// `th` for 4+ (with the special-case "teen" exception for 11-13).
-  /// Lock the entire 1-13 range plus the 21st-24th wrap-around. A mutant
-  /// flipping any single suffix branch fails on a distinct assertion.
+  /// Lock the entire 1-13 range plus the 21st-24th wrap-around so a wrong
+  /// suffix branch fails on a distinct assertion.
   func testOrdinal_followsEnglishOrdinalRules_includingTeenExceptions() {
     // Single-digit cases: 1st, 2nd, 3rd, 4-9 → th.
     XCTAssertEqual(1.ordinal(),  "1st")

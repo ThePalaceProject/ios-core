@@ -2,19 +2,8 @@
 //  LCPPDFOpenProgress.swift
 //  Palace
 //
-//  Observable progress reporter for the LCP-PDF open pipeline. Bound by
-//  the loading overlay so the user sees what stage the open is in
-//  (preparing → opening publication → decrypting content → loading
-//  first page) and a live decrypt-block counter while PDFNavigator
-//  walks the PDF cross-ref table.
-//
-//  The total number of decrypt blocks needed to render page 1 is not
-//  known a priori — large Marketplace containers can take hundreds of
-//  blocks, small one-pagers a handful. Rather than fake a percentage,
-//  the overlay shows an indeterminate linear bar paired with the live
-//  counter; the counter is honest progress (each tick proves the
-//  pipeline is making forward motion) without pretending we know the
-//  denominator.
+//  Observable progress reporter for the LCP-PDF open pipeline, bound by the
+//  loading overlay to show the current stage and progress.
 //
 
 import Foundation
@@ -23,25 +12,14 @@ import Combine
 @MainActor
 final class LCPPDFOpenProgress: ObservableObject {
 
-    // `nonisolated` so background callers on the LCP-decrypt path
-    // (TPPLCPClient.decrypt, LCPPDFDiskExtract.extract — both off the main
-    // actor, ~7k calls/s during a PDF cross-ref walk) can reference the
-    // singleton without a main-actor hop. Safe because a `@MainActor` class is
-    // implicitly `Sendable` (the reference is immutable); the instance's state
-    // stays main-actor-isolated and its recorder entry points are already
-    // `nonisolated` with internal `Task { @MainActor }` hops.
+    // `nonisolated` so high-frequency background callers on the decrypt path
+    // can reference the singleton without a main-actor hop. Safe because a
+    // `@MainActor` class is implicitly `Sendable`; its recorder entry points
+    // hop to the main actor internally.
     nonisolated static let shared = LCPPDFOpenProgress()
 
-    /// Atomic flag readable from any actor — used by non-MainActor
-    /// callers (cover prefetcher, etc.) that need to know whether an
-    /// LCP PDF open is currently in flight without paying for a hop
-    /// onto the main actor on every check. Mirrors the `phase != .idle`
-    /// signal but is safe to read concurrently.
-    ///
-    /// Backed by a lock-guarded `@unchecked Sendable` holder rather than a
-    /// `nonisolated(unsafe) static var`: all access to the mutable `Bool` is
-    /// serialized through the holder's `NSLock`, so the concurrency safety is
-    /// enforced structurally instead of asserted away.
+    /// Lock-guarded flag readable from any actor (e.g. the cover prefetcher),
+    /// mirroring `phase != .idle` without a main-actor hop per check.
     private final class OpenInProgressFlag: @unchecked Sendable {
         private let lock = NSLock()
         private var value = false
@@ -69,11 +47,9 @@ final class LCPPDFOpenProgress: ObservableObject {
         case preparing
         case openingPublication
         case decryptingContent
-        /// Streaming the decrypted PDF to a temp file on disk. The
-        /// disk-extract pipeline replaced direct-PDFNavigator render
-        /// because the latter random-accessed the LCP stream and
-        /// OOM'd on large books. `bytesExtracted / totalExtractBytes`
-        /// gives a real % for this phase.
+        /// Streaming the decrypted PDF to a temp file on disk (see
+        /// `LCPPDFDiskExtract`). `bytesExtracted / totalExtractBytes` gives a
+        /// real % for this phase.
         case extractingToDisk
         case loadingFirstPage
     }
@@ -81,11 +57,8 @@ final class LCPPDFOpenProgress: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var decryptedBlocks: Int = 0
     @Published private(set) var decryptedBytes: Int = 0
-    /// Blocks served from the LRU decrypt cache (no AES work needed).
-    /// Counted separately so the progress bar credits them — a cached
-    /// hit IS forward motion as far as PDFNavigator is concerned, the
-    /// page is one step closer to rendering — without misleadingly
-    /// padding the work-done counter.
+    /// Blocks served from the LRU decrypt cache. Counted separately so the
+    /// progress bar credits them without padding the work-done counter.
     @Published private(set) var cachedHits: Int = 0
     /// Bytes written to the temp .pdf so far during the disk-extract
     /// phase. When `totalExtractBytes > 0` the progress bar derives a
@@ -152,12 +125,8 @@ final class LCPPDFOpenProgress: ObservableObject {
         }
     }
 
-    /// Percentage in [0, 99]. Prefers the bytes-extracted denominator
-    /// from the disk-extract pipeline when it's known — that gives the
-    /// user a true, monotonically-accurate percentage. Falls back to
-    /// the legacy decrypt-block curve only when no byte total is
-    /// available (early startup, before `setTotalExtractBytes` fires,
-    /// or in error paths where extraction never began).
+    /// Percentage in [0, 99]. Uses the bytes-extracted denominator when known,
+    /// otherwise falls back to the decrypt-block curve.
     var percentComplete: Int {
         if totalExtractBytes > 0 {
             let ratio = Double(bytesExtracted) / Double(totalExtractBytes)

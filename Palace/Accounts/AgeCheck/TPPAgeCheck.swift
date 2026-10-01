@@ -56,33 +56,14 @@ protocol TPPAgeCheckChoiceStorage: AnyObject {
     func verifyCurrentAccountAgeRequirement(userAccountProvider: TPPUserAccountProvider,
                                             currentLibraryAccountProvider: TPPCurrentLibraryAccountProvider,
                                             completion: ((Bool) -> Void)?) {
-        // Bucket A migration: the age check is a synchronous gate fired
-        // before catalog rendering. The legacy implementation read
-        // `currentLibraryAccountProvider.currentAccount?.details` and
-        // either completed false (nil) or queued work on `serialQueue`.
-        // Migrated path keeps the same ordering invariant by:
-        //
-        //   1. Fast-path: if state is `.detailsLoaded`, queue
-        //      `continueAgeRequirementCheck` on `serialQueue` directly —
-        //      same shape as the legacy `serialQueue.async { ... }`.
-        //   2. Failure-path: if state is `.detailsFailed`, complete false
-        //      on `serialQueue` — matches the legacy nil-details branch.
-        //   3. Loading-path: only when state is `.notLoaded`,
-        //      `.basicInfoLoaded`, or `.detailsLoading` do we spin up a
-        //      `Task` to await `awaitReady()`. This is the new behavior
-        //      the migration enables — the legacy code raced silently.
-        //
-        // Splitting fast-path from await-path preserves the queue
-        // ordering tests (TPPAgeCheckTests.testAge*) rely on: when state
-        // is already loaded, work goes onto `serialQueue` immediately so
-        // `didCompleteAgeCheck`'s serial-queue async sees the queued
-        // handlers, not an empty `handlerList`.
-        // Carry the two non-Sendable captures (`userAccountProvider` — an
-        // `@objc protocol` — and the completion closure) in a single
-        // documented `@unchecked Sendable` box so the `@Sendable`
-        // `serialQueue.async` / `Task` closures below capture the Sendable
-        // carrier instead of the raw values. `accountDetails` is Sendable
-        // (Account.LoadState is a Sendable enum) and is passed directly.
+        // The age check is a gate fired before catalog rendering:
+        //   1. `.detailsLoaded`: queue `continueAgeRequirementCheck` on
+        //      `serialQueue` directly.
+        //   2. `.detailsFailed`: complete false on `serialQueue`.
+        //   3. Otherwise: await `awaitReady()` in a Task.
+        // The fast path must enqueue immediately so `didCompleteAgeCheck`'s
+        // serial-queue work sees the queued handlers (TPPAgeCheckTests.testAge*).
+        // The non-Sendable provider and completion travel in one box.
         let callbacks = AgeCheckCallbacks(userAccountProvider: userAccountProvider,
                                           completion: completion)
 
@@ -254,6 +235,5 @@ private struct AgeCheckAccountBox: @unchecked Sendable {
     let account: Account
 }
 
-// Wave 1a: TPPSettings moved to PalacePreferences; the age-check storage
-// conformance re-attaches here beside the protocol it satisfies.
+// TPPSettings lives in PalacePreferences; the conformance sits beside the protocol.
 extension TPPSettings: TPPAgeCheckChoiceStorage {}

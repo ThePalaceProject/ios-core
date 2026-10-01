@@ -3,26 +3,11 @@
 //  Palace
 //
 //  The Crashlytics non-fatal recorded for an audiobook `.playbackFailed`, and the
-//  decision whether to send it at all (PP-5242).
-//
-//  What the record has to carry, and why:
-//
-//  - The underlying error chain. When an `AVAssetResourceLoader` delegate fails a
-//    request, `AVPlayerItem.error` replaces the delegate's domain: code -1001
-//    becomes `NSURLErrorDomain` -1001, anything else becomes
-//    `AVFoundationErrorDomain` -11800. The delegate's original code survives only
-//    as `NSUnderlyingError` (`NSOSStatusErrorDomain`, same code). The top-level
-//    domain/code alone therefore cannot tell one LCP loader failure from another.
-//  - The content source (LCP streamed vs local, OverDrive, Findaway, open access),
-//    because one Crashlytics issue groups failures from all of them.
-//  - Whether the failure happened at the start of a track.
-//  - The interval since the previous failure for the same book, so a follow-up
-//    failure (a media-services reset followed within a second by the player's
-//    own "not ready" failure) can be identified without being hidden.
-//
-//  Moved out of `AudiobookSessionManager.swift`, which is under the god-class
-//  LOC freeze. The builder and the send decision are pure so they are tested
-//  directly; the hub keeps only the call and the state it already owns.
+//  decision whether to send it at all (PP-5242). The record carries the
+//  `NSUnderlyingError` chain (AVFoundation rewrites resource-loader failures to
+//  NSURLErrorDomain -1001 or AVFoundationErrorDomain -11800, so the top level
+//  cannot tell causes apart), the content source, whether the failure was at a
+//  track start, and the interval since the previous failure for the same book.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -91,22 +76,13 @@ enum AudiobookContentSource: String {
 /// `repeatWindow` of the latest occurrence. The window slides:
 /// every occurrence, recorded or not, extends it.
 ///
-/// Why 60 seconds, sliding: field data shows devices re-reporting the same
-/// failure every 30 seconds, and bursts of 50 records in under 50ms. A window
-/// longer than the 30s cadence is needed to catch the re-reports at all, and
-/// measuring it from the latest occurrence (not the first record) keeps a
-/// sustained re-report to one record instead of one per window. A failure that
-/// recurs after a minute of quiet is recorded again.
+/// 60 seconds, sliding: devices re-report the same failure every 30 seconds,
+/// so the window must exceed that cadence, and sliding keeps a sustained
+/// re-report to one record.
 ///
-/// Failures with a different code for the same book are always recorded, even
-/// when they arrive a moment after another failure: some of those are follow-ups
-/// of the first failure, but a different code can also be a different cause, and
-/// suppressing it would hide that. The same reasoning applies one level down,
-/// which is why the key carries the first `NSUnderlyingError` too — under
-/// AVFoundation the top-level code is usually the same `-11800` regardless of
-/// cause, so keying on it alone would suppress precisely the distinctions this
-/// record was added to capture. `secondsSincePreviousFailureForBook` lets a
-/// reader identify the follow-ups instead.
+/// A different code (including a different first `NSUnderlyingError`, since
+/// AVFoundation's top level is usually -11800) is always recorded; it may be a
+/// different cause. `secondsSincePreviousFailureForBook` identifies follow-ups.
 struct PlaybackFailureRecordDeduplicator {
 
     static let repeatWindow: TimeInterval = 60
@@ -123,12 +99,8 @@ struct PlaybackFailureRecordDeduplicator {
         let domain: String
         let code: Int
         /// The first level of the `NSUnderlyingError` chain, when the error has
-        /// one. Without it the key is the field this whole change exists
-        /// because it cannot discriminate: AVFoundation collapses every
-        /// resource-loader failure into `AVFoundationErrorDomain -11800`, so two
-        /// genuinely different causes on the same book would share a key and the
-        /// second would be dropped with its chain unread. That is a worse
-        /// outcome than today, where both at least arrive generically.
+        /// one. Needed because AVFoundation reports every resource-loader
+        /// failure as -11800, so two different causes would otherwise share a key.
         let underlyingDomain: String?
         let underlyingCode: Int?
     }
@@ -181,9 +153,7 @@ extension AudiobookSessionManager {
     /// Builds a Crashlytics-ready NSError describing an audiobook playback
     /// failure, with all available context (typed error code, HTTP status,
     /// track URL, book id, position, underlying error chain, content source).
-    /// Pure — straight-line unit testable without spinning up the audiobook
-    /// stack. `nonisolated` because no app/state is read; lets tests call it off
-    /// the MainActor.
+    /// Pure and `nonisolated`: reads no app state.
     ///
     /// `underlyingDomain`/`underlyingCode` hold the TOP-LEVEL error's domain and
     /// code (their names predate this change and dashboards depend on them). The
@@ -331,14 +301,8 @@ extension AudiobookSessionManager {
 #endif
     }
 
-    /// `contentIsLocal` is injected so the `hasDecryptor && …` conjunction below
-    /// is reachable from a test. It defaults to the production file-exists check,
-    /// which reads `AppContainer.production()` and is therefore not drivable from
-    /// a unit test — which is exactly why mutating that `&&` to `||` survived the
-    /// suite: with `||` short-circuiting on `hasDecryptor`, every LCP book would
-    /// report `.lcpLocal` and the streamed/local split — the most valuable
-    /// distinction in this field, with streaming at 100% in production — would
-    /// silently vanish.
+    /// `contentIsLocal` is injected so the streamed/local LCP split is testable;
+    /// the default file-exists check reads `AppContainer.production()`.
     static func contentSource(
         for book: TPPBook,
         isLCP hasDecryptor: Bool,

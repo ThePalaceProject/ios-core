@@ -2,32 +2,11 @@
 //  ManagedLibraryWaitClock.swift
 //  Palace
 //
-//  How long have we been waiting for THIS configuration?
-//
-//  ## The bug this exists to remove
-//
-//  The bounded wait for the registry was measured from the first time the app
-//  asked, once per launch, and never restarted. That is the right answer only
-//  while the configuration does not change.
-//
-//  It can. An administrator moving a device between division groups pushes a
-//  new value, and an MDM can push one while the app is starting — which is
-//  exactly the morning-on-a-school-network case the wait exists for. When that
-//  happened, the new configuration inherited the old one's elapsed time. If the
-//  first had been sitting there for sixteen seconds, the second got no grace
-//  period at all: it fell straight through to the picker, on its very first
-//  attempt, having never once been given the chance to resolve.
-//
-//  The wait belongs to the configuration, not to the launch. Keying it to the
-//  configuration's identity is what makes that true, and it makes the old
-//  behaviour unrepresentable rather than merely fixed.
-//
-//  ## Why this is a type rather than two lines in the app delegate
-//
-//  It was two lines in the app delegate, and the defect above lived in them
-//  unseen because nothing there is reachable from a test. `now` is a parameter
-//  for the same reason: a clock you cannot advance is a clock you cannot
-//  assert on.
+//  How long have we been waiting for this configuration? The bounded registry
+//  wait is keyed to the configuration's identity, not to the launch: an MDM can
+//  push a new value while the app starts, and that value must get its own full
+//  grace period rather than inheriting the previous one's elapsed time.
+//  `now` is a parameter so tests can advance the clock.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

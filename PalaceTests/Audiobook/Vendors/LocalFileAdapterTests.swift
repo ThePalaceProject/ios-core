@@ -2,8 +2,8 @@
 //  LocalFileAdapterTests.swift
 //  PalaceTests
 //
-//  Mutation-killing tests for `LocalFileAdapter` — the on-disk manifest
-//  carve-out from pre-swarm `AudiobookLoader.swift` lines 169-207.
+//  Branch tests for `LocalFileAdapter` — the on-disk manifest path carved
+//  out of the original `AudiobookLoader.swift`.
 //
 //  All three collaborators (download center, file reader, token refresher)
 //  are constructor-injected stubs. The test cases drive both branches of
@@ -219,9 +219,8 @@ final class LocalFileAdapterTests: XCTestCase {
     }
 
     /// Bearer-token fulfill URL set → refresher MUST be called BEFORE
-    /// completion. Mutation point: changing `if let fulfillURL = ...` to
-    /// the inverse would skip refresh; this test fails the mutant by
-    /// asserting `refresher.callCount > 0`.
+    /// completion. Inverting `if let fulfillURL = ...` would skip refresh;
+    /// this test catches that by asserting `refresher.callCount > 0`.
     ///
     /// Keychain-dependent because setting `book.bearerTokenFulfillURL`
     /// writes via TPPKeychainVariable. Skip on hosts without Keychain.
@@ -264,8 +263,8 @@ final class LocalFileAdapterTests: XCTestCase {
 
     /// Bearer-token fulfill URL NOT set → refresher MUST NOT be called.
     /// Companion to the above so the conditional's TRUE/FALSE bifurcation
-    /// is fully pinned. Without this, a mutation that ALWAYS calls
-    /// `refresher.refreshToken(...)` would not be killed.
+    /// is fully pinned. Without this, ALWAYS calling
+    /// `refresher.refreshToken(...)` would go unnoticed.
     func testResolveManifest_noBearerTokenFulfillURL_skipsRefresh() {
         let dc = StubDownloadCenter(); dc.stubbedFileURL = manifestURL
         let reader = StubFileReader()

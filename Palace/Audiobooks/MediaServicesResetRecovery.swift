@@ -3,28 +3,11 @@
 //  Palace
 //
 //  PP-5241: recover an audiobook session after iOS resets its media services.
-//
-//  When mediaserverd restarts, every AVFoundation player and audio-session
-//  object the app holds becomes invalid (Apple: "Responding to audio session
-//  reset notifications"). The loaded player reports AVError -11819
-//  (`mediaServicesWereReset`, "Cannot Complete Action"), usually followed
-//  25 ms to 1.3 s later by a second failure from the same dead player
-//  (`OpenAccessPlayerError.playerNotReady`, position 0.0). AVAudioSession also
-//  posts `mediaServicesWereResetNotification`. The failure and the
-//  notification arrive in either order.
-//
-//  Field shape: about a third of sampled "-11800" audiobook failures, mostly
-//  mid-track in long background sessions, some during a CarPlay reconnect.
-//
-//  Recovery = re-establish the session through `AudiobookSessionManager`:
-//  for a patron who was playing, the existing recovery re-open (which
-//  re-applies the audio-session category and activation, builds a new player,
-//  and restores the persisted position); for a patron who was paused, a
-//  teardown of the dead session that does not persist its position. See
-//  `AudiobookSessionManager.mediaServicesResetReestablish` for why a paused
-//  patron is not re-opened paused.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  After a mediaserverd restart every AVFoundation object is invalid; the player
+//  fails with AVError -11819, often followed by playerNotReady, and the session
+//  posts mediaServicesWereResetNotification, in either order. A playing patron is
+//  re-opened through the existing recovery path; a paused one gets a teardown that
+//  does not persist position (see `mediaServicesResetReestablish`).
 //
 
 import AVFoundation

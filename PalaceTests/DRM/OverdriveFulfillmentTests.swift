@@ -1,32 +1,9 @@
 //
-//  OverdriveFulfillmentTests.swift
-//  PalaceTests
-//
-//  Coverage for Overdrive-specific fulfillment branches: the
-//  x-overdrive-scope / x-overdrive-patron-authorization header carving on
-//  manifest builds, the deferred-fulfillment path when the loans feed is
-//  out of sync (F-081 territory), and the token-vs-basic auth selection
-//  driven by TPPUserAccount credentials.
-//
-//  The OverdriveDownloadHandler (the post-Phase-7 decomposition) already
-//  has thorough branch coverage in
-//  PalaceTests/MyBooks/OverdriveDownloadHandlerTests.swift. This file
-//  focuses on the DRM-side surface that hadn't been explicitly tested:
-//
-//    * The header-mapping CONTRACT: scope + patron-authorization must be
-//      carved out of the redirect response and threaded into the manifest
-//      request. The handler uses lowercased keys, but Overdrive's servers
-//      historically used mixed case — verify case-normalization works.
-//    * Token-refresh-before-open: the morning Adobe log (2026-05-14) noted
-//      Overdrive token refresh is required before some opens. Verify the
-//      credential precedence (token > basic) and that token presence skips
-//      the basic-auth header construction.
-//    * Deferred fulfillment when the post-borrow OPDS entry's defaultAcquisition
-//      is still a borrow URL — F-081, the "audiobook routed to fulfillment
-//      before loans feed refresh" race.
-//
-//  Build gate: OverdriveDownloadHandler lives behind `#if FEATURE_OVERDRIVE`.
-//  Tests inherit the gate.
+//  Overdrive DRM-side fulfillment: x-overdrive-scope / patron-authorization header
+//  carving (case-normalized) into the manifest request, token-over-basic credential
+//  precedence, and deferred fulfillment when the post-borrow entry still has a
+//  borrow URL (F-081). Handler branches: MyBooks/OverdriveDownloadHandlerTests.swift.
+//  Gated on `#if FEATURE_OVERDRIVE`.
 //
 
 #if FEATURE_OVERDRIVE
@@ -497,7 +474,7 @@ final class OverdriveFulfillmentTests: XCTestCase {
     // audiobook's first track — i.e. the player is handed the FRESH url, not a
     // stale cached-manifest replay. The session wiring (handleManagerState ->
     // openAudiobook(forceRefulfill:true) -> makeLoader) is auth-gated and is
-    // covered by architect SoD review + device validation.
+    // verified on a device.
 
     /// Spy adapter — returns a caller-supplied manifest so the test controls the
     /// track href the loader builds from.
@@ -547,7 +524,7 @@ final class OverdriveFulfillmentTests: XCTestCase {
         // The loader's refreshTokenIfNeeded reads the production shared account
         // BEFORE the adapter chain; clear it so a leftover expired token doesn't
         // fail the load before the spy resolves.
-        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: swarm_47883816 — hermetic reset must target the production shared currentUserAccount the loader's token gate reads
+        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: hermetic reset must target the production shared currentUserAccount the loader's token gate reads
 
         let freshURL = "https://od.test/FRESH/track-1.mp3"
         let staleURL = "https://od.test/STALE/track-1.mp3"

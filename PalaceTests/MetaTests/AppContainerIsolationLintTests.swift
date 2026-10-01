@@ -2,50 +2,14 @@
 //  AppContainerIsolationLintTests.swift
 //  PalaceTests
 //
-//  Lint enforcement for swarm_47883816 work package A: `AppContainer.production()`
-//  reads in test bodies are banned outside an explicit whitelist + deferred
-//  list. The lint is the durable change; the migration is the cleanup.
+//  Bans `AppContainer.production()` reads in PalaceTests outside (a) the whitelist
+//  of files where production identity IS the contract, (b) the deferred list in
+//  `MetaTests/Baselines/A-deferred-files.txt`, (c) lines carrying a
+//  `// MIGRATED-DEFERRED:` marker, and (d) comment lines. New tests use
+//  `makeTestAppContainer()`. `testLintCatchesSyntheticViolation` proves the
+//  detector fires. It is an XCTest rather than a shell hook so it runs wherever
+//  the suite runs and cannot be skipped with `--no-verify`.
 //
-//  Failure mode this lint closes
-//  =============================
-//  Before this lint, any new test could reach into `AppContainer.production()`
-//  unobserved. The factory `makeTestAppContainer()` is a structural seam —
-//  but a seam only matters if the suite refuses to land regressions back to
-//  the old pattern. This file IS that refusal.
-//
-//  Rules
-//  =====
-//   1. `testNoAppContainerProductionOutsideWhitelist` — scans every Swift
-//      file under `PalaceTests/` and fails if a `AppContainer.production()`
-//      reference appears outside:
-//
-//        a) The whitelist (5 production-identity-pinning files where
-//           reading `production()` IS the test contract).
-//        b) The deferred list at `PalaceTests/MetaTests/Baselines/A-deferred-files.txt`
-//           (~55 files queued for a follow-up shrink swarm).
-//        c) A line carrying `// MIGRATED-DEFERRED:` inline marker
-//           (per-line exemption for individual sites where production()
-//           resolution IS the SUT — e.g. `_testContainerOverride` wiring
-//           tests).
-//        d) A non-code comment line (lines whose first non-whitespace
-//           characters are `//` or `///`). Documentation comments that
-//           reference `AppContainer.production()` are not lint-relevant.
-//
-//   2. `testLintCatchesSyntheticViolation` — feeds the lint a synthetic
-//      violating string to prove the detector actually catches the pattern.
-//      Without this self-test, a refactor that silently broke the regex
-//      would pass-by-default.
-//
-//  Why a Swift XCTest rather than a shell grep gate
-//  ================================================
-//  Hook-based shell scripts have two failure modes the harness has seen
-//  before:
-//    - They no-op gracefully on missing dependencies (forge-os scripts).
-//    - They're easy to bypass via `--no-verify`.
-//  An XCTest that runs in the same xctest process as the suite itself
-//  cannot be bypassed by a hook flag; if the test runs, the rule runs.
-//
-//  swarm_47883816 work package A.
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
@@ -66,10 +30,8 @@ final class AppContainerIsolationLintTests: XCTestCase {
 
   /// Where this lint's own baselines live. They sit beside the lint, inside
   /// `PalaceTests/`, because they are gate INPUTS: without them the amnesty
-  /// list is empty and every pre-existing violation reports as new. They used
-  /// to live under `.forgeos/swarms/<id>/`, which is written at run time and
-  /// gitignored, so archiving that directory silently emptied this list and
-  /// reddened every branch cut afterwards.
+  /// list is empty and every pre-existing violation reports as new. They must
+  /// be tracked in git, not in a gitignored directory.
   /// Repo root — one level above `PalaceTests/`. Still used to express findings
   /// as repo-relative paths; it is no longer where the baseline lives.
   private static let repoRoot: URL = {
@@ -83,9 +45,8 @@ final class AppContainerIsolationLintTests: XCTestCase {
   /// Whitelist — files allowed to reference `AppContainer.production()`
   /// for documented reasons. Each entry is a path RELATIVE to `palaceTestsRoot`.
   ///
-  /// **Adding a file to this list requires a one-paragraph rationale in
-  /// the swarm_47883816 plan or contract.** The default answer is "no — use
-  /// `makeTestAppContainer()` instead."
+  /// **Adding a file to this list requires a stated rationale.** The default
+  /// answer is "no — use `makeTestAppContainer()` instead."
   private static let whitelist: Set<String> = [
     // Bootstrap path; comment-only references to production() in
     // the principal-class init's doc comments.
@@ -112,9 +73,8 @@ final class AppContainerIsolationLintTests: XCTestCase {
     // substrings as test fixtures for its own scanner. Self-referential
     // exemption mirrors the rule above.
     "MetaTests/TearDownRequiredLintTests.swift",
-    // C-owned sibling factory tests — until C's package commits, the
-    // file references production() in its TPPUserAccount cache-isolation
-    // assertions. Folded into whitelist by orchestrator E post-C.
+    // TPPUserAccount factory tests reference production() in their
+    // cache-isolation assertions.
     "Support/TPPUserAccountTestFactoryTests.swift",
     // KeychainAvailability-gated isolation tests. The Keychain-bound
     // path requires the production singleton graph; these tests
@@ -130,14 +90,11 @@ final class AppContainerIsolationLintTests: XCTestCase {
     // `clearCache()` against the production NetworkExecutor identity
     // (`a === b` from production().networkExecutor). The file's
     // tests are integration-style — production() resolution IS the
-    // SUT. swarm_47883816 follow-up should evaluate whether these
-    // can be split into unit + integration tests.
+    // SUT. A follow-up could split these into unit + integration tests.
     "Network/TPPNetworkExecutorTests.swift",
-    // Added swarm_5b500284 (G2 audit, G3 promote): production-identity-pin
-    // files where reading `AppContainer.production()` IS the test
-    // contract. Migrating to `makeTestAppContainer()` would invalidate
-    // the assertion under test. See `.forgeos/swarms/swarm_5b500284/
-    // transcripts/G2.md` "Not migrated" section for per-file rationale.
+    // Production-identity-pin files where reading `AppContainer.production()`
+    // IS the test contract. Migrating to `makeTestAppContainer()` would
+    // invalidate the assertion under test.
 
     // Tests `_resetForTesting()`'s effect on the static `_cached` field —
     // reading production() is the only way to observe the cache rebuild.
@@ -164,23 +121,13 @@ final class AppContainerIsolationLintTests: XCTestCase {
   /// reference from the lint. Used when the surrounding test method
   /// explicitly exercises production() resolution semantics (e.g.
   /// `_testContainerOverride ?? AppContainer.production()` fallback) and
-  /// migrating would break the test's purpose. Each marker must cite
-  /// `swarm_47883816` so the maintenance review knows which swarm
-  /// introduced the deferral.
+  /// migrating would break the test's purpose. Each marker must state
+  /// its reason.
   private static let perLineExemptionMarker = "// MIGRATED-DEFERRED:"
 
-  /// Files owned by sibling work packages (B AccountsManagerIsolation,
-  /// C TPPUserAccountIsolation, D UserDefaultsIsolation) per the
-  /// swarm_47883816 manifest's `file-assignment matrix`. Their migrations
-  /// land in PARALLEL work packages — the lint exempts them here because
-  /// running this lint BEFORE those packages commit would force the suite
-  /// red on files A doesn't own.
-  ///
-  /// Each entry is a path RELATIVE to `palaceTestsRoot`. After B/C/D
-  /// commit their migrations, this list is no longer needed (their files
-  /// will pass the lint cleanly) — orchestrator E will fold the
-  /// exemptions into the whitelist + deferred list. Until then, the
-  /// ownership boundary is encoded here.
+  /// Files whose isolation is enforced by the sibling lints
+  /// (AccountsManagerIsolation, TPPUserAccountIsolation, UserDefaultsIsolation)
+  /// and so are exempt here. Each entry is a path RELATIVE to `palaceTestsRoot`.
   private static let siblingPackageOwned: Set<String> = [
     // B-owned (AccountsManagerIsolation)
     "Integration/AccountSwitchLifecycleTests.swift",
@@ -366,13 +313,11 @@ final class AppContainerIsolationLintTests: XCTestCase {
         continue
       }
       // Deferred files are exempt regardless of content (tracked for
-      // follow-up shrink swarm).
+      // a follow-up migration).
       if Self.deferredFiles.contains(repoRelPath) {
         continue
       }
-      // Sibling-package-owned files are exempt until B/C/D commit their
-      // migrations. After landing, orchestrator E folds these into the
-      // whitelist + deferred list.
+      // Files covered by the sibling isolation lints are exempt here.
       if Self.siblingPackageOwned.contains(relPath) {
         continue
       }
@@ -454,8 +399,8 @@ final class AppContainerIsolationLintTests: XCTestCase {
   }
 
   /// The baselines must be TRACKED, not merely present on the machine that
-  /// wrote them. They used to live under `.forgeos/swarms/<id>/`, which is
-  /// gitignored; archiving that directory (#1411) left the files on disk for
+  /// wrote them. They used to live in a gitignored directory; archiving it
+  /// (#1411) left the files on disk for
   /// anyone who already had them and absent for every fresh checkout, so this
   /// lint passed locally and on branches cut earlier while failing on every
   /// branch cut afterwards. A gitignored gate input is a gate that is off.

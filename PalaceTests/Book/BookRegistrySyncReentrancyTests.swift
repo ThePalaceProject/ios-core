@@ -1,19 +1,10 @@
-//
 //  BookRegistrySyncReentrancyTests.swift
-//  PalaceTests
 //
-//  Regression coverage for the `saveSync` reentrancy hang (Crashlytics
-//  8afb1c66) introduced by PR #1061. #1061 wrapped `saveSync` in
-//  `diskWriteQueue.sync { ... }` AND moved the registry snapshot inside that
-//  block. `saveSync` is reached from `BookmarkManager.setLocationSync`'s
-//  `onComplete`, which runs inside a `BookRegistryStore.syncQueue` barrier, so
-//  the snapshot's `registrySnapshot() → performSync → syncQueue.sync`
-//  re-entered `syncQueue` from a thread already holding the barrier → deadlock.
-//  The fix snapshots in the caller's context (off `diskWriteQueue`) and makes
-//  the disk write reentrancy-safe.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  `saveSync` reentrancy hang (Crashlytics 8afb1c66, from PR #1061). `saveSync` is
+//  reached from inside a `BookRegistryStore.syncQueue` barrier, so taking the
+//  registry snapshot inside `diskWriteQueue.sync` re-entered `syncQueue` and
+//  deadlocked. The fix snapshots in the caller's context and makes the disk write
+//  reentrancy-safe.
 
 import XCTest
 import PalaceCatalog
@@ -143,12 +134,12 @@ final class BookRegistrySyncReentrancyTests: XCTestCase {
     /// `syncQueue` barrier, never via `diskWriteQueue`), the write MUST be
     /// routed through `diskWriteQueue.sync` so it lands FIFO-last after any
     /// in-flight async `save(for:)` writes to the same URL. If the guard is
-    /// inverted (the `!=`→`==` mutant), `saveSync` runs its write INLINE,
+    /// inverted (`!=` → `==`), `saveSync` runs its write INLINE,
     /// bypassing the queue, and the trailing async writes clobber it — exactly
     /// the disk-write race #1061 closed. Distinguishes the two by record count:
     /// the async saves persist a 1-record snapshot; `saveSync` persists a
     /// 2-record snapshot taken after a second book is added. Original ⇒ the
-    /// 2-record snapshot wins (written last); mutant ⇒ a 1-record async write
+    /// 2-record snapshot wins (written last); inverted ⇒ a 1-record async write
     /// clobbers it.
     func testSaveSync_writeRoutesThroughDiskWriteQueue_landsAfterInFlightAsyncSaves() throws {
         let (account, url) = isolatedAccount()

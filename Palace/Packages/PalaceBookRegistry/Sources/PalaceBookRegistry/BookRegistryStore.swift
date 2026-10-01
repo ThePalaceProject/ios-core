@@ -63,9 +63,8 @@ final class BookRegistryStore: @unchecked Sendable {
   let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
 
   /// Fired when `updateBook` reconciles a record whose availability changed
-  /// (drives the app's push-notification comparison). Injected app-side (god-class
-  /// decomp Wave 2b — `NotificationService` stays app-target). Defaults to a no-op
-  /// so white-box tests that construct a bare store need not supply it.
+  /// (drives the app's push-notification comparison). Injected app-side because
+  /// `NotificationService` lives in the app target. Defaults to a no-op for tests.
   private let onAvailabilityChange: @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void
 
   // MARK: - Init

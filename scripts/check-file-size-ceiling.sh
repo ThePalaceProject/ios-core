@@ -53,7 +53,7 @@
 #   — package Tests are out of scope, package source is not.
 #
 #   Excluding packages was the first version of this gate and it was wrong. The
-#   package-purity gates constrain dependency DIRECTION, which is orthogonal to
+#   package boundaries constrain dependency DIRECTION, which is orthogonal to
 #   file size, so "packages have their own boundaries" does not cover this axis.
 #   Worse, phases B-F of the modularisation are the motion of app code INTO
 #   packages, so the exclusion would have switched the ceiling off exactly where

@@ -1,26 +1,11 @@
-//
 //  EPUBPositionWireFormatTests.swift
-//  PalaceTests
 //
-//  PP-5138: pins the bytes Palace puts on the annotation server for an EPUB
-//  reading position, and the bytes it accepts back.
-//
-//  The wire format is `LocatorHrefProgression` from
-//  `ThePalaceProject/mobile-specs`:
-//
-//      {"@type":"LocatorHrefProgression","href":…,"progressWithinChapter":…}
-//
-//  Palace used to post the Readium `Locator` shape instead — no `@type`, no
-//  `progressWithinChapter`, progressions nested under `locations`. The spec
-//  directs a client meeting an untyped locator to read it as
-//  `LocatorLegacyCFI`, and the Android client does that and then discards the
-//  result for EPUBs, so no position written by iOS was ever readable there.
-//
-//  The read side still accepts the Readium shape, because positions in that
-//  shape are already on the server from shipped versions.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  PP-5138: pins the EPUB reading position Palace posts to the annotation server
+//  and accepts back. The wire format is `LocatorHrefProgression` from
+//  `ThePalaceProject/mobile-specs` (`@type`, `href`, `progressWithinChapter`).
+//  Palace used to post the Readium `Locator` shape, which Android reads as
+//  `LocatorLegacyCFI` and discards for EPUBs. The read side still accepts the
+//  Readium shape, since shipped versions left positions in it on the server.
 
 import XCTest
 import ReadiumShared

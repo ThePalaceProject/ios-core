@@ -2,26 +2,13 @@
 //  DownloadFreeSpaceExhaustionTests.swift
 //  PalaceTests
 //
-//  Deep mutation-killing coverage for the disk-exhaustion / LRU
-//  eviction policy (PP-4178). Two angles:
-//
-//    1. **Mid-download disk-out** — when `replaceBook` / `moveFile`
-//       cannot write to the destination (read-only directory, full
-//       volume simulated by a non-writable parent), the system must
-//       surface a clean failure: registry state must NOT advance to
-//       .downloadSuccessful, the partial garbage must not survive at
-//       the destination, and the failure is logged via the delegate.
-//
-//    2. **Pre-download LRU eviction** — `DiskBudgetManager` runs the
-//       eviction state machine that reclaims least-recently-used
-//       content to keep disk usage under budget. We extend the existing
-//       eviction suite with edge cases: zero-needed (budget exactly
-//       hit), eviction with bytesToAdd overrun, LRU ordering stability,
-//       and orphan-file reclamation.
-//
-//  Hermetic — every test scopes a unique temp dir under
-//  NSTemporaryDirectory() and tears it down on exit. No network. No
-//  Adobe RMSDK. Production code is read-only.
+//  Disk-exhaustion and LRU eviction policy (PP-4178):
+//    1. Mid-download disk-out: when `replaceBook` / `moveFile` cannot write,
+//       the registry must not advance to .downloadSuccessful, no partial file
+//       survives, and the failure reaches the delegate.
+//    2. Pre-download eviction: `DiskBudgetManager` edge cases (budget exactly
+//       hit, bytesToAdd overrun, LRU ordering stability, orphan reclamation).
+//  Hermetic: per-test temp dir, no network, no Adobe RMSDK.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //

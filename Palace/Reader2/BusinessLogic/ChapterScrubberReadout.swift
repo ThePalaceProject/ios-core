@@ -4,20 +4,10 @@
 //
 //  PP-5006: composes what the scrubber says about where a drag would land.
 //
-//  Two audiences, one source of truth. The drag card stacks a chapter row above
-//  a page/percent detail row; VoiceOver gets the same facts as one spoken
-//  sentence, composed by `TPPReaderPositionReport` — the same composer the
-//  reader's existing "Where am I?" action uses, so a scrubbed position and a
-//  queried position are phrased identically.
-//
-//  The rows are separate values rather than one newline-joined string because
-//  they are typeset differently (the chapter is the emphasis) and because a
-//  stacked layout is what keeps the card legible at accessibility text sizes —
-//  PP-5005 requires that a figure's qualifier never truncate, and rows that
-//  wrap independently cannot collide the way Libby's two columns would.
-//
-//  Every string here is one the reader already ships. A prototype that invents
-//  patron-facing copy commits the product to wording nobody signed off on.
+//  The drag card stacks a chapter row above a page/percent row (separate rows
+//  so each wraps independently at accessibility sizes, PP-5005). VoiceOver gets
+//  the same facts from `TPPReaderPositionReport`, the "Where am I?" composer.
+//  Only strings the reader already ships are used.
 //
 
 import Foundation

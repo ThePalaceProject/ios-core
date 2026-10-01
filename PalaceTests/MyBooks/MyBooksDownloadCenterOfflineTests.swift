@@ -1,28 +1,9 @@
 //
-//  MyBooksDownloadCenterOfflineTests.swift
-//  PalaceTests
-//
-//  PP-4114 follow-up coverage. PR #901 fixed the BORROW path's reachability
-//  handling on `BookCellModel` (pre-flight check + dropFirst() subscription
-//  on `connectivityPublisher`) so a network drop while waiting on the borrow
-//  response clears the spinner and surfaces a retryable alert.
-//
-//  This suite covers the parallel gap on `MyBooksDownloadCenter`: when a
-//  download is ALREADY IN PROGRESS and reachability drops, the URLSession
-//  download task can sit in flight indefinitely. The background session is
-//  configured with `waitsForConnectivity = false`, but no explicit
-//  `timeoutIntervalForRequest` (defaults to 60s) and no
-//  `timeoutIntervalForResource` (defaults to 7 days) — and on simulators /
-//  Wi-Fi-to-Wi-Fi-loss transitions the OS may not surface
-//  `didCompleteWithError` for the entire 60s window. Pre-fix UX: spinner
-//  spins forever, no alert.
-//
-//  Fix mirrors the BookCellModel pattern from PR #901: subscribe MBDC to
-//  `reachability.connectivityPublisher.dropFirst().filter { !$0 }` and on
-//  drop, fail every active download (state → .downloadFailed, retryable
-//  alert via DownloadAlertPresenter) and cancel the URLSession task.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  PP-4114 follow-up to PR #901 (which fixed the borrow path in BookCellModel).
+//  An in-progress download could sit in flight for the 60s request timeout when
+//  reachability dropped, with the spinner stuck and no alert. MyBooksDownloadCenter
+//  now subscribes to `connectivityPublisher.dropFirst().filter { !$0 }` and, on a
+//  drop, fails every active download with a retryable alert and cancels the task.
 //
 
 import Combine

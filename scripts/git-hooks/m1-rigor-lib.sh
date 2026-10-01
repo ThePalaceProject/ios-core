@@ -4,8 +4,7 @@
 # Sourced by BOTH hook stages; not executable on its own:
 #
 #   pre-commit  — diff-only gates (blast-radius, adjacency-staleness)
-#   commit-msg  — message-dependent gates (contract-reconciliation,
-#                 intent-recorded)
+#   commit-msg  — message-dependent gate (contract-reconciliation)
 #
 # Why the split: pre-commit fires BEFORE git writes the new commit message,
 # so at pre-commit time COMMIT_EDITMSG still holds the PREVIOUS commit's

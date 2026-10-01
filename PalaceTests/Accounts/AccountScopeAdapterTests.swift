@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Pins the app-side `AccountsManagerAccountScopeAdapter` — the boundary that
-//  realizes the god-class-decomposition Wave 2b Book→Accounts inversion. The
+//  realizes the god-class-decomposition Book→Accounts inversion. The
 //  PalaceBookRegistry engine consumes ONLY this value-only surface; these tests
 //  lock the four members it forwards so a future AccountsManager refactor can't
 //  silently break the registry's account scoping (brief §3.4).
@@ -93,7 +93,7 @@ final class AccountScopeAdapterTests: PalaceWiringTestCase {
     /// Why this test exists at this layer: the 3.2.3 hotfix's timeout test
     /// (`BookRegistrySyncReadinessTests.testReadiness_wedgedAtDetailsLoading_bounded_…`)
     /// exercises `Account.awaitReady(timeout:)` — the HELPER — directly. When the
-    /// Wave 3 S2 seam extraction moved the readiness await into this adapter and
+    /// AccountsManager seam extraction moved the readiness await into this adapter and
     /// dropped `timeout:`, that helper test stayed green while the real production
     /// path went unbounded again: registry sync never completed and My Books spun
     /// forever (HelpSpot #18619, #18624). Only a test on the producer catches that.

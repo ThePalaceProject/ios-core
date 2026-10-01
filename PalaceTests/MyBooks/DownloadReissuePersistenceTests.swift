@@ -1,26 +1,10 @@
 //
-//  DownloadReissuePersistenceTests.swift
-//  PalaceTests
-//
-//  PP-5023. Every path that starts a download must durably record it.
-//
-//  PP-4997 made launch reconciliation match a persisted record against the live
-//  tasks by URL, and refuse to adopt when two books claim the same URL. That
-//  refusal is computed from persisted records ALONE, so a live task that was
-//  never persisted is invisible to it: if book B is downloading on book A's URL
-//  without a record, A's record sees exactly one live task on its URL and adopts
-//  B's download. The patron gets a title they did not ask for, silently.
-//
-//  Two paths created a task without recording it — the acquisition-link follow-up
-//  in `BackgroundDownloadHandler` and the bearer-token hop in
-//  `RightsManagementDispatcher`. These tests pin that they now record, and that
-//  recording is what closes the wrong-adoption route.
-//
-//  The last two tests are a matched pair: one asserts the fix, the other is the
-//  CONTROL that proves the assertion can fail. Without the control, a test that
-//  declines adoption for some unrelated reason reads exactly like a passing fix.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-5023: every path that starts a download must record it. Launch
+//  reconciliation (PP-4997) refuses adoption when two persisted records share a
+//  URL, so an unrecorded live task on another book's URL gets adopted by that book.
+//  Pins that BackgroundDownloadHandler's acquisition follow-up and
+//  RightsManagementDispatcher's bearer-token hop now record. The last two tests are
+//  a fix/control pair; the control proves the assertion can fail.
 //
 
 import XCTest
@@ -215,7 +199,7 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
     // MARK: - The inheritance cells
 
     func testReissue_whenTheSourceHasNoRecordButTheTargetDoes_keepsTheTargetsAccount() throws {
-        // The cell a mutation run named: `inheritingFrom` points at a book with
+        // `inheritingFrom` points at a book with
         // NO record, while the target book already has one. Reading only the
         // source yields nil and blanks an account that was already correct —
         // which `startedForAccount` would then degrade to the CURRENT library,
@@ -289,8 +273,7 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
         // scope at the production call site, so a record naming the WRONG one
         // survives an existence-and-URL assertion. It must name the live task —
         // a record pointing at a task that no longer exists cannot be adopted.
-        // `palace_mutate` finds no mutation points in that file, so this
-        // assertion is the only guard on the field.
+        // This assertion is the only guard on the field.
         let liveInfo = await isolatedStateManager.bookIdentifierToDownloadInfo.get(book.identifier)
         let liveTaskID = try XCTUnwrap(liveInfo?.downloadTask.taskIdentifier)
         XCTAssertEqual(persisted.taskIdentifier, liveTaskID,
@@ -446,16 +429,9 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
     /// Drives `MyBooksDownloadCenter.handleDownloadCompletion` — the caller —
     /// rather than `dispatch`, and asserts the bearer record SURVIVES.
     ///
-    /// This is the test round 1 was missing, and its absence was the defect:
-    /// the hop wrote a record inside `dispatch`, and ~100ms later the caller's
-    /// terminal cleanup ran `removePersistedRecord` on the same key. Every test
-    /// that drove `dispatch` alone stayed green while the fix did nothing.
-    ///
-    /// Two reviewers independently observed that the guard added to fix it
-    /// (`if !followUpTaskInFlight`) was itself unpinned — no test reached the
-    /// caller, and `palace_mutate` finds no mutation point on that line — so
-    /// deleting it would have restored the defect silently. That is the same
-    /// mistake one level up, which is exactly why this test drives the caller.
+    /// The hop writes a record inside `dispatch`, and ~100ms later the caller's
+    /// terminal cleanup runs `removePersistedRecord` on the same key; only a
+    /// test that drives the caller pins the `if !followUpTaskInFlight` guard.
     func testHandleDownloadCompletion_bearerHop_keepsTheRecordForTheLiveTask() async throws {
         let registry = TPPBookRegistryMock()
         let center = MyBooksDownloadCenter(
@@ -854,14 +830,9 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
 
     /// A re-issue with nothing to inherit must leave the task unstamped.
     ///
-    /// Precise about WHAT holds this, because an earlier docstring credited the
-    /// `!accountId.isEmpty` guard in `setAccount` and that was wrong: `parse`
-    /// splits on `=` with `omittingEmptySubsequences` defaulted true, so a
-    /// written `acct=` yields one part and is dropped anyway. The assertion
-    /// passes with or without that guard. It still kills a real mutant —
-    /// stamping `currentAccountId` instead of the empty inherit fails it — but
-    /// the guard itself is pinned by nothing, which is worth knowing before
-    /// someone deletes it as dead.
+    /// Stamping `currentAccountId` instead of the empty inherit fails it. The
+    /// `!accountId.isEmpty` guard in `setAccount` is not what holds this: `parse`
+    /// splits on `=` omitting empty subsequences, so `acct=` is dropped anyway.
     func testPersistReissuedTask_withNothingToInherit_leavesTheTaskUnstamped() throws {
         let targetBookID = "pp4986-orphan-\(UUID().uuidString)"
         let task = fakeDownloadTask(

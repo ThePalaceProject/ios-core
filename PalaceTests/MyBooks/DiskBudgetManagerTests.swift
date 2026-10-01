@@ -59,7 +59,7 @@ final class DiskBudgetManagerTests: XCTestCase {
     func testDefaultBudget_onSmallDevice_returnsRelaxedSmallDeviceQuota() {
         // 1.2 GB == 1_200 * 1024 * 1024. Pair-assert that the value is strictly
         // less than the large-device value AND that calling twice returns the
-        // same value (pure function) so a mutation that introduces caching
+        // same value (pure function) so a change that introduces caching
         // bugs or copies the large-device branch into both arms is caught.
         let manager = makeManager(isSmallDevice: true)
         let large = makeManager(isSmallDevice: false)
@@ -75,7 +75,7 @@ final class DiskBudgetManagerTests: XCTestCase {
 
     func testDefaultBudget_onLargeDevice_returnsRelaxedLargeDeviceQuota() {
         // 2.5 GB == 2_500 * 1024 * 1024. Pair-assert that the value is strictly
-        // greater than the small-device value so a mutation that copies the
+        // greater than the small-device value so a change that copies the
         // small-device branch into both arms is caught.
         let manager = makeManager(isSmallDevice: false)
         let small = makeManager(isSmallDevice: true)
@@ -90,7 +90,7 @@ final class DiskBudgetManagerTests: XCTestCase {
     func testDirectoryUsageBytes_emptyDirectory_returnsZero() throws {
         // Pair-assert that the directory IS empty before and after the call
         // (no side-effects), and that the bytes returned are exactly zero.
-        // A mutation that returns 1, -1, or a magic number would fail.
+        // A change that returns 1, -1, or a magic number would fail.
         let manager = makeManager()
         let before = try FileManager.default.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil)
         XCTAssertEqual(before.count, 0, "Precondition: tempDir is empty")
@@ -111,7 +111,7 @@ final class DiskBudgetManagerTests: XCTestCase {
 
     func testDirectoryUsageBytes_missingDirectory_returnsZero() throws {
         // Pair-assert that we DO confirm the directory is missing first, and
-        // that the call still doesn't create it as a side-effect. A mutation
+        // that the call still doesn't create it as a side-effect. A change
         // that throws instead of returning 0 would crash the test process.
         let bogus = tempDir.appendingPathComponent("does-not-exist")
         XCTAssertFalse(FileManager.default.fileExists(atPath: bogus.path),
@@ -147,7 +147,7 @@ final class DiskBudgetManagerTests: XCTestCase {
     func testListContentFilesSortedByLRU_missingDirectory_returnsEmpty() {
         // Pair-assert the missing-directory precondition AND that the call
         // doesn't create the directory as a side-effect. Also call twice to
-        // pin idempotency — a mutation that lazily creates the directory
+        // pin idempotency — a change that lazily creates the directory
         // and then lists it would fail the second-call assertion.
         let bogus = tempDir.appendingPathComponent("missing")
         XCTAssertFalse(FileManager.default.fileExists(atPath: bogus.path),

@@ -380,6 +380,16 @@ jobs:
             exit 1
           fi
           bash scripts/tests/test_check_nodrm_app_excludes_audioengine.sh
+      # Source comments in Palace/ and PalaceTests/ follow the writing
+      # conventions in CLAUDE.md. Whole tree, no baseline.
+      - name: comment hygiene (whole tree)
+        run: |
+          if [ ! -f scripts/check-comment-hygiene.py ]; then
+            echo "::error::scripts/check-comment-hygiene.py is missing — the gate cannot run."
+            exit 1
+          fi
+          python3 scripts/check-comment-hygiene.py
+
       - name: contributor-surface gate
         run: |
           # TRACKED file: see above. Absence is a deleted gate.

@@ -1,26 +1,8 @@
 //
-//  SignInToReadFlowIntegrationTests.swift
-//  PalaceTests
-//
-//  End-to-end integration tests covering the happy path and degraded paths of
-//  the sign-in -> catalog load -> borrow -> download -> reader-open flow.
-//
-//  Unlike the unit tests under PalaceTests/SignInLogic/, these tests wire up
-//  REAL collaborators:
-//    * Real `TPPNetworkExecutor` (with a stub URLProtocol-backed URLSession)
-//    * Real `TPPSignInBusinessLogic`
-//    * Real `TPPBookRegistry` (with a fresh AccountsManager) for state
-//      verification
-//
-//  Only the network is mocked (via HTTPStubURLProtocol). The userAccount /
-//  libraryAccount providers are the existing in-process test scaffolding
-//  shipped under PalaceTests/Mocks/ — they exist solely so the keychain layer
-//  isn't reached and so that fixed library metadata is available; nothing
-//  about the flow under test is mocked.
-//
-//  SRS: REQ-INTG-FLOW-001 — Sign-in -> catalog -> borrow -> download flow
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
+//  Sign-in -> catalog -> borrow -> download -> reader-open, happy and degraded
+//  paths, with real TPPNetworkExecutor, TPPSignInBusinessLogic and TPPBookRegistry.
+//  Only the network is stubbed (HTTPStubURLProtocol); the account providers from
+//  PalaceTests/Mocks keep the keychain out of the flow.
 //
 
 import XCTest

@@ -1,23 +1,12 @@
 //
 //  AudiobookBearerTokenRecoveryTests.swift
-//  PalaceTests
 //
-//  323-Cause-3 (HelpSpot #18471): pins the GENERALIZED mid-listen
-//  expired-entitlement recovery that extends OverDrive's re-fulfill pattern to
-//  bearer-token audiobooks (BiblioBoard / Unlimited Listens / other
-//  `application/vnd.librarysimplified.bearer-token+json` vendors).
-//
-//  Like the OverDrive re-fulfill guard and the PP-4542 cold-load guard, the full
-//  handleManagerState -> openAudiobook(forceRefulfill:true) -> makeLoader wiring
-//  is auth-gated and proven by SoD review + device/sim validation. Here we pin
-//  the PURE decision predicates so the recovery's:
-//    - trigger classification (which HTTP / URLError signals count as an expired
-//      entitlement),
-//    - vendor allowlist (which vendors are covered vs left on the existing
-//      terminal alert), and
-//    - per-session bound
-//  cannot silently drift. Every assertion below survives a conditional flip in
-//  the production predicate (mutation-killing).
+//  HelpSpot #18471: mid-listen expired-entitlement recovery, extending
+//  OverDrive's re-fulfill pattern to bearer-token audiobook vendors. The full
+//  re-fulfill wiring is auth-gated and validated on device; here the pure
+//  predicates are pinned so the trigger classification (which HTTP/URLError
+//  signals count), the vendor allowlist, and the per-session bound cannot
+//  drift.
 //
 
 import XCTest
@@ -66,7 +55,7 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
 
     func testResourceUnavailable_nonURLDomainWithSameCode_returnsFalse() {
         // Same numeric code but a different domain must NOT match — the domain
-        // check is load-bearing (kills the `domain ==` mutation).
+        // check is load-bearing.
         let sameCodeOtherDomain = NSError(domain: "some.other.domain", code: NSURLErrorResourceUnavailable, userInfo: [:])
         XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: sameCodeOtherDomain),
             "-1008 only counts inside NSURLErrorDomain — a same-numbered code in another domain is unrelated")

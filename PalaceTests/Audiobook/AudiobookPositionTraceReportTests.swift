@@ -1,31 +1,12 @@
 //
 //  AudiobookPositionTraceReportTests.swift
-//  PalaceTests
 //
-//  PP-4963 — exactly which fields leave the device.
-//
-//  The instrument ships ungated for codes 404, 406 and 407, and the claim that
-//  justifies that is "no book, title, or patron identity reaches Crashlytics".
-//  Until now the claim was screened for by substring: the payload was rendered
-//  into one string and checked for "book", "title", "patron" and a few more.
-//  A denylist passes for every field nobody thought to forbid, and it is
-//  checked against a payload that is built and emitted in the same function, so
-//  there was nothing to assert an exact shape against.
-//
-//  These pin the key SET of each of the five emitting cases, against
-//  `saveReportPayload(for:context:)` and `gapReportPayload(for:)`. Adding
-//  `"bookID"` — or `"deviceId"`, or anything else — to a payload fails a named
-//  test rather than shipping.
-//
-//  Scoped claim, as everywhere else in this pack: this is what the TRACE adds.
-//  `TPPErrorLogger.addAccountInfoToMetadata` attaches account name, UUID and
-//  catalog URLs to every `logError(withCode:)`, and Crashlytics carries a
-//  global md5(barcode) user id. Both are pre-existing and shared with shipped
-//  code 403, and neither reaches book identity — so a patron's position in a
-//  book stays unreconstructible, which is the property that justifies shipping
-//  ungated. It is not an end-to-end anonymity claim.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-4963: exactly which fields leave the device. The trace ships ungated for
+//  codes 404, 406 and 407 on the basis that no book, title or patron identity
+//  reaches Crashlytics. These pin the exact key set of each emitting payload,
+//  so adding any new key fails a named test. Scope: this covers only what the
+//  trace adds; account info and the md5(barcode) user id are pre-existing and
+//  carry no book identity. It is not an end-to-end anonymity claim.
 //
 
 import XCTest

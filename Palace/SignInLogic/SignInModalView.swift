@@ -67,8 +67,7 @@ struct SignInModalView: View {
     }
 
     /// Pure-function predicate for the auto-dismiss-on-loggedIn branch.
-    /// Extracted from the body's `onChange` so the mutation gate can verify
-    /// callers don't silently regress to "dismiss when NOT logged in".
+    /// Extracted from the body's `onChange` so it is unit-testable.
     static func shouldAutoDismiss(authState: TPPAccountAuthState) -> Bool {
         return authState == .loggedIn
     }
@@ -172,13 +171,9 @@ class SignInModalPresenter: NSObject {
 /// actually gone, not just when SwiftUI's `dismiss()` was called.
 /// SwiftUI's `dismiss()` is non-blocking; without this guard, fast user
 /// re-taps race the in-flight dismiss and produce "transitioning already"
-/// stuck-modal lock-ups (HelpSpot 17716 SAML re-auth invariant).
-///
-/// swarm_d8f11437 Module A wave 4 — renamed from the previously-public
-/// `SignInModalHostingController` and scoped fileprivate so the type is
-/// not test-visible; the once-after-fully-dismissed semantics are now
-/// pinned at the presenter level via `SignInModalSheetPresenter`'s
-/// state-transition tests (round-trip pattern, CLAUDE.md DoD).
+/// stuck-modal lock-ups (HelpSpot 17716 SAML re-auth invariant). The
+/// fire-once-after-fully-dismissed behavior is tested through
+/// `SignInModalSheetPresenter`.
 fileprivate final class SignInModalDismissalHosting<Content: View>: UIHostingController<Content> {
     private let onDidFullyDismiss: () -> Void
     private var firedOnce = false

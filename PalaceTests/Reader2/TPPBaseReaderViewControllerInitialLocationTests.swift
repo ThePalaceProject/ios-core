@@ -2,26 +2,12 @@
 //  TPPBaseReaderViewControllerInitialLocationTests.swift
 //  PalaceTests
 //
-//  P0 #3 (swarm `swarm_f3b9b087`): exercises the gate between
-//  `viewDidLoad` and the initial `navigator.go(to:)` call. The fix
-//  introduces a `ReaderInitialLocationNavigator` that holds the
-//  `initialLocation` and a `ready` latch — `go(to:)` only fires once
-//  the latch is tripped (driven from `viewDidAppear` in production,
-//  driven directly in tests).
-//
-//  Behavior-shape test: a stub Navigator records `go(to:)` invocations
-//  with their locator. We assert:
-//
-//   * `go(to:)` is NOT invoked synchronously when the helper is asked
-//     to navigate before the ready signal.
-//   * `go(to:)` IS invoked exactly once after the ready signal fires.
-//   * A second ready signal does NOT trigger a duplicate `go(to:)`.
-//   * If the helper is asked for navigation with no initial location,
-//     no `go(to:)` ever fires.
-//
-//  This catches the mutant where the ready-wait is removed and the
-//  `Task { navigator.go(...) }` is fired inline — the synchronous-fire
-//  assertion (testGate_beforeReady_doesNotInvokeGo) will fail loudly.
+//  Pins the gate between `viewDidLoad` and the initial `navigator.go(to:)`:
+//  `ReaderInitialLocationNavigator` holds the initial location until its `ready`
+//  latch trips (from `viewDidAppear` in production). A stub navigator asserts no
+//  `go(to:)` before ready, exactly one after, none on a second ready signal, and
+//  none without an initial location. Firing `go(to:)` inline fails
+//  `testGate_beforeReady_doesNotInvokeGo`.
 //
 
 import XCTest

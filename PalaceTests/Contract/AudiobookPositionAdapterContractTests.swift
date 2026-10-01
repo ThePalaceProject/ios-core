@@ -2,32 +2,14 @@
 //  AudiobookPositionAdapterContractTests.swift
 //  PalaceTests
 //
-//  Contract-snapshot tests for `AudiobookBookmarkBusinessLogic.saveListeningPosition`
-//  — the swarm_f4fbef9c Module B wiring that funnels audiobook position
-//  writes through the canonical `PalaceReadingPosition.PositionWriter`.
-//
-//  These tests pin the call ORDER between the SUT, the
-//  `TPPBookRegistryProvider`, and the injected `PositionWriter`:
-//
-//    1. Local-save-first invariant — `registry.setLocation(localBookmark)`
-//       MUST run synchronously, before the async `Task { writer.save(...) }`
-//       hop. This is the swarm_f3b9b087 P0 #4 "user safety net" rule.
-//    2. Writer delegation — `writer.save(snapshot)` runs after the local
-//       save, with `format == .audiobook` and `bookID == self.book.identifier`.
-//    3. Post-save commit — on `.success`, `registry.setLocation(...)` runs
-//       a SECOND time to commit the server-assigned `annotationId`.
-//    4. Guards (`isAtBeginning`, `timestampNewerRace`) — when triggered,
-//       the post-save commit is SUPPRESSED. The snapshot shows only one
-//       `registry.setLocation` instead of two — pins the swarm_f3b9b087 P0
-//       fix predicates.
-//
-//  Pattern matches `BorrowReducerContractTests.swift`. Spies record into a
-//  shared `CallLog`; `ContractSnapshot.assert(...)` writes/compares JSON.
-//
-//  **First run:** records baselines at
-//  `__Snapshots__/AudiobookPositionAdapterContractTests/<scenario>.json`
-//  and FAILS with "snapshot recorded — re-run to verify". Set
-//  `CONTRACT_SNAPSHOT_RECORD=1` to deliberately re-record.
+//  Contract snapshots for `AudiobookBookmarkBusinessLogic.saveListeningPosition`:
+//    1. `registry.setLocation` runs synchronously before the async writer hop, so a
+//       local save survives a failed upload;
+//    2. `writer.save` follows with `format == .audiobook` and the book's identifier;
+//    3. on success, a second `registry.setLocation` commits the server `annotationId`;
+//    4. the `isAtBeginning` and `timestampNewerRace` guards suppress that commit.
+//  First run records `__Snapshots__/AudiobookPositionAdapterContractTests/<scenario>.json`
+//  and fails; set `CONTRACT_SNAPSHOT_RECORD=1` to re-record.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -302,7 +284,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
     ///
     /// Regression caught: swapping #1 and #2 (a refactor that defers the
     /// local save into the async Task) deletes line #1 from the snapshot
-    /// — that's swarm_f3b9b087 P0 #4 regressing.
+    /// and a failed upload would then lose the patron's position.
     func test_audiobookSave_localFirstThenWriter() {
         writer.outcome = .success("server-canonical-id")
         let p = position(trackIndex: 1, time: 100.0)
@@ -314,7 +296,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
 
     // MARK: - 2. isAtBeginning guard — second registry write is suppressed
 
-    /// Pins the swarm_f3b9b087 P0 #4 guard predicate:
+    /// Pins the `isAtBeginning` guard predicate:
     ///   When (incoming trackIndex == 0 AND playbackTime == 0) AND the
     ///   current local bookmark is in a LATER track, the post-save commit
     ///   MUST be suppressed — the snapshot shows ONE `registry.setLocation`
@@ -372,7 +354,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
 
     // MARK: - 3. Timestamp-newer race-check — second registry write suppressed
 
-    /// Pins the swarm_f3b9b087 P0 #4 race-check:
+    /// Pins the timestamp-newer race check:
     ///   When the post-save guard reads the current local bookmark and
     ///   finds its timestamp is newer than the sent timestamp by more
     ///   than the 1.0s grace window, the post-save commit MUST be

@@ -2,34 +2,14 @@
 //  BorrowOperation.swift
 //  Palace
 //
-//  Owns the complete borrow lifecycle that lived in
-//  MyBooksDownloadCenter+Async.swift as ~487 LOC of extension methods:
+//  The borrow lifecycle: Adobe activation, the borrow fetch, response
+//  evaluation (PP-4178 Loan→Hold race), registry update, and auth-error
+//  handling (circuit break, OIDC silent reauth, sign-in modal retry, the
+//  SQ-007 already-has-loan suppression, PP-3707 retry gating).
 //
-//    - `borrowAsync(_:attemptDownload:)` — main entry: announces start,
-//      gates on simulated debug errors, ensures Adobe DRM activation
-//      (#if FEATURE_DRM_CONNECTOR), fetches the borrow URL through the
-//      injected fetchBook closure, evaluates the response (PP-4178
-//      Loan→Hold race), updates the registry, and routes auth-related
-//      failures into re-auth.
-//    - `handleBorrowAuthErrorIfNeeded(...)` — auth-error detection +
-//      circuit-break + dispatch into OIDC silent reauth or a sign-in
-//      modal retry. Includes the SQ-007 already-has-loan suppression.
-//    - `showBorrowError(...)` — alert presentation with retry button
-//      gated by UserRetryTracker (PP-3707).
-//    - `attemptOIDCSilentReauth()` — ASWebAuthenticationSession dance.
-//    - `presentSignInModalAndRetryBorrow(...)` — modal + post-success
-//      retry hop.
-//
-//  Closure injection over the four side-effecting seams (fetchBook,
-//  presentBorrowErrorAlert, presentSignInModal, attemptOIDCReauth)
-//  keeps tests from having to stand up the OPDS network stack or the
-//  UIKit alert presenter. Production wiring in MBDC supplies real
-//  closures over OPDSFeedService.fetchBook, TPPAlertUtils, and
-//  SignInModalPresenter; tests stub them.
-//
-//  The static `borrowReauthAttempted` set + lock that lived on MBDC
-//  moves here too; MBDC keeps a forwarder so AccountsManager's
-//  account-switch reset call site doesn't change.
+//  The side-effecting seams (fetchBook, presentBorrowErrorAlert,
+//  presentSignInModal, attemptOIDCReauth) are injected closures so tests
+//  need neither the OPDS network stack nor UIKit.
 //
 
 import AuthenticationServices
@@ -61,16 +41,9 @@ protocol BorrowOperationDelegate: AnyObject {
 /// - `suppressAndClearSpinner`: SQ-007 case — the book is already in the
 ///   patron's loans with active credentials, so the auth-flavored borrow
 ///   error is benign (the auto-re-borrow ran but wasn't needed). Caller
-///   MUST NOT show the alert (the toast would be a false credentials
-///   warning) AND MUST ensure the cell spinner is cleared idempotently
-///   (defends against any path that bypasses `clearProcessingState`).
-/// - `showGenericError`: not an auth error OR auth recovery isn't
-///   available — caller proceeds with the standard `showBorrowError`
-///   alert path.
-///
-/// Internal-only by design — we explicitly do NOT expand the public
-/// surface here; the enum threads the decision out of an existing
-/// `private` helper into its existing `private` caller in the same file.
+///   must not show the alert and must clear the cell spinner.
+/// - `showGenericError`: not an auth error, or auth recovery isn't
+///   available — caller shows the standard `showBorrowError` alert.
 private enum BorrowAuthErrorDecision {
     case routeToReauth
     case suppressAndClearSpinner
@@ -79,21 +52,12 @@ private enum BorrowAuthErrorDecision {
 
 // MARK: - BorrowOperation
 
-/// - Sendable invariant: every stored dependency is a `let` bound at init
-///   (`bookRegistry`, `downloadAnnouncementService`, `errorActivityTracker`,
-///   `debugSettings`, `userRetryTracker`, `userAccountProvider`,
-///   `adobeDRMService`, the four closure-injected seams, `authCoordinator`) —
-///   the same already-shared services this flow drives today under Swift-5
-///   mode from `Task` / `MainActor.run` closures. The only mutable instance
-///   member is `weak var delegate`, assigned exactly once during owner
-///   (`MyBooksDownloadCenter`) construction and never reassigned; weak-reference
-///   reads and ARC zeroing are atomic in the Swift runtime, so no explicit lock
-///   is required. Circuit-breaker state lives in the `static let reauthTracker`
-///   (`ReauthTracker`), a lock-backed `@unchecked Sendable` holder. `@unchecked` (rather than a
-///   synthesized conformance) because `delegate`'s protocol existential and the
-///   shared service types are not themselves `Sendable`; this conformance
-///   asserts the serialization contract above and does not change runtime
-///   behavior — it only formalizes how the flow already executes.
+/// - Sendable invariant: every stored dependency is a `let` bound at init. The
+///   only mutable member is `weak var delegate`, assigned once during
+///   `MyBooksDownloadCenter` construction (weak reads are atomic).
+///   Circuit-breaker state lives in the lock-backed `static let reauthTracker`.
+///   `@unchecked` because the delegate existential and the shared service
+///   types are not themselves `Sendable`.
 final class BorrowOperation: @unchecked Sendable {
 
     weak var delegate: BorrowOperationDelegate?
@@ -105,13 +69,8 @@ final class BorrowOperation: @unchecked Sendable {
     /// auth failures. Shared across BorrowOperation instances so
     /// account-switch state can be cleared centrally.
     ///
-    /// Lock-backed holder rather than a `static var` + sibling `NSLock`:
-    /// under Swift 6 `complete`-mode a mutable static is nonisolated global
-    /// shared mutable state (a warning even when a paired lock guards every
-    /// access, because the compiler can't see the pairing). Wrapping the set
-    /// and its lock in one `@unchecked Sendable` holder makes the serialization
-    /// contract explicit and the storage a single immutable `let`. Behavior is
-    /// identical to the previous lock/defer accessors.
+    /// Set and lock live in one `@unchecked Sendable` holder: a mutable static
+    /// guarded by a sibling lock still warns under Swift 6 complete checking.
     private final class ReauthTracker: @unchecked Sendable {
         private let lock = NSLock()
         private var attempted: Set<String> = []
@@ -145,30 +104,9 @@ final class BorrowOperation: @unchecked Sendable {
 
     // MARK: - Pure Helpers
 
-    /// Maps a book returned from a Borrow/Place-Hold request to the
-    /// resulting registry state and any error that should be surfaced.
-    ///
-    /// Both buttons share `borrowAsync`, but the same OPDS response carries
-    /// different meaning depending on what the user tapped:
-    ///
-    /// - Place Hold (pre availability == `unavailable`) → an
-    ///   `unavailable`/`reserved` response is the expected queue placement,
-    ///   NOT a failure. (PP-4178 follow-up — pre-fix, the alert was a false
-    ///   positive for any Place Hold tap on a no-copies title.)
-    /// - Borrow (pre availability is loan-class:
-    ///   `limited`/`unlimited`/`ready`/`reserved`) → an `unavailable`/`reserved`
-    ///   response means CM lost the Loan→Hold race and the loan was
-    ///   downgraded to a hold. Surface the alert.
-    ///
-    /// Backward-compat: when `preBorrowBook` is nil, retains the original
-    /// behavior (treat `unavailable`/`reserved` as race losses) for
-    /// callers that don't have pre-borrow context.
-    /// Race an async operation against a deadline. Whichever finishes first
-    /// wins; the other is cancelled. On deadline expiry, throws
-    /// `PalaceError.network(.timeout)` so the upstream catch block surfaces
-    /// the standard borrow-error alert with a Retry option (instead of the
-    /// half-sheet hanging on `isBorrowProcessing = true` indefinitely).
-    /// F-014.
+    /// Races an async operation against a deadline; the loser is cancelled.
+    /// Expiry throws `PalaceError.network(.timeout)` so the borrow-error alert
+    /// with Retry appears instead of the half-sheet spinning forever.
     static func withTimeout<T: Sendable>(
         seconds: TimeInterval,
         operation: @escaping @Sendable () async throws -> T
@@ -187,10 +125,8 @@ final class BorrowOperation: @unchecked Sendable {
         }
     }
 
-    /// E2 (WS7): the availability→state + Loan→Hold race logic now lives in the
-    /// pure `BorrowReducerCore.responseState`. This static is retained as the
-    /// stable entry point for external callers (`MyBooksDownloadCenter+Async`,
-    /// the MBDC forwarder, and their tests) and simply delegates.
+    /// Maps a borrow/place-hold response to a registry state and optional error.
+    /// Delegates to `BorrowReducerCore.responseState`.
     static func borrowResponseState(
         for postBorrowBook: TPPBook,
         preBorrowBook: TPPBook? = nil
@@ -260,27 +196,15 @@ final class BorrowOperation: @unchecked Sendable {
     /// a deterministic Bool.
     private let attemptOIDCReauth: () async -> Bool
 
-    /// swarm_66819d80 Module C: auth-refresh coordinator. When non-nil,
-    /// the SAML / generic browser sign-in modal dispatch inside
-    /// `handleBorrowAuthErrorIfNeeded` routes through the coordinator's
-    /// single seam instead of presenting the modal via the closure-injected
-    /// `presentSignInModal`. The per-book circuit breaker
-    /// (`hasBorrowReauthBeenAttempted`) STAYS — the coordinator is
-    /// process-wide single-flight, NOT per-book, so the per-book guard
-    /// is still required to prevent runaway retries for a specific book.
-    /// The static `attemptOIDCSilentReauth` helper also stays — only its
-    /// trigger routes through the coordinator's fallback on failure.
-    /// Optional so existing tests keep compiling without rework.
+    /// Auth-refresh coordinator. When non-nil, the SAML / generic browser
+    /// sign-in in `handleBorrowAuthErrorIfNeeded` routes through it instead of
+    /// `presentSignInModal`. The per-book circuit breaker still applies: the
+    /// coordinator is single-flight process-wide, not per book.
     private let authCoordinator: AuthCoordinator?
 
-    /// Fire-and-forget side effect run once a borrow SUCCEEDS — the app-rating
-    /// secondary trigger (PP-4088). Injected so the critical borrow path holds
-    /// no hidden `AppContainer.production()` reach: production wires this to
-    /// `AppContainer.production().ratingPromptPresenter.noteBorrowSucceeded()`
-    /// (see `MyBooksDownloadCenter`); tests inject a recording/no-op closure so
-    /// the success path is deterministic and does not build the full DI graph on
-    /// the MainActor (which deadlocked the @MainActor contract tests). Defaults
-    /// to a no-op so non-production construction sites need no change.
+    /// Run once a borrow succeeds: the app-rating secondary trigger (PP-4088).
+    /// Injected rather than reaching `AppContainer.production()`, which builds
+    /// the full DI graph on the main actor and deadlocked @MainActor tests.
     private let onBorrowSucceeded: @MainActor () -> Void
 
     // MARK: - Init
@@ -372,13 +296,10 @@ final class BorrowOperation: @unchecked Sendable {
             throw simulated.error
         }
 
-        // Side-effect-free precondition — hoisted ABOVE activation deliberately.
-        // The activation step below raises the processing spinner and only
-        // clears it if activation itself throws; this guard's throw happens
-        // before `clearProcessingState` exists, so leaving it here stranded the
-        // spinner for the process lifetime on an Adobe title with a malformed
-        // acquisition href. Checking first also avoids spending an Adobe
-        // activation on a book that cannot be borrowed anyway.
+        // Must precede activation: activation raises the processing spinner and
+        // only clears it if activation itself throws, so a throw from this guard
+        // after it would strand the spinner. It also avoids spending an Adobe
+        // activation on a book that cannot be borrowed.
         guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {
             Task { [errorActivityTracker] in await errorActivityTracker.log("No acquisition URL found for '\(book.title)'", category: .borrow) }
             throw PalaceError.bookRegistry(.invalidState)
@@ -392,24 +313,14 @@ final class BorrowOperation: @unchecked Sendable {
             try await BorrowAdobeActivationStep.run(
                 setProcessing: { [bookRegistry] in bookRegistry.setProcessing($0, for: bookIdentifier) },
                 activate: { [adobeDRMService] in try await adobeDRMService.ensureDeviceActivated(licensorGracePeriod: $0) },
-                // Without this the borrow dies silently: the spinner clears, the
-                // sheet keeps its empty progress bar, and the patron is told
-                // nothing. Observed on device 2026-09-09 against A1QA —
-                // ADEPTErrorDomain error 4 twice, no visible indication. PP-3649
-                // requires this path to "fail with a clear error message".
+                // PP-3649: activation failure must show a clear error; without
+                // this the spinner just clears and the patron sees nothing.
                 onFailure: { [weak self] error in
-                    // The activation path has already mapped Adobe's code onto
-                    // a PalaceError (PalaceError.drmError(for:)); re-deriving it
-                    // here would read `error as NSError` on a value whose domain
-                    // is Palace.PalaceError and fall back silently — which is
-                    // exactly the bug that told patrons to sign in again when
-                    // their activations had run out.
-                    //
-                    // The fallback is `.adobeError`, matching the consolidated
-                    // table. It is currently unreachable (every throw site on
-                    // this path is already a PalaceError), and that is the point:
-                    // an unreachable branch that still says "sign out and sign in
-                    // again" is one refactor away from saying it to a patron.
+                    // The activation path already mapped Adobe's code to a
+                    // PalaceError. Re-deriving from `error as NSError` would read
+                    // the PalaceError domain and fall back to "sign in again",
+                    // even when the real cause is exhausted activations. The
+                    // `.adobeError` fallback is currently unreachable.
                     let palaceError = (error as? PalaceError) ?? .drm(.adobeError)
                     self?.showBorrowError(palaceError, originalError: error, for: book)
                 }
@@ -429,18 +340,10 @@ final class BorrowOperation: @unchecked Sendable {
         }
 
         do {
-            // F-014: wrap fetchBook in an explicit 30s timeout. URLSession's
-            // default `timeoutIntervalForRequest` is 60s — but in practice
-            // we've observed CM/distributor connections sitting open for 120s+
-            // when the server hangs the request mid-flight (e.g. staging
-            // backpressure, slow LCP license fetch). Without an explicit
-            // ceiling, isBorrowProcessing stays true and the half-sheet
-            // shows Cancel-only with no recoverable error — the
-            // BUG_FINDINGS_2026_05_12 "borrow stuck with Cancel-only UI"
-            // bug. 30s is comfortably above a healthy borrow (median ~1.5s)
-            // and below the URLSession default, so the user gets a clean
-            // PalaceError.network(.timeout) → showBorrowError → "try again"
-            // alert instead of an indefinite spinner.
+            // F-014: explicit 30s ceiling. CM/distributor connections have been
+            // seen hanging 120s+ mid-flight despite URLSession's 60s default,
+            // leaving the half-sheet stuck on Cancel only. 30s is well above a
+            // healthy borrow (~1.5s median) and yields a retryable timeout alert.
             let borrowedBook = try await Self.withTimeout(seconds: 30) {
                 try await self.fetchBook(acquisitionURL, true, true)
             }
@@ -448,8 +351,8 @@ final class BorrowOperation: @unchecked Sendable {
             await clearProcessingState()
 
             let location = self.bookRegistry.location(forIdentifier: borrowedBook.identifier)
-            // follow-up: pass `book` (pre-borrow) so the helper can
-            // tell Place Hold success apart from a CM Loan→Hold race loss.
+            // The pre-borrow `book` lets the helper tell a Place Hold success
+            // apart from a CM Loan→Hold race loss.
             let mapping = Self.borrowResponseState(for: borrowedBook, preBorrowBook: book)
 
             self.bookRegistry.addBook(
@@ -491,10 +394,8 @@ final class BorrowOperation: @unchecked Sendable {
                     downloadAnnouncementService.announceBorrowSucceeded(for: borrowedBook)
 
                 case .noteBorrowSucceeded:
-                    // App-rating secondary trigger (PP-4088). Injected seam
-                    // instead of a direct `AppContainer.production()` reach; run
-                    // sequentially (not fire-and-forget) so the emitted effect
-                    // order is deterministic relative to `startDownload`.
+                    // Awaited so effect order relative to `startDownload` is
+                    // deterministic.
                     await MainActor.run { [onBorrowSucceeded] in onBorrowSucceeded() }
 
                 case .startDownload:
@@ -523,10 +424,8 @@ final class BorrowOperation: @unchecked Sendable {
         } catch let error as PalaceError {
             await clearProcessingState()
 
-            // Pass the PalaceError itself as `originalError` so the predicate
-            // can also inspect `.network(.unauthorized)` / `.network(.forbidden)`
-            // surfacing from a 401-with-no-problem-doc throw path that arrives
-            // here instead of the second catch block (item #7 fix).
+            // Pass the PalaceError as `originalError` so a 401 with no problem
+            // doc (`.network(.unauthorized)` / `.forbidden`) still routes to reauth.
             let decision = await handleBorrowAuthErrorIfNeeded(
                 error,
                 originalError: error,
@@ -538,13 +437,9 @@ final class BorrowOperation: @unchecked Sendable {
             case .routeToReauth:
                 throw error
             case .suppressAndClearSpinner:
-                // SQ-007: the book is already in the registry with active
-                // credentials. Skip the misleading alert AND idempotently
-                // re-clear setProcessing — `clearProcessingState` above
-                // already cleared it, but bookRegistry implementations
-                // (e.g. the cell-driven mock used in some UI plumbing
-                // paths) may have flipped it back from a notification
-                // dispatch between then and now. Cheap defense.
+                // SQ-007: the book is already registered with active
+                // credentials. Skip the alert, and re-clear processing in case
+                // a notification flipped it back since `clearProcessingState`.
                 await MainActor.run {
                     self.bookRegistry.setProcessing(false, for: book.identifier)
                 }
@@ -591,11 +486,9 @@ final class BorrowOperation: @unchecked Sendable {
     // MARK: - Auth-Error Handling
 
     /// Inspects a borrow failure and returns the routing decision the
-    /// caller should follow. See `BorrowAuthErrorDecision` for the
-    /// three cases. Old return contract (`Bool`) coalesced the
-    /// SQ-007 suppression with the "not an auth error at all" path,
-    /// which sent the patron through a misleading credentials alert
-    /// when the auto-re-borrow ran but wasn't needed.
+    /// caller should follow. See `BorrowAuthErrorDecision`: the SQ-007
+    /// suppression is distinct from "not an auth error" so a benign
+    /// auto-re-borrow failure shows no credentials alert.
     private func handleBorrowAuthErrorIfNeeded(
         _ error: PalaceError,
         originalError: Error?,
@@ -610,11 +503,9 @@ final class BorrowOperation: @unchecked Sendable {
         let isAuthError: Bool = {
             if case .authentication = error { return true }
 
-            // Item #7: a 401 surfacing as `.network(.unauthorized)` /
-            // `.network(.forbidden)` (e.g. from an OPDS path that strips
-            // the problem doc) must route to re-auth instead of falling
-            // through to a generic "unknown network error" alert.
-            // Drives 35k+ "Network request failed (912)" non-fatals.
+            // A 401 surfacing as `.network(.unauthorized)` / `.forbidden`
+            // (an OPDS path can strip the problem doc) must route to reauth
+            // rather than a generic "Network request failed (912)" alert.
             if case .network(.unauthorized) = error { return true }
             if case .network(.forbidden) = error { return true }
 
@@ -668,10 +559,8 @@ final class BorrowOperation: @unchecked Sendable {
             userAccount.markCredentialsStale()
         }
 
-        // Broadened from `(isSaml || isOidc)` to `isBrowserBased` by
-        // swarm_66819d80 so OAuth-intermediary (Clever) follows the same
-        // browser-reauth recovery path as SAML/OIDC. Pinned by
-        // `BorrowOperationCleverReauthTests`.
+        // `isBrowserBased` includes OAuth-intermediary (Clever), which needs
+        // the same browser-reauth recovery as SAML/OIDC.
         let needsBrowserReauth = (authDef?.isBrowserBased == true) && hasCredentials
         if needsBrowserReauth {
             if authDef?.isOidc == true {
@@ -688,11 +577,8 @@ final class BorrowOperation: @unchecked Sendable {
                         }
                     }
                 } else {
-                    // swarm_66819d80 Module C: OIDC fallback routes through
-                    // coordinator when wired (modal flow is identical to
-                    // SAML at this point — IdP session needs interactive
-                    // re-establishment). Per Option A, only the FAILURE
-                    // path routes through the coordinator.
+                    // Silent reauth failed, so the IdP session needs an
+                    // interactive sign-in, same as SAML.
                     Log.info(#file, "OIDC silent re-auth failed/cancelled - falling back to sign-in modal")
                     if let coordinator = self.authCoordinator {
                         await coordinatorRetryBorrow(
@@ -707,10 +593,6 @@ final class BorrowOperation: @unchecked Sendable {
                     }
                 }
             } else {
-                // swarm_66819d80 Module C: SAML / OAuth-intermediary
-                // browser flow routes through coordinator when wired.
-                // Coordinator dispatches modal (always for SAML/OAuth-
-                // intermediary per its routing matrix).
                 Log.info(#file, "SAML/OAuth-intermediary session expired during borrow - credentials marked stale, triggering re-auth flow")
                 if let coordinator = self.authCoordinator {
                     let reason: ReauthReason = (authDef?.isSaml == true)
@@ -820,7 +702,6 @@ final class BorrowOperation: @unchecked Sendable {
 
     // MARK: - Coordinator-Routed Retry
 
-    /// swarm_66819d80 Module C: coordinator-routed reauth-then-retry.
     /// Asks the coordinator to refresh credentials (it dispatches the
     /// appropriate modal flow per IdP); on success clears the per-book
     /// circuit breaker and retries the borrow. On failure leaves the

@@ -1,18 +1,8 @@
 //
-//  BookCellModelStreamingHTMLTests.swift
-//  PalaceTests
-//
-//  PP-4161 coverage for the BookCellModel routing path that lights up when
-//  the user taps `.readStreaming` (or `.read` on a streamingHTML book) from
-//  the My Books cell. BookCellModel.didSelectRead inspects
-//  `book.defaultBookContentType` and routes:
-//    .epub      → readerService.openEPUB
-//    .pdf       → readerService.openPDF (or PDFKit path)
-//    .audiobook → BookService.open (audiobook session)
-//    .streamingHTML → NavigationCoordinator.push(.streamingHTML(...))
-//
-//  This file pins ONLY the streamingHTML path — the other branches are
-//  covered by their respective integration tests.
+//  PP-4161: `BookCellModel.didSelectRead` routes by `defaultBookContentType`;
+//  this file pins only the `.streamingHTML` branch, which pushes
+//  `.streamingHTML(...)` on the NavigationCoordinator. The EPUB, PDF and
+//  audiobook branches are covered by their own integration tests.
 //
 
 import XCTest
@@ -155,9 +145,8 @@ final class BookCellModelStreamingHTMLTests: XCTestCase {
     }
 
     /// Negative control: didSelectRead on an EPUB book must NOT push the
-    /// streamingHTML route. If a mutant accidentally routes all content
-    /// types through `coordinator.push(.streamingHTML(...))`, this test
-    /// fails.
+    /// streamingHTML route. Routing all content types through
+    /// `coordinator.push(.streamingHTML(...))` fails this test.
     func testBookCellModel_didSelectRead_epubBook_doesNotPushStreamingRoute() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)

@@ -172,7 +172,7 @@ def require_sim_id() -> str:
         )
     _RESOLVED_SIM_ID = resolved
     return resolved
-DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".forgeos", "mutation-cache")
+DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".build", "mutation-cache")
 # Per-mutant incremental cache lives in a subdir so it never collides with the
 # whole-file cache files (which sit directly in DEFAULT_CACHE_DIR).
 DEFAULT_MUTANT_CACHE_DIR = os.path.join(DEFAULT_CACHE_DIR, "mutants")

@@ -1,9 +1,8 @@
 import Foundation
 
 extension URLSession {
-    /// Process-wide stubbed session. Converted from `let` to `var` in
-    /// swarm_4b64e4e0 Fix 1 so the `SingletonResetRegistry` can replace
-    /// it between tests via `_resetStubbedSession()`. The previous
+    /// Process-wide stubbed session, held in a box so the
+    /// `SingletonResetRegistry` can replace it between tests via `_resetStubbedSession()`. The previous
     /// `static let` form left a permanently bound session whose private
     /// delegate queue accumulated callbacks across tests and produced the
     /// `libdispatch` use-after-free described in the header comment below.

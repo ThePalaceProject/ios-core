@@ -30,9 +30,8 @@ struct NavigationHostView<Content: View>: View {
                 .onAppear { appContainer.navigationCoordinatorHub.register(coordinator, for: tab) }
                 .fullScreenCover(item: $coordinator.presentedEPUBSample) { epubData in
                     if let book = coordinator.resolveBook(for: BookRoute(id: epubData.bookId)) {
-                        // §7.3 Option α — sample EPUB modal is a reader
-                        // sub-branch; mini-player must suppress while it's
-                        // presented. Architect A3 — apply per sub-branch.
+                        // The sample EPUB modal is a reader sub-branch; the
+                        // mini-player must hide while it is presented.
                         EPUBReaderView(book: book, publication: epubData.publication, forSample: true)
                             .environmentObject(coordinator)
                             .tracksReaderActive(appContainer.audiobookSessionPresenter)
@@ -70,12 +69,9 @@ struct NavigationHostView<Content: View>: View {
                         // the user a blank navigator while the hundreds
                         // of decrypt calls walked the PDF cross-ref.
                         //
-                        // §7.3 Option α + architect A3 — `.tracksReaderActive(_:)`
-                        // is applied per-sub-branch (NOT on the case label) so
-                        // each rendered PDF view's appearance lifecycle drives
-                        // the mini-player suppression flag. EmptyView fallback
-                        // does NOT need the modifier (no reader → no
-                        // suppression needed).
+                        // `.tracksReaderActive(_:)` goes on each rendered
+                        // sub-branch, not the case label (see
+                        // IsReaderActiveTrackingModifier); EmptyView needs none.
                         if let (publication, metadata) = coordinator.resolveReadiumPDF(for: bookRoute),
                            let book = coordinator.resolveBook(for: bookRoute) {
                             let toc = coordinator.resolveReadiumPDFTableOfContents(for: bookRoute)
@@ -113,11 +109,7 @@ struct NavigationHostView<Content: View>: View {
                             EmptyView()
                         }
                     case .epub(let bookRoute):
-                        // §7.3 Option α + architect A3 — `.tracksReaderActive(_:)`
-                        // is applied per-sub-branch (NOT on the case label)
-                        // because each EPUB render path has its own onAppear /
-                        // onDisappear lifecycle. EmptyView fallback does not
-                        // get the modifier.
+                        // `.tracksReaderActive(_:)` per sub-branch, as for PDF.
                         if let pubData = coordinator.resolveEPUBPublication(for: bookRoute),
                            let book = coordinator.resolveBook(for: bookRoute) {
                             EPUBReaderView(book: book, publication: pubData.0, forSample: pubData.1)

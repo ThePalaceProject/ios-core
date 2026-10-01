@@ -6,10 +6,7 @@ import PalaceBookModel
 /// Handles server synchronization for the book registry.
 /// Manages syncing loans from the OPDS feed and loading/saving from disk.
 ///
-/// Swift 6 concurrency (Wave 1, `SWIFT_STRICT_CONCURRENCY=targeted`):
-/// `@unchecked Sendable`.
-///
-/// INVARIANT — this type carries no concurrently-mutated shared state:
+/// `@unchecked Sendable`. Invariant: no concurrently-mutated shared state:
 ///   • Every stored dependency (`store`, `accountsManager`,
 ///     `downloadCenterProvider`, `opdsFeedServiceProvider`, the folder/file
 ///     name constants, `diskWriteQueue`, `diskWriteQueueKey`) is an immutable
@@ -25,17 +22,12 @@ import PalaceBookModel
 ///   • `_needsRebuildFromServer` (the INV-1 rebuild flag) is guarded by its own
 ///     `rebuildFlagLock`, so the disk-write queue can read/clear it race-free.
 ///
-/// Marking the type Sendable lets it be captured by the structured-concurrency
-/// (`Task { … }` / `await MainActor.run { … }`) closures in `sync(...)` without
-/// any runtime change — it documents the main-thread confinement the code
-/// already relies on, rather than altering it. See module-3 playbook (#1129):
-/// prefer isolation / `@unchecked Sendable` with a documented invariant over
-/// `nonisolated(unsafe)`.
+/// The conformance lets `sync(...)`'s `Task` / `MainActor.run` closures capture
+/// `self`; it records the existing main-thread confinement (#1129).
 final class BookRegistrySync: @unchecked Sendable {
 
   private let store: BookRegistryStore
-  /// Value-only account scope (god-class decomposition Wave 2b — the Book→Accounts
-  /// inversion). No `Account` / `AccountsManager` / `TPPUserAccount` type crosses
+  /// Value-only account scope. No `Account` / `AccountsManager` / `TPPUserAccount` type crosses
   /// this boundary; the engine reads `currentAccountID`, credential presence, and
   /// the loans URL through it, nothing more.
   private let accountScope: any AccountScopeProviding
@@ -205,9 +197,8 @@ final class BookRegistrySync: @unchecked Sendable {
 
   func registryUrl(for account: String) -> URL? {
     // The `TPPAccountUUIDs[0]` root-vs-subdir path-layout rule + error logging
-    // lives app-side behind `dependencies.registryDirectory` (god-class decomp
-    // Wave 2b) — the resolved file path is byte-identical (pinned by the migration
-    // tests).
+    // lives app-side behind `dependencies.registryDirectory`; the resolved path
+    // is pinned by the migration tests.
     return dependencies.registryDirectory(account)?
       .appendingPathComponent(registryFolderName)
       .appendingPathComponent(registryFileName)
@@ -518,20 +509,14 @@ final class BookRegistrySync: @unchecked Sendable {
     Task { [weak self] in
       guard let self else { return }
 
-      // PHASE 1 (swarm_81b5099e Bucket A — PP-4407): the loansUrl read used
-      // to happen on the sync `sync()` call frame above. Hoisted into the
-      // Task block so we can await `Account.LoadState` readiness via
-      // `awaitReady()`. Pre-Phase-1 this silently returned on first cold-
-      // launch (details still loading → loansUrl nil → guard bailed →
-      // registry stuck `.loaded` empty until the next sync trigger). Now
-      // we block on terminal state, but BOUNDED by `authReadinessTimeout`
-      // (HelpSpot #18414): a wedged auth-doc fetch used to hang this await
-      // forever. On any `AccountLoadError` — including `.readinessTimedOut` —
-      // we revert state to `.loaded` so this engine's own retry policy
-      // (`waitForLoadThenRunSync` / account-change notifications) drives the
-      // next attempt. This is the ONE bounded readiness await in the app; the
-      // ADR's "no additional timeout" policy applies to consumers that own a
-      // pipeline-level timeout, and registry sync owns none.
+      // PP-4407: await account readiness before reading loansUrl; on a cold
+      // launch the auth document may still be loading and loansUrl is nil.
+      // The wait is bounded by `authReadinessTimeout` (HelpSpot #18414) so a
+      // wedged auth-doc fetch cannot hang sync. On any `AccountLoadError`,
+      // including `.readinessTimedOut`, state reverts to `.loaded` and the
+      // engine's own retry policy (`waitForLoadThenRunSync` / account-change
+      // notifications) drives the next attempt. Registry sync has no
+      // pipeline-level timeout of its own, which is why this await is bounded.
       let loansUrl: URL
       do {
         guard let resolvedLoansUrl = try await accountScope.loansURL(
@@ -1102,11 +1087,9 @@ final class BookRegistrySync: @unchecked Sendable {
     return downloadService.isDownloadInFlight(for: book)
   }
 
-  /// Thin delegate over the `contentFileSatisfied` seam (god-class decomp Wave 2b):
-  /// the app-side adapter owns the `#if LCP` license-vs-content probe that used to
-  /// live here — the SPM package never sees the `LCP` compilation condition. Kept as
-  /// an internal method so the white-box `BookRegistrySyncTests` continue to exercise
-  /// this call path through an injected download service.
+  /// Delegates to `contentFileSatisfied`: the app-side adapter owns the `#if LCP`
+  /// license-vs-content probe because SPM packages do not see the `LCP`
+  /// compilation condition.
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {
     return downloadService.contentFileSatisfied(for: book, account: account)
   }

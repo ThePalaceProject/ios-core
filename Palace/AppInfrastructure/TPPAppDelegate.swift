@@ -89,8 +89,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // PalaceLogging is Firebase-free; the host app supplies the bridge.
         Log.crashlyticsBridge = FirebaseCrashlyticsBridge()
 
-        // Wave 1c (cycle 2): ErrorHandling reads account context through this
-        // registered provider instead of importing Accounts.
+        // ErrorHandling reads account context through this registered
+        // provider instead of importing Accounts.
         ErrorReportingContext.libraryNameProvider = {
             AppContainer.production().accountsManager.currentAccount?.name
         }
@@ -447,7 +447,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         FirebaseManager.shared.applicationDidEnterBackground()
 
         #if FEATURE_DRM_CONNECTOR
-        // iPad-on-Mac watchdog-exit guard (WS-4). Once Adobe DRM has been used
+        // iPad-on-Mac watchdog-exit guard. Once Adobe DRM has been used
         // this session (reader decrypt → its static recursive_mutex dtor is
         // registered), install the _exit(0) atexit interceptor HERE: background
         // entry is (a) guaranteed after every Adobe DRM decode of this session
@@ -491,7 +491,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
-        // Reliability WS-A (INV-7): route the book download center's background
+        // Route the book download center's background
         // session wake to MyBooksDownloadCenter — store its system completion
         // handler (invoked once, then cleared, in urlSessionDidFinishEvents) and,
         // by accessing `downloadCenter`, ensure its background session is

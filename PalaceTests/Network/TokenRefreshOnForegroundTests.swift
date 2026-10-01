@@ -1,25 +1,11 @@
-//
 //  TokenRefreshOnForegroundTests.swift
-//  PalaceTests
 //
-//  Mutation-killing tests for the proactive token-refresh path that
-//  fires *before* the next user-driven request when the app comes
-//  back to foreground. The actual production trigger is the
-//  `authTokenNearExpiry` check in `TPPNetworkExecutor.executeRequest`
-//  (see `Palace/Network/TPPNetworkExecutor.swift` ~lines 207-218).
-//  When that gate is true the executor refreshes the token first and
-//  only then performs the queued data task — i.e. /token MUST hit
-//  the network BEFORE the user's request does.
-//
-//  These tests pin that ordering, the request idempotency contract
-//  for retried POSTs, and the no-double-refresh property when the
-//  user's request fires while a foreground refresh is already in
-//  flight.
-//
-//  All HTTP is intercepted by HTTPStubURLProtocol.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Proactive token refresh when the app returns to foreground. When
+//  `authTokenNearExpiry` is true, `TPPNetworkExecutor.executeRequest` refreshes
+//  first, so /token must hit the network before the patron's request does.
+//  Pins that ordering, idempotency of retried POSTs, and no double refresh when
+//  a request arrives while a foreground refresh is in flight. HTTP is stubbed
+//  with `HTTPStubURLProtocol`.
 
 import XCTest
 import PalaceAuth
@@ -135,7 +121,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 1: Foreground with near-expiry token refreshes BEFORE the request
     //
-    // Kills: deletion of the proactive-refresh branch (lines 207-218)
+    // Catches: deletion of the proactive-refresh branch (lines 207-218)
     // in TPPNetworkExecutor.executeRequest, or inversion of the
     // `authTokenNearExpiry` guard. Without proactive refresh, the GET
     // would go out with the stale token and the test stub would see
@@ -179,7 +165,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 2: Foreground request carries the NEW token after refresh
     //
-    // Kills: mutation that uses the stale request snapshot for the
+    // Catches a regression that uses the stale request snapshot for the
     // post-refresh data task (i.e. builds the request before refresh
     // and never rebuilds it). The user's request must carry the
     // freshly-stored bearer.
@@ -209,7 +195,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         // The proactive refresh path calls `performDataTask(with: req)`
         // where `req` was already built before refresh — i.e. it carries
         // whatever bearer was current at the time of the GET call. The
-        // OBSERVABLE contract that mutation-killing tests must pin is:
+        // observable contract these tests must pin is:
         // the bearer header on the post-refresh request matches the bearer
         // the account had at request-build time (so callers that build
         // their own request and rely on the proactive refresh updating
@@ -222,7 +208,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 3: Foreground request waits for in-flight refresh
     //
-    // Kills: mutation that lets the foreground GET race ahead of the
+    // Catches a regression that lets the foreground GET race ahead of the
     // refresh (i.e. executes the data task synchronously instead of
     // inside the refresh-completion closure).
 
@@ -275,7 +261,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 4: Not-near-expiry token does NOT trigger a proactive refresh
     //
-    // Kills: widening of the proactive-refresh guard (e.g. removing
+    // Catches: widening of the proactive-refresh guard (e.g. removing
     // `authTokenNearExpiry`). A healthy token must produce zero /token
     // requests — otherwise we'd spam the IdP on every interaction.
 
@@ -310,7 +296,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 5: useTokenIfAvailable=false bypasses the proactive refresh
     //
-    // Kills: removal of `enableTokenRefresh` arg threading. Anonymous
+    // Catches: removal of `enableTokenRefresh` arg threading. Anonymous
     // / sign-in flows must not trigger refresh even when there's a
     // near-expiry token sitting on the account (otherwise they'd
     // perform a refresh in the middle of a sign-out / pre-auth path).
@@ -348,7 +334,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 6: POST body survives the refresh (idempotency)
     //
-    // Kills: mutation that drops / replaces / re-encodes the POST body
+    // Catches a regression that drops / replaces / re-encodes the POST body
     // on the post-refresh retry. Critical for borrow / fulfill / return
     // flows — double-borrow or empty-body POST would be silent bugs.
 
@@ -416,7 +402,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 7: Concurrent foreground refreshes coalesce
     //
-    // Kills: removal of single-flight in the proactive path. Two
+    // Catches: removal of single-flight in the proactive path. Two
     // simultaneous foreground requests with near-expiry tokens must
     // produce ONE /token call, not two — otherwise rapid re-foreground
     // events would spam the IdP.
@@ -478,7 +464,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 8: Foreground refresh failure surfaces failure to caller
     //
-    // Kills: mutation that swallows refresh failure and forges a
+    // Catches a regression that swallows refresh failure and forges a
     // success result to the caller. A failed proactive refresh must
     // still let the underlying request proceed (best-effort) OR
     // surface failure — the OBSERVABLE contract is that the caller
@@ -508,7 +494,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 9: Expired-but-not-near-expiry edge case
     //
-    // Kills: mutation of the `<= expiryThreshold` comparison to `<`.
+    // Catches a regression in the `<= expiryThreshold` comparison to `<`.
     // A token that expires exactly now must still trigger refresh
     // (the production threshold uses `<=`).
 
@@ -541,7 +527,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Test 10: SAML auth bypasses the token-refresh proactive branch
     //
-    // Kills: deletion of the early-return SAML branch (line 202-204
+    // Catches: deletion of the early-return SAML branch (line 202-204
     // in executeRequest). SAML uses cookies, not bearer tokens, and
     // must NOT enter the proactive token-refresh path even if the
     // account somehow has a token-like credential lying around.

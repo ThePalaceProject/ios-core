@@ -2,34 +2,15 @@
 //  LCPPDFDiskExtract.swift
 //  Palace
 //
-//  Disk-extract pipeline for LCP-protected PDFs. The previous render
-//  path streamed bytes directly from the LCP-encrypted publication into
-//  Readium's `PDFNavigatorViewController` — but PDFNavigator does
-//  random-access reads on the PDF cross-reference table, and AES-CBC
-//  produces uniformly-unique ciphertext for each file offset, so the
-//  in-process decrypt cache never hits. On a large Marketplace PDF
-//  this produced 800,000+ decrypts before page 1 painted, with ~9 KB
-//  retained per call — guaranteed OOM (see device log captured against
-//  Power Rangers Unlimited: residentMB went from 1.8 GB to 2.8 GB in
-//  10 seconds, then jetsam).
+//  Disk-extract pipeline for LCP-protected PDFs. Streaming the encrypted
+//  publication into Readium's PDF navigator does random-access reads that
+//  defeat the decrypt cache and OOM on large PDFs, so we decrypt in one linear
+//  pass to a temp .pdf and hand it to PDFKit, which mmaps it.
 //
-//  The fix: do ONE linear pass through the Readium `Resource` (which
-//  streams decrypted bytes), write the output to a temp .pdf on disk,
-//  then hand the temp file to PDFKit via the legacy `TPPPDFReaderView`.
-//  PDFKit mmaps the on-disk file and pages in on demand — no LCP
-//  decrypt loop, no retained per-read buffers.
-//
-//  Cache layout, per-account:
-//
-//      <accountDir>/registry/lcp-pdf-extracts/<bookIdentifierSHA256>.pdf
-//
-//  Cache invariant: the LCP container is immutable for the loan window,
-//  so the same SHA256(identifier) is a stable filename. On return /
-//  re-borrow the registry path changes (LocalBookContentService calls
-//  `invalidate` here alongside the existing TOC cache invalidation),
-//  so we don't have to hand-detect file changes. The extracted file
-//  inherits no DRM — it sits in the app's private container, encrypted
-//  by iOS data protection, and is removed on loan return.
+//  Cache: <accountDir>/registry/lcp-pdf-extracts/<bookIdentifierSHA256>.pdf.
+//  The LCP container is immutable for the loan, and `invalidate` runs on
+//  return. The extract sits in the app's private container under iOS data
+//  protection.
 //
 
 #if LCP
@@ -50,18 +31,12 @@ enum LCPPDFDiskExtract {
 
     /// Returns the cached extracted-PDF URL if a usable extract exists
     /// for this book. "Usable" means present on disk **and** parseable
-    /// as a PDF — a partial file from a prior crashed/aborted extract
-    /// (e.g. the device OOMed mid-write before we added chunked reads)
-    /// would still pass a `fileExists` check but explode at PDFKit
-    /// open time as "Unable to load PDF file." If the cached file is
-    /// malformed we delete it here so the next `extract` call rebuilds
-    /// it cleanly.
+    /// as a PDF; a partial file from an aborted extract is deleted so the next
+    /// `extract` rebuilds it.
     ///
-    /// Validation is `%PDF-` magic byte check + minimum-size sanity
-    /// (a 4-byte file is not a PDF). We DON'T spin up a full
-    /// `PDFDocument(url:)` to validate because that mmaps + parses the
-    /// whole xref table on big files (~830MB extracts), which is
-    /// exactly the work we want to defer to the actual reader.
+    /// Validation is a `%PDF-` magic-byte and minimum-size check rather than
+    /// `PDFDocument(url:)`, which would parse the whole xref table of a large
+    /// extract.
     static func cachedURL(bookIdentifier: String, account: String) -> URL? {
         guard let url = fileURL(bookIdentifier: bookIdentifier, account: account) else { return nil }
         let path = url.path
@@ -96,14 +71,8 @@ enum LCPPDFDiskExtract {
     /// `Resource.read(range:)`, writing each chunk to a temp file.
     /// Returns the final file URL on success.
     ///
-    /// **Why explicit chunked reads instead of `stream(consume:)`:**
-    /// the LCP-wrapped Resource's `stream(consume:)` was hanging at
-    /// ~1% on device in the first attempt — either it was emitting
-    /// one giant chunk (forcing a full-file allocation in Readium's
-    /// internals before our consume fired), or the chunking was
-    /// unpredictable for our progress UI. With explicit `read(range:)`
-    /// calls we pin the chunk size, give the OS time to flush the
-    /// FileHandle between chunks, and produce a steady per-chunk
+    /// Explicit `read(range:)` chunks rather than `stream(consume:)`, which
+    /// stalled on device with LCP resources; fixed chunks also give a steady
     /// progress signal.
     static func extract(
         publication: Publication,

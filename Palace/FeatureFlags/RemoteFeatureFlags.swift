@@ -41,12 +41,8 @@ extension FirebaseManager: RemoteConfigProviding {}
 /// NOTE: This class delegates all Firebase RemoteConfig access to FirebaseManager
 /// to prevent race conditions that cause the "recursive_mutex lock failed" crash.
 /// Do NOT access RemoteConfig directly from this class.
-/// `@unchecked Sendable`: `FeatureFlagProviding` (the consolidated Layer-0 seam
-/// this conforms to, from the PalaceFeatureFlags leaf package — Wave 1b) is
-/// `Sendable`. This shared singleton is already accessed app-wide concurrently;
-/// the conformance is honest — its only mutable stored property, `lastFetchTime`,
-/// is accessed exclusively under `lock` (an `NSLock`); every other stored property
-/// is `let`. `final` keeps the assertion subclass-proof.
+/// `@unchecked Sendable` (required by `FeatureFlagProviding`): the only mutable
+/// stored property, `lastFetchTime`, is guarded by `lock`; the rest are `let`.
 final class RemoteFeatureFlags: @unchecked Sendable {
     static let shared = RemoteFeatureFlags()
 
@@ -88,9 +84,8 @@ final class RemoteFeatureFlags: @unchecked Sendable {
 
     // MARK: - Feature Flag Keys
 
-    /// Wave 1b: the typed flag surface moved to the PalaceFeatureFlags leaf
-    /// package. This alias keeps every existing `RemoteFeatureFlags.FeatureFlag`
-    /// reference (tests, comments) compiling unchanged.
+    /// The flag enum lives in the PalaceFeatureFlags package; this alias keeps
+    /// `RemoteFeatureFlags.FeatureFlag` references compiling.
     typealias FeatureFlag = PalaceFeatureFlag
 
     // MARK: - Initialization
@@ -331,29 +326,15 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// persistent mini-player above the tab bar, and the tap-to-resume
     /// routing that wires both to `AudiobookSessionPresenter`.
     ///
-    /// **Default OFF — Firebase-gated (2026-07).** Production users get the
-    /// legacy toolkit player until Firebase Remote Config enables the
-    /// feature; this lets the team turn it on (globally or via a staged /
-    /// condition-based rollout) — and roll it back — without shipping a
-    /// build. The registered Remote Config default is `false`.
+    /// Default off; Firebase Remote Config enables it, so it can be rolled out
+    /// and back without a build.
     ///
-    /// Override precedence — **Firebase wins; the local override can only
-    /// ENABLE.** The local toggle is an opt-IN for previewing ahead of the
-    /// rollout, never an opt-out of it.
+    /// Firebase wins; the local override can only enable (preview ahead of the
+    /// rollout). If the override could disable, a test device that ever
+    /// switched it off would be pinned off and could not verify the rollout.
     ///
-    /// It used to be the reverse (override wins outright), which made the
-    /// rollout unverifiable on the devices that verify it. The dev toggle
-    /// writes `true`/`false` and nothing anywhere removes the key, so a device
-    /// that ever switched it off was pinned off permanently — Firebase could
-    /// never reach it again, and that reads from the inside exactly like "the
-    /// remote flag isn't working". Production patrons were never affected (the
-    /// Feature Flags section is hidden when `showEngineeringTools` is false, so
-    /// nothing writes the key on an App Store build), but TestFlight and dev
-    /// devices are precisely the ones validating a staged rollout.
-    ///
-    /// The decision itself is `resolveRemoteWinsOptIn`, kept pure because a
-    /// unit test cannot make `FirebaseManager.shared` return `true` — the
-    /// remote-ON rows are only assertable through that seam.
+    /// The decision is the pure `resolveRemoteWinsOptIn`, since a unit test
+    /// cannot make `FirebaseManager.shared` return `true`.
     var isInAppPlaybackNavEnabled: Bool {
         Self.resolveRemoteWinsOptIn(
             remote: isFeatureEnabled(.inAppPlaybackNavEnabled),
@@ -407,7 +388,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// Whether the side-loading capability is enabled: the Settings "Side
     /// Loading" import screen and the catalog side-loaded lane. A test-only
     /// feature for exercising the real reader + DRM stack against local files
-    /// with no OPDS feed (swarm_495a88d9 — PP-2677 / PP-2678 / PP-2679).
+    /// with no OPDS feed (PP-2677 / PP-2678 / PP-2679).
     ///
     /// Defaults OFF in production. There is NO DEBUG auto-enable; the feature
     /// is turned on explicitly via the dev-menu local override, otherwise it
@@ -613,7 +594,7 @@ extension PalaceFeatureFlag {
     }
 }
 
-// Wave 1b: the single consolidated conformance. All app consumers reach
+// The single consolidated conformance. All app consumers reach
 // this instance as `appContainer.featureFlags` (protocol-typed); packages
 // (PalaceCatalog) receive it through their initializers.
 extension RemoteFeatureFlags: FeatureFlagProviding {}

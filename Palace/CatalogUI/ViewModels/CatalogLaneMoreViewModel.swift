@@ -84,7 +84,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
     self.bookRegistry = bookRegistry
     self.bookCellModelCache = bookCellModelCache
     // Fall back to AppContainer's shared, cached DefaultCatalogAPI instead of
-    // building a throwaway per-init (swarm_27c181b5 A5). Production callers
+    // building a throwaway per-init. Production callers
     // (CatalogLaneMoreView) inject `appContainer.catalogAPI` explicitly; this
     // default keeps preview/convenience call sites on the same shared instance.
     self.api = api ?? AppContainer.production().catalogAPI

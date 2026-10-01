@@ -1,18 +1,11 @@
 //
 //  AudiobookBookmarkBusinessLogicConcurrencyTests.swift
-//  PalaceTests
 //
-//  Regression coverage for the 3.3.0 bookmark-sync thread-safety crash
-//  (Crashlytics abfef568). `AudiobookBookmarkBusinessLogic` kept three pieces
-//  of mutable state — `deletedBookmarkIds` (a Swift Set), `isSyncing`, and
-//  `completionHandlersQueue` — that were read/written from the UI thread,
-//  URLSession completion threads, and the work queue with no shared
-//  serialization. Concurrent mutation of the Set/Array corrupted its
-//  copy-on-write buffer refcount → an over-release surfaced in the captured
-//  network-completion closure chain. The fix routes all of that state through
-//  the class's serial `queue` via `onStateQueue`.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  3.3.0 bookmark-sync crash (Crashlytics abfef568): `deletedBookmarkIds`,
+//  `isSyncing` and `completionHandlersQueue` were mutated from the UI thread,
+//  URLSession completions and the work queue without shared serialization,
+//  corrupting copy-on-write buffers. All of that state now goes through the
+//  serial `queue` via `onStateQueue`.
 //
 
 import XCTest

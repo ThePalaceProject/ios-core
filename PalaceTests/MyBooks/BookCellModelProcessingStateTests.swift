@@ -1,22 +1,10 @@
 //
-//  BookCellModelProcessingStateTests.swift
-//  PalaceTests
-//
-//  The list cell raises its own spinner on tap and only a handful of specific
-//  completion paths ever lowered it, so any borrow that failed without one of
-//  those firing left the spinner up for the lifetime of the cell.
-//
-//  Observed 2026-09-09 while validating PP-3649: an Adobe activation failure
-//  surfaced its alert, and dismissing the alert left the My Books cell
-//  spinning. The failure path clears the REGISTRY's processing flag and
-//  broadcasts `TPPBookProcessingDidChange`; nothing in the cell listened.
-//
-//  `bindReachability` is the same defect already patched for exactly one cause
-//  (a mid-flight network drop) and it has a suite — `BookCellModelOfflineTests`.
-//  `bindProcessingState` is the general case and shipped with none, which is
-//  the gap this file closes: every assertion below fails if the subscription is
-//  deleted, and the last two fail if it is widened into something that fights
-//  the cell's own tap handling.
+//  `bindProcessingState`: the list cell raises its own spinner on tap, and a
+//  borrow failure that clears the registry's processing flag (e.g. an Adobe
+//  activation failure, seen while validating PP-3649) left it spinning because the
+//  cell did not observe `TPPBookProcessingDidChange`. Every assertion fails if the
+//  subscription is deleted; the last two fail if it is widened to fight the cell's
+//  own tap handling. `BookCellModelOfflineTests` covers the reachability case.
 //
 
 import Combine

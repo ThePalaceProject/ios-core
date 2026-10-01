@@ -31,12 +31,8 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
 
     // MARK: - Init injection seam
 
-    /// Replaces both banned singleton-identity tautology tests
-    /// (`testShared_returnsSameInstance`,
-    /// `testShared_providesFunctionalInstanceWithDeviceIDAndInfo`).
-    /// Pins the new ctor: each construction yields an independent
-    /// reference. A mutant that made `init` secretly return `.shared`
-    /// (e.g. for "performance") would flip `a === b` to true and fail.
+    /// Each construction yields an independent reference; an `init` that
+    /// returned `.shared` would flip `a === b` to true and fail.
     func testInit_returnsIndependentInstance() {
         let a = DeviceSpecificErrorMonitor()
         let b = DeviceSpecificErrorMonitor()
@@ -78,9 +74,8 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
 
     /// Device ID must look like a real UUID (regex match + 36 chars + 4
     /// hyphens). Pin all three on the same call AND assert the format
-    /// holds across consecutive calls — a mutant that produces a
-    /// well-formed UUID once but garbage on subsequent calls fails the
-    /// stability check.
+    /// holds across consecutive calls — a well-formed UUID once but
+    /// garbage on subsequent calls fails the stability check.
     func testGetDeviceID_looksLikeUUIDAndFormatIsStableAcrossCalls() {
         let uuidPattern = try! NSRegularExpression(
             pattern: "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
@@ -132,8 +127,8 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
     /// `logError` must be crash-free without Firebase AND must not
     /// corrupt the monitor's state. Pin both the no-throw contract AND
     /// post-call invariants: the device ID is unchanged and deviceInfo
-    /// remains queryable. A mutant that resets the monitor's state on
-    /// log fails the stability checks.
+    /// remains queryable. Resetting the monitor's state on log fails the
+    /// stability checks.
     func testLogError_doesNotCrashAndPreservesMonitorState() {
         let beforeID = sut.getDeviceID()
 

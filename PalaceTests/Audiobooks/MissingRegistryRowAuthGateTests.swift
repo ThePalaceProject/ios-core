@@ -1,29 +1,11 @@
-//
 //  MissingRegistryRowAuthGateTests.swift
-//  PalaceTests
 //
-//  PP-5191. Two sibling gates turn "the registry has no row for the selected
-//  library" into "this patron is signed out", without consulting the keychain:
-//
-//      AudiobookSessionManager.isUserAuthenticated()   -> .notAuthenticated
-//      CarPlayAuthHelper.isAuthenticated()             -> CarPlay's auth alert
-//
-//  `currentAccountId` is still set and the credentials are still in the
-//  keychain — which is why HelpSpot 19030 reads "It shows that I am logged in"
-//  while the app refuses to play a book the patron had just borrowed.
-//
-//  PP-5135 already applied the correct treatment to the SIBLING arm of the
-//  audiobook gate (the `awaitReady()` catch now falls back to stored
-//  credentials) and its own comment records that this arm was seen and left
-//  failing closed. These tests cover the arm it left.
-//
-//  Why the fixture is simply "don't populate the registry": the comment above
-//  the PP-5135 tests in `AudiobookPositionRestoreTests` records that
-//  `currentAccount` CANNOT resolve in this target — the registry store stays
-//  empty even after `preloadAccountsFromDiskCacheSync()`. That is exactly the
-//  production state PP-5191 describes, so the nil arm is reachable here with no
-//  seam at all. On `origin/release/3.3.0` every cell below returns false.
-//
+//  PP-5191: `AudiobookSessionManager.isUserAuthenticated()` and
+//  `CarPlayAuthHelper.isAuthenticated()` treated a missing registry row for the
+//  selected library as signed out, although the credentials were still in the
+//  keychain (HelpSpot 19030). PP-5135 fixed the sibling `awaitReady()` catch arm;
+//  these tests cover the nil-account arm. No seam is needed: `currentAccount`
+//  cannot resolve in this test target, which is the production state PP-5191 hits.
 
 import XCTest
 @testable import Palace

@@ -14,17 +14,9 @@ public struct AnnotationResponse: Sendable {
 /// backwards compatibility with existing annotations. Falls back to the
 /// Firebase-managed device ID (persisted in UserDefaults) so that
 /// non-DRM users still get working cross-device sync detection.
-///
-/// - Important: Prior to this fix, non-Adobe-DRM users sent an empty
-///   string, which made cross-device sync prompts impossible because
-///   both devices appeared to be the same device.
 enum AnnotationDevice {
     /// Test-only seam mirroring `TPPAnnotations.accountsManagerOverride`.
-    /// When non-nil, `currentID()` reads `currentUserAccount.deviceID`
-    /// from this provider instead of the AppContainer instance. Typed as
-    /// the `TPPUserAccountResolving` protocol so tests can inject mock
-    /// providers without subclassing the final `AccountsManager`.
-    /// Always `nil` in production. Reset in `tearDown`.
+    /// Always `nil` in production.
     nonisolated(unsafe) static var accountsManagerOverride: TPPUserAccountResolving?
 
     /// Test-only seam for the Firebase-managed device UUID. When non-nil,
@@ -87,73 +79,35 @@ protocol AnnotationsManager {
 
     // MARK: - Test seams
     //
-    // TPPAnnotations is a static-class API, so we cannot inject deps via init.
-    // Instead, each `.shared` reach is gated by an override property that
-    // defaults to `nil`; production keeps `.shared`, tests inject a mock.
-    // This mirrors the architectural-triad refactor for instance classes
-    // that take an `AppContainer`, but adapted for the static-class shape.
-    //
-    // The accountsManager seam is typed as `TPPLibraryAccountsProvider`
-    // (the protocol) rather than `AccountsManager` (the final concrete
-    // class) so that tests can substitute lightweight mocks.
-    //
-    // Test usage:
-    //   override func setUp() {
-    //     TPPAnnotations.executorOverride = mockExecutor
-    //     TPPAnnotations.accountsManagerOverride = mockAccountsManager
-    //   }
-    //   override func tearDown() {
-    //     TPPAnnotations.executorOverride = nil
-    //     TPPAnnotations.accountsManagerOverride = nil
-    //   }
-    //
-    // Never set these from production code.
+    // TPPAnnotations is a static-class API, so dependencies cannot be injected
+    // via init. Each dependency reach is gated by an override that defaults to
+    // `nil`; tests set it in setUp and clear it in tearDown. Never set these
+    // from production code.
     nonisolated(unsafe) static var executorOverride: TPPNetworkExecutor?
     nonisolated(unsafe) static var accountsManagerOverride: TPPLibraryAccountsProvider?
 
-    /// Test-only seam for observing what this type hands to the offline queue.
-    /// PP-4987 made `.queuedForRetry` reachable, so "the write actually reached
-    /// the queue" became a real claim — and it was previously unassertable,
-    /// because `addToOfflineQueue` reaches `AppContainer.production()`
-    /// directly. That also meant the cross-device test wrote durable rows into
-    /// the app's REAL `simplified.db`, which a later reachability event could
-    /// replay. Never set from production code.
+    /// Test-only seam for observing what this type hands to the offline queue,
+    /// and for keeping tests from writing rows into the real `simplified.db`.
+    /// Never set from production code.
     nonisolated(unsafe) static var offlineQueueOverride: AnnotationOfflineQueueing?
 
-    /// Test-only seam for observing what this type reports to error logging.
-    /// PP-4965: whether a failed position write is reported at all — and with
-    /// what underlying error — is now behaviour worth asserting, so it needs to
-    /// be observable. Never set from production code.
+    /// Test-only seam for observing what this type reports to error logging
+    /// (PP-4965). Never set from production code.
     nonisolated(unsafe) static var errorLoggerOverride: ErrorLogging?
 
-    /// Test-only override for the annotations URL. When set, `annotationsURL`
-    /// returns this value instead of deriving from `TPPConfiguration.mainFeedURL()`.
-    /// CI runners boot with no signed-in library, so `mainFeedURL()` is nil and
-    /// every annotation POST/GET path early-returns before hitting the
-    /// HTTPStubURLProtocol handler. Tests that exercise the annotation network
-    /// surface (e.g. CrossDeviceSyncE2ETests) inject their MockSyncBackend's
-    /// base URL here. Never set from production code.
+    /// Test-only override for the annotations URL. CI runners have no signed-in
+    /// library, so `mainFeedURL()` is nil and every annotation request would
+    /// early-return. Never set from production code.
     nonisolated(unsafe) static var annotationsURLOverride: URL?
 
-    // MARK: - Deletion-chain test join seam (STARVE-001)
+    // MARK: - Deletion-chain test join seam
     //
-    // `deleteAllBookmarks` is deliberately fire-and-forget: it calls its
-    // completion IMMEDIATELY and then runs a GET followed by N chained DELETEs
-    // in the background, so a book return is never blocked. That makes it
-    // untestable by waiting on the completion — tests used to poll a 3s
-    // wall-clock deadline and assert on "whatever had happened by then", which
-    // starves under parallel CI sim clones and is the STARVE-001 recurrence
-    // class.
-    //
-    // Each `deleteAllBookmarks` call gets its OWN group counting that call's
-    // in-flight chain (the GET, plus each DELETE it spawns), published here for
-    // the test to join. Per-call rather than one process-wide group on purpose:
-    // a shared group would accumulate imbalance across the whole test process,
-    // so an unjoined call in one suite could hang an `await` in another. It is
-    // only ever created under XCTest, so every production call site below is a
-    // no-op `?.enter()` / `?.leave()` — the env-var gate (rather than
-    // `#if DEBUG`) keeps the deletion path free of conditional compilation,
-    // matching `AccountsManager._trackedCrawlTasks`.
+    // `deleteAllBookmarks` calls its completion immediately and runs a GET plus
+    // N chained DELETEs in the background, so tests cannot wait on the
+    // completion. Each call gets its own DispatchGroup counting its in-flight
+    // chain, published for tests to join. Per-call so an unjoined call in one
+    // suite cannot hang another. Created only under XCTest; in production every
+    // `?.enter()` / `?.leave()` is a no-op.
     private static let _isRunningUnderXCTest =
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     private static let _deletionChainLock = NSLock()
@@ -170,11 +124,8 @@ protocol AnnotationsManager {
         return group
     }
 
-    /// Synchronous lock-guarded read of the published chain. Split out of the
-    /// `async` join seam below because `NSLock.lock()`/`.unlock()` are
-    /// unavailable from an async context (Swift 6 forbids them even when the
-    /// critical section never spans a suspension point) — same split as
-    /// `AccountsManager._snapshotFirstRunTasksForTesting`.
+    /// Synchronous lock-guarded read of the published chain, split out because
+    /// `NSLock` is unavailable from an async context in Swift 6.
     private static func _snapshotLastDeletionChain() -> DispatchGroup? {
         _deletionChainLock.lock()
         defer { _deletionChainLock.unlock() }
@@ -234,12 +185,8 @@ protocol AnnotationsManager {
             return nil
         }
 
-        // Swift 6 `complete`: `Bookmark` is a Palace-owned non-Sendable protocol
-        // (`protocol Bookmark: NSObject {}`), so a `[Bookmark]?` cannot cross the
-        // `CheckedContinuation.resume(returning:)` Sendable boundary. Box the
-        // single first bookmark we actually need. INVARIANT: the boxed value is
-        // produced once inside the `getServerBookmarks` completion and read once
-        // after the continuation resumes — no concurrent access.
+        // `Bookmark` is non-Sendable, so box the one bookmark needed to cross
+        // the continuation boundary (see `BookmarkBox`).
         let firstBox: BookmarkBox = await withCheckedContinuation { continuation in
             var didResume = false
 
@@ -263,14 +210,8 @@ protocol AnnotationsManager {
             var didResume = false
 
             postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark) { response in
-                // Swift 6 `complete`: the double-resume guard (`didResume`) is
-                // checked/set in this NON-`@Sendable` completion closure so the
-                // `@Sendable` `DispatchQueue.main.async` hop below no longer
-                // captures-and-mutates the local `var` (which the region-isolation
-                // checker rejects). `response` (a `Sendable` struct) and
-                // `continuation` (`Sendable`) are the only values that cross into
-                // the main hop. Behavior is unchanged: resume still happens on the
-                // main queue, exactly once.
+                // The double-resume guard is checked here, outside the
+                // `@Sendable` main-queue hop, which cannot mutate a captured `var`.
                 guard !didResume else { return }
                 didResume = true
 
@@ -298,19 +239,9 @@ protocol AnnotationsManager {
             return
         }
 
-        // Format bookmark for submission to server according to spec.
-        //
-        // PP-5138: the device was `currentUserAccount.deviceID ?? ""` — the
-        // Adobe activation ID, which is nil on a library that does not use
-        // Adobe DRM, leaving an empty string on the wire. The spec asks for a
-        // UUID URN, or the literal string "null" when the client has none;
-        // "" is neither. It also broke this client's own cross-device
-        // detection: the synchronizer compared that "" against a nil local
-        // device ID, never matched, and so could not tell the patron's own
-        // device from another one. `AnnotationDevice.currentID()` was added to
-        // supply exactly this value and was computed into
-        // `PositionSnapshot.device`, but `EPUBPositionAdapter.post` drops that
-        // field, so it never reached the wire.
+        // PP-5138: the spec asks for a UUID URN device, or the literal "null";
+        // `AnnotationDevice.currentID()` supplies that, including for libraries
+        // without Adobe DRM, which cross-device detection depends on.
         let bookmark = TPPBookmarkSpec(time: NSDate(),
                                        device: AnnotationDevice.currentID(),
                                        motivation: motivation,
@@ -324,11 +255,8 @@ protocol AnnotationsManager {
         //  - readingProgress: key on the book. Collapsing IS correct — a newer
         //    position supersedes an older one for the same book, and delivering
         //    only the latest is what the patron wants.
-        //  - bookmark: key on the book AND the selector. Every bookmark is a
-        //    distinct thing the patron created; keying on the book alone made
-        //    two offline bookmarks in one title silently overwrite each other,
-        //    and PP-4965 has already removed the error report for this path, so
-        //    the loss would be invisible.
+        //  - bookmark: key on the book AND the selector, so two offline
+        //    bookmarks in one title do not overwrite each other.
         let queueKey: String
         switch motivation {
         case .bookmark:
@@ -360,18 +288,10 @@ protocol AnnotationsManager {
                 if let statusCode = response?.statusCode {
                     metadata["statusCode"] = statusCode
                 }
-                // `logNetworkError` rather than `logError`, deliberately.
-                //
-                // The bare `logError(_:summary:metadata:)` overload hardcodes
-                // `code: .ignore`, which would have quietly moved this bucket
-                // OFF 902 (`.apiCall`) — to the raw NSError code for transport
-                // failures and to 0 for server refusals — and flipped
-                // `error_origin` from "server" to "unknown". Since the whole
-                // plan is to re-measure what remains in the 902 bucket once
-                // PP-4987 lands, that would have read as a fix while nothing
-                // improved. `logNetworkError` keeps `.apiCall`, still routes
-                // through `fixUpSummary` so transient conditions are split out
-                // first, and takes the response so 400...599 classifies as
+                // `logNetworkError`, not `logError`: the bare overload hardcodes
+                // `code: .ignore`, which would move this bucket off 902
+                // (`.apiCall`) and lose the server origin. This keeps `.apiCall`,
+                // routes through `fixUpSummary`, and lets 400...599 classify as
                 // `.server`.
                 Self.currentErrorLogger.logNetworkError(underlying,
                                                         code: .apiCall,
@@ -412,11 +332,8 @@ protocol AnnotationsManager {
         let parameters = spec.dictionaryForJSONSerialization()
 
         postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { result in
-            // Behaviour deliberately unchanged by PP-4965: a bookmark POST that
-            // fails still calls back with an empty response and reports nothing.
-            // That silence is a real gap — bookmark failures produce no
-            // telemetry at all — but fixing it changes behaviour patrons see,
-            // so it is tracked separately rather than folded in here.
+            // A failed bookmark POST calls back with an empty response and
+            // reports nothing; adding telemetry here is tracked separately.
             guard case let .succeeded(id, timeStamp) = result else {
                 completion(AnnotationResponse(serverId: nil, timeStamp: nil))
                 return
@@ -451,11 +368,8 @@ protocol AnnotationsManager {
         let parameters = spec.dictionaryForJSONSerialization()
 
         postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { result in
-            // Behaviour deliberately unchanged by PP-4965: a bookmark POST that
-            // fails still calls back with an empty response and reports nothing.
-            // That silence is a real gap — bookmark failures produce no
-            // telemetry at all — but fixing it changes behaviour patrons see,
-            // so it is tracked separately rather than folded in here.
+            // A failed bookmark POST calls back with an empty response and
+            // reports nothing; adding telemetry here is tracked separately.
             guard case let .succeeded(id, timeStamp) = result else {
                 completion(AnnotationResponse(serverId: nil, timeStamp: nil))
                 return
@@ -466,31 +380,16 @@ protocol AnnotationsManager {
 
     /// How a POST to the annotations endpoint concluded.
     ///
-    /// PP-4965: this exists because the previous `(Bool, String?, String?)`
-    /// callback had nowhere to put "queued for retry" or a status code, so five
-    /// very different outcomes all arrived at the caller as a bare `false`. The
-    /// caller then reported every one of them as "Error posting annotation",
-    /// which made that the largest error in the app while most of the traffic
-    /// was patrons going through a tunnel.
-    ///
-    /// Keeping `queuedForRetry` distinct from `failed` is the whole point: a
-    /// queued write has not been lost, and must not be reported as a failure.
+    /// PP-4965: `queuedForRetry` is distinct from `failed` because a queued
+    /// write has not been lost and must not be reported as a failure.
     enum AnnotationPostResult {
         /// The server accepted the annotation. Both values may still be nil if
         /// the response body was missing or unparseable.
         case succeeded(annotationID: String?, timeStamp: String?)
 
         /// Transport failed, but the request was handed to the offline queue
-        /// and will be retried. Delivery is pending, not lost — do NOT report
-        /// this as an error.
-        ///
-        /// REACHABLE as of PP-4987. It was not when this case was written:
-        /// the networking layer discarded the underlying transport error when
-        /// no HTTP response arrived, substituting a generic no-response code
-        /// absent from `NetworkQueue.StatusCodes`, so `willQueueOffline` could
-        /// never be true. `TPPNetworkResponder` now passes that error through,
-        /// so an offline write genuinely reaches the retry queue and this case
-        /// carries real production traffic.
+        /// and will be retried. Delivery is pending, not lost — do not report
+        /// this as an error. Reachable since PP-4987.
         case queuedForRetry
 
         /// The write did not happen and nothing will retry it.
@@ -513,15 +412,8 @@ protocol AnnotationsManager {
                               queueKey: String? = nil,
                               _ completionHandler: @escaping (_ result: AnnotationPostResult) -> Void) {
 
-        // `isValidJSONObject` FIRST, deliberately. `data(withJSONObject:)`
-        // RAISES an ObjC `NSInvalidArgumentException` for an unsupported type
-        // rather than throwing a Swift error, so `try?` does not catch it and
-        // the guard below never fired — an unserializable payload crashed the
-        // app instead of taking the `.failed` path this code models. Not
-        // reachable from today's three in-file callers (every value in
-        // `dictionaryForJSONSerialization()` is a String), so this is defence
-        // for the next caller, not a live bug fix. Found by writing the test
-        // for the branch (PP-4965 review round 2).
+        // `isValidJSONObject` first: `data(withJSONObject:)` raises an ObjC
+        // exception for unsupported types, which `try?` does not catch.
         guard JSONSerialization.isValidJSONObject(parameters),
               let jsonData = try? JSONSerialization.data(withJSONObject: parameters,
                                                          options: [.prettyPrinted]) else {
@@ -550,15 +442,9 @@ protocol AnnotationsManager {
                     return
                 }
 
-                // Carry the response. `TPPNetworkResponder` synthesizes an
-                // NSError for EVERY non-2xx and `TPPNetworkExecutor.POST`
-                // forwards (nil, response, error) together, so this branch —
-                // not the `else` below — is the one a server refusal actually
-                // takes. Passing nil here dropped the status code before it
-                // reached telemetry and left `TPPErrorOrigin.classify`'s
-                // 400...599 arm unreachable from this call site, which made
-                // "a refusal carries its status code" false in production
-                // while two tests asserted it (PP-4965 review round 2).
+                // Carry the response: `TPPNetworkResponder` synthesizes an
+                // NSError for every non-2xx, so a server refusal takes this
+                // branch, and `TPPErrorOrigin.classify` needs the status code.
                 completionHandler(.failed(underlying: error,
                                           response: response as? HTTPURLResponse))
                 return
@@ -706,20 +592,10 @@ protocol AnnotationsManager {
             Log.info(#file, "📡 PARSED BOOKMARKS COUNT: \(bookmarks.count) (from \(items.count) raw items)")
 
             if bookmarks.count < items.count {
-                // The server's `/annotations/` endpoint returns ALL of
-                // the user's annotations across every book they've ever
-                // read, not just bookmarks for the requested book. Most
-                // skipped items are filtered by `make()` for being
-                // bookmarks for *other* books (`source != bookID`),
-                // not parse failures. Logged at info, not warn, to
-                // avoid alarming the support team — the number scales
-                // with how much the user has read across the library.
-                //
-                // The cold-open latency from this endpoint dominates
-                // bookmark load on books with many annotations: every
-                // open re-downloads the same N-thousand-item payload
-                // just to extract the few that match. A CM-side
-                // per-book filter parameter would be the right fix.
+                // `/annotations/` returns the patron's annotations for every
+                // book, so most skipped items belong to other books rather than
+                // failing to parse; logged at info for that reason. A CM-side
+                // per-book filter would cut the cold-open payload.
                 Log.info(#file, "📡 Filtered \(items.count - bookmarks.count) items belonging to other books (kept \(bookmarks.count) for \(book.identifier))")
             }
 
@@ -755,13 +631,9 @@ protocol AnnotationsManager {
     ///   - book: The book whose bookmarks should be deleted
     ///   - completion: Called immediately. Deletions continue in background.
     static func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
-        // Publish this call's chain BEFORE anything can return, so a test that
-        // joins right after `completion()` can never observe a STALE previous
-        // chain (or none at all, on the sync-gate early return) and conclude
-        // "already settled". Today the tests are safe only because they are
-        // `@MainActor` and this function runs to its tail synchronously —
-        // publishing first makes that independent of the caller's isolation.
-        // Every early return below must `leave()`. Nil (fully inert) outside XCTest.
+        // Publish this call's chain before anything can return, so a test that
+        // joins right after `completion()` never sees a stale chain. Every early
+        // return below must `leave()`. Nil outside XCTest.
         let chain = _beginDeletionChainTracking()
         chain?.enter()
 
@@ -775,35 +647,11 @@ protocol AnnotationsManager {
         // (`.readingProgress`) is deliberately preserved for every format —
         // ebook, PDF, and audiobook alike.
         //
-        // WHY (3.2.3 build 490): 489 additionally deleted the AUDIOBOOK
-        // `.readingProgress` on return, filed as "Cause 2" and described as a
-        // 3.2.0 regression fix. Verification against the release tags showed it
-        // is neither:
-        //   • `deleteAllBookmarks` is BYTE-IDENTICAL in 3.1.0 and 3.2.0 — both
-        //     query only `.bookmark` — so the audiobook position has never been
-        //     deleted on return in any shipped build.
-        //   • `TrackPosition+Annotations.swift` (the payload written to the
-        //     server) has an EMPTY diff 3.1.0 → 3.2.0, and 3.1.0 already synced
-        //     positions to the CM via `postListeningPosition`.
-        //   • The cited tickets don't describe it: #18019 — the only genuine
-        //     position report — was filed 2026-05-31 on 3.1.0, five weeks BEFORE
-        //     3.2.0 shipped (07-08); #18449 is a download failure and #18468 a
-        //     won't-play. What #18019 actually asks is that the position be
-        //     CORRECT ("says ch1 p1 but it is not"), which is handled by
-        //     `AudiobookPositionResolver.validatedRemotePosition` — retained.
+        // No shipped build has deleted the position on return. Doing so would be
+        // a product decision (and inconsistent: audiobooks but not ebooks,
+        // return but not loan expiry), so pending sign-off a patron who
+        // re-borrows keeps their place.
         //
-        // Deleting a patron's place on return is therefore a NEW product
-        // decision, not a regression fix, and it would be inconsistent on two
-        // axes: audiobooks but not ebooks, and deliberate return but not loan
-        // expiry (expiry never calls this method). Pending product sign-off it
-        // stays out — a patron re-borrowing a 20-hour title keeps their place.
-        //
-        // NOTE: in 489 this deletion silently never executed anyway —
-        // `AudioBookmark.create` lets the embedded `"annotationId": ""` that
-        // Palace always writes shadow the real server id, so the parsed
-        // bookmark had no server linkage and no DELETE was issued. Removing the
-        // code makes the shipped behavior explicit instead of dependent on that
-        // latent bug, which a future unrelated fix could otherwise wake up.
         // The GET's `leave()` is deferred to the END of its completion so the
         // group cannot reach zero in the window between the GET finishing and
         // its DELETEs being entered. (`chain` was entered at the top.)
@@ -821,12 +669,10 @@ protocol AnnotationsManager {
     }
 
     /// Extracts the server annotation ID from a parsed `Bookmark`, regardless
-    /// of concrete type. Kept from 489 because it is strictly more correct than
-    /// the historical `as? [TPPReadiumBookmark]` array cast for USER bookmarks:
-    /// that cast silently dropped audiobook bookmarks wholesale. Returns `nil`
-    /// for a bookmark with no server linkage or an unrecognised type (e.g. an
-    /// unsynced `AudioBookmark`, or a PDF page bookmark — whose deletion
-    /// behaviour is intentionally left unchanged).
+    /// of concrete type (an `as? [TPPReadiumBookmark]` cast would drop audiobook
+    /// bookmarks). Returns `nil` for a bookmark with no server linkage or an
+    /// unrecognised type (e.g. an unsynced `AudioBookmark`, or a PDF page
+    /// bookmark).
     private static func serverAnnotationId(of bookmark: Bookmark) -> String? {
         if let readium = bookmark as? TPPReadiumBookmark {
             return readium.annotationId
@@ -866,12 +712,8 @@ protocol AnnotationsManager {
                 Log.error(#file, "DELETE bookmark failed with server response code: \(code)")
                 completionHandler(false)
             } else {
-                // Previously `guard let error … else { return }` — a nil response
-                // AND nil error exited WITHOUT calling `completionHandler`. Every
-                // caller then waits forever; the deletion-chain join seam turns
-                // that silent gap into an unbounded test hang. A completion that
-                // sometimes never fires is a bug for all callers, so report the
-                // failure instead of vanishing.
+                // A nil response and nil error must still call the completion,
+                // or every caller waits forever.
                 let nsError = error as NSError?
                 Log.error(#file, "DELETE bookmark Request Failed with Error Code: \(nsError?.code ?? -1). Description: \(nsError?.localizedDescription ?? "no response and no error")")
                 completionHandler(false)
@@ -903,15 +745,7 @@ protocol AnnotationsManager {
 
         Log.debug(#file, "Begin task of uploading local bookmarks, count: \(bookmarks.count).")
         let uploadGroup = DispatchGroup()
-        // Swift 6 `complete`: `TPPReadiumBookmark` is a Palace-owned non-Sendable
-        // class, so the mutable `[TPPReadiumBookmark]` accumulators and the
-        // per-upload `localBookmark` cannot be captured by the `@Sendable`
-        // `DispatchQueue.main.async` / `uploadGroup.notify` closures as raw
-        // values. Box the accumulators and the completion in a carrier whose
-        // INVARIANT is that every mutation and every read happens on the main
-        // queue: each upload's `append` runs inside `DispatchQueue.main.async`,
-        // and the terminal read runs inside `notify(queue: DispatchQueue.main)`.
-        // DispatchGroup serializes the two so no read races an in-flight append.
+        // Non-Sendable accumulators are boxed; see `BookmarkUploadAccumulatorBox`.
         let accumulator = BookmarkUploadAccumulatorBox(completion: completion)
 
         for localBookmark in bookmarks {
@@ -942,16 +776,9 @@ protocol AnnotationsManager {
     }
     // MARK: -
 
-    /// State-machine-aware accessor used by Phase 2 (Bucket B) sync
-    /// gates. Returns `nil` until the account is in `.detailsLoaded` —
-    /// any other state (`.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`,
-    /// `.detailsFailed`, or the `.detailsEvicted` eviction-marker added by
-    /// the swarm_51f248d5 enum split) yields nil. This preserves the
-    /// nil-tolerance the legacy `account.details?` reads provided, but no
-    /// longer races a partially-populated auth doc. Bookmark sync is a
-    /// best-effort silent-failure path per the ADR, so nil during the
-    /// loading window is correct (the next render after `.detailsLoaded`
-    /// fires re-enables the sync paths).
+    /// Returns the account details only in `.detailsLoaded`; every other state
+    /// yields nil so sync never reads a partially-populated auth document.
+    /// Bookmark sync is best-effort, so skipping it during loading is correct.
     fileprivate static func loadedDetails(of account: Account?) -> AccountDetails? {
         guard let account = account,
               case .detailsLoaded(let details) = account.loadState else {
@@ -1009,10 +836,8 @@ protocol AnnotationsManager {
 
 /// The slice of the offline queue that annotation writes actually use.
 ///
-/// Exists so `.queuedForRetry` is provable: without it, "the write reached the
-/// queue" can only be verified by reading the code, and PP-4965 removes the
-/// error report on the strength of that claim. `NetworkQueue` already has this
-/// exact signature.
+/// Exists so tests can observe that a write reached the queue.
+/// `NetworkQueue` already has this exact signature.
 protocol AnnotationOfflineQueueing: AnyObject {
     func addRequest(_ libraryID: String,
                     _ updateID: String?,
@@ -1026,12 +851,9 @@ extension NetworkQueue: AnnotationOfflineQueueing {}
 
 // MARK: - Sendable carriers for the annotation-sync @Sendable-closure captures
 
-/// Sendable carrier for a single non-Sendable `Bookmark?` crossing the
-/// `CheckedContinuation.resume(returning:)` Sendable boundary in
-/// `syncReadingPosition`. `Bookmark` is a Palace-owned protocol
-/// (`protocol Bookmark: NSObject {}`) and cannot be made `Sendable`.
-/// INVARIANT — produced once in the `getServerBookmarks` completion, read once
-/// after the continuation resumes.
+/// Sendable carrier for a non-Sendable `Bookmark?` crossing the continuation
+/// boundary in `syncReadingPosition`. Invariant: produced once in the
+/// `getServerBookmarks` completion, read once after the continuation resumes.
 private final class BookmarkBox: @unchecked Sendable {
     let bookmark: Bookmark?
     init(_ bookmark: Bookmark?) { self.bookmark = bookmark }
@@ -1039,22 +861,18 @@ private final class BookmarkBox: @unchecked Sendable {
 
 /// Sendable carrier for a single non-Sendable `TPPReadiumBookmark` handed to the
 /// `@Sendable` `DispatchQueue.main.async` upload-completion in
-/// `uploadLocalBookmarks`. `TPPReadiumBookmark` is a Palace-owned mutable class
-/// (must not be made `Sendable`). INVARIANT — the boxed bookmark's
-/// `annotationId` is mutated only on the main queue inside that completion.
-/// Mirrors `ReadiumBookmarkBox` in `TPPReaderBookmarksBusinessLogic`.
+/// `uploadLocalBookmarks`. Invariant: the boxed bookmark's `annotationId` is
+/// mutated only on the main queue inside that completion.
 private final class ReadiumBookmarkBox: @unchecked Sendable {
     let bookmark: TPPReadiumBookmark
     init(_ bookmark: TPPReadiumBookmark) { self.bookmark = bookmark }
 }
 
 /// Sendable carrier for the mutable `[TPPReadiumBookmark]` accumulators and the
-/// non-Sendable completion in `uploadLocalBookmarks`. INVARIANT — `updated` and
+/// non-Sendable completion in `uploadLocalBookmarks`. Invariant: `updated` and
 /// `failed` are appended to only inside per-upload `DispatchQueue.main.async`
-/// blocks and read only inside the `uploadGroup.notify(queue:
-/// DispatchQueue.main)` terminal; all access is main-queue-confined and the
-/// DispatchGroup serializes the terminal read after every append, so
-/// `@unchecked Sendable` waives no real race.
+/// blocks and read only inside the `uploadGroup.notify(queue: .main)` terminal,
+/// which the DispatchGroup orders after every append.
 private final class BookmarkUploadAccumulatorBox: @unchecked Sendable {
     var updated: [TPPReadiumBookmark] = []
     var failed: [TPPReadiumBookmark] = []

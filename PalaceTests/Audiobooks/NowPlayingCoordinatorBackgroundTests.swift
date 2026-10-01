@@ -1,28 +1,10 @@
-//
 //  NowPlayingCoordinatorBackgroundTests.swift
-//  PalaceTests
 //
-//  Regression coverage for HelpSpot 17865 — Audiobook NowPlaying freeze on
-//  background → foreground.
-//
-//  Three behaviors are pinned here:
-//
-//  1. testApplyUpdate_inBackground_bypassesDebounce — when the app is not
-//     active, MPNowPlayingInfoCenter writes must NOT be debounced. The
-//     main-queue scheduler stalls during suspend; debounced work items can
-//     vanish, leaving the system info stale.
-//
-//  2. testApplyUpdate_inForeground_debouncesAsBefore — pre-fix behavior must
-//     survive: in `.active` state, rapid updates (chapter changes, scrubs)
-//     coalesce.
-//
-//  3. testDryStreamGuard_logsErrorOnForegroundReturn_whenLastUpdateStale —
-//     on foreground return, if `isPlaying` is true but the writer was dry
-//     for >30s during background, a Crashlytics error is logged. This is
-//     the canary for future toolkit-timer regressions of the same shape.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  HelpSpot 17865: NowPlaying froze after background -> foreground. Pins that
+//  MPNowPlayingInfoCenter writes bypass the debounce while not active (the main
+//  queue stalls during suspend and debounced work can be lost), that `.active`
+//  updates still coalesce, and that returning to foreground after >30s with no
+//  writes while playing logs an error.
 
 import MediaPlayer
 import UIKit
@@ -212,8 +194,8 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
     }
 
     /// Boundary case — at EXACTLY the threshold (30s) the guard must NOT
-    /// fire. The condition is `> 30`, not `>= 30`. Without this test the
-    /// `>` → `>=` mutant survives. Uses the injected clock so the boundary
+    /// fire. The condition is `> 30`, not `>= 30`; this catches `>` → `>=`.
+    /// Uses the injected clock so the boundary
     /// is exact and reproducible.
     func testDryStreamGuard_doesNotLog_atExactlyThreshold() {
         let t0 = Date()
@@ -225,8 +207,8 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         )
 
         // Pin the clock at EXACTLY 30s after lastUpdateTime. With `>`
-        // (production), 30 > 30 is false → no log. With `>=` (mutant),
-        // 30 >= 30 is true → log. So `count == 0` kills the `>=` mutant.
+        // (production), 30 > 30 is false → no log. With `>=`, 30 >= 30 is
+        // true → log. So `count == 0` catches the `>=` regression.
         coordinator._test_setLastUpdateTime(t0)
         coordinator._test_setLastIsPlaying(true)
         fakeNow.value = t0.addingTimeInterval(30.0)

@@ -2,18 +2,11 @@
 //  LocalBookContentService.swift
 //  Palace
 //
-//  Owns the on-disk lifecycle for downloaded book content — local-content
-//  deletion (epub/pdf/audiobook with LCP variants) and the LCP audiobook
-//  re-download flow that re-fetches the `.lcpa` content when only the
-//  `.lcpl` license is left on disk (PP-3704).
-//
-//  Extracted from MyBooksDownloadCenter so the file-system-level lifecycle
-//  can be exercised in isolation without standing up a download center.
-//  MBDC keeps the same `deleteLocalContent(for:account:)` /
-//  `deleteLocalContent(forBook:account:)` / `redownloadLCPContentFile(for:)`
-//  public surface as 1-line delegators — preserves the 5+ external callers
-//  (ReaderService, BookRegistrySync, TPPBookRegistryAsync, MyBooksViewModel,
-//  MyBooksDownloadCenterProtocol).
+//  On-disk lifecycle for downloaded content: local-content deletion
+//  (epub/pdf/audiobook, including LCP variants) and re-fetching an LCP
+//  audiobook's `.lcpa` when only the `.lcpl` license is on disk (PP-3704).
+//  MyBooksDownloadCenter's `deleteLocalContent` / `redownloadLCPContentFile`
+//  delegate here.
 //
 
 import Foundation
@@ -23,9 +16,7 @@ import PalaceBookModel
 import PalaceBookRegistry
 
 /// File-system lifecycle for downloaded book content.
-/// Non-final to allow test-only subclassing in `SpyLocalContentService`.
-/// The dynamic-dispatch cost is negligible — none of these methods are
-/// called in tight loops.
+/// Non-final so tests can subclass it (`SpyLocalContentService`).
 class LocalBookContentService {
 
     /// Shape of the LCP content-fulfillment call used by
@@ -45,12 +36,9 @@ class LocalBookContentService {
     private let bookFileManager: BookFileManager
     private let fileManager: FileManager
     private let lcpContentFulfiller: LCPContentFulfilling
-    // PP-5135: this type deliberately holds NO streaming-flag seam. It used to,
-    // and read it to skip the self-heal `.lcpa` re-download while streaming was
-    // ON — which is what left every "Downloaded" LCP audiobook with no audio on
-    // disk and unplayable offline. The content fetch is now unconditional, so
-    // the flag is not merely unused here but unrepresentable, and the
-    // short-circuit cannot be reintroduced by a caller passing a provider.
+    // PP-5135: no streaming-flag input by design. Skipping the `.lcpa`
+    // re-download while streaming is on left "Downloaded" LCP audiobooks with
+    // no audio on disk, so the content fetch is unconditional.
 
     /// Per-instance so tests can drive the idle-expiry and heartbeat behaviour
     /// in milliseconds instead of waiting out the production window.
@@ -65,26 +53,18 @@ class LocalBookContentService {
     /// duplicate alongside the handler's transfer.
     var downloadCenterHasTransfer: ((String) -> Bool)?
 
-    /// Monotonic clock source. Injectable so the idle-expiry and heartbeat
-    /// behaviour can be driven deterministically instead of by sleeping past a
-    /// real window — sleeps in this suite feed the documented parallel-clone
-    /// starvation flakes.
+    /// Monotonic clock source, injectable so idle-expiry and heartbeat can be
+    /// tested without sleeping.
     private let monotonicClock: () -> UInt64
 
-    /// Resolves the library the app is currently pointed at. Injectable because
-    /// the LIBRARY-SWITCH arm of the write guard is otherwise unreachable from a
-    /// test: `currentAccountId` is backed by `UserDefaults`, and driving it for
-    /// real would mean writing to the standard suite from a test. A mutation
-    /// survivor proved this wiring needed its own coverage — the pure rule was
-    /// tested while the code computing its input was not, which is the same
-    /// shape of hole as the leak this guard exists to close.
+    /// Resolves the library the app is currently pointed at. Injectable so the
+    /// library-switch arm of the write guard is testable without writing
+    /// `currentAccountId` to the standard `UserDefaults`.
     private let currentAccountIdProvider: () -> String?
 
     /// Progress/activity sink for the LCP content re-download. Assigned by
-    /// `MyBooksDownloadCenter` after `init` because the reporter is created
-    /// later in that initializer than this service is (mirrors the existing
-    /// `progressReporter.notificationSender = self` post-init wiring). `weak`
-    /// because the reporter is owned by the download center.
+    /// `MyBooksDownloadCenter` after `init`, because the reporter is created
+    /// later in that initializer. `weak` because the download center owns it.
     weak var contentDownloadReporter: DownloadProgressPublishing?
 
     /// Book identifiers whose `.lcpa` content download is currently running.
@@ -93,17 +73,12 @@ class LocalBookContentService {
     /// callers reach `redownloadLCPContentFile` independently: the registry-load
     /// self-heal (`BookRegistrySync`) and the open-time gate
     /// (`AudiobookSessionManager.gateOnLCPContentDownload`). Without this guard,
-    /// tapping Listen during the self-heal's download window started a SECOND
-    /// full transfer of the same archive; both completed, one was discarded, and
-    /// the two competed for the patron's bandwidth. Verified on device against
-    /// A1QA: 2 × 778 MB for one 778 MB audiobook.
+    /// tapping Listen during the self-heal download started a second full
+    /// transfer of the same archive (seen on device: 2 × 778 MB).
     ///
-    /// A claim is reclaimable rather than permanent, because a dropped callback
-    /// is reachable: the fulfillment call runs on a background `URLSession` and a
-    /// cancelled or suspended task can lose its completion, after which every
-    /// later `redownloadLCPContentFile` would no-op and the open gate would
-    /// dead-end at "Audiobook Unavailable" — the exact complaint the gate exists
-    /// to remove.
+    /// Claims are reclaimable because a cancelled or suspended background task
+    /// can lose its completion; a permanent claim would then make the open gate
+    /// dead-end at "Audiobook Unavailable".
     private struct ContentDownloadClaim {
         /// Identifies THIS transfer. Release and heartbeat both require it, so a
         /// late completion from an abandoned transfer cannot free, or keep
@@ -121,30 +96,20 @@ class LocalBookContentService {
     /// How long a claim may go WITHOUT a sign of life before a later caller
     /// treats it as dead and reclaims the slot.
     ///
-    /// This is an idle timeout, not a total-duration one, and the distinction is
-    /// load-bearing. Sizing it to the open gate's 180s ceiling as a total
-    /// duration would expire a healthy transfer of any of the titles this change
-    /// was measured against (438 MB / 778 MB / 1,897 MB routinely exceed three
-    /// minutes), so the patron's next Listen would start a SECOND full transfer
-    /// — reintroducing the very defect the guard exists to prevent. The progress
-    /// callback heartbeats the claim, so only a genuinely silent transfer ages
-    /// out. Comfortably beyond the fulfillment session's own 60s request
-    /// timeout, so a stalled connection fails there first.
+    /// An idle timeout, not a total duration: large archives routinely take
+    /// longer than three minutes, and expiring a healthy transfer would start a
+    /// duplicate. Progress callbacks heartbeat the claim. Longer than the
+    /// fulfillment session's 60s request timeout, so a stalled connection fails
+    /// there first.
     static let inflightContentDownloadIdleTimeout: TimeInterval = 180
 
     /// PP-5135: whether a BACKGROUND `.lcpa` fetch may start right now, given
     /// connectivity and the patron's download preference.
     ///
-    /// The archive is hundreds of megabytes. `downloadOnlyOnWiFi` is a setting
-    /// the patron actually set, and 3.2.x honoured it for this transfer — the
-    /// download-first path refuses at `DownloadStartReducer.reduceRegular`
-    /// (`.failWifi`). Re-introducing the fetch without this check would spend
-    /// their cellular data against that stated preference, which is a worse
-    /// defect than the one being fixed.
-    ///
-    /// Pure and static so every caller shares one rule and a flipped conditional
-    /// is caught by mutation testing. Offline returns false: there is nothing to
-    /// fetch, and the open path must not queue work that cannot run.
+    /// The archive is hundreds of megabytes, and `downloadOnlyOnWiFi` must be
+    /// honoured here as it is on the download-first path
+    /// (`DownloadStartReducer.reduceRegular` → `.failWifi`). Offline returns
+    /// false so the open path does not queue work that cannot run.
     static func backgroundFetchAllowed(
         isConnectedToNetwork: Bool,
         isOnWiFi: Bool,
@@ -158,68 +123,34 @@ class LocalBookContentService {
     /// Whether a COMPLETED `.lcpa` fetch may still be written to disk for this
     /// book — i.e. whether the patron still holds it.
     ///
-    /// This closes a confirmed data-retention leak, not a hypothetical one.
-    /// The fetch is fire-and-forget by construction: `LCPContentFulfilling`
-    /// returns `Void` and its task handle is discarded, so a Return cannot
-    /// cancel an in-flight transfer (`BookRegistrySync` documents the same
-    /// thing — "cancel would report success while the transfer kept running").
-    /// The return cleanup therefore deletes the content and the download lands
-    /// AFTERWARDS and re-creates it.
+    /// The fetch cannot be cancelled (`LCPContentFulfilling` discards its task
+    /// handle), so a download finishing after a Return would re-create the
+    /// deleted content; on device, two returned loans left 1.55 GB of `.lcpa`
+    /// behind. Guarding the write covers every way a loan ends at one point.
     ///
-    /// Measured on device (Moes Max, build 505), matched by SHA-256 of the book
-    /// identifier against the on-disk filename: two returned loans left
-    /// `.lcpa` archives of 0.48 GB and 1.07 GB in Application Support, and
-    /// NEITHER book was still present in the registry. 1.55 GB of DRM-protected
-    /// audio for books the patron had given back.
+    /// Not the only writer: `BackgroundDownloadHandler.replaceBook` (reached from
+    /// `LCPFulfillmentHandler` with streaming off, and always for LCP PDF/EPUB)
+    /// has no such guard, so this narrows the orphan window on the streaming
+    /// path only.
     ///
-    /// Guarding the WRITE rather than adding cancellation is deliberate: it
-    /// closes every way a loan can end — return, expiry — at one point, instead
-    /// of racing each separately, and needs no cancellation machinery the
-    /// fulfiller cannot support.
+    /// A library switch always writes; see `accountUnchanged` below.
     ///
-    /// KNOWN BOUND, corrected in review rather than left overclaimed. This is
-    /// NOT the only writer. `LCPFulfillmentHandler` reaches
-    /// `BackgroundDownloadHandler.replaceBook`, a second `.lcpa` producer with
-    /// the same fire-and-forget shape and no such guard — reachable with LCP
-    /// streaming OFF, and always for LCP PDF/EPUB. So this NARROWS the orphan
-    /// window on the streaming path; it does not close it everywhere. An
-    /// earlier revision of this comment claimed "the single point where content
-    /// comes into existence", which was false.
-    ///
-    /// A library switch is deliberately NOT closed here — see
-    /// `accountUnchanged` below. The registry cannot answer for another
-    /// library, and guessing costs the patron a gigabyte.
-    ///
-    /// Exhaustive with no `default:` — the F-011 class-of-bug guard. A new
-    /// `TPPBookState` must be classified deliberately rather than defaulting
-    /// into "write the file".
+    /// Exhaustive with no `default:` (F-011) so a new `TPPBookState` must be
+    /// classified deliberately.
     static func mayStoreFetchedContent(
         registryState: TPPBookState,
         accountUnchanged: Bool
     ) -> Bool {
-        // A LIBRARY SWITCH IS NOT A LOAN ENDING, and the registry cannot tell
-        // the difference. `bookRegistry.state(for:)` is scoped to the CURRENT
-        // account, so once the patron switches libraries it answers for a
-        // different library and reports `.unregistered` for a book account A
-        // still holds. Deleting on that answer destroys up to a gigabyte of
-        // content the patron is entitled to, recoverable only by switching back
-        // and waiting for `load()` reconciliation.
+        // A library switch is not a loan ending, but the registry is scoped to
+        // the current account and reports `.unregistered` for a book the other
+        // library still holds. When the account has moved we cannot judge the
+        // loan, so write: `fileUrl(for:)` is account-pinned, and retention is
+        // recoverable where deletion is not.
         //
-        // When the account has moved we cannot judge the loan, so we WRITE. The
-        // destination is already account-pinned (`fileUrl(for:)`, which resolves the account internally), so
-        // the archive lands in the right library's directory either way, and
-        // this is exactly the pre-guard behaviour — it declines to close that
-        // sliver rather than closing it destructively. Retention is
-        // recoverable; deletion is not.
-        // KNOWN RESIDUAL, named rather than fixed: account identity cannot
-        // distinguish "same library, registry not yet reconciled" from "same
-        // library, book returned". A switch away and back mid-transfer, or a
-        // completion landing during `load()` after a switch back, reads
-        // `accountUnchanged == true` while the registry still answers
-        // `.unregistered`, and the fetch is discarded. Bounded and
-        // NON-destructive — the decline arm removes only the fulfiller's temp
-        // file, never `destURL` — so the cost is a wasted re-download, not lost
-        // content, and a later open re-arms the fetch.
+        // Known residual: a switch away and back mid-transfer can read
+        // `accountUnchanged == true` while the registry still says
+        // `.unregistered`, discarding the fetch. The decline arm removes only
+        // the fulfiller's temp file, so the cost is a re-download on next open.
         guard accountUnchanged else { return true }
 
         switch registryState {
@@ -293,9 +224,7 @@ class LocalBookContentService {
            now &- existing.lastActivity < idleLimit {
             return nil
         }
-        // Either unclaimed, or the holder has been silent past the idle window
-        // and its completion is never coming — reclaim rather than dedupe
-        // against a dead transfer and leave the book unrecoverable.
+        // Unclaimed, or the holder has been silent past the idle window: reclaim.
         let token = UUID()
         inflightContentDownloads[identifier] = ContentDownloadClaim(token: token, lastActivity: now)
         return token
@@ -379,9 +308,6 @@ class LocalBookContentService {
                 } else {
                     Log.info(#file, "Content file already missing (nothing to delete): \(bookURL.lastPathComponent)")
                 }
-                // Historical cleanup of the LCPPDFs-extracted temp PDF is
-                // obsolete post-migration to Readium PDFNavigator — pages
-                // stream on demand and there is no temp extract to delete.
                 #if LCP
                 // Drop the on-disk TOC snapshot AND the decrypted PDF
                 // extract so a re-borrow doesn't reuse stale cached
@@ -422,33 +348,15 @@ class LocalBookContentService {
         // So they skip this logic that deleted the local audio files, used by other
         // audiobook types.
         // TODO: Update LCP so we don't have to special case it here.
-        // Clear decrypted chapters before anything below can throw (PP-5127).
+        // PP-5127: clear decrypted chapters before anything below can throw.
+        // LCP titles skip the manifest branch (no loadable manifest; chapter
+        // filenames are hashes that cannot be rebuilt without the licence), so
+        // without this their decrypted MP3s outlive the loan. Every loan ending
+        // other than in-app Return (expiry, remote return, revocation) reaches
+        // only this path. Runs for every audiobook, independent of `#if LCP`.
         //
-        // The manifest branch below is what deletes an audiobook's decrypted
-        // chapters track by track, and LCP titles skip it — there is no
-        // loadable manifest, and the filenames are hashes of track paths that
-        // cannot be reconstructed once the licence is gone. Nothing else
-        // reached those files on this path, so they outlived the loan: a title
-        // returned outside the app left 51 playable MP3 files and 1.1 GB
-        // behind after the book had gone from the shelf.
-        //
-        // The in-app Return path never showed the defect, because
-        // `BookReturnService` fires its own forced purge alongside this call.
-        // Every other way a loan ends — expiry, a return from another device,
-        // a librarian revoking it, any server-driven reconciliation — arrives
-        // here and only here.
-        //
-        // Run for every audiobook rather than only the LCP branch. Non-LCP
-        // titles have no orphans to collect, so the sweep is a no-op for them,
-        // and keeping it off `isLcpAudiobook` means it does not depend on a
-        // `#if LCP` build condition to be reachable.
-        //
-        // Unforced on purpose: the sweep cannot tell one book's chapters from
-        // another's, so it declines while any OTHER audiobook is still
-        // downloading or on the shelf. That leaves an expired title's files
-        // waiting for the last audiobook to go, which is the right way round —
-        // re-downloading a book someone is listening to would be worse than
-        // the leak.
+        // Unforced: the sweep cannot tell one book's chapters from another's,
+        // so it waits while any other audiobook is downloading or shelved.
         AudiobookCacheSweep(bookRegistry: bookRegistry, fileManager: fileManager)
             .purge(force: false, excluding: book.identifier)
 
@@ -544,11 +452,8 @@ class LocalBookContentService {
         // otherwise — but ALWAYS through the identifier overload, never the
         // book-based one. That overload is what applies the R6 side-load rule
         // (`BookFileManager.swift`: a `sideload-` id pins to
-        // `sideloadContentAccountID` regardless of the account passed). An
-        // earlier draft of this fix resolved the pinned branch book-first and
-        // silently took a side-loaded LCP audiobook off its R6 directory, where
-        // the archive would have been written as an orphan. Both branches now
-        // differ only in WHICH account they carry.
+        // `sideloadContentAccountID` regardless of the account passed), so a
+        // side-loaded LCP audiobook's archive is not written as an orphan.
         let resolvedDestination = account.map { bookFileManager.fileUrl(for: book.identifier, account: $0) }
             ?? bookFileManager.fileUrl(for: book.identifier)
         guard let destURL = resolvedDestination else { return }

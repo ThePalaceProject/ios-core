@@ -1,19 +1,10 @@
 //
-//  BookCellModelLCPProgressTests.swift
-//  PalaceTests
-//
-//  The shelf half of the LCP content-download progress cue.
-//
-//  `BookDetailViewModel` has its own tests for the equivalent logic, but this is
-//  a DIFFERENT implementation on the route the background self-heal actually
-//  fires on — a book sitting on the My Books shelf. Review flagged three unkilled
-//  mutants here: the `guard isDownloadingLCPContent` scoping, the rising-edge
-//  reset, and the progress sink itself.
-//
-//  The scoping is the one that matters. `observedProgress` is a monotone maximum
-//  reset only when an LCP content download starts, and these cell models are
-//  cached with a 120s TTL, so merging it into every download would let a cell
-//  that once saw 1.0 render a full bar for an unrelated later re-download.
+//  The My Books shelf half of the LCP content-download progress cue, a separate
+//  implementation from `BookDetailViewModel`'s. Pins the
+//  `guard isDownloadingLCPContent` scoping, the rising-edge reset, and the sink.
+//  `observedProgress` is a monotone maximum reset only when LCP content starts, and
+//  cell models are cached for 120s, so without the scoping a cell that once saw 1.0
+//  would show a full bar for an unrelated later re-download.
 //
 
 import Combine
@@ -121,8 +112,8 @@ final class BookCellModelLCPProgressTests: XCTestCase {
 
     // MARK: - Progress only counts while an LCP content download is running
     //
-    // This is the scoping mutant. Removing `guard isDownloadingLCPContent`
-    // reintroduces a stale full bar on an unrelated download.
+    // Removing `guard isDownloadingLCPContent` reintroduces a stale full bar
+    // on an unrelated download.
 
     func testObservedProgress_isIgnoredWhenNoLCPContentDownloadIsRunning() async {
         let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)

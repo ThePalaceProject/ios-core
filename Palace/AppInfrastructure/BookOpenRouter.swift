@@ -1,30 +1,12 @@
 //
-//  BookOpenRouter.swift
-//  Palace
+//  Routes a book to the reader that can render it. Lives in AppInfrastructure,
+//  not Palace/Book/, because a router that knows every reader is composition;
+//  this keeps Book from depending on PDF (cycle 8 in
+//  docs/architecture/god-class-decomposition-plan.md).
 //
-//  Routes a book to the reader that can render it. Lives in the Application
-//  layer (`AppInfrastructure`) rather than in `Palace/Book/`: a router that
-//  knows every reader — Readium EPUB, PDFKit/Readium PDF, the audiobook session,
-//  the streaming WKWebView shell — is composition, not book-domain code. Moving
-//  it here is what removes the Book -> PDF direction of the PDF<->Book cycle
-//  recorded as cycle 8 in docs/architecture/god-class-decomposition-plan.md.
-//
-//  Two halves, deliberately separable:
-//
-//   - `destination(for:)` is the pure decision. `TPPBookContentType` has five
-//     cases, so format -> destination is a finite table that can be asserted
-//     cell by cell with no reader, no container and no side effect
-//     (`BookOpenRouterTests`). Before this existed the same decision was spelled
-//     out twice — once in `BookService.dispatchOpen`, once in
-//     `BookDetailViewModel.openBook` — and neither copy was assertable without
-//     executing the reader it selected.
-//
-//   - `open(_:...)` performs it, including the per-identifier reentrancy lock
-//     that stops a second tap from starting a parallel open pipeline.
-//
-//  `BookService.open` forwards here and keeps its signature, so the existing
-//  call sites (BookCellModel, BookDetailViewModel, the audiobook retry action)
-//  are unchanged.
+//  `destination(for:)` is the pure, table-testable decision; `open(_:...)`
+//  performs it, including the per-identifier lock that stops a second tap from
+//  starting a parallel open. `BookService.open` forwards here.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

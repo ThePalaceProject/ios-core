@@ -2,49 +2,14 @@
 //  Reader2PositionResumeContractTests.swift
 //  PalaceTests
 //
-//  Contract-snapshot tests for the Reader2 position resume/save path:
-//  `TPPLastReadPositionPoster` (write side) and
-//  `TPPLastReadPositionSynchronizer` (load side). These tests are
-//  *adjacent* to `Reader2PositionAdapterContractTests.swift` from
-//  `swarm_f4fbef9c` — they pin different predicate arms and decision
-//  branches so a refactor that collapses or flips a branch drifts the
-//  snapshot.
-//
-//  Reader2 is XCTest-invisible (Readium 3.x WKWebView); this test class
-//  never instantiates WKWebView or NavigatorViewController. The SUTs are
-//  driven through their public dependency seams with co-located spies
-//  on `TPPBookRegistryProvider` and `PositionWriter`.
-//
-//  Source contract: `.forgeos/swarms/swarm_eefef87a/contracts/D-Reader2ContractSnapshots.md`
-//
-//  Scenarios:
-//    1. `test_positionSave_writesRegistryThenSyncQueue`
-//         — TPPLastReadPositionPoster.storeReadPosition with a
-//           position-anchor locator (PDF / fixed-layout EPUB branch of
-//           `shouldStore`). Pins: registry.setLocation → writer.save.
-//           Adjacent to the adapter-test's `totalProgression`-only
-//           branch — this contract pins the OTHER predicate arm.
-//    2. `test_readerResume_loadsRegistryThenSynchronizer`
-//         — TPPLastReadPositionSynchronizer.sync with writer.load
-//           returning nil (no remote). Pins: writer.load fires once;
-//           NO follow-up registry.setLocation.
-//    3. `test_readerResume_synchronizerReturnsNewer_applies_andRecordsCrossFormatMapping`
-//         — TPPLastReadPositionSynchronizer.sync with a remote whose
-//           payload matches the local locationString exactly
-//           (Deviation 7 second clause: same content → no-op decision).
-//           Pins: writer.load fires once; the decision short-circuits
-//           and NO alert / setLocation follow-up is recorded. "Cross-
-//           format mapping" framing is interpreted as the no-op
-//           decision arm — the current Reader2 synchronizer doesn't
-//           perform real format-aware mapping (that lives in
-//           `PalaceReadingPosition.CrossFormatMapping`), so this
-//           contract pins the closest current behavior. See the
-//           transcript for the gap noted to future work.
-//
-//  **First run:** records baselines at
-//  `__Snapshots__/Reader2PositionResumeContractTests/<scenario>.json`
-//  and FAILS with "snapshot recorded — re-run to verify". Set
-//  `CONTRACT_SNAPSHOT_RECORD=1` to deliberately re-record.
+//  Contract snapshots for the Reader2 resume/save path (`TPPLastReadPositionPoster`,
+//  `TPPLastReadPositionSynchronizer`), covering predicate arms that
+//  `Reader2PositionAdapterContractTests` does not: the position-anchor save branch,
+//  a nil remote (load only), and a remote equal to the local location (no-op).
+//  Readium's WKWebView is not instantiated; SUTs run through their dependency seams.
+//  Real cross-format mapping lives in `PalaceReadingPosition.CrossFormatMapping`.
+//  First run records `__Snapshots__/Reader2PositionResumeContractTests/<scenario>.json`
+//  and fails; set `CONTRACT_SNAPSHOT_RECORD=1` to re-record.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -316,33 +281,12 @@ final class Reader2PositionResumeContractTests: XCTestCase {
 
     // MARK: - 3. Resume — remote payload matches local → no-op decision
 
-    /// Pins the Deviation 7 *second* clause of the conflict-resolution
-    /// rule: when the server's snapshot payload (its
-    /// `serverLocationString`) equals the local `locationString`
-    /// exactly, the synchronizer returns nil — no alert, no follow-up
-    /// registry write — regardless of device.
-    ///
-    /// The contract title's "cross-format mapping" framing is
-    /// interpreted as the no-op decision arm: the synchronizer
-    /// recognizes that local and remote are equivalent (the
-    /// `format`-aware payload equality is the closest current
-    /// mapping behavior). Real PDF↔EPUB↔audiobook cross-format
-    /// position translation lives in
-    /// `PalaceReadingPosition.CrossFormatMapping` and is not yet
-    /// wired into this synchronizer — see the transcript's "gaps"
-    /// section.
-    ///
-    /// Regression caught: flipping the equality predicate (`!=`
-    /// instead of `==`) would auto-trigger an alert on every
-    /// same-content sync, persistently re-prompting the user.
-    /// QA review rev_0d6da02f rename: previous name implied "synchronizer
-    /// returns NEWER applies + records cross-format mapping" but the scenario
-    /// pins the OPPOSITE — Deviation 7's same-payload no-op short-circuit
-    /// (server payload identical to local locationString → no alert, no write,
-    /// no cross-format mapping). The behavior tested is correct; the name now
-    /// matches what's actually pinned. The "newer applies" path is a real
-    /// scenario worth pinning separately — flagged for a follow-up changeset
-    /// rather than retrofitted here.
+    /// Pins the same-payload clause of the conflict rule: when the server's
+    /// `serverLocationString` equals the local `locationString` exactly, the
+    /// synchronizer returns nil (no alert, no registry write) regardless of device.
+    /// Flipping the equality would re-prompt the patron on every same-content sync.
+    /// Real cross-format translation lives in `PalaceReadingPosition.CrossFormatMapping`
+    /// and is not wired into this synchronizer.
     func test_readerResume_synchronizerSamePayload_noopShortCircuits() async throws {
         let publication = Self.makePublication()
 
@@ -367,7 +311,7 @@ final class Reader2PositionResumeContractTests: XCTestCase {
         innerRegistry.setLocation(local, forIdentifier: book.identifier)
 
         // Server payload matches the local locationString exactly —
-        // Deviation 7 second clause must short-circuit.
+        // the same-payload clause must short-circuit.
         // Device differs from drmDeviceID, but the same-content rule
         // overrides the different-device rule.
         writer.loadResult = PositionSnapshot(

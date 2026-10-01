@@ -1,21 +1,12 @@
 //
 //  AccountsManagerCollaboratorInitRaceTests.swift
-//  PalaceTests
 //
-//  `AccountsManager` is `@unchecked Sendable` and not actor-isolated, and on a cold
-//  launch its auth-document collaborator is first reached from two unordered paths:
-//  the slim-hydrate `DispatchQueue.main.async` drive and the detached background
-//  `loadCatalogs`. A Swift `lazy var` is not safe to initialize concurrently: each
-//  racing thread can build its own instance, and all but one are dropped. For
-//  `AuthDocumentLoader` that splits the per-UUID single-flight map (duplicate fetches,
-//  and a dropped instance's `[weak self]` completion skips its terminal state write);
-//  for `AccountCredentialResolver` it yields two `TPPUserAccount` instances for one
-//  library UUID, which is the F-034 invariant the resolver exists to hold.
-//
-//  These tests drive concurrent FIRST access on a freshly constructed manager and
-//  assert the observable single-instance property. The race window is small, so the
-//  dynamic tests are backed by `testInit_constructsCollaboratorsBeforeReturning`,
-//  which fails deterministically if either collaborator goes back to a `lazy var`.
+//  On cold launch the auth-document collaborators are first reached from two
+//  unordered paths, and a Swift `lazy var` is not safe to initialize
+//  concurrently: racing threads each build an instance. That splits
+//  `AuthDocumentLoader`'s single-flight map and gives `AccountCredentialResolver`
+//  two `TPPUserAccount`s for one UUID (F-034). The race window is small, so
+//  `testInit_constructsCollaboratorsBeforeReturning` pins it deterministically.
 //
 
 import XCTest
@@ -134,8 +125,8 @@ final class AccountsManagerCollaboratorInitRaceTests: PalaceWiringTestCase {
     /// where nothing else forces construction. If it passed with the preload enabled
     /// it would be asserting the preload, not the fix.
     func testInit_forcesRegistryLoaderBeforeTheObserverCanReachIt() {
-        // BOTH forcing paths must be off or this arm is vacuous. A reviewer found
-        // the second one: `init` also calls `registryLoader.spawnInitialBackgroundLoad()`
+        // BOTH forcing paths must be off or this arm is vacuous:
+        // `init` also calls `registryLoader.spawnInitialBackgroundLoad()`
         // (AccountsManager.swift:466) whenever `deferInitialLoadCatalogsForTesting` is
         // false. Asserting only the preload flag left the arm depending on a separate
         // flip in PalaceWiringTestCase.setUpWithError, which a future edit could remove

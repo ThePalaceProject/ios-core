@@ -2,9 +2,8 @@
 //  AppTabHostViewBadgeCountTests.swift
 //  PalaceTests
 //
-//  F-013 follow-up: kills the 6 surviving mutants in AppTabHostView's
-//  badge-count update path. Previously these counts were inline closures
-//  inside `updateHoldsBadge()` and could not be exercised by tests.
+//  Pins AppTabHostView's badge-count helpers, extracted from inline
+//  closures inside `updateHoldsBadge()` so they can be exercised directly.
 //
 
 import XCTest
@@ -36,7 +35,6 @@ final class AppTabHostViewBadgeCountTests: XCTestCase {
     }
 
     /// Reserved books (still in the hold queue) must NOT be counted as ready.
-    /// Kills the mutant where the `ready:` callback is replaced by a no-op.
     func test_computeReadyCount_reservedBooksOnly_returnsZero() {
         let books = (0..<3).map { idx in
             TPPBookMocker.snapshotReservedBook(
@@ -50,7 +48,7 @@ final class AppTabHostViewBadgeCountTests: XCTestCase {
     }
 
     /// Mixed input: reserved books filter out, ready books are counted.
-    /// Kills the `+= 1` → `-= 1` mutant directly: a `-=` would yield -2 not 2.
+    /// Counts must accumulate upward (2, not -2).
     func test_computeReadyCount_mixedReservedAndReady_returnsOnlyReadyCount() {
         let ready = (0..<2).map { idx in
             TPPBookMocker.snapshotReadyBook(
@@ -88,8 +86,8 @@ final class AppTabHostViewBadgeCountTests: XCTestCase {
         XCTAssertEqual(AppTabHostView.computeReservedCount(books: books), 2)
     }
 
-    /// Ready books must NOT be counted as reserved. Kills the mutant where
-    /// the `reserved:` callback is replaced by the `ready:` callback.
+    /// Ready books must NOT be counted as reserved. Guards against
+    /// swapping the `reserved:` and `ready:` callbacks.
     func test_computeReservedCount_readyBooksOnly_returnsZero() {
         let books = (0..<2).map { idx in
             TPPBookMocker.snapshotReadyBook(
@@ -103,9 +101,8 @@ final class AppTabHostViewBadgeCountTests: XCTestCase {
 
     // MARK: - shouldUpdateBadge
 
-    /// Kills the mutants on `state == .loaded` and `state == .synced` —
-    /// flipping `==` to `!=` or `||` to `&&` makes the badge skip work
-    /// when it should run, or run when it should skip.
+    /// The badge updates only on `.loaded` or `.synced`; any other predicate
+    /// skips work it should do or does work it should skip.
     func test_shouldUpdateBadge_loadedOrSynced_returnsTrue() {
         XCTAssertTrue(AppTabHostView.shouldUpdateBadge(for: .loaded))
         XCTAssertTrue(AppTabHostView.shouldUpdateBadge(for: .synced))

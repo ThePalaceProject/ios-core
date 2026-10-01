@@ -1,31 +1,12 @@
 //
 //  ManifestFixture.swift
-//  PalaceTests
 //
-//  Loads audiobook manifest fixtures that live in THIS repository.
-//
-//  WHY IT EXISTS. Eight test files here build a `Manifest` from a bundled JSON
-//  fixture. They used to get `Manifest.from(jsonFileName:)` and `ManifestJSON`
-//  from the audiobook toolkit via `@testable import PalaceAudiobookToolkit` --
-//  which only worked because the toolkit's `ManifestJSON.swift`, a TEST helper,
-//  was wrongly compiled into the shipping `PalaceAudiobookToolkit` FRAMEWORK
-//  target. Test fixtures in a shipped binary is a real defect; the toolkit
-//  corrected it (ios-audiobooktoolkit#205 moved the file to its test target),
-//  and that correction broke every consumer here.
-//
-//  The dependency was wrong in both directions and is not worth restoring:
-//  a test in this repo should not reach into another repository's test target,
-//  and the toolkit should not export fixtures to make that possible. ios-core
-//  owns its fixtures now, which is also why the enum below lists ONLY the
-//  manifests this repository actually ships.
-//
-//  ADDING A CASE. Add the `.json` to `PalaceTests/`, add it to the PalaceTests
-//  target's Copy Bundle Resources phase, then add the case here. Do not add a
-//  case whose JSON lives only in the toolkit -- `testEveryManifestFixtureIsBundled`
-//  fails loudly for exactly that, rather than letting a test discover it as a
-//  confusing decode error at run time.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Loads audiobook manifest fixtures owned by this repository. They used to
+//  come from the toolkit's `ManifestJSON` test helper via `@testable import`,
+//  which ios-audiobooktoolkit#205 moved to the toolkit's test target. To add a
+//  case: put the `.json` in `PalaceTests/`, add it to the PalaceTests Copy
+//  Bundle Resources phase, then add the case; `testEveryManifestFixtureIsBundled`
+//  fails if the JSON is not bundled.
 //
 
 import Foundation

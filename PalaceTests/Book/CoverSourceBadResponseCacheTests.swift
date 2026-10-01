@@ -1,22 +1,10 @@
-//
 //  CoverSourceBadResponseCacheTests.swift
-//  PalaceTests
 //
-//  Pins what `TPPBookCoverRegistry.sourceData(for:)` is allowed to remember.
-//
-//  The decode helper is already covered — `downsampleImage` returns nil for
-//  empty data, garbage data and bad dimensions (TPPBookCoverRegistryTests).
-//  What was NOT covered is the PRODUCER: the fetch discards its URLResponse
-//  into `_` and caches whatever body came back, so a 200-with-no-body or an
-//  error page is stored under the cover's URL key. Every later request for that
-//  cover then serves the same unusable bytes from cache, and the generated
-//  TenPrint placeholder becomes permanent for the process lifetime instead of
-//  recovering on the next scroll.
-//
-//  These tests assert the recovery property a patron actually experiences: a bad
-//  response must not poison the cover. The third test is the control — a GOOD
-//  response must still be cached, so "never cache" is not a passing fix.
-//
+//  Pins what `TPPBookCoverRegistry.sourceData(for:)` may cache. The fetch ignored
+//  its URLResponse and cached any body, so an empty 200 or an error page was stored
+//  under the cover URL and the TenPrint placeholder became permanent for the
+//  process. A bad response must not poison the cover; the control test checks a
+//  good response is still cached, so "never cache" does not pass.
 
 import XCTest
 @testable import Palace

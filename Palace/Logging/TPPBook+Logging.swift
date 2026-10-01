@@ -9,8 +9,8 @@
 import Foundation
 import PalaceBookModel
 
-// de-objc (Wave 2a): plain-Swift extension — @objc members here would emit an illegal
-// ObjC category on the now-external PalaceBookModel.TPPBook. Zero ObjC callers.
+// Plain Swift: @objc members here would emit an illegal ObjC category on the
+// package type PalaceBookModel.TPPBook.
 extension TPPBook {
     /// An informative short string describing the book, for logging purposes.
     func loggableShortString() -> String {

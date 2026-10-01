@@ -1,28 +1,12 @@
-//
 //  TPPNetworkExecutorConcurrencyTests.swift
-//  PalaceTests
 //
-//  PP-4769 — concurrent-teardown regression coverage for
-//  `TPPNetworkExecutor.executeRequest(_:enableTokenRefresh:completion:)`.
-//
-//  Issue #1 (crash fingerprint abfef568, EXC_BAD_ACCESS `objc_release` at the
-//  tail of `executeRequest`): the crash was an ARC over-release / use-after-free
-//  driven from an async continuation (OPDSFeedService.fetchFeed →
-//  `withCheckedContinuation` on a cooperative-pool thread) firing many concurrent
-//  `executeRequest` / GET calls. The Swift 6 rework routes completions through the
-//  single-ownership `CompletionBox` handoff, but there was NO concurrent-teardown
-//  test proving the completion path is race-clean end to end.
-//
-//  These tests fire many concurrent requests through the REAL production
-//  completion seam (`TPPNetworkExecutor` → `TPPNetworkResponder` →
-//  `NYPLResult` completion) using `HTTPStubURLProtocol`, and assert that EVERY
-//  completion fires EXACTLY once — no double-fire, no drop, no crash. They are
-//  designed to survive the 3× CI harness (`-test-iterations 3
-//  -retry-tests-on-failure`): deterministic stubbed HTTP, no real network, no
-//  sleeps.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  PP-4769 (crash abfef568, EXC_BAD_ACCESS in `objc_release` at the tail of
+//  `executeRequest`, driven by many concurrent calls from async continuations).
+//  Fires many concurrent requests through the production completion path
+//  (`TPPNetworkExecutor` -> `TPPNetworkResponder` -> `NYPLResult`) with
+//  `HTTPStubURLProtocol` and asserts every completion fires exactly once: no
+//  double-fire, no drop, no crash. Stubbed HTTP and no sleeps keep it stable
+//  under CI's `-test-iterations 3`.
 
 import XCTest
 @testable import Palace

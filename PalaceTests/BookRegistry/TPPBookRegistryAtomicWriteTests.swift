@@ -1,32 +1,10 @@
-//
 //  TPPBookRegistryAtomicWriteTests.swift
-//  PalaceTests
 //
-//  Deep, mutation-killing tests for *atomic-write* robustness of
-//  BookRegistrySync.save / saveSync. The contract under test:
-//
-//    1. `Data.write(to:options:.atomic)` writes to a temp file then renames
-//       in a single atomic step. A failure mid-write must NOT leave a
-//       half-written file in place — the prior contents must remain readable,
-//       or the file must not exist.
-//
-//    2. A save that succeeds must produce a single intact JSON file at the
-//       canonical path. There must be NO leftover staging files visible in
-//       the registry directory after the rename completes.
-//
-//    3. saveSync (blocking) and save (queued) both honor the atomic contract.
-//
-//  We exercise the contract by:
-//    - Pre-seeding a valid registry JSON, then forcing an "interrupted" write
-//      by replacing the registry file's parent directory with a read-only
-//      barrier mid-save → the resulting file system state must still be loadable.
-//    - Verifying no .tmp / staging artifacts are left in the registry dir.
-//    - Verifying a successful save → reload → save sequence converges.
-//
-//  These tests do NOT touch production code. They use per-test temp accounts.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Pins atomic-write behavior of BookRegistrySync.save / saveSync: an interrupted
+//  write leaves the prior file readable (or absent), a successful save leaves one
+//  intact JSON file and no staging artifacts, and save and saveSync both honor
+//  this. Interruption is forced by making the registry directory read-only
+//  mid-save. Uses per-test temp accounts.
 
 import XCTest
 @testable import Palace
@@ -104,9 +82,8 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         )
     }
 
-    /// Wave-2 (swarm_ad0b4c65): replaced the `wait(for:timeout:30.0)` +
-    /// `RunLoop.current.run(until:+0.1)` settle with a deterministic seam
-    /// join. `sync.load` drives its mutation through
+    /// Waits for the load with a deterministic seam join instead of a
+    /// wall-clock timeout. `sync.load` drives its mutation through
     /// `BookRegistryStore.mutateRegistry`, which enqueues on `store`'s
     /// barrier `syncQueue`; `_awaitPendingWritesForTesting()` drains that
     /// queue (bounded — one trailing barrier hop), which also guarantees the
@@ -123,7 +100,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
     // MARK: - Atomic-rename contract
 
     /// saveSync must produce a complete, parseable JSON file at the canonical
-    /// path. Kills mutants that drop `options: .atomic` in favor of a partial
+    /// path. Catches regressions that drop `options: .atomic` in favor of a partial
     /// write (which on a sufficiently large dataset would leave a truncated
     /// file half the time).
     func testSaveSync_ProducesCompleteParseableJSON() throws {
@@ -144,7 +121,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
     /// canonical `registry.json` and (since the #1212/D1 resilience work) the
     /// durable last-good `registry.json.bak` sidecar — and NOTHING ELSE. The
     /// atomic-rename (primary) and write-new→fsync→rename (backup) must leave
-    /// no `.tmp` / staging artifacts behind. Kills mutants that switch from
+    /// no `.tmp` / staging artifacts behind. Catches regressions that switch from
     /// atomic-rename to a manual temp-file + rename leaving staging.
     ///
     /// Updated for the `.bak` sidecar: a non-empty saveSync now legitimately
@@ -153,7 +130,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
     /// durable artifact, not staging — so the anti-staging intent is preserved
     /// by asserting the exact {registry.json, registry.json.bak} set and, in
     /// particular, the ABSENCE of any `.tmp` file (the staging artifact the
-    /// mutant would leave).
+    /// regression would leave).
     func testSaveSync_LeavesNoStagingArtifactsInRegistryDir() throws {
         _ = seedAndSave(count: 5)
 
@@ -166,8 +143,8 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         // #1212 ("Bulletproof Ownership") writes a durable last-good
         // `registry.json.bak` sidecar on every non-empty save
         // (RegistryFileRecovery.writeBackup, BookRegistrySync.saveSync) — an
-        // INTENTIONAL backup, not a staging artifact. The mutant this test kills
-        // is a leaked `.tmp` staging file from the atomic rename, so assert the dir
+        // INTENTIONAL backup, not a staging artifact. The regression this test
+        // catches is a leaked `.tmp` staging file from the atomic rename, so assert the dir
         // holds exactly registry.json + its backup and NOTHING else: a stray
         // `.tmp` (or any other file) makes this set comparison fail.
         XCTAssertEqual(contents, ["registry.json", "registry.json.bak"],
@@ -176,7 +153,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
 
     /// Two back-to-back saves (write a registry, then a smaller one) must
     /// converge to the *second* file's contents — atomic rename means the
-    /// second write fully replaces the first, never blends. Kills mutants
+    /// second write fully replaces the first, never blends. Catches regressions
     /// that append instead of replace (which would survive round-trip but
     /// double-count records).
     func testSaveSync_OverlappingSaves_FinalContentsOnly() async throws {
@@ -280,7 +257,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
 
         // Reader thread: re-reads the file mid-burst. Every read must succeed
         // (file exists & parses) or be ENOENT (transient — possible only if
-        // a future mutant breaks atomic rename and exposes a delete window).
+        // a future regression breaks atomic rename and exposes a delete window).
         // Atomic rename guarantees readers never see an empty/torn file.
         //
         // The previous implementation slept 2ms between reads as a
@@ -314,7 +291,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         let writeDone = expectation(description: "writers finished")
         group.notify(queue: .main) { writeDone.fulfill() }
 
-        // UNMAPPED (wave-2 swarm_ad0b4c65): waits on BookRegistrySync's private
+        // Waits on BookRegistrySync's private
         // `diskWriteQueue` draining via `save(for:)` fire-and-forget calls — no
         // catalog seam exists for that queue (only BookRegistryStore's syncQueue
         // has `_awaitPendingWritesForTesting()`). Genuinely bounded by a real
@@ -341,7 +318,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
 
     /// Verify the atomic-rename guarantee at the filesystem level: after a
     /// completed save, the file's inode/contents are present in their
-    /// entirety — there is no zero-length file, no truncation. Kills mutants
+    /// entirety — there is no zero-length file, no truncation. Catches regressions
     /// that open the file with O_TRUNC then write incrementally (a torn
     /// state visible to concurrent readers).
     func testSaveSync_FileSizeNonZero_AndJSONComplete() throws {

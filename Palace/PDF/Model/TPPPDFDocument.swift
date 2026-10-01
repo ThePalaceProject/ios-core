@@ -5,22 +5,10 @@
 //  Created by Vladimir Fedorov on 17.06.2022.
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
-//  Post-migration: this wrapper covers BOTH PDF pipelines:
-//  - PDFKit-backed: plain (non-LCP) PDFs initialized via `init(url:)` or
-//    `init(data:)`. `document` is a PDFKit `PDFDocument`.
-//  - Readium-Publication-backed: LCP-protected PDFs initialized via
-//    `init(publication:tableOfContents:pageCount:)`. The Readium
-//    `PDFNavigatorViewController` handles page rendering directly via
-//    the GCDHTTPServer; this class only proxies the side-bar APIs
-//    (table of contents, page count, labels) so `TPPPDFNavigation` +
-//    `TPPPDFTOCView` + `TPPPDFPreviewGrid` keep working against LCP PDFs
-//    without forking their UI.
-//
-//  TOC and page count are passed in as snapshots at init time so the
-//  consumer-facing API stays synchronous — Readium's `tableOfContents()`
-//  and `positions()` are async, but the side panels expect sync getters.
-//  The caller (`ReaderService.openPDF`) awaits both before constructing
-//  the document.
+//  Covers both PDF pipelines: PDFKit-backed plain PDFs, and Readium-backed
+//  LCP PDFs, where this class only proxies the side-panel APIs (TOC, page
+//  count, labels). TOC and page count are snapshots taken at init because
+//  Readium's getters are async and the side panels expect sync ones.
 //
 
 import Foundation
@@ -73,16 +61,8 @@ protocol TPPPDFDocumentDelegate {
     }
 
     /// Initialize from a pre-loaded snapshot of a Readium publication's
-    /// metadata (LCP path). Page rendering is owned by
-    /// `ReadiumPDFViewController`/`PDFNavigatorViewController`; this
-    /// wrapper exposes only the side-panel metadata surface — TOC,
-    /// pageCount — so the existing `TPPPDFNavigation` chrome keeps
-    /// working.
-    ///
-    /// `tableOfContents` and `pageCount` are accepted as snapshots
-    /// (rather than reaching into the publication on demand) because
-    /// Readium 3's `tableOfContents()` and `positions()` are async and
-    /// the consumer side panels expect synchronous getters.
+    /// metadata (LCP path). Page rendering is owned by Readium; this wrapper
+    /// exposes only the side-panel metadata (see file header).
     init(tableOfContents: [TPPPDFLocation], pageCount: Int) {
         self.data = Data()
         self.fileURL = nil

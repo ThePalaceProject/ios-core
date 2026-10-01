@@ -2,25 +2,10 @@
 //  DownloadAlertPresenter.swift
 //  Palace
 //
-//  Owns the two failure-paths on MyBooksDownloadCenter that publish a
-//  user-facing download error alert plus the registry / coordinator /
-//  retry orchestration that goes with them — `failDownloadWithAlert(for:)`
-//  (generic post-failure path) and `alertForProblemDocument(_:error:book:)`
-//  (RFC 7807 problem document path, with the "no active loan" registry
-//  removal).
-//
-//  Both methods previously lived on MBDC and tangled together: registry
-//  mutation, accessibility announcement, async state cleanup
-//  (downloadCoordinator + bookIdentifierToDownloadInfo), retry tracker,
-//  publishAndAnnounceError, broadcast — six different collaborators across
-//  ~85 LOC. Lifting them onto a presenter that takes those collaborators
-//  by injection lets retry/error UI logic be unit-tested with mocks
-//  without standing up a full MyBooksDownloadCenter.
-//
-//  The narrow `DownloadAlertPresenterDelegate` protocol exposes just the
-//  two MBDC methods the presenter calls back into: `startDownload(for:)`
-//  for the retry-action closure, and `schedulePendingStartsIfPossible()`
-//  for the post-failure pump.
+//  The two download-failure paths that publish a user-facing alert, with
+//  their registry / coordinator / retry cleanup: `failDownloadWithAlert(for:)`
+//  (generic) and `alertForProblemDocument(_:error:book:)` (RFC 7807, including
+//  the "no active loan" registry removal).
 //
 
 import Foundation
@@ -35,8 +20,7 @@ import PalaceUtilities
 /// Carrier box that lets the non-Sendable `TPPBook` ride inside a
 /// `@Sendable` retry closure. The book is read-only after construction and
 /// the closure is only ever invoked on the main actor (from the alert's
-/// Retry button), so `@unchecked Sendable` is sound. Mirrors the
-/// carrier-box precedent (`CarPlayImageCompletionBox`, `ReadiumBookmarkBox`).
+/// Retry button), so `@unchecked Sendable` is sound.
 private final class RetryBookBox: @unchecked Sendable {
     let book: TPPBook
     init(_ book: TPPBook) { self.book = book }
@@ -44,9 +28,7 @@ private final class RetryBookBox: @unchecked Sendable {
 
 // MARK: - DownloadAlertPresenterDelegate
 
-/// Surface MBDC needs to expose for the presenter to drive retries and the
-/// pending-starts pump. Both methods already exist on MBDC and are a
-/// strict subset of its public surface.
+/// Callbacks for the retry action and the post-failure pending-starts pump.
 protocol DownloadAlertPresenterDelegate: AnyObject {
     func startDownload(for book: TPPBook, withRequest request: URLRequest?)
     func schedulePendingStartsIfPossible()
@@ -59,21 +41,10 @@ protocol DownloadAlertPresenterDelegate: AnyObject {
 /// — the alert is published through `progressReporter.publishAndAnnounce
 /// Error`, which the host SwiftUI sheet observes via Combine.
 ///
-/// `@unchecked Sendable` invariant (Swift 6 `complete`-mode slice): every
-/// injected collaborator is an immutable `let` (`bookRegistry`,
-/// `stateManager`, `progressReporter`, `downloadAnnouncementService`,
-/// `errorActivityTracker`, `userRetryTracker`, `problemDocumentCache`). The
-/// only mutable instance storage is `weak var delegate`, which is assigned
-/// exactly once on the main thread during `MyBooksDownloadCenter` init and
-/// only read from `@MainActor`-hopped or awaited contexts thereafter — never
-/// mutated concurrently. The class does not add
-/// any concurrency of its own beyond hopping alert publication to
-/// `@MainActor` (`runOnMainAsync`) and cleanup to a detached `Task`; both
-/// already run on their own actors. `@unchecked` is required only so `self`
-/// can be captured by those `@Sendable` closures — not because any state is
-/// racy. Mirrors sibling presenters in this module
-/// (`DownloadAuthRetryHandler`, `RightsManagementDispatcher`,
-/// `BookReturnService`, `BookSignInRedirectHandler`).
+/// `@unchecked Sendable` so `self` can be captured by the `@Sendable`
+/// alert/cleanup closures. Every injected collaborator is an immutable `let`;
+/// the only mutable state is `weak var delegate`, assigned once during
+/// `MyBooksDownloadCenter` init.
 final class DownloadAlertPresenter: @unchecked Sendable {
 
     typealias DisplayStrings = Strings.MyDownloadCenter

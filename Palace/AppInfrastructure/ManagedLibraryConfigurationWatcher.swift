@@ -1,37 +1,12 @@
 //
-//  ManagedLibraryConfigurationWatcher.swift
-//  Palace
+//  PP-5070 — notices a managed configuration that arrives or changes after
+//  launch. Apple does not guarantee the configuration is present before first
+//  launch, and an MDM can change it while the app runs, so the first-run read
+//  alone is not enough.
 //
-//  PP-5070 — notices a managed configuration that arrives, or changes, AFTER
-//  the app has already decided what to do on launch.
-//
-//  ## Why this exists
-//
-//  The first-run path reads `com.apple.configuration.managed` once and never
-//  looks again. That is only correct if the configuration is guaranteed to be
-//  present before the app's first launch, and nothing in Apple's documentation
-//  promises that. If it lands even a second late, the app shows the library
-//  picker — on precisely the launch the feature exists to improve — and then
-//  never reconsiders, because the first-run flow marks itself done.
-//
-//  That is the same defect the registry wait already fixes, one layer up: there
-//  the LIBRARY LIST arrived late, here the CONFIGURATION does. Watching the key
-//  removes the app's dependence on Apple's delivery timing entirely, which is
-//  worth more than any answer a test MDM could give us about what that timing
-//  happens to be today.
-//
-//  An MDM may also change a device's configuration while the app is installed
-//  and running — moving a device between division groups mid-year is the
-//  obvious case — so watching is the correct implementation regardless.
-//
-//  ## Why it filters before acting
-//
-//  `UserDefaults.didChangeNotification` fires for EVERY defaults write the app
-//  makes, which on this app is constant. Re-running the apply path on each one
-//  would walk the account registry for a URL-keyed configuration. So the
-//  watcher compares the configuration's fingerprint against the last one it
-//  saw and does nothing at all when it has not moved — the overwhelmingly
-//  common case, including every unmanaged install, where it stays nil forever.
+//  `UserDefaults.didChangeNotification` fires for every defaults write, so the
+//  watcher compares the configuration's fingerprint with the last one seen and
+//  does nothing when it has not changed (always, on an unmanaged install).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

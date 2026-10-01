@@ -38,8 +38,7 @@ class TPPAgeCheckTests: XCTestCase {
         defaultUserAboveAgeLimit = simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit ?? false
         simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit = false
 
-        // Bucket A migration (swarm_81b5099e): `verifyCurrentAccountAgeRequirement`
-        // now awaits `Account.awaitReady()` instead of reading raw
+        // `verifyCurrentAccountAgeRequirement` awaits `Account.awaitReady()` instead of reading raw
         // `details?`. Drive the state machine to `.detailsLoaded` so the
         // awaiter resolves immediately and the existing age-logic
         // assertions still apply.

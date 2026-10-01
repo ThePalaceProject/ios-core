@@ -1,18 +1,11 @@
 //
 //  ManagedLibraryReviewFixesTests.swift
-//  PalaceTests
 //
 //  Three defects found in review of PR #1508, each pinned by a test that fails
-//  against the code as it was.
-//
-//  They are grouped because they share a cause worth naming: a single value was
-//  being asked to do two jobs. The parsed configuration's fingerprint was the
-//  comparison key, so a payload that parsed to nothing had no key at all; then
-//  the raw payload became the comparison key, and the reporting path embedded
-//  it in a Crashlytics report. One value, two privileges, and the privileges
-//  disagreed.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  against the earlier code. They share a cause: one value served as both the
+//  comparison key and report content. A payload that parsed to nothing had no
+//  fingerprint to compare, and the raw payload used instead was embedded in a
+//  Crashlytics report.
 //
 
 import XCTest

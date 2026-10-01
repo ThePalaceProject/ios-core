@@ -1,22 +1,10 @@
-//
 //  AudiobookLoadFailureSAMLReauthTests.swift
-//  PalaceTests
 //
-//  Locks the audiobook-OPEN SAML re-auth predicate
-//  (`AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure`).
-//
-//  Why this matters (HelpSpot 17727):
-//  Crashlytics shows "Audiobook failed to open - showing try again error (401)"
-//  fires 107 events / 40 users on Palace 3.0.0 — many from RAILS school SAML
-//  libraries. Before this fix the audiobook-load failure path showed a generic
-//  "Try Again" alert that hit the same 401 again (because the credentials were
-//  still stale). The fix wires the load-failure path through `TPPReauthenticator`
-//  when the user's `authState` is `.credentialsStale` and the account is SAML
-//  with stored credentials — same shape as the existing PP-3703 playback-time
-//  re-auth (`shouldTriggerSAMLReauthForPlaybackFailure`).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins `AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure`
+//  (HelpSpot 17727). A 401 on audiobook open for a SAML library with stale
+//  credentials routes through `TPPReauthenticator` instead of a "Try Again" alert
+//  that repeats the same 401 — the open-time counterpart of the PP-3703
+//  playback-time re-auth.
 
 import XCTest
 @testable import Palace

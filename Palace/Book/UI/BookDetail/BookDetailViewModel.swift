@@ -113,14 +113,9 @@ final class BookDetailViewModel: ObservableObject {
     /// the download itself starts) and from `processingButtons` (which
     /// tracks user-initiated UI spinners on individual buttons).
     ///
-    /// Surfacing this flag fixes the "borrow stuck with Cancel-only UI" bug
-    /// on slow distributors (Overdrive in particular): before this, the
-    /// half-sheet rendered a 0%-linear progress bar and an inert Cancel
-    /// button with no indeterminate spinner, so the user had no signal that
-    /// anything was happening. BorrowOperation's setProcessing(true:false)
-    /// pair is the canonical truth here; we mirror it via the existing
-    /// `.TPPBookProcessingDidChange` notification so unit tests can flip it
-    /// without standing up the full download stack.
+    /// Lets the half-sheet show an indeterminate spinner during slow borrows
+    /// (e.g. Overdrive) instead of an inert 0% bar. Mirrored from
+    /// `.TPPBookProcessingDidChange`.
     @Published private(set) var isBorrowProcessing: Bool = false
 
     var isShowingSample = false
@@ -145,7 +140,7 @@ final class BookDetailViewModel: ObservableObject {
     /// the real `ensureAuthAndExecute`, which loads the auth document and may
     /// present a sign-in modal against real singletons / UserDefaults / network).
     /// A test injects an immediate pass-through so the dismissal wiring is driven
-    /// deterministically without touching auth. fix/audiobook-first-open-hang.
+    /// deterministically without touching auth.
     private let authGateOverride: ((@escaping () -> Void) -> Void)?
     private var cancellables = Set<AnyCancellable>()
 
@@ -214,10 +209,8 @@ final class BookDetailViewModel: ObservableObject {
         self.opdsFeedService = opdsFeedService
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
-        // Test seam (fix/audiobook-first-open-hang): lets a test drive the
-        // audiobook open path with a mock session so the half-sheet dismissal
-        // wiring is exercised. nil in production → BookService falls back to the
-        // AppContainer DI-root session.
+        // Test seam: nil in production, where BookService falls back to the
+        // AppContainer session.
         self.injectedAudiobookSession = audiobookSession
         self.authGateOverride = authGateOverride
         // Default fetchers capture the injected services instead of reading
@@ -388,24 +381,14 @@ final class BookDetailViewModel: ObservableObject {
             .assign(to: &$downloadProgress)
 
         // LCP audiobook content re-download: the book is already
-        // `.downloadSuccessful` from an earlier session and only its `.lcpa`
-        // went missing, so the download-state-driven progress bar does not
-        // apply. This flag lets the half-sheet show the bar for that case.
+        // `.downloadSuccessful` and only its `.lcpa` is missing, so the
+        // state-driven progress bar does not apply. A dedicated signal is needed
+        // because `downloadProgress` is clamped monotonically upward.
         //
-        // A dedicated signal rather than an inference from `downloadProgress`:
-        // that value is clamped monotonically upward above, so for a book whose
-        // earlier download already reached 1.0 every fresh sample would clamp
-        // back to 1.0 and a new transfer would be undetectable.
-        // Seed from the registry BEFORE subscribing. `lcpContentDownloadPublisher`
-        // is a PassthroughSubject with no replay, so a model constructed AFTER the
-        // transfer started would never learn about it and would sit at `false` for
-        // the whole download. That is the normal case here, not an edge case: this
-        // view model is built when the patron OPENS the book detail, while the
-        // measured archives (438 MB / 778 MB / 1.9 GB) all run past three minutes —
-        // so opening a book mid-transfer is precisely the common path, and it always
-        // gets a fresh model. Without this seed the cue falls to `.idle`, the sheet
-        // offers "Download", and the tap is a silent no-op for the rest of the
-        // transfer.
+        // Seed from the registry before subscribing: `lcpContentDownloadPublisher`
+        // does not replay, and large archives take minutes, so opening the detail
+        // mid-transfer is the common case. Without the seed the sheet offers
+        // "Download" and the tap does nothing until the transfer ends.
         isDownloadingLCPContent = downloadCenter.progressReporter
             .isLCPContentTransferActive(for: book.identifier)
 
@@ -415,11 +398,9 @@ final class BookDetailViewModel: ObservableObject {
             .sink { [weak self] update in
                 guard let self else { return }
                 let isActive = update.1
-                // Zero the progress on the rising edge. `downloadProgress` is
-                // clamped monotonically upward above, so a book whose earlier
-                // download already reached 1.0 would render a full bar for the
-                // entire new transfer. Resetting here re-bases the clamp for
-                // this download.
+                // Zero the progress on the rising edge to re-base the monotonic
+                // clamp; otherwise a book that previously reached 1.0 shows a
+                // full bar for the whole new transfer.
                 if isActive && !self.isDownloadingLCPContent {
                     self.downloadProgress = 0.0
                 }
@@ -459,14 +440,10 @@ final class BookDetailViewModel: ObservableObject {
                     self.downloadErrorAlert = AlertModel(title: errorInfo.title, message: errorInfo.message)
                 }
 
-                // startDownloadAfterAuth sets bookState =
-                // .downloading and shows a Cancel button in the half-sheet
-                // before the download task even runs. When the download is
-                // refused (Wi-Fi-only on cellular, auth issue, etc.), nothing
-                // reverts that local UI state, so the sheet gets stuck on
-                // "Cancel" forever and the user thinks the download is in
-                // flight. Re-sync bookState and the processing buttons to the
-                // registry's truth so the UI reflects the failure.
+                // startDownloadAfterAuth sets bookState = .downloading before
+                // the task runs. If the download is refused (Wi-Fi-only on
+                // cellular, auth issue), re-sync from the registry so the sheet
+                // is not left showing "Cancel".
                 self.bookState = self.registry.state(for: self.book.identifier)
                 self.processingButtons.remove(.download)
                 self.processingButtons.remove(.get)
@@ -477,17 +454,10 @@ final class BookDetailViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    /// Latch for the ONE download-state revert that is provably a transient
-    /// re-read and never a real transition (fix/audiobook-first-open-flicker):
-    /// once the book has surfaced `.downloadSuccessful` (Listen), a subsequent
-    /// `.downloading` re-read is the LCP early-ready artifact — hold Listen
-    /// instead of bouncing to Cancel. Safe because a REAL re-download never goes
-    /// `.downloadSuccessful → .downloading` directly (eviction/re-fulfill route
-    /// through `.downloadNeeded` first). Every other state drops the latch and
-    /// passes through, so the label always reflects a genuine change (no stranded
-    /// Listen on evicted content). NARROW by design: the optimistic-`.downloading`
-    /// ↔`.downloadNeeded` (#2) + throttle-forward-flip (#1) are timing artifacts a
-    /// state-only latch can't separate from a real cancel — deferred (contract).
+    /// Once the book has surfaced `.downloadSuccessful` (Listen), a following
+    /// `.downloading` re-read is the LCP early-ready artifact, so hold Listen
+    /// instead of bouncing to Cancel. Safe because a real re-download routes
+    /// through `.downloadNeeded` first; every other state drops the latch.
     private var listenLatched = false
 
     /// Holds Listen against a transient post-success `.downloading`; passes every
@@ -581,14 +551,10 @@ final class BookDetailViewModel: ObservableObject {
 
     /// Fills in the INFORMATION-section fields a lightweight lane entry omits,
     /// by re-fetching the single-entry feed at `alternateURL`.
-    /// `BookMetadataService` owns the fetch and the merge; what stays here is
-    /// the view-model state around them.
     ///
-    /// Both post-await guards are load-bearing. `hydrateMetadataIfNeeded` can be
-    /// in flight while a related-book tap replaces `book`, and while a registry
-    /// emission delivers an already-hydrated copy of the same book — so the
-    /// identity and the needs-hydration questions are both re-asked on the far
-    /// side of the fetch, against whatever `book` is by then.
+    /// Both post-await guards are needed: during the fetch a related-book tap
+    /// can replace `book`, or a registry emission can deliver an already-hydrated
+    /// copy, so identity and needs-hydration are re-checked afterwards.
     func hydrateMetadataIfNeeded() async {
         let targetIdentifier = book.identifier
         guard let fresh = await metadataService.fetchFullEntry(for: book) else { return }
@@ -685,50 +651,29 @@ final class BookDetailViewModel: ObservableObject {
 
         case .download, .get, .retry:
             self.downloadProgress = 0
-            // PP-4161 Wave 4 (Path X): streaming-HTML titles funnel through
-            // the same didSelectDownload path as every other content type.
-            // DownloadStartDispatcher.processUnregisteredState already sets
-            // the registry to .downloadNeeded via the open-access branch,
-            // and processDownloadWithCredentials early-returns for
-            // streamingHTML (no asset to download). The button set then
-            // maps to [.readStreaming, .return] on next render, so the
-            // user taps Read on a second tap.
+            // PP-4161: streaming-HTML titles use the same didSelectDownload
+            // path. There is no asset to download, so the registry lands on
+            // .downloadNeeded and the buttons become [.readStreaming, .return].
             didSelectDownload(for: book)
         // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
 
         case .read, .listen:
             // PP-4633: dismiss the half-sheet so it does not linger over the
-            // reader/player. On iPhone the .medium detent is covered by the
-            // full-screen presentation; on iPad it renders as a floating
-            // form-sheet that otherwise stays on screen.
+            // reader/player (on iPad it is a floating form-sheet). Dismiss only
+            // AFTER the reader/player is presented: dismissing while the player
+            // is presenting races the two modal transitions on iPad and freezes
+            // the screen.
             //
-            // The dismiss MUST happen AFTER the reader/player is presented, NOT on
-            // tap: on iPad, dismissing the form-sheet while the player is being
-            // presented races the two modal transitions, so the player fails to
-            // present and the screen freezes. Presenting first, then dismissing
-            // the sheet underneath, avoids the race. Mirrors .reserve / .return.
-            //
-            // fix/audiobook-first-open-hang: for AUDIOBOOKS the open completion
-            // fires only after the PP-4542 content-download wait (up to minutes on
-            // a fresh checkout), which left the half-sheet stacked over the loading
-            // shell looking hung. So dismiss EARLY via `onLoadingShellPresented` —
-            // fired the instant the morphing player's loading shell is on screen,
-            // still present-first-then-dismiss (no iPad race). The completion
-            // dismissal below STAYS as an idempotent backstop: EPUB has no shell
-            // hook, and audiobook opens that fail BEFORE presenting a shell
-            // (already-loading / validation) never fire the early hook, so the
-            // always-fired completion still clears the sheet. Both write the same
-            // value → order-independent, no stuck sheet on any path.
+            // Audiobooks dismiss early via `onLoadingShellPresented`, because the
+            // open completion waits for the content download (PP-4542). The
+            // completion dismissal stays as an idempotent backstop for EPUB and
+            // for opens that fail before a shell is shown.
             didSelectRead(for: book, completion: {
                 self.removeProcessingButton(button)
                 self.showHalfSheet = false
             }, onLoadingShellPresented: { [weak self] in
-                // Defer the dismiss one runloop tick so the player's present
-                // (the shell hook fires in the SAME tick that sets
-                // isPlayerExpanded = true) fully commits before we dismiss the
-                // sheet underneath. Dismissing in the same tick is exactly the
-                // PP-4633 iPad present-while-dismiss modal race; the one-tick
-                // hop keeps present-first-then-dismiss ordering on iPad too.
+                // Defer one runloop tick so the player's present commits first;
+                // same-tick dismissal is the PP-4633 iPad modal race.
                 DispatchQueue.main.async { self?.showHalfSheet = false }
             })
 
@@ -774,12 +719,8 @@ final class BookDetailViewModel: ObservableObject {
 
     // MARK: - Authentication Helper
 
-    /// Ensures authentication document is loaded and handles sign-in if needed.
-    /// Routes an action through the auth gate. In production this is the real
-    /// `ensureAuthAndExecute` (auth-doc load + possible sign-in modal); a test can
-    /// inject `authGateOverride` (an immediate pass-through) so the read/listen
-    /// path is driven deterministically without touching the real accountsManager
-    /// / UserDefaults / network. fix/audiobook-first-open-hang.
+    /// Routes an action through the auth gate: `ensureAuthAndExecute` in
+    /// production, or `authGateOverride` when a test injects one.
     private func runAuthGate(_ action: @escaping () -> Void) {
         if let authGateOverride {
             authGateOverride(action)
@@ -817,10 +758,6 @@ final class BookDetailViewModel: ObservableObject {
                     Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: needsSignIn=\(needsSignIn) needsReauth=\(needsReauth)")
                     let halfSheetWasShowing = self.showHalfSheet
                     self.showHalfSheet = false
-                    // swarm_d8f11437 Module A wave 4 — migrated to
-                    // AppContainer-injected sheet presenter. self.accountsManager
-                    // is the same `_cached` singleton the presenter resolves
-                    // internally, so the behavior is preserved.
                     AppContainer.production().signInModalSheetPresenter
                         .presentSignInModalForCurrentAccount { [weak self] in
                             guard let self else { return }
@@ -833,17 +770,11 @@ final class BookDetailViewModel: ObservableObject {
                             // book and reproduce the original hang.
                             guard post.hasCredentials() && post.authState == .loggedIn else {
                                 Log.info(#file, "[SAML-REAUTH] Sign-in cancelled or incomplete (hasCredentials=\(post.hasCredentials()) authState=\(post.authState)) — not proceeding with action")
-                                // Clear ALL processing state. A bailed-out modal can
-                                // leave .read/.listen/.reserve/etc. stuck in the set,
-                                // and `handleAction` ignores any tap whose button is
-                                // already processing — i.e. the next Read tap is
-                                // silently dropped until the view is recreated.
+                                // Clear all processing state: `handleAction` ignores
+                                // taps on a button that is still marked processing.
                                 self.processingButtons.removeAll()
-                                // Restore the half-sheet so the patron can retry. We
-                                // only re-show it if the caller had it open before
-                                // the modal stole the screen (e.g. download in
-                                // flight); pure book-detail actions like Read don't
-                                // use the half-sheet and shouldn't summon it now.
+                                // Re-show the half-sheet only if it was open before
+                                // the modal appeared.
                                 if halfSheetWasShowing {
                                     self.showHalfSheet = true
                                 }

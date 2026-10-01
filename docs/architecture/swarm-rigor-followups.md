@@ -21,7 +21,7 @@ Items derived from PR #1018 wall-failures but NOT applied in the rigor-improveme
 
 ### A1. Per-area verification checklists for the other 7 critical-path areas
 
-**Motivated by:** `.forgeos/wall-failures/2026-05-27-pr1018-arch3.md` (architect re-discovery cost) + the meta thesis (architect's recon should be reusable across swarms).
+**Motivated by:** wall-failure `2026-05-27-pr1018-arch3` (architect re-discovery cost) + the meta thesis (architect's recon should be reusable across swarms).
 
 **Areas needing checklists** (`docs/architecture/areas/<area>/verification-checklist.md`):
 - `audiobook/` — call-site map for AudiobookSessionManager, Vendors/, AudiobookLoader, NowPlayingCoordinator + the toolkit-fragility traps
@@ -43,7 +43,7 @@ Items derived from PR #1018 wall-failures but NOT applied in the rigor-improveme
 **Motivated by:** Implicit in PR #1018 — architect's contract covers what public surface changes; commits that change public surface without contract update should be blocked at commit time, not caught at integration.
 
 **Implementation:**
-- Pre-commit hook calls `python3 scripts/export-module-contracts.py --check` on staged files
+- Pre-commit hook calls `python3 ~/harness/stacks/ios/forgeos/export-module-contracts.py --check` on staged files
 - If public surface (any `public func`, `public class`, `public protocol`, `public extension`) changes in a tracked module's source dir and the changeset description / commit body doesn't reference the module's contract update → BLOCK
 
 **Effort:** ~3-4 hours. `export-module-contracts.py --check` already exists per CLAUDE.md "Multi-module orchestration"; the hook integration is new. Test against PR #1018 retroactively — should NOT block (the swarm did update PalaceAuth's surface and the contract).
@@ -54,7 +54,7 @@ Items derived from PR #1018 wall-failures but NOT applied in the rigor-improveme
 
 ### A3. Pre-commit critical-path mutation hook
 
-**Motivated by:** `.forgeos/wall-failures/2026-05-27-pr1018-qa1.md` (half-done test) — mutation would have caught it but mutation was deferred. The Definition-of-Done check is paste-evidence based; a hook that REQUIRES mutation evidence in the commit body for critical-path changes is the next layer.
+**Motivated by:** wall-failure `2026-05-27-pr1018-qa1` (half-done test) — mutation would have caught it but mutation was deferred. The Definition-of-Done check is paste-evidence based; a hook that REQUIRES mutation evidence in the commit body for critical-path changes is the next layer.
 
 **Implementation:**
 - Pre-commit hook: if `git diff --cached --name-only | grep -E "^Palace/(Audiobooks|SignInLogic|MyBooks/Download|Packages/PalaceAuth)"`, then require commit body to contain "mutation" + a kill rate
@@ -152,7 +152,7 @@ Per demo doc #11. The architect-post-review (A4 above) is the lighter version. C
 
 1. Pick from Tier A first (highest leverage, contained scope).
 2. For each item picked, create a ForgeOS changeset and link this doc.
-3. When applied, move the item out of this doc and add a row to `.forgeos/wall-failures/derived-improvements.md`.
+3. When applied, move the item out of this doc and add a row to the wall-failure catalog's `derived-improvements` list.
 4. Tier B/C items get re-evaluated quarterly — some will be obsolete by then (e.g., if Claude Code adds first-class skill versioning, C1 changes shape).
 
 This backlog is intentionally non-empty. The system should always have known improvements pending; the question is which leverage-per-hour ones to pick this cycle. If this doc ever shrinks to zero items, that means new wall-failure entries aren't being generated — which is either good (system is closing all gaps faster than they open) or bad (we stopped catching things). Re-evaluate.

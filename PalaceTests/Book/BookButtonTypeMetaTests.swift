@@ -1,21 +1,9 @@
-//
 //  BookButtonTypeMetaTests.swift
-//  PalaceTests
 //
-//  PP-4161 / F-011-shape regression net: every BookButtonType case must
-//  yield a non-empty localized title, a defined ButtonStyleType, and a
-//  defined `displaysIndicator` / `isDisabled` value. This META test
-//  is the structural guarantee that adding a new case forces the author
-//  to update every internal switch in BookButtonType.swift AND surface
-//  meaningful UI behavior for the new case.
-//
-//  If a future contributor adds `case .somethingNew` to BookButtonType
-//  but forgets the corresponding `case .somethingNew:` arm in one of the
-//  internal switches, the compiler catches it because all switches are
-//  exhaustive. But if they wire it up with an empty string or a default
-//  buttonStyle that accidentally makes the button invisible, THIS test
-//  catches it.
-//
+//  PP-4161: every BookButtonType case must produce a non-empty localized title, a
+//  ButtonStyleType, and `displaysIndicator` / `isDisabled` values. Exhaustive
+//  switches catch a missing arm at compile time; this test catches a new case
+//  wired up with an empty title or a style that hides the button.
 
 import XCTest
 @testable import Palace

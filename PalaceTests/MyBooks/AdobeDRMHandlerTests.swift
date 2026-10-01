@@ -1,20 +1,11 @@
 //
-//  AdobeDRMHandlerTests.swift
-//  PalaceTests
-//
-//  Critical-path coverage of AdobeDRMHandler — the bridge between
-//  NYPLADEPTDelegate (Adobe RMSDK) callbacks and Palace's download lifecycle.
-//  Per CLAUDE.md, DRM fulfilment is a critical path: every branch of the
-//  fulfilment-result handler must have a test, and every error path must be
-//  exercised. Tests use a spy delegate (so we never need a real NYPLADEPT)
-//  and a real FileManager scoped to a per-test temp directory.
+//  AdobeDRMHandler bridges NYPLADEPTDelegate callbacks to the download lifecycle;
+//  every branch and error path of the fulfilment-result handler is exercised with
+//  a spy delegate and a per-test temp directory. AdobeDRMHandler is behind
+//  `#if FEATURE_DRM_CONNECTOR`, reachable via `@testable import Palace` because
+//  the Palace module is built with that flag.
 //
 
-// Note: AdobeDRMHandler lives behind `#if FEATURE_DRM_CONNECTOR` in the Palace
-// target. PalaceTests does NOT define that flag, but `@testable import Palace`
-// pulls the symbol in via the compiled Palace swiftmodule (which IS built with
-// the flag), so tests can reference AdobeDRMHandler / AdobeDRMHandlerDelegate
-// directly without re-guarding here.
 import XCTest
 @testable import Palace
 import PalaceBookModel

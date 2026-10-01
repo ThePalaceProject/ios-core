@@ -2,16 +2,11 @@
 //  SignInWebSheetPresenter.swift
 //  The Palace Project
 //
-//  Replaces TPPCookiesWebViewController's UUID-keyed `automaticBrowserStorage`
-//  static dictionary and the `loadViewIfNeeded()`-then-self-present pattern
-//  that lived on the legacy controller.
-//
-//  Two entry points cover the three legacy call sites:
-//    - present(model:from:animated:completion:) — explicit presentation,
-//      mirrors LegacySAMLWebViewPresenter.presentSAMLWebView (TPPSAMLHelper).
-//    - presentOnTop(model:) — finds the topmost VC and presents the sheet,
-//      mirrors the legacy `autoPresentIfNeeded == true` flow used by
-//      MyBooksDownloadCenter and BookSignInRedirectHandler.
+//  Presents the sign-in web sheet. Two entry points:
+//    - present(model:from:animated:completion:) — explicit presentation
+//      (used by LegacySAMLWebViewPresenter).
+//    - presentOnTop(model:) — presents on the topmost VC (used by
+//      MyBooksDownloadCenter and BookSignInRedirectHandler).
 //
 
 import Foundation

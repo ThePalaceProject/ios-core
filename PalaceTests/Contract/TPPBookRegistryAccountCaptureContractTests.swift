@@ -2,32 +2,13 @@
 //  TPPBookRegistryAccountCaptureContractTests.swift
 //  PalaceTests
 //
-//  God-class decomposition Wave 2b — the PP-4129 cross-account-contamination
-//  pin. Every `TPPBookRegistry` mutation captures `accountsManager.currentAccount
-//  ?.uuid` SYNCHRONOUSLY at dispatch time and threads it through to the async
-//  save barrier, so a mutation queued on account A that commits after the user
-//  has switched to account B still persists to A's registry file. Without that
-//  capture, a library switch mid-flight retargets the save and produces the
-//  "books downloaded, but open to a 401 re-auth loop" symptom (PP-4129).
-//
-//  WHY THIS EXISTS FOR 2b: the eventual extraction inverts the concrete
-//  `AccountsManager` dependency behind an `AccountScopeProviding` seam. This
-//  suite is the net that proves the inversion is behavior-neutral — it must stay
-//  green with its assertions untouched after the account lookup routes through
-//  the new provider.
-//
-//  MECHANISM: a fixture `AccountsManager` seeded with two distinct-UUID accounts.
-//  We drive a mutation while account A is current, then FLIP `currentAccount` to
-//  B (via a second `_seedAccountForTesting`) BEFORE joining the async save
-//  barrier, and assert the bytes land in A's on-disk registry — never B's.
-//
-//  VERIFIED (against TPPBookRegistry.swift + BookmarkManager.swift at 77f6ded53):
-//  the async-gap families that capture at dispatch are addBook, setState, and the
-//  bookmark wrappers (all route the save through a `store` barrier `onComplete`,
-//  so the flip is genuinely interleaved). `saveSync()` captures AND persists
-//  SYNCHRONOUSLY (a blocking `diskWriteQueue.sync`) — there is no dispatch/execute
-//  gap to interleave a flip into — so its case pins that it targets the
-//  synchronously-current account rather than a post-hoc flip.
+//  Pins PP-4129: every `TPPBookRegistry` mutation captures the current account uuid
+//  at dispatch time, so a save that commits after a switch to account B still lands
+//  in A's registry file. Without it, a mid-flight library switch retargets the save
+//  ("books downloaded, but open to a 401 re-auth loop").
+//  Drives a mutation on A, flips `currentAccount` to B before the save barrier
+//  joins, and asserts A's file. `saveSync()` persists synchronously, so its case
+//  pins the synchronously-current account instead.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

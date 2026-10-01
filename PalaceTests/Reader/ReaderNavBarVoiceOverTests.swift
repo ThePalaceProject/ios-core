@@ -1,32 +1,12 @@
-//
 //  ReaderNavBarVoiceOverTests.swift
-//  PalaceTests
 //
-//  PP-4326 follow-up (3.0.2 hotfix). Product requirement:
-//
-//  > When a user opens a book with VoiceOver already running, the reader
-//  > navbar (back / TOC / bookmark / settings) must auto-present so the
-//  > user can navigate the reader without first having to tap the screen
-//  > to surface a hidden toolbar.
-//
-//  Background. `TPPBaseReaderViewController.updateNavigationBar()` does
-//  the right thing — `let hidden = navigationBarHidden &&
-//  !UIAccessibility.isVoiceOverRunning` keeps the navbar visible when VO
-//  is running. But the equivalent call at viewDidLoad time (via
-//  `setupView` → `updateViewsForVoiceOver(isRunning:)`) is too early: the
-//  view controller hasn't yet been integrated into the navigation stack,
-//  so `navigationController?.setNavigationBarHidden(false, animated:)`
-//  has no effect. By the time `viewDidAppear` fires, the integration is
-//  done — re-applying `updateNavigationBar` there ensures VoiceOver-on
-//  entry to a book lands with the navbar visible.
-//
-//  Reader2's underlying `UIViewController` plumbing is not testable in
-//  unit tests without instantiating Readium publications, so this test
-//  is a source-level sentinel (same pattern as PP-3980's test in
+//  PP-4326 (3.0.2): opening a book with VoiceOver running must show the reader
+//  navbar without a tap. `updateNavigationBar()` keeps the bar visible under VO,
+//  but its viewDidLoad-time call runs before the controller is in the navigation
+//  stack, so `setNavigationBarHidden(false,...)` has no effect; it is re-applied
+//  in `viewDidAppear`. Reader2's controller cannot be built without a Readium
+//  publication, so this is a source-level sentinel (same pattern as PP-3980 in
 //  CatalogLaneRowViewAccessibilityTests).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
 
 import XCTest
 @testable import Palace

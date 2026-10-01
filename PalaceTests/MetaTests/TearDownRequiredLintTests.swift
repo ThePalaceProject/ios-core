@@ -2,62 +2,14 @@
 //  TearDownRequiredLintTests.swift
 //  PalaceTests
 //
-//  Lint enforcement for swarm_47883816 work package E:
-//  test classes that touch process-wide polluter state MUST declare a
-//  `tearDown` override (or inherit from a `*TestCase` base class whose
-//  tearDown handles the cleanup).
-//
-//  Failure mode this lint closes
-//  =============================
-//  A test class that calls `.shared` singletons, constructs
-//  `AccountsManager()`, reads `AppContainer.production()`, registers
-//  observers on `NotificationCenter.default`, or writes to
-//  `UserDefaults.standard` MUST have a tearDown that drops the
-//  acquisition. Without a tearDown, the next test in the bundle
-//  inherits the polluted state — the F-008 regression class
-//  (2026-05-14) and the swarm_4b64e4e0 Wave 1c motivation.
-//
-//  How the rule works
-//  ==================
-//  Files relevant to the lint:
-//
-//    - Must be a Swift file under `PalaceTests/`
-//    - Must declare a class extending `XCTestCase` (direct extension).
-//      Classes extending a `*TestCase` base (e.g. `PalaceWiringTestCase`)
-//      are EXEMPT — the base handles tearDown by inheritance.
-//    - Must contain at least one polluter substring:
-//        `.shared`                              (singleton access)
-//        `AccountsManager(`                     (constructor)
-//        `AppContainer.production()`            (production graph read)
-//        `NotificationCenter.default.addObserver`
-//        `UserDefaults.standard.set`
-//
-//  Compliance requires ONE of:
-//
-//    - `override func tearDown()`
-//    - `override func tearDownWithError()`
-//    - `override func tearDown() async throws`
-//
-//  Exception: the BASELINE file
-//  (`PalaceTests/MetaTests/Baselines/E-teardown-baseline.txt`) lists
-//  37 current XCTestCase-derived files that touch polluters without
-//  tearDown. The lint exempts these explicitly so the suite stays
-//  green at landing time. The list can only SHRINK:
-//   - Files that gain a tearDown drop off the list (the lint stays
-//     green for them whether they're listed or not).
-//   - Files added to PalaceTests/ that fit the trigger but aren't on
-//     the list trigger a lint failure (the structural protection).
-//
-//  Why a Swift XCTest rather than a shell grep gate
-//  ================================================
-//  Hook-based shell scripts have two failure modes the harness has
-//  seen before:
-//   - They no-op gracefully on missing dependencies (forge-os scripts).
-//   - They're easy to bypass via `--no-verify`.
-//  An XCTest that runs in the same xctest process as the suite itself
-//  cannot be bypassed by a hook flag; if the test runs, the rule runs.
-//
-//  swarm_47883816 work package E.
+//  A direct `XCTestCase` subclass whose file touches process-wide state (`.shared`,
+//  `AccountsManager(`, `AppContainer.production()`,
+//  `NotificationCenter.default.addObserver`, `UserDefaults.standard.set`) must
+//  override `tearDown`/`tearDownWithError`, or the next test inherits the state
+//  (the F-008 class). `*TestCase` subclasses inherit teardown and are exempt.
+//  Existing violators are listed in `MetaTests/Baselines/E-teardown-baseline.txt`;
+//  the list can only shrink. An XCTest rather than a shell hook, so it runs
+//  wherever the suite runs.
 //
 
 import Foundation
@@ -78,10 +30,8 @@ final class TearDownRequiredLintTests: XCTestCase {
 
   /// Where this lint's own baseline lives. It sits beside the lint, inside
   /// `PalaceTests/`, because it is a gate INPUT: without it the baseline is
-  /// empty and every pre-existing violation reports as new. It used to live
-  /// under `.forgeos/swarms/<id>/`, which is written at run time and
-  /// gitignored, so archiving that directory silently emptied this baseline
-  /// and reddened every branch cut afterwards.
+  /// empty and every pre-existing violation reports as new. It must be
+  /// tracked in git, not in a gitignored directory.
   /// Repo root — one level above `PalaceTests/`. Still used to express findings
   /// as repo-relative paths; it is no longer where the baseline lives.
   private static let repoRoot: URL = {

@@ -95,11 +95,10 @@ struct AppTabHostView: View {
             topLevelURLProvider: { appContainer.settings.accountMainFeedURL },
             bookRegistry: appContainer.bookRegistry,
             imageCache: appContainer.imageCache,
-            // Module D (swarm_495a88d9 / PP-2679): the "Side Loaded" catalog lane.
-            // The flag gate lives HERE (not in the VM) — the provider returns []
-            // when side-loading is off, so the VM never sees the flag and the lane
-            // simply doesn't appear. Read lazily so registry/flag changes take
-            // effect on the next catalog conversion.
+            // PP-2679: the "Side Loaded" catalog lane. The flag gate lives here,
+            // not in the VM — the provider returns [] when side-loading is off.
+            // Read lazily so registry/flag changes take effect on the next
+            // catalog conversion.
             sideloadedLaneBooksProvider: {
                 appContainer.featureFlags.isSideLoadingEnabled
                     ? appContainer.sideloadedBookRegistry.allBooks
@@ -520,7 +519,6 @@ private struct TabViewChrome: ViewModifier {
             .onAppear {
                 host.updateHoldsBadge()
             }
-            // Migrated off `.TPPBookRegistryStateDidChange` (swarm_8ce6f5ae WS3).
             // The badge is lifecycle-driven: a background sync flipping a hold
             // reserved→ready changes NO book state (stays `.holding`), so it must
             // watch `registryStatePublisher`. It also watches `bookStatePublisher`
@@ -570,9 +568,7 @@ private struct TabBarMinimizeModifier: ViewModifier {
 }
 
 extension AppTabHostView {
-    /// Pure helpers extracted for unit testability — these were previously
-    /// inline closures inside `updateHoldsBadge()` that could not be exercised
-    /// by tests, leaving mutations like `+= 1` → `-= 1` undetected.
+    /// Pure helpers behind `updateHoldsBadge()`, extracted so they are unit-testable.
     nonisolated static func computeReadyCount(books: [TPPBook]) -> Int {
         var count = 0
         for book in books {

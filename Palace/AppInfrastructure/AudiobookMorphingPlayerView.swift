@@ -1,28 +1,12 @@
 //
-//  AudiobookMorphingPlayerView.swift
-//  Palace
+//  One audiobook player view that reflows between full-screen and a compact
+//  mini bar, Apple Music style. The cover's `matchedGeometryEffect` moves it
+//  between the two positions as the same element instead of crossfading.
 //
-//  A CUSTOM audiobook player that is ONE view reflowing between a full-screen
-//  layout and a compact mini bar — Apple-Music style — rather than crossfading
-//  two separate views. The cover art carries a `matchedGeometryEffect`, so on
-//  expand/minimize it shrinks and slides between the two positions as the SAME
-//  element (no crossfade), which is what makes it read as one view being pulled
-//  down into a smaller one.
-//
-//  Why custom (not the toolkit `AudiobookPlayerView`): the toolkit view owns a
-//  fixed full-screen layout we can't reflow, so morphing it into a mini bar is
-//  impossible — any "resize" ends up crossfading it with a separate bar, which
-//  reads as two views. This view is fully ours, driven off the presenter's
-//  published state + the `AudiobookSessionManaging` actions, so it can genuinely
-//  morph. The toolkit view is kept mounted-but-hidden elsewhere
-//  (`AppTabHostView`) purely to preserve playback wiring.
-//
-//  Scope: cover, title/author, chapter label, a chapter-scoped seek slider
-//  (bound to the presenter's `chapterProgress`, driving `AudiobookSessionManaging.
-//  seek(to:)`), 30s skips, play/pause, a playback-rate chip, a sleep-timer chip,
-//  a bookmark button, and a small Stop. These all route through the
-//  `AudiobookSessionManaging` surface — seek, sleep timer, and bookmarks are
-//  implemented here, no longer deferred.
+//  Custom rather than the toolkit `AudiobookPlayerView`, whose fixed layout
+//  cannot reflow. Driven by the presenter's published state and the
+//  `AudiobookSessionManaging` actions; the toolkit view stays mounted but
+//  hidden in `AppTabHostView` to preserve playback wiring.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -859,7 +843,7 @@ struct AudiobookMorphingPlayerView: View {
 
     /// The four mutually-exclusive presentations of the loading overlay. Pulled
     /// out of `loadingOverlay`'s inline branching so the decision is a pure,
-    /// mutation-testable function (`loadingOverlayState`) instead of a tangle of
+    /// unit-testable function (`loadingOverlayState`) instead of a tangle of
     /// view-side `if`s — matching the `nonisolated static` predicate pattern used
     /// across the audiobook session code.
     enum LoadingOverlayState: Equatable, CaseIterable {
@@ -1148,13 +1132,9 @@ struct AudiobookMorphingPlayerView: View {
 
     /// What reaching `state` must do to the load-error timer and its latch.
     ///
-    /// One TOTAL function rather than two predicates consulted in sequence. The
-    /// sequence version had a real hole: a reviewer pointed out that deleting the
-    /// latch-clearing line left every test green, because each predicate was asserted
-    /// in isolation and nothing asserted how they COMBINE. A `switch` over this makes
-    /// the combination exhaustive at compile time, and a sixth state a build error
-    /// rather than a silently-inherited default — which is trap 12's shape appearing
-    /// inside trap 12's own fix.
+    /// One total function rather than two predicates consulted in sequence, so
+    /// how timer and latch combine is exhaustive at compile time and a new
+    /// overlay state is a build error rather than an inherited default.
     enum LoadTimeoutAction: Equatable { case arm, cancel, cancelAndClearLatch }
 
     nonisolated static func loadTimeoutAction(for state: LoadingOverlayState) -> LoadTimeoutAction {

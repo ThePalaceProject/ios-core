@@ -2,18 +2,10 @@
 //  RegistryFileRecovery.swift
 //  Palace
 //
-//  Reliability initiative — Workstream B (Registry Resilience).
-//
-//  Pure classification + on-disk quarantine/backup helpers for the book
-//  registry file. Extracted so the corrupt/empty/valid decision is a
-//  side-effect-free function that can be unit- and mutation-tested without
-//  standing up the full `BookRegistrySync` disk pipeline.
-//
-//  The shelf (`TPPBookRegistry`) is the source of truth for a patron's books.
-//  A single truncated write or OS-level corruption of `registry.json` must
-//  NEVER cause the shelf to be silently zeroed and then overwritten with an
-//  empty-but-valid file. This helper encodes the "never destroy, always
-//  quarantine, prefer last-good backup" policy behind INV-1.
+//  Classification and quarantine/backup helpers for `registry.json`.
+//  A truncated write or corrupt file must never zero the shelf and then be
+//  overwritten with an empty-but-valid file: never destroy, always
+//  quarantine, prefer the last-good backup (INV-1).
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //

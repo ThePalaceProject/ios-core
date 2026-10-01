@@ -2,44 +2,13 @@
 //  AccountsManagerAuthDocContractTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE CHARACTERIZATION PACK — god-class decomposition (Wave 3a,
-//  `Palace/Accounts/Library/AccountsManager.swift`).
-//  See docs/architecture/god-class-decomposition-plan.md §3a-2 (cluster
-//  "Auth-document fetch with state-machine wiring", 1605–1786) and §5 row
-//  "AccountsManager" ("auth-doc fetch → AccountStateStore transition contract").
-//
-//  WHAT THIS PINS
-//  ==============
-//  The ORDERED sequence of `Account.LoadState` transitions that
-//  `AccountsManager.fetchAuthDocumentWithStateMachine(for:completion:)` writes
-//  into `AccountStateStore.shared` for a fetch that FAILS. This is the
-//  `AuthDocumentLoader` extraction boundary: after the class is split, the new
-//  loader must drive the SAME ordered transitions (`.detailsLoading` before the
-//  fetch, `.detailsFailed(.authDocumentFetchFailed)` on failure) or a consumer's
-//  `awaitReady()` gate silently regresses. Existing
-//  `AccountsManagerStateMachineWiringTests` asserts the presence of those two
-//  transitions via loose stream membership; THIS test locks the exact ORDERED
-//  call sequence as a contract (the CallLog primitive from PalaceTests/Contract),
-//  so a reorder / dropped-transition drift fails loudly.
-//
-//  WHY CallLog-sequence instead of the file-based `ContractSnapshot.assert`:
-//  the file snapshot's first run RECORDS a baseline and deliberately FAILS
-//  ("re-run to verify"). This pack is authored WITHOUT a local DRM build (CI is
-//  the gate per CLAUDE.md), so a byte-exact Foundation-pretty-printed baseline
-//  cannot be generated + verified here, and shipping a guaranteed-red first run
-//  violates the green-board contract. The CallLog `[CallRecord]` equality below
-//  gives the identical ordered-call-sequence guarantee, is deterministic, and is
-//  green on first CI run. A maintainer who wants the on-disk snapshot form can
-//  swap the final `XCTAssertEqual` for `ContractSnapshot.assert(log, named:)` and
-//  record once with `CONTRACT_SNAPSHOT_RECORD=1`.
-//
-//  DETERMINISM: no sleeps. A fresh, unique-UUID account starts at `.notLoaded`;
-//  a publication with no `authentication_document` link makes
-//  `Account.loadAuthenticationDocument` fire `completion(false)` SYNCHRONOUSLY,
-//  so the two transitions land inline. The stream sink is gated on
-//  subscription-attached before the drive so the `CurrentValueSubject`-backed
-//  stream cannot replay-collapse the intermediate `.detailsLoading` (the same
-//  gating `AccountsManagerStateMachineWiringTests` Test 3 uses).
+//  Pins the ORDERED `Account.LoadState` transitions that
+//  `fetchAuthDocumentWithStateMachine(for:completion:)` writes for a FAILED fetch:
+//  `.detailsLoading`, then `.detailsFailed(.authDocumentFetchFailed)`. A consumer's
+//  `awaitReady()` gate depends on that order, so the `AuthDocumentLoader` extraction
+//  must keep it (docs/architecture/god-class-decomposition-plan.md §3a-2).
+//  Uses CallLog equality rather than a file snapshot so the first run is green.
+//  Deterministic: a publication with no auth-document link completes synchronously.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -56,7 +25,7 @@ final class AccountsManagerAuthDocContractTests: PalaceWiringTestCase {
     /// Contract (AuthDocumentLoader boundary): a failing auth-doc fetch drives
     /// exactly `.notLoaded → .detailsLoading → .detailsFailed(.authDocumentFetchFailed)`.
     ///
-    /// Kill cases this pins:
+    /// Regressions caught this pins:
     ///  - Removing the entry `account._setState(.detailsLoading)` drops the middle
     ///    record → sequence mismatch.
     ///  - Inverting the success/failure branch (writing `.detailsLoaded` on

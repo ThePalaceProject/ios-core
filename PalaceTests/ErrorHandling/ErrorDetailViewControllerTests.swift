@@ -19,8 +19,8 @@ final class ErrorDetailViewControllerTests: XCTestCase {
     /// `formattedReport()` produces the support-email body. Lock the
     /// header skeleton (Error / Device / Activity Trail sections), the
     /// pass-through of the supplied title and message, AND the section
-    /// ordering in one body. A mutant that drops a section header or
-    /// reorders sections fails on a single test.
+    /// ordering in one body. A dropped section header or reordered sections
+    /// fail on a single test.
     func testErrorDetail_FormattedReport_includesAllSectionsAndPassesThroughTitleAndMessage() {
         let detail = makeErrorDetail(title: "Test Error", message: "A detailed message")
         let report = detail.formattedReport()
@@ -73,12 +73,8 @@ final class ErrorDetailViewControllerTests: XCTestCase {
     }
 
     /// The Book section must appear iff the detail carries book info.
-    /// Lock both branches in one test to guard against an "always-show" or
-    /// "always-hide" mutant on the conditional rendering. The corresponding
-    /// "WithBookInfo" test above already pins the present-section content;
-    /// this one pins the absent-section side AND verifies the report still
-    /// renders the other sections (so a mutant that crashes when book info
-    /// is missing fails too).
+    /// "WithBookInfo" above pins the present side; this pins the absent side
+    /// AND verifies the report still renders the other sections.
     func testErrorDetail_FormattedReport_omitsBookSectionWhenNoBookInfoButRendersRestOfReport() {
         let report = makeErrorDetail().formattedReport()
 
@@ -87,7 +83,7 @@ final class ErrorDetailViewControllerTests: XCTestCase {
         XCTAssertFalse(report.contains("Book Title:"),
                        "Book Title field must NOT appear when no book info is supplied")
         // The rest of the report still renders — guards against an
-        // early-return mutant in the rendering pipeline.
+        // early return in the rendering pipeline.
         XCTAssertTrue(report.contains("── Error ──"),
                       "Other sections must still render when book info is absent")
         XCTAssertTrue(report.contains("── Device ──"))
@@ -124,10 +120,8 @@ final class ErrorDetailViewControllerTests: XCTestCase {
     // MARK: - ErrorDetailViewController Initialization Tests
 
     /// Initialization wires the navigation title and the formatted report
-    /// into the text view. The previous test only checked the title, but
-    /// the title without a populated text view is meaningless to the user.
-    /// Lock both at once so a mutant that bypasses the text-view rendering
-    /// fails alongside one that swaps the title.
+    /// into the text view — the title without a populated text view is
+    /// meaningless to the user.
     func testErrorDetailViewController_Init_setsTitleAndPopulatesTextView() {
         let detail = makeErrorDetail(title: "Specific Error", message: "Inline copy")
         let vc = ErrorDetailViewController(errorDetail: detail)

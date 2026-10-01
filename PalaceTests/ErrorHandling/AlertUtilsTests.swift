@@ -28,8 +28,8 @@ final class AlertUtilsTests: XCTestCase {
 
     /// Title-fallback contract: both nil AND empty-string titles must fall
     /// back to the canonical "Alert" label, and a non-empty supplied title
-    /// must pass through. Pinning all three input shapes in one body so a
-    /// mutant that only handles nil (not empty) — or vice versa — fails.
+    /// must pass through. Pinning all three input shapes in one body so
+    /// handling only nil (not empty) — or vice versa — fails.
     func testAlert_titleFallback_handlesNilEmptyAndPassThrough() {
         XCTAssertEqual(
             TPPAlertUtils.alert(title: nil, message: "Message").title,
@@ -47,7 +47,7 @@ final class AlertUtilsTests: XCTestCase {
 
     /// Message-fallback contract: nil message yields empty-string (not nil
     /// and not the title). Asserts both the message AND that the title was
-    /// not mutated, so a mutant that copies title into message fails.
+    /// not mutated, so copying title into message fails.
     func testAlert_nilMessage_yieldsEmptyStringWithoutAffectingTitle() {
         let alert = TPPAlertUtils.alert(title: "Title", message: nil)
         XCTAssertEqual(alert.message, "", "nil message must produce empty string")
@@ -66,8 +66,8 @@ final class AlertUtilsTests: XCTestCase {
 
     /// NSURLError-domain handling: every well-known URL error code must
     /// produce a non-empty user-facing message (never crash, never blank).
-    /// Table-driven so a mutant that always-returns nil/"" on the URL error
-    /// branch fails on the first iteration.
+    /// Table-driven so always returning nil/"" on the URL error branch fails
+    /// on the first iteration.
     func testAlert_nsurlErrors_alwaysProduceNonEmptyMessage() {
         let codes: [(code: Int, label: String)] = [
             (NSURLErrorNotConnectedToInternet, "NotConnectedToInternet"),
@@ -89,8 +89,8 @@ final class AlertUtilsTests: XCTestCase {
     /// Specific NSLocalizedString keys must surface in the message for the
     /// codes the production code special-cases. UnsupportedURL and any
     /// non-special code (CannotFindHost) hit distinct branches in
-    /// `messageForError`. Lock both keys at once so a mutant that swaps them
-    /// fails here.
+    /// `messageForError`. Lock both keys at once so swapping them fails
+    /// here.
     func testAlert_nsurlErrors_keyedMessages_areDistinguishable() {
         let unsupported = TPPAlertUtils.alert(
             title: "Error",
@@ -212,8 +212,8 @@ final class AlertUtilsTests: XCTestCase {
 
     /// Replacing with a partial document (title-only or detail-only) must
     /// substitute only the field that is present. Lock both partial-input
-    /// shapes so a mutant that always-overrides both fields fails on the
-    /// preserved-side assertion.
+    /// shapes so always overriding both fields fails on the preserved-side
+    /// assertion.
     func testSetProblemDocument_partialDocumentReplacesOnlyPresentFields() {
         // Title-only document: title swaps; message ends up nil/empty (the
         // detail field was nil).

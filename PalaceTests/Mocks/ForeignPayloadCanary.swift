@@ -1,47 +1,10 @@
 //
-//  ForeignPayloadCanary.swift
-//  PalaceTests
-//
-//  A value we do not own, for proving that code which reports to an external
-//  sink does not report things that are not ours.
-//
-//  ## The failure this exists to make impossible
-//
-//  Palace reports diagnostics to Crashlytics. Some of the data it reasons about
-//  arrives from outside — an MDM's managed-configuration dictionary is the first
-//  example, and it will not be the last. Those payloads belong to the
-//  organisation that sent them. They may carry unrelated settings today and
-//  sensitive ones tomorrow, and none of it is ours to forward.
-//
-//  The natural test for this is to assert the report does not contain anything
-//  sensitive, and the natural way to write that assertion is a list of words:
-//  "password", "token", "barcode". Such a test was written for exactly this
-//  code, it passed, and the code was forwarding the entire foreign payload
-//  anyway. It passed because every fixture in the suite contained only keys we
-//  own, so no forbidden word was ever in the input to begin with. The assertion
-//  was true and vacuous at the same time.
-//
-//  Two lessons in that, and the canary answers both:
-//
-//  A list of things you thought of is a list of things you thought of. It can
-//  only catch leaks of values you predicted, and a leak you predicted is one
-//  you probably already prevented. What you want to assert is a property —
-//  "nothing that isn't ours" — and a property needs a witness in the input.
-//
-//  A guard is only evidence if the input could have tripped it. Put this value
-//  into the payload under test and the assertion stops being about vocabulary
-//  and starts being about provenance.
-//
-//  ## Using it
-//
-//      var payload = someManagedConfiguration
-//      ForeignPayloadCanary.inject(into: &payload)
-//
-//      // ... drive the code that reports ...
-//
-//      ForeignPayloadCanary.assertAbsent(from: reportedText)
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  A value we do not own, for proving that code reporting to Crashlytics does not
+//  forward foreign payloads (e.g. MDM managed configuration). A word-list
+//  assertion ("password", "token") passes vacuously when fixtures hold only our
+//  own keys; injecting this canary makes the check about provenance instead.
+//  Usage: `ForeignPayloadCanary.inject(into: &payload)`, drive the reporting code,
+//  then `ForeignPayloadCanary.assertAbsent(from: reportedText)`.
 //
 
 import XCTest

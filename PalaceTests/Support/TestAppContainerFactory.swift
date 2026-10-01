@@ -3,38 +3,12 @@
 //  PalaceTests
 //
 //  Test-only factory that builds a fresh `AppContainer` per call WITHOUT
-//  mutating `AppContainer._cached`. Replaces ~14 high-concentration
-//  `AppContainer.production()` test-body call sites that were silently
-//  carrying state across tests through the production singleton graph.
-//
-//  Failure mode this seam closes
-//  =============================
-//  Before this factory existed, the canonical pattern for "I just need an
-//  AccountsManager / downloadCenter for this test" was:
-//
-//      let vm = MyBooksViewModel(
-//          accountsManager: AppContainer.production().accountsManager,
-//          downloadCenter: AppContainer.production().downloadCenter,
-//          …
-//      )
-//
-//  Every call here reached into the process-wide cached AppContainer. Any
-//  mutation a test made to the returned manager (sign-in, register an
-//  account, write to UserDefaults via TPPSettings) survived into the next
-//  test because the SAME manager + downloadCenter persisted across the
-//  suite. The post-test observer's `_resetForTesting()` rebuild eventually
-//  rebuilt the graph, but only AFTER the test completed — pollution within
-//  a single test method (cross-test method, intra-class) was not closed.
-//
-//  This factory builds a hand-threaded graph identical in shape to
-//  `AppContainer._buildCachedAppContainer()` (the production builder) but
-//  isolated per test method. It deliberately mirrors that builder's
-//  ordering invariants (build accountsManager BEFORE bookRegistry; build
-//  authCoordinator BEFORE downloadCenter; etc.) so the value graph this
-//  factory returns is byte-equivalent in topology to production. Identity
-//  is the only difference — every reference is fresh.
-//
-//  Test-target-only. swarm_47883816 work package A.
+//  touching `AppContainer._cached`, so state a test writes through its
+//  managers (sign-in, accounts, TPPSettings defaults) cannot reach the next
+//  test via the shared production graph. Mirrors the ordering invariants of
+//  `AppContainer._buildCachedAppContainer()` (accountsManager BEFORE
+//  bookRegistry, authCoordinator BEFORE downloadCenter, …) so the topology
+//  matches production; only identity differs. Test-target-only.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

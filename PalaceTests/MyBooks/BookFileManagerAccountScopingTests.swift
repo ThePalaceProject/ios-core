@@ -2,49 +2,11 @@
 //  BookFileManagerAccountScopingTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE CHARACTERIZATION PACK — god-class decomposition Wave 3, the
-//  mutually-coupled hub pair Accounts ↔ Downloads
-//  (docs/architecture/god-class-decomposition-plan.md §3a-2/§3a-3, §4 Wave 3).
-//
-//  WHAT THIS PINS
-//  ==============
-//  The Downloads→Accounts READ edge for per-account download-file isolation.
-//  `BookFileManager` (extracted from MyBooksDownloadCenter; owns the on-disk
-//  geometry for downloaded books) resolves a book's file URL under the CURRENT
-//  library by reading `accountsManager.currentAccountId`:
-//
-//      func fileUrl(for identifier: String) -> URL? {
-//          fileUrl(for: identifier, account: accountsManager.currentAccountId)  // BookFileManager.swift:67
-//      }
-//
-//  Wave 3 moves `BookFileManager` into **PalaceDownloads**, which must NOT know
-//  `AccountsManager` (the whole point of the hub split). The dependency has to
-//  invert to an injected account-scope provider (`AccountScopeProviding`
-//  `currentAccountID`, per §3b-1 / §2.3) rather than the concrete
-//  `AccountsManager`. These tests pin the CURRENT behavior the inversion must
-//  reproduce byte-for-byte:
-//
-//    1. The resolved download-file directory FOLLOWS the current account — flip
-//       `currentAccountId` A→B and the same book resolves to a different
-//       per-account directory. (Two accounts never co-mingle their downloads.)
-//    2. The sideloaded-content ISOLATION EXCEPTION: a `sideload-`-prefixed id
-//       whose identifier is in the sideloaded set resolves under the FIXED
-//       `SideloadedBookRegistry.sideloadContentAccountID`, IGNORING the current
-//       account — so a library switch cannot orphan a sideloaded book's file
-//       (BookFileManager.swift:92–96, sideloading-plan.md R6).
-//
-//  Existing `BookFileManagerTests` only exercises the EXPLICIT-account overloads
-//  (`fileUrl(for:account:)`) — it never drives the `currentAccountId`-reading
-//  convenience nor the sideload override. Those two coupling seams are the
-//  genuinely-unpinned surface this file adds; there is no overlap.
-//
-//  DETERMINISM / ISOLATION: `currentAccountId` is controlled purely through an
-//  isolated `UserDefaults` suite seeded at `currentAccountIdentifierKey` (the
-//  same key the setter writes) — NO heavy `currentAccount` setter is driven, so
-//  no static singletons (`ImageCache.shared`, network executor) are touched. A
-//  `directoryProvider` closure maps account → a temp URL that embeds the account
-//  string, so the account the path resolved under is directly observable without
-//  a real Application Support directory. No network, no keychain, no sleeps.
+//  Pins how `BookFileManager` scopes download files per account: the
+//  `fileUrl(for:)` convenience follows `currentAccountId` (two libraries never
+//  share a download path), and a registered `sideload-` id always resolves under
+//  `SideloadedBookRegistry.sideloadContentAccountID` so a library switch cannot
+//  orphan it. See docs/architecture/god-class-decomposition-plan.md §3a.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -116,12 +78,8 @@ final class BookFileManagerAccountScopingTests: PalaceWiringTestCase {
 
     // MARK: - 1. File path follows the CURRENT account
 
-    /// The `fileUrl(for:)` convenience resolves under `currentAccountId`. Pins the
-    /// Downloads→Accounts read that Wave 3 inverts to an injected scope provider.
-    ///
-    /// Kill case: a mutant that hard-codes the account or reads a fixed string
-    /// instead of `accountsManager.currentAccountId` would resolve under the
-    /// wrong (or a constant) directory.
+    /// The `fileUrl(for:)` convenience resolves under `currentAccountId`; a
+    /// hard-coded or constant account would resolve under the wrong directory.
     func testFileUrlConvenience_resolvesUnderCurrentAccount() throws {
         let book = TPPBookMocker.mockBook(identifier: "scope-current-1", title: "Title scope-current-1")
         registry.addBook(book, state: .downloadSuccessful)
@@ -135,10 +93,7 @@ final class BookFileManagerAccountScopingTests: PalaceWiringTestCase {
 
     /// Switching the current library (A → B) re-points the SAME book's download
     /// file to B's per-account directory. Two libraries never share a download
-    /// path. Pins the per-account isolation the extraction must preserve.
-    ///
-    /// Kill case: a mutant that captures the account once (or ignores
-    /// currentAccountId) would keep resolving under A after the switch.
+    /// path. Capturing the account once would keep resolving under A.
     func testFileUrlConvenience_followsAccountSwitch_AtoB() throws {
         let book = TPPBookMocker.mockBook(identifier: "scope-switch-1", title: "Title scope-switch-1")
         registry.addBook(book, state: .downloadSuccessful)
@@ -207,7 +162,7 @@ final class BookFileManagerAccountScopingTests: PalaceWiringTestCase {
     /// Negative boundary: a `sideload-`-prefixed id that is NOT in the
     /// sideloaded set must fall through to normal per-account scoping (the
     /// membership check is defense-in-depth, BookFileManager.swift:92–93).
-    /// Guards against a mutant that pins on the prefix alone.
+    /// Guards against scoping on the prefix alone.
     func testPrefixedButUnregistered_fallsBackToCurrentAccount() throws {
         let notReallySideloaded = "sideload-not-registered-\(UUID().uuidString)"
         let book = TPPBookMocker.mockBook(identifier: notReallySideloaded, title: "Title \(notReallySideloaded)")

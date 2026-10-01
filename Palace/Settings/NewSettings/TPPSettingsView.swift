@@ -44,27 +44,13 @@ struct TPPSettingsView: View {
     /// is most useful to support with full context; a privacy-conscious patron
     /// can turn it off to send only app + device version.
     @AppStorage(UserDefaultsDiagnosticsPreference.defaultsKey) private var includeTriageDiagnostics: Bool = true
-    /// Feature-flag read seam (Wave 1b), resolved from the environment.
+    /// Feature-flag read seam, resolved from the environment.
     @Environment(\.appContainer) private var appContainer
     @State private var selectedView: Int? = 0
 
-    /// PP-5098 removed the iPad two-column shape this screen used to build for
-    /// itself.
-    ///
-    /// It was a `NavigationView(.columns)` gated on `UIDevice.current
-    /// .orientation`, whose detail column started empty *because the library
-    /// list was inline in the master column* (PP-917). That reason is gone with
-    /// the list, and the shape it left behind was a 2021 fossil: `AppTabHostView`
-    /// already wraps this view in `NavigationHostView`, a `NavigationStack`, so
-    /// iPad landscape was nesting a deprecated `NavigationView` inside a
-    /// navigation stack — and only in landscape, because the gate was already
-    /// false in portrait. Deleting it removes a shape that flipped on rotation
-    /// rather than introducing a new one, and takes the unreliable
-    /// `UIDevice.current.orientation` read with it. Settings → Libraries →
-    /// Library Details is now one push chain on every idiom.
-    ///
-    /// Deliberately NOT replaced with `horizontalSizeClass` — that would be
-    /// building the split view this change declined.
+    /// One push chain (Settings → Libraries → Library Details) on every idiom.
+    /// `AppTabHostView` already wraps this view in a `NavigationStack`, so there
+    /// is no iPad split view here (PP-5098).
     var body: some View {
         listView
     }

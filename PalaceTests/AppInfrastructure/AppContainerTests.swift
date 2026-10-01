@@ -76,7 +76,7 @@ final class AppContainerTests: XCTestCase {
         )
     }
 
-    /// Wave 1b: the featureFlags seam must hand back the injected instance and
+    /// The featureFlags seam must hand back the injected instance and
     /// PROPAGATE it through the with*-modifier copies (a copy that rebinds to
     /// RemoteFeatureFlags.shared would silently un-inject every downstream test).
     @MainActor

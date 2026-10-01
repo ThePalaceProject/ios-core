@@ -1,26 +1,10 @@
-//
 //  TestAppContainerFactoryTests.swift
-//  PalaceTests
 //
-//  Behavioural contract tests for `makeTestAppContainer()` — the test-only
-//  factory introduced by swarm_47883816 work package A. The factory MUST:
-//
-//   1. Return a fresh AppContainer per call (NOT cached) — distinct
-//      `accountsManager` references across consecutive calls.
-//   2. Leave the production `AppContainer._cached` graph untouched, so a
-//      test that drives the factory does not poison a subsequent test
-//      that reads `AppContainer.production()`.
-//   3. Set `AccountsManager.deferInitialLoadCatalogsForTesting = true`
-//      BEFORE constructing AccountsManager so the factory-minted manager
-//      does not spawn the background `loadCatalogs` Task that polluted
-//      cross-test state in swarm_4b64e4e0.
-//   4. Accept explicit `accountsManager` / `bookRegistry` overrides so
-//      wiring-case subclasses can hand in pre-configured collaborators.
-//
-//  Test-target-only. swarm_47883816 work package A.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Contract for the test-only `makeTestAppContainer()`: each call returns a new
+//  container (distinct `accountsManager`); `AppContainer._cached` is untouched;
+//  `deferInitialLoadCatalogsForTesting` is set before AccountsManager is built,
+//  so no background `loadCatalogs` leaks across tests; explicit
+//  `accountsManager` / `bookRegistry` overrides are honored.
 
 import XCTest
 @testable import Palace
@@ -83,7 +67,7 @@ final class TestAppContainerFactoryTests: PalaceTestCase {
   /// `AccountsManager.deferInitialLoadCatalogsForTesting = true` is the gate
   /// that prevents the background `loadCatalogs` Task from spawning at init.
   /// Without this gate the factory-minted manager would write 1142+ bundled
-  /// accounts to disk mid-test (the swarm_4b64e4e0 failure mode). Observable
+  /// accounts to disk mid-test. Observable
   /// proof: after the factory call, the new manager's
   /// `backgroundFetchTaskHandleForTesting` (the canonical observation seam
   /// from AccountsManagerCancellationTests) is `nil` — meaning the init's

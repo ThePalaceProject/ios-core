@@ -2,22 +2,14 @@
 //  DownloadAccountContextAdapterTests.swift
 //  PalaceTests
 //
-//  Wave 3 S2 — the Downloads-owned account-context seams. Pins:
-//    1. `AccountsManagerDownloadContextAdapter` — every provider member returns
-//       the right value over a concrete `AccountsManager` (currentAccountID is
-//       the DEFAULTS-backed currentAccountId, not currentAccount?.uuid;
-//       currentUserAccount()/userAccount(forAccount:) return AccountsManager's
-//       per-library instances; auth-surface hosts are empty pre-hydration).
-//    2. `TPPUserAccount`'s `DownloadUserAccount` conformance — the exhaustive
-//       enum-mapping adapters (`reauthStrategy`, `downloadAuthState`, isSaml,
-//       isOidc) map every real case correctly. A mutant that swaps a case or
-//       collapses the switch fails at least one row.
-//
-//  DETERMINISM: `currentAccountId` is controlled through an isolated
-//  `UserDefaults` suite (same key the setter writes); no heavy `currentAccount`
-//  setter is driven, so no static singletons are touched. Enum mapping is
-//  exercised against `TPPUserAccountMock` (keychain-free stored authDefinition /
-//  authState), so no keychain, no network, no main-async side effects.
+//  Pins the Downloads-owned account-context seams:
+//    1. `AccountsManagerDownloadContextAdapter` returns the right value for each
+//       provider member (currentAccountID is the defaults-backed
+//       currentAccountId, not currentAccount?.uuid; auth-surface hosts are empty
+//       before hydration).
+//    2. `TPPUserAccount`'s `DownloadUserAccount` conformance maps every case of
+//       `reauthStrategy`, `downloadAuthState`, isSaml and isOidc correctly.
+//  Uses an isolated `UserDefaults` suite and `TPPUserAccountMock`; no keychain.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -55,8 +47,8 @@ final class DownloadAccountContextAdapterTests: PalaceWiringTestCase {
     // MARK: - DownloadAccountScopeProviding
 
     /// `currentAccountID` must be the defaults-backed `currentAccountId` — the
-    /// exact read BookFileManager funnelled through. Kill case: a mutant that
-    /// reads `currentAccount?.uuid` returns nil here (no Account is loaded), so
+    /// exact read BookFileManager funnelled through. Reading
+    /// `currentAccount?.uuid` returns nil here (no Account is loaded), so
     /// per-account download scoping would break at cold launch.
     func testCurrentAccountID_isDefaultsBackedCurrentAccountId() {
         let adapter = makeAdapter()
@@ -77,8 +69,7 @@ final class DownloadAccountContextAdapterTests: PalaceWiringTestCase {
 
     /// Pre-hydration (no `Account` object materialized for the current uuid),
     /// the auth-surface hosts are the empty cold-launch signal — consumers must
-    /// fall back to legacy behavior rather than false-block. Kill case: a mutant
-    /// that force-unwraps `currentAccount` or returns a non-empty default.
+    /// fall back to legacy behavior rather than false-block.
     func testAuthSurfaceHosts_emptyWhenNoAccountLoaded() {
         let adapter = makeAdapter()
         XCTAssertTrue(adapter.currentAccountAuthSurfaceHosts.isEmpty,

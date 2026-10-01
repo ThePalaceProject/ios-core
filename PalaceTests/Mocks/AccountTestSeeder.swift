@@ -1,32 +1,9 @@
 //
-//  AccountTestSeeder.swift
-//  PalaceTests
-//
-//  Shared helper for Phase 2 follow-up — DI seam that lets production-stack
-//  integration tests run when no real signed-in account is present in the
-//  test env. Pairs with `AccountsManager._seedAccountForTesting(_:)` (DEBUG
-//  only) to install a fixture Account into `accountSets[currentHash]` and
-//  set `currentAccountIdentifierKey` for the duration of the test.
-//
-//  Why this exists:
-//  Four swarm Phase 1 production-stack integration tests guarded their
-//  body with `XCTSkip` when `AppContainer.production().accountsManager
-//  .currentAccount == nil`:
-//    - AudiobookOpenStateRaceTests
-//    - TPPBookRegistryAsyncReadinessTests
-//    - BookRegistrySyncReadinessTests
-//    - CarPlayAuthHelperReadinessTests
-//  In the unit-test env (no UserDefaults seeded by a prior signed-in app
-//  run) the production AccountsManager has no `currentAccount`, so the
-//  tests skipped. Gate-level coverage (direct state-machine drives) was
-//  already in place, but the production-stack wrappers weren't exercised.
-//
-//  Pattern: each test calls `seedAccountIfNeeded(on:)` in its body, drives
-//  the returned Account's state machine, runs the production-path
-//  assertion, and `defer { cleanup() }` removes the fixture so the
-//  production singleton stays uncontaminated across tests.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Installs a fixture Account via `AccountsManager._seedAccountForTesting(_:)`
+//  (DEBUG only) so production-stack tests can run without a signed-in account;
+//  previously they hit `XCTSkip` when `currentAccount` was nil. Call
+//  `seedAccountIfNeeded(on:)` in the test body and `defer { cleanup() }` so the
+//  production singleton is left clean.
 //
 
 import Foundation

@@ -5,14 +5,8 @@
 //  Bridges `AccountsManager` to PalaceAuth's
 //  `TPPCurrentLibraryAccountProviding` protocol so the `AuthCoordinator`
 //  can resolve the active library's auth mechanism at dispatch time
-//  without importing main-target types.
-//
-//  Implemented as a thin adapter (not a direct extension) so we can
-//  expose only the slim `currentAccountMechanism: AuthMechanism?`
-//  property the coordinator needs — the full Account / AccountDetails
-//  surface is NOT promoted to PalaceAuth (Phase 3 trunk-move scope).
-//
-//  Module C of swarm_66819d80.
+//  without importing main-target types. An adapter rather than an extension,
+//  so only `currentAccountMechanism` is exposed to PalaceAuth.
 //
 
 import Foundation

@@ -2,18 +2,12 @@
 //  TPPBookImageContext.swift
 //  PalaceBookModel
 //
-//  Wave 2a inversion of TPPBook's two ambient image reaches
-//  (`ImageCache.shared` in the convenience inits, `AppContainer.production()
-//  .imageLoader` in the fetch extension). The composition root configures both
-//  providers once at bootstrap, BEFORE any TPPBook is constructed.
-//
-//  `nonisolated(unsafe)` invariant (precedent: TPPAnnotations.
-//  accountsManagerOverride): written exactly once during app bootstrap /
-//  test setUp, read-only thereafter. Unconfigured (unit tests): the cache
-//  falls back to an inert in-memory null cache and the loader to nil, which
-//  turns TPPBook's init-time network fetches into no-ops — deliberately, so
-//  constructing a TPPBook in a unit test no longer boots the production
-//  AppContainer graph (a documented test-pollution vector).
+//  Image cache and loader providers for TPPBook, configured once by the
+//  composition root before any TPPBook is constructed.
+//  `nonisolated(unsafe)` is safe because both are written once (bootstrap or
+//  test setUp) and read-only after. Unconfigured, the cache is an inert null
+//  cache and the loader is nil, so constructing a TPPBook in a unit test does
+//  not boot the production AppContainer.
 //
 
 import Foundation

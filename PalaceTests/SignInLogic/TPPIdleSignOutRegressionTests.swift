@@ -1,23 +1,11 @@
-//
 //  TPPIdleSignOutRegressionTests.swift
-//  PalaceTests
 //
-//  Regression tests for PP-3819: Device gets into weird state after being
-//  left idle.
-//
-//  Root cause: After the app is idle for hours, the auth token expires.
-//  When the user then signs out, the server returns 401. The previous code:
-//  1. Called removeAll() prematurely, wiping the licensor before DRM
-//     deauthorization could use it.
-//  2. Called removeAll() a second time in completeLogOutProcess(), causing
-//     double notifications and UI state corruption (disappearing tab bar).
-//  3. Showed a confusing "Unexpected Credentials" error for the expected 401.
-//  4. Had a race condition: the async DRM deauthorization callback could fire
-//     after the user had already re-authenticated, wiping their fresh
-//     credentials and breaking borrow/read functionality.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  PP-3819: after hours idle the token expires and sign-out gets a 401. Pins
+//  that sign-out keeps the licensor until DRM deauthorization has used it, calls
+//  removeAll() once (a second call in completeLogOutProcess() caused duplicate
+//  notifications and a disappearing tab bar), treats the 401 as expected rather
+//  than "Unexpected Credentials", and ignores a late deauthorization callback
+//  that arrives after the patron has signed in again.
 
 import XCTest
 @testable import Palace

@@ -2,30 +2,12 @@
 //  MediaServicesResetRecoveryTests.swift
 //  PalaceTests
 //
-//  PP-5241: when iOS restarts its media server (mediaserverd), every
-//  AVFoundation player and audio-session object becomes invalid. The player
-//  reports AVError -11819 (`mediaServicesWereReset`) and, 25 ms to 1.3 s later,
-//  usually a second failure (`OpenAccessPlayerError.playerNotReady`, code 2) at
-//  position 0.0. AVAudioSession also posts `mediaServicesWereResetNotification`.
-//  The notification and the failure can arrive in either order.
-//
-//  These tests pin four layers:
-//    1. `MediaServicesReset.isMediaServicesReset`, the error classifier.
-//    2. `MediaServicesResetRecoveryReducer.reduce`: the full states x events
-//       table, one assertion per cell.
-//    3. `MediaServicesResetRecovery`: the coordinator's observation, de-dup,
-//       swallow and bound, driven through a private NotificationCenter and a
-//       spy host.
-//    4. The session manager's pure inputs to the coordinator: what counts as
-//       "was playing", and when a notification finds a session to recover.
-//
-//  NOT pinned here: the manager's one-line hooks into `handleManagerState`
-//  (`.playbackFailed` / `.playbackBegan`) and `openAudiobook`. Reaching
-//  `handleManagerState` needs `currentBook`, which only the auth-gated open
-//  path writes (see the note in the `.playbackCompleted` arm), so those call
-//  sites are covered by reading them, not by a test.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-5241: pins the media-services-reset recovery at four layers: the error
+//  classifier, the reducer's full states x events table, the coordinator's
+//  de-dup and bound (private NotificationCenter, spy host), and the session
+//  manager's "was playing" inputs. The manager's one-line hooks into
+//  `handleManagerState` and `openAudiobook` are verified by reading; reaching
+//  them needs the auth-gated open path.
 //
 
 import AVFoundation

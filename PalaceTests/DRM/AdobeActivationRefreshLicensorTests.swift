@@ -2,22 +2,11 @@
 //  AdobeActivationRefreshLicensorTests.swift
 //  PalaceTests
 //
-//  PP-3649, the PRODUCER side.
-//
-//  `AdobeLicensorRefreshTests` pins the pure chooser — given a stored licensor
-//  and a fetch result, which one wins. That is half the fix. The other half is
-//  `ensureDeviceActivated` actually WIRING it: calling the refresh, activating
-//  with what it returned rather than what the keychain held, persisting the
-//  fresh value back, and failing cleanly when the refreshed token is malformed.
-//
-//  None of that had a test. `grep -rn refreshLicensor PalaceTests` returned
-//  nothing, which means every branch this file exercises could have been
-//  deleted with the suite still green — including the one that decides whether
-//  a borrow authenticates with a token minted seconds ago or one minted an hour
-//  ago, which IS the defect.
-//
-//  A helper being correct is not the same as the caller reaching it. That
-//  distinction has its own wall-failure in this repo.
+//  PP-3649, the producer side. `AdobeLicensorRefreshTests` pins the pure chooser;
+//  this file pins that `ensureDeviceActivated` calls the refresh, activates with
+//  the refreshed licensor rather than the stored one, persists it back, and fails
+//  cleanly when the refreshed token is malformed. That branch decides whether a
+//  borrow authenticates with a fresh token or one minted an hour earlier.
 //
 
 import XCTest
@@ -25,8 +14,8 @@ import XCTest
 
 final class AdobeActivationRefreshLicensorTests: XCTestCase {
 
-    /// In-memory account. Deliberately not a real `TPPUserAccount` — CLAUDE.md
-    /// forbids tests touching keychain state — and it RECORDS `setLicensor`
+    /// In-memory account. Deliberately not a real `TPPUserAccount`, so tests
+    /// stay off the keychain, and it RECORDS `setLicensor`
     /// writes, because "did the fresh licensor get persisted back" is one of
     /// the branches under test.
     private final class RecordingAccount: AdobeActivationAccount, @unchecked Sendable {

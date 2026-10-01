@@ -1,43 +1,10 @@
-//
 //  AudiobookSessionPresenterTests.swift
-//  PalaceTests
 //
-//  Module C (swarm_0b7616e7) — root-level audiobook session presenter.
-//
-//  Pins the behavior contract for `AudiobookSessionPresenter`, the new
-//  root-level "what's playing right now" surface introduced in P3 of
-//  `docs/architecture/in-app-navigation-during-playback.md`. The presenter
-//  is the SwiftUI-observable bridge between the manager's published state
-//  (`AudiobookSessionManaging.playbackStatePublisher`, `currentBook`,
-//  `playbackModel`) and the mini-player + full-screen-cover views Module D
-//  will add to `AppTabHostView`.
-//
-//  The tests below cover:
-//
-//    - `hasActiveSession` reacts to manager state transitions (idle →
-//      loading → playing → idle) via the manager's `playbackStatePublisher`
-//      subscription. Mutates: dropping the subscription fails.
-//
-//    - `presentOnFirstOpen()` flips `isPlayerExpanded = true` so the
-//      first-open cover-art + loading-state lockup (F-011 UX, §7.4) is
-//      visible during the readiness-gate wait.
-//
-//    - `expand()` / `minimize()` are the production-seam writers used by
-//      tap-on-mini-player (Module D) and CarPlay-bridge `dismissBookOnPhone`
-//      (this contract). They must drive the published value.
-//
-//    - `isReaderActive` is a publicly mutable @Published bool that
-//      `NavigationHostView` (Module D) flips on reader-route entry / exit;
-//      the mini-player view conditions visibility on `!isReaderActive`.
-//
-//    - State-machine round-trip wiring — three transitions through the
-//      production seams (`expand → minimize → expand`) — per CLAUDE.md
-//      "Round-trip wiring tests required for state machines". The name
-//      embeds "acrossThreeTransitions" so `check-test-name-vs-body.py`
-//      will require all three steps in the body.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Pins `AudiobookSessionPresenter`, the root-level bridge between the manager's
+//  published playback state and the mini-player / full-screen cover in
+//  `AppTabHostView` (docs/architecture/in-app-navigation-during-playback.md, P3):
+//  state transitions, first-open expansion (F-011), expand/minimize, reader-route
+//  visibility, and an expand -> minimize -> expand round trip.
 
 import Combine
 import XCTest
@@ -272,7 +239,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     /// PRE: `isPlayerExpanded == false`, a Combine subscriber is bound
     /// to `$isPlayerExpanded`.
     /// EXPECTED: `expand()` flips the published value AND emits to
-    /// subscribers (Module D's `fullScreenCover(isPresented:)` binds to
+    /// subscribers (the host view's `fullScreenCover(isPresented:)` binds to
     /// the projection — without emission the cover wouldn't show).
     /// Mutates: a regression that drops @Published or assigns to a
     /// non-observable backing fails the subscriber assertion.
@@ -334,7 +301,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
                        "Final read must reflect last write — reader-route exit returns visibility to the mini-player")
     }
 
-    // MARK: - Round-trip wiring (CLAUDE.md state-machine wiring)
+    // MARK: - Round-trip wiring (state-machine wiring)
 
     /// PRE: `isPlayerExpanded == false`.
     /// EXPECTED: drive the full lifecycle `expand → minimize → expand` via
@@ -342,7 +309,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     /// must flip the published value correctly.
     ///
     /// Multi-step name embeds "acrossThreeTransitions" — body MUST do all
-    /// THREE transitions per CLAUDE.md DoD #3 multi-step-test-body check.
+    /// THREE transitions.
     // MARK: - Helper
 
     /// Flushes the main queue so a publisher event sent synchronously via
@@ -509,16 +476,10 @@ final class AudiobookSessionPresenterTests: XCTestCase {
 
     // MARK: - Polish-phase: playbackProgress derivation (Bug 2)
 
-    /// Pure-function test of the normalizedProgress helper. Mutation-tested
-    /// for the `> 0` total-duration guard and the clamp-to-0...1 boundary
-    /// via `normalizedProgressFromRawValues` (the toolkit-free entry point).
-    ///
-    /// Mutates:
-    ///   - `> 0` → `>= 0`: with totalDuration == 0, original returns 0
-    ///     (safe), mutant returns NaN (0/0). Row [3] below kills.
-    ///   - `> 0` → `< 0`: with totalDuration == 1, original returns 0.5,
-    ///     mutant returns 0 (because 1 < 0 is false → guard fails → 0).
-    ///     Row [4] below kills.
+    /// Pure-function test of the normalizedProgress helper: the `> 0`
+    /// total-duration guard and the clamp-to-0...1 boundary via
+    /// `normalizedProgressFromRawValues` (the toolkit-free entry point).
+    /// Row 3 catches `> 0` → `>= 0` (0/0 = NaN); Row 4 catches `> 0` → `< 0`.
     func testPresenter_normalizedProgress_handlesEdgeCases() {
         // nil position → 0 (the safe default).
         XCTAssertEqual(AudiobookSessionPresenter.normalizedProgress(for: nil), 0,
@@ -528,22 +489,16 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertEqual(AudiobookSessionPresenter.normalizedProgressFromRawValues(elapsed: -1, totalDuration: 100), 0,
                        "Row 2: negative elapsed must clamp to 0 — proves min(max(progress, 0), 1) clamp works")
 
-        // Row 3: totalDuration == 0 must return 0 (NOT NaN). KEY ROW for
-        // the `> 0` → `>= 0` mutation: with `>=`, the guard returns 0 anyway
-        // (because 0 >= 0 is true → enters else branch → divides 0/0 = NaN).
-        // Wait — the guard is `else { return 0 }`. So if `>` becomes `>=`,
-        // the condition `0 >= 0` is true → falls through (doesn't return 0)
-        // → returns NaN. Original `0 > 0` is false → returns 0 (safe).
+        // Row 3: totalDuration == 0 must return 0 (NOT NaN). If `>` became
+        // `>=`, `0 >= 0` would fall through the guard and return 0/0 = NaN.
         let zeroDurationResult = AudiobookSessionPresenter.normalizedProgressFromRawValues(elapsed: 50, totalDuration: 0)
         XCTAssertEqual(zeroDurationResult, 0,
                        "Row 3 (KILLS `> 0` → `>= 0` mutation): totalDuration == 0 must return 0 (safe default). With the `>=` mutation, the guard's else doesn't fire (0 >= 0 is true), elapsed/0 evaluates to NaN, and the test would receive NaN ≠ 0.")
         XCTAssertFalse(zeroDurationResult.isNaN,
                        "Row 3 supplement: result must be a finite number, not NaN (which would corrupt the ProgressView's value binding)")
 
-        // Row 4: totalDuration > 0 must compute the actual ratio. KILLS
-        // `> 0` → `< 0`: with `<`, the guard fires (1 < 0 is false →
-        // guard fails the test → returns 0) and the ratio never computes.
-        // Original `1 > 0` is true → guard skipped → computes 0.5.
+        // Row 4: totalDuration > 0 must compute the actual ratio. With `<`
+        // instead of `>`, `1 < 0` is false → returns 0 instead of 0.5.
         XCTAssertEqual(AudiobookSessionPresenter.normalizedProgressFromRawValues(elapsed: 50, totalDuration: 100), 0.5, accuracy: 0.001,
                        "Row 4 (KILLS `> 0` → `< 0` mutation): valid duration must compute ratio. With the `<` mutation, the guard `1 < 0` is false, control falls into `else` (returns 0). Test would receive 0 instead of 0.5.")
 
@@ -555,7 +510,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
 
     // MARK: - Polish-phase: re-subscribe semantics (PP-3783, contract C3)
 
-    /// CLAUDE.md round-trip wiring test. Pins the contract that calling
+    /// Round-trip wiring test. Pins the contract that calling
     /// `adoptPlaybackModel(_:)` more than once results in the presenter
     /// mirroring the LATEST model's currentLocation, not the prior.
     ///
@@ -647,7 +602,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
                        "clearActiveSession must reset playbackProgress to 0 so the scrubber doesn't briefly show the prior book's progress")
     }
 
-    /// CONCERN coverage (qa_test SoD review of PR #1230): `clearActiveSession()`
+    /// PR #1230: `clearActiveSession()`
     /// must reset the chapter-scoped progress mirrors (`chapterOffset`,
     /// `chapterTimeLeft`, `chapterProgress`) — the seek slider binds to
     /// `chapterProgress`, so a stale non-zero value would leave the next
@@ -697,9 +652,8 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     /// seek). This is the exact stale-glyph race the self-heal fixes.
     /// EXPECTED: reconciling from the advancing `$currentLocation` tick flips
     /// the presenter's `isPlaying` (the play/pause glyph) true within one frame.
-    /// Mutates: flipping the change-guard comparison `!=` to `==` skips the
-    /// re-snap, leaving the glyph latched on "play" while audio is audible —
-    /// this assertion then fails, killing that mutant.
+    /// Flipping the change-guard comparison `!=` to `==` would skip the
+    /// re-snap, leaving the glyph latched on "play" while audio is audible.
     func testPresenter_playheadAdvancesWhileManagerIsPlaying_reconcileSelfHealsPlayGlyph() {
         let presenter = AudiobookSessionPresenter(sessionManager: spySession)
         XCTAssertFalse(presenter.isPlaying,
@@ -736,8 +690,8 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     // MARK: - chapterProgress (chapter-relative scrubber value)
 
     /// Mid-chapter: offset 30s into a 120s chapter (30 elapsed + 90 left) is
-    /// exactly 0.25. Pins `offset / (offset + timeLeft)`. A mutant that swaps
-    /// the numerator/denominator, or reads book-relative progress instead,
+    /// exactly 0.25. Pins `offset / (offset + timeLeft)`. Swapping the
+    /// numerator/denominator, or reading book-relative progress instead,
     /// fails this exact value.
     func testChapterProgress_midChapter_isOffsetOverDuration() {
         let value = AudiobookSessionPresenter.chapterProgress(offset: 30, timeLeft: 90)
@@ -746,7 +700,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     }
 
     /// Zero chapter duration (offset 0, timeLeft 0 → duration 0) must return 0,
-    /// NOT NaN. Pins the `duration > 0` guard: a mutant relaxing it to `>= 0`
+    /// NOT NaN. Pins the `duration > 0` guard: relaxing it to `>= 0`
     /// (or dropping it) divides 0/0 → NaN and fails this assertion.
     func testChapterProgress_zeroDuration_returnsZeroNotNaN() {
         let value = AudiobookSessionPresenter.chapterProgress(offset: 0, timeLeft: 0)
@@ -757,14 +711,14 @@ final class AudiobookSessionPresenterTests: XCTestCase {
 
     /// Past chapter end: offset 200 with timeLeft -50 (duration 150) computes a
     /// raw ratio of 200/150 ≈ 1.33 which must clamp to 1.0. Pins the upper
-    /// `min(_, 1)` clamp; a mutant dropping it lets the thumb run past the end.
+    /// `min(_, 1)` clamp; dropping it lets the thumb run past the end.
     func testChapterProgress_clampsPastChapterEnd() {
         let value = AudiobookSessionPresenter.chapterProgress(offset: 200, timeLeft: -50)
         XCTAssertEqual(value, 1.0, accuracy: 0.0001,
                        "Progress past the chapter end must clamp to 1.0, not exceed it")
     }
 
-    /// NIT coverage (qa_test SoD review of PR #1230): a negative offset (offset
+    /// PR #1230: a negative offset (offset
     /// -30 into a 60s chapter → raw ratio -0.5) must clamp to 0 via the lower
     /// `max(_, 0)` bound, never a negative thumb position. Pins the LOWER clamp
     /// specifically (the existing tests pin the upper `min(_, 1)` and the
@@ -835,10 +789,8 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     // track decryption that streaming playback never waits for. See
     // `AudiobookDownloadProgressPolicy`.
 
-    // NOTE: a `testHasStartedPlayback_isFalseOnAFreshPresenter` case was removed
-    // here. It asserted a default with no action taken, which CLAUDE.md bans
-    // outright — it could only fail if the property's initialiser changed. The
-    // states that matter are driven below: a non-playing event must NOT latch,
+    // The latch's initial value is not asserted on its own. The states that
+    // matter are driven below: a non-playing event must NOT latch,
     // `.playing` must, a pause must not clear it, and teardown must.
     /// PRE: session emits `.playing`.
     /// EXPECTED: the latch rises.
@@ -855,16 +807,15 @@ final class AudiobookSessionPresenterTests: XCTestCase {
 
     /// The cell none of the others reach: a NON-playing state arriving FIRST.
     ///
-    /// Added because mutation found it. Flipping the latch's `&&` to `||`
-    /// survived the whole suite — and that mutant is a real defect, not a
-    /// curiosity: with `||`, `playing == false` plus a not-yet-set latch raises
+    /// Flipping the latch's `&&` to `||` would be a real defect: with `||`,
+    /// `playing == false` plus a not-yet-set latch raises
     /// the latch, so the very first `.loading` would retire the download bar
     /// BEFORE playback started. That is precisely the window the bar still
     /// exists for, so the player would go silent-and-blank exactly when the
     /// patron is waiting.
     ///
-    /// The four tests around this one all send `.playing` first, so every one
-    /// of them passes under the mutant. Enumerating the event that comes before
+    /// The four tests around this one all send `.playing` first, so none of
+    /// them would catch that. Enumerating the event that comes before
     /// playback is what distinguishes a latch from an unconditional set.
     func testHasStartedPlayback_doesNotLatchOnALoadingStateBeforePlaybackBegins() {
         let presenter = AudiobookSessionPresenter(sessionManager: spySession)
@@ -911,10 +862,8 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     ///
     /// `stopPlayback(dismissPhoneUI: !isSameBook)` skips `clearActiveSession()`
     /// when the book is unchanged, so `currentBook` survives into the next open.
-    /// An earlier fix reset the latch in `adoptBook` on IDENTIFIER CHANGE, which
-    /// therefore never fired here — and the test written to prove it asserted
-    /// the different-book case under a "same-book" heading, so it passed while
-    /// the bug stood. Both reviewers caught that independently.
+    /// Resetting the latch in `adoptBook` on IDENTIFIER CHANGE never fires here,
+    /// so the same-book case needs its own test.
     ///
     /// `presentLoadingShell` is the session boundary and resets unconditionally.
     func testHasStartedPlayback_resetsOnAReOpenOfTheSAMEBook() {
@@ -1014,9 +963,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     //
     // The policy table in AudiobookDownloadProgressPolicyTests covers the pure
     // rule. These cover the code that decides whether its input is ever true
-    // for the RIGHT book — the half three reviewers blocked on, and the same
-    // "a pure rule was covered while the code computing its input was not"
-    // shape 264676c7d names in its own retro.
+    // for the RIGHT book.
 
     /// Helper mirroring the production wiring: edges + progress + seed.
     @MainActor
@@ -1260,15 +1207,12 @@ final class AudiobookSessionPresenterTests: XCTestCase {
 
         // DELIVERY BARRIER: a plain main-queue drain, on purpose.
         //
-        // An earlier revision awaited `isFetchingArchive`, which the seed had
-        // already made true — `awaitConditionAsync` checks before suspending,
-        // so it returned without turning the runloop, NEITHER edge was
-        // delivered, and this test passed with the veto reverted. Review caught
-        // it and a mutation re-run confirmed the survivor.
+        // Awaiting `isFetchingArchive` would not work: the seed already made it
+        // true, and `awaitConditionAsync` checks before suspending, so it would
+        // return without turning the runloop and NEITHER edge would be delivered.
         //
-        // The replacement is the drain this test used originally. It is proven
-        // to deliver in this harness (the rising-edge mutant dies through a
-        // test that uses it), it stays on ONE publisher, and it therefore
+        // The drain is proven to deliver in this harness (the rising-edge test
+        // uses it), it stays on ONE publisher, and it therefore
         // carries none of the cross-publisher ordering premise a progress-tick
         // barrier would need.
         await drainMainQueueAsync()

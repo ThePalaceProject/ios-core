@@ -1,52 +1,12 @@
-//
 //  AudioEngineWrapperTests.swift
-//  PalaceTests
 //
-//  Targets Crashlytics F-003:
-//    FAEChapterStatus._cacheForChapterDescription EXC_BREAKPOINT
-//    12 users / 13 events on Palace 3.0.0 (Findaway / AudioEngine)
-//
-//  WHY THE GAP IS WIDE:
-//  The crash is inside the Findaway closed-source SDK
-//  (`FAEChapterStatus._cacheForChapterDescription`). Palace cannot reach
-//  into that stack from a unit test — `FAEAudioEngine` is opaque and
-//  every wrapping call (`FAEAudioEngine.shared()?.didFinishLaunching()`,
-//  `play(forAudiobookID:license:)`, etc.) crosses into a binary
-//  framework that does not run under the test scheme without a real
-//  audiobook session. The reproduction shape (rapid open/close pairs
-//  on a Findaway book — semaphore dispose race in the chapter-status
-//  cache) is unreachable in an XCTest harness.
-//
-//  WHAT WE TEST:
-//  The Palace-side seams that gatekeep into FAE — i.e. the Palace code
-//  paths that *decide whether to invoke the engine at all*. If the
-//  gatekeepers regress, more bad input reaches FAE and the crash rate
-//  rises; locking the gatekeepers shrinks the crash surface even when
-//  we can't unit-test the engine itself.
-//
-//    1. Vendor classification (AudioBookVendorsHelper.feedbookVendor):
-//       wrong classification routes the wrong DRM cert refresh, which
-//       on a malformed cantook manifest hands FAE an unverified
-//       audiobook handle.
-//    2. Manifest -> AudiobookType classification: Findaway-typed
-//       manifests must route to FindawayAudiobook, not OpenAccess,
-//       so the lifecycle listener actually fires.
-//    3. AudioBookVendorsHelper.updateVendorKey behaviour for the
-//       no-vendor case: a non-DPLA book must NEVER call updateDrmCertificate
-//       (would corrupt FAE state).
-//    4. Repeated-classification idempotency: 100 back-to-back vendor
-//       lookups on the same dictionary must produce the same answer
-//       — protects against the "rapid open" race in F-003 from being
-//       compounded by upstream classification flapping.
-//
-//  Documenting the gap up-front per CLAUDE.md: a proper test for the
-//  FAE semaphore-dispose race requires an AudioEnginePlayerWrapping
-//  protocol extracted around `FAEAudioEngine.shared()` so a fake
-//  engine can be substituted at session boundaries. This file is
-//  scaffolded for that future seam.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Crashlytics F-003 (FAEChapterStatus._cacheForChapterDescription EXC_BREAKPOINT,
+//  Palace 3.0.0) crashes inside the closed-source Findaway SDK, which XCTest
+//  cannot drive. These tests pin the Palace-side gatekeepers that decide whether
+//  FAE is invoked at all: vendor classification, manifest -> AudiobookType
+//  routing, updateVendorKey's no-vendor case, and repeated-lookup idempotency.
+//  Testing the semaphore-dispose race itself needs a protocol seam around
+//  `FAEAudioEngine.shared()`, which does not exist yet.
 
 import XCTest
 @testable import Palace
@@ -277,7 +237,7 @@ final class AudioEngineWrapperTests: XCTestCase {
     /// the chapter-status cache faulting.
     ///
     /// EXPLICIT TOOLKIT-LIMITATION FINDING (2026-05-14):
-    /// During dogfood of this test, an even smaller fixture (readingOrder=[])
+    /// An even smaller fixture (readingOrder=[])
     /// triggered a Swift stdlib `Range requires lowerBound <= upperBound`
     /// fatal inside the toolkit's audiobook construction. That is a real
     /// toolkit-side trap on the empty-TOC path and is logged here as a

@@ -334,24 +334,9 @@ extension UnifiedOPDSService {
 
     /// Fetches user's loans feed.
     ///
-    /// Bucket A migration (swarm_81b5099e Network-OPDS): awaits the
-    /// Account.LoadState readiness gate before reading `loansUrl`,
-    /// closing the F-016 → audiobook race class. See
-    /// `OPDSFeedService.fetchLoans` for the full rationale.
-    ///
-    /// `accountsManager` parameter widened from the previous direct
-    /// `AppContainer.production().accountsManager` antipattern so this
-    /// method is unit-testable with a fixture provider. The default
-    /// keeps the production wiring unchanged. The remaining
-    /// `AppContainer.production()` reads in this file
-    /// (`addAuthHeaders`, `fetchCatalogRoot`) are out of scope for this
-    /// swarm and tracked as documented technical debt — they should
-    /// either be migrated to constructor-injected dependencies or to a
-    /// pure-protocol parameter when this service moves under
-    /// constructor DI in a follow-up.
-    ///
-    /// Single-timeout policy: no `withTimeout` is layered around
-    /// `awaitReady()`. The caller's pipeline owns the timeout.
+    /// Awaits the account's readiness gate before reading `loansUrl`; see
+    /// `OPDSFeedService.fetchLoans`. No `withTimeout` around `awaitReady()`;
+    /// the caller's pipeline owns the timeout.
     public func fetchLoans(
         accountsManager: TPPCurrentLibraryAccountProvider = AppContainer.production().accountsManager
     ) async throws -> UnifiedOPDSFeed {

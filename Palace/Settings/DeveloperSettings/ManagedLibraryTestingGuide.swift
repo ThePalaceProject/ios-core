@@ -2,18 +2,10 @@
 //  ManagedLibraryTestingGuide.swift
 //  Palace
 //
-//  PP-5070 — the in-app explanation of what the Testing screen's MDM row does
-//  and what an administrator would type to get the same result.
-//
-//  ## Why the example is a dictionary and not a string
-//
-//  `exampleConfiguration` is the value the PARSER reads; `examplePayloadXML` is
-//  that same value rendered for display. They cannot disagree, because one is
-//  generated from the other. A guide whose example has quietly stopped being
-//  valid is worse than no guide — someone copies it into an MDM, nothing
-//  happens, and the app looks broken rather than the document being stale.
-//  `ManagedLibraryTestingGuideTests` parses this example and fails if it ever
-//  stops producing a usable configuration.
+//  PP-5070: in-app explanation of the Testing screen's MDM row and what an
+//  administrator would type for the same result. `examplePayloadXML` is generated
+//  from `exampleConfiguration` (the value the parser reads) so the displayed
+//  example cannot go stale; `ManagedLibraryTestingGuideTests` parses it.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -2,15 +2,9 @@
 //  BookFileManager.swift
 //  Palace
 //
-//  Owns the on-disk path geometry for downloaded books — the per-account
-//  content directory, the hashed file name + extension scheme that
-//  fileUrl(for:) uses, and the LCP-aware extension selection. Extracted from
-//  MyBooksDownloadCenter so the path/url logic can be unit-tested with a
-//  temp-dir FileManager and a registry mock, without standing up a full
-//  download center. MyBooksDownloadCenter still exposes the same public
-//  fileUrl(for:) API surface — those methods now delegate here, so the 15+
-//  external callers (BookDetailViewModel, BookCellModel, AudiobookLoader,
-//  BookRegistrySync, etc.) keep working unchanged.
+//  Owns the on-disk path geometry for downloaded books: the per-account
+//  content directory, the hashed file name, and the LCP-aware extension.
+//  MyBooksDownloadCenter's fileUrl(for:) API delegates here.
 //
 
 import Foundation
@@ -20,25 +14,16 @@ import PalaceBookRegistry
 /// Resolves the on-disk URL for a book download. Per-account, hashed
 /// identifier, LCP-aware file extension. Creates the content directory on
 /// demand. No network, no DRM logic — just paths.
-/// Non-final to allow test-only subclassing in `SpyBookFileManager`
-/// (LocalBookContentServiceTests). The dynamic-dispatch cost is
-/// negligible — `fileUrl(for:)` is not on a hot path.
+/// Non-final so tests can subclass it (`SpyBookFileManager`).
 class BookFileManager {
 
     private let bookRegistry: TPPBookRegistryProvider
-    /// Account-scope read seam (god-class decomposition Wave 3, S2). Was the
-    /// concrete `AccountsManager`; now the Downloads-owned
-    /// `DownloadAccountScopeProviding` so this type carries no Accounts
-    /// dependency into PalaceDownloads at 3b. Only `currentAccountID` is read.
+    /// Downloads-owned account-scope seam, so this type has no dependency on
+    /// Accounts. Only `currentAccountID` is read.
     private let accountScope: any DownloadAccountScopeProviding
     private let fileManager: FileManager
-    /// Test-only override for the per-account content directory lookup.
-    /// Production passes nil so `contentDirectoryURL(_:)` resolves the
-    /// directory under iOS's Application Support, as it always has.
-    /// Tests (e.g. `ColdStartResumeIntegrationTests`) inject a closure
-    /// returning a temp dir so on-disk fixtures can be staged without
-    /// depending on a real per-account App Support directory. Semantics
-    /// match the existing production return: nil means "no directory".
+    /// Test-only override for the per-account content directory lookup; nil in
+    /// production. Returning nil means "no directory".
     private let directoryProvider: ((String?) -> URL?)?
     /// Identifiers of side-loaded books, resolved on each read. Side-loaded
     /// content is account-agnostic and is written under one fixed account

@@ -18,10 +18,9 @@ final class OPDS2BookBridgeTests: XCTestCase {
 
     /// Basic metadata pass-through: identifier, title, updated, and the
     /// description→summary mapping in both populated and nil shapes.
-    /// Lock all four fields in one body so a mutant that breaks any
-    /// single-field copy fails on a distinct assertion. The two-instance
-    /// pattern (populated vs lean publication) catches a mutant that
-    /// returns a hard-coded constant from any of these getters.
+    /// Lock all four fields in one body so a broken single-field copy fails
+    /// on a distinct assertion. The two-instance pattern (populated vs lean
+    /// publication) catches a hard-coded constant from any of these getters.
     func testToBook_passesThroughIdentifierTitleUpdatedAndDescription() {
         let date = Date(timeIntervalSince1970: 1700000000)
         let populated = makePublication(
@@ -607,9 +606,8 @@ final class OPDS2BookBridgeTests: XCTestCase {
     /// `toBook()` returns nil when there's no path to render the book.
     /// Lock three distinct "no acquisition" shapes in one body: empty
     /// links array, only non-acquisition links (alternate/self), and
-    /// links with empty hrefs. A mutant that fixes one shape but leaves
-    /// another producing a button-less ghost book fails on a distinct
-    /// assertion.
+    /// links with empty hrefs. Handling one shape but letting another
+    /// produce a button-less ghost book fails on a distinct assertion.
     func testToBook_returnsNilWhenNoUsableAcquisitionPath() {
         // Empty links array
         XCTAssertNil(

@@ -434,8 +434,8 @@ private struct FailingFileManaging: SideloadFileManaging {
 }
 
 /// Counts `addBook` calls so the idempotency test can prove the second
-/// rehydrate does NOT re-add an already-present book (kills the existence-guard
-/// mutant, which a keyed-dict registry alone can't observe).
+/// rehydrate does NOT re-add an already-present book (pins the existence guard,
+/// which a keyed-dict registry alone can't observe).
 private final class CountingBookRegistryMock: TPPBookRegistryMock {
   private(set) var addBookCallCount = 0
   override func addBook(

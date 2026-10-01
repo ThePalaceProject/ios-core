@@ -248,7 +248,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
 
     private var session: URLSession!
 
-    // MARK: - Reliability WS-A: background session identity + completion handler
+    // MARK: - Background session identity + completion handler
 
     /// Single source of truth for the download center's background session
     /// identifier (previously duplicated across 3 inline `Bundle`-derived
@@ -397,24 +397,13 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // preserved exactly. When provided, the caller is responsible for
         // pointing the session's delegate at this instance.
         urlSession: URLSession? = nil,
-        // Test seam: overrides the per-account content directory lookup.
-        // Production passes nil — `fileUrl(for:account:)` resolves through
-        // `BookFileManager.contentDirectoryURL(_:)` as it always has.
-        // Tests inject a closure returning a temp dir so synthetic test
-        // accounts (which don't have a real per-account App Support
-        // directory) can stage on-disk fixtures and observe the production
-        // file-URL contract — see `ColdStartResumeIntegrationTests`'
-        // "present file → .downloadSuccessful" promotion case.
-        // When `bookFileManager` is also injected, the explicit
-        // BookFileManager wins; this param only configures the default
-        // `BookFileManager` MBDC constructs when none is supplied.
+        // Test seam: overrides the per-account content directory lookup so
+        // synthetic test accounts can stage on-disk fixtures. Production passes
+        // nil. An injected `bookFileManager` takes precedence; this only
+        // configures the default one.
         directoryProvider: ((String?) -> URL?)? = nil,
-        // swarm_66819d80 Module C: AuthCoordinator from PalaceAuth.
-        // Production (AppContainer.production()) passes its constructed
-        // coordinator so BookReturnService can route 401/403 through the
-        // single seam. Optional so existing tests that construct MBDC
-        // manually keep compiling — they fall back to the legacy
-        // reauthenticator path until updated to inject a SpyAuthCoordinator.
+        // Routes 401/403 handling through PalaceAuth's coordinator. nil falls
+        // back to the reauthenticator path.
         authCoordinator: AuthCoordinator? = nil
     ) {
         self.injectedUserAccount = userAccount
@@ -463,9 +452,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         //
         // Resolver path (intentional): book return fires AFTER a user-
         // initiated action against the currently-selected library — there
-        // is no "captured at download start" id to thread here. Closing the
-        // bearer-auth window for return is out-of-scope for Module A
-        // (the spurious-login-modal bug is mid-DOWNLOAD, not mid-return).
+        // is no "captured at download start" id to thread here.
         let resolveAccountForReturn: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -478,10 +465,6 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             reauthenticator: reauthenticator,
             userRetryTracker: userRetryTracker,
             userAccountProvider: resolveAccountForReturn,
-            // swarm_66819d80 Module C: forward the coordinator MBDC's init
-            // received so BookReturnService's auth-error branch routes
-            // through the single seam. Tests that construct MBDC without
-            // a coordinator fall back to the legacy reauthenticator path.
             authCoordinator: authCoordinator,
             // 3.2.3 Cause 2: route the return flow's pending-remote-write
             // cancellation to the process-wide audiobook session, which owns
@@ -495,23 +478,12 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             }
         )
         self.stateManager = stateManager
-        // DownloadAlertPresenter built eagerly so `self` can wire as its
-        // delegate after `super.init()`. Production passes nil so the
-        // presenter is constructed from the just-resolved registry +
-        // stateManager + downloadAnnouncementService — same instances MBDC
-        // owns, keeping the presenter's view of the download state machine
-        // coherent with the rest of MBDC. Tests can substitute mocks.
-        // The progress reporter wire-up happens after `let reporter =
-        // DownloadProgressReporter(...)` below since the presenter needs the
-        // same reporter MBDC publishes through.
-        // Build TokenRefreshInterceptor + BackgroundDownloadHandler eagerly so
-        // `self` can wire as their delegate after `super.init()`. Both default
-        // to nil-init so callers (production + tests) can substitute mocks.
+        // Built eagerly so `self` can become their delegate after
+        // `super.init()`; tests can substitute mocks.
         self.tokenInterceptor = tokenInterceptor ?? TokenRefreshInterceptor(
             reauthenticator: reauthenticator,
             authCoordinator: authCoordinator,
-            // Foreign-host guard (PR #1018 cross-host regression fix —
-            // wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md).
+            // Foreign-host guard (PR #1018 cross-host logout).
             currentAccountHostsProvider: {
                 resolvedAccountScope.currentAccountAuthSurfaceHosts
             }
@@ -642,8 +614,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             alertPresenter: self.alertPresenter,
             userAccountProvider: resolveAccount,
             authCoordinator: authCoordinator,
-            // Foreign-host guard (PR #1018 cross-host regression fix —
-            // wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md).
+            // Foreign-host guard (PR #1018 cross-host logout).
             currentAccountHostsProvider: {
                 resolvedAccountScope.currentAccountAuthSurfaceHosts
             }
@@ -665,8 +636,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // the credential prompt coordinator all share this provider. They
         // run BEFORE the download bearer-auth step or in response to a
         // sign-in prompt — there is no captured-accountId pinning at the
-        // point these fire. Closing the auth-doc-fetch / re-borrow windows
-        // for these consumers is out-of-scope for Module A.
+        // point these fire.
         let resolveAccountForBorrow: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -723,8 +693,6 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             userAccountProvider: resolveAccountForBorrow,
             credentialRequestState: self.credentialRequestState,
             presentSignInModal: { completion in
-                // swarm_d8f11437 Module A wave 4 — migrated to
-                // AppContainer-injected sheet presenter.
                 AppContainer.production().signInModalSheetPresenter
                     .presentSignInModalForCurrentAccount(completion: completion)
             },
@@ -876,8 +844,8 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // Tests substitute simpler stubs.
         // Resolver path (intentional): BorrowOperation owns the complete
         // borrow lifecycle including OIDC silent reauth. The bearer-auth
-        // window on borrow OPDS fetches is its own (separate from the
-        // download bearer-auth window Module A closes). Threading a
+        // window on borrow OPDS fetches is separate from the download
+        // bearer-auth window. Threading a
         // captured-accountId here would couple the borrow flow's mid-
         // flight refresh semantics to the start-download capture seam.
         let resolveAccountForBorrowOp: () -> TPPUserAccount = {
@@ -914,8 +882,6 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             )
         }
         let presentSignInModalClosure: @MainActor (@escaping () -> Void) -> Void = { completion in
-            // swarm_d8f11437 Module A wave 4 — migrated to
-            // AppContainer-injected sheet presenter.
             AppContainer.production().signInModalSheetPresenter
                 .presentSignInModalForCurrentAccount(completion: completion)
         }
@@ -1075,7 +1041,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // transitions.
         self.bindReachability()
 
-        // Reliability WS-A: reconcile persisted download records against live
+        // Reconcile persisted download records against live
         // URLSession tasks once the registry has loaded. Production only — an
         // injected/mock session or the test harness opts out so the suite stays
         // hermetic (the reconciler is driven directly in tests instead).
@@ -1593,39 +1559,21 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         // says "Downloaded" while the device holds no audio and the book cannot
         // be opened offline at all.
         //
-        // Placed HERE, after `bookIdentifierToDownloadInfo.remove` above, and not
-        // in `LCPFulfillmentHandler` where it reads more naturally. The fetch runs
-        // through `redownloadLCPContentFile`, whose duplicate-suppression guard
-        // asks `downloadCenterHasTransfer` — which is `downloadInfo(for:) != nil`.
-        // Triggering during fulfillment means that entry is still live (it is
-        // cleared ~100 ms later, by the cleanup just above), so the fetch would
-        // hit "already transferring — skipping duplicate" and silently do
-        // nothing. An earlier revision of this fix did exactly that and was inert
-        // for every fresh borrow; two reviewers caught it by reading the guard
-        // rather than the call. Do not move this earlier.
+        // Must run after `bookIdentifierToDownloadInfo.remove` above, not in
+        // `LCPFulfillmentHandler`: `redownloadLCPContentFile` skips the fetch as
+        // a duplicate while `downloadInfo(for:)` is still non-nil, which it is
+        // during fulfillment. Do not move this earlier.
         //
-        // PP-5148: only on the SUCCESS arm. Both arms fall through to here, and a
-        // download can fail AFTER its licence has landed — at which point the book
-        // still looks fetchable, and the app would start pulling the archive for a
-        // book it has just marked `.downloadFailed` and raised an alert for. The
-        // patron sees an error and is told nothing about the gigabytes still
-        // moving. `failureRequiringAlert` is re-read from the dispatcher above, so
-        // by this line it is the final verdict rather than the parse-time guess.
+        // PP-5148: skipped on failure. A download can fail after its licence has
+        // landed, and fetching the archive for a book just marked
+        // `.downloadFailed` would keep moving gigabytes behind an error alert.
+        // `failureRequiringAlert` is the dispatcher's final verdict by this line.
         await startLCPContentFetchIfNeeded(for: book, account: accountsManager.currentAccountId ?? "", afterFailedDownload: failureRequiringAlert)
-        // Reliability WS-A: download reached a terminal outcome — drop the
-        // durable record and reset the transient-transfer retry counter.
+        // Terminal outcome: drop the durable record and reset the retry counter,
+        // unless the bearer hop left a follow-up task running (PP-5023; the OPDS
+        // follow-up early-returns above). The rest of this cleanup, including
+        // the `bookIdentifierToDownloadInfo` removal, still runs for the bearer arm.
         await stateManager.finishTerminalBookkeeping(for: book.identifier, keepRecord: dispatchResult.followUpTaskInFlight)
-        // PP-5023: the retire-or-keep decision lives in `finishTerminalBookkeeping`
-        // so this frozen file does not grow — see that method for why a bearer hop
-        // must keep its record.
-        //
-        // The OPDS follow-up never reaches this line (`.followUpStarted`
-        // early-returns above), which is why only the bearer path needs the flag.
-        //
-        // Deliberately narrow: the REST of this cleanup still runs for the bearer
-        // arm, including the `bookIdentifierToDownloadInfo` removal that clears the
-        // info the hop just wrote for its in-flight task. That is PRE-EXISTING
-        // behaviour and not PP-5023's to change; called out rather than widened.
         let remainingCount = await downloadCoordinator.activeCount
         Log.info(#file, "📊 Download flow completed for '\(book.identifier)', remaining active: \(remainingCount)")
 
@@ -1737,7 +1685,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
     }
 
     func handleTaskCompletionError(task: URLSessionTask, error: Error?) async {
-        // Reliability WS-A #4: give a transient content-transfer failure a bounded
+        // Give a transient content-transfer failure a bounded
         // retry with backoff before surfacing the failure. Returns true only when
         // a retry was scheduled — in which case we must NOT fail the download yet.
         if let error, await maybeRetryTransientTransfer(task: task, error: error) {
@@ -1763,7 +1711,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
             return
         }
 
-        // Reliability WS-A: durably record the started task so a mid-download kill
+        // Durably record the started task so a mid-download kill
         // can be reconciled (adopted / restarted) at next launch.
         persistStartedTaskRecord(task: task, book: book, request: modifiableRequest)
 
@@ -2065,7 +2013,7 @@ extension MyBooksDownloadCenter: BookReturnServiceDelegate {}
 extension MyBooksDownloadCenter: LCPFulfillmentHandlerDelegate {}
 #endif
 
-// MARK: - Reliability WS-A: durable downloads (background handler, retry, reconciliation)
+// MARK: - Durable downloads (background handler, retry, reconciliation)
 
 extension MyBooksDownloadCenter {
 
@@ -2227,8 +2175,7 @@ extension MyBooksDownloadCenter {
     ///
     /// This keys on the registry LIFECYCLE publisher, not `bookStatePublisher`:
     /// a cold launch into a fresh empty registry loads zero books, so no per-book
-    /// event ever fires — a `bookStatePublisher` subscriber would never reconcile
-    /// (swarm_8ce6f5ae WS3).
+    /// event ever fires — a `bookStatePublisher` subscriber would never reconcile.
     func scheduleReconcileDownloadsAtLaunch() {
         if isRegistryLoadedForReconcile {
             Task { await reconcileDownloadsAtLaunch() }

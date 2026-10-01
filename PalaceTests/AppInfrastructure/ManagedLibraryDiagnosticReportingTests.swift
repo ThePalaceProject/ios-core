@@ -1,22 +1,11 @@
 //
 //  ManagedLibraryDiagnosticReportingTests.swift
-//  PalaceTests
 //
-//  PP-5221 — reporting a configuration fault once, and recording that we did.
-//
-//  `ManagedLibraryDiagnosticsTests` asserts the DECISION. This file asserts the
-//  part the decision cannot enforce on its own: that the record of "we already
-//  told someone about this" is written only when something was actually
-//  reported, and that it is keyed on something a malformed payload still has.
-//
-//  Both of those are failure modes that read as working code. Writing the
-//  record unconditionally would silence the report on the one launch where the
-//  wait finally expires; keying it on the parsed configuration would re-report
-//  the same typo every launch forever, because a payload too malformed to parse
-//  has no parsed configuration to key on. Neither shows up as a crash, a
-//  failing build, or a wrong value on screen.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-5221: report a configuration fault once, and record that we did. The
+//  record must be written only when something was reported (otherwise the one
+//  launch where the wait expires is silenced), and keyed on something a
+//  malformed payload still has (otherwise an unparseable typo is re-reported
+//  every launch). `ManagedLibraryDiagnosticsTests` covers the decision itself.
 //
 
 import XCTest

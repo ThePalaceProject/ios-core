@@ -79,7 +79,7 @@ extension XCTestCase {
 /// deadlock on CI when the main-thread syncQueue and notification observers
 /// re-enter loadData().
 ///
-/// swarm_47883816 work package A — sources collaborators from a fresh
+/// Sources collaborators from a fresh
 /// isolated AppContainer (built per call) rather than the process-wide
 /// `AppContainer.production()` graph. Each call mints a fresh container,
 /// so the downloadCenter + accountsManager passed to MyBooksViewModel
@@ -1102,8 +1102,7 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
     }
 
     /// Tests that the ViewModel reacts to a per-book state change through the
-    /// registry's `bookStatePublisher` (migrated off `.TPPBookRegistryStateDidChange`
-    /// in swarm_8ce6f5ae WS3).
+    /// registry's `bookStatePublisher` (migrated off `.TPPBookRegistryStateDidChange`).
     func testStateChange_ViaBookStatePublisher_IsRegistered() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = []

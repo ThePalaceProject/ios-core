@@ -2,33 +2,13 @@
 //  AudiobookPositionResolverDecisionTableTests.swift
 //  PalaceTests
 //
-//  Wave 6 decomposition pin for `Palace/Audiobooks/AudiobookSessionManager.swift`
-//  (god-class-decomposition-plan.md §3a-1 "Position resolve before play,
-//  PP-4542 + position restoration helpers → `AudiobookPositionResolver`"; §5
-//  fleet row names "position-resolution decision table (local vs remote vs none
-//  — the PP-4542 cases)").
-//
-//  WHAT THIS PINS THAT `AudiobookPositionRestoreTests` DOES NOT
-//
-//  That suite pins the two rules SEPARATELY and thoroughly: the >5s recency
-//  comparison (`preferRemotePosition`, 7 cases) and the manifest gate applied to
-//  a remote (`validatedRemotePosition`, 2 cases). What it cannot reach is their
-//  COMPOSITION, because the composition lived inside `resolveInitialPosition`,
-//  which interleaved them with a bounded `syncLocation` await against a concrete
-//  `TPPBookRegistry` — so driving it needed a live registry and a 2.5s timer.
-//
-//  The extraction stops that await at `awaitRemotePosition` and leaves
-//  `chooseInitialPosition(remote:localPosition:fallback:in:bookId:)` pure, which
-//  makes the composition a finite table: {no remote, remote older, remote newer
-//  and valid, remote newer and foreign-keyed} × {no local, local present}. Every
-//  cell resolves to either the fallback or the remote, and getting a cell wrong
-//  is a patron opening at the wrong place in a book — the PP-4542 / 3.2.3
-//  Cause 2 failure class.
-//
-//  WHY THE TABLE IS 6 CELLS AND NOT 8. `localPosition` is only read by the
-//  recency comparison, which is only reached when a remote exists. So the
-//  no-remote row collapses to one cell for both local states, and that
-//  collapse is itself asserted (`testNoRemote_*`) rather than assumed.
+//  Pins the COMPOSITION of the recency rule and the manifest gate in
+//  `chooseInitialPosition(remote:localPosition:fallback:in:bookId:)` as a table:
+//  {no remote, remote older, remote newer and valid, remote newer and foreign-keyed}
+//  × {no local, local present}. A wrong cell opens a patron at the wrong place in
+//  the book (PP-4542). `AudiobookPositionRestoreTests` covers each rule on its own.
+//  The table has 6 cells, not 8: `localPosition` is read only when a remote exists,
+//  so the no-remote row collapses, and `testNoRemote_*` asserts that.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -207,11 +187,7 @@ final class AudiobookPositionResolverDecisionTableTests: XCTestCase {
     // MARK: - The restore precondition
 
     // `shouldRestoreBookmarkPosition` decides whether the local-restore path is
-    // entered at all. Mutation on the extracted resolver reported all three of
-    // its lines UNCOVERED — no test executed them — which is the reachable-cell
-    // question mutation score cannot answer on its own. The seam is trivially
-    // drivable now that the resolver takes an injected registry, so the gap is
-    // closed rather than recorded.
+    // entered at all; the resolver takes an injected registry, so it is driven directly.
 
     func testShouldRestore_withSavedLocation_isTrue() {
         let book = TPPBookMocker.mockBook(title: "Saved")

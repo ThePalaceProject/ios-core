@@ -8,7 +8,6 @@
 #   check-package-tests-wired.sh          (whole-tree, package test targets)
 #   check-shared-read-count.sh            (whole-tree, baseline)
 #   check-completion-isolation.py         (diff-scoped, file paths)
-#   check-playback-ui-latch.py            (whole-tree, optional root arg)
 #   check-override-drops-base-state.py    (whole-tree, baselined, optional root arg)
 #
 # WHY THIS TEST EXISTS. All four shipped with baselines and pytests and were
@@ -44,7 +43,6 @@ for d in check-appcontainer-locator-count.sh \
          check-package-tests-wired.sh \
          check-shared-read-count.sh \
          check-completion-isolation.py \
-         check-playback-ui-latch.py \
          check-override-drops-base-state.py; do
   grep -qF "$d" "$VERIFY" || fail "$d is not referenced by verify-pr.sh (orphaned again)"
   pass "$d is wired"
@@ -53,7 +51,7 @@ done
 # The record() keys must exist too — a detector can be mentioned in a comment
 # while its block is unreachable. Ratchet detectors trip on comment mentions
 # (memory `ratchet-detectors-count-comment-mentions`), so assert the real keys.
-for key in '"decomposition_ratchets"' '"completion_isolation"' '"playback_ui_latch"' '"override_base_state"'; do
+for key in '"decomposition_ratchets"' '"completion_isolation"' '"override_base_state"'; do
   grep -qF "record $key" "$VERIFY" || fail "no record() call for $key in verify-pr.sh"
   pass "record() key $key present"
 done
@@ -144,46 +142,6 @@ if python3 "$CI" "$TMPDIR/Clean.swift" "$TMPDIR/Violation.swift" >/dev/null 2>&1
   fail "mixed batch passed — a violation is masked when batched with clean files"
 else
   pass "mixed batch exits non-zero"
-fi
-
-# ---------------------------------------------------------------------------
-# 3d. playback-ui-latch is WHOLE-TREE and takes an optional ROOT, not file paths.
-#     verify-pr.sh calls it with no arguments, so the clean assertion below uses
-#     exactly that form — a detector that silently required a `--diff` it never
-#     receives would look wired and catch nothing.
-# ---------------------------------------------------------------------------
-echo "3d. playback-ui-latch — no-argument whole-tree interface, both directions"
-PL="$REPO_ROOT/scripts/check-playback-ui-latch.py"
-[ -f "$PL" ] || fail "check-playback-ui-latch.py missing"
-
-if ( cd "$REPO_ROOT" && python3 "$PL" >/dev/null 2>&1 ); then
-  pass "no-argument run exits 0 on the current tree"
-else
-  fail "check-playback-ui-latch.py exits non-zero on the current tree with the interface verify-pr.sh uses — it would block every PR."
-fi
-
-# A violating predicate under a throwaway root: a blocking UI state derived from
-# a live readiness signal with no hasStartedPlayback latch (PP-5205).
-mkdir -p "$TMPDIR/root/Palace/Fake"
-cat > "$TMPDIR/root/Palace/Fake/Overlay.swift" <<'EOF'
-import Foundation
-
-enum FakeOverlayState { case hidden, spinner }
-
-enum FakeOverlayPolicy {
-    static func overlayState(
-        isLoaded: Bool,
-        isDownloading: Bool
-    ) -> FakeOverlayState {
-        isLoaded ? .hidden : .spinner
-    }
-}
-EOF
-
-if python3 "$PL" "$TMPDIR/root" >/dev/null 2>&1; then
-  fail "an unlatched blocking overlay predicate was NOT flagged — the detector is wired but toothless"
-else
-  pass "unlatched blocking overlay predicate exits non-zero"
 fi
 
 # ---------------------------------------------------------------------------
@@ -289,4 +247,4 @@ else
 fi
 
 echo
-echo "PASS: all six detectors are wired, both directions behave, and --base is parsed."
+echo "PASS: all detectors are wired, both directions behave, and --base is parsed."

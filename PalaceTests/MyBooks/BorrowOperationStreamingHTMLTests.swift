@@ -1,25 +1,9 @@
 //
-//  BorrowOperationStreamingHTMLTests.swift
-//  PalaceTests
-//
-//  PP-4161 (v2.1 advisory F) regression net for the BorrowOperation:453
-//  guard:
-//
-//      if attemptDownload && mapping.state == .downloadNeeded
-//         && !borrowedBook.isStreamingHTML {
-//          delegate?.startDownload(for: borrowedBook, withRequest: nil)
-//      }
-//
-//  Without the `!borrowedBook.isStreamingHTML` clause, the auto-download
-//  chain fires for streamingHTML books, MyBooksDownloadCenter tries to
-//  download a non-existent asset (only `text/html;profile=streaming-media`
-//  is in the indirect-acquisition chain), the request fails, and the
-//  registry lands in `.downloadFailed` — locking the user out of the
-//  readStreaming affordance.
-//
-//  This file mirrors the structure of `BorrowOperationTests.swift` (same
-//  closure-injection seams + spy delegate) but is scoped to the streaming-
-//  HTML / EPUB guard predicate alone.
+//  PP-4161: BorrowOperation auto-starts a download only when
+//  `mapping.state == .downloadNeeded && !borrowedBook.isStreamingHTML`. Without the
+//  streamingHTML clause the download center requests a non-existent asset, the
+//  registry lands in `.downloadFailed`, and the readStreaming action is lost.
+//  Same closure seams and spy delegate as `BorrowOperationTests.swift`.
 //
 
 import XCTest
@@ -160,9 +144,8 @@ final class BorrowOperationStreamingHTMLTests: XCTestCase {
 
     /// Companion positive control: a successful borrow for an EPUB book
     /// (which has a downloadable asset) MUST still call
-    /// `delegate.startDownload`. Without this test, a mutant that removes
-    /// the entire conditional (so startDownload never fires) would pass
-    /// the streaming-HTML test silently.
+    /// `delegate.startDownload`, so removing the whole conditional (so
+    /// startDownload never fires) cannot pass the streaming-HTML test.
     func testBorrowOperation_borrowSucceeded_epubBook_callsStartDownloadOnce() async throws {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         XCTAssertFalse(book.isStreamingHTML,

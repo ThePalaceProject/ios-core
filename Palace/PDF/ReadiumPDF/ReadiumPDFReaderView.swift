@@ -2,18 +2,9 @@
 //  ReadiumPDFReaderView.swift
 //  Palace
 //
-//  SwiftUI host for the Readium-backed PDF reader. Mirrors the shape of
-//  `TPPPDFReaderView` (which handles plain-PDF PDFKit rendering) so the
-//  navigation chrome — back/TOC/previews/bookmarks/search picker — and
-//  side panels stay the same across both PDF pipelines.
-//
-//  The actual page rendering for LCP PDFs is owned by the embedded
-//  `ReadiumPDFContainer` (Readium's `PDFNavigatorViewController` under
-//  the hood, streaming decrypted pages on demand via the shared
-//  `GCDHTTPServer`). The side panels — `TPPPDFTOCView`,
-//  `TPPPDFPreviewGrid`, bookmark view — see a publication-backed
-//  `TPPPDFDocument` shim that proxies their TOC/pageCount/label calls
-//  to Readium without forking their UI.
+//  SwiftUI host for the Readium-backed PDF reader. Mirrors `TPPPDFReaderView`
+//  so the navigation chrome and side panels are shared across both PDF
+//  pipelines; the side panels see a publication-backed `TPPPDFDocument` shim.
 //
 
 import SwiftUI
@@ -69,13 +60,10 @@ struct ReadiumPDFReaderView: View {
         }
         .ignoresSafeArea(edges: .bottom)
         .onDisappear {
-            // Drop the publication AND deregister its HTTP-server
-            // endpoint so the LCP content-protection state, GCDHTTPServer
-            // handler/transformer entries, and decrypted page caches all
-            // release — otherwise back-to-back opens accumulate state and
-            // the app OOMs on large LCP textbooks. The TOC + page-count
-            // snapshot is preserved across this teardown so re-opens
-            // repopulate side panels instantly.
+            // Drop the publication and deregister its HTTP-server endpoint so
+            // LCP state and decrypted page caches release; back-to-back opens
+            // otherwise OOM on large LCP textbooks. The TOC/page-count snapshot
+            // is kept for fast re-opens.
             AppContainer.production().readerService
                 .releaseReadiumPDF(forBookIdentifier: book.identifier)
         }
@@ -89,12 +77,8 @@ struct ReadiumPDFReaderView: View {
             book: book,
             initialPageIndex: metadata.currentPage,
             onLocationChange: { locator in
-                // First emission means page 1 actually rendered — flip
-                // off the pending flag so NavigationHostView removes the
-                // ReadiumPDFLoadingView overlay. Publication-landed (~100ms)
-                // happens long before this; the user-perceived "blank"
-                // window covers the seconds it takes PDFNavigator to walk
-                // the LCP cross-ref table on the first page request.
+                // First emission means page 1 rendered, so the loading overlay
+                // can go (the publication itself lands much earlier).
                 if !didMarkFirstPageRendered {
                     didMarkFirstPageRendered = true
                     coordinator.markReadiumPDFFirstPageRendered(forBookId: book.identifier)

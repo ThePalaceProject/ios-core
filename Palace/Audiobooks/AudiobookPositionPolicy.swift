@@ -8,19 +8,14 @@
 //  PalaceAudiobookToolkit Audiobook / TrackPosition / Chapter types — those
 //  live in the submodule and aren't economical to wire up in unit tests.
 //
-//  Critical-path file. See swarm_f3b9b087 contract for Audiobook-Position.
-//
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation
 import PalaceLogging
-// `ChapterNavigationPolicy` calls ONE toolkit static — a pure String comparison
-// (`positionUpdateIsForNavigationTarget`). That is the deliberate exception to this
-// file's toolkit-free rule, which exists so its policies need no Audiobook /
-// TrackPosition / Chapter fixtures to test; a static over two Strings costs a test
-// nothing. Importing rather than restating it keeps ONE copy of the navigation-hold
-// rule across the two players, which is the mistake that put PP-5205 in both.
+// Exception to this file's toolkit-free rule: `ChapterNavigationPolicy` calls one
+// pure String comparison (`positionUpdateIsForNavigationTarget`) so both players
+// share a single copy of the navigation-hold rule (PP-5205).
 import PalaceAudiobookToolkit
 
 // MARK: - Beginning-position predicate
@@ -28,22 +23,9 @@ import PalaceAudiobookToolkit
 /// Decision: is the *incoming* (just-played-from-app) position effectively
 /// "the very beginning of the book"?
 ///
-/// History: prior implementation used `(trackIndex == 0 && playbackTime < 30.0)`
-/// as the predicate. The 30s grace existed to suppress overwriting a real
-/// server-side multi-hour progress with a fresh launch that hadn't seeked yet.
-/// But the 30s grace was undocumented and *too generous*: a patron who
-/// genuinely paused at 0:25 of chapter 1 would have that pause discarded
-/// the next time a track-0 position with timestamp < 30s arrived from the
-/// player.
-///
-/// Decision (per swarm_f3b9b087 contract option b): require strict
-/// `trackIndex == 0 && playbackTime == 0` to count as "at beginning."
-///
-/// Why strict-zero: the *upstream* timestamp-newer race check (see
-/// `syncListeningPositionToServer`) is the right place to defend against
-/// stale overwrites — `isAtBeginning` should only suppress *unambiguous*
-/// "the user just opened the book and we haven't moved" cases. Track-0 +
-/// non-zero playback time is genuine progress; treat it as such.
+/// Strict zero (`trackIndex == 0 && playbackTime == 0`), not a grace window: a
+/// patron who paused at 0:25 of chapter 1 has real progress. Stale-overwrite
+/// protection belongs to the timestamp check in `syncListeningPositionToServer`.
 public enum BeginningPositionPolicy {
 
     /// Returns true when the position is at the absolute start: track index 0
@@ -94,8 +76,7 @@ public enum AudiobookPositionValidationFailure: Error, Equatable {
 /// success and let the player's own seek-guard handle out-of-range seeks.
 public enum AudiobookPositionPolicy {
 
-    /// The cap multiplier — pinned as a constant so a mutation flip
-    /// (`* 1.1` → `* 0.9`) shows up in tests.
+    /// The cap multiplier.
     public static let totalDurationCap: Double = 1.1
 
     /// Validates a raw-position 5-tuple. Returns `.success(())` when the
@@ -139,22 +120,9 @@ public enum AudiobookPositionPolicy {
 
 /// Decision: when did the listener move into a different chapter?
 ///
-/// Prior implementation: `oldKey != newKey || oldTitle != newTitle`. The OR
-/// fires spuriously on anthology audiobooks where two adjacent chapters in
-/// the same track share a title (e.g. "Untitled Section"). It also fires
-/// when the toolkit briefly returns a `Chapter` with a different title for
-/// the same track key during a seek, which causes a flicker in the chapter
-/// UI.
-///
-/// New policy: track-key equality is the **primary** signal. Title is a
-/// tiebreaker that only fires when the keys are equal but somehow the
-/// chapter object changed (different position within the same track).
-///
-/// In practice the new rule reduces to "fire on key change," because if
-/// keys are equal and titles differ we still don't want to fire a
-/// chapter-change event — the chapter UI keys off `currentChapter.title`,
-/// and re-emitting on title-only changes confuses observers about whether
-/// they crossed a boundary.
+/// Fires on a track-key change only. Comparing titles as well fired spuriously
+/// on anthologies whose adjacent chapters share a title, and when the toolkit
+/// briefly reports a different title for the same key during a seek.
 public enum ChapterChangeDetector {
 
     /// Returns true when the new chapter represents a real crossing.
@@ -181,11 +149,8 @@ public enum ChapterChangeDetector {
 /// call site (it needs the toolkit's `Chapter` type); this helper just owns
 /// the decision predicate so the threshold (1.5×) is testable.
 ///
-/// Why 1.5×: real-world manifests with 56 declared chapters and 182 TOC
-/// entries hit 3.25× inflation; with 100 chapters and 110 TOC entries hit
-/// 1.1× (legitimate sub-chapter, keep). 1.5× catches the 3× outliers
-/// without false-positiving on books that just have an "Acknowledgments"
-/// entry after the last chapter.
+/// Why 1.5×: observed oversubdivided manifests run ~3× (56 chapters, 182
+/// entries), while legitimate ones sit near 1.1×.
 public enum ChapterTOCNormalizer {
 
     /// Inflation multiplier above which a TOC is considered oversubdivided.
@@ -207,9 +172,8 @@ public enum ChapterTOCNormalizer {
 
 // MARK: - Open-audiobook gate/teardown decision
 
-/// Pure decision struct for the two openAudiobook-time policy questions
-/// the session manager has to answer when re-entering playback. Both
-/// predicates protect against real, real-device-verified regressions:
+/// Pure decision for the two policy questions the session manager answers
+/// when re-entering playback:
 ///
 ///   * `persistFinalPositionOnTeardown` — when `openAudiobook` is called
 ///     while a prior session for the SAME book identifier is still active
@@ -217,7 +181,7 @@ public enum ChapterTOCNormalizer {
 ///     prior session's teardown must NOT save its live position to the
 ///     registry. Otherwise the stale offset gets written into the freshly-
 ///     borrowed registry record and the new open seeks there.
-///     (FINDING-D / HelpSpot 17988 Iron Flame "missing first hour".)
+///     (HelpSpot 17988.)
 ///
 ///   * `bypassReadinessGate` — `LCPStreamingPlayer.isLoaded` only flips
 ///     to true once `AVPlayer.timeControlStatus == .playing`, which
@@ -225,7 +189,7 @@ public enum ChapterTOCNormalizer {
 ///     therefore deadlocks LCP. The toolkit has its own internal 30s
 ///     load timeout that surfaces `.failed`, so the gate's hang-
 ///     detection role is already covered for LCP. Bypass on this path.
-///     (FINDING-B / HelpSpot 17981 / 17989 / 18002 "won't play".)
+///     (HelpSpot 17981 / 17989 / 18002.)
 public struct PlaybackOpenDecision: Equatable {
     public let bypassReadinessGate: Bool
     public let persistFinalPositionOnTeardown: Bool
@@ -250,12 +214,8 @@ public enum PlaybackOpenPolicy {
         )
     }
 
-    /// Production call-site adapter for the LCP-bypass decision. Accepts
-    /// the freshly-loaded audiobook's decryptor reference and folds the
-    /// `decryptor != nil` predicate into the decision. Extracted so the
-    /// `!= nil` predicate is itself mutation-testable from a unit test —
-    /// `startPlaybackAndSyncPosition`'s call-site mutation
-    /// (`!= nil` → `== nil`) would otherwise be silent.
+    /// Production call-site adapter for the LCP-bypass decision: folds the
+    /// `decryptor != nil` predicate into the decision so it is unit-testable.
     public static func decideForLoad(decryptor: AnyObject?) -> PlaybackOpenDecision {
         decide(isReBorrowOfSameBook: false, hasDecryptor: decryptor != nil)
     }
@@ -279,9 +239,7 @@ public protocol AudiobookPositionLogging {
     func logFallback(reason: String, context: [String: String])
 }
 
-/// Default logger — funnels everything through `Log.warn` so production
-/// behavior is unchanged from the pre-extraction baseline (the messages just
-/// gain the `[AUDIOPOS]` prefix and a structured context dump).
+/// Default logger: `Log.warn` with the `[AUDIOPOS]` prefix and a context dump.
 public struct DefaultAudiobookPositionLogger: AudiobookPositionLogging {
     public init() {}
 
@@ -310,13 +268,9 @@ public struct DefaultAudiobookPositionLogger: AudiobookPositionLogging {
 
 /// How an EXPLICIT chapter selection interacts with the reactive chapter cache.
 ///
-/// `AudiobookSessionManager.currentChapter` is a cache written only from position
-/// updates, so a chapter tap used to change nothing until the seek produced a
-/// position. While the seek settled, the player's chapter label named the chapter
-/// the patron had just left, beside chapter-scoped timecodes that had already moved
-/// to the new one — they are computed live off the player's position, and that
-/// prefers the seek target. Reported on build 509 as "you land on the previous
-/// chapter and then it switches."
+/// `AudiobookSessionManager.currentChapter` is written only from position
+/// updates, so without this a chapter tap left the label on the previous chapter
+/// until the seek settled, while the timecodes had already moved.
 ///
 /// Two rules, deliberately separate, because the reactive and explicit paths want
 /// opposite answers on the same input.

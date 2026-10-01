@@ -29,7 +29,7 @@ cross-module refactor:
 
 `/swarm` doesn't add new infrastructure — every piece existed already
 (ForgeOS gates, `forge-review` reviewer subagents, hooks enforcement,
-`verify-pr.sh`, `pbxproj_add_swift.rb`, `export-module-contracts.py`). It
+`verify-pr.sh`, `pbxproj_add_swift.rb`, and the harness's `export-module-contracts.py`). It
 **wires those pieces into a triage→dispatch→integrate→promote loop** so
 multi-module work parallelizes cleanly.
 
@@ -223,10 +223,10 @@ The skill body documents recovery for each failure mode. The summary view:
 
 - [`scripts/pbxproj_add_swift.rb`](../../scripts/pbxproj_add_swift.rb) — used
   by implementers to add Swift files to `Palace.xcodeproj`.
-- [`scripts/export-module-contracts.py`](../../scripts/export-module-contracts.py) —
+- `~/harness/stacks/ios/forgeos/export-module-contracts.py` (maintainer harness) —
   generates `.forgeos/contracts/<module>.json` for the architect to read.
 - [`scripts/palace_mutate.py`](../../scripts/palace_mutate.py) — caches
-  mutation results in `.forgeos/mutation-cache/`; integrator uses this via
+  mutation results in `.build/mutation-cache/`; integrator uses this via
   `verify-pr.sh`.
 - [`PalaceTests/RegressionGuards/`](../../PalaceTests/RegressionGuards/) —
   per-crash-family regression guards integrated into the verify-pr battery.

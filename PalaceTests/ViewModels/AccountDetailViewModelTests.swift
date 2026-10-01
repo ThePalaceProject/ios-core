@@ -1103,8 +1103,8 @@ final class AccountDetailSignOutConfirmationTests: XCTestCase {
     }
 
     /// Structural guard: the alert returned by makeSignOutConfirmationAlert
-    /// must offer Sign Out (destructive) and Cancel actions. Catches mutations
-    /// that downgrade the destructive style or drop the cancel action.
+    /// must offer Sign Out (destructive) and Cancel actions. Catches a
+    /// downgraded destructive style or a dropped cancel action.
     func testMakeSignOutConfirmationAlert_HasDestructiveSignOutAndCancelActions() async {
         let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
@@ -1152,8 +1152,8 @@ private final class SnapshotBox {
 ///     off-main → Swift 6 `dispatch_assert_queue` trap → these tests die.
 ///  2. Makes `accountDidChange()`'s signed-in derivation
 ///     (`hasCredentials && authState != .loggedOut`, barcode/pin population)
-///     mutation-testable by injecting the credential snapshot instead of reading
-///     the keychain.
+///     testable by injecting the credential snapshot instead of reading the
+///     keychain.
 @MainActor
 final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
@@ -1174,8 +1174,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
         // network graph via `.production()`, which can round-trip TPPKeychain.
         // Skip on CI hosts where SecItem returns -34018 (no entitlement) — same
         // gate the sibling classes use. The injected snapshot means these tests
-        // are deterministic wherever they DO run (notably local mutation runs,
-        // which are where kill-rate is measured — mutation is local-only).
+        // are deterministic wherever they DO run.
         try KeychainAvailability.skipIfUnavailable()
 
         let (seededAccount, seedCleanup) = seedAccountIfNeeded(
@@ -1306,7 +1305,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
         // hasCredentials stays true, but authState becomes loggedOut. This pins
         // the `authState != .loggedOut` half of the derivation: flip `!=` to `==`
-        // and this book would read as signed-in → assertion fails → mutant killed.
+        // and this book would read as signed-in → assertion fails.
         box.snapshot = makeSnapshot(hasCredentials: true, authState: .loggedOut)
         await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: false)
 
@@ -1325,7 +1324,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
         // Pins the `hasCredentials &&` half: no credentials → signed-out
         // regardless of authState. Flip `&&` to `||` and loggedIn alone would
-        // read as signed-in → assertion fails → mutant killed.
+        // read as signed-in → assertion fails.
         box.snapshot = makeSnapshot(hasCredentials: false, authState: .loggedIn)
         await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: false)
 
@@ -1355,8 +1354,8 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
         // Signed-in but the snapshot carries nil barcode/pin (token-only auth).
         // Pins the `snapshot.barcode ?? ""` / `snapshot.pin ?? ""` fallthrough:
-        // mutate either default (e.g. `?? "x"`) and these fields would no longer
-        // be empty → assertion fails → mutant killed.
+        // change either default (e.g. `?? "x"`) and these fields would no longer
+        // be empty → assertion fails.
         box.snapshot = makeSnapshot(hasCredentials: true, authState: .loggedIn, barcode: nil, pin: nil)
         await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: true)
 
