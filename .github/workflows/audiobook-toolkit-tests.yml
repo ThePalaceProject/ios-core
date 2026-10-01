@@ -68,20 +68,6 @@ jobs:
           restore-keys: |
             toolkit-spm-
 
-      # The toolkit test target has a "Copy Frameworks (Carthage)" phase that
-      # runs the literal path /usr/local/bin/carthage. It has no inputs, so it
-      # copies nothing, but it fails the build when that path is missing, which
-      # it is on the arm64 runners (Homebrew lives in /opt/homebrew). Developer
-      # machines pass because of a symlink at that path; this provides the same.
-      # Remove once the pinned toolkit no longer has the phase
-      # (ThePalaceProject/ios-audiobooktoolkit#235).
-      - name: Provide /usr/local/bin/carthage for the toolkit's script phase
-        run: |
-          command -v carthage >/dev/null || brew install carthage
-          sudo mkdir -p /usr/local/bin
-          sudo ln -sf "$(command -v carthage)" /usr/local/bin/carthage
-          /usr/local/bin/carthage version
-
       - name: Select simulator
         id: sim
         run: |
