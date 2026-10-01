@@ -2,25 +2,13 @@
 //  DownloadTaskLifecycleService.swift
 //  Palace
 //
-//  Owns the URL-session task lifecycle bookkeeping that lived inside
-//  MyBooksDownloadCenter as the async block of `addDownloadTask` and
-//  the body of `handleTaskCompletionError`. Two responsibilities:
-//
-//    1. `registerStartedTask(_:book:maxConcurrentDownloads:)` —
-//       seeds bookIdentifierToDownloadInfo + taskIdentifierToBook
-//       so URLSession callbacks can route the right book, marks the
-//       book as `.downloading` in the registry, announces the start,
-//       posts the legacy `.TPPMyBooksDownloadCenterDidChange`
-//       notification (via the delegate so MBDC stays the
-//       `object: self` posting source), then schedules pending
-//       starts to fill remaining capacity. Critical: `task.resume()`
-//       happens AFTER state seeding so URLSession delegate
-//       callbacks find the task in our maps.
-//
-//    2. `handleTaskCompletionError(task:error:)` — the
-//       `URLSessionTaskDelegate` `didCompleteWithError` callback's
-//       async body. Clears redirect attempts + registers completion
-//       on the download coordinator, logs/alerts on real errors
+//  URL-session task lifecycle bookkeeping:
+//    1. `registerStartedTask`: seeds the book/task lookup maps, marks the book
+//       `.downloading`, announces, notifies via the delegate (so MBDC stays the
+//       posting object), and schedules pending starts. `task.resume()` must
+//       happen after seeding so URLSession callbacks find the task.
+//    2. `handleTaskCompletionError`: the `didCompleteWithError` body. Clears
+//       redirect attempts, releases the coordinator slot, alerts on real errors
 //       (cancellations are silent), and schedules pending starts.
 //
 

@@ -187,10 +187,10 @@ final class AuthTelemetryEmissionTests: XCTestCase {
         XCTAssertEqual(events.first?.statusCode, 401)
     }
 
-    // MARK: - Sign-out emits no telemetry (out of swarm scope)
+    // MARK: - Sign-out emits no telemetry
 
     func testSignOut_emitsNoCoordinatorEvents() async {
-        // Sign-out is explicit OFF-LIMITS per the swarm contract.
+        // Sign-out is outside the auth-decision telemetry scope.
         // The coordinator's `signOut` only marks credentials stale; it
         // must NOT emit telemetry that would clutter the auth-decision
         // dashboard with sign-out noise.

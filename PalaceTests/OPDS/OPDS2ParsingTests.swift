@@ -2,7 +2,7 @@
 //  OPDS2ParsingTests.swift
 //  PalaceTests
 //
-//  Deep, mutation-killing unit tests for the OPDS 2.0 parser stack:
+//  Unit tests for the OPDS 2.0 parser stack:
 //  OPDS2Feed, OPDS2Publication, OPDS2PublicationExtended.toBook(),
 //  OPDS2CatalogsFeed, OPDS2Group, and the OPDS2AuthenticationDocument /
 //  TPPProblemDocument decoders that ship alongside them.

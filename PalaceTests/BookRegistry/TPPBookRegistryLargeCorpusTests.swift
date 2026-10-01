@@ -1,26 +1,9 @@
-//
 //  TPPBookRegistryLargeCorpusTests.swift
-//  PalaceTests
 //
-//  Deep, mutation-killing tests for the *scale* of BookRegistrySync.save +
-//  load against a real-world worst-case corpus: 5000 books on disk.
-//
-//  Contract under test:
-//    1. Saving 5000 in-memory records produces a complete JSON file (no
-//       truncation, no record loss).
-//    2. Loading 5000 records from disk produces 5000 unique in-memory
-//       records (no record loss, no duplication).
-//    3. The save→load round-trip is fully lossless at scale for the fields
-//       BookRegistryStore exposes (identifier, title, state).
-//    4. Lookup by identifier remains O(1)-ish — every seeded id resolves
-//       to a record after load.
-//
-//  These tests are *correctness at scale*, not perf gates. We pin a generous
-//  wall-clock budget (60s) so a 100x slowdown still fails, but we do not
-//  assert microbenchmark numbers.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Correctness at scale for BookRegistrySync save/load with 5000 books: no record
+//  loss or duplication, lossless round trip for identifier/title/state, and every
+//  seeded id resolves after load. The 60s budget is generous so only a gross
+//  slowdown fails; these are not microbenchmarks.
 
 import XCTest
 @testable import Palace
@@ -132,9 +115,8 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
         )
     }
 
-    /// Wave-2 (swarm_ad0b4c65): replaced the `wait(for:timeout:)` +
-    /// `RunLoop.current.run(until:+0.2)` settle with a deterministic seam
-    /// join — no wall-clock budget needed regardless of corpus size.
+    /// Waits for the load with a deterministic seam join — no wall-clock
+    /// budget needed regardless of corpus size.
     /// `sync.load` drives its mutation through
     /// `BookRegistryStore.mutateRegistry`, which enqueues on `store`'s
     /// barrier `syncQueue`; `_awaitPendingWritesForTesting()` drains that
@@ -154,7 +136,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
 
     /// Plant 5000 records on disk and load them. The load must produce
     /// exactly 5000 in-memory records — no losses, no duplication, no
-    /// truncation. Kills mutants that:
+    /// truncation. Catches regressions that:
     ///   - cap the loop iteration count
     ///   - break out of the parse loop on the first non-fatal log
     ///   - rebuild the registry from a subset of records
@@ -182,7 +164,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
 
     /// Save 5000 in-memory records and reload from disk. Identifier, title,
     /// and state must all survive the round-trip for EVERY record.
-    /// Kills mutants that drop fields on serialization or replace them with
+    /// Catches regressions that drop fields on serialization or replace them with
     /// defaults at scale.
     func testRoundTrip_5000Books_AllFieldsPreserved() async throws {
         // Seed.
@@ -225,7 +207,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
     }
 
     /// Reasonable-time budget — pin a 60-second ceiling on the load of 5000
-    /// records. If load suddenly becomes O(n²) (e.g. mutant that does a
+    /// records. If load suddenly becomes O(n²) (e.g. a regression that does a
     /// linear scan inside a loop), this test fails loudly. We do NOT pin a
     /// tight microbenchmark.
     func testLoad_5000Books_CompletesUnderTimeBudget() async throws {
@@ -250,7 +232,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
     }
 
     /// At 5000-book scale, every identifier must resolve uniquely via
-    /// book(forIdentifier:). Kills mutants that change the keying field or
+    /// book(forIdentifier:). Catches regressions that change the keying field or
     /// reuse a single record across multiple slots.
     func testLookupByIdentifier_5000Books_AllUnique() async throws {
         var records: [[String: Any]] = []
@@ -281,7 +263,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
     }
 
     /// Saving a 5000-record corpus must produce a JSON file whose
-    /// top-level record count matches in-memory. Kills mutants that
+    /// top-level record count matches in-memory. Catches regressions that
     /// silently cap the saved record count at a small number (e.g. truncate
     /// to first N) — those would round-trip fewer records than expected.
     func testSave_5000Books_FileContainsAllRecords() throws {

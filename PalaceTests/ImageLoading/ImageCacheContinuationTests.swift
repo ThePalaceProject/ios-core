@@ -90,7 +90,7 @@ final class ImageCacheContinuationTests: XCTestCase {
     }
 }
 
-/// Regression test for the Wave-2a off-main isolation crash (PR #1338).
+/// Regression test for the off-main isolation crash (PR #1338).
 ///
 /// Moving `ImageCacheType` into the Swift-6 `PalaceBookModel` package changed the
 /// build context so that the `processingQueue.addOperation` /

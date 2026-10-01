@@ -2,26 +2,13 @@
 //  DownloadCancellationHandler.swift
 //  Palace
 //
-//  Owns `cancelDownload(for:)` — the cancellation state machine that
-//  lived inside MyBooksDownloadCenter. Two paths:
-//
-//    1. **No download task** (e.g. the user cancelled during a borrow
-//       request, while waiting for a retry, or before the URL session
-//       task was created). Allowed only for cancellable states
-//       (.downloading / .downloadFailed / .SAMLStarted); other states
-//       are nonsensical cancels and ignored. The handler resets the
-//       book to .downloadNeeded, broadcasts an update, and frees the
-//       download-coordinator slot.
-//
-//    2. **Download task present**. Adobe DRM short-circuits to
-//       adobeDRMService.cancelFulfillment (Adobe owns its own
-//       lifecycle via NYPLADEPTDelegate callbacks). For all other
-//       rights, the handler sets state to .downloadNeeded + broadcasts
-//       BEFORE calling URLSessionDownloadTask.cancel — UI updates
-//       immediately rather than waiting for the URLSession callback —
-//       and the cancel completion clears both bookIdentifierToDownloadInfo
-//       and taskIdentifierToBook so a subsequent retry isn't blocked
-//       by stale entries.
+//  `cancelDownload(for:)`. Two paths:
+//    1. No download task yet: only .downloading / .downloadFailed /
+//       .SAMLStarted can cancel; reset to .downloadNeeded and free the slot.
+//    2. Task present: Adobe DRM defers to cancelFulfillment (Adobe owns its
+//       lifecycle). Otherwise set .downloadNeeded before cancelling the task so
+//       the UI updates immediately, and clear both lookup maps on completion
+//       so a retry is not blocked by stale entries.
 //
 
 import Foundation

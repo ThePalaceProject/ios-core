@@ -2,31 +2,13 @@
 //  BookDetailMetadataHydrationGuardTests.swift
 //  PalaceTests
 //
-//  Wave 5 pin-before-extract — the POST-AWAIT half of
-//  `BookDetailViewModel.hydrateMetadataIfNeeded()`, written against the code as
-//  it stands BEFORE the `BookMetadataService` extraction (plan §3a-4 / §5).
-//
-//  WHAT WAS NOT PINNED BEFORE THIS FILE
-//
-//  `BookDetailMetadataHydrationTests` pins the PRE-fetch guards (already
-//  hydrated / no alternateURL) and the field fill-in;
-//  `BookDetailMetadataMergeContractTests` pins the merge precedence and the two
-//  failure branches. Neither reaches the three effects that happen AFTER the
-//  hydrator resumes, all of which the extraction has to carry across:
-//
-//    1. the merged book is written back through `registry.updatedBookMetadata`
-//       (not the current book, and not the freshly-fetched one),
-//    2. the identity re-check — a book swapped while the fetch is in flight
-//       discards the in-flight merge,
-//    3. the needs-hydration re-check — a book that became hydrated while the
-//       fetch was in flight is not merged a second time.
-//
-//  Guards 2 and 3 are the reason `hydrateMetadataIfNeeded` re-evaluates both
-//  conditions after the `await`, and nothing held them: a mutant deleting either
-//  `guard` line left every metadata test green before this file existed.
-//
-//  Both are driven with a hydrator that SUSPENDS until the test resumes it, so
-//  the interleaving is deterministic rather than raced against a sleep.
+//  Pins the POST-AWAIT half of `BookDetailViewModel.hydrateMetadataIfNeeded()`:
+//    1. the merged book is written back through `registry.updatedBookMetadata`,
+//    2. a book swapped while the fetch is in flight discards the merge,
+//    3. a book that became hydrated during the fetch is not merged twice.
+//  The pre-fetch guards and merge precedence live in `BookDetailMetadataHydrationTests`
+//  and `BookDetailMetadataMergeContractTests`. The hydrator suspends until the test
+//  resumes it, so the interleaving is deterministic.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -117,13 +99,8 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
     /// run. Asserted per field rather than by sampling, because the conjunction
     /// has one term per field and a sampled test leaves the others unheld.
     ///
-    /// Measured, not assumed: a mechanical mutation run over
-    /// `BookMetadataService.swift` (palace_mutate.py, 6 points) left three `&&`
-    /// -> `||` mutants alive — the publisher, distributor and categoryStrings
-    /// terms — because no test populated those fields alone. This table is what
-    /// kills them. The final row is the complement: with every field blank the
-    /// fetch DOES run, so a green result here cannot come from hydration being
-    /// unreachable.
+    /// The final row is the complement: with every field blank the fetch DOES run,
+    /// so a green result cannot come from hydration being unreachable.
     func testNeedsHydration_anySinglePopulatedField_suppressesTheFetch() async {
         let rows: [(field: String, book: TPPBook)] = [
             ("published", makeBook(identifier: "f-published", title: "T",
@@ -212,9 +189,7 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
         let gate = HydratorGate()
         // The entry signal is an XCTestExpectation, not an unbounded await: a
         // change that stops the fetch from happening at all must make this test
-        // FAIL at the timeout rather than hang. A hanging test is worse than a
-        // red one — under the mutation harness it reports ERRORED (nothing
-        // measured) instead of killing the mutant.
+        // FAIL at the timeout rather than hang.
         let entered = expectation(description: "hydrator entered")
         let vm = makeVM(book: original, registry: registry) { _ in
             entered.fulfill()

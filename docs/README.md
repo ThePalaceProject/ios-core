@@ -20,7 +20,7 @@ survive the admission test below, index them, and delete the rest**.
 | How to run something operationally | [`Operations/`](./Operations/) |
 | Adding or changing a user-facing string | [`Operations/localization-workflow.md`](./Operations/localization-workflow.md) |
 | How to investigate a reported bug | [`bug-investigation-process.md`](./bug-investigation-process.md) |
-| **A case where verification passed while the bug was live** | [`../.forgeos/wall-failures/INDEX.md`](../.forgeos/wall-failures/INDEX.md) |
+| **A case where verification passed while the bug was live** | The area's verification-checklist, which distils them; the full wall-failure catalog is kept in the maintainer harness |
 | Build, test, and workflow rules that bind every change | [`../CLAUDE.md`](../CLAUDE.md) |
 
 **Search order for an agent.** `CLAUDE.md` → this map → the area's
@@ -41,8 +41,8 @@ recoverable from the diff.
 |---|---|---|
 | A decision and why the alternatives lost | `architecture/<topic>.md`, **added to the architecture index** | — |
 | What to re-verify when touching an area | `architecture/areas/<area>/verification-checklist.md` | — |
-| A verification that passed while the defect was live | `.forgeos/wall-failures/`, **added to its INDEX** | — |
-| A pre-change contract (claims / anti-claims / files) | `.forgeos/intent/` via `/intent` | — |
+| A verification that passed while the defect was live | The area's verification-checklist, as a numbered lesson; the full write-up goes to the maintainer harness's wall-failure catalog | — |
+| A pre-change contract (claims / anti-claims / files) | | Not here. The PR description, or the maintainer harness via `/intent`. |
 | A plan for work about to start | | Nowhere. Put it in the Jira ticket. A landed plan is exhaust; an unlanded one is a ticket. |
 | A run log, agent transcript, or campaign handoff | | Nowhere. `check-doc-hygiene.sh` blocks it. Distill the durable part into an ADR. |
 | A raw review dump | | Nowhere. The ADR is the distillation; the review is the input. |

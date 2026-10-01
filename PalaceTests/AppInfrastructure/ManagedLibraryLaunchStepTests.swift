@@ -1,24 +1,12 @@
 //
 //  ManagedLibraryLaunchStepTests.swift
-//  PalaceTests
 //
-//  PP-5070 — two things the decision table alone cannot cover:
-//
-//  1. The bounded wait. The registry the app hydrates on cold first launch is
-//     `bundled_registry.json`, a build-time cut that does NOT contain the
-//     partner's libraries, so the configured identifier is unresolvable on
-//     exactly the launch this feature exists for. These tests pin that an
-//     unresolved configuration waits rather than falling straight through to
-//     the picker — and that the wait ends.
-//
-//  2. The escape hatch. If the configured library is absent from the NETWORK
-//     feed too, the registry's single-library endpoint is the only way to
-//     resolve it. The payload below is the verbatim production response for
-//     the partner's Lower School library, captured 2026-09-22; the test proves
-//     the app's own parser accepts it, so the follow-up story can be sized
-//     without first building the fetch.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-5070. The cold-launch `bundled_registry.json` does not contain the
+//  partner's libraries, so an unresolved configuration must wait (boundedly)
+//  rather than fall through to the picker. If the network feed also lacks the
+//  library, the registry's single-library endpoint is the fallback; the payload
+//  below is the verbatim production response (captured 2026-09-22), and the
+//  test proves the app's parser accepts it.
 //
 
 import XCTest

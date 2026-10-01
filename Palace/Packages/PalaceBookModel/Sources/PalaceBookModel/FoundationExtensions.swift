@@ -2,14 +2,10 @@
 //  FoundationExtensions.swift
 //  PalaceBookModel
 //
-//  Wave 2a: Foundation/CoreGraphics helper extensions that the book model
-//  (TPPBook / TPPReadiumBookmark / TPPBook+Presentation) depends on, relocated
-//  here so the package is self-contained. These are the SINGLE SOURCE — the
-//  declarations were deleted from their former app-side homes
-//  (Date+NYPLAdditions.swift, Date+Extensions.swift, Int+Extensions.swift,
-//  Float+TPPAdditions.swift, TPPBookCoverRegistry.swift). Wire-format writers
-//  (rfc1123String / rfc339String) must stay byte-identical — do not touch the
-//  format strings.
+//  Foundation/CoreGraphics helpers the book model depends on; the only
+//  declarations of these (the app target no longer has copies). The
+//  rfc1123String / rfc339String format strings are wire formats: keep them
+//  byte-identical.
 //
 
 import Foundation

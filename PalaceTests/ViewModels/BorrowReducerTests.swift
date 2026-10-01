@@ -287,8 +287,8 @@ final class BorrowReducerTests: XCTestCase {
 
     /// `returnStartConfirmed` inserts only the `.returning` spinner — must
     /// not flip `bookState` (the registry hasn't confirmed yet) and must
-    /// not insert any other spinner. Catches a mutant that bumps
-    /// bookState prematurely OR adds extra processing flags.
+    /// not insert any other spinner. Catches bumping bookState
+    /// prematurely OR adding extra processing flags.
     func testReturnStartConfirmed_insertsReturningSpinnerOnlyAndPreservesBookState() {
         var state = makeState(
             bookState: .downloadSuccessful,
@@ -325,8 +325,8 @@ final class BorrowReducerTests: XCTestCase {
     /// cancellation block: it must release the four acquire-related
     /// spinners (`.download`, `.get`, `.retry`, `.reserve`) but leave
     /// unrelated flags like `.returning` alone. Lock both branches plus
-    /// the empty-state idempotence so a mutant that always-clears or
-    /// over-clears fails on a distinct row.
+    /// the empty-state idempotence so always-clearing or over-clearing
+    /// fails on a distinct row.
     func testSignInCancelled_releasesAcquireSpinnersAndPreservesUnrelatedFlags() {
         var state = makeState(processing: [.download, .get, .retry, .reserve, .returning])
         _ = BorrowReducer.reduce(&state, .signInCancelled)
@@ -359,8 +359,8 @@ final class BorrowReducerTests: XCTestCase {
 
     /// `processingButtonRemoved` removes only the named button — never
     /// touches the other flags AND must be safe when the named flag is
-    /// already absent. Lock both shapes so a mutant that clears the whole
-    /// set OR fails to remove the target fails on a distinct assertion.
+    /// already absent. Lock both shapes so clearing the whole set OR
+    /// failing to remove the target fails on a distinct assertion.
     func testProcessingButtonRemoved_removesOnlyThatButton_andIsIdempotent() {
         var state = makeState(processing: [.download, .retry])
 

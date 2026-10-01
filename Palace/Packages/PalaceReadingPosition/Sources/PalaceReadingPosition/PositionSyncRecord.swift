@@ -4,7 +4,7 @@
 //
 //  A record of a reading position for sync purposes.
 //
-//  Migrated from Palace/Platform/ on 2026-05-21 (Swarm 2, Deviation 4).
+//  Migrated from Palace/Platform/ into this package on 2026-05-21.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

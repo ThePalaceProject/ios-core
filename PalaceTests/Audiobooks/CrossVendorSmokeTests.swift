@@ -3,53 +3,13 @@
 //  PalaceTests
 //
 //  SMOKE-MATRIX: audiobook
-//  This class is THE entry point for the audiobook cross-vendor smoke gate.
-//  `scripts/verify-pr.sh` (Module C of swarm_eefef87a) selects it via
-//      -only-testing:PalaceTests/AudiobookCrossVendorSmokeTests
-//  when any `Palace/Audiobooks/` or `ios-audiobooktoolkit/` file is in the
-//  diff. Renaming or removing this class WILL fail the gate. See:
-//    .forgeos/swarms/swarm_eefef87a/contracts/B-AudiobookCrossVendorSmoke.md
-//    .forgeos/swarms/swarm_eefef87a/contracts/C-Tooling.md
-//
-//  Why this exists: `PalaceAudiobookToolkit` is the highest-risk dependency
-//  in the project — 25+ revisions across releases with frequent regressions
-//  requiring reverts (see `reference_audiobook_toolkit_risk_profile.md`).
-//  Each audiobook fix risks breaking another playback path because all four
-//  active vendor adapters share the same player infrastructure. This file is
-//  the breadth-not-depth smoke net that runs on every toolkit-touching PR.
-//
-//  Active vendors covered (one method each):
-//    1. LCP        — DRM-fulfilled audiobook (LCP license + Readium)
-//    2. BearerToken — Overdrive-shape two-leg fulfill (wrapper → manifest)
-//    3. OpenAccess  — single-leg unauthenticated manifest fetch
-//    4. LocalFile   — manifest already on disk (post-download replay)
-//
-//  Findaway is referenced in the toolkit risk-profile memory pin but is NOT
-//  an active adapter in `Palace/Audiobooks/Vendors/` — `grep findaway` only
-//  surfaces a constant in `TPPOPDSAcquisitionPath.swift`. The four above are
-//  the active adapter set; Findaway absence is intentional, not missed.
-//
-//  Smoke contract per case (adapter seam, not deep playback):
-//    - Build the vendor's `AudiobookVendorAdapter` with stubbed collaborators
-//      from the existing per-adapter test pattern (no real network/disk/DRM).
-//    - Pump a single-track Readium webpub manifest through `resolveManifest`.
-//    - Assert success: non-nil JSON, `readingOrder` non-empty (single track).
-//    - Assert the vendor's wire-through seam was hit exactly once.
-//  Deep per-adapter behavior (every failure-mode branch, source-selection
-//  precedence, MIME nesting) lives in `PalaceTests/Audiobook/Vendors/*` —
-//  this file is intentionally shallow.
-//
-//  Scope honesty (QA review rev_0d6da02f): these tests verify **adapter
-//  wire-through**, NOT playback-state advancement. The method names use
-//  `_wiresThrough*` rather than `_singleTrackLoadAndAdvance` to reflect
-//  this — the toolkit's 25+-revision regression history is largely about
-//  playback-engine bugs (chapter-transition crashes, position-write races,
-//  continuation-misuse SIGABRT) which live INSIDE `PalaceAudiobookToolkit`,
-//  not at the Palace-side adapter seam. This smoke matrix is the cheap
-//  first-line net for adapter-level regressions; playback-engine regressions
-//  belong to (a) toolkit-internal tests and (b) the simdrive E2E corpus
-//  under `.simdrive/replays/chaos/`. Do NOT rely on this file for playback
-//  coverage.
+//  Audiobook cross-vendor smoke tests: one shallow case per active vendor
+//  adapter (LCP, BearerToken, OpenAccess, LocalFile — Findaway is not an
+//  adapter). Each pumps a single-track manifest through `resolveManifest`
+//  with stubbed collaborators and asserts the vendor's seam was hit once.
+//  These verify adapter wire-through only, NOT playback; engine behaviour
+//  lives in the toolkit's own tests. Per-adapter depth is in
+//  `PalaceTests/Audiobook/Vendors/*`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

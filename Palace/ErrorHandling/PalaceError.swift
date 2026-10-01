@@ -294,9 +294,7 @@ enum ParsingError: Int, LocalizedError {
             return "Text encoding error"
         case .opdsFeedInvalid:
             // TODO(design): final copy pending design review per feedback_no_new_copy_without_design
-            // Previously displayed the raw technical string "Invalid OPDS feed" to
-            // end users, leaking the protocol name. swarm_f3b9b087 item #9 replaces
-            // it with a placeholder NSLocalizedString key the design team can wire.
+            // Avoids showing patrons the protocol name ("Invalid OPDS feed").
             return NSLocalizedString(
                 "opds.error.feed_invalid",
                 value: "We can't load your library catalog right now — try again in a moment.",

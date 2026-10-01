@@ -1,25 +1,12 @@
-//
 //  BookmarkSpecConformanceTests.swift
-//  PalaceTests
 //
-//  Runs the locator corpus from `ThePalaceProject/mobile-specs` — the same
-//  fixtures the Android client runs — against this client's parser and
-//  serializer.
-//
-//  PP-5138: the wire format drifted away from the spec and nothing failed,
-//  because nothing was wired to fail. The spec was vendored (as the archived
-//  predecessor repo, pinned at its first commit) and cited in a doc comment,
-//  but no test loaded it. Meanwhile the reading position went out in the
-//  Readium `Locator` shape, which matches no variant in the spec's schema, and
-//  the Android client discarded every one.
-//
-//  The corpus is read from the working tree rather than the test bundle so
-//  that it is always the submodule's current content, never a stale copy. A
-//  missing corpus FAILS — it must never skip. A conformance suite that
-//  quietly runs zero cases is the condition this file exists to prevent.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Runs the `ThePalaceProject/mobile-specs` locator corpus (the fixtures Android
+//  runs) against this client's parser and serializer. PP-5138: no test loaded
+//  the spec, and reading positions went out in the Readium `Locator` shape,
+//  which matches no spec variant, so Android discarded them. The corpus is read
+//  from the working tree so it is always the submodule's current content, and a
+//  missing corpus fails rather than skips, since a suite that runs zero cases
+//  would hide the same drift.
 
 import XCTest
 @testable import Palace

@@ -1,36 +1,12 @@
 //
-//  ManagedLibraryDiagnostics.swift
-//  Palace
+//  PP-5221 — reports a mistyped library configuration so support can tell an
+//  administrator what went wrong. "Not a UUID", "a UUID we cannot find" and
+//  "still looking" are kept distinct because each needs a different answer.
 //
-//  PP-5221 — making a mistyped library configuration diagnosable.
-//
-//  ## The problem this solves
-//
-//  A library identifier is a long string of hexadecimal that an administrator
-//  pastes into a form. Sooner or later one will be wrong. Today the app writes
-//  a line to its own log and carries on showing the picker, so the ticket we
-//  receive says "we set it up and nothing happened" and there is no way to tell
-//  the administrator whether they mistyped the value, put it in the wrong
-//  field, or named a library we genuinely cannot reach. That is a support
-//  conversation measured in days for a problem measured in one character.
-//
-//  ## Two rules
-//
-//  **Distinguish the cases that call for different answers.** "Not a UUID",
-//  "a UUID we cannot find", and "we are still looking" lead to three different
-//  replies to the school, and collapsing them into one report would make the
-//  report useless.
-//
-//  **Stay quiet when nothing is wrong.** Two ways this could become noise
-//  nobody reads, both avoided here:
-//
-//  - Reporting `.unresolved` before the wait expires would fire on every slow
-//    launch, because on a cold start the configured library is legitimately
-//    absent until the network registry lands. Only an expired wait is news.
-//  - Reporting on every launch would mean one misconfigured device files a
-//    report a day forever. Reporting is keyed on the configuration VALUE, the
-//    same discipline as applying it: a value already reported is not reported
-//    again until it changes.
+//  To avoid noise: `.unresolved` is reported only after the wait expires (on a
+//  cold start the library is legitimately absent until the registry lands),
+//  and reporting is keyed on the configuration value, so a value is reported
+//  once until it changes.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

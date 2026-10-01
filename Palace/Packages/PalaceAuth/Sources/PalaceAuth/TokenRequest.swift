@@ -44,9 +44,8 @@ import PalaceCatalog
 
     // PUBLIC_INTENT: shared error-domain constant so the producer (this type)
     // and the main-target consumer (TPPSignInBusinessLogic.isTransientServerError)
-    // agree on the NSError domain at COMPILE time. Was a duplicated magic string
-    // ("TokenRequest") across two files — architect review rev_37c23a0e flagged
-    // that a rename in one place would silently regress the 18046 fix.
+    // agree on the NSError domain at compile time; a rename in only one place
+    // would regress the HelpSpot 18046 fix.
     public static let httpErrorDomain = "TokenRequest"
 
     /// Public entry point — single Basic-Auth POST to the /token endpoint, now

@@ -1,24 +1,11 @@
-//
 //  TPPAgeCheckDeepTests.swift
-//  PalaceTests
 //
-//  Deep, mutation-killing tests for TPPAgeCheck. The age gate guards
-//  pre-COPPA-style libraries: under-13 patrons must be blocked, over-13
-//  patrons admitted, and a previously-shown-prompt must not be re-shown.
-//
-//  Focus areas:
-//    - isValid() year-range bounds (min boundary, max boundary, below min,
-//      above max).
-//    - didCompleteAgeCheck() decision math — strict >13 not >=13.
-//    - Borderline cases that exercise the exact subtraction at line 102.
-//    - verifyCurrentAccountAgeRequirement() decision tree:
-//        * needsAuth=true → admit
-//        * userAboveAgeLimit=true → admit
-//        * userPresentedAgeCheck=true & below limit → block (no re-prompt)
-//        * nil currentAccount → block defensively
-//    - didFailAgeCheck() must NOT mark userPresentedAgeCheck so the prompt
-//      can re-appear on the next attempt.
-//
+//  TPPAgeCheck blocks under-13 patrons, admits older ones, and does not re-show
+//  a prompt already answered. Covers `isValid()` year bounds, the strict `> 13`
+//  in `didCompleteAgeCheck()` at its boundaries, the
+//  `verifyCurrentAccountAgeRequirement()` decision tree (needsAuth, above limit,
+//  already prompted, nil account), and that `didFailAgeCheck()` leaves
+//  `userPresentedAgeCheck` unset so the prompt can reappear.
 
 import XCTest
 @testable import Palace
@@ -66,7 +53,7 @@ final class TPPAgeCheckIsValidTests: XCTestCase {
     func test_isValid_minYear_isAdmitted() {
         // Pins the `birthYear >= minYear` lower bound — mutating `>=` to `>`
         // rejects the exact minYear (1900) which is in spec. Also asserts
-        // idempotency (two calls return same result) so a mutation that
+        // idempotency (two calls return same result) so a regression that
         // introduces state into `isValid` is caught.
         let first = ageCheck.isValid(birthYear: ageCheck.minYear)
         let second = ageCheck.isValid(birthYear: ageCheck.minYear)
@@ -79,7 +66,7 @@ final class TPPAgeCheckIsValidTests: XCTestCase {
     func test_isValid_currentYear_isAdmitted() {
         // Pins the `birthYear <= currentYear` upper bound — mutating `<=`
         // to `<` rejects the exact current year which is in spec. Pair-asserts
-        // the symmetric one-year-below case stays valid so a mutation that
+        // the symmetric one-year-below case stays valid so a regression that
         // collapses the range to `==` (single year) is caught.
         XCTAssertTrue(ageCheck.isValid(birthYear: ageCheck.currentYear),
                       "currentYear must be considered a valid birth year (newborn)")
@@ -90,7 +77,7 @@ final class TPPAgeCheckIsValidTests: XCTestCase {
     func test_isValid_belowMinYear_isRejected() {
         // Pins the `birthYear >= minYear` lower bound — without this assertion,
         // mutating `>=` to `<=` would survive. Also pins `minYear - 2` so a
-        // mutation that lets the bound drift down by exactly 1 is caught.
+        // regression that lets the bound drift down by exactly 1 is caught.
         XCTAssertFalse(ageCheck.isValid(birthYear: ageCheck.minYear - 1),
                        "Birth year exactly one below minYear must be rejected")
         XCTAssertFalse(ageCheck.isValid(birthYear: ageCheck.minYear - 2),
@@ -99,7 +86,7 @@ final class TPPAgeCheckIsValidTests: XCTestCase {
 
     func test_isValid_aboveCurrentYear_isRejected() {
         // Pins the `birthYear <= currentYear` upper bound. Pair-asserts
-        // `currentYear + 2` so a mutation that lets the upper bound drift
+        // `currentYear + 2` so a regression that lets the upper bound drift
         // up by exactly 1 is caught.
         XCTAssertFalse(ageCheck.isValid(birthYear: ageCheck.currentYear + 1),
                        "Birth year exactly one above currentYear must be rejected (no time-traveler patrons)")
@@ -196,7 +183,7 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
         // exactly 13 years ago yields 13 - which is NOT > 13 → blocked.
         // Mutating `>` to `>=` would flip this assertion. We also pair-assert
         // that the storage-side `userPresentedAgeCheck` was flipped to true so
-        // a mutation that admits the patron silently (without persisting the
+        // a regression that admits the patron silently (without persisting the
         // decision) is caught.
         XCTAssertFalse(storage.userPresentedAgeCheck, "precondition: not yet presented")
         let thisYear = Calendar.current.component(.year, from: Date())
@@ -210,7 +197,7 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
 
     func test_didComplete_birthYear14YearsAgo_marksAboveAgeLimit() {
         // 14-year-old patron: 14 > 13 → admitted. Pins the truthy branch.
-        // Also pins storage.userPresentedAgeCheck flip so a mutation that
+        // Also pins storage.userPresentedAgeCheck flip so a regression that
         // returns true without recording the decision is caught.
         XCTAssertFalse(storage.userPresentedAgeCheck, "precondition: not yet presented")
         let thisYear = Calendar.current.component(.year, from: Date())
@@ -225,7 +212,7 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
     func test_didComplete_birthYear5YearsAgo_marksBelowAgeLimit() {
         // 5-year-old patron — far below threshold. Sanity-pin the false branch.
         // Pair-asserts the next-year case (4 years ago) is also below limit so
-        // a mutation that drift the boundary doesn't slip through one extreme.
+        // a regression that drift the boundary doesn't slip through one extreme.
         let thisYear = Calendar.current.component(.year, from: Date())
         let aboveAgeLimit = runVerifyThenComplete(birthYear: thisYear - 5)
 

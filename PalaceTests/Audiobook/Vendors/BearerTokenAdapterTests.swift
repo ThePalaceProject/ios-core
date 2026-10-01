@@ -1,23 +1,11 @@
 //
 //  BearerTokenAdapterTests.swift
-//  PalaceTests
 //
-//  Mutation-killing tests for `BearerTokenAdapter` — the two-step
-//  CM-fulfill flow carve-out from pre-swarm `AudiobookLoader.swift` lines
-//  384-391 (bearer-token detection + recursion).
-//
-//  Both legs of the two-step flow are stubbed via constructor-injected
-//  collaborators: the first-leg fetch returns the bearer-token wrapper
-//  JSON, and the manifest fetcher returns the real manifest. Tests drive
-//  every branch the original code took without touching URLSession or
-//  AppContainer.production().
-//
-//  The TPPBook mutation paths (`book.bearerToken` / `book.bearerTokenFulfillURL`)
-//  write to Keychain — the dedicated side-effect test that asserts those
-//  values short-circuits with `KeychainAvailability.skipIfUnavailable()`
-//  per CLAUDE.local.md's CI-safe-tests guidance.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Branch tests for `BearerTokenAdapter`, the two-step CM-fulfill flow. Both
+//  legs are stubbed through injected collaborators (wrapper JSON, then the real
+//  manifest), so no URLSession or production container is touched. The
+//  side-effect test for `book.bearerToken` / `bearerTokenFulfillURL` writes the
+//  Keychain and skips via `KeychainAvailability.skipIfUnavailable()`.
 //
 
 import XCTest
@@ -116,9 +104,8 @@ final class BearerTokenAdapterTests: XCTestCase {
 
     /// `canHandle` returns `true` so the loader chain can invoke this
     /// adapter when it suspects a bearer-token fulfill flow. The actual
-    /// dispatch decision lives in Module D. Mutation point: flipping
-    /// `return true` to `return false` would prevent the adapter from
-    /// ever running; this test fails the mutant.
+    /// dispatch decision lives in `AudiobookLoader`. Flipping `return true`
+    /// to `return false` would prevent the adapter from ever running.
     func testCanHandle_anyBookWithAcquisition_returnsTrue() {
         let network = StubNetwork()
         let fetcher = StubManifestFetcher()
@@ -134,8 +121,8 @@ final class BearerTokenAdapterTests: XCTestCase {
 
     /// First leg returns a bearer-token wrapper. Adapter MUST detect it
     /// and invoke the second-leg manifest fetcher with the parsed token.
-    /// Mutation point: removing the `if let bearerToken = ...` branch
-    /// would skip the recursion; this test fails the mutant by asserting
+    /// Removing the `if let bearerToken = ...` branch would skip the
+    /// recursion; this test catches that by asserting
     /// `manifestFetcher.callCount > 0`.
     func testResolveManifest_detectsBearerTokenInResponse_recursesToLocationURL() {
         let network = StubNetwork()
@@ -166,7 +153,7 @@ final class BearerTokenAdapterTests: XCTestCase {
     }
 
     /// Second-leg manifest fetch succeeds — adapter completes with the
-    /// REAL manifest, not the wrapper. Mutation point: if the recursion
+    /// REAL manifest, not the wrapper. If the recursion
     /// were short-circuited (e.g. completing with the wrapper JSON
     /// directly), this test fails because the "Real Manifest" title
     /// would not appear in the propagated success payload.
@@ -205,9 +192,8 @@ final class BearerTokenAdapterTests: XCTestCase {
 
     /// Second-leg manifest fetch returns nil — adapter MUST surface
     /// `.manifestFetchFailed` rather than completing with an empty
-    /// success or hanging. Mutation point: changing the
-    /// `guard let manifestJSON` to `if let` (with no else) would either
-    /// hang or complete with nil — this test fails the mutant.
+    /// success or hanging. Changing the `guard let manifestJSON` to
+    /// `if let` (with no else) would either hang or complete with nil.
     func testResolveManifest_bearerTokenFetchFails_failsWithManifestFetchFailed() {
         let network = StubNetwork()
         let book = makeBook()
@@ -242,7 +228,7 @@ final class BearerTokenAdapterTests: XCTestCase {
     /// Keychain-dependent: the adapter writes `book.bearerToken` to the
     /// Keychain via TPPKeychainVariable; verifying the value back through
     /// the book accessor requires Keychain access at runtime. Skip on
-    /// hosts where Keychain is unavailable per CLAUDE.md guidance.
+    /// hosts where Keychain is unavailable.
     func testResolveManifest_setsBookBearerTokenSideEffect() throws {
         try KeychainAvailability.skipIfUnavailable()
 

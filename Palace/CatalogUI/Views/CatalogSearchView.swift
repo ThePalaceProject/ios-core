@@ -66,7 +66,7 @@ struct CatalogSearchView: View {
     ) {
 
         // Use AppContainer's shared, cached CatalogRepository rather than a
-        // throwaway per-init instance (swarm_27c181b5 A5).
+        // throwaway per-init instance.
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
             repository: AppContainer.production().catalogRepository,
             baseURL: { nil },
@@ -112,9 +112,8 @@ struct CatalogSearchView: View {
     // MARK: - Publishers
 
     private var registryChangePublisher: AnyPublisher<String, Never> {
-        // Migrated off `.TPPBookRegistryStateDidChange` to the registry's per-book
-        // `bookStatePublisher` (swarm_8ce6f5ae WS3); emit the changed identifier so
-        // just the affected result row refreshes. Resolved from the shared graph to
+        // Emit the changed identifier so just the affected result row
+        // refreshes. Resolved from the shared graph to
         // match this view's existing `AppContainer.production()` defaults.
         AppContainer.production().bookRegistry.bookStatePublisher
             .map { $0.0 }

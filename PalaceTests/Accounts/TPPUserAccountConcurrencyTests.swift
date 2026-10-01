@@ -1,19 +1,12 @@
 //
 //  TPPUserAccountConcurrencyTests.swift
-//  PalaceTests
 //
-//  Pins the atomicity guarantee of `TPPUserAccount.incrementSignInGeneration()`
-//  — the sole behavioral reason that method exists over a plain
-//  `signInGeneration += 1`. `signInGeneration` gates whether a stale sign-out
-//  callback wipes freshly-re-authenticated credentials (see
-//  TPPSignInBusinessLogic+SignOut.cancelPendingSignOut), so a lost update
-//  under contention is a real credential-integrity defect, not a cosmetic race.
-//
-//  This lives in its own test because the existing single-threaded
-//  TPPSignInBusinessLogicSignOutTests coverage kills the arithmetic mutants
-//  (`+= 1` → `+= 0` / no-op) but CANNOT distinguish an atomic locked
-//  read-modify-write from a non-atomic get-then-set (two separate lock
-//  acquisitions = TOCTOU). Only concurrent callers expose that.
+//  Pins the atomicity of `TPPUserAccount.incrementSignInGeneration()`.
+//  `signInGeneration` decides whether a stale sign-out callback wipes freshly
+//  re-authenticated credentials, so a lost update is a credential-integrity
+//  defect. Single-threaded sign-out tests catch arithmetic regressions but
+//  cannot tell a locked read-modify-write from a get-then-set; only concurrent
+//  callers expose that.
 //
 
 import XCTest

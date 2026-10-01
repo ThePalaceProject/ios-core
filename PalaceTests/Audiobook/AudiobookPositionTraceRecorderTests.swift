@@ -46,11 +46,9 @@ final class AudiobookPositionTraceRecorderTests: XCTestCase {
     private var reported: [PositionSaveVerdict] = []
     private var reportedContexts: [PositionTraceContext] = []
     private var gapsReported: [PositionRestoreGapVerdict] = []
-    /// Collected instead of written. The previous draft left `fileLog`
-    /// defaulted, so every test drove the real `AudiobookFileLogger.shared` —
-    /// FileHandle appends, directory creation and a size-triggered rollover —
-    /// against CLAUDE.md's rule about real singletons, and as a cross-test
-    /// pollution vector.
+    /// Collected instead of written, so no test drives the real
+    /// `AudiobookFileLogger.shared` (FileHandle appends, directory creation,
+    /// size-triggered rollover), which would pollute across tests.
     private var logLines: [String] = []
 
     private func makeRecorder(diagnosticsEnabled: Bool = true) -> AudiobookPositionTraceRecorder {

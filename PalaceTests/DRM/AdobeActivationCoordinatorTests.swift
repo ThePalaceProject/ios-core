@@ -1,29 +1,11 @@
-//
 //  AdobeActivationCoordinatorTests.swift
-//  PalaceTests
 //
-//  Contract for the Adobe device-activation single-flight gate (PP-4952).
-//
-//  The defect these lock down: Adobe's RMSDK is legacy C++ and aborts the
-//  process when two `authorize` calls run concurrently (Crashlytics
-//  `ed05e903c2777582d68747b624e4f548`, new in 3.2.3). `AdobeActivationCoordinator`
-//  is the gate that makes a second concurrent caller wait rather than enter the
-//  SDK. Every test here fails if the coalescing branch is removed — see the
-//  reintroduction check in the PR body.
-//
-//  Determinism note: exactly TWO callers per test, never N racers. The first
-//  parks inside its work so the activation is genuinely in flight for the whole
-//  of the second's lifetime; the second is then observed to coalesce. Progress
-//  is established by polling plain actor state (`coalescedCount`) under a
-//  bounded yield-loop, never by sleeping and never by a continuation barrier.
-//
-//  This shape is deliberate. An earlier N-racer version synchronised through a
-//  continuation barrier that could lose a wake-up, which PARKED the suite rather
-//  than failing it — the worst outcome for CI, since a hung run reports nothing
-//  at all. A yield-loop cannot lose a wake-up and fails fast with the counters
-//  attached. Wall-clock sleeps are also out: they starve under parallel
-//  sim-clone oversubscription, a documented source of flakes in this suite.
-//
+//  PP-4952: RMSDK aborts when two `authorize` calls run concurrently (Crashlytics
+//  ed05e903c2777582d68747b624e4f548). `AdobeActivationCoordinator` makes a second
+//  caller wait. Each test uses exactly two callers: the first parks in its work and
+//  the second is observed to coalesce by polling `coalescedCount` in a bounded
+//  yield loop. A continuation barrier can lose a wake-up and hang the suite, and
+//  wall-clock sleeps starve on oversubscribed simulators, so neither is used.
 
 import XCTest
 @testable import Palace

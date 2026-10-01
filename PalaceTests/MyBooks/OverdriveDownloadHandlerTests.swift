@@ -1,31 +1,9 @@
 //
-//  OverdriveDownloadHandlerTests.swift
-//  PalaceTests
-//
-//  Coverage for OverdriveDownloadHandler — the Overdrive 302-redirect
-//  fulfillment flow (`processOverdriveDownload` → `handleOverdriveResponse`)
-//  and the loans-feed-out-of-sync defer path (`deferOverdriveFulfillment`).
-//
-//  The class is gated `#if FEATURE_OVERDRIVE` because it imports the
-//  external OverdriveProcessor module; this test file inherits the same
-//  gate.
-//
-//  Branches covered:
-//    - Wi-Fi-only enforcement short-circuits before any Overdrive API call.
-//    - Token-auth path issues a `.token(...)` fulfillBook request.
-//    - Basic-auth path issues a `.basic(...)` fulfillBook request when
-//      no token is present.
-//    - Successful response → manifest-request factory invoked with the
-//      parsed `x-overdrive-scope` + `x-overdrive-patron-authorization`
-//      headers; resulting URLRequest handed off to the delegate.
-//    - Header keys are normalized to lowercase (uppercase keys still
-//      route to manifest-request build).
-//    - Response error → publishes a download-failed alert (no manifest
-//      request, no addDownloadTask).
-//    - Missing `location` header → publishes "wrong headers" alert.
-//    - Manifest factory returns nil → publishes "wrong headers" alert.
-//    - `deferOverdriveFulfillment` publishes the "loan already exists"
-//      borrow alert.
+//  OverdriveDownloadHandler's 302-redirect fulfillment and loans-feed defer path
+//  (gated `#if FEATURE_OVERDRIVE`, like this file). Covers Wi-Fi-only
+//  short-circuit, token vs. basic auth, manifest build from lowercased
+//  x-overdrive headers, and the alerts for a response error, missing `location`,
+//  nil manifest request, and a deferred "loan already exists" borrow.
 //
 
 #if FEATURE_OVERDRIVE

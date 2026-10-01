@@ -2,51 +2,14 @@
 //  TPPBookRegistrySyncContractTests.swift
 //  PalaceTests
 //
-//  God-class decomposition Wave 2b — the SERVER-SYNC call-order contract for
-//  `BookRegistrySync.sync(currentState:setState:completion:)`. Pins the CURRENT
-//  ordered effect sequence of a loans-feed sync BEFORE the cluster moves into an
-//  SPM package, so the extraction can be proven behavior-neutral: after the move
-//  these snapshots must stay green with their assertions untouched.
-//
-//  WHY a contract snapshot (vs. plain unit tests): `sync()` is a decision tree
-//  over enum states that emits an ORDERED sequence of side effects into three
-//  injected dependencies. A refactor that reorders them (e.g. saving before the
-//  deletion pass, or emitting `.synced` before the feed fetch) is exactly the
-//  silent regression class the snapshot pattern was built to catch (see
-//  ContractSnapshot.swift header). The cleanly-spyable ordered dependency calls
-//  are:
-//    · `setState(_:)`            — the RegistryState transition closure sync() drives
-//    · `OPDSFeedFetching.fetchFeed(from:resetCache:)` — the loans-feed seam
-//    · `LocalBookContentService.deleteLocalContent(forBook:)` — the eviction seam
-//      (spied via the same `localContentService` override BookRegistrySync's
-//      sideload-exemption suite uses)
-//    · `completion(errorDocument:newBooks:)`
-//
-//  The per-entry merge-vs-fresh registry writes and the authoritative `save(...)`
-//  are INTERNAL to `BookRegistrySync` (no dependency call to spy — `save` is a
-//  method on a `final` class, and the merge/fresh branch mutates the store's
-//  in-memory dict). Those are pinned by explicit assertions on the resulting
-//  store state + the on-disk registry file the authoritative save writes.
-//  See the header note in TPPBookRegistryFacadeContractTests / the Wave-2b intent
-//  for the missing `DownloadCenter` protocol + spyable-save seams the extraction
-//  will want to make those steps directly call-order-pinnable.
-//
-//  VERIFIED sequences (against BookRegistrySync.swift at develop tip 77f6ded53):
-//    happy path  : setState(.syncing) → fetchFeed(resetCache:true) →
-//                  deleteLocalContent(<evicted book>) → setState(.synced) →
-//                  completion(nil, newBooks:true)
-//    no creds    : setState(.loaded) → completion(nil,false)  [ZERO fetchFeed]
-//    awaitReady✗ : setState(.syncing) → setState(.loaded) →
-//                  completion(nil,false)  [ZERO fetchFeed; syncUrl stays nil]
-//    empty-feed  : setState(.syncing) → fetchFeed(resetCache:true) →
-//    bulk guard    setState(.synced) → completion(nil,false)  [ZERO delete; NO save]
-//
-//  NOTE — the credentials gate (`!userAccount.hasCredentials()`) sits BEFORE
-//  `setState(.syncing)`, so the no-credentials exit emits ONLY `.loaded` (never
-//  `.syncing`). This matched the brief's hypothesis. The `.syncing` emission
-//  therefore only appears once the account is credentialed — which is why the
-//  awaitReady-failure sequence starts `.syncing, .loaded` while the no-creds one
-//  is just `.loaded`.
+//  Pins the ordered effect sequence of `BookRegistrySync.sync(currentState:setState:completion:)`
+//  across `setState`, `fetchFeed`, `deleteLocalContent` and `completion`:
+//    happy path : .syncing → fetchFeed(resetCache:true) → delete(evicted) → .synced → completion(nil,true)
+//    no creds   : .loaded → completion(nil,false)            (credentials gate is before .syncing)
+//    awaitReady✗: .syncing → .loaded → completion(nil,false)
+//    empty feed : .syncing → fetchFeed → .synced → completion(nil,false)  (bulk guard: no delete, no save)
+//  Registry writes and `save(...)` are internal to `BookRegistrySync`, so they are
+//  asserted on the resulting store and on-disk file instead.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -2,7 +2,7 @@
 //  MarqueeTextTests.swift
 //  PalaceTests
 //
-//  Unit coverage for the pure, mutation-testable seam of `MarqueeText`: the
+//  Unit coverage for the pure, testable seam of `MarqueeText`: the
 //  decision of WHETHER to scroll. The SwiftUI body (measurement, offset
 //  animation) is opaque to XCTest, so the gate that decides scroll-vs-static —
 //  and its Reduce-Motion suppression — is factored into a static function and
@@ -26,16 +26,16 @@ final class MarqueeTextTests: XCTestCase {
             "Text wider than the container must marquee-scroll")
     }
 
-    /// Text that FITS never scrolls — a short title sits still (kills a mutation
-    /// that always animates, which would jitter every mini-player title).
+    /// Text that FITS never scrolls — a short title sits still (always
+    /// animating would jitter every mini-player title).
     func testShouldScroll_fittingTextIsStatic() {
         XCTAssertFalse(
             MarqueeText.shouldScroll(textWidth: 120, containerWidth: 180, reduceMotion: false),
             "Text narrower than the container must stay static")
     }
 
-    /// The boundary is strict overflow: equal widths do NOT scroll (kills a
-    /// `>` → `>=` mutation that would animate text that exactly fits).
+    /// The boundary is strict overflow: equal widths do NOT scroll (`>=`
+    /// would animate text that exactly fits).
     func testShouldScroll_exactFitDoesNotScroll() {
         XCTAssertFalse(
             MarqueeText.shouldScroll(textWidth: 180, containerWidth: 180, reduceMotion: false),
@@ -46,7 +46,6 @@ final class MarqueeTextTests: XCTestCase {
 
     /// Reduce Motion suppresses the scroll even when the text overflows — the
     /// AC requires the marquee to respect the setting. Static-truncated instead.
-    /// Kills a mutation that drops the reduceMotion guard.
     func testShouldScroll_reduceMotionSuppressesOverflowScroll() {
         XCTAssertFalse(
             MarqueeText.shouldScroll(textWidth: 320, containerWidth: 180, reduceMotion: true),
@@ -58,9 +57,9 @@ final class MarqueeTextTests: XCTestCase {
     /// Before layout has measured a width (0), nothing scrolls — a zero-width
     /// container must not be treated as "everything overflows" and animate.
     /// The `textWidth: 100, containerWidth: 0` case is the important one: a
-    /// measured text with an UN-measured (0) container must NOT scroll — this
-    /// kills the `containerWidth > 0` → `>= 0` mutation, which would otherwise
-    /// let `100 > 0` fire a scroll into a zero-width slot on first layout.
+    /// measured text with an UN-measured (0) container must NOT scroll —
+    /// `containerWidth >= 0` would let `100 > 0` fire a scroll into a
+    /// zero-width slot on first layout.
     func testShouldScroll_unmeasuredContainerDoesNotScroll() {
         XCTAssertFalse(
             MarqueeText.shouldScroll(textWidth: 0, containerWidth: 0, reduceMotion: false),

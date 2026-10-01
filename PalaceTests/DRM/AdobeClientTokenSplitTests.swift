@@ -1,18 +1,8 @@
 //
-//  AdobeClientTokenSplitTests.swift
-//  PalaceTests
-//
-//  PP-3649. Adobe device activation has failed for 4,013 production users
-//  across 25,421 events since 3.0.0, always reported as `authenticationFailed`
-//  and never with a cause. One shape hiding inside that number is a client
-//  token the app itself mangles before Adobe ever sees it: the previous
-//  inline split set `password` to the whole string and `username` to "" when
-//  the token carried no "|" separator. Adobe answers an empty username with
-//  `authenticationFailed` — the same answer it gives a genuinely rejected
-//  credential, which is why the two were indistinguishable in the field.
-//
-//  These pin the split so the malformed case is REPRESENTABLE (nil) rather
-//  than silently producing credentials that cannot succeed.
+//  PP-3649. A client token with no "|" separator used to split into an empty
+//  username, which Adobe answers with `authenticationFailed`, the same result as
+//  a genuinely rejected credential. These pin the split so the malformed case is
+//  representable (nil) instead of producing credentials that cannot succeed.
 //
 
 import XCTest
@@ -82,8 +72,7 @@ final class AdobeClientTokenSplitTests: XCTestCase {
     /// (what the CM actually mints) leaves THREE fields in the username, so it
     /// never exercises the edge; a three-segment one leaves exactly two. Without
     /// this, tightening the guard to `> 2` makes every such token report no
-    /// expiry — i.e. never stale — with the suite green. Measured: that mutant
-    /// survived until this test existed.
+    /// expiry — i.e. never stale — with the suite green.
     func test_expiry_threeSegmentToken_stillYieldsAnExpiry() {
         XCTAssertEqual(AdobeClientToken.expiry("PALACE|1893456000|sig"),
                        Date(timeIntervalSince1970: 1_893_456_000))

@@ -1,25 +1,10 @@
-//
 //  CallLog.swift
-//  PalaceTests
 //
-//  Lightweight call-recording primitive for contract-snapshot tests.
-//
-//  Usage in a spy:
-//
-//      final class SpyBorrowDelegate: BorrowDelegate {
-//          let log = CallLog()
-//
-//          func startDownload(for book: TPPBook, withRequest req: URLRequest?) {
-//              log.record("startDownload",
-//                         args: ["book": book.identifier, "hasRequest": req != nil])
-//          }
-//      }
-//
-//  The CallLog produces deterministic JSON suitable for snapshot comparison.
-//  Arguments are stringified through `String(describing:)` to keep the format
-//  schema-light — contracts care about *which method, in what order, with what
-//  shape of arguments* — not about Swift type-system correctness.
-//
+//  Call recorder for contract-snapshot tests. A spy calls
+//  `log.record("startDownload", args: ["book": book.identifier])` per dependency
+//  call, and the log serializes to deterministic JSON. Arguments go through
+//  `String(describing:)`: contracts pin which method, in what order, with what
+//  argument shape, not exact Swift types.
 
 import Foundation
 import PalaceBookModel

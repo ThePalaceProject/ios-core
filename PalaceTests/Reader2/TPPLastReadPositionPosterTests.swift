@@ -1,20 +1,10 @@
-//
 //  TPPLastReadPositionPosterTests.swift
-//  PalaceTests
 //
-//  Tests for `TPPLastReadPositionPoster`. As of the PalaceReadingPosition
-//  migration the poster's job is:
-//
-//  1. Reject locators with zero progression and no CSS selector
-//     (`shouldStore` guard).
-//  2. Save the locator locally via `bookRegistry.setLocation`.
-//  3. Build a `PositionSnapshot` and delegate to the injected
-//     `PositionWriter`.
-//
-//  Throttling/queuing now lives in `PositionWriter`; the writer is
-//  exercised in its own SPM tests. Here we verify the poster's
-//  delegation + the snapshot shape it produces.
-//
+//  `TPPLastReadPositionPoster` rejects locators with zero progression and no CSS
+//  selector (`shouldStore`), saves the locator via `bookRegistry.setLocation`,
+//  and hands a `PositionSnapshot` to the injected `PositionWriter`. Throttling
+//  lives in `PositionWriter` (tested in its package); these tests cover the
+//  poster's delegation and the snapshot shape.
 
 import XCTest
 import ReadiumShared
@@ -378,8 +368,8 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         // their saved page.
         //
         // Critical: keep totalProgression at 0 AND no cssSelector so
-        // the position-branch is the ONLY accepting path. This pins
-        // the mutant `position > 0 → return true ⇒ return false`.
+        // the position-branch is the ONLY accepting path. This catches
+        // `position > 0 → return true` being changed to `return false`.
         let locations = Locator.Locations(
             totalProgression: 0,
             position: 7
@@ -399,7 +389,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
 
     func testShouldStore_positionZero_doesNotStore() {
         // Boundary guard against the `position > 0 → position >= 0`
-        // mutant. A locator with `position == 0` and no other anchor
+        // regression. A locator with `position == 0` and no other anchor
         // must NOT persist — position 0 is the equivalent of "before
         // page 1".
         let locations = Locator.Locations(

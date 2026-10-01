@@ -226,13 +226,12 @@ final class PalaceErrorCategoryTests: XCTestCase {
         }
     }
 
-    // MARK: - OPDS Feed Invalid — swarm_f3b9b087 item #9
+    // MARK: - OPDS Feed Invalid
     //
     // The previous copy was the raw technical string "Invalid OPDS feed",
     // which leaked the protocol name (OPDS) to end users. The new copy is
     // a placeholder NSLocalizedString — final wording awaits design
-    // review (memory ref: `feedback_no_new_copy_without_design`). These
-    // tests pin three contracts that survive design rewording:
+    // review. These tests pin three contracts that survive design rewording:
     //   1. It must be non-empty user-facing copy.
     //   2. It must NOT contain the protocol name "OPDS".
     //   3. The placeholder English value the design team will replace.

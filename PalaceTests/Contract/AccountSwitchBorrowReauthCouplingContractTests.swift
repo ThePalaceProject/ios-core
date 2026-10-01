@@ -2,60 +2,14 @@
 //  AccountSwitchBorrowReauthCouplingContractTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE CHARACTERIZATION PACK — god-class decomposition Wave 3, the
-//  mutually-coupled hub pair Accounts ↔ Downloads
-//  (docs/architecture/god-class-decomposition-plan.md §3a-2/§3a-3, §4 Wave 3).
-//
-//  WHAT THIS PINS
-//  ==============
-//  The ONE hard, un-inverted Accounts→Downloads STATIC edge in the account-switch
-//  path. `AccountsManager.cleanupActiveContentBeforeAccountSwitch(from:to:)`
-//  (AccountsManager.swift ~994) calls, synchronously on every real library
-//  switch:
-//
-//      MyBooksDownloadCenter.clearAllBorrowReauthState()
-//        → BorrowOperation.clearAllBorrowReauthState()   (MBDC+Async.swift:27,
-//                                                          BorrowOperation.swift:141)
-//
-//  which wipes the process-wide per-book borrow-reauth **circuit breaker**
-//  (`BorrowOperation.reauthTracker`, a `static let`). Its OBSERVABLE effect —
-//  the contract Wave 3 must preserve when this static call becomes a cross-PACKAGE
-//  call (AccountsManager → PalaceAccounts, BorrowOperation → PalaceDownloads) —
-//  is a change in what `BorrowOperation.borrowAsync` DOES on a repeat auth-error:
-//
-//    • 1st auth-error borrow for a book → reauth is attempted
-//      (`presentSignInModal` seam fires; no generic error alert).
-//    • 2nd auth-error borrow for the SAME book (breaker tripped) → reauth is
-//      SUPPRESSED and the generic error alert is shown instead
-//      (`presentBorrowErrorAlert` seam fires; BorrowOperation.swift:626 guard).
-//    • After `clearAllBorrowReauthState()` (what an account switch triggers) →
-//      the SAME book is offered reauth AGAIN — the breaker was reset.
-//
-//  If the extraction dropped, reordered, or narrowed that clear (e.g. cleared
-//  only the current book instead of ALL books, or stopped calling it), a user
-//  who switches libraries after a failed borrow would be silently stuck on the
-//  generic-error path with no reauth prompt — a money-path regression invisible
-//  to the per-case unit tests (which each reset the breaker in setUp).
-//
-//  WHY A CONTRACT SNAPSHOT (ordered seam sequence) rather than count asserts:
-//  the coupling IS an ordering of decisions across repeated calls
-//  (attempt → suppress → reset → attempt). ContractSnapshot locks the exact
-//  ORDER + argument shape of the seam calls, so a refactor that changes WHICH
-//  recovery path fires for a repeat borrow drifts the snapshot loudly. This is
-//  the sanctioned form for the "clearAllBorrowReauthState becomes cross-package"
-//  seam (§5 general contract: byte-equal JSON under __Snapshots__/).
-//
-//  DETERMINISM: no network, no UIKit, no sleeps. `fetchBook` is a closure that
-//  throws `PalaceError.network(.unauthorized)`; the sign-in-modal completion is
-//  recorded but NEVER invoked, so there is no retry recursion. Books use fixed
-//  identifiers so snapshot args are stable across runs. The global breaker is
-//  cleared in setUp AND tearDown so the suite neither inherits nor leaks state.
-//
-//  RECIPE PROVENANCE: the no-credentials + needs-auth + 401 arm is the exact
-//  path pinned (single-attempt) by
-//  `PalaceTests/MyBooks/BorrowOperationTests.testBorrow_401Network...
-//  presentsSignInModal`. This suite adds ONLY the cross-attempt breaker + reset
-//  semantics that no existing test pins.
+//  Pins the account-switch reset of the per-book borrow-reauth circuit breaker
+//  (`MyBooksDownloadCenter.clearAllBorrowReauthState()`, called from
+//  `AccountsManager.cleanupActiveContentBeforeAccountSwitch`): 1st auth-error
+//  borrow → reauth offered; 2nd for the same book → generic error; after the clear
+//  → reauth offered again. Without the reset, a patron who switches libraries after
+//  a failed borrow never sees a reauth prompt
+//  (docs/architecture/god-class-decomposition-plan.md §3a-2/§3a-3).
+//  No network or UIKit; the breaker is cleared in setUp and tearDown.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -91,7 +45,7 @@ final class AccountSwitchBorrowReauthCouplingContractTests: XCTestCase {
     /// same book → breaker suppresses reauth → generic error alert
     /// (`presentBorrowErrorAlert`). This is the state the account switch clears.
     ///
-    /// Kill cases:
+    /// Regressions caught:
     ///  - Removing the circuit-breaker guard (BorrowOperation.swift:626) → the
     ///    2nd attempt would ALSO present the sign-in modal → sequence
     ///    [presentSignInModal, presentSignInModal] ≠ snapshot.
@@ -114,7 +68,7 @@ final class AccountSwitchBorrowReauthCouplingContractTests: XCTestCase {
     /// `AccountsManager.cleanupActiveContentBeforeAccountSwitch` invokes on a
     /// library switch — must re-offer reauth for that book.
     ///
-    /// Kill cases:
+    /// Regressions caught:
     ///  - `clearAllBorrowReauthState()` no-op'd / dropped from the switch path →
     ///    the 3rd attempt stays suppressed → [modal, alert, alert] ≠ snapshot.
     func testClearAllAfterBreakerTripped_reenablesReauthForSameBook() async {
@@ -140,7 +94,7 @@ final class AccountSwitchBorrowReauthCouplingContractTests: XCTestCase {
     /// whole tracker, not one entry. Pins `reauthTracker.clearAll()` semantics
     /// (BorrowOperation.swift:121/142).
     ///
-    /// Kill case:
+    /// Regression caught:
     ///  - Replacing `clearAll()` with a single-book `clear(currentBookId)` → book
     ///    B's post-clear attempt would stay suppressed → the final two records
     ///    would read [modal(A), alert(B)] instead of [modal(A), modal(B)].
@@ -171,7 +125,7 @@ final class AccountSwitchBorrowReauthCouplingContractTests: XCTestCase {
     /// keys on `book.identifier` (BorrowOperation.swift:118–120) — the property
     /// that makes the account-switch's global clear meaningful rather than moot.
     ///
-    /// Kill case:
+    /// Regression caught:
     ///  - Keying the breaker on a constant / ignoring the book id → book B's
     ///    first attempt would be suppressed → [modal(A), alert(A), alert(B)]
     ///    instead of [modal(A), alert(A), modal(B)].

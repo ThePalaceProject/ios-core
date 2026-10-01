@@ -1,30 +1,9 @@
 //
-//  LCPFulfillmentHandlerTests.swift
-//  PalaceTests
-//
-//  Coverage for the LCP-specific fulfillment paths in
-//  LCPFulfillmentHandler. The class is gated `#if LCP` (it depends on
-//  ReadiumLCP types) so the test class shares the same gate.
-//
-//  Branches covered:
-//    - License rename succeeds → fulfill is invoked with the renamed
-//      license URL.
-//    - fulfill completion fires with an error → alertPresenter publishes
-//      a "Fulfilment Error" message.
-//    - fulfill completion fires with localUrl=nil → alertPresenter
-//      publishes the "no local URL" error.
-//    - Audiobook path: the license landing does NOT mark the book
-//      successful; the content landing does. The header previously said
-//      the opposite, and separately claimed the success path was too
-//      heavy to fixture — it is not: a minimal `{"id":…,"links":[]}`
-//      parses, and `replaceBook` only needs a delegate that resolves a
-//      destination plus a non-empty file.
-//    - Content-fetch failure does not downgrade a book whose content is
-//      already on disk. That guard tests the FILE, not registry state, so
-//      these fixtures write real content rather than staging a registry
-//      state production forbids as an entry condition.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  LCPFulfillmentHandler (gated `#if LCP`, like this file): license rename feeds
+//  fulfill; fulfill errors and a nil localUrl publish alerts; for audiobooks the
+//  license landing does not mark the book successful but the content landing does;
+//  a content-fetch failure does not downgrade a book whose content is on disk.
+//  That guard checks the file, so fixtures write real content.
 //
 
 #if LCP

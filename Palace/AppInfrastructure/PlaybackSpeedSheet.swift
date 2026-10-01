@@ -2,17 +2,9 @@
 //  PlaybackSpeedSheet.swift
 //  Palace
 //
-//  The audiobook player's stepped playback-speed picker, lifted out of
-//  `AudiobookMorphingPlayerView.swift`. It shares no state with the player
-//  beyond the `PlaybackRate` binding it is handed, so it moves whole.
-//
-//  The extraction is what `scripts/check-file-size-ceiling.sh` asks for when a
-//  change grows a capped hub: the gate has no upward re-baseline, so the
-//  accessibility work in the same PR pays for its lines by taking this cluster
-//  out rather than by raising the number.
-//
-//  `internal` rather than `private` only because it now lives in its own file;
-//  nothing outside `AudiobookMorphingPlayerView` constructs it.
+//  The audiobook player's stepped playback-speed picker. It shares no state
+//  with `AudiobookMorphingPlayerView` beyond the `PlaybackRate` binding, and is
+//  `internal` only because it lives in its own file; nothing else constructs it.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -1,42 +1,11 @@
-//
 //  BookDetailOpenRoutingTests.swift
-//  PalaceTests
 //
-//  God-class decomposition — pin-before-extract pack for
-//  `Palace/Book/UI/BookDetail/BookDetailViewModel.swift`, MOVING clusters
-//  "Reading / open-routing" and "Related books" (plan §3a-4 / §5). These clusters
-//  become `BookOpenRouter` (open-routing) and `RelatedBooksService` (related
-//  derivation). The tests lock the observable routing DECISION and the related-
-//  navigation state derivation so the extraction can't change them silently.
-//
-//  ADDITIVE — does NOT overlap the existing 81-125 tests in
-//  `PalaceTests/Book/BookDetailViewModelTests`, which pin the streamingHTML
-//  NavigationCoordinator push, BookButtonMapper/buttonTypes, series-row display,
-//  selectRelatedBook clearing, and showMoreBooksForLane. Here we add:
-//    1. open-routing decision table: audiobook format → the injected
-//       AudiobookSessionManaging is opened; a non-audiobook format is NOT.
-//    2. selectRelatedBook re-derives bookState from the registry for the NEWLY
-//       selected book (the existing test asserts identifier + lane-clearing but
-//       never the re-derived state).
-//
-//  SEAM: EPUB / PDF / streamingHTML open-routing runs through `BookService.open`
-//  → `AppContainer.production().readerService` / `.navigationCoordinatorHub`
-//  (process-wide statics, NOT injected into the VM), so those destinations are
-//  not observable from a unit seam. Only the audiobook branch is drivable, via
-//  the injected `AudiobookSessionManaging`. The planned `BookOpenRouter`
-//  extraction should inject reader + navigation seams so EPUB/PDF/streaming
-//  destinations become assertable. Pinned here: audiobook routing + content-type
-//  discrimination through the one seam that exists today.
-//
-//  SEAM: `fetchRelatedBooks` / `createRelatedBooksCells` (the author-lane
-//  reordering derivation) depends on the CONCRETE `OPDSFeedService` actor
-//  returning an `.acquisitionGrouped` feed with `groupAttributes`; it cannot be
-//  unit-pinned without an injected `OPDSFeedFetching` seam + a grouped-feed
-//  fixture. `RelatedBooksService` should take `OPDSFeedFetching`. The author-
-//  reorder derivation is left uncovered pending that inversion.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins BookDetailViewModel's open routing and related-book selection before the
+//  `BookOpenRouter` / `RelatedBooksService` extraction: audiobooks open through the
+//  injected `AudiobookSessionManaging` and other formats do not, and
+//  `selectRelatedBook` re-derives state for the new book. EPUB/PDF/streaming
+//  destinations go through production statics, and the author-lane reordering
+//  needs an injected feed fetcher, so neither is covered here.
 
 import Combine
 import PalacePreferences
@@ -128,7 +97,7 @@ final class BookDetailOpenRoutingTests: XCTestCase {
     /// selectRelatedBook, on navigating to a DIFFERENT book, must re-derive
     /// `bookState` from the registry for the NEWLY selected identifier. The
     /// existing suite asserts the book swap + lane-clearing but never the state
-    /// re-derivation — so a mutant that reads the OLD identifier (or skips the
+    /// re-derivation — so a change that reads the OLD identifier (or skips the
     /// state read entirely) would pass there and fail here.
     func testSelectRelatedBook_differentBook_reDerivesBookStateFromRegistryForNewBook() {
         let current = TPPBookMocker.mockBook(identifier: "current-book", title: "Current",

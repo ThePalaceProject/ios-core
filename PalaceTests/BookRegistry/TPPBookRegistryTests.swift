@@ -1,20 +1,8 @@
-//
 //  TPPBookRegistryTests.swift
-//  PalaceTests
 //
-//  Unit tests for real TPPBookRegistry production code:
-//  - TPPBookRegistryRecord persistence and serialization
-//  - TPPBookRegistryData extensions
-//  - Corrupted/missing data handling
-//  - TPPBookState initialization and string conversion
-//  - TPPBookLocation creation and comparison
-//  - deriveInitialState business logic
-//
-//  Note: Mocks are for dependency injection, not for testing directly.
-//  We test real production classes here, not mock implementations.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Unit tests for TPPBookRegistry production types: record serialization,
+//  TPPBookRegistryData, corrupted/missing data, TPPBookState conversion,
+//  TPPBookLocation, and deriveInitialState.
 
 import XCTest
 import Combine

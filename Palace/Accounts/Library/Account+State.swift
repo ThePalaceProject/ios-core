@@ -3,21 +3,11 @@
 //  Palace
 //
 //  Account.LoadState state machine + `awaitReady()` readiness gate.
+//  See docs/architecture/account-state-machine.md.
 //
-//  PoC for the 3.2.0 systemic fix to the load-readiness race class.
-//  See docs/architecture/account-state-machine.md for the full ADR.
-//
-//  This file is ADDITIVE: it introduces the new API surface without
-//  modifying any existing behavior. `Account.details?` reads continue
-//  to work as before. The 3.2.0 swarm sprint wires
-//  AccountsManager.loadCatalogs to drive state transitions and migrates
-//  ~15-25 call sites that read `account.details` to await readiness.
-//
-//  STORAGE: state lives in `AccountStateStore.shared` keyed by Account
-//  UUID, NOT on the Account instance itself. AccountsManager replaces
-//  Account instances during `loadCatalogs` (constructs new objects from
-//  network response); state stored on the instance would be lost on
-//  every load cycle. The external store survives instance swaps.
+//  State lives in `AccountStateStore.shared` keyed by UUID, not on the
+//  Account instance, because AccountsManager replaces instances during
+//  `loadCatalogs`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -36,35 +26,25 @@ extension Account {
     /// reselect (reset to `.notLoaded`) or user-initiated retry of a
     /// failed load (`.detailsFailed` → `.detailsLoading`).
     ///
-    /// `.detailsFailed` carries the LITERAL semantics of "the load
-    /// pipeline produced an error" (HTTP failure, schema mismatch, etc.).
-    /// `.detailsEvicted` is a SIBLING terminal carrying eviction-marker
-    /// semantics — written by the `currentAccount` setter against the
-    /// PRIOR uuid on a library switch so awaiters can fail fast instead
-    /// of hanging. The two are deliberately distinct so consumers
-    /// (`driveCurrentAccountAuthDocIfNeeded`, `awaitReady()`, age-check)
-    /// can disambiguate at switch arms without sharing storage.
+    /// `.detailsFailed` means the load pipeline produced an error.
+    /// `.detailsEvicted` is a separate terminal: the eviction marker, kept
+    /// distinct so consumers can tell the two apart.
     public enum LoadState: Sendable {
         case notLoaded
         case basicInfoLoaded
         case detailsLoading
         case detailsLoaded(AccountDetails)
         case detailsFailed(AccountLoadError)
-        /// Eviction marker — written against the prior account UUID when
-        /// the user switches libraries. NOT a "load failed" — the account
-        /// may still be perfectly valid; it's just no longer current. Any
-        /// awaiter on the prior UUID observes the terminal and fails fast
-        /// with `AccountLoadError.evicted(reason:)` so it doesn't hang
-        /// indefinitely waiting for a transition that will never come on
-        /// the prior account's stream. Re-entering the same UUID later
-        /// overwrites this through the `.basicInfoLoaded` path on the
-        /// next preload/loadCatalogs.
+        /// Written against the prior account UUID when the user switches
+        /// libraries. Not a load failure: the account is just no longer
+        /// current. Awaiters on that UUID fail fast with
+        /// `AccountLoadError.evicted(reason:)` instead of hanging. Overwritten
+        /// via `.basicInfoLoaded` if the UUID becomes current again.
         case detailsEvicted(AccountEvictionReason)
     }
 
     /// Current load state for this account. Defaults to `.notLoaded`
-    /// until AccountsManager drives a transition (wired up in 3.2.0
-    /// swarm sprint).
+    /// until AccountsManager drives a transition.
     public var loadState: LoadState {
         AccountStateStore.shared.state(for: uuid)
     }
@@ -85,9 +65,8 @@ extension Account {
     /// sites (Bucket C in the ADR migration plan).
     ///
     /// Single-flight per UUID: multiple concurrent callers all unblock
-    /// on the same state transition. AccountsManager is responsible for
-    /// single-flighting the underlying authentication_document fetch
-    /// (wired up in 3.2.0 swarm Phase 1).
+    /// on the same state transition. AccountsManager single-flights the
+    /// underlying authentication_document fetch.
     ///
     /// Cancellation: honors `Task.checkCancellation()`. Cancelling one
     /// awaiter does NOT abort the load — other awaiters keep going.
@@ -191,15 +170,8 @@ extension Account {
 
     // MARK: - Internal Transition Seam (for AccountsManager + tests)
 
-    /// Drive the state machine. Wired up in the 3.2.0 swarm sprint:
-    /// `AccountsManager.preloadAccountsFromDiskCacheSync` should call
-    /// `_setState(.basicInfoLoaded)`, the authentication_document fetch
-    /// transitions to `.detailsLoading` then either `.detailsLoaded` or
-    /// `.detailsFailed`, and library reselect resets to `.notLoaded`.
-    ///
-    /// Internal access — only AccountsManager and unit tests should
-    /// drive the state machine. Call sites that need `AccountDetails`
-    /// use `awaitReady()` instead.
+    /// Drive the state machine. Only AccountsManager and unit tests should
+    /// call this; call sites that need `AccountDetails` use `awaitReady()`.
     func _setState(_ state: LoadState) {
         AccountStateStore.shared.setState(state, for: uuid)
     }
@@ -207,9 +179,7 @@ extension Account {
 
 // MARK: - Errors
 
-/// Errors surfaced from the Account load pipeline. Migration of
-/// `AccountsManager.loadCatalogs` failure paths into these cases is part
-/// of the 3.2.0 swarm sprint.
+/// Errors surfaced from the Account load pipeline.
 public enum AccountLoadError: Error, Equatable, Sendable {
     /// Network or HTTP-status failure fetching the per-library
     /// `authentication_document`.
@@ -223,41 +193,24 @@ public enum AccountLoadError: Error, Equatable, Sendable {
     /// AccountsManager doesn't know about this UUID. Caller should not
     /// have a reference to the Account at all in this case, but the
     /// load pipeline can race library-removal in rare cases.
-    ///
-    /// LITERAL semantics only — a genuine HTTP 404 / catalog-removal /
-    /// race in the load pipeline. NOT to be used as an eviction marker
-    /// on library switch — use `LoadState.detailsEvicted` for that.
+    /// Not an eviction marker; use `LoadState.detailsEvicted` for that.
     case accountNotFound(uuid: String)
 
-    /// `awaitReady()` observed a `.detailsEvicted` terminal — the account
-    /// is no longer current (user switched libraries). Distinct from
-    /// `.accountNotFound` (which means real load failure) so awaiters can
-    /// disambiguate "give up because the library is gone" from "the load
-    /// pipeline broke." Surfacing the reason lets callers decide whether
-    /// to retry, re-resolve, or simply discard the request.
+    /// `awaitReady()` observed a `.detailsEvicted` terminal: the user
+    /// switched libraries. Distinct from `.accountNotFound` so callers can
+    /// tell "no longer current" from "the load pipeline broke".
     case evicted(reason: AccountEvictionReason)
 
-    /// A bounded `awaitReady(timeout:)` gave up before the account reached
-    /// a terminal state — the `authentication_document` fetch is taking
-    /// longer than the caller's budget (typically because its network
-    /// completion was dropped and the account is wedged at `.detailsLoading`).
-    /// Distinct from `.authDocumentFetchFailed`: the fetch did NOT report a
-    /// failure, it simply never resolved in time. Callers with a retry policy
-    /// (registry sync) treat this as "try again on the next trigger" rather
-    /// than a hard error. Not surfaced to users — reuses existing silent-retry
-    /// paths (HelpSpot #18414).
+    /// A bounded `awaitReady(timeout:)` gave up before a terminal state,
+    /// typically because a dropped network completion left the account at
+    /// `.detailsLoading`. Callers with a retry policy (registry sync) retry
+    /// on the next trigger; not surfaced to users (HelpSpot #18414).
     case readinessTimedOut(timeout: TimeInterval)
 }
 
 /// Reasons an account's LoadState may transition to `.detailsEvicted`.
-/// Distinct from `AccountLoadError` because eviction is NOT a load
-/// failure — the underlying account may still be perfectly valid; it
-/// just stopped being the user-relevant one.
+/// Eviction is not a load failure: the account may still be valid.
 public enum AccountEvictionReason: Equatable, Sendable {
     /// User switched libraries away from this account.
-    /// Awaiters on the prior account observe this terminal so they can
-    /// fail-fast instead of hanging. Re-entering this UUID overwrites
-    /// the marker via the basicInfoLoaded path on the next preload/
-    /// loadCatalogs.
     case libraryDeselected(uuid: String)
 }

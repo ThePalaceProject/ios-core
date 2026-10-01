@@ -2,7 +2,7 @@ import UIKit
 @testable import Palace
 import PalaceBookModel
 
-// `@unchecked Sendable`: `ImageCacheType` is now `Sendable` (Swift 6 Wave 1), so
+// `@unchecked Sendable`: `ImageCacheType` is now `Sendable` (Swift 6), so
 // its conformers must be. Honest — all backing dictionaries/counters are accessed
 // exclusively through the `sync { }` `NSLock` helper; `now` is a test-config knob
 // set before concurrent use. `final` keeps the assertion subclass-proof.

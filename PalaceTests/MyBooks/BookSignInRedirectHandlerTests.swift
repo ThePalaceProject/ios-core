@@ -1,20 +1,9 @@
 //
-//  BookSignInRedirectHandlerTests.swift
-//  PalaceTests
-//
-//  Coverage for the SAML/cookie auth-redirect state machine in
-//  BookSignInRedirectHandler.
-//
-//  handleProblem branches covered:
-//    - .SAMLStarted circuit breaker (sign-in modal without sign-out)
-//    - SAML cookies expired (state .SAMLStarted + retry startDownload)
-//    - No-credentials sign-in (reauth + retry on hasCredentials)
-//
-//  Plus cancellation, book-found, and cookie-storage sync.
-//
-//  handleSAMLStartedState's UIKit web-view presentation is NOT
-//  covered here — it's a side-effect with no observable test surface
-//  short of integration testing.
+//  BookSignInRedirectHandler's SAML/cookie auth-redirect state machine:
+//  handleProblem's .SAMLStarted circuit breaker, expired SAML cookies, and
+//  no-credentials reauth + retry, plus cancellation, book-found and cookie-storage
+//  sync. handleSAMLStartedState's web-view presentation has no observable unit
+//  surface and is left to integration testing.
 //
 
 import XCTest

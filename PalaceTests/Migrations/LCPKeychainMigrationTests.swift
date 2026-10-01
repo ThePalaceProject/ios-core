@@ -70,12 +70,9 @@ final class LCPKeychainMigrationTests: XCTestCase {
     /// assertion on the observed gate value proves the second caller looked while
     /// the gate was still open.
     ///
-    /// It asserts the copy COUNT and nothing about ordering. An earlier version of
-    /// this file also asserted that the second caller returned only after the first
-    /// had finished; that assertion was green by construction under the fix and
-    /// only *racily* red under the mutant, because the test opens the release gate
-    /// concurrently with the second caller's return and cannot order the two. A
-    /// test that cannot force the interleaving it asserts is not evidence.
+    /// It asserts the copy COUNT and nothing about ordering: the test opens the
+    /// release gate concurrently with the second caller's return, so it cannot
+    /// force (and therefore cannot assert) their order.
     func testRunIfNeeded_whenASecondCallerArrivesMidCopy_migratesAtMostOnce() async {
         let copies = LockIsolated<Int>(0)
         let firstCallerIsCopying = AsyncGate()

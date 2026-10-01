@@ -5,22 +5,12 @@
 //  Finds the print page the patron is currently on, for the DAISY nav-310
 //  "Where am I?" announcement (PP-4527).
 //
-//  This replaces a page-list lookup that could never work. The previous approach
-//  resolved every `publication.pageList` entry through
-//  `publication.locate(link)` and compared `locations.totalProgression`. Readium's
-//  `DefaultLocatorService.locate(_ link:)` builds that locator from an href and a
-//  fragment and never sets `totalProgression` at all — for a fragmented
-//  page-list href it sets neither `totalProgression` nor `progression`. Every
-//  entry therefore resolved to nil and the comparison had nothing to match.
-//  Measured on device 2026-09-18: `entries=182 resolved=0 nil=182`. The page
-//  component had never once appeared since the feature shipped.
+//  Reads page-break markers from the rendered DOM, because Readium's
+//  `locate(link)` sets no progression for fragmented page-list hrefs, so a
+//  `publication.pageList` lookup cannot place them.
 //
-//  SHAPE: the injected JavaScript only COLLECTS candidates; choosing between
-//  them is pure Swift. An earlier draft did the choosing in JS, and mutation
-//  testing scored it 0/12 — every operator in the JS string could be flipped
-//  without failing a test, because a string-literal assertion cannot execute the
-//  logic it quotes. Selection logic lives on this side of the boundary so it can
-//  actually be tested.
+//  The injected JavaScript only collects candidates; choosing between them is
+//  pure Swift so the selection logic is unit-testable.
 //
 
 import Foundation
@@ -42,8 +32,7 @@ enum TPPReaderPageBreakLocator {
     /// Deliberately walks elements and reads `epub:type` with `getAttribute`
     /// rather than selecting on it. Readium's spine documents are parsed as XML,
     /// where a namespaced CSS attribute selector such as `[epub\:type]` matches
-    /// NOTHING. PP-4531 shipped that selector and silently annotated zero
-    /// elements for four months; this must not repeat it.
+    /// nothing (see PP-4531).
     static func collectCandidatesJavaScript() -> String {
         """
         (function() {
@@ -76,9 +65,6 @@ enum TPPReaderPageBreakLocator {
         """
     }
 
-    /// Decode what `evaluateJavaScript` handed back. Anything malformed yields no
-    /// candidates rather than throwing — a book with no page-list is normal, and
-    /// the AC requires the absence of a page number not to error.
     /// Decoded collector output: the markers plus the layout axis the document
     /// actually uses.
     struct Collection: Equatable {
@@ -147,11 +133,8 @@ enum TPPReaderPageBreakLocator {
         guard let raw = value as? String else { return nil }
         var label = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Some EPUBs author the marker text as "Page 42"; the announcement
-        // composer adds its own "Page " prefix, so keeping it would speak
-        // "Page Page 42".
-        // Handles both an authored "Page 42" title and an id-derived "page42",
-        // "page_42", "pg-42". The label itself (42, or roman ix) is what remains.
+        // Strip an authored "Page 42" or id-derived "page42" / "page_42" /
+        // "pg-42" prefix; the announcement adds its own "Page ".
         if let range = label.range(of: "^(?i)p(?:age|g)?[\\s_\\-]*(?=[0-9ivxlcdmIVXLCDM])",
                                    options: .regularExpression) {
             label = String(label[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)

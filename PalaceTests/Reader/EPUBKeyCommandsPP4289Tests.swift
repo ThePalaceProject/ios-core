@@ -1,24 +1,11 @@
-//
 //  EPUBKeyCommandsPP4289Tests.swift
-//  PalaceTests
 //
-//  PP-4289 regression — Mac/iPad-on-Mac keyboard escape hatch.
-//
-//  Before this fix, opening a book in Reader2 on Apple Silicon Mac as
-//  "Designed for iPad" trapped the user: tap-to-toggle-toolbar did not
-//  fire on mouse-click, Esc had no visible effect, and the default
-//  Cmd+W (close-window) closed the *entire Palace app* — Palace is a
-//  single-scene iPad app, so closing the only window dismisses the app.
-//
-//  The fix is purely additive: two new UIKeyCommand bindings to existing
-//  reader actions (closeEPUB, presentUserSettings). The arrow / space /
-//  Esc bindings are unchanged.
-//
-//  These assertions are deliberately narrow — they verify the array
-//  *contains* the right (input, modifierFlags) pairs and that every
-//  binding wants priority over system behavior. They do not exercise
-//  the runtime UIKit dispatch path; that needs a UI test.
-//
+//  PP-4289: on Apple Silicon Macs ("Designed for iPad") the reader had no way
+//  out; tap-to-toggle did not fire on click, Esc had no visible effect, and
+//  Cmd+W closed the whole single-scene app. The fix adds two UIKeyCommands
+//  bound to existing actions (closeEPUB, presentUserSettings). These tests check
+//  the key-command array contains the right (input, modifierFlags) pairs with
+//  priority over system behavior; runtime dispatch needs a UI test.
 
 import XCTest
 import UIKit

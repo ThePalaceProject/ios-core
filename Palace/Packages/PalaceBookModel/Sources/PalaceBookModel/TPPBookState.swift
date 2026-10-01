@@ -81,13 +81,10 @@ public enum TPPBookState: Int, CaseIterable, Sendable {
 //
 // This table is the declared legal-transition set for the book lifecycle and is
 // ENFORCED at the single mutation seam `TPPBookRegistry.setState` via
-// `canTransition` (swarm_8ce6f5ae WS3 / state-management doctrine): a transition
-// not listed here trips an `assertionFailure` in DEBUG and a telemetry log in
-// RELEASE — but the transition is STILL applied (state is never dropped).
-//
-// Because the seam now enforces this set, ADDING a transition here IS a behavior
-// change (it legalizes a path that previously asserted); removing one makes a
-// live path illegal. Keep it in sync with the real call sites.
+// `canTransition`: a transition not listed here trips an `assertionFailure` in
+// DEBUG and a telemetry log in RELEASE, but is still applied (state is never
+// dropped). Adding a transition legalizes a path that used to assert; removing
+// one makes a live path illegal. Keep it in sync with the real call sites.
 public extension TPPBookState {
 
     /// All transitions the book lifecycle is documented to allow.

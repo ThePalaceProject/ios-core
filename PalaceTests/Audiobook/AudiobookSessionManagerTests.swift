@@ -283,8 +283,8 @@ final class AudiobookNetworkValidationTests: XCTestCase {
     /// Fully-downloaded books bypass network rules entirely — they must
     /// play under every (connected × onWiFi × wifiOnly) combination,
     /// including offline-with-Wi-Fi-only-on. Pin every cell of the matrix
-    /// across both downloaded states (.downloadSuccessful and .used) so a
-    /// mutant that adds a network gate to the downloaded path fails on
+    /// across both downloaded states (.downloadSuccessful and .used) so
+    /// adding a network gate to the downloaded path fails on
     /// the offline-with-Wi-Fi-only row.
     func testFullyDownloaded_bypassesNetworkRulesAcrossAllConnectivityCombinations() {
         for state in [TPPBookState.downloadSuccessful, .used] {
@@ -303,7 +303,7 @@ final class AudiobookNetworkValidationTests: XCTestCase {
 
     /// Streaming-state full validation matrix. The bug PP-XXXX exposed was
     /// that the open path skipped the Wi-Fi-only gate; the fix restored it.
-    /// Lock every cell in one body so a mutant that flips ANY cell fails.
+    /// Lock every cell in one body so flipping ANY cell fails.
     /// Additionally pins the offline-preempt-wifi rule (offline must report
     /// .networkUnavailable, not .wifiRequired — that wording would mislead
     /// users into thinking Wi-Fi could solve a no-network situation).

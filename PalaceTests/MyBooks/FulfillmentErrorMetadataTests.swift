@@ -1,20 +1,10 @@
 //
-//  FulfillmentErrorMetadataTests.swift
-//  PalaceTests
-//
-//  The download-failure report carries a `"book"` entry so a non-fatal can be
-//  traced back to the title, distributor and acquisition type that failed.
-//  That entry must be the book's loggable dictionary, not the unapplied
-//  `loggableDictionary` method: a function value in `[String: Any]` metadata
-//  compiles, and reaches Crashlytics as an opaque closure description.
-//
-//  Reachable here: `MyBooksDownloadCenter.reportDownloadFailure` (the body
-//  `logBookDownloadFailure` forwards to), through the injected
-//  `DeviceSpecificErrorMonitoring`; the test awaits the `Task` it returns. Not reachable: the three
-//  `AdobeDRMHandler.handleFulfillmentResult` reports, which go to the static
-//  `TPPErrorLogger`; those are covered by the verification grep only.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  The download-failure report's `"book"` entry must be the book's loggable
+//  dictionary, not the unapplied `loggableDictionary` method, which compiles in
+//  `[String: Any]` and reaches Crashlytics as a closure description. Covers
+//  `MyBooksDownloadCenter.reportDownloadFailure` via the injected
+//  `DeviceSpecificErrorMonitoring`. AdobeDRMHandler's reports go through the static
+//  `TPPErrorLogger` and are not reachable from here.
 //
 
 import XCTest

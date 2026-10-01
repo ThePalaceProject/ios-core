@@ -10,20 +10,14 @@ import PalaceUtilities
 /// The book-open entry point callers name, plus two audiobook helpers that are
 /// not routing: the open-failure alert and the bearer-token manifest fetch.
 ///
-/// The format -> destination decision and the reader wiring moved to
-/// `BookOpenRouter` (Application layer) in Wave 5, so `open` is a forwarder and
-/// the readers are reachable from one place. Audiobook opens still land on
+/// Routing lives in `BookOpenRouter`. Audiobook opens land on
 /// `AudiobookSessionManager.openAudiobook`, the sole owner of the audiobook
-/// lifecycle (manager, decryptor, playback, navigation) — that ownership is what
-/// keeps a previous session's DRM decryptor from outliving the next open and
-/// hanging Readium's `publicationOpener.open()`. See AudiobookLoader +
-/// AudiobookSessionManager.
+/// lifecycle — that ownership keeps a previous session's DRM decryptor from
+/// outliving the next open and hanging Readium's `publicationOpener.open()`.
 enum BookService {
-    /// Book-open entry point for every caller (BookDetail, My Books, the
-    /// audiobook retry action). Forwards to `BookOpenRouter`, which owns the
-    /// format -> destination decision, the reader wiring and the per-identifier
-    /// reentrancy lock. The signature is unchanged so call sites and
-    /// `BookServiceAudiobookOpenTests` are unaffected by the relocation.
+    /// Book-open entry point for every caller. Forwards to `BookOpenRouter`,
+    /// which owns the format -> destination decision, the reader wiring and the
+    /// per-identifier reentrancy lock.
     ///
     /// - parameter onLoadingShellPresented: audiobook-only early hook — see
     ///   `BookOpenRouter.open`.
@@ -113,15 +107,8 @@ enum BookService {
 
         Log.info(#file, "  📡 Fetching manifest from bearer token location: \(token.location.host ?? "unknown")")
 
-        // Box `completion` so the `@Sendable` `dataTask` handler captures a
-        // Sendable carrier rather than the raw non-Sendable `([String: Any]?) ->
-        // Void` closure. Boxing (vs. marking the parameter `@Sendable`) keeps this
-        // static func's public signature unchanged — `@Sendable`ing it would
-        // ripple onto the `BearerTokenManifestFetching` protocol and both its
-        // production and test conformers in `Palace/Audiobooks/`. INVARIANT: the
-        // completion is invoked exactly once, on the URLSession delegate queue,
-        // per request — a single-consumer handoff, no shared mutation. Mirrors
-        // `ImageCompletionBox` / `SyncCallbacks`.
+        // Boxed rather than marking the parameter `@Sendable`, which would
+        // ripple onto `BearerTokenManifestFetching` and its conformers.
         let completionBox = ManifestCompletionBox(completion)
         let task = session.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -151,16 +138,10 @@ enum BookService {
     }
 }
 
-/// Sendable carrier for `fetchManifestWithBearerToken`'s non-Sendable
-/// `([String: Any]?) -> Void` completion, so the `@Sendable` URLSession
-/// `dataTask` handler can capture it under Swift 6 `complete` mode without
-/// forcing `@Sendable` onto the public parameter (which would ripple onto the
-/// `BearerTokenManifestFetching` protocol in `Palace/Audiobooks/`).
+/// Sendable carrier for `fetchManifestWithBearerToken`'s non-Sendable completion.
 ///
 /// `@unchecked Sendable` invariant: `completion` is stored once and invoked
-/// exactly once, on the URLSession delegate queue, for a single request — a
-/// one-shot single-consumer handoff, never mutated or shared. Mirrors
-/// `ImageCompletionBox`.
+/// exactly once, on the URLSession delegate queue, for a single request.
 private final class ManifestCompletionBox: @unchecked Sendable {
     let completion: ([String: Any]?) -> Void
     init(_ completion: @escaping ([String: Any]?) -> Void) { self.completion = completion }

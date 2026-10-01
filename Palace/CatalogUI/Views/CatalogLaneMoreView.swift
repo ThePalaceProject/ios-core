@@ -117,9 +117,7 @@ struct CatalogLaneMoreView: View {
     }
 
     private var registryChangePublisher: AnyPublisher<String, Never> {
-        // Migrated off `.TPPBookRegistryStateDidChange` to the registry's per-book
-        // `bookStatePublisher` (swarm_8ce6f5ae WS3); emit the changed identifier so
-        // the lane refreshes just that row.
+        // Emit the changed identifier so the lane refreshes just that row.
         appContainer.bookRegistry.bookStatePublisher
             .map { $0.0 }
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)

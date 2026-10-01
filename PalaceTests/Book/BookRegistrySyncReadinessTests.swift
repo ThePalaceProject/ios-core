@@ -2,39 +2,14 @@
 //  BookRegistrySyncReadinessTests.swift
 //  PalaceTests
 //
-//  Account.LoadState readiness contract tests for `BookRegistrySync.sync`
-//  (swarm_81b5099e Bucket A — PP-4407 site).
+//  Account.LoadState readiness contract for `BookRegistrySync.sync` (PP-4407).
+//  The sync awaits `currentAccount.awaitReady()` before reading `loansUrl`, so a
+//  cold launch before the auth document loads no longer leaves the registry empty.
 //
-//  Pre-Phase-1 the sync entry point read `currentAccount.loansUrl` from a
-//  sync stack frame. If the auth document hadn't finished loading (the
-//  F-016 cold-launch window), `loansUrl` was nil and the function silently
-//  short-circuited via `else { return }`. The registry then stayed
-//  `.loaded` empty until the next sync trigger — silent data-staleness.
-//
-//  Post-Phase-1 the read is hoisted into the existing Task block where
-//  `await currentAccount.awaitReady()` blocks until terminal state. On
-//  `AccountLoadError` we revert state to `.loaded` and let the registry's
-//  own retry policy drive the next attempt.
-//
-//  TEST STRATEGY:
-//
-//  These tests verify the gate's contract at the awaitReady level via
-//  libraryMock's account — they pin the HELPER (`Account.awaitReady`), not the
-//  caller that consumes it.
-//
-//  ⚠️ SCOPE LIMIT — read before trusting these to catch a regression. This file
-//  once claimed "a regression at the production site that drops the gate would be
-//  caught" here. That was FALSE, and it cost us a shipped regression: the Wave 3 S2
-//  seam extraction moved the readiness await behind
-//  `AccountScopeProviding.loansURL` and dropped `timeout:`, and every test in this
-//  file stayed green because none of them call the production path. My Books went
-//  back to spinning forever (HelpSpot #18619, #18624).
-//
-//  A test that constructs its own `Account` and awaits it directly can NEVER prove
-//  what the production caller does. The producer-level guards live in
-//  `BookRegistrySyncTimeoutSeamTests` (the engine passes a finite bound) and
-//  `AccountScopeAdapterTests` (the adapter honors it). Keep them in sync with any
-//  change here.
+//  Scope limit: these tests pin the helper (`Account.awaitReady`), not the
+//  production caller. A caller that drops the gate or its timeout stays green here
+//  (HelpSpot #18619, #18624); the producer-level guards are
+//  `BookRegistrySyncTimeoutSeamTests` and `AccountScopeAdapterTests`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -84,9 +59,9 @@ final class BookRegistrySyncReadinessTests: XCTestCase {
                           "awaitReady must return the AccountDetails that BookRegistrySync.sync's Task reads loansUrl from")
             // After the gate resolves, the migrated production code reads
             // `details.loansUrl`. We assert the same is reachable here.
-            // Pre-Phase-1 the sync function read `currentAccount.loansUrl`
-            // directly and short-circuited when nil; post-Phase-1 the
-            // loansUrl comes from `try await currentAccount.awaitReady().loansUrl`
+            // The sync function used to read `currentAccount.loansUrl`
+            // directly and short-circuit when nil; the
+            // loansUrl now comes from `try await currentAccount.awaitReady().loansUrl`
             // which always reflects loaded state.
             _ = details.loansUrl
             resolved.fulfill()
@@ -174,7 +149,7 @@ final class BookRegistrySyncReadinessTests: XCTestCase {
     /// When the production accountsManager has a currentAccount (varies
     /// by test ordering), exercise the full migrated `sync()` path and
     /// assert `setState(.syncing)` fires synchronously (the entry into
-    /// the migrated Task block). Pre-Phase-1 the function returned at
+    /// the migrated Task block). The function previously returned at
     /// the `loansUrl` guard BEFORE this setState call.
     func testIntegration_underDetailsLoading_setStateSyncingFiresUnconditionally() throws {
         let accountsMgr = AppContainer.production().accountsManager
@@ -192,8 +167,7 @@ final class BookRegistrySyncReadinessTests: XCTestCase {
             // mint keychain credentials — sync bails at the hasCredentials
             // guard BEFORE reaching the gate this test is asserting. Leave
             // this XCTSkip in place; running this assertion requires either
-            // a real signed-in account or a keychain-mockable seam (out of
-            // scope for the Phase 2 DI work).
+            // a real signed-in account or a keychain-mockable seam.
             throw XCTSkip("Account has no credentials — sync bails at the hasCredentials guard before reaching the gate")
         }
 

@@ -24,9 +24,8 @@ final class TabBarModernizationTests: XCTestCase {
     // MARK: - Mini-player bottom inset
 
     /// The unmeasured fallback: with only the 49pt bar-only seed, the full
-    /// height is reconstructed as safeArea + default bar + margin. Kills the
-    /// `+` → `-` mutant (would place the card below the bar) and any mutant that
-    /// drops one of the three terms.
+    /// height is reconstructed as safeArea + default bar + margin. A sign flip
+    /// would place the card below the bar; each of the three terms must count.
     func test_miniPlayerBottomInset_sumsSafeAreaBarAndMargin() {
         let inset = TabBarModern.miniPlayerBottomInset(
             safeAreaBottom: 34,
@@ -41,8 +40,7 @@ final class TabBarModernizationTests: XCTestCase {
     /// flow straight through as `height + margin` — NOT have the safe area added
     /// a second time. Adding it again floated the card ~34pt too high above the
     /// bar (the double-count bug). A taller measured bar must also yield a taller
-    /// inset so the card keeps tracking the real bar. Kills a mutant that
-    /// re-introduces the `safe +` term.
+    /// inset so the card keeps tracking the real bar.
     func test_miniPlayerBottomInset_fullFrameMeasurement_doesNotDoubleCountSafeArea() {
         // 83 = 49pt bar + 34pt home indicator — the real measured frame height.
         let inset = TabBarModern.miniPlayerBottomInset(safeAreaBottom: 34, tabBarHeight: 83, margin: 8)
@@ -58,7 +56,6 @@ final class TabBarModernizationTests: XCTestCase {
 
     /// A bogus (zero / non-finite) measurement must fall back to the default
     /// height, never to 0 — otherwise the card would collapse onto the tab bar.
-    /// Kills a mutant that drops the `tabBarHeight > 0` guard.
     func test_miniPlayerBottomInset_bogusBarHeight_fallsBackToDefault() {
         let zero = TabBarModern.miniPlayerBottomInset(safeAreaBottom: 34, tabBarHeight: 0, margin: 8)
         XCTAssertEqual(zero, 34 + TabBarModern.defaultTabBarHeight + 8, accuracy: 0.001,
@@ -80,9 +77,7 @@ final class TabBarModernizationTests: XCTestCase {
     // MARK: - iOS 26 minimize-behavior gate
 
     /// With an active mini-player the bar MUST be pinned (minimize disabled) so
-    /// it can't minimize out from under the floating card. Kills the `!` → ``
-    /// mutant (which would enable minimize during playback — the exact desync
-    /// the gate exists to prevent).
+    /// it can't minimize out from under the floating card.
     func test_shouldEnableTabBarMinimize_miniPlayerActive_returnsFalse() {
         XCTAssertFalse(TabBarModern.shouldEnableTabBarMinimize(miniPlayerActive: true),
                        "an active mini-player must PIN the bar (minimize disabled)")
@@ -99,7 +94,7 @@ final class TabBarModernizationTests: XCTestCase {
 
     /// The observer seeds with the historical default so the first frame (before
     /// any measurement) positions the card exactly where the old hardcoded path
-    /// did. Kills a mutant that seeds it to 0.
+    /// did, never 0.
     @MainActor
     func test_tabBarHeightObserver_seedsWithHistoricalDefault() {
         let observer = TabBarHeightObserver()
@@ -110,9 +105,8 @@ final class TabBarModernizationTests: XCTestCase {
     /// `measure()` is a best-effort read: it updates to a real mounted tab-bar
     /// height when one exists and otherwise keeps the last good value — it must
     /// NEVER corrupt the published height to a bogus 0 / non-finite value, which
-    /// would collapse the mini-player onto the bar. Kills the mutant that writes
-    /// 0 when no valid bar is found (the `guard measured > 1 else { return }`
-    /// bogus-guard). The XCTest host mounts a real tab bar, so this also confirms
+    /// would collapse the mini-player onto the bar (the
+    /// `guard measured > 1 else { return }` guard). The XCTest host mounts a real tab bar, so this also confirms
     /// measure() picks up a plausible height rather than leaving a stale seed.
     @MainActor
     func test_tabBarHeightObserver_measure_neverCorruptsToBogusHeight() {

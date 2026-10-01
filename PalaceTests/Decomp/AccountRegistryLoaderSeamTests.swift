@@ -1,20 +1,10 @@
-//
 //  AccountRegistryLoaderSeamTests.swift
-//  PalaceTests
 //
-//  Pins the Wave 3 / 3a-4 `AccountRegistryLoader` seam: the catalog load orchestration +
-//  owned background-crawl + drain extracted from AccountsManager. Constructs the loader
-//  DIRECTLY with spy providers + a recording `CrawlTaskScheduler` + a stub cache/network,
-//  so the deterministic contracts pin WITHOUT racing a live network:
-//   - the initial-background-load SCHEDULING contract (one detached `.utility` spawn),
-//   - the drain's empty-set path returns promptly (no wall-clock hang),
-//   - `carveSlimFeed` purity (also reached via the retained `AccountsManager` shim).
-//  The broad load-pipeline behaviour + the drain-under-live-crawl are pinned by the
-//  retained (byte-unchanged) AccountsManager suites (cancellation / first-run-decode /
-//  cache-read / wiring), which run through the hub facades in CI.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins `AccountRegistryLoader` (catalog load, background crawl and drain,
+//  extracted from AccountsManager) built directly with spies, a recording
+//  `CrawlTaskScheduler` and stub cache/network: one detached `.utility` spawn for
+//  the initial load, a prompt empty-set drain, and `carveSlimFeed` purity. The
+//  wider load pipeline stays covered by the AccountsManager suites.
 
 import XCTest
 import PalaceCatalog
@@ -26,7 +16,7 @@ import PalacePreferences
 final class AccountRegistryLoaderSeamTests: XCTestCase {
 
     /// `spawnInitialBackgroundLoad()` schedules exactly one DETACHED `.utility` crawl task
-    /// (the init background-load arm). Kill case: a mutant that changes detachedness/QoS or
+    /// (the init background-load arm). Regression caught: a change that changes detachedness/QoS or
     /// spawns zero/many tasks flips the recorded spawn list.
     func testSpawnInitialBackgroundLoad_schedulesOneDetachedUtilityTask() {
         let recorder = SchedulerRecorder()
@@ -40,8 +30,8 @@ final class AccountRegistryLoaderSeamTests: XCTestCase {
     }
 
     /// `cancelAndDrainBackgroundWork` with no owned tasks pumps the main run loop briefly
-    /// then RETURNS — it must never hang the test boundary (bounded pump). Kill case: a
-    /// mutant that blocks main / drops the bound would time out.
+    /// then RETURNS — it must never hang the test boundary (bounded pump). Regression caught: a
+    /// regression that blocks main / drops the bound would time out.
     func testCancelAndDrain_withNoTasks_returnsPromptly() {
         let recorder = SchedulerRecorder()
         let loader = makeLoader(scheduler: recorder.scheduler)
@@ -53,7 +43,7 @@ final class AccountRegistryLoaderSeamTests: XCTestCase {
     }
 
     /// `carveSlimFeed` keeps only the `catalogs` entries whose `metadata.id` is in
-    /// `keepUUIDs`, and returns nil when none match. Kill case: dropping the filter or the
+    /// `keepUUIDs`, and returns nil when none match. Regression caught: dropping the filter or the
     /// empty-guard.
     func testCarveSlimFeed_keepsOnlyMatchingUUIDs() throws {
         let full = """

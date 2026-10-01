@@ -2,7 +2,7 @@
 //  AccountCredentialResolverTests.swift
 //  PalaceTests
 //
-//  Pins the Wave 3 / 3a-5 `AccountCredentialResolver` seam: per-account credential
+//  Pins the `AccountCredentialResolver` seam: per-account credential
 //  resolution extracted from AccountsManager behind the injected resolver. The
 //  end-to-end isolation contract is the retained `TPPCredentialIsolationE2ETests`
 //  (F-034 500-iteration chaos gate) + `TPPPerAccountIsolationTests`, which route

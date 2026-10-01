@@ -3,24 +3,10 @@
 //  Palace
 //
 //  PP-5220 — the decision behind "does this patron see the library picker?",
-//  lifted out of `TPPAppDelegate` so it can be tested.
-//
-//  ## Why this exists
-//
-//  That decision could not be reached from a test: it was tangled with app
-//  startup, notification observers and a timer, so the one piece of logic in
-//  Palace that can leave a brand-new patron with no library — or with four
-//  stacked pickers — had no coverage at all. PP-4329 was exactly that bug: an
-//  observer that was re-registered and never removed stacked four
-//  `TPPAccountList` modals on a fresh install on iOS 26.4.2.
-//
-//  The MDM work then added a second reason to listen, a deadline timer, and a
-//  path that skips the picker entirely. Three more ways for the same decision
-//  to go wrong, still with nothing asserting any of it.
-//
-//  So the decision is a pure function over the five things that actually
-//  determine it, and `TPPAppDelegate` is reduced to carrying them in and acting
-//  on the answer. The states are finite and enumerable; the scenarios are not.
+//  as a pure function over the five inputs that determine it, so it can be
+//  tested. `TPPAppDelegate` carries the inputs in and acts on the answer.
+//  A mistake here leaves a new patron with no library, or with stacked pickers
+//  (PP-4329: four `TPPAccountList` modals on a fresh install).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

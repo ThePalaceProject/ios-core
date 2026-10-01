@@ -1,22 +1,10 @@
 //
-//  OverdriveDeferredFulfillmentTests.swift
-//  PalaceTests
-//
-//  Regression: Overdrive borrow-from-hold failing with "wrong headers" Code=609.
-//
-//  When a held Overdrive audiobook is borrowed, `borrowAsync` succeeds and sets
-//  state to `.downloadNeeded`, then auto-triggers `startDownload`. The
-//  post-borrow OPDS entry returned by the Palace Circulation Manager still
-//  advertises the `/borrow` URL as the default acquisition, so
-//  `processOverdriveDownload` calls `fulfillBook` with that URL.
-//  `OverdriveAPIExecutor.fulfillBook` expects a 302 with
-//  `x-overdrive-scope` and `x-overdrive-patron-authorization` headers; the CM
-//  returns a 200 OPDS atom entry instead, and the client logs
-//  `Overdrive audiobook fulfillment: wrong headers` (Code 609).
-//
-//  `MyBooksDownloadCenter.shouldDeferOverdriveFulfillment(for:state:)` is the
-//  guard that prevents that spurious call. This file covers the guard's truth
-//  table: only borrow-relation acquisitions in download-ready states defer.
+//  Overdrive borrow-from-hold failed with "wrong headers" (Code 609): the
+//  post-borrow OPDS entry still advertises `/borrow` as the default acquisition,
+//  so `fulfillBook` got a 200 atom entry instead of the expected 302 with
+//  x-overdrive headers. Covers the truth table of
+//  `MyBooksDownloadCenter.shouldDeferOverdriveFulfillment(for:state:)`: only
+//  borrow-relation acquisitions in download-ready states defer.
 //
 
 import XCTest

@@ -26,7 +26,7 @@ HOW
   fix from the subject line, and fail on any that are not explicitly waived.
 
 WAIVERS
-  A waiver file (default `.forgeos/release-waivers/<release>.txt`, override with
+  A waiver file (default `config/ci/release-waivers/<release>.txt`, override with
   --waiver-file) lists, one per line, `<sha-or-pr> <reason>`. A candidate is
   reconciled if its abbreviated SHA, full SHA, or `#<pr>` appears as the first
   token of a waiver line. Blank lines and `#`-comments are ignored. Waiving
@@ -119,7 +119,7 @@ def _load_waivers(path: str | None, release_ref: str) -> set[str]:
     """First token of each non-comment line: an SHA (any length) or `#<pr>`."""
     if path is None:
         safe = release_ref.replace("/", "-")
-        path = os.path.join(".forgeos", "release-waivers", f"{safe}.txt")
+        path = os.path.join("config", "ci", "release-waivers", f"{safe}.txt")
     tokens: set[str] = set()
     if not os.path.exists(path):
         return tokens
@@ -205,7 +205,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--critical-path-regex", default=DEFAULT_CRITICAL_PATH_REGEX)
     parser.add_argument("--fix-subject-regex", default=DEFAULT_FIX_SUBJECT_REGEX)
     parser.add_argument("--waiver-file", default=None,
-                        help="Waiver list (default .forgeos/release-waivers/<release>.txt).")
+                        help="Waiver list (default config/ci/release-waivers/<release>.txt).")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 

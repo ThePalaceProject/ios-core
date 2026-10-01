@@ -1,26 +1,11 @@
-//
 //  AuthDocumentLoaderSeamTests.swift
-//  PalaceTests
 //
-//  Pins the Wave 3 / 3a-3 `AuthDocumentLoader` seam: the auth-document fetch +
-//  state-machine wiring extracted from AccountsManager into an injected collaborator.
-//
-//  Constructs `AuthDocumentLoader` DIRECTLY with spy providers + an ISOLATED
-//  `AccountStateStore` (no manager ⇒ no wiring-suite isolation flake). Because
-//  `Account._setState` hard-codes `AccountStateStore.shared`, a *terminal* landed by a
-//  fired fetch is NOT observable through the injected store — so these tests never
-//  assert terminals (that stays with the retained `AccountsManagerAuthDocContractTests`
-//  wiring pin). Instead the injected-store-independent observable is: **was the network
-//  fetch fired?** — captured by whether `signedInStateProvider` is called, which the
-//  loader evaluates synchronously at the `loadAuthenticationDocument(using:)` call site
-//  and ONLY on the non-dedup path. Deterministic, no async race, no `.shared` assertion.
-//
-//  The fired fetches use link-less accounts (no auth-doc URL) so the real
-//  `loadAuthenticationDocument` returns false without network; any `.shared` terminal is
-//  reset in tearDown, and every uuid is unique per test.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins `AuthDocumentLoader` built directly with spies and an isolated
+//  `AccountStateStore`. `Account._setState` writes to the shared store, so
+//  terminals are not observable here; the observable is whether a fetch fired,
+//  seen as a synchronous `signedInStateProvider` call on the non-dedup path.
+//  Terminals stay pinned by `AccountsManagerAuthDocContractTests`. Fired fetches
+//  use link-less accounts (no network), unique uuids, and tearDown resets state.
 
 import XCTest
 import PalaceCatalog
@@ -44,7 +29,7 @@ final class AuthDocumentLoaderSeamTests: XCTestCase {
 
     /// `fetchCompletionMayWriteTerminal` returns false ONLY for an evicted state (so a
     /// switch-cancellation completion can't clobber the eviction marker), true otherwise.
-    /// Kill case: dropping the `.detailsEvicted` short-circuit ⇒ the evicted assertion flips.
+    /// Regression caught: dropping the `.detailsEvicted` short-circuit ⇒ the evicted assertion flips.
     func testFetchCompletionMayWriteTerminal_purity() {
         XCTAssertFalse(
             AuthDocumentLoader.fetchCompletionMayWriteTerminal(currentState: .detailsEvicted(.libraryDeselected(uuid: "x"))),
@@ -60,7 +45,7 @@ final class AuthDocumentLoaderSeamTests: XCTestCase {
     /// A recent in-flight entry DEDUPES the next fetch: completion fires `true`
     /// synchronously and NO network is fired (`signedInStateProvider` untouched).
     ///
-    /// Kill case: dropping the dedup guard ⇒ the fetch fires the network (spy called).
+    /// Regression caught: dropping the dedup guard ⇒ the fetch fires the network (spy called).
     func testFetch_dedupesAgainstRecentInflight() {
         let (loader, account, spy) = makeLoader()
         loader._seedInflightAuthDocForTesting(uuid: account.uuid, age: 1) // recent
@@ -76,7 +61,7 @@ final class AuthDocumentLoaderSeamTests: XCTestCase {
     /// A STALE in-flight entry (older than the timeout) is reclaimed and the fetch
     /// re-fires: `signedInStateProvider` IS called and the slot stays claimed.
     ///
-    /// Kill case: treating a stale wedge as a live dedup ⇒ the fetch never re-fires
+    /// Regression caught: treating a stale wedge as a live dedup ⇒ the fetch never re-fires
     /// (spy untouched) and `awaitReady()` stays wedged (HelpSpot #18414).
     func testFetch_reclaimsStaleWedge() {
         let (loader, account, spy) = makeLoader()
@@ -96,7 +81,7 @@ final class AuthDocumentLoaderSeamTests: XCTestCase {
     // MARK: - Drive routing (via the injected store + fetch-fired spy)
 
     /// `drive` at a genuine terminal failure does NOT re-fetch (the "real failure, don't
-    /// redrive" arm). Kill case: routing `.detailsFailed` to a redrive ⇒ spy called.
+    /// redrive" arm). Regression caught: routing `.detailsFailed` to a redrive ⇒ spy called.
     func testDrive_atTerminalFailure_doesNotRefetch() {
         let (loader, account, spy, store) = makeLoaderWithStore()
         store.setState(.detailsFailed(.accountNotFound(uuid: account.uuid)), for: account.uuid)
@@ -107,7 +92,7 @@ final class AuthDocumentLoaderSeamTests: XCTestCase {
     }
 
     /// `drive` on a STALE `.detailsEvicted(.libraryDeselected)` marker REDRIVES (swap-back).
-    /// Kill case: routing `.detailsEvicted` to `return` ⇒ awaitReady() stuck after swap-back.
+    /// Regression caught: routing `.detailsEvicted` to `return` ⇒ awaitReady() stuck after swap-back.
     func testDrive_atStaleEvictionMarker_redrives() {
         let (loader, account, spy, store) = makeLoaderWithStore()
         store.setState(.detailsEvicted(.libraryDeselected(uuid: account.uuid)), for: account.uuid)
@@ -117,7 +102,7 @@ final class AuthDocumentLoaderSeamTests: XCTestCase {
         XCTAssertTrue(spy.called, "a stale .detailsEvicted marker for the current account must redrive")
     }
 
-    /// `drive` at a non-terminal state fetches. Kill case: a mutant that early-returns
+    /// `drive` at a non-terminal state fetches. Regression caught: a change that early-returns
     /// on `.notLoaded` ⇒ awaitReady() consumers never get a terminal.
     func testDrive_atNonTerminal_fetches() {
         let (loader, _, spy, _) = makeLoaderWithStore() // fresh store ⇒ .notLoaded

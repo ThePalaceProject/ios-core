@@ -16,13 +16,10 @@ struct BookButtonMapper {
     /// First look at registryState. If that alone dictates a clear UI state,
     /// return it. Otherwise fall back to OPDS availability via `stateForAvailability(_)`.
     ///
-    /// The mapping is an **exhaustive `switch` with no `default:`** — the
-    /// compiler forces every `TPPBookState` case to be handled here. Phase 7
-    /// siblings audit (`.forgeos/audits/phase7-synthesis-2026-05-26.md`) flagged
-    /// the previous if-cascade fall-through as the same trap that produced
-    /// F-011 (silent `.downloadNeeded` swallow → first-open audiobook hang):
-    /// any new `TPPBookState` case would inherit `.unsupported` silently. The
-    /// switch makes adding a case a compile error until the mapping is decided.
+    /// The mapping is an exhaustive `switch` with no `default:`, so adding a
+    /// `TPPBookState` case is a compile error until its button state is decided
+    /// rather than falling through to `.unsupported` (an unmapped
+    /// `.downloadNeeded` once caused a first-open audiobook hang).
     static func map(
         registryState: TPPBookState,
         availability: TPPOPDSAcquisitionAvailability?,
@@ -78,7 +75,6 @@ struct BookButtonMapper {
 
         var state: BookButtonState = .unsupported
         availability.match(unavailable: { _ in
-            // “unavailable” means no copies right now, but user can place a hold
             state = .canHold
         }, limited: { limited in
             if limited.copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown || limited.copiesAvailable > 0 {
@@ -87,13 +83,10 @@ struct BookButtonMapper {
                 state = .canHold
             }
         }, unlimited: { _ in
-            // “unlimited” means infinite/always‐available → canBorrow
             state = .canBorrow
         }, reserved: { _ in
-            // “reserved” means user is on hold but not yet ready → front of queue
             state = .holdingFrontOfQueue
         }, ready: { _ in
-            // “ready” means the hold is ready to check out → canBorrow
             state = .canBorrow
         })
 

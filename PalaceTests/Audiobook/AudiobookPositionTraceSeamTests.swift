@@ -1,18 +1,10 @@
 //
 //  AudiobookPositionTraceSeamTests.swift
-//  PalaceTests
 //
-//  PP-4963 — the three seams that connect the instrument to the app. Review
-//  found all three untested: the policies were tabled against a hand-written
-//  two-track stub, so the cross-track arithmetic behind the headline "three
-//  hours behind" number was never exercised against a real manifest, and the
-//  only production entry point (`observe`) had no coverage at all.
-//
-//  These use the real `Manifest` / `Tracks` / `AudiobookTableOfContents`
-//  fixture, so a change in the toolkit's position arithmetic surfaces here
-//  rather than in a device trace three hours later.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-4963: the three seams connecting the trace to the app, including the
+//  cross-track arithmetic behind the "hours behind" figure and the `observe`
+//  entry point. Uses the real `Manifest` / `Tracks` / `AudiobookTableOfContents`
+//  fixture, so a toolkit arithmetic change surfaces here, not in a device trace.
 //
 
 import Combine

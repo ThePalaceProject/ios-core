@@ -2,27 +2,13 @@
 //  BookRegistrySyncTimeoutSeamTests.swift
 //  PalaceTests
 //
-//  Pins the readiness-timeout BOUND that `BookRegistrySync.sync` hands across the
-//  `AccountScopeProviding` seam (HelpSpot #18414).
-//
-//  WHY THIS FILE EXISTS — the regression it prevents:
-//
-//  The 3.2.3 hotfix bounded registry sync's account-readiness await at 30s. A
-//  wedged per-UUID `authentication_document` fetch parks the account at
-//  `.detailsLoading`; unbounded, that await never returns, registry sync never
-//  completes, and My Books spins forever with no self-heal short of a sign-out.
-//
-//  The Wave 3 S2 seam extraction then moved the await out of the engine and behind
-//  `AccountScopeProviding.loansURL(forAccount:)` — and dropped `timeout:` in the
-//  move. Every existing test stayed green, because the hotfix's timeout test
-//  exercises `Account.awaitReady(timeout:)` — the HELPER — directly, never the
-//  production caller. The bug shipped to develop invisibly and re-surfaced in the
-//  field (HelpSpot #18619 "screen is not showing any books", #18624 "never finished
-//  searching, just kept spinning").
-//
-//  So this suite tests the PRODUCER: that the engine actually passes a finite bound.
-//  Its sibling (`AccountScopeAdapterTests.testLoansURL_accountWedgedAtDetailsLoading…`)
-//  proves the adapter on the other side of the seam honors it.
+//  Pins the readiness-timeout bound that `BookRegistrySync.sync` hands across the
+//  `AccountScopeProviding` seam (HelpSpot #18414). Unbounded, a wedged
+//  `authentication_document` fetch parks the account at `.detailsLoading` and My
+//  Books spins forever. Moving the await behind `loansURL(forAccount:)` once
+//  dropped `timeout:` while helper-level tests stayed green (HelpSpot #18619,
+//  #18624), so this suite tests the producer: the engine passes a finite bound.
+//  `AccountScopeAdapterTests` covers the adapter honoring it.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

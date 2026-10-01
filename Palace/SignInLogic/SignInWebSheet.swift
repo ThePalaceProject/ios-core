@@ -2,19 +2,11 @@
 //  SignInWebSheet.swift
 //  The Palace Project
 //
-//  SwiftUI port of TPPCookiesWebViewController. Hosts a WKWebView via
-//  UIViewRepresentable, mounts a navigation toolbar with a leading Cancel
-//  button, and overlays a "Loading..." view (90%-alpha systemBackground,
-//  large gray ProgressView, body-style "Loading..." label) that fades over
-//  0.25s when the first navigation finishes (snaps when reduce-motion is on).
-//
-//  Visual contract preserved verbatim from the legacy controller — the
-//  whole point of the SwiftUI port is to keep the user-facing experience
-//  identical, so deviations should be intentional and called out.
-//
-//  Navigation policy lives in SignInWebSheetViewModel; the Coordinator
-//  here forwards WKNavigationDelegate events to the model and dispatches
-//  the resulting decisions back to the WKWebView.
+//  SwiftUI port of TPPCookiesWebViewController: a WKWebView with a Cancel
+//  toolbar and a "Loading..." overlay that fades when the first navigation
+//  finishes. The visuals match the legacy controller; deviations should be
+//  intentional. Navigation policy lives in SignInWebSheetViewModel; the
+//  Coordinator forwards WKNavigationDelegate events to it.
 //
 
 import SwiftUI

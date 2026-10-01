@@ -10,10 +10,9 @@ import PalaceLogging
 import PalaceCatalog
 import PalaceBookModel
 
-// `OPDSFeedFetching` (the narrow feed-fetch seam) was relocated to PalaceCatalog
-// (god-class decomposition Wave 2b) so it sits beside the `TPPOPDSFeed` it returns
-// and can be consumed by the PalaceBookRegistry package without an app-target edge.
-// `OPDSFeedService` still conforms to it below.
+// `OPDSFeedFetching` lives in PalaceCatalog beside the `TPPOPDSFeed` it returns,
+// so PalaceBookRegistry can consume it without an app-target edge.
+// `OPDSFeedService` conforms to it below.
 
 /// Modern async/await service for OPDS feed operations
 /// Wraps legacy Objective-C TPPOPDSFeed with type-safe async API
@@ -90,15 +89,10 @@ actor OPDSFeedService: OPDSFeedFetching {
                             continuation.resume(throwing: error)
                         }
                     } else {
-                        // swarm_f3b9b087 item #9 audit: this branch (feed == nil
-                        // AND errorDict == nil) was originally treated as a contract
-                        // violation. Test-env evidence (OPDSFeedServiceStateMachineTests
-                        // .testFetchLoansFeed_blocksUntilLoaded_thenFetches) shows the
-                        // Obj-C bridge legitimately reaches this state for genuine
-                        // network failures, so it is NOT a contract violation — it's
-                        // a normal error path. Log it for diagnostics, then throw the
-                        // localized OPDS error. NO `assertionFailure` here (it would
-                        // crash DEBUG test runs).
+                        // feed == nil AND errorDict == nil: the Obj-C bridge reaches
+                        // this for genuine network failures, so it is a normal error
+                        // path, not a contract violation. No `assertionFailure` (it
+                        // would crash DEBUG test runs).
                         Log.error(#file, "[OPDS_FEED] both feed and errorDict were nil for url=\(url) — propagating as opdsFeedInvalid")
                         continuation.resume(throwing: PalaceError.parsing(.opdsFeedInvalid))
                     }
@@ -331,23 +325,13 @@ actor OPDSFeedService: OPDSFeedFetching {
 extension OPDSFeedService {
     /// Fetches the user's loans feed.
     ///
-    /// Bucket A migration (swarm_81b5099e Network-OPDS): awaits the
-    /// Account.LoadState readiness gate before reading `loansUrl`. This
-    /// closes the F-016 → audiobook race class where a sync
-    /// `currentAccount?.loansUrl` read could fire before
-    /// `loadCatalogs` had populated `details`, returning nil and silently
-    /// taking the no-loans path. The gate forces the read past terminal
-    /// state (.detailsLoaded or .detailsFailed) — never past nil.
+    /// Awaits the account's readiness gate before reading `loansUrl`: a
+    /// synchronous read could run before `loadCatalogs` populated `details`,
+    /// return nil, and take the no-loans path. The gate waits for a terminal
+    /// state (.detailsLoaded or .detailsFailed).
     ///
-    /// Param widened from `AccountsManager` to
-    /// `TPPCurrentLibraryAccountProvider` so tests can substitute a
-    /// fixture provider without standing up the full AccountsManager
-    /// (which boots a background loadCatalogs on init). Production call
-    /// sites pass the same `AppContainer.production().accountsManager`
-    /// instance via the default arg.
-    ///
-    /// Single-timeout policy: this method inherits the caller's timeout
-    /// pipeline. No `withTimeout` is layered around `awaitReady()`.
+    /// No `withTimeout` around `awaitReady()`; the caller's pipeline owns the
+    /// timeout.
     func fetchLoans(
         accountsManager: TPPCurrentLibraryAccountProvider = AppContainer.production().accountsManager
     ) async throws -> TPPOPDSFeed {

@@ -2,22 +2,12 @@
 //  TPPSignInCapabilitiesCharacterizationTests.swift
 //  PalaceTests
 //
-//  CHARACTERIZATION PACK (part 2 of 2) — blocking prerequisite for the
-//  decomposition of `TPPSignInBusinessLogic` (see
-//  docs/architecture/god-class-decomposition-plan.md §5).
-//
-//  Clusters pinned here:
-//    - AuthCapabilities derivation  (barcode-display gating, registration
-//      gating, SAML/OIDC preferred-auth + sole-IdP selection, password-reset
-//      availability) → pure derivation extracted to PalaceAuth
-//    - Adobe-DRM-activation SKIP decision (stays app-target) — the POSITIVE
-//      decision + the device-not-authorized branch that the existing suite
-//      never exercised (it only covers the false early-returns)
-//    - refreshAuthIfNeeded basic auto-reauth path
-//    - logIn() routing per auth method (safe branches only)
-//
-//  Companion file: TPPSignInBusinessLogicCharacterizationTests.swift
-//  (SignInRequestService + CredentialStore clusters).
+//  Characterization tests for `TPPSignInBusinessLogic` ahead of its decomposition
+//  (docs/architecture/god-class-decomposition-plan.md §5): AuthCapabilities
+//  derivation (barcode display, registration, SAML/OIDC preferred auth, sole-IdP,
+//  password reset), the Adobe activation SKIP decision including the
+//  device-not-authorized branch, the basic auto-reauth path, and logIn() routing.
+//  Companion: TPPSignInBusinessLogicCharacterizationTests.swift.
 //
 
 import XCTest
@@ -89,8 +79,8 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
 
     // B2 — GAP: FALSE when the selected auth does NOT support barcode display,
     // even with credentials + authorizationIdentifier present. OAuth in the
-    // fixture has no Codabar input → supportsBarcodeDisplay == false. Kills the
-    // `supportsBarcodeDisplay` conjunct mutant.
+    // fixture has no Codabar input → supportsBarcodeDisplay == false. Catches the
+    // `supportsBarcodeDisplay` conjunct regression.
     func test_librarySupportsBarcodeDisplay_false_whenSelectedAuthLacksDisplaySupport() {
         // Persist barcode/pin via the OAuth-family no-token fallback so
         // hasBarcodeAndPIN is satisfied while OAuth is the selected auth.
@@ -138,7 +128,7 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     // MARK: - AuthCapabilities: preferred-auth + sole-IdP selection
 
     // B5 — GAP: selectPreferredAuthIfNeeded auto-selects the SOLE SAML IdP once a
-    // SAML auth is chosen. Kills the `idps.count == 1` guard.
+    // SAML auth is chosen. Catches the `idps.count == 1` guard.
     // VERIFY: the fixture SAML auth advertises exactly one `authenticate` link.
     func test_selectPreferredAuthIfNeeded_autoSelectsSoleSamlIDP() {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
@@ -153,7 +143,7 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     }
 
     // B6 — selectPreferredAuthIfNeeded must NOT set an IdP for a non-SAML auth.
-    // Kills the `samlAuth.isSaml` guard on the IdP-selection branch.
+    // Catches the `samlAuth.isSaml` guard on the IdP-selection branch.
     func test_selectPreferredAuthIfNeeded_doesNotSelectIDP_forNonSamlAuth() {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
 

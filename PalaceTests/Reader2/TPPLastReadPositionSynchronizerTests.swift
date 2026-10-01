@@ -1,20 +1,10 @@
-//
 //  TPPLastReadPositionSynchronizerTests.swift
-//  PalaceTests
 //
-//  Comprehensive unit tests for TPPLastReadPositionSynchronizer.
-//
-//  This file tests the REAL TPPLastReadPositionSynchronizer class.
-//  Mocks are used ONLY for dependency injection (TPPBookRegistryProvider).
-//
-//  Testing Strategy:
-//  - The `sync()` method relies on static `TPPAnnotations.syncReadingPosition()` which cannot
-//    be easily mocked. We test the sync DECISION LOGIC in isolation using `SyncDecisionHelper`.
-//  - We test the real synchronizer's interaction with the book registry.
-//  - We test bookmark and location data structures used by the synchronizer.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Tests the real TPPLastReadPositionSynchronizer; mocks only stand in for
+//  injected dependencies (TPPBookRegistryProvider). `sync()` calls the static
+//  `TPPAnnotations.syncReadingPosition()`, which cannot be mocked, so the sync
+//  decision logic is tested through `SyncDecisionHelper`, alongside the
+//  synchronizer's registry interaction and bookmark/location data.
 
 import XCTest
 import ReadiumShared

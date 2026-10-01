@@ -1,28 +1,12 @@
 //
 //  AudiobookLoaderFinalizeBuildTests.swift
-//  PalaceTests
 //
-//  Targets Crashlytics F-004: `AudiobookLoader.finalizeBuild` EXC_BREAKPOINT,
-//  2 users on Palace 3.0.0 (Overdrive distributor, book "Irresponsible
-//  Puckboy"). The crash is in the decode + AudiobookFactory.audiobook(...)
-//  + DefaultAudiobookManager construction chain that lives inside the
-//  private `finalizeBuild`. Because `finalizeBuild` is private we cannot
-//  reach it via `@testable import Palace` without a seam extraction
-//  (proposed in a TEST-SEAM comment in AudiobookLoader.swift). Until
-//  that seam lands, we exercise the same toolkit-level surface area —
-//  `Manifest.customDecoder()` + `AudiobookFactory.audiobook(...)` — that
-//  the F-004 stack trace pins. Every assertion here would also fail if
-//  the toolkit's decode or factory path regressed.
-//
-//  Gap left intentional: the AudiobookManager/PlaybackModel construction
-//  on lines 511-534 of AudiobookLoader.swift is not directly reachable
-//  here. Those depend on `AppContainer.production().accountsManager /
-//  settings` for time-tracking and download-only-on-wifi, which we
-//  refuse to touch in unit tests (singletons, banned by CLAUDE.md). A
-//  proper test for that path needs the AudiobookFactoryProviding
-//  protocol extraction proposed in the seam comment.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  Crashlytics F-004: `AudiobookLoader.finalizeBuild` EXC_BREAKPOINT (3.0.0,
+//  Overdrive). `finalizeBuild` is private, so these exercise the same toolkit
+//  surface the stack trace pins: `Manifest.customDecoder()` and
+//  `AudiobookFactory.audiobook(...)`. Not covered: the manager/playback-model
+//  construction, which reads production account settings and needs the
+//  proposed AudiobookFactoryProviding seam.
 //
 
 import XCTest
@@ -418,10 +402,9 @@ final class AudiobookLoaderFinalizeBuildTests: XCTestCase {
     /// surface `.failure(.factoryFailed)` — NOT `.success` (a playable-looking but
     /// trackless audiobook) and NOT a crash. The guard returns before the
     /// AppContainer.production() reads further down finalizeBuild, so this failure
-    /// path is exercisable without touching singletons. Mutation kill point:
-    /// flipping the guard (`!allTracks.isEmpty` → `allTracks.isEmpty`) makes the
-    /// original zero-track input fall THROUGH the guard into the manager-build
-    /// path instead of failing here, so this assertion breaks the mutant.
+    /// path is exercisable without touching singletons. Flipping the guard
+    /// (`!allTracks.isEmpty` → `allTracks.isEmpty`) would let the zero-track
+    /// input fall THROUGH into the manager-build path and fail this assertion.
     func test_finalizeBuild_zeroTrackAudiobook_failsWithFactoryFailed_notSuccess() throws {
         let loader = AudiobookLoader(adapters: [])
         let bookId = "overdrive-zerotrack-\(UUID().uuidString)"

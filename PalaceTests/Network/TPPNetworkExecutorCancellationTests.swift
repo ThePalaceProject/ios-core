@@ -1,41 +1,12 @@
-//
 //  TPPNetworkExecutorCancellationTests.swift
-//  PalaceTests
 //
-//  `TPPNetworkExecutor`'s async bridges must honour Task cancellation.
-//
-//  WHY THIS EXISTS. The five async bridges (`GET`, `GET(request:)`, `PUT`,
-//  `POST`, `DELETE`) suspend in `withCheckedThrowingContinuation`. A
-//  `CheckedContinuation` is resumed only by its completion handler —
-//  `Task.cancel()` sets a flag and cannot resume it. So a task suspended in one
-//  of these bridges whose HTTP completion never fires is PERMANENTLY
-//  uncancellable.
-//
-//  That is not hypothetical. `AccountRegistryLoader` guards its crawl with
-//  eight `Task.isCancelled` checks, but every one of them sits BETWEEN awaits,
-//  so a task parked inside the bridge never reaches any of them. The test
-//  boundary drain then fails forever, once per test:
-//
-//      [WS0-DRAIN] cancelAndDrainBackgroundWork TIMED OUT after 3006ms
-//                  draining 2 task(s) — crawl did not observe cancellation
-//
-//  Observed repeating every 3 seconds for 23 minutes in a full-suite run: two
-//  leaked crawl tasks made EVERY subsequent test boundary pay a 3s timeout,
-//  degrading the suite until it was killed. It presents as a moving "hang"
-//  because the cost is cumulative, not located in any one test.
-//
-//  `URLSessionNetworkClient` already gets this right (`withTaskCancellationHandler`
-//  + `CancellableTaskBox`); these bridges never adopted it.
-//
-//  HOW IT IS TESTED. `TPPNetworkExecutor` builds its own `URLSession` and takes
-//  no session injection, so `HTTPStubURLProtocol` cannot reach it. Instead we
-//  point it at a real local listener that accepts the connection and never
-//  answers — the production failure exactly. The assertions race the awaiting
-//  task against a short sleep so a REGRESSION FAILS FAST instead of wedging the
-//  bundle, which is the very pathology under test.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  `TPPNetworkExecutor`'s async bridges (GET, PUT, POST, DELETE) must honour Task
+//  cancellation. A `CheckedContinuation` resumes only from its completion
+//  handler, so a task parked in a bridge whose HTTP call never completes cannot
+//  be cancelled; leaked `AccountRegistryLoader` crawls then made every later test
+//  boundary pay a 3s drain timeout. The executor takes no session injection, so
+//  these tests use a local listener that accepts and never answers, and race the
+//  await against a short sleep so a regression fails fast instead of hanging.
 
 import Network
 import XCTest

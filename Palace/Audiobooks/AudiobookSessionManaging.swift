@@ -66,15 +66,10 @@ protocol AudiobookSessionManaging: AnyObject {
     @discardableResult
     func openAudiobook(_ book: TPPBook, startPlaying: Bool) async -> Result<Void, AudiobookSessionError>
 
-    /// Opens an audiobook, invoking `onLoadingShellPresented` on the main actor
-    /// the moment the loading-player shell is presented — i.e. BEFORE the
-    /// PP-4542 content-download wait, not after full playback readiness. Lets a
-    /// presenting caller (BookDetail half-sheet) dismiss its transient UI as soon
-    /// as the morphing player is on screen, instead of leaving it stacked over
-    /// the loading shell for the whole `.lcpa` download (fix/audiobook-first-open-hang).
-    /// Fired at most once. A protocol-extension default forwards to the 2-arg
-    /// witness above, so existing test doubles keep conforming unchanged; the
-    /// production manager overrides it with the real hook.
+    /// Opens an audiobook, invoking `onLoadingShellPresented` (at most once) as
+    /// soon as the loading shell is presented, before the PP-4542 content
+    /// download wait, so a presenting caller can dismiss its own UI. The
+    /// protocol-extension default forwards to the 2-arg witness above.
     @discardableResult
     func openAudiobook(_ book: TPPBook, startPlaying: Bool, onLoadingShellPresented: (@MainActor () -> Void)?) async -> Result<Void, AudiobookSessionError>
 
@@ -91,17 +86,9 @@ protocol AudiobookSessionManaging: AnyObject {
     func skipToChapter(at index: Int)
 
     /// Skips the playhead backward by the toolkit's default skip interval
-    /// (30s). Wraps `Player.skipPlayhead(_:)` (async) on the underlying
-    /// `AudiobookManager.audiobook.player` via a `Task { @MainActor in ... }`
-    /// boundary — same async→sync pattern used by `skipToChapter(at:)` at
-    /// `AudiobookSessionManager.swift:524-528`. Routed through this protocol
-    /// (not via `playbackModel.audiobookManager` directly) because
-    /// `AudiobookPlaybackModel.audiobookManager` is internal-default access
-    /// in the toolkit and unreachable from Palace consumers.
-    ///
-    /// swarm polish phase (in-app-nav-polish-2026-06-01) — added so the
-    /// mini-player chrome can drive 30s rewind from the root-level
-    /// presenter surface without leaking the toolkit type.
+    /// (30s). Routed through this protocol because
+    /// `AudiobookPlaybackModel.audiobookManager` is not accessible outside the
+    /// toolkit.
     func skipBack()
 
     /// Skips the playhead forward by the toolkit's default skip interval
@@ -173,7 +160,7 @@ protocol AudiobookSessionManaging: AnyObject {
 
     /// Cancels any pending throttled remote listening-position write for
     /// `bookId`, so a queued snapshot can't flush after teardown / return and
-    /// resurrect a stale server position (3.2.3 Cause 2). Idempotent; a no-op
+    /// resurrect a stale server position. Idempotent; a no-op
     /// when `bookId` is not the active audiobook session. Called by the return
     /// flow (`BookReturnService`) before it deletes the server bookmarks.
     func cancelPendingRemotePositionWrite(forBookId bookId: String) async
@@ -191,9 +178,6 @@ protocol AudiobookSessionManaging: AnyObject {
     /// call if `isPlaying` was true at background time, restarting the
     /// buffer fetch. Idempotent: safe to call when already playing or
     /// paused. No-op when there's no active session.
-    ///
-    /// Polish-phase addition (in-app-nav-polish-2026-06-01) for the
-    /// "playback freezes when backgrounded" user-reported regression.
     func recoverPlaybackForForegroundEntry()
 }
 
@@ -234,10 +218,7 @@ extension AudiobookSessionManaging {
 
     /// Default no-op so lightweight test doubles that don't own a
     /// `RemotePositionWriter` conform without boilerplate. The production
-    /// `AudiobookSessionManager` overrides this with the real cancellation
-    /// (3.2.3 Cause 2 — retained: the cancellation seam is correct and is used
-    /// by `stopPlayback`; only the `.readingProgress` DELETE was dropped in
-    /// build 490).
+    /// `AudiobookSessionManager` overrides this.
     func cancelPendingRemotePositionWrite(forBookId bookId: String) async {}
 }
 

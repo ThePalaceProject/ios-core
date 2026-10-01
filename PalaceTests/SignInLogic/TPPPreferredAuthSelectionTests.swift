@@ -1,20 +1,10 @@
-//
 //  TPPPreferredAuthSelectionTests.swift
-//  PalaceTests
 //
-//  Regression tests for the multi-auth library UI fix.
-//
-//  Context: libraries that advertise multiple auth methods (e.g. SAML
-//  paired with a legacy basic-auth fallback) used to render the SAML
-//  sign-in prompt (single "Sign in" button → IdP WebView) on the
-//  Account Detail screen. A regression caused the screen to render the
-//  basic-auth credential fields instead, because `selectedAuthentication`
-//  returns nil for multi-auth libraries and the view's
-//  `shouldShowSignInPrompt` gates on a concrete SAML/OAuth selection.
-//
-//  Fix: `selectPreferredAuthIfNeeded()` auto-selects SAML (then OIDC)
-//  when a multi-auth library has one and no explicit choice exists.
-//
+//  Libraries advertising several auth methods (e.g. SAML plus a basic-auth
+//  fallback) should show the SAML "Sign in" prompt on Account Detail. With no
+//  explicit choice, `selectedAuthentication` is nil and the view fell back to
+//  basic-auth fields. `selectPreferredAuthIfNeeded()` now auto-selects SAML,
+//  then OIDC.
 
 import XCTest
 import PalaceCatalog
@@ -120,7 +110,7 @@ final class TPPPreferredAuthSelectionTests: XCTestCase {
     // `selectedAuthentication?.isSaml`. After the fix, this must be true
     // for a multi-auth library that includes SAML. Also verify the state
     // transition: selectedAuthentication is nil before auto-selection and
-    // non-nil after (a mutation that made auto-selection a no-op would
+    // non-nil after (a regression that made auto-selection a no-op would
     // pass a looser "isSaml == true" check if the default happened to be
     // SAML, but would fail the nil-to-non-nil transition check).
     func testAfterAutoSelection_SelectedAuthIsSaml_forMultiAuthLibrary() {

@@ -1,19 +1,10 @@
-//
 //  TPPCrossLibrarySignOutTests.swift
-//  PalaceTests
 //
-//  Regression tests for cross-library credential contamination during sign-out.
-//
-//  Bug: Signing out of a non-active library would clear the *active* library's
-//  credentials instead, because the error handler in performLogOut() called
-//  TPPUserAccount.sharedAccount().removeAll() (which defaults to currentAccountId) // MIGRATED: comment-only reference, no call site
-//  instead of self.userAccount.removeAll() (which is scoped to the target library).
-//
-//  Also fixes unscoped sharedAccount() calls in refreshAuthIfNeeded and logIn
-//  that could read the wrong library's token/auth state.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Signing out of a non-active library cleared the active library's
+//  credentials: the error path in performLogOut() called the unscoped
+//  sharedAccount().removeAll() (current account) instead of
+//  self.userAccount.removeAll(). Also covers the scoped reads in
+//  refreshAuthIfNeeded and logIn.
 
 import XCTest
 @testable import Palace
@@ -156,7 +147,7 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
         // if two business-logic instances for different libraries shared a
         // user-account instance, credentials from library A would leak to
         // library B. Assert instance identity AND distinct libraryAccountIDs
-        // so a mutation that re-introduces a shared singleton can't pass this.
+        // so a regression that re-introduces a shared singleton can't pass this.
         XCTAssertFalse(
             activeBusinessLogic.userAccount === targetBusinessLogic.userAccount,
             "Each library should have its own user account instance"

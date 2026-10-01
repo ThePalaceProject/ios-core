@@ -219,15 +219,11 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
 #if DEBUG
     /// What is ACTUALLY on disk, for tests.
     ///
-    /// Deliberate test-support surface, and the justification is specific: the
-    /// guarantees this type now makes are about PERSISTED BYTES — "the
+    /// The guarantees this type makes are about persisted bytes ("the
     /// credential never reaches the database", "two bookmarks do not collapse
-    /// into one row". Asserting those against a helper, or against a spy that
-    /// stands in front of the database, proves nothing about what was stored;
-    /// round 4 of review caught exactly that mistake here. The alternative —
-    /// re-declaring the schema inside the test target — would drift from this
-    /// file the first time a column changed, which is the same failure wearing
-    /// a different hat.
+    /// into one row"), which a spy in front of the database cannot show.
+    /// Reading through the real schema keeps tests from drifting when a
+    /// column changes.
     struct PersistedRow {
         let libraryID: String
         let updateID: String?
@@ -371,13 +367,10 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
                 // PP-4987: as above — a local Log.error is invisible in
                 // production telemetry, and the caller believes this write is
                 // safely pending.
-                // `logNetworkError(_:code:…)`, NOT the bare `logError(_:summary:
+                // `logNetworkError(_:code:…)`, not the bare `logError(_:summary:
                 // metadata:)` overload — that one hardcodes `code: .ignore`,
                 // which would file this under the raw bridged SQLite code with
-                // `error_origin = unknown` instead of 916. Round 1 of review
-                // blocked this branch for exactly that substitution in
-                // `TPPAnnotations`; it was reintroduced here in new code and
-                // caught by all three reviewers in round 3.
+                // `error_origin = unknown` instead of 916.
                 self.errorLogger.logNetworkError(error,
                                           code: .offlineQueueWriteFailed,
                                           summary: "Offline queue write dropped",
@@ -569,7 +562,7 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     }
 }
 
-// Wave 1c (cycle 3): package-protocol seam for the circulation-analytics
+// Package-protocol seam for the circulation-analytics
 // offline enqueue. Maps the package HTTPMethod onto the app HTTPMethodType
 // (rawValues are identical — "GET" → .GET).
 extension NetworkQueue: OfflineRequestEnqueuing {

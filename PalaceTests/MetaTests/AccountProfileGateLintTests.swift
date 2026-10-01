@@ -1,32 +1,9 @@
 //
-//  AccountProfileGateLintTests.swift
-//  PalaceTests
-//
-//  Meta-test pinning the WIRING of the /patrons/me/ credentials gate:
-//
-//    `Account.getProfileDocument` MUST consult
-//    `canAuthenticateProfileRequest(hasCredentials:tokenHasExpired:tokenRefreshWillRepair:)`
-//    and MUST feed it all three live inputs.
-//
-//  Why this exists: the predicate is pure and fully unit-tested, but SoD review
-//  measured that deleting the entire `if !canAuthenticateProfileRequest(...)`
-//  block left every one of those tests green. That is precisely the F-007
-//  vacuity this change was written to expose, reproduced one level up — a gate
-//  protected by nothing, with a test suite that reports otherwise.
-//
-//  This file once justified itself by saying `getProfileDocument` offered no
-//  seam from which a unit test could observe whether the request was issued.
-//  That justification is DEAD: the method now takes `performRequest:` and
-//  `userAccount:`, and `AccountProfileDocumentTests` drives the gate in both
-//  directions through them. Those behavioural tests are the real guard.
-//
-//  What remains here is only a monotone structural check, and monotone means it
-//  detects DELETION but never INSERTION — an `if` added ABOVE the gate leaves it
-//  green. Do not read a pass here as the wiring being safe; that is what the
-//  behavioural tests are for. Kept because a cheap deletion alarm still has
-//  value, not because it gates anything on its own.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  Structural check that `Account.getProfileDocument` still calls
+//  `canAuthenticateProfileRequest(hasCredentials:tokenHasExpired:tokenRefreshWillRepair:)`
+//  with all three live inputs. Deleting the gate leaves the predicate's unit tests
+//  green (F-007). `AccountProfileDocumentTests` is the behavioural guard; this
+//  check only detects deletion, not an `if` inserted above the gate.
 //
 
 import XCTest
@@ -74,7 +51,7 @@ final class AccountProfileGateLintTests: XCTestCase {
         // The needle must match the CALL, not the declaration. A bare
         // "canAuthenticateProfileRequest(" also matches `static func
         // canAuthenticateProfileRequest(` two lines above, so the assertion could
-        // never fail — SoD review caught that. Match the guarded call form.
+        // never fail. Match the guarded call form.
         XCTAssertTrue(code.contains("if !Account.canAuthenticateProfileRequest("),
                       "getProfileDocument no longer GUARDS on canAuthenticateProfileRequest. The predicate's unit "
                       + "tests stay green when this call is deleted, so they cannot catch it — that is why this lint exists.")

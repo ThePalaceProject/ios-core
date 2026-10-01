@@ -1,20 +1,9 @@
 //
-//  ManifestFetchTests.swift
-//  PalaceTests
-//
-//  Regression tests for the Pattern 2 audiobook playback bug:
-//  fetchOpenAccessManifest used URLSessionDownloadTask on a session
-//  with no URLSessionDownloadDelegate, causing empty data. It also
-//  did not handle the two-step bearer token flow (fulfill URL returns
-//  bearer token JSON, then manifest is fetched from the location URL).
-//
-//  These tests verify:
-//    1. Bearer token responses are correctly distinguished from manifests
-//    2. fetchManifestWithBearerToken fetches from the correct URL with correct auth
-//    3. TPPNetworkExecutor.GET creates a data task (not download task)
-//    4. Error cases are handled gracefully
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  Audiobook manifest fetch: fetchOpenAccessManifest used a download task on a
+//  session with no download delegate (empty data) and ignored the two-step bearer
+//  token flow. Pins bearer-token vs. manifest detection, the URL and auth used by
+//  fetchManifestWithBearerToken, that TPPNetworkExecutor.GET uses a data task, and
+//  error handling.
 //
 
 import XCTest
@@ -991,7 +980,7 @@ final class LCPLicenseFilePathTests: XCTestCase {
 
     func testLCPLicensePath_everyContentExtensionProducesLcplSibling() {
         // The .lcpl license must live next to the content file regardless of
-        // the content extension (.lcpa, .epub, audiobook, PDF). A mutation that
+        // the content extension (.lcpa, .epub, audiobook, PDF). A regression that
         // hardcoded the mapping for one extension would break download for
         // the others — users would hit "license not found" on open.
         let cases: [(contentPath: String, expectedLicensePath: String)] = [

@@ -1,36 +1,12 @@
 //
 //  SideloadedBookManager.swift
-//  Palace
 //
-//  Orchestrates the side-loading import flow (PP-2677).
-//
-//  Side-loading is a test-only capability (see
-//  `docs/architecture/sideloading-plan.md`): a user imports a local
-//  EPUB / PDF / audiobook file from Settings and it is registered into the
-//  main `TPPBookRegistry` as `.downloadSuccessful` so the real reader + DRM
-//  stack opens it with no OPDS feed involved.
-//
-//  This manager is the *behaviour* on top of `SideloadedBookRegistry` (the
-//  truth store, Module A). It:
-//    1. classifies the file by extension → MIME → `TPPBookContentType`,
-//       rejecting unsupported types before anything is written;
-//    2. mints a synthetic OPEN-ACCESS `TPPBook` whose single acquisition MIME
-//       matches the content type (so `defaultBookContentType` resolves and the
-//       reader opens it instead of showing `presentUnsupportedItemError`);
-//    3. copies the file to the FIXED-account content path
-//       (`SideloadedBookRegistry.sideloadContentAccountID`) — the SAME account
-//       `BookFileManager` (Module A, Component 4) substitutes on the read side,
-//       so a library switch cannot orphan the file;
-//    4. registers the book into BOTH the side-loaded registry (truth) AND the
-//       main registry as `.downloadSuccessful`. Adding to the side-loaded
-//       registry IS the sync-exemption (Module A reads its `identifiers` live
-//       at sync time) — there is no separate exemption store.
-//
-//  `remove` reverses all three. `rehydrateAtLaunch` re-registers the persisted
-//  side-loaded books into the main registry after a cold launch (the main
-//  registry does not persist side-loaded-ness).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Orchestrates the side-loading import flow (PP-2677): classify the file
+//  (rejecting unsupported types before writing), mint a synthetic open-access
+//  `TPPBook`, copy the file to the side-load account's content path, and
+//  register it in `SideloadedBookRegistry` (the sync exemption) and in the main
+//  registry as `.downloadSuccessful`. `rehydrateAtLaunch` re-registers after a
+//  cold launch. See docs/architecture/sideloading-plan.md.
 //
 
 import Foundation
@@ -42,19 +18,15 @@ import PalaceBookRegistry
 
 // MARK: - Seams
 
-/// The behavioural slice of `SideloadedBookRegistry` this manager depends on.
-/// Declared here (not on Module A's type) so the manager can be unit- and
-/// contract-tested against a spy without touching the off-limits registry file.
-/// `SideloadedBookRegistry` already satisfies every requirement; the conformance
-/// is declared below.
+/// The slice of `SideloadedBookRegistry` this manager depends on, so it can
+/// be tested against a spy.
 protocol SideloadedBookRegistering: AnyObject {
   var allBooks: [TPPBook] { get }
   var identifiers: Set<String> { get }
   func add(book: TPPBook, fileURL: URL) throws
   func remove(identifier: String)
-  /// The original imported filename for a side-loaded book, if known. Surfaced
-  /// in the Settings manage-list caption (UI-2) so a row shows the file the
-  /// tester imported instead of the opaque content-hash identifier.
+  /// The original imported filename, shown in the Settings manage list instead
+  /// of the content-hash identifier.
   func originalFilename(for identifier: String) -> String?
 }
 
@@ -205,7 +177,7 @@ final class SideloadedBookManager: @unchecked Sendable {
     sideloadedRegistry.allBooks
   }
 
-  /// The original imported filename for a side-loaded book (UI-2). Returns nil
+  /// The original imported filename for a side-loaded book. Returns nil
   /// for an unknown identifier; callers fall back to the book title.
   func originalFilename(for identifier: String) -> String? {
     sideloadedRegistry.originalFilename(for: identifier)
@@ -234,9 +206,9 @@ final class SideloadedBookManager: @unchecked Sendable {
       imageCache: imageCache
     )
 
-    // Pin the write to the FIXED side-load account (NOT currentAccountId) so
-    // the file remains resolvable after a library switch. Module A's read-side
-    // resolution substitutes the same account for side-loaded ids.
+    // Pin the write to the fixed side-load account, not currentAccountId, so
+    // the file stays resolvable after a library switch; `BookFileManager`
+    // resolves side-loaded ids to the same account.
     guard let destination = bookFileManager.fileUrl(
       for: book,
       account: SideloadedBookRegistry.sideloadContentAccountID
@@ -251,15 +223,10 @@ final class SideloadedBookManager: @unchecked Sendable {
       throw error
     }
 
-    // Truth store first (this IS the sync-exemption — Module A reads
-    // `identifiers` live at sync time), then the main registry so the reader
-    // and My Books see it as a completed download.
-    //
-    // If the manifest does NOT persist, ABORT before touching the main
-    // registry: a book in the main registry but absent from the side-load
-    // manifest is not in the sync-exemption set, so the next `sync()` would
-    // evict it and delete its file (silent data loss). Roll back the copied
-    // file so a failed import leaves no orphan on disk.
+    // Side-load registry first: it is the sync exemption. If the manifest
+    // fails to persist, abort before the main registry write (the next
+    // `sync()` would otherwise evict the book and delete its file) and remove
+    // the copied file.
     do {
       try sideloadedRegistry.add(book: book, fileURL: fileURL)
     } catch {

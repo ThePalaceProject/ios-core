@@ -2,13 +2,11 @@
 //  ManagedLibraryPreconfigurator.swift
 //  Palace
 //
-//  PP-5070 spike — applies the MDM-supplied library pre-selection at launch.
+//  PP-5070 — applies the MDM-supplied library pre-selection at launch.
 //
-//  The five side effects below are not a new way to select a library: they are
-//  exactly what the first-run picker's selection callback already performs in
-//  `TPPAppDelegate.presentFirstRunFlowIfNeeded`. Reusing that contract is
-//  deliberate — a second, subtly different selection path is how the app ends
-//  up with a library that is current but has no feed URL.
+//  The side effects below mirror the first-run picker's selection callback in
+//  `TPPAppDelegate.presentFirstRunFlowIfNeeded`. A second, subtly different
+//  selection path is how a library ends up current but with no feed URL.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -3,18 +3,10 @@
 //  Palace
 //
 //  "Other books by this author" / related-works lanes for the book detail
-//  screen, extracted from `BookDetailViewModel` (god-class decomposition plan
-//  §3a-4 / Wave 5).
-//
-//  The service owns the feed fetch and the grouped-feed -> lanes derivation. The
-//  view model keeps the parts that are view-model state: which book the lanes
-//  belong to, the loading flag, and the rule that a non-empty set of lanes is
-//  never replaced by an empty one.
-//
-//  The derivation had no reachable test seam before this file: its only input
-//  was the return value of a concrete `OPDSFeedService` actor, constructed
-//  inside the view model. `RelatedBooksFeedFetcher` is that seam, and
-//  `RelatedBooksServiceTests` is what it made writable.
+//  screen. The service owns the feed fetch and the grouped-feed -> lanes
+//  derivation; the view model keeps which book the lanes belong to, the loading
+//  flag, and the rule that a non-empty set of lanes is never replaced by an
+//  empty one.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -96,11 +88,8 @@ struct RelatedBooksService {
             lanesMap[title] = BookLane(title: title, books: books, subsectionURL: groupTitleToMoreURL[title] ?? nil)
         }
 
-        // Hoist the lane containing the current book's author ahead of the rest.
-        // Carried over verbatim from the view model. Worth knowing when reading
-        // it: the result is a Dictionary, which has no defined order, so this
-        // re-insertion changes no key and no value — the lane order the screen
-        // renders is decided where the dictionary is consumed, not here.
+        // Re-inserts the author's lane first. The result is a Dictionary, so this
+        // does not affect rendered order; that is decided where it is consumed.
         if let author = authorName, !author.isEmpty,
            let authorLane = lanesMap.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
             lanesMap.removeValue(forKey: authorLane.key)

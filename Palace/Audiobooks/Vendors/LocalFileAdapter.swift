@@ -2,14 +2,9 @@
 //  LocalFileAdapter.swift
 //  Palace
 //
-//  Vendor adapter for the "manifest JSON already on disk" audiobook source
-//  shape. Module B of swarm_5c8ddbd5 (Audiobook Vendor Adapter Extraction).
-//
-//  Carve-out of `AudiobookLoader.resolveManifestAndDecryptor` lines 169-207
-//  (pre-swarm). Behavior here is byte-for-byte equivalent: read local
-//  manifest data from disk via the download center's `fileUrl(for:)`,
-//  parse as JSON, and — if the book has a `bearerTokenFulfillURL` —
-//  refresh the bearer token before completing.
+//  Vendor adapter for a manifest already on disk: reads it via the download
+//  center's `fileUrl(for:)`, parses it, and refreshes the bearer token first
+//  when the book has a `bearerTokenFulfillURL`.
 //
 //  Failure mapping:
 //    - read fails / non-dict JSON → .manifestParseFailed
@@ -43,15 +38,8 @@ protocol BearerTokenRefreshing {
 /// via the download center and parses it as JSON. Optionally refreshes
 /// the bearer token before returning so playback uses a fresh token.
 ///
-/// Constructor-style DI per CLAUDE.md — `downloadCenter`, `fileReader`,
-/// and `tokenRefresher` are injected so tests cover the file-missing,
-/// file-unreadable, valid-JSON, bearer-token-refresh-success, and
-/// bearer-token-refresh-skipped paths without touching real disk or
-/// AppContainer.production().
-///
-/// Not `@MainActor`-isolated at the class level — the protocol is not
-/// MainActor (see contract notes in `AudiobookVendorAdapter.swift`).
-/// Main-thread completion hops happen via `Task { @MainActor in }`.
+/// Not `@MainActor` at the class level because the protocol is not; completion
+/// hops to main via `Task { @MainActor in }`.
 final class LocalFileAdapter: AudiobookVendorAdapter {
 
     private let downloadCenter: MyBooksDownloadCenterProviding
@@ -110,12 +98,8 @@ final class LocalFileAdapter: AudiobookVendorAdapter {
 
         if let fulfillURL = book.bearerTokenFulfillURL {
             Log.debug(#file, "  🔑 Bearer token book - refreshing token before playback")
-            // Box the non-`@Sendable` completion AND the parsed `[String: Any]`
-            // manifest so both can cross the refresh callback →
-            // `Task { @MainActor in }` hop without forcing `@Sendable` onto the
-            // `AudiobookVendorAdapter` protocol. `[String: Any]` is not
-            // `Sendable` (it holds `Any` existentials), so it needs its own
-            // carrier. See `AudiobookAdapterCompletionBox` / `ManifestJSONBox`.
+            // Box the completion and the non-Sendable manifest for the
+            // refresh-callback-to-main hop.
             let completionBox = AudiobookAdapterCompletionBox(completion)
             let jsonBox = ManifestJSONBox(json)
             tokenRefresher.refreshToken(from: fulfillURL) { newToken in

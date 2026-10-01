@@ -658,14 +658,9 @@ extension BookCellModel {
 
         switch action {
         case .download, .retry, .get:
-            // PP-4161 Wave 4 (Path X): streaming-HTML titles funnel through
-            // didSelectDownload like every other content type.
-            // DownloadStartDispatcher.processDownloadWithCredentials early-
-            // returns for streamingHTML so the asset-download attempt is
-            // suppressed; the registry transitions to .downloadNeeded via
-            // processUnregisteredState's open-access branch, and the cell's
-            // button set then surfaces [.readStreaming, .return] on next
-            // render.
+            // PP-4161: streaming-HTML titles also go through didSelectDownload;
+            // DownloadStartDispatcher skips the asset download for them, and the
+            // cell then shows [.readStreaming, .return].
             didSelectDownload()
         case .reserve:
             didSelectReserve()
@@ -830,9 +825,8 @@ extension BookCellModel {
     func didSelectDownload() {
         let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
-            // injected sheet presenter. accountsManager retained on the
-            // post-dismiss closure side for the `hasCredentials()` gate.
+            // accountsManager is still read after dismissal for the
+            // `hasCredentials()` gate.
             AppContainer.production().signInModalSheetPresenter
                 .presentSignInModalForCurrentAccount { [weak self] in
                     guard let self else { return }
@@ -859,8 +853,6 @@ extension BookCellModel {
         isLoading = true
         let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
-            // injected sheet presenter.
             AppContainer.production().signInModalSheetPresenter
                 .presentSignInModalForCurrentAccount { [weak self] in
                     guard let self else { return }

@@ -5,14 +5,9 @@
 //  Owned by AudiobookSessionManager. Builds an audiobook manager from a TPPBook:
 //  token refresh, vendor-shape dispatch via the AudiobookVendorAdapter chain,
 //  vendor key patching, manifest decoding, AudiobookFactory, DefaultAudiobookManager.
-//  Returns a LoadedAudiobook; the session manager owns its lifetime.
-//
-//  Module D of swarm_5c8ddbd5 collapsed the pre-swarm implicit source-shape
-//  branches (resolveManifestAndDecryptor + fetchOpenAccessManifest, ~150 LOC,
-//  6-deep callbacks) into one linear chain:
-//      let adapter = adapters.first(where: { $0.canHandle(book) })
-//  Chain order: [LCP (#if LCP), LocalFile, BearerToken (MIME-gated), OpenAccess].
-//  See `Vendors/Adapters+Production.swift` for the MIME gate + production wiring.
+//  Returns a LoadedAudiobook; the session manager owns its lifetime. Source
+//  dispatch is the first adapter whose `canHandle` is true, in order
+//  [LCP (#if LCP), LocalFile, BearerToken (MIME-gated), OpenAccess].
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -51,26 +46,18 @@ struct LoadedAudiobook {
     let playbackModel: AudiobookPlaybackModel
     /// PP-4963 position instrumentation for this session.
     ///
-    /// This struct does NOT own it — `AudiobookBookmarkBusinessLogic` does, and
-    /// that object is retained by `AudiobookManager.bookmarkDelegate` for the
-    /// life of the session. This field is a handle so `issueFirstPlay` can
-    /// evaluate the restore gap; an earlier draft treated it as the owner, and
-    /// because `bind` destructures this struct and drops it, the recorder
-    /// deallocated seconds after first play and the instrument recorded nothing.
+    /// A handle, not the owner: `AudiobookBookmarkBusinessLogic` (retained by
+    /// `AudiobookManager.bookmarkDelegate`) keeps it alive. `bind` destructures
+    /// and drops this struct, so ownership here would deallocate the recorder.
     let positionTrace: AudiobookPositionTraceRecorder
 }
 
 /// The slice of `AudiobookManager` the PP-4963 position trace joins to.
 ///
-/// A protocol rather than `DefaultAudiobookManager` so `makePositionTrace` can
-/// be driven from a test. The concrete manager's `init` starts the now-playing
-/// timer, the chapter monitor, the media-control publisher and an app-state
-/// observer; standing all of that up to assert three lines of wiring would put
-/// timers and a remote command centre into the unit suite, which is how shared
-/// state starts bleeding between tests.
-///
-/// `AudiobookManager` itself will not do: it declares `bookmarkDelegate` as
-/// get-only, and the assignment is one of the joins being pinned.
+/// A protocol so `makePositionTrace` can be tested without
+/// `DefaultAudiobookManager`, whose `init` starts timers and remote-command
+/// observers. `AudiobookManager` declares `bookmarkDelegate` get-only, so it
+/// cannot serve either.
 @MainActor
 protocol AudiobookPositionTraceHost: AnyObject {
     var bookmarkDelegate: AudiobookBookmarkDelegate? { get set }
@@ -93,10 +80,9 @@ final class AudiobookLoader {
         self.adapters = adapters ?? Self.makeProductionAdapters()
     }
 
-    /// WS-3: re-fulfill loader. Bypasses `LocalFileAdapter` so an already-
-    /// downloaded OverDrive book routes to `BearerTokenAdapter` for a FRESH
-    /// fulfillment (fresh signed URLs) instead of replaying the stale on-disk
-    /// manifest. Used only by the OverDrive expired-URL recovery path.
+    /// Re-fulfill loader (PP-4800). Bypasses `LocalFileAdapter` so an already-
+    /// downloaded book gets a fresh fulfillment (fresh signed URLs) instead of
+    /// replaying the stale on-disk manifest.
     convenience init(forceRefulfill: Bool) {
         self.init(adapters: forceRefulfill ? Self.makeProductionAdapters(excludeLocalFile: true) : nil)
     }
@@ -144,8 +130,7 @@ final class AudiobookLoader {
 
     /// Run the adapter chain. First `canHandle == true` wins; the picked
     /// adapter owns the result. If no adapter matches, surface
-    /// `.manifestFetchFailed` — matches the pre-swarm "no default
-    /// acquisition URL" failure mode.
+    /// `.manifestFetchFailed`.
     private func resolveSource(
         for book: TPPBook,
         completion: @escaping (Result<([String: Any], DRMDecryptor?), AudiobookLoadError>) -> Void
@@ -199,18 +184,11 @@ final class AudiobookLoader {
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
                 completion(.success(()))
             case .failure(let error, _):
-                // PP-4542: the open requested a token but another refresh
-                // (almost always the proactive launch refresh of a near-expiry
-                // token) already held the single-flight slot, so
-                // refreshTokenAndResume(task: nil) returned "Token refresh in
-                // progress" *immediately* instead of queueing+retrying the way
-                // the URLSession-task path does. That hard failure was the
-                // dominant field cause of "Audiobook failed to open — please try
-                // again" (Crashlytics issue 27f5746…: ~45k events / 8.2k users,
-                // since 2.0.4). It is purely a timing race — tap an audiobook in
-                // the first second after launch and it dead-ends. Don't fail:
-                // AWAIT the in-flight refresh and proceed the instant it
-                // populates a valid token.
+                // PP-4542: another refresh (usually the launch-time proactive
+                // refresh) holds the single-flight slot, and
+                // refreshTokenAndResume(task: nil) fails immediately rather than
+                // queueing. Opening an audiobook right after launch hit this
+                // (Crashlytics 27f5746). Wait for the in-flight refresh instead.
                 if Self.isRefreshInProgressError(error) {
                     Log.info(#file, "⏳ A token refresh is already in progress — awaiting it before opening audiobook")
                     Self.awaitTokenReady { becameValid in
@@ -242,27 +220,15 @@ final class AudiobookLoader {
     /// Polls the *current* account's token state until a concurrently-running
     /// refresh populates a valid (unexpired) token, or `timeout` elapses.
     /// Re-reads `currentUserAccount` each tick so a mid-flight account-object
-    /// swap can't strand us on a stale instance. Bounded so a failed/stuck
-    /// in-flight refresh can't hang the open forever — on timeout the caller
-    /// surfaces the original error (same as the pre-fix behaviour, just after
-    /// giving the in-flight refresh a chance).
+    /// swap can't strand us on a stale instance. Bounded so a stuck refresh
+    /// cannot hang the open; on timeout the caller surfaces the original error.
     nonisolated static func awaitTokenReady(
         timeout: TimeInterval = 10.0,
         pollInterval: TimeInterval = 0.15,
         completion: @escaping (Bool) -> Void
     ) {
-        // Structured-concurrency poll (Task.sleep, not recursive GCD) to keep
-        // the audiobook open path off GCD per adr_a265ec76, mirroring the
-        // sibling poll in AudiobookSessionManager.awaitAudiobookContentLocal.
-        //
-        // The `completion` closure is the caller's non-`@Sendable` callback
-        // (it captures the loader's own `completion`), but the poll runs in a
-        // `@Sendable` `Task`. Wrap it in a carrier box (precedent:
-        // `SendableDecryptCompletion` in LCPAudiobooks) so the completion can
-        // cross into the Task WITHOUT forcing `@Sendable` onto this signature —
-        // which would ripple to the single call site inside
-        // `refreshTokenIfNeeded`. The box fires the wrapped closure exactly
-        // once (success XOR timeout), so the invariant holds.
+        // The non-`@Sendable` completion is boxed to cross into the poll Task;
+        // it fires exactly once (ready XOR timeout).
         let completionBox = TokenReadyCompletionBox(completion)
         Task {
             let deadline = Date().addingTimeInterval(timeout)
@@ -351,12 +317,8 @@ final class AudiobookLoader {
         }
     }
 
-    // F-004 EXC_BREAKPOINT (Crashlytics, 3.0.0, distributor=Overdrive,
-    // decryptor=nil, bearerToken present) enters here. `internal` (not
-    // `private`) so `AudiobookLoaderFinalizeBuildTests` can drive the decode →
-    // factory → guard chain directly: the zero-track guard below (PP-4768)
-    // returns BEFORE the AppContainer.production() reads further down, so the
-    // failure path is exercisable without touching singletons.
+    // `internal` so tests can drive decode → factory → zero-track guard
+    // (PP-4768); the guard returns before the AppContainer.production() reads.
     func finalizeBuild(
         book: TPPBook,
         jsonData: Data,
@@ -393,18 +355,10 @@ final class AudiobookLoader {
             return
         }
 
-        // PP-4768 (F-004 residual): the OverDrive / open-access decode exemption
-        // (Manifest.swift, PP-4631) lets a manifest with no metadata and no
-        // readingOrder/spine pass decode when it carries a non-empty
-        // `contentlinks` — the tracks are expected to come from those links. But
-        // `Audiobook.init?` never fails on empty tracks, so if none of the
-        // content links resolve to a playable track (e.g. an unusable href in a
-        // malformed distributor response), the factory returns a NON-nil but
-        // TRACKLESS audiobook. Building a manager from it lets the toolkit player
-        // later trap on unguarded `[0]` track subscripts (EXC_BREAKPOINT,
-        // Crashlytics-attributed to finalizeBuild). Reject it here via the
-        // existing `.factoryFailed` path → "Failed to create audio player.
-        // Please try again." (the PP-3707 retry dialog); no new error case.
+        // PP-4768: a manifest carrying only `contentlinks` can decode yet yield
+        // no playable tracks, and `Audiobook.init?` does not fail on empty
+        // tracks. The toolkit player would later trap on a `[0]` subscript, so
+        // reject a trackless audiobook through `.factoryFailed`.
         guard !audiobook.tableOfContents.allTracks.isEmpty else {
             Log.error(#file, "  ❌ Factory produced a zero-track audiobook — rejecting to avoid a trackless player")
             completion(.failure(.factoryFailed(manifestType: manifest.metadata?.type)))
@@ -468,14 +422,9 @@ final class AudiobookLoader {
         )))
     }
 
-    /// Builds the PP-4963 recorder and joins it to the session graph.
-    ///
-    /// Extracted from `finalizeBuild` because the join had no test and could
-    /// not get one there: `finalizeBuild` reads `AppContainer.production()` for
-    /// time tracking and the Wi-Fi setting, and its three trace lines could all
-    /// be deleted with every suite still green — leaving a shipped instrument
-    /// that observes nothing. Mutation cannot reach that either; the defect is
-    /// a deleted CALL, not a flipped operator.
+    /// Builds the PP-4963 recorder and joins it to the session graph. Separate
+    /// from `finalizeBuild` so the wiring is testable without
+    /// `AppContainer.production()`.
     ///
     /// Three joins, in the order they have to happen:
     ///
@@ -488,15 +437,11 @@ final class AudiobookLoader {
     /// 3. the recorder subscribes to the PLAYER's own position signal and to
     ///    foreground return.
     ///
-    /// - Parameter recorder: production passes nil and gets one built for
-    ///   `book`. A test injects one whose sinks it can observe; the recorder's
-    ///   own construction is pinned by its unit tests, and what this function
-    ///   exists to pin is the wiring around it.
-    /// - Parameter notificationCenter: injectable so a test can drive the real
-    ///   foreground subscription without posting `didBecomeActiveNotification`
-    ///   to the whole app — a global post also wakes `NowPlayingCoordinator`
-    ///   (which can emit a 403) and `DownloadThrottlingService`, landing in
-    ///   whichever test runs next.
+    /// - Parameter recorder: nil in production (one is built for `book`); tests
+    ///   inject one they can observe.
+    /// - Parameter notificationCenter: injectable so a test can drive the
+    ///   foreground subscription without a global `didBecomeActiveNotification`
+    ///   post, which would wake other app observers.
     @discardableResult
     func makePositionTrace(
         book: TPPBook,
@@ -534,20 +479,11 @@ final class AudiobookLoader {
 
     // MARK: - Testable predicates
     //
-    // Two deterministic decisions extracted from inline branches so unit
-    // tests can drive them without touching AppContainer.production() or
-    // hitting the network. The predicates correspond to `cmp`-style mutation
-    // points that previously survived every test because no isolated test
-    // could reach them. Each has TRUE/FALSE bifurcation pinned in
-    // AudiobookLoaderPredicateTests.
+    // Pure decisions extracted so tests can drive them without
+    // AppContainer.production() or the network (AudiobookLoaderPredicateTests).
 
     /// True iff all three credential components a token refresh needs are
-    /// present: a non-empty username, a non-empty PIN, and a non-nil
-    /// tokenURL. Pure function over its primitive inputs — no AppContainer,
-    /// no keychain. The branch on `tokenURL != nil` is the kill point for
-    /// the corresponding mutation; tests provide a non-nil URL to assert
-    /// the original returns `true` (mutant flips to `==`, returns `false`,
-    /// test fails the mutant).
+    /// present: a non-empty username, a non-empty PIN, and a non-nil tokenURL.
     nonisolated static func hasRefreshableCredentials(username: String?, pin: String?, tokenURL: URL?) -> Bool {
         guard let username, !username.isEmpty else { return false }
         guard let pin, !pin.isEmpty else { return false }
@@ -573,10 +509,8 @@ final class AudiobookLoader {
     // defensive fallback for CM fulfill responses missing the wrapper MIME.
 
     /// Builds the production adapter chain. `excludeLocalFile` drops the
-    /// `LocalFileAdapter` so an already-downloaded book is NOT served from its
-    /// (possibly stale) on-disk manifest — used by the WS-3 OverDrive re-fulfill
-    /// path so the book routes to `BearerTokenAdapter` for a FRESH fulfillment
-    /// (fresh signed URLs), not a cached-manifest replay.
+    /// `LocalFileAdapter` so the OverDrive re-fulfill path gets a fresh
+    /// fulfillment instead of the possibly stale on-disk manifest.
     private static func makeProductionAdapters(excludeLocalFile: Bool = false) -> [AudiobookVendorAdapter] {
         let downloadCenter = AppContainer.production().downloadCenter
         let networkExecutor = AppContainer.production().networkExecutor
@@ -599,8 +533,8 @@ final class AudiobookLoader {
             ))
         }
 
-        // BearerTokenAdapter.canHandle is unconditional; the MIME gate
-        // (BearerTokenMIMEGate) is Module D's chain placement gate.
+        // BearerTokenAdapter.canHandle is unconditional; BearerTokenMIMEGate
+        // decides whether it is placed in the chain.
         let bearerTokenAdapter = BearerTokenAdapter(
             network: manifestNetwork,
             manifestFetcher: ProductionBearerTokenManifestFetcher()
@@ -624,10 +558,8 @@ final class AudiobookLoader {
 /// can cross into the poll `Task` without forcing `@Sendable` onto the
 /// `awaitTokenReady` signature (which would ripple to its call site).
 ///
-/// - Sendable invariant: `fire(_:)` forwards to the wrapped closure. The poll
-///   loop calls it exactly once (token-ready XOR timeout) from a single Task,
-///   never concurrently. The wrapped closure is otherwise opaque, hence
-///   `@unchecked`. Mirrors `SendableDecryptCompletion` in `LCPAudiobooks`.
+/// - Sendable invariant: the poll loop calls `fire(_:)` exactly once
+///   (token-ready XOR timeout) from a single Task, never concurrently.
 private struct TokenReadyCompletionBox: @unchecked Sendable {
     private let completion: (Bool) -> Void
 

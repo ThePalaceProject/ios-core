@@ -2,9 +2,9 @@
 //  AudiobookVendorAdapterTests.swift
 //  PalaceTests
 //
-//  Behavior tests for the `AudiobookVendorAdapter` protocol (Module A of
-//  swarm_5c8ddbd5). Per-adapter behavior is exercised in Modules B/C/D's
-//  tests — these tests pin the protocol's *shape contract* by driving spy
+//  Behavior tests for the `AudiobookVendorAdapter` protocol. Per-adapter
+//  behavior is exercised in each adapter's own tests — these pin the
+//  protocol's *shape contract* by driving spy
 //  conformances through both branches of `Result` and asserting first-match
 //  priority order between two adapters.
 //
@@ -59,10 +59,9 @@ final class AudiobookVendorAdapterTests: XCTestCase {
     // MARK: - Helpers
 
     /// Walk an adapter chain in priority order; return the first that
-    /// claims the book. Mirrors the dispatch logic Module D will inline
-    /// in `AudiobookLoader`. Keeping it inline in the test (instead of
-    /// shipping a registry helper in production) avoids locking Module D
-    /// into a chain abstraction it might not want.
+    /// claims the book. Mirrors the dispatch logic in `AudiobookLoader`.
+    /// Keeping it inline in the test (instead of shipping a registry helper
+    /// in production) avoids locking the loader into a chain abstraction.
     private func firstHandler(in chain: [AudiobookVendorAdapter], for book: TPPBook) -> AudiobookVendorAdapter? {
         chain.first { $0.canHandle(book) }
     }
@@ -148,7 +147,7 @@ final class AudiobookVendorAdapterTests: XCTestCase {
     }
 
     func testFirstMatchPriorityOrder() {
-        // The chain semantics Module D will rely on: adapters are asked
+        // The chain semantics `AudiobookLoader` relies on: adapters are asked
         // in array order, the first to claim wins, and downstream adapters
         // are NEVER asked once a winner is found. This test pins that
         // contract — flipping the helper's `.first` to `.last` would

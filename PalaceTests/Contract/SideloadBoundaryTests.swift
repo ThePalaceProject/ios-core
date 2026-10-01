@@ -1,24 +1,9 @@
-//
 //  SideloadBoundaryTests.swift
-//  PalaceTests
 //
-//  Boundary tests for the scoped source-of-truth clause (swarm swarm_8ce6f5ae ·
-//  Contract D). `SideloadedBookRegistry` is the documented, probe-guarded SECOND
-//  book-state owner, scoped to side-loaded (non-loan) content. These tests pin
-//  the boundary the doctrine declares:
-//
-//    1. The side-load owner reports its OWN membership-derived state through the
-//       `BookStateReading` seam (present → `.downloadSuccessful`; unknown →
-//       `.unregistered`) and never invents a loan state.
-//    2. The two owners answer over DISJOINT identifier sets: through the shared
-//       `BookStateReading` seam, each returns `.unregistered` for the other
-//       owner's book — they never reconcile against each other.
-//    3. Importing a side-loaded book registers it (`addBook`, `.downloadSuccessful`)
-//       but NEVER drives a loan-state transition (`setState`): the side-load path
-//       does not reach into the loan owner's transition seam.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins the boundary between the two book-state owners. `SideloadedBookRegistry`
+//  reports membership-derived state through `BookStateReading` and never a loan
+//  state; each owner returns `.unregistered` for the other's books; and importing
+//  a side-loaded book calls `addBook` but never the loan owner's `setState`.
 
 import XCTest
 @testable import Palace
@@ -28,7 +13,7 @@ import PalaceBookRegistry
 // The loan owner already exposes `state(for:)` via `TPPBookRegistryProvider`;
 // the test conforms the mock to the shared read seam so a heterogeneous
 // `[BookStateReading]` can exercise both owners. (Production `TPPBookRegistry`
-// conformance is Contract C's — its file is off-limits here.)
+// does not conform to it.)
 extension TPPBookRegistryMock: BookStateReading {}
 
 @MainActor

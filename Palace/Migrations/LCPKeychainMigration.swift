@@ -4,13 +4,9 @@
 //
 //  One-time migration of LCP licenses + passphrases from the deprecated
 //  Readium `ReadiumAdapterLCPSQLite` repositories (Readium ≤ 3.7) to the
-//  built-in Keychain repositories introduced in Readium 3.8.0. The Keychain
-//  store is more secure, survives app reinstalls, and is iCloud-syncable.
-//
-//  The migration is idempotent and gated by a `UserDefaults` flag so it runs
-//  at most once per install. It degrades gracefully: a license that hasn't
-//  been migrated yet is simply re-validated from its stored `.lcpl` the next
-//  time the book is opened, so a missed or delayed run never loses access.
+//  built-in Keychain repositories introduced in Readium 3.8.0. Idempotent and
+//  gated by a `UserDefaults` flag. A license not yet migrated is re-validated
+//  from its stored `.lcpl` on next open, so a missed run never loses access.
 //
 
 #if LCP
@@ -28,23 +24,15 @@ enum LCPKeychainMigration {
     /// Serializes concurrent `runIfNeeded` callers onto a single migration, **per
     /// store**.
     ///
-    /// The flag below is written only *after* the copy finishes, so the gate is
-    /// open for the copy's whole duration and every caller arriving in that window
-    /// clears it. `TPPMigrationManager.migrate` starts one without awaiting it, so
-    /// two calls to `migrate` — a relaunch path, or a test suite driving it more
-    /// than once — overlap, and Readium's `migrate(to:)` then makes two concurrent
-    /// passes over the Keychain. It is idempotent, so that is not corrupting, but
-    /// it is not a state anything here reasons about either.
+    /// The flag is written only after the copy finishes, and
+    /// `TPPMigrationManager.migrate` does not await the run, so overlapping calls
+    /// would otherwise make concurrent passes over the Keychain. A late caller
+    /// waits for the running migration instead of proceeding over a
+    /// half-populated store.
     ///
-    /// A late caller waits for the running migration rather than starting a second
-    /// one, so it never proceeds over a half-populated store.
-    ///
-    /// **Keyed by store identity, not global.** Absorbing a caller that carries a
-    /// *different* `UserDefaults` into an unrelated flight would silently skip its
-    /// work and return as if it had run. Keying is by object identity, so two
-    /// instances opened on the same suite name get independent flights — imprecise
-    /// in principle, but production only ever passes `.standard`, which is a
-    /// singleton, so the production flight is a single one. (PP-5091)
+    /// Keyed by `UserDefaults` object identity so a caller with a different store
+    /// is not absorbed into an unrelated flight. Production only passes
+    /// `.standard`. (PP-5091)
     private static let singleFlight = SingleFlight()
 
     private actor SingleFlight {
@@ -71,20 +59,13 @@ enum LCPKeychainMigration {
     ///   transient Keychain error) the flag is left unset so the next launch
     ///   retries — the underlying Readium `migrate(to:)` is idempotent. A copy
     ///   that failed half way is left in place for the same reason.
-    /// - A caller that joined a flight which then **failed** returns without
-    ///   retrying inside that launch. It is not told the migration succeeded —
-    ///   nothing here returns success — and the unset flag means the next launch
-    ///   tries again. Retrying immediately would repeat a copy that just failed,
-    ///   usually because the Keychain is locked, and would not be more likely to
-    ///   work.
-    /// - Note: `defaults` has deliberately **no default value**. This is the layer
-    ///   that writes the completion flag, and it writes it whenever the copy it
-    ///   was handed succeeds — including a substituted one. With `= .standard`,
-    ///   `runIfNeeded(migrate: { })` compiled and recorded the real
-    ///   SQLite→Keychain migration as done having copied nothing, stranding every
-    ///   existing licence on re-validation from its `.lcpl`. Every call site
-    ///   already passed `defaults:` explicitly, so the default was dead weight
-    ///   whose only effect was to make that mistake available.
+    /// - A caller that joined a flight which then failed returns without
+    ///   retrying in that launch; the unset flag means the next launch tries
+    ///   again (an immediate retry usually hits the same locked Keychain).
+    /// - Note: `defaults` deliberately has no default value. This layer writes
+    ///   the completion flag whenever the copy it was handed succeeds, so with
+    ///   `= .standard` a test's `runIfNeeded(migrate: { })` would mark the real
+    ///   migration done having copied nothing.
     static func runIfNeeded(
         defaults: UserDefaults,
         migrate: (@Sendable () async throws -> Void)? = nil
@@ -100,9 +81,8 @@ enum LCPKeychainMigration {
     /// The copy itself, run at most once at a time by `singleFlight`.
     ///
     /// The gate is re-read here and not only in `runIfNeeded`: several callers can
-    /// pass the outer check before any of them writes the flag, and the one that
-    /// wins the single flight must be the only one that copies. Checking once,
-    /// outside, is exactly the bug.
+    /// pass the outer check before any of them writes the flag, and only the one
+    /// that wins the single flight may copy.
     private static func performIfStillNeeded(
         defaults: UserDefaults,
         migrate: (@Sendable () async throws -> Void)?

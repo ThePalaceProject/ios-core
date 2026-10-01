@@ -4,19 +4,11 @@
 //
 //  PP-5006: the pure position model behind the EPUB chapter scrubber.
 //
-//  The scrubber is CONTINUOUS over the book — the control's value IS a
-//  `totalProgression` in `0...1` — and merely LABELS the drag with the chapter
-//  it falls inside. That choice is what lets the readout carry page and percent
-//  as well as a chapter name, and it is what keeps the control meaningful on a
-//  book whose table of contents is missing or unusable: the chapter half of the
-//  readout drops out and the rest still works.
-//
-//  This type deliberately knows nothing about Readium or UIKit. Everything the
-//  drag needs is precomputed into two sorted arrays at construction, so a drag
-//  update is a pair of binary searches on the main thread with no `await` — the
-//  reader never blocks waiting for a position lookup while the patron's finger
-//  is down. `ChapterScrubberModel+Publication.swift` does the (async, once-per-
-//  book) work of building one from a `Publication`.
+//  The scrubber value is a `totalProgression` in `0...1`, labelled with the
+//  chapter it falls inside, so it still works when the TOC is missing. No
+//  Readium or UIKit: data is precomputed into sorted arrays so a drag update is
+//  a binary search with no `await`. `ChapterScrubberModel+Publication.swift`
+//  builds one from a `Publication`.
 //
 
 import Foundation
@@ -64,10 +56,9 @@ struct ChapterScrubberModel: Equatable, Sendable {
     private static let chapterlessStep = 0.05
 
     init(chapters: [Chapter], positionProgressions: [Double]) {
-        // Normalize once, here, so every read path can assume sorted, in-range
-        // data. TOC order is document order, which is USUALLY reading order but
-        // is not guaranteed to be, and a malformed entry can resolve outside
-        // 0...1 — neither should be able to make the track run backwards.
+        // Normalize once so read paths can assume sorted, in-range data: TOC
+        // order is not guaranteed to be reading order, and a malformed entry
+        // can resolve outside 0...1.
         var seenStarts = Set<Double>()
         self.chapters = chapters
             .compactMap { chapter -> Chapter? in

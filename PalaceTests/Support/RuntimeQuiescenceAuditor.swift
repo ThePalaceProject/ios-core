@@ -2,52 +2,16 @@
 //  RuntimeQuiescenceAuditor.swift
 //  PalaceTests
 //
-//  Structural gate against the cross-test cooperative-pool / main-queue
-//  starvation that has flaked the unit suite intermittently (WS-0 / M0,
-//  3.2.0 release gate). Seven prior PRs (#1050/#1051/#1056/#1057/#1061 …)
-//  point-fixed individual leaks; none added a gate that makes the root
-//  cause structurally impossible to LAND silently. This is that gate.
-//
-//  The documented root cause
-//  =========================
-//  `AccountsManager.deferInitialLoadCatalogsForTesting` is a process-global
-//  flag. While `true` (the test-safe default pinned by `PalaceTestSetup`),
-//  every `AccountsManager.init` — including the one the post-test
-//  `AppContainer._resetForTesting()` rebuilds after EACH test — SKIPS the
-//  background `loadCatalogs` Task. While `false`, that init spawns a live
-//  registry crawl (network + 1142-account bundled-snapshot write) on a
-//  detached background Task.
-//
-//  If any test flips the flag to `false` and does NOT restore it, the flag
-//  leaks forward: the NEXT test class's first incidental
-//  `AppContainer.production()` read rebuilds the cached graph, whose fresh
-//  `AccountsManager` now reads `false` and kicks off a crawl Task that
-//  outlives the test, leaks past the boundary, and starves the shared
-//  cooperative pool / main queue. The victim is whichever async test
-//  happens to run while the pool is saturated — which is exactly why the
-//  observed victim varies per run (CatalogPreloaderTests, OpenAccessAdapter,
-//  the 1735s CatalogRepository outlier, …).
-//
-//  The invariant this gate enforces
-//  ================================
-//  **After every test (post-tearDown), `deferInitialLoadCatalogsForTesting`
-//  MUST be `true`.** A test that legitimately needs the background load
-//  (`AppContainerResetTests`, `TestAppContainerFactoryTests`) flips it
-//  `false` for its scenario and restores it via `tearDown` / `defer`. Any
-//  test that leaves it `false` is, by construction, the polluter — and this
-//  auditor names it instead of letting a random downstream async test time
-//  out anonymously.
-//
-//  Why pure functions
-//  ==================
-//  `deferFlagViolations(deferFlagLeftByTest:)` is deliberately a pure,
-//  input→output function so the MetaTest (`RuntimeQuiescenceGateTests`) can
-//  prove the auditor FAILS a synthetic polluter without staging a real
-//  cross-test leak — the same self-test discipline
-//  `AppContainerIsolationLintTests.testLintCatchesSyntheticViolation` uses.
-//
-//  Test-target-only. Production code MUST NOT reference this type.
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Gate against cross-test cooperative-pool / main-queue starvation. The
+//  invariant: after every test, `AccountsManager.deferInitialLoadCatalogsForTesting`
+//  MUST be `true`. A test left at `false` makes the next rebuilt
+//  `AccountsManager` spawn a background registry crawl that outlives the
+//  test and starves whichever async test runs next; this auditor names the
+//  polluter instead. Tests that need the load (`AppContainerResetTests`,
+//  `TestAppContainerFactoryTests`) restore the flag in tearDown.
+//  `deferFlagViolations(deferFlagLeftByTest:)` is pure so
+//  `RuntimeQuiescenceGateTests` can prove it fails a synthetic polluter.
+//  Test-target-only.  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation

@@ -2,34 +2,14 @@
 //  BackgroundReconciliationContractTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE test pack for the god-class decomposition campaign
-//  (docs/architecture/god-class-decomposition-plan.md §3a-3 + §5 row
-//  "MyBooksDownloadCenter", Wave 3b → PalaceDownloads).
-//
-//  Pins the Reliability WS-A launch-reconciliation contract (INV-4:
-//  "adopt, don't double-start or spuriously fail") on the PURE engine that
-//  owns it — `DownloadReconciliation` in
-//  `Palace/MyBooks/DownloadTaskPersistence.swift`. When the WS-A reconciler
-//  is lifted into `PalaceDownloads` as `BackgroundSessionReconciler`, this
-//  pack must pass byte-identically after the move (the general §5 contract).
-//
-//  WHY the pure engine (not MBDC): MBDC's `reconcileDownloadsAtLaunch()` is a
-//  thin adapter — it snapshots live URLSession tasks and forwards to
-//  `DownloadReconciliation.runLaunchReconciliation`, which encapsulates BOTH
-//  the decision matrix (`reconcile`) AND the ORDER contract
-//  (registry-loaded gate → load persisted → live tasks → registry state →
-//  apply). Pinning the engine pins the invariant regardless of where the
-//  adapter lands. The MBDC-side glue (session.getAllTasks snapshot, the
-//  applyReconcileDecision hot-map re-seed) is already exercised by
-//  ColdStartResumeIntegrationTests; this pack pins the decision + order logic
-//  those integration tests don't lock as a call-sequence.
-//
-//  Adjacent WS-A invariants already covered by dedicated UNIT suites (NOT
-//  re-pinned here to avoid duplication):
-//    - INV-6 transient-transfer retry  → PalaceTests/MyBooks/DownloadTransferRetryTests
-//    - INV-7 background completion handler + session identity routing
-//                                       → PalaceTests/MyBooks/BackgroundSessionRoutingTests
-//    - PP-4114 mid-flight network drop  → PalaceTests/MyBooks/MyBooksDownloadCenterOfflineTests
+//  Pins the launch-reconciliation contract (INV-4: adopt, don't double-start or
+//  spuriously fail) on the pure `DownloadReconciliation` engine in
+//  `Palace/MyBooks/DownloadTaskPersistence.swift`: the decision matrix and the order
+//  registry-loaded gate → load persisted → live tasks → registry state → apply.
+//  The MBDC adapter is thin, so pinning the engine holds wherever it moves
+//  (docs/architecture/god-class-decomposition-plan.md §3a-3). Related invariants
+//  live in DownloadTransferRetryTests, BackgroundSessionRoutingTests and
+//  MyBooksDownloadCenterOfflineTests (PP-4114).
 //
 
 import XCTest
@@ -41,11 +21,11 @@ final class BackgroundReconciliationContractTests: XCTestCase {
     // MARK: - INV-4 decision matrix (pure `reconcile`)
     //
     // The matrix is {live task / dead task} × {per-book registry state} →
-    // ReconcileDecision. Each test kills the switch-arm mutant for its class.
+    // ReconcileDecision. Each test catches the switch-arm regression for its class.
 
     /// INV-4 core: a still-live background task is ALWAYS adopted, never
     /// restarted and never spuriously failed — EVEN when the registry state
-    /// would otherwise route to a heal. A mutant that consults registry state
+    /// would otherwise route to a heal. A change that consults registry state
     /// before checking task liveness (reordering the `if let liveID = adoptableTask(…)`
     /// guard below the switch) would `.markFailed` a download that is actually
     /// still running in the background — the exact double-start / spurious-fail
@@ -60,7 +40,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
     }
 
     /// Dead task + registry still wants the content (`.downloading`,
-    /// `.downloadNeeded`, `.SAMLStarted`) → `.restart`. A mutant that dropped
+    /// `.downloadNeeded`, `.SAMLStarted`) → `.restart`. A change that dropped
     /// any of these three cases would strand the book with a lost background
     /// task and no re-issue.
     func test_reconcile_deadTask_registryWantsContent_restarts() {
@@ -76,7 +56,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
     }
 
     /// Dead task + registry already `.downloadFailed` → `.markFailed` (pin the
-    /// terminal state, drop the record). Distinct from `.restart`: a mutant
+    /// terminal state, drop the record). Distinct from `.restart`: a regression
     /// folding this into the restart arm would re-kick a download the registry
     /// has already given up on, spinning the UI.
     func test_reconcile_deadTask_alreadyFailed_marksFailed() {
@@ -92,7 +72,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
     /// suspended, or returned/unregistered/held) → `.cleanup` (drop the stale
     /// record, no restart, no state mutation). Covers the terminal-success arm
     /// AND the "book moved on" arm AND the no-registry-entry (`.none`) arm — a
-    /// mutant that restarted any of these would re-download content the patron
+    /// regression that restarted any of these would re-download content the patron
     /// already has or no longer holds.
     func test_reconcile_deadTask_completedOrUnwanted_cleansUp() {
         let cleanupStates: [TPPBookState] = [
@@ -120,7 +100,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
 
     /// Order + multiplicity: reconcile maps 1:1, preserving record order, and
     /// classifies each record independently (one live, one dead-wanted, one
-    /// dead-failed). Kills a mutant that returned a single decision or reordered.
+    /// dead-failed). Catches a change that returned a single decision or reordered.
     func test_reconcile_mixedBatch_classifiesEachIndependently_inOrder() {
         let decisions = DownloadReconciliation.reconcile(
             persisted: [
@@ -189,7 +169,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
     /// INV-4 gate: the registry-loaded check is FIRST and blocking. When the
     /// registry has not loaded, reconciliation performs NO further work — it
     /// must not load persisted records, must not query live tasks, must not
-    /// apply. A mutant that inverted the guard (or moved it after the load)
+    /// apply. A change that inverted the guard (or moved it after the load)
     /// would reconcile against an empty/half-loaded registry and mass-`.restart`
     /// or `.cleanup` real downloads.
     func test_launchReconciliation_registryNotLoaded_skipsAllWork() async {
@@ -216,7 +196,7 @@ final class BackgroundReconciliationContractTests: XCTestCase {
 
     /// Empty-persisted short-circuit: with zero durable records there is
     /// nothing to reconcile, so the (async) live-task query — the expensive
-    /// step — must be skipped. Kills the `guard !persisted.isEmpty` mutant,
+    /// step — must be skipped. Catches the `guard !persisted.isEmpty` regression,
     /// which would otherwise `session.getAllTasks` on every clean launch.
     func test_launchReconciliation_noPersistedRecords_skipsLiveTaskQuery() async {
         let log = CallLog()

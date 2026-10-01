@@ -2,29 +2,12 @@
 //  TPPCirculationAnalyticsRequestShapeContractTests.swift
 //  PalaceTests
 //
-//  Contract test for the god-class decomposition campaign — Wave 1c
-//  (misfiles + inversions). See docs/architecture/god-class-decomposition-plan.md
-//  §4 Wave 1c and §3b cycle 3.
-//
-//  Target: `Palace/OPDS2/Service/TPPCirculationAnalytics.swift` — a
-//  circulation-domain network client relocated OUT of `Palace/Logging/` in
-//  Wave 1c (killing folder-cycle #3, Logging↔Network). The move is a pure file
-//  relocation, so this test pins the offline-retry enqueue SHAPE so the
-//  relocation is provably behavior-preserving.
-//
-//  SEAM: RESOLVED (Wave 1c). Two blockers the pre-wave placeholder documented
-//  are now dissolved:
-//    1. `addToOfflineAnalyticsQueue(_:_:accountsManager:requestProvider:offlineQueue:)`
-//       is now `internal` (was `private static`) and takes all three
-//       dependencies as injected seams — `accountsManager` (widened to the
-//       `TPPCurrentLibraryAccountProvider` protocol), `requestProvider`
-//       (`AuthorizedRequestProviding`), and `offlineQueue`
-//       (`OfflineRequestEnqueuing`) — the latter two are PalaceNetwork-package
-//       protocols. Spies inject via those params; no live container is touched.
-//    2. The un-interceptable ephemeral `URLSession` in `post(_:withURL:)` is
-//       still un-observable, so the LIVE outbound request is NOT snapshotted
-//       here — only the offline-enqueue derivation is (that is the injectable
-//       contract, and the one the offline re-wire follow-up will build on).
+//  Pins the offline-retry enqueue SHAPE of `TPPCirculationAnalytics`, relocated
+//  from `Palace/Logging/` to `Palace/OPDS2/Service/` to break the Logging↔Network
+//  folder cycle (docs/architecture/god-class-decomposition-plan.md §3b cycle 3).
+//  `addToOfflineAnalyticsQueue` takes its dependencies as injected protocols, so
+//  spies stand in for them. The live `post(_:withURL:)` request uses an ephemeral
+//  `URLSession` and is not observable here.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -79,7 +62,7 @@ final class TPPCirculationAnalyticsRequestShapeContractTests: XCTestCase {
     }
 
     /// CONTRACT: with a current account, libraryID is that account's uuid —
-    /// kills a `?? ""`-arm swap or a uuid→name mutant. Uses the shared fixture
+    /// catches a `?? ""`-arm swap or a uuid→name regression. Uses the shared fixture
     /// mock (deterministic uuid from OPDS2CatalogsFeed.json).
     func testOfflineEnqueue_withAccount_libraryIDIsAccountUUID() {
         let log = CallLog()
@@ -115,7 +98,7 @@ final class TPPCirculationAnalyticsRequestShapeContractTests: XCTestCase {
     // on `NetworkQueue.StatusCodes.contains(httpResponse.statusCode)` — but
     // StatusCodes are NEGATIVE NSURLError codes while `statusCode` is a POSITIVE
     // HTTP status, so the branch was dead since inception (and on timeout
-    // `response` is nil). Wave 1c DELETED that dead gate (behavior-identical:
+    // `response` is nil). The relocation deleted that dead gate (behavior-identical:
     // nothing was ever enqueued) rather than keep the last `NetworkQueue`
     // type-name in the relocated file. Actually making offline analytics retry
     // live is a behavior change (first-ever enqueues → retry/dedup semantics)

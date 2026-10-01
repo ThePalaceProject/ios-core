@@ -9,7 +9,7 @@ owners: [general]
 description: Critical-path review policy
 ---
 
-<!-- audit-verified: B5 from .forgeos/wall-failures/derived-improvements.md — policy implementation lives at ~/harness/core/hooks/pre-push-critical-path-review.sh; registered in .claude/settings.json. Hook code reviewed and verified at time of writing. -->
+<!-- audit-verified: B5 from the wall-failure catalog's `derived-improvements` list — policy implementation lives at ~/harness/core/hooks/pre-push-critical-path-review.sh; registered in .claude/settings.json. Hook code reviewed and verified at time of writing. -->
 
 # Critical-path review policy
 

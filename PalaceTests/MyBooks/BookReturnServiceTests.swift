@@ -1,25 +1,9 @@
 //
-//  BookReturnServiceTests.swift
-//  PalaceTests
-//
-//  Critical-path coverage for the borrow-return state machine extracted
-//  into BookReturnService. CLAUDE.md flags return as a user-money path
-//  requiring branch-level + error-path tests.
-//
-//  Branches covered:
-//    1. Book not in registry → no-op + completion
-//    2. revokeURL == nil + downloaded → local cleanup, registry remove,
-//       sync, announce success
-//    3. revokeURL == nil + not downloaded → cleanup skips file deletion
-//    4. revokeURL + parsing-error-as-success (PalaceError.parsing
-//       .opdsFeedInvalid) → treat OverDrive's quirky XML response as
-//       success
-//    5. revokeURL + no-active-loan / loan-term-limit problem document →
-//       local cleanup, registry remove, announce success
-//    6. revokeURL + invalid-credentials → reauthenticate + retry
-//    7. revokeURL + generic problem document → present alert (we only
-//       assert announceReturnFailed since UIAlertController presentation
-//       is host-VC dependent and out of scope for unit tests)
+//  Every branch of the BookReturnService return state machine: book not in
+//  registry; no revokeURL (downloaded or not); OverDrive's parse-error-as-success;
+//  no-active-loan / loan-term-limit problem docs treated as returned;
+//  invalid-credentials reauth + retry; and generic problem docs, asserted via
+//  announceReturnFailed since alert presentation needs a host view controller.
 //
 
 import XCTest
@@ -198,8 +182,8 @@ final class BookReturnServiceTests: XCTestCase {
     }
 
     /// A return for a book that isn't in the registry short-circuits BEFORE the
-    /// cancellation seam (there's nothing to return). Guards against a mutant
-    /// that moves the canceller above the `guard let book` early-out.
+    /// cancellation seam (there's nothing to return). Guards against moving
+    /// the canceller above the `guard let book` early-out.
     func testReturnBook_bookNotInRegistry_doesNotCancelRemoteWrite() async throws {
         final class Recorder: @unchecked Sendable {
             private let lock = NSLock()
@@ -395,7 +379,7 @@ final class BookReturnServiceTests: XCTestCase {
                        "Generic error keeps the book in the registry until user picks an action")
     }
 
-    // MARK: - Task lifecycle (swarm_4e47d4d4 F3 — fire-and-forget retention)
+    // MARK: - Task lifecycle (fire-and-forget retention)
 
     /// The return flow's revokeURL branch (line 154 Task) is the canonical
     /// "hop to cooperative pool then bounce off MainActor for cleanup" path.
@@ -670,12 +654,8 @@ final class BookReturnServiceTests: XCTestCase {
     // The setUp service has NO coordinator, so this legacy branch is live.
 
     /// SAML (browser-based) + credentials + invalid-credentials revoke error
-    /// must mark credentials stale before reauth (line 476 true branch).
-    ///
-    /// Kills :476 `isBrowserBased == true`→`!= true`: under the mutant the
-    /// SAML account evaluates `isBrowserBased != true` == false →
-    /// `needsBrowserReauth` false → markCredentialsStale is SKIPPED → authState
-    /// stays `.loggedIn`, failing the assertion below.
+    /// must mark credentials stale before reauth. Inverting the
+    /// `isBrowserBased == true` check would skip markCredentialsStale.
     func testReturnBook_SAMLBrowserAuth_invalidCredentials_marksCredentialsStaleBeforeReauth() async throws {
         let bookWithRevoke = makeBookWithRevokeURL()
         registry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
@@ -712,14 +692,9 @@ final class BookReturnServiceTests: XCTestCase {
     }
 
     /// Basic (NON-browser) + credentials + invalid-credentials revoke error
-    /// must NOT mark credentials stale (line 476 false branch) — basic auth
-    /// re-prompts in-app, the existing bearer is not a browser session to
-    /// invalidate. Negative control for the pair.
-    ///
-    /// Kills :476 `isBrowserBased == true`→`!= true` from the other side:
-    /// under the mutant a basic account evaluates `isBrowserBased != true`
-    /// == true → `needsBrowserReauth` true → markCredentialsStale fires →
-    /// authState becomes `.credentialsStale`, failing the assertion below.
+    /// must NOT mark credentials stale — basic auth re-prompts in-app, and the
+    /// existing bearer is not a browser session to invalidate. Negative control
+    /// for the pair.
     func testReturnBook_basicAuth_invalidCredentials_doesNotMarkCredentialsStale() async throws {
         let bookWithRevoke = makeBookWithRevokeURL()
         registry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
@@ -824,7 +799,7 @@ final class BookReturnServiceTests: XCTestCase {
     /// authoritative empty → no resurrect on reload". Used by the
     /// parsing-as-success and no-active-loan paths: they share the `removeBook`
     /// mechanism the no-revokeURL path exercises but reach it via a stubbed revoke
-    /// error. Kills the `serverAuthoritative: true → false` mutant on each.
+    /// error. Fails on each if `serverAuthoritative: true` becomes `false`.
     private func assertConfirmedReturnError_persistsEmpty_noResurrect(
         stubbedError: Error,
         file: StaticString = #file,

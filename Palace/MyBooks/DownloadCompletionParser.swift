@@ -2,18 +2,11 @@
 //  DownloadCompletionParser.swift
 //  Palace
 //
-//  Owns the pre-dispatch parsing block of the URL session
-//  download-completion path that lived inside MyBooksDownloadCenter
-//  as the head of `handleDownloadCompletion(session:task:location:)`.
-//  Resolves the book's rights (with cache write-back), detects RFC
-//  7807 problem documents, routes OPDS entry / OPDS2 publication
-//  responses through the BackgroundDownloadHandler, and gates the
-//  remaining payload on `book.canCompleteDownload(withContentType:)`.
-//
-//  Returns a single `DownloadCompletionParseResult` describing what
-//  the consumer should do next: bail out (a follow-up download was
-//  started), surface a failure (with optional parsed problem doc),
-//  or proceed to the per-rights-management dispatch step.
+//  The parsing step of a download completion, before per-rights dispatch:
+//  resolves rights (with cache write-back), detects RFC 7807 problem
+//  documents, routes OPDS / OPDS2 responses, and gates the payload on
+//  `book.canCompleteDownload(withContentType:)`. The result says whether to
+//  bail out (a follow-up download started), fail, or proceed to dispatch.
 //
 
 import Foundation

@@ -2,17 +2,10 @@
 //  BorrowErrorPresenter.swift
 //  Palace
 //
-//  Owns the borrow-failure decision tree that lived inside
-//  MyBooksDownloadCenter as `process(error:for:)` +
-//  `handleInvalidCredentials(for:)` + `showAlert(for:with:alertTitle:)` +
-//  `showGenericBorrowFailedAlert(for:)`.
-//
-//  Extracted so the borrow-error policy can be exercised in isolation
-//  with mocks of the reauthenticator + delegate. The
-//  `isRequestingCredentials` re-entrancy guard is shared with MBDC's
-//  `requestCredentialsAndStartDownload` flow via a small
-//  `CredentialRequestState` holder so concurrent sign-in modals are
-//  prevented across both code paths.
+//  The borrow-failure decision tree. The `isRequestingCredentials` guard is
+//  shared with MyBooksDownloadCenter's `requestCredentialsAndStartDownload`
+//  through `CredentialRequestState`, so the two paths cannot present
+//  concurrent sign-in modals.
 //
 
 import Foundation
@@ -27,8 +20,7 @@ import PalaceUtilities
 /// `@Sendable` closure (the `@MainActor` re-auth Task and the `@Sendable`
 /// retry closures). The book is read-only after construction and the
 /// closures only ever touch it on the main actor, so `@unchecked Sendable`
-/// is sound. Mirrors the carrier-box precedent (`CarPlayImageCompletionBox`,
-/// `ReadiumBookmarkBox`).
+/// is sound.
 private final class BorrowBookBox: @unchecked Sendable {
     let book: TPPBook
     init(_ book: TPPBook) { self.book = book }
@@ -75,18 +67,11 @@ protocol BorrowErrorPresenterDelegate: AnyObject {
 /// the generic borrow-failed alert with a retry action, or surface the
 /// problem-document detail in a borrow-failed alert.
 ///
-/// `@unchecked Sendable` invariant (Swift 6 `complete`-mode slice): every
-/// injected collaborator is an immutable `let` (`progressReporter`,
-/// `userRetryTracker`, `reauthenticator`, `userAccountProvider`,
-/// `credentialRequestState` — the last is itself `@unchecked Sendable`). The
-/// only mutable instance storage is the `@MainActor`-isolated
-/// `hasAttemptedAuthentication` latch (read/written solely on the main actor)
-/// and `weak var delegate` (assigned once on the main thread during
-/// `MyBooksDownloadCenter` init, read only from `@MainActor`-hopped
-/// contexts). `@unchecked` is required only so `self` can be captured by the
-/// `@Sendable` alert/reauth closures — not because any state is racy. Mirrors
-/// sibling presenters in this module (`CredentialPromptCoordinator`,
-/// `BookSignInRedirectHandler`, `DownloadAuthRetryHandler`).
+/// `@unchecked Sendable` so `self` can be captured by the `@Sendable`
+/// alert/reauth closures. Every injected collaborator is an immutable `let`;
+/// the only mutable state is the `@MainActor` `hasAttemptedAuthentication`
+/// latch and `weak var delegate` (assigned once during
+/// `MyBooksDownloadCenter` init, read on the main actor).
 final class BorrowErrorPresenter: @unchecked Sendable {
 
     typealias DisplayStrings = Strings.MyDownloadCenter

@@ -2,15 +2,12 @@
 //  TPPBookRegistryAsyncReadinessTests.swift
 //  PalaceTests
 //
-//  Readiness contract for `TPPBookRegistry.syncAsync` (swarm_81b5099e
-//  Bucket A). Pre-Phase-1 the function read `currentAccount?.loansUrl`
-//  directly and threw `.authentication(.accountNotFound)` whenever the
-//  auth document hadn't loaded — confusing test/regression signal because
-//  the account WAS found, it just wasn't ready.
-//
-//  Post-Phase-1 the function blocks on `currentAccount.awaitReady()`
-//  before reading loansUrl. The single-timeout policy keeps the upstream
-//  fetch-feed timeout as the only timeout on this path.
+//  Readiness contract for `TPPBookRegistry.syncAsync`. The function used to
+//  read `currentAccount?.loansUrl` directly and throw
+//  `.authentication(.accountNotFound)` whenever the auth document hadn't
+//  loaded, even though the account existed. It now blocks on
+//  `currentAccount.awaitReady()` before reading loansUrl; the upstream
+//  fetch-feed timeout stays the only timeout on this path.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -107,21 +104,21 @@ final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
     /// When the production accountsManager has a currentAccount, exercise
     /// the full migrated syncAsync path: under .detailsFailed, syncAsync
     /// throws `.authentication(.accountNotFound)`. This pins the
-    /// observable surface that pre-Phase-1 callers depended on (so
+    /// observable surface that existing callers depend on (so
     /// `.accountNotFound` keeps meaning "can't sync; try again later").
     func testIntegration_underDetailsFailed_throwsAccountNotFound() async throws {
         // Rationale: integration test pins behavior against the production
         // graph. Fresh test container traps when seeded account is set to
         // .detailsFailed and syncAsync runs through the downstream state
         // machine. Tracked for follow-up.
-        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production graph
+        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: integration test pins production graph
         let (account, cleanup) = seedAccountIfNeeded(on: accountsMgr,
                                                     fixtureId: "test-registry-async-\(UUID().uuidString)")
         defer { cleanup() }
 
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "test HTTP 503")))
 
-        guard let registry = AppContainer.production().bookRegistry as? TPPBookRegistry else { // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production graph
+        guard let registry = AppContainer.production().bookRegistry as? TPPBookRegistry else { // MIGRATED-DEFERRED: integration test pins production graph
             throw XCTSkip("Production bookRegistry must be the concrete TPPBookRegistry type")
         }
 

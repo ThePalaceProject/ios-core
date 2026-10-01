@@ -2,9 +2,9 @@
 //  AuthCoordinatorWiringTests.swift
 //  PalaceAuthTests
 //
-//  Round-trip wiring tests for `AuthCoordinator` per CLAUDE.md
-//  "State-machine wiring tests must exercise round-trips, not just
-//  transitions." The coordinator owns a small piece of internal state
+//  Round-trip wiring tests for `AuthCoordinator`: state-machine wiring
+//  must be exercised through full round-trips, not isolated transitions.
+//  The coordinator owns a small piece of internal state
 //  (the cooldown timestamp + in-flight task) that the unit tests don't
 //  drive through a full lifecycle via the **public seam**.
 //

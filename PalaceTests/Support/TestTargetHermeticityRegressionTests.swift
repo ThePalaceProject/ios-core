@@ -1,35 +1,13 @@
-//
 //  TestTargetHermeticityRegressionTests.swift
-//  PalaceTests
 //
-//  Regression pins for the three systemic test-pollution mechanisms found in
-//  CI run 29802862487 (PR #1305, fix/swift6-test-target-repair):
-//
-//  1. The PalaceTests target compiled WITHOUT the `DEBUG` condition, so every
-//     `#if DEBUG` block in TEST-target code was silently dead — including the
-//     body of the registered "AppContainer._resetForTesting" resetter in
-//     `PalaceTestSetup.registerBuiltInResetters()` and the bootstrap pin of
-//     `AccountsManager.deferInitialLoadCatalogsForTesting`. The per-test
-//     AppContainer reset + live-manager drain therefore NEVER ran, which is
-//     why months of individually-correct isolation fixes "did not converge"
-//     (docs/Testing/test-pollution-investigation-handoff.md): they were all
-//     wired behind a dead conditional at the test boundary.
-//
+//  Pins three test-pollution mechanisms found in CI run 29802862487 (#1305):
+//  1. PalaceTests compiled without `DEBUG`, so `#if DEBUG` blocks in test code
+//     (the AppContainer reset, the loadCatalogs deferral pin) never ran.
 //  2. `TPPBookRegistryMock.addBook` posted `.TPPBookRegistryDidChange` on the
-//     CALLER's thread, violating the production registry's main-queue posting
-//     contract. NotificationCenter invokes selector observers synchronously on
-//     the posting thread, so a live `@MainActor` observer from an earlier test
-//     (BookDetailViewModel.handleBookRegistryChange) tripped Swift 6's
-//     executor-isolation precondition and killed the whole runner process.
-//
-//  3. `XCTestCase.awaitCondition` evaluated its predicate once more on the
-//     leaked resumption AFTER cancellation, i.e. potentially after tearDown
-//     nil'd the test's implicitly-unwrapped fixtures — a force-unwrap
-//     fatalError that also killed the runner process (the retry-crash
-//     signature).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//     caller's thread; a leftover `@MainActor` observer then tripped Swift 6's
+//     isolation check and killed the runner.
+//  3. `awaitCondition` re-evaluated its predicate after cancellation, possibly
+//     after tearDown nil'd fixtures, crashing on a force-unwrap.
 
 import XCTest
 @testable import Palace

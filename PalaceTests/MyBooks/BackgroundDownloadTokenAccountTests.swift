@@ -1,20 +1,9 @@
 //
-//  BackgroundDownloadTokenAccountTests.swift
-//  PalaceTests
-//
-//  PP-4978. When a download is re-issued mid-flight — the follow-up request the
-//  handler builds after an OPDS-entry / rights step — it must carry the
-//  credentials of the library the download was STARTED under, not whichever
-//  library happens to be selected when the follow-up is built.
-//
-//  A patron who switches libraries during a download would otherwise have the
-//  new library's bearer token sent to the original library's server. Same
-//  credential-isolation boundary as the long-standing cross-account leak
-//  invariant in `AccountCredentialResolver` (F-034 / PP-4020), and the same
-//  boundary PP-4969 closed for the challenge-answering half of this flow.
-//
-//  The account a download started under is recoverable from its own durable
-//  started-task record, which is written at download start and keyed by book id.
+//  PP-4978: a download re-issued mid-flight must carry the credentials of the
+//  library it started under, recovered from its started-task record, not the
+//  currently selected library. Otherwise a library switch sends the new library's
+//  bearer token to the original server. Same boundary as F-034 / PP-4020 and
+//  PP-4969.
 //
 
 import XCTest
@@ -174,7 +163,7 @@ final class BackgroundDownloadTokenAccountTests: PalaceWiringTestCase {
         // Register an account under the EMPTY id. Without this the spy would fall
         // back to `userAccount` for an unknown id, so dropping the emptiness guard
         // would still resolve to `userAccount` and this test would pass for the
-        // wrong reason — it did, until a mutation run caught it.
+        // wrong reason.
         delegate.accountsForCapturedId[""] = makeAccount(
             id: "test-uuid-empty-\(UUID().uuidString)", token: "empty-id-token")
 
@@ -199,8 +188,7 @@ final class BackgroundDownloadTokenAccountTests: PalaceWiringTestCase {
         // written at download start under the ORIGINAL book, while the follow-up
         // carries an UPDATED book parsed from the server's OPDS2 publication, whose
         // identifier is server-supplied and can differ. Every other test here passes
-        // the same book as both, so keying on `updatedBook` would pass all of them
-        // — review found exactly that mutant surviving.
+        // the same book as both, so keying on `updatedBook` would pass all of them.
         let startedAccount = makeAccount(id: startedLibraryID, token: "started-library-token")
         let currentAccount = makeAccount(id: "test-uuid-current-\(UUID().uuidString)",
                                          token: "current-library-token")

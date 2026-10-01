@@ -166,8 +166,7 @@ final class AudiobookFileLogger: AudiobookFileLogging, Sendable {
     }
 }
 
-// Wave 1c: dev-tools log-email seam. Internal witness is fine — the
-// conforming type is internal (public-witness rule applies to public types).
+// Dev-tools log-email seam.
 extension AudiobookFileLogger: LogArchiveExporting {
     func logArchiveDirectoryURL() -> URL? {
         getLogsDirectoryUrl()

@@ -386,7 +386,7 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
         XCTAssertTrue(synthetic.isCancelled, "Prior prefetch must be cancelled on reload")
     }
 
-    // MARK: - Library-switch SWR + de-triple-fire (swarm_27c181b5 A1)
+    // MARK: - Library-switch SWR + de-triple-fire
 
     /// A library switch must serve the new library's account-scoped cache
     /// instantly (stale-while-revalidate). It must NOT invalidate — invalidating

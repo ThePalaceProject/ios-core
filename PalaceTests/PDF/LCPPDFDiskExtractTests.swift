@@ -1,22 +1,10 @@
-//
 //  LCPPDFDiskExtractTests.swift
-//  PalaceTests
 //
-//  Covers the cache-correctness guardrail in `LCPPDFDiskExtract.cachedURL`.
-//  Real-world failure that motivated these tests (PP-4454): the
-//  `stream(consume:)`-based extract crashed mid-write on a large
-//  Marketplace LCP PDF, leaving a partial file. The original `cachedURL`
-//  only checked `FileManager.default.fileExists` — so the next open
-//  handed the partial garbage straight to PDFKit and surfaced "Unable
-//  to load PDF file." The validation rules (size + `%PDF-` header) +
-//  delete-on-fail ARE the fix; this test class locks them in so a
-//  refactor can't accidentally regress to "trust the file exists."
-//
-//  Each test surveys mutations on the production code:
-//   - flip the size threshold → testMissesUnderSizeThreshold breaks
-//   - drop the magic-byte check → testRejectsNonPDFHeader breaks
-//   - skip the on-fail removeItem → assertion that file is GONE breaks
-//
+//  PP-4454: an extract that crashed mid-write on a large LCP PDF left a partial
+//  file, and `cachedURL` checked only that the file existed, so the next open
+//  handed it to PDFKit ("Unable to load PDF file."). Pins the cache validation
+//  in `LCPPDFDiskExtract.cachedURL`: a minimum size, a `%PDF-` header, and
+//  deletion of a file that fails either check.
 
 #if LCP
 

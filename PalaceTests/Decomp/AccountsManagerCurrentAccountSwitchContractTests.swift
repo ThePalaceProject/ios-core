@@ -2,50 +2,13 @@
 //  AccountsManagerCurrentAccountSwitchContractTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE CHARACTERIZATION PACK — god-class decomposition (Wave 3a,
-//  `Palace/Accounts/Library/AccountsManager.swift`).
-//  See docs/architecture/god-class-decomposition-plan.md §3a-2 (cluster
-//  "Account retrieval … current account", 824–1016 — the `currentAccount`
-//  setter) and §5 row "AccountsManager" ("currentAccount-switch publication
-//  order").
-//
-//  WHAT THIS PINS
-//  ==============
-//  The PUBLICATION-ORDER contract of the `AccountsManager.currentAccount` setter:
-//  at the instant `.TPPCurrentAccountDidChange` is published, the setter's state
-//  mutations are ALREADY complete —
-//    1. `currentAccountId` has been advanced to the NEW account's uuid, and
-//    2. the PRIOR account has been terminally evicted
-//       (`.detailsEvicted(.libraryDeselected)`), and
-//    3. `isAccountSwitching` reflects the branch it took.
-//  This is the `CurrentAccountStore` / `UserAccountPublisher` extraction boundary
-//  (§3a-2): the facade must preserve the SAME happens-before ordering, or a
-//  `.TPPCurrentAccountDidChange` observer that re-reads `currentAccount` /
-//  `currentAccountId` (there are ~dozens of these across Book/Settings/MyBooks)
-//  would observe torn, mid-switch state.
-//
-//  The individual EFFECTS (prior eviction, new-account drive) are already covered
-//  by `AccountsManagerStateMachineWiringTests`. What is NOT pinned anywhere is the
-//  ORDER: that publication happens AFTER those mutations. A `.TPPCurrentAccountDidChange`
-//  observer records, at delivery time, the synchronously-observable state — so a
-//  reorder (publishing before the id update or before the eviction) drifts the
-//  recorded contract.
-//
-//  WHY CallLog-sequence instead of file-based `ContractSnapshot.assert`: see the
-//  companion `AccountsManagerAuthDocContractTests` header — the on-disk snapshot
-//  first-run RECORDS + fails, which cannot be verified without a local DRM build
-//  and would redden the board on introduction. The `[CallRecord]` equality here
-//  gives the identical ordered-record guarantee, deterministically and green on
-//  first CI run.
-//
-//  DETERMINISM: no sleeps, no network. The setter posts `.TPPCurrentAccountDidChange`
-//  SYNCHRONOUSLY at the end of its body; a `queue: nil` observer is delivered
-//  synchronously on the posting (main) thread, so a single `log.snapshot()` taken
-//  immediately after the synchronous assignment is complete and race-free. The new
-//  account is deliberately NOT registered in `accountSets`, so the setter's
-//  `driveCurrentAccountAuthDocIfNeeded()` resolves nil and fires no network fetch
-//  (same technique as the wiring suite's reselect test). Per-test isolated
-//  `UserDefaults` keeps the `currentAccountIdentifierKey` writes off `.standard`.
+//  Pins the publication order of the `AccountsManager.currentAccount` setter: when
+//  `.TPPCurrentAccountDidChange` posts, `currentAccountId` already names the new
+//  account, the prior account is evicted, and `isAccountSwitching` is set. Observers
+//  that re-read `currentAccount` would otherwise see mid-switch state
+//  (docs/architecture/god-class-decomposition-plan.md §3a-2).
+//  The notification posts synchronously, so one `log.snapshot()` after the
+//  assignment is race-free. Per-test isolated `UserDefaults`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -66,7 +29,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
     /// account A is `.detailsEvicted(.libraryDeselected)`, and `isAccountSwitching`
     /// is `true` (its reset is deferred to the async cleanup, NOT the setter).
     ///
-    /// Kill cases:
+    /// Regressions caught:
     ///  - Publishing `.TPPCurrentAccountDidChange` BEFORE `currentAccountId = new`
     ///    → observer reads currentAccountId == A → record mismatch.
     ///  - Moving the prior-account eviction AFTER the publish → observer reads A as
@@ -121,7 +84,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
     /// and does NOT enter the switching state. Pins the `prev != newAccountId`
     /// eviction guard and the `shouldFinishSwitchingImmediately` fast-finish.
     ///
-    /// Kill case: removing the `prev != newAccountId` guard on the eviction write
+    /// Regression caught: removing the `prev != newAccountId` guard on the eviction write
     /// → B would be evicted → `priorAccountState` reads `.detailsEvicted` → mismatch.
     func testReassign_BtoB_publishesWithoutEvictingOrSwitching() {
         let bUUID = "urn:uuid:decomp-switch-BB-\(UUID().uuidString)"
@@ -159,7 +122,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
     /// and does NOT enter the switching state (no prior content to clean up). Pins
     /// the `previousAccountId != nil` guard on the switch-detection block.
     ///
-    /// Kill case: dropping the `previousAccountId != nil` guard → the switch block
+    /// Regression caught: dropping the `previousAccountId != nil` guard → the switch block
     /// runs on first selection, setting `isAccountSwitching = true` → mismatch.
     func testFirstSelection_nilToB_publishesWithNewId_notSwitching() {
         let bUUID = "urn:uuid:decomp-switch-nilB-\(UUID().uuidString)"
@@ -189,7 +152,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
         AccountStateStore.shared.reset(for: bUUID)
     }
 
-    // MARK: - Contract 4: spy-order cleanup sequence (Wave 3 S3)
+    // MARK: - Contract 4: spy-order cleanup sequence
 
     /// Contract: on a real switch A → B, the setter drives its cleanup
     /// collaborators in a FIXED order —
@@ -204,7 +167,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
     /// reset and the async nav pop; `isAccountSwitching`'s deferred reset is pinned
     /// by the true-before / false-after state assertions.
     ///
-    /// Kill cases (each flips this test red):
+    /// Regressions caught (each flips this test red):
     ///  - Reordering any two of the four synchronous seam calls.
     ///  - Moving `evictDecodedImages` / `resetCoverCircuitBreaker` before the
     ///    `cleanupActiveContentBeforeAccountSwitch` call (they'd precede
@@ -283,7 +246,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
     /// switch seams fire (no prior content to clean up). Pins the
     /// `previousAccountId != nil` guard against the injected spies.
     ///
-    /// Kill case: dropping the `previousAccountId != nil` guard → cancel / evict /
+    /// Regression caught: dropping the `previousAccountId != nil` guard → cancel / evict /
     /// cover reset / nav pop would fire on first selection → non-empty log.
     func testFirstSelection_nilToB_drivesNoCleanupSeams() async {
         let bUUID = "urn:uuid:decomp-s3-nilB-\(UUID().uuidString)"
@@ -371,10 +334,10 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
     }
 }
 
-// MARK: - Spies for the Wave 3 S3 switch-cleanup contract
+// MARK: - Spies for the switch-cleanup contract
 
 /// Records `cancelNonEssentialTasks()` into a shared `CallLog`. A plain
-/// `AccountNetworking` conformer — the Wave 3 / 3a seam means observing the cancel
+/// `AccountNetworking` conformer — the protocol seam means observing the cancel
 /// call no longer requires subclassing the concrete `TPPNetworkExecutor` (which
 /// pulled a real caching stack into the test). The other two seam methods are
 /// implemented inertly; the switch path only exercises `cancelNonEssentialTasks`.
@@ -404,7 +367,7 @@ fileprivate final class SpySwitchImageCache: ImageCacheType, @unchecked Sendable
     func evictDecodedImages() { log.record("evictDecodedImages") }
 }
 
-/// Records the account-switch borrow-reauth circuit-breaker clear (Wave 3 S1 seam).
+/// Records the account-switch borrow-reauth circuit-breaker clear.
 fileprivate final class SpySwitchBorrowReauthResetter: BorrowReauthResetting, @unchecked Sendable {
     let log: CallLog
     init(log: CallLog) { self.log = log }

@@ -1,19 +1,11 @@
 //
 //  AudiobookPositionTraceCallSiteTests.swift
-//  PalaceTests
 //
-//  PP-4963 — the two production call sites that tell the trace a save
-//  happened, and the store that persists the last-live marker.
-//
-//  Review caught that neither was pinned. The earlier severance test deleted
-//  the call sites alongside three other joins, so the five failures it produced
-//  all came from the others: deleting ONLY the two `positionTrace?.noteSave`
-//  lines left every test green. That failure mode is the worst one available
-//  here — `lastSaveAt` stays nil, so every healthy locked session reports
-//  `.dry` on the ungated fleet signal, manufacturing the finding PP-4963 exists
-//  to confirm.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-4963: the two production call sites that tell the trace a save happened,
+//  and the store that persists the last-live marker. Deleting only the two
+//  `positionTrace?.noteSave` lines previously left every test green; then
+//  `lastSaveAt` stays nil and every healthy locked session reports `.dry`,
+//  producing the very finding PP-4963 exists to confirm.
 //
 
 import XCTest
@@ -353,7 +345,7 @@ final class UserDefaultsLastLivePositionMarkerStoreTests: XCTestCase {
 
     /// The store's default gate reads the switch, in the store's OWN domain.
     ///
-    /// Three mutations die here: the default closure returning a constant, the
+    /// Catches three regressions: the default closure returning a constant, the
     /// closure reading `DebugSettings()` instead of `DebugSettings(defaults:)`,
     /// and the captured `gateDefaults` being repointed at `.standard` — all
     /// three leave the scoped domain empty.

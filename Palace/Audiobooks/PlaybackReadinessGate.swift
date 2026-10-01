@@ -2,53 +2,18 @@
 //  PlaybackReadinessGate.swift
 //  Palace
 //
-//  Module A — Audiobook First-Open Hang (PP-4436 / F-011)
-//  Swarm: swarm_c8fcab76
-//
-//  WHAT THIS FIXES:
-//  PR #990 bumped `ios-audiobooktoolkit` and introduced a race where Palace's
-//  first `play(at:)` issues BEFORE the toolkit's player coordinator has
-//  finished initializing. The toolkit exposes a readiness signal via
-//  `Player.isLoaded`, but Palace was not awaiting it before issuing the first
-//  play. Symptom: NowPlaying UI mounts, Play button is unresponsive, no
-//  audio. Workaround: nav back, re-open — engine has finished initializing
-//  during the nav-away interval.
-//
-//  THE FIX (Palace-side, NO submodule changes):
-//  - `PlaybackReadinessGate` actor — exposes `markReady()`, `markFailed()`,
-//    `awaitReady(timeout:)`. Multiple awaiters supported; once a terminal
-//    state is reached all awaiters resume with the same outcome.
-//  - `PlaybackEngineCommanding` protocol — wraps `Player.play(at:)` so the
-//    session manager can be tested without owning a full toolkit Player.
-//  - Static `awaitReadinessAndPlay(at:gate:timeout:command:)` — the
-//    integration point. Production calls this from `startPlaybackAndSync-
-//    Position` before issuing the first `play(at:)`. Tests call it
-//    directly with stubs.
-//
-//  WHY ACTOR + ASYNC/AWAIT:
-//  Per `feedback_swift_concurrency_over_gcd.md`, new concurrent code uses
-//  `actor` + `async/await` instead of DispatchQueue + barrier + closure
-//  callbacks. The gate has isolated mutable state (`outcome`, `waiters`)
-//  and serves multiple concurrent awaiters — an actor is the correct shape.
-//  Continuations are stored under actor isolation and resumed when the
-//  terminal signal arrives. No `withCheckedContinuation` double-resume
-//  risk (the actor's serial executor enforces single-fire per waiter).
-//
-//  RELATED:
-//  - `audiobook_first_open_hang_3_2_0.md` (root cause analysis)
-//  - `lcp_player_continuation_misuse_2026_05_26.md` (same area, different
-//    race — informs the continuation-once-guard pattern)
-//  - `reference_audiobook_toolkit_risk_profile.md` (why we wrap toolkit,
-//    don't bump it)
+//  PP-4436: the first `play(at:)` must wait until the toolkit player reports
+//  `Player.isLoaded`; a play issued earlier is dropped, leaving an unresponsive
+//  Play button. `PlaybackReadinessGate` is an actor that latches ready/failed
+//  and resumes every awaiter with the same outcome; `awaitReadinessAndPlay`
+//  is the integration point called before the first play.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation
 // `@preconcurrency`: the toolkit's `Player` / `TrackPosition` are not
-// Sendable-audited upstream, and this file passes a `TrackPosition` across the
-// `await player.play(at:)` boundary and awaits the toolkit player. This is the
-// honest ceiling until the toolkit annotates its types.
+// Sendable-audited upstream.
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceLogging
 
@@ -70,11 +35,8 @@ public enum PlaybackReadinessError: Error, Equatable {
 /// implicit `pending` to one of these once-only. Multiple consumers
 /// awaiting the gate concurrently all resume with the same outcome.
 ///
-/// `Sendable` because the outcome crosses concurrency boundaries: it is the
-/// child-task element type of the `withThrowingTaskGroup` in `awaitReady`,
-/// the return type of the actor-isolated `awaitReady`/`suspend`, and the
-/// value resumed into each awaiter's `CheckedContinuation`. Conformance is
-/// synthesized — the only associated value is a `String`, already `Sendable`.
+/// `Sendable` because it crosses the task group and continuations in
+/// `awaitReady`.
 public enum PlaybackReadinessOutcome: Equatable, Sendable {
     case ready
     case failed(reason: String)
@@ -94,14 +56,7 @@ internal protocol PlaybackEngineCommanding {
 // MARK: - TrackPositionShape
 
 /// Minimal shape the readiness-gating code path needs from a
-/// `TrackPosition`. The toolkit's real `TrackPosition` is a struct over
-/// concrete Track types; in production we adapt it to this shape, and
-/// tests fake the timestamp directly without owning a full toolkit
-/// TrackPosition.
-///
-/// Internal because no consumer of `AudiobookSessionManaging` needs to
-/// reason about it — the abstraction exists solely to keep the readiness-
-/// gating method unit-testable.
+/// `TrackPosition`, so tests can fake it without a toolkit TrackPosition.
 internal protocol TrackPositionShape {
     var timestamp: Double { get }
 }
@@ -161,9 +116,7 @@ public actor PlaybackReadinessGate {
     /// gate stays in its pre-terminal state so a producer can still
     /// signal it later (used by retry paths).
     ///
-    /// `timeout` is in seconds. The 2.0s default in
-    /// `awaitReadinessAndPlay` is the budget agreed with the contract;
-    /// tests pass shorter values to keep suite time down.
+    /// `timeout` is in seconds.
     public func awaitReady(timeout: TimeInterval) async throws -> PlaybackReadinessOutcome {
         if let existing = outcome {
             return existing
@@ -264,7 +217,7 @@ public actor PlaybackReadinessGate {
 
     /// Awaits readiness, then issues a single `play(at:)` via the
     /// supplied command. If readiness times out (or fails), throws and
-    /// does NOT issue play — that's the fix for the F-011 hang.
+    /// does NOT issue play.
     ///
     /// `MainActor`-isolated because both the session manager and the
     /// toolkit's player live on main; keeping the integration call on
@@ -296,12 +249,8 @@ public actor PlaybackReadinessGate {
 /// failed if the player publishes a `.failed` state. Tests inject a stub
 /// that directly drives the gate.
 ///
-/// Why polling not KVO: `Player.isLoaded` is a plain `Bool` getter on the
-/// public Player protocol. Most conforming types (FindawayPlayer,
-/// LCPStreamingPlayer, UnifiedPositionSystem) update it from internal async
-/// callbacks — there's no published-property hook on the protocol surface.
-/// 25ms poll cadence × 2.0s budget = at most 80 reads — cheap relative to
-/// the toolkit's own internal work in the same window.
+/// Polling, not KVO: `Player.isLoaded` is a plain getter with no observable
+/// hook on the protocol.
 @MainActor
 internal protocol PlaybackReadinessProbing {
     /// Start observing readiness and drive the supplied gate. Returns
@@ -357,15 +306,9 @@ internal final class PlayerReadinessProbe: PlaybackReadinessProbing {
         }
 
         pollTimer?.invalidate()
-        // The `Timer.scheduledTimer` block fires on the main runloop, but its
-        // `Timer` argument is not `Sendable`, so it must NOT be captured into
-        // the nested `@MainActor` `Task`. Handle the two invalidation cases
-        // without crossing the non-Sendable `Timer` over the task boundary:
-        //   • dead-self: invalidate synchronously in the outer block (which
-        //     legitimately holds the `timer` argument on the main runloop),
-        //     matching the original leak-guard behavior.
-        //   • ready: invalidate via the stored `pollTimer` (the same timer)
-        //     from inside the `@MainActor` Task.
+        // The block's `Timer` argument is not `Sendable`, so it is never
+        // captured into the nested Task: a dead `self` invalidates it in the
+        // outer block, and the ready path invalidates via `pollTimer`.
         let timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] timer in
             guard self != nil else {
                 timer.invalidate()
@@ -399,10 +342,7 @@ internal final class PlayerReadinessProbe: PlaybackReadinessProbing {
 /// to the toolkit's `Player.play(at:)`. The session manager wires this in
 /// via `playbackCommandFactory`; tests inject a recording spy instead.
 ///
-/// Why `@MainActor`: the toolkit's `Player.play(at:)` is itself called
-/// from main in production (`AudiobookSessionManager.startPlayback-
-/// AndSyncPosition`). Matching the actor isolation keeps the boundary
-/// trivial — no cross-actor hop on what is a hot path.
+/// `@MainActor` because `Player.play(at:)` is called from main in production.
 @MainActor
 internal struct ToolkitPlayerCommand: PlaybackEngineCommanding {
     weak var player: Player?

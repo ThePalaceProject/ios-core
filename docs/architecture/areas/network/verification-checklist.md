@@ -222,7 +222,7 @@ that only asserts the document decoded. Keep `CodingKeys` raw values camelCase. 
 designed and written but deliberately split into its own PR (see the wall-failure entry's
 "Detector script — QUEUED" section for the matching rule and the false-positive trap). Until it
 lands, this is a review-time check. Full forensic:
-`.forgeos/wall-failures/2026-09-23-pr1462-snakecase-codingkeys.md`.
+wall-failure `2026-09-23-pr1462-snakecase-codingkeys`.
 
 **No custom `encode(to:)` — deliberately.** `init(from:)` keys on the POST-strategy camelCase
 name, so the synthesized encoder round-trips through a plain `JSONDecoder`. A hand-written
@@ -260,10 +260,9 @@ That was wrong — it described the code BEFORE the fix. Caught in qa review by 
    decoded model, the wrong-type row is not an edge case; it is the row that decides whether
    the member can cost you the whole document.**
 
-**Related wall, same end-user harm.** `scripts/check-nserror-problemdoc-preservation.py`
-(PP-3956 / PR #935) catches an `NSError` re-wrap that DROPS the document downstream. This
-section covers the document never being constructed. Both end with the patron told their
-password is wrong. Check both when triaging that report.
+**Related wall, same end-user harm.** PP-3956 / PR #935: an `NSError` re-wrap that DROPS
+the document downstream. This section covers the document never being constructed. Both end
+with the patron told their password is wrong. Check both when triaging that report.
 
 ---
 

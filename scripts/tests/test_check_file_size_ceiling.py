@@ -205,7 +205,7 @@ def test_package_sources_are_in_scope(tmp_path):
     1500 code lines and the gate returned 0 — the ceiling AND the recorded cap
     both evaporated with no signal. Phases B-F of this campaign are precisely
     the motion of app code into packages, so the exclusion switched the gate off
-    exactly where the work happens. The package-purity gates constrain
+    exactly where the work happens. Package boundaries constrain
     dependency DIRECTION, which is an orthogonal axis to file size.
     """
     root = _tree(tmp_path)

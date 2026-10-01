@@ -432,11 +432,9 @@ final class BorrowOperationTests: XCTestCase {
     /// `.unregistered` book must route to the browser re-auth flow: the
     /// sign-in modal is presented and NO borrow-error alert fires.
     ///
-    /// Kills :636 `isBrowserBased == true`→`!= true`: under the mutant SAML
-    /// evaluates `isBrowserBased != true` == false → `needsBrowserReauth`
-    /// false → with creds present the `else if !hasCredentials` arm is also
-    /// false → `.showGenericError` → an ALERT fires and the modal does NOT
-    /// — both assertions below flip.
+    /// Inverting the `isBrowserBased == true` check would make
+    /// `needsBrowserReauth` false; with credentials present that falls through
+    /// to `.showGenericError`, so an alert fires instead of the modal.
     func testBorrow_SAMLBrowserAuth_withCredentials_routesToReauthModalNotAlert() async {
         userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
         userAccount.setAuthState(.loggedIn)

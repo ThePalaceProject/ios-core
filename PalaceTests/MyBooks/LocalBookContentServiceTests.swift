@@ -321,16 +321,11 @@ final class LocalBookContentServiceTests: XCTestCase {
         )
     }
 
-    /// WIRING for the library-switch arm — the pure-rule tests above cannot
-    /// reach it, and a mutation survivor proved that gap: flipping
-    /// `(self != nil) && (accountNow == accountAtFetchStart)` to `||` makes
-    /// `accountUnchanged` always true, silently deleting the protection, and the
-    /// whole suite stayed green. The rule was covered; the code computing its
-    /// input was not.
-    ///
-    /// Drives the real completion path with the library moving mid-transfer and
-    /// the book absent from the (now other library's) registry — the exact shape
-    /// that would otherwise delete a held book's archive.
+    /// Wiring for the library-switch arm, which the pure-rule tests above cannot
+    /// reach: flipping `(self != nil) && (accountNow == accountAtFetchStart)` to
+    /// `||` would make `accountUnchanged` always true. Drives the real completion
+    /// path with the library moving mid-transfer and the book absent from the
+    /// other library's registry — the shape that would delete a held book's archive.
     func testFetchCompletingAfterALibrarySwitch_writesRatherThanDeleting() throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let fulfiller = SpyLCPContentFulfiller()
@@ -523,15 +518,10 @@ final class LocalBookContentServiceTests: XCTestCase {
     /// PP-5135 regression: the fetch is SWALLOWED while the download center still
     /// reports a transfer for this book.
     ///
-    /// This is the test that would have caught the first version of the fix. That
-    /// version fired the trigger from inside `LCPFulfillmentHandler`, which runs
-    /// while `bookIdentifierToDownloadInfo` still holds the fulfillment entry —
-    /// so `downloadCenterHasTransfer` was true and `redownloadLCPContentFile`
-    /// returned at "already transferring — skipping duplicate", fetching nothing
-    /// on every fresh borrow. The tests written alongside it injected a SPY
-    /// trigger, so they asserted the call and never the callee, and the guard
-    /// that defeated the fix lived past the seam. Two reviewers caught it by
-    /// reading; no test could.
+    /// A trigger fired while `bookIdentifierToDownloadInfo` still holds the
+    /// fulfillment entry returns at "already transferring — skipping duplicate"
+    /// and fetches nothing; spy-trigger tests cannot see this, so the callee is
+    /// driven directly.
     ///
     /// Asserting this from BOTH sides is the point: the guard must swallow the
     /// fetch when a transfer is live (or two producers duplicate a multi-hundred-
@@ -742,19 +732,11 @@ final class LocalBookContentServiceTests: XCTestCase {
     /// duplicate guard consults `downloadCenterHasTransfer` — `downloadInfo(for:)
     /// != nil`. That entry is live during fulfillment and cleared by
     /// `bookIdentifierToDownloadInfo.remove` in the download-completion cleanup.
-    /// A fetch triggered BEFORE that removal is swallowed, silently, on every
-    /// fresh borrow. That is exactly what the first revision of PP-5135 did; two
-    /// reviewers caught it by reading the guard, and no test could, because every
-    /// test injected a spy trigger and so asserted the call and never the callee.
+    /// A fetch triggered BEFORE that removal is swallowed on every fresh borrow.
     ///
-    /// Asserted against the source text rather than by driving the method:
-    /// The invariant is positional, not behavioural: the ordering is what makes
-    /// the fetch reach its work, and ordering is not something a running test can
-    /// observe. (`handleDownloadCompletion` itself IS drivable — see the PP-5148
-    /// test above — so the earlier version of this note, which said it was not,
-    /// was wrong about the reason even though a lint is still the right tool.) `PalaceTests/MetaTests/` pins
-    /// wiring facts the same way for the same reason. Move the call five lines up
-    /// and this fails while everything else stays green.
+    /// Asserted against the source text because the invariant is positional: the
+    /// ordering is what makes the fetch reach its work, and a running test cannot
+    /// observe ordering. `PalaceTests/MetaTests/` pins wiring facts the same way.
     func testContentFetchIsTriggeredAfterDownloadInfoIsCleared() throws {
         let source = try downloadCenterSource()
         let lines = source.components(separatedBy: .newlines)
@@ -834,9 +816,8 @@ final class LocalBookContentServiceTests: XCTestCase {
             (PP-5147). Actual call: \(call.trimmingCharacters(in: .whitespaces))
             """)
 
-        // PP-5148's argument is mutation-invisible for the same reason the account
-        // is, and worse: hardcoding it to `true` stops PP-5135 fetching for EVERY
-        // successful borrow while the whole suite stays green. The success arm
+        // PP-5148's argument has the same problem as the account: hardcoding it
+        // to `true` would stop PP-5135 fetching for every successful borrow. The success arm
         // cannot be driven here — a `fakeDownloadTask` reports no MIME type, so
         // the completion parser always takes the failure branch — so source is the
         // only place this can be pinned.

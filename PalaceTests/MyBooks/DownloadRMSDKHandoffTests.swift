@@ -2,23 +2,12 @@
 //  DownloadRMSDKHandoffTests.swift
 //  PalaceTests
 //
-//  Deep mutation-killing coverage for the RMSDK (Adobe DRM) handoff
-//  contract: when the URL session downloads an `.acsm` payload, control
-//  is handed to the Adobe RMSDK via NYPLADEPTDelegate callbacks. The
-//  AdobeDRMHandler then receives `didFinishDownload` with the fulfilled
-//  EPUB at a temp URL and is responsible for moving that into the
-//  Palace content directory, persisting `rights_xml`, optionally
-//  recording the fulfillment ID (when returnable), and marking the
-//  registry .downloadSuccessful. Failure modes from RMSDK
-//  (`didFinishDownload=false`, missing destination URL, missing source,
-//  no-authorization signal, cancellation) must propagate without
-//  silently claiming success.
-//
-//  These tests use a spy delegate (no real NYPLADEPT) and a per-test
-//  temp directory. They are guarded by `#if FEATURE_DRM_CONNECTOR`
-//  because the production AdobeDRMHandler lives behind that flag. The
-//  Palace target compiles with the flag, so `@testable import Palace`
-//  exposes the type without us re-defining the guard locally.
+//  Pins the Adobe RMSDK handoff: after an `.acsm` download, AdobeDRMHandler's
+//  `didFinishDownload` must move the fulfilled EPUB into the content directory,
+//  persist `rights_xml`, record the fulfillment ID when returnable, and mark the
+//  book .downloadSuccessful. RMSDK failure modes (unfinished download, missing
+//  source/destination, no authorization, cancellation) must not claim success.
+//  Uses a spy delegate and a per-test temp dir; guarded by FEATURE_DRM_CONNECTOR.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //

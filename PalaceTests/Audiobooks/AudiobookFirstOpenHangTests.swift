@@ -2,66 +2,13 @@
 //  AudiobookFirstOpenHangTests.swift
 //  PalaceTests
 //
-//  Module A — Audiobook First-Open Hang (PP-4436 / F-011)
-//  Swarm: swarm_c8fcab76
-//
-//  WHAT THE BUG IS:
-//  PR #990 bumped `ios-audiobooktoolkit` from `24e601d4` (3.1.0) to `d40b1ea6`
-//  (develop) and rewrote 3 Palace call sites. The symptom: opening a downloaded
-//  audiobook for the first time after launch sometimes leaves the NowPlaying UI
-//  mounted but playback engine uninitialized — tap Play is unresponsive, no
-//  audio. Workaround: nav back, re-open → engine has finished initializing
-//  during the nav-away interval, so the second open succeeds.
-//
-//  Root cause: Palace's first `play(at:)` issues BEFORE the toolkit's player
-//  coordinator has finished initializing. The toolkit exposes a readiness
-//  signal via `Player.isLoaded`, but Palace was not awaiting it before
-//  issuing the first play.
-//
-//  THE FIX:
-//  Palace-side readiness gate (`PlaybackReadinessGate` actor) +
-//  `PlaybackReadinessProbing` protocol that wraps `Player.isLoaded`. The
-//  session manager awaits readiness BEFORE issuing the first `play(at:)`.
-//  Submodule is OFF-LIMITS — fix lives entirely in Palace/Audiobooks/.
-//
-//  WHAT THIS FILE PINS:
-//  Three named cases that reproduce the hang scenario through the production
-//  seam (`AudiobookSessionManager.openAudiobook` and the new
-//  `awaitReadinessAndPlay` internal method):
-//
-//    1. testFirstOpen_engineNotReadyAtBindTime_awaitsReadiness_beforeIssuingPlay
-//       — Probe emits notReady, then ready 50ms later. Assert: play(at:)
-//       records exactly ONE invocation, AFTER the ready event.
-//
-//    2. testFirstOpen_engineNeverReady_within2s_emitsLoadError
-//       — Probe never emits ready. Assert: awaitReadinessAndPlay throws
-//       a typed timeout error and play(at:) is NEVER invoked.
-//
-//    3. testNavBackAndReopen_secondOpenSucceeds_withoutDoublePlay
-//       — Drive the round-trip cycle: openAudiobook → readiness-await fails
-//       → stopPlayback → openAudiobook second time with ready-immediate.
-//       Assert: total play(at:) invocations across both opens == 1, not 2.
-//       Pins the workaround so a "fix-by-double-play" regression fails.
-//
-//  WHY NOT FULL-INTEGRATION:
-//  The toolkit's `AudiobookManager` and `Audiobook` types are deep (open
-//  class with required init?(manifest:...) + 20+ method protocol). Mocking
-//  them in full would dwarf the fix. Instead we test the readiness-gating
-//  logic — the actual new behaviour — through TWO paths:
-//
-//    (a) `openAudiobook(book, startPlaying:)` — exercised in every test
-//        (satisfies the production-seam grep contract). The loader stub
-//        returns failure so we don't reach bind, but the call records that
-//        the seam was hit with the expected sequencing of state writes.
-//
-//    (b) `awaitReadinessAndPlay(at:, gate:, command:)` — the EXTRACTED
-//        readiness-gating method, called directly with a stub Player-
-//        commander. This is where the actual fix lives, and where the
-//        play-count assertions can be made deterministically.
-//
-//  Round-trip wiring per CLAUDE.md: test #3 drives the cycle via the
-//  production driver (`openAudiobook` + `stopPlayback`), NOT via
-//  private-setter shortcuts. See feedback_round_trip_wiring_tests.md.
+//  Audiobook first-open hang (PP-4436 / F-011). After the toolkit bump in
+//  PR #990, Palace's first `play(at:)` could issue before the toolkit's player
+//  had finished initializing, leaving NowPlaying mounted with no audio. The fix
+//  is a Palace-side `PlaybackReadinessGate` that awaits `Player.isLoaded` before
+//  the first play. These tests drive `openAudiobook` and the extracted
+//  `awaitReadinessAndPlay` seam: play only after readiness, a typed timeout when
+//  the engine never loads, and exactly one play across a nav-back-and-reopen.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -75,8 +22,7 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
 
     // MARK: - Test fixtures
 
-    /// Locally-constructed session manager — Module B replaced the singleton,
-    /// so each test gets a fresh instance.
+    /// Locally-constructed session manager, so each test gets a fresh instance.
     private var sessionManager: AudiobookSessionManager!
 
     /// Records calls to the playback engine. Test stubs in this file feed
@@ -289,13 +235,12 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
     /// (once blindly, once after ready) would fire twice and fail this
     /// assertion.
     ///
-    /// Round-trip wiring per CLAUDE.md: drive through the production
+    /// Round-trip wiring: drive through the production
     /// seams (`openAudiobook` + `stopPlayback` + `openAudiobook`), NOT
     /// via private-setter shortcuts.
     func testNavBackAndReopen_secondOpenSucceeds_withoutDoublePlay() async throws {
         // Drive the production-seam round-trip — first open, stopPlayback,
-        // second open. This satisfies the openAudiobook grep contract AND
-        // the round-trip wiring contract from CLAUDE.md.
+        // second open.
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
 
         // First open attempt — hits the production seam.
@@ -438,26 +383,23 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
     //
     // The first three tests above drive `PlaybackReadinessGate.awaitReadinessAndPlay`
     // in isolation, which proves the gate works but does NOT prove that the
-    // session manager actually CALLS it on the first-open path. The architect's
-    // block (rev_cf790900, finding 1) was that no test exercised the wiring at
-    // `AudiobookSessionManager.swift:684-710`.
+    // session manager actually CALLS it on the first-open path.
     //
-    // This test closes that gap by driving the extracted internal seam
+    // This test covers that wiring by driving the extracted internal seam
     // `awaitReadinessAndIssueFirstPlay(bookId:initialPosition:probe:command:budget:)`
     // — the SAME method that production calls from `startPlaybackAndSyncPosition`
     // after building probe + command via the injected factories. The body of
     // this internal method is the verbatim wiring previously inlined at
     // lines 684-710 (modulo the gate construction which it now owns directly).
     //
-    // MUTATION SURFACE THIS TEST KILLS:
+    // Regressions this test catches:
     //   1. Deleting the `try await PlaybackReadinessGate.awaitReadinessAndPlay(...)`
     //      call inside `awaitReadinessAndIssueFirstPlay` — the spy command
     //      would never see `play(at:)` and the assertion at the end fails.
     //   2. Swapping `probe` and `command` arguments at the call site in
     //      `startPlaybackAndSyncPosition` — would mean the test factories
     //      get crossed-wired and `probe.start()` would never be called on
-    //      the spy passed as the probe. (Verified by the swap-mutation
-    //      experiment recorded in the transcript.)
+    //      the spy passed as the probe.
     //   3. Removing `probe.start(driving: gate)` — the readiness gate
     //      would never resolve, `awaitReadinessAndPlay` would time out,
     //      and the spy command would never be called.
@@ -555,7 +497,7 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
     }
 
     /// Engine stays un-loaded until the 3rd play → the loop re-issues until the
-    /// engine confirms playing. Kills the "delete the retry loop" mutant
+    /// engine confirms playing. Catches a deleted retry loop
     /// (single-play behaviour would record 1, not 3).
     func testConfirmLCPFirstPlay_engineNotReadyInitially_reissuesPlayUntilLoaded() async throws {
         let spy = LCPFirstOpenSpy(becomesReadyAfterPlays: 3, marksGateWhenReady: true)
@@ -571,9 +513,9 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
 
     /// CAVEAT 2: the engine became playing between the gate wait and the
     /// re-issue decision (gate not latched, but isCurrentlyReady() true). The
-    /// re-issue MUST be suppressed — never double-start a playing engine. Kills
-    /// the "drop the isCurrentlyReady() suppression check" mutant (without it,
-    /// the loop would re-issue → 2 plays).
+    /// re-issue MUST be suppressed — never double-start a playing engine.
+    /// Without the isCurrentlyReady() suppression check the loop would
+    /// re-issue → 2 plays.
     func testConfirmLCPFirstPlay_engineBecameReadyDuringGateWait_suppressesReissue() async throws {
         let spy = LCPFirstOpenSpy(becomesReadyAfterPlays: 1, marksGateWhenReady: false)
         await sessionManager.confirmLCPFirstPlay(
@@ -588,7 +530,7 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
 
     /// Engine never loads → the loop re-issues for the whole budget, then stays
     /// SILENT (no Palace .error / no errorPublisher emit) and defers to the
-    /// toolkit's own 30s .failed. Kills a "surface .error on exhaustion" mutant.
+    /// toolkit's own 30s .failed, rather than surfacing .error on exhaustion.
     func testConfirmLCPFirstPlay_engineNeverLoaded_exhaustsBudgetSilently_noError() async throws {
         let spy = LCPFirstOpenSpy(becomesReadyAfterPlays: .max, marksGateWhenReady: true)
         var receivedErrors: [AudiobookSessionError] = []
@@ -670,8 +612,8 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
     /// PRE: in-app nav OFF → not eligible (legacy pushed route, no shell).
     /// EXPECTED: returns false, does NOT fire the hook, does NOT present a shell.
     /// The caller relies on its always-fired final `onFinish` backstop to dismiss
-    /// its transient UI on this path — the architect-F1 stuck-sheet guard. A
-    /// mutant that drops the `inAppPlaybackNavEnabledProvider()` gate fails this.
+    /// its transient UI on this path — the stuck-sheet guard. Dropping the
+    /// `inAppPlaybackNavEnabledProvider()` gate fails this.
     func testPresentLoadingShellIfEligible_doesNotFireOrPresent_whenInAppNavOff() {
         let (manager, presenter) = makeManagerForShellTests(inAppNavEnabled: false)
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -689,7 +631,7 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
 
     /// PRE: `startPlaying: false` (background/resume open) → not eligible.
     /// EXPECTED: returns false, hook does not fire. Pins the `startPlaying` half
-    /// of the eligibility gate (a mutant dropping the `startPlaying` guard fails).
+    /// of the eligibility gate (dropping the `startPlaying` guard fails).
     func testPresentLoadingShellIfEligible_doesNotFire_whenNotStartPlaying() {
         let (manager, presenter) = makeManagerForShellTests(inAppNavEnabled: true)
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)

@@ -1,20 +1,10 @@
-//
 //  BookOpenRouterTests.swift
-//  PalaceTests
 //
-//  The pure half of `BookOpenRouter`: the format -> destination table, asserted
-//  cell by cell. `TPPBookContentType` has exactly five cases, so the table is
-//  total and enumerable — this file asserts all five from the enum, and then
-//  again from a real book's `defaultBookContentType`, which is the form both
-//  call sites use.
-//
-//  This is the file `BookDetailOpenRoutingDecisionTableTests` defers the EPUB
-//  and PDF cells to. Those two cannot be driven through the view model without
-//  executing the reader stack against the production container; here they are
-//  ordinary values with no side effect at all.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  The pure format -> destination table of `BookOpenRouter`. `TPPBookContentType`
+//  has five cases, so every cell is asserted, from the enum and from a real book's
+//  `defaultBookContentType` as call sites use it. Covers the EPUB and PDF cells
+//  that `BookDetailOpenRoutingDecisionTableTests` cannot drive without the reader
+//  stack.
 
 import XCTest
 import PalaceCatalog
@@ -40,7 +30,7 @@ final class BookOpenRouterTests: XCTestCase {
     }
 
     /// The table is a bijection: five content types, five distinct
-    /// destinations. A mutant that routes two formats to the same reader — the
+    /// destinations. A change that routes two formats to the same reader — the
     /// shape a "simplifying" refactor produces — collapses the set and fails
     /// here even if the individual assertion it broke was also edited.
     func testDestination_mapsTheFiveContentTypesToFiveDistinctDestinations() {

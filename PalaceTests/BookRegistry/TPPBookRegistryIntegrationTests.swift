@@ -1,33 +1,10 @@
-//
 //  TPPBookRegistryIntegrationTests.swift
-//  PalaceTests
 //
-//  Integration tests for the REAL TPPBookRegistry production class.
-//  These tests verify:
-//  - Book state management (addBook, setState, state, removeBook)
-//  - Combine publisher emissions (registryPublisher, bookStatePublisher)
-//  - Persistence (save/load round-trips)
-//  - Location and bookmark management
-//
-//  Synchronization strategy
-//  ========================
-//  All write methods (addBook, setState, removeBook, …) dispatch onto
-//  `syncQueue` with `async(flags: .barrier)`.
-//  All read methods (state(for:), book(forIdentifier:), …) use
-//  `syncQueue.sync` internally (via `performSync`).
-//
-//  Because GCD guarantees that a `.sync` call will drain all previously
-//  enqueued `.async` blocks before executing, a read issued immediately
-//  after a write is deterministic — no `asyncAfter` or `Task.sleep`
-//  synchronization is needed.
-//
-//  Combine publisher tests are an exception: the registry dispatches
-//  publisher emissions to the **main thread** asynchronously.  Those tests
-//  use XCTestExpectation with `.filter{}.first()` subscriptions so they
-//  are fulfilled by the actual event, not by a timer.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Integration tests for TPPBookRegistry: state management, Combine publishers,
+//  save/load round trips, locations and bookmarks. Writes are barrier-async on
+//  `syncQueue` and reads are `syncQueue.sync`, so a read right after a write is
+//  deterministic with no sleeps. Publisher emissions are async on main, so those
+//  tests wait on expectations fulfilled by the event itself.
 
 import XCTest
 import Combine
@@ -216,7 +193,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
                                           title: "Publisher Add Test",
                                           distributorType: .EpubZip)
 
-        // Wave-2 (swarm_ad0b4c65): `addBook` funnels `registrySubject.send(...)`
+        // `addBook` funnels `registrySubject.send(...)`
         // through `store`'s barrier `didSet` (`DispatchQueue.main.async` from
         // inside the barrier). Capture instead of `expectation.fulfill()`,
         // join via the S2 seam, then assert synchronously.
@@ -844,7 +821,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             }
             .store(in: &cancellables)
 
-        // Wave-2 (swarm_ad0b4c65): burst of adds — each `addBook` enqueues a
+        // Burst of adds — each `addBook` enqueues a
         // barrier on the SAME store syncQueue (FIFO), so a single S2 seam
         // join after the whole burst drains every one of them; the
         // subsequent main-queue drain flushes all the resulting
@@ -894,7 +871,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
         registry.removeBook(forIdentifier: book.identifier)
         registry.addBook(book, state: .holding)
 
-        // Wave-2 (swarm_ad0b4c65): all seven writes above are enqueued FIFO
+        // All seven writes above are enqueued FIFO
         // on the same store syncQueue; one S2 seam join + main drain waits
         // for every one of their publisher emissions to land.
         await registry._awaitPendingWritesForTesting()
@@ -939,7 +916,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             }
         }
 
-        // Wave-2 (swarm_ad0b4c65): all mutations above are enqueued FIFO on
+        // All mutations above are enqueued FIFO on
         // the same store syncQueue; the S2 seam join + main drain waits for
         // every one of them (including the last book's) to have emitted.
         await registry._awaitPendingWritesForTesting()

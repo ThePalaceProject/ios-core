@@ -2,17 +2,8 @@
 //  BearerTokenAdapter.swift
 //  Palace
 //
-//  Vendor adapter for the "open-access fulfill URL returns a bearer-token
-//  wrapper, then we fetch the real manifest from the wrapper's location"
-//  two-step audiobook source shape (CM fulfill flow).
-//
-//  Module B of swarm_5c8ddbd5 (Audiobook Vendor Adapter Extraction). Wraps
-//  the bearer-token-detection branch and the recursive
-//  `BookService.fetchManifestWithBearerToken` call from pre-swarm
-//  `AudiobookLoader.swift` lines 346-396 (specifically lines 384-391 are
-//  the recursion the adapter codifies; the surrounding fetch+parse mirrors
-//  `OpenAccessAdapter` so the adapter is a standalone shape, not a
-//  middleware over `OpenAccessAdapter`).
+//  Vendor adapter for the two-step CM fulfill flow: the fulfill URL returns a
+//  bearer-token wrapper, and the real manifest is fetched from its location.
 //
 //  Failure mapping:
 //    - network error / empty data / HTML response → .manifestFetchFailed
@@ -45,13 +36,8 @@ protocol BearerTokenManifestFetching {
 /// `TPPBook` to record the bearer token + fulfill URL (so the playback
 /// pipeline can re-auth on expiration), then fetches the real manifest.
 ///
-/// Constructor-style DI per CLAUDE.md — both the first-leg network and
-/// the second-leg manifest fetch are injected so tests cover all paths
-/// without hitting URLSession.
-///
-/// Not `@MainActor`-isolated at the class level — the protocol is not
-/// MainActor (see contract notes in `AudiobookVendorAdapter.swift`).
-/// Main-thread hops are performed inside callbacks via `Task { @MainActor in }`.
+/// Not `@MainActor` at the class level because the protocol is not; main-thread
+/// hops happen inside callbacks.
 final class BearerTokenAdapter: AudiobookVendorAdapter {
 
     private let network: AudiobookManifestNetworkFetching
@@ -65,11 +51,9 @@ final class BearerTokenAdapter: AudiobookVendorAdapter {
         self.manifestFetcher = manifestFetcher
     }
 
-    /// Bearer-token shape is detected at runtime from the fulfill response;
-    /// the property check alone can't distinguish it from open-access on
-    /// the way in. Module D's dispatch decides whether to invoke this
-    /// adapter or `OpenAccessAdapter`. Returning `true` here lets the
-    /// loader call this adapter directly when it has bearer-token context.
+    /// The bearer-token shape is only detectable from the fulfill response, so
+    /// the loader's dispatch decides whether to use this adapter or
+    /// `OpenAccessAdapter`; this adapter accepts any book it is handed.
     func canHandle(_ book: TPPBook) -> Bool {
         return true
     }
@@ -86,17 +70,9 @@ final class BearerTokenAdapter: AudiobookVendorAdapter {
 
         Log.debug(#file, "  📡 Fetching bearer-token wrapper from URL: \(url.absoluteString)")
 
-        // Box the non-`@Sendable` completion so it can cross the network
-        // callback → `Task { @MainActor in }` hops without forcing `@Sendable`
-        // onto the `AudiobookVendorAdapter` protocol. See
-        // `AudiobookAdapterCompletionBox`.
         let completionBox = AudiobookAdapterCompletionBox(completion)
-        // `BearerTokenManifestFetching` is a Palace-local protocol that does NOT
-        // refine `Sendable` (refining it would ripple to `BookService` and every
-        // adapter test stub). Capturing the bare existential into the
-        // `Task { @MainActor in }` hop below trips `sending … risks data races`.
-        // Carry it in an `@unchecked Sendable` box whose invariant is that the
-        // fetcher is only invoked from the main-actor hop.
+        // The fetcher existential is not `Sendable`; it is only invoked from
+        // the main-actor hop below.
         let fetcherBox = BearerManifestFetcherBox(manifestFetcher)
         network.fetchData(from: url) { [fetcherBox] data, response, error in
             Task { @MainActor in
@@ -135,12 +111,7 @@ final class BearerTokenAdapter: AudiobookVendorAdapter {
                 book.bearerTokenFulfillURL = url
 
                 fetcherBox.fetcher.fetchManifest(with: bearerToken, for: book) { manifestJSON in
-                    // `[String: Any]?` is not Sendable (it holds `Any`
-                    // existentials), so capturing `manifestJSON` into the
-                    // `Task { @MainActor in }` hop trips `sending … risks data
-                    // races`. Unwrap on the callback's thread and box the
-                    // dictionary before the hop; the manifest is produced once
-                    // and only read on the main actor thereafter.
+                    // `[String: Any]` is not Sendable; box it before the hop.
                     guard let manifestJSON = manifestJSON else {
                         Log.error(#file, "  ❌ Bearer-token second-leg manifest fetch returned nil")
                         Task { @MainActor in completionBox.fire(.failure(.manifestFetchFailed)) }

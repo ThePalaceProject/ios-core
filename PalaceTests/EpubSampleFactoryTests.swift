@@ -20,8 +20,8 @@ final class EpubSampleFactoryTests: XCTestCase {
     ///   - A `EpubSampleWebURL` instance dispatches as a web URL when
     ///     pattern-matched, NOT as the parent type
     ///   - A bare `EpubLocationSampleURL` does NOT match the web subclass
-    /// A mutant that collapsed the subclass into the parent (or vice versa)
-    /// would fail one of the `is` checks.
+    /// Collapsing the subclass into the parent (or vice versa) fails one of
+    /// the `is` checks.
     func testSampleURLWrappers_polymorphismAllowsCallSiteRouting() {
         let local = EpubLocationSampleURL(url: URL(string: "file:///path/sample.epub")!)
         let web = EpubSampleWebURL(url: URL(string: "https://example.com/sample.epub")!)
@@ -72,7 +72,7 @@ final class EpubSampleFactoryTests: XCTestCase {
         else { XCTFail("Expected .fileSaveFailed(error)") }
 
         // Cross-case distinctness: download with an error must NOT match
-        // the save case (guards against a copy-paste mutant in the enum).
+        // the save case (guards against a copy-paste error in the enum).
         if case .fileSaveFailed = downloadWith {
             XCTFail("sampleDownloadFailed must not pattern-match as fileSaveFailed")
         }

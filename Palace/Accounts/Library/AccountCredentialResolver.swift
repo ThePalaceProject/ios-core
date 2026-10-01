@@ -2,42 +2,11 @@
 //  AccountCredentialResolver.swift
 //  Palace
 //
-//  god-class decomposition — Wave 3 / 3a-5 (the fifth in-target collaborator split
-//  out of `AccountsManager`).
-//
-//  Per-account credential resolution: the cache of library-scoped `TPPUserAccount`
-//  instances (each with immutable keychain keys), the `currentUserAccount` resolution
-//  with its "ride-out" over the transient `currentAccountId == nil` account-switch
-//  window, and the fresh-install placeholder. This is the credential-isolation
-//  boundary — a defect here is a silent cross-account credential leak (F-034) or a
-//  spurious sign-in modal (F-016) — so the bodies below are relocated VERBATIM from
-//  the hub and the two invariants are preserved exactly:
-//
-//    * F-034 (TOCTOU): `userAccount(for:)` does check-build-insert in ONE
-//      `userAccountsLock` span, returning the same cached instance per UUID whose
-//      keychain keys are immutable for its lifetime. Splitting the read/insert would
-//      let two instances exist for one UUID and reopen the 6-year race (PP-4020).
-//    * F-016 (ride-out): `currentUserAccount` writes `lastKnownCurrentUserAccount`
-//      under the lock on EVERY id-present resolution, and during the nil window
-//      returns that last-resolved instance (placeholder only on true fresh install)
-//      so consumers never observe `hasCredentials == false` on a signed-in account.
-//
-//  A `final class` (not an actor): `currentUserAccount` is reached synchronously from
-//  the `@objc TPPUserAccountResolving` facade on `AccountsManager` (which stays the
-//  protocol witness) and from the non-async `currentAccount` setter — an actor would
-//  force `await` through the `@objc` conformance. The resolver is a plain internal
-//  collaborator; it is NOT `@objc` and does NOT conform to the protocol.
-//
-//  `@unchecked Sendable` invariant: the only mutable state is `userAccounts` and
-//  `lastKnownCurrentUserAccount`, read/written exclusively under `userAccountsLock`
-//  (an immutable `NSLock`); `noAccountPlaceholder` is a `lazy var` read only under
-//  that same lock, so it is built at most once and immutable thereafter;
-//  `currentAccountIdProvider` is an immutable `let` reading the internally
-//  thread-safe `UserDefaults` live on every call.
-//
-//  There is NO shared-singleton credential fallback anywhere here — the only fallbacks
-//  are `lastKnownCurrentUserAccount` then `noAccountPlaceholder`. A shared-singleton
-//  safety-net is the PR #822 defect that caused spurious sign-in modals.
+//  Per-account credential resolution. `userAccount(for:)` checks, builds and
+//  inserts under one lock: one instance per UUID with immutable keychain keys
+//  (PP-4020). No shared-singleton fallback (PR #822 caused spurious sign-in
+//  modals). A class, not an actor: reached synchronously from `@objc` code.
+//  `@unchecked Sendable`: all mutable state is guarded by `userAccountsLock`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -96,15 +65,9 @@ final class AccountCredentialResolver: @unchecked Sendable {
         return account
     }
 
-    /// Convenience for the current library's user account.
-    ///
-    /// Thread-safety note: `currentAccountId` can transiently be nil during an account
-    /// switch (the old id is cleared before the new id is assigned). If we blindly fell
-    /// back to a fresh/empty instance in that window, consumers like
-    /// MyBooksDownloadCenter would observe `hasCredentials == false` on an account that
-    /// IS signed in and fire a spurious login modal. We cache the last-resolved account
-    /// and return it during the nil window instead. The placeholder path only fires on a
-    /// true fresh-install state where no account has ever been selected.
+    /// The current library's user account. During the transient nil
+    /// `currentAccountId` window of a switch this returns the last-resolved account;
+    /// the placeholder is only returned on a fresh install.
     var currentUserAccount: TPPUserAccount {
         if let id = currentAccountIdProvider() {
             let account = userAccount(for: id)

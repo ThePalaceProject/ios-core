@@ -1,21 +1,10 @@
-//
 //  CrossDeviceSyncE2ETests.swift
-//  PalaceTests
 //
-//  In-process round-trip tests simulating two devices on the same patron
-//  account. Writes from "device A" go through a real TPPNetworkExecutor and
-//  the real TPPAnnotations code path, land in a shared MockSyncBackend, and
-//  are read back via a second TPPNetworkExecutor representing "device B".
-//
-//  The five scenarios:
-//   1. EPUB locator round-trip (reading-progress motivation)
-//   2. LocatorAudioBookTime round-trip (reading-progress motivation)
-//   3. Bookmark added on A, visible on B
-//   4. Bookmark deleted on A, gone on B
-//   5. Server-wins conflict resolution
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  In-process round trips between two simulated devices on one patron account:
+//  device A writes through a real TPPNetworkExecutor and TPPAnnotations into a
+//  shared MockSyncBackend, and device B reads back through a second executor.
+//  Scenarios: EPUB locator, LocatorAudioBookTime, bookmark added on A visible on
+//  B, bookmark deleted on A gone on B, and server-wins conflict resolution.
 
 import XCTest
 import ReadiumShared

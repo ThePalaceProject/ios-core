@@ -1,23 +1,9 @@
 //
-//  BorrowErrorMessageTests.swift
-//  PalaceTests
-//
-//  Regression tests for borrow error message presentation.
-//
-//  These tests guard against a regression where our OPDS refactoring caused
-//  technical error strings (e.g. "Invalid OPDS feed") to be shown to users
-//  instead of the user-friendly "Borrowing [title] could not be completed."
-//  message. The underlying transient failures from Demarques/Marketplace
-//  servers are unchanged, but the alarming technical wording drove extra
-//  support tickets.
-//
-//  The fix (and these tests) ensure that:
-//  1. Users always see the friendly base message ("Borrowing X could not be completed.")
-//  2. Problem document details from the server are appended when available
-//  3. Recovery suggestions are appended when no problem document exists
-//  4. Technical PalaceError descriptions never appear as the primary message
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Borrow failures must show "Borrowing [title] could not be completed.", with the
+//  server's problem-document detail or a recovery suggestion appended, and never a
+//  technical PalaceError description such as "Invalid OPDS feed" as the primary
+//  message. Transient Marketplace failures surfaced that wording after an OPDS
+//  refactor and drove support tickets.
 //
 
 import XCTest
