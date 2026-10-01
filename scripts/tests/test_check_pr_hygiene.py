@@ -125,6 +125,54 @@ def test_images_and_comments_do_not_count_toward_length(tmp_path):
     assert r.returncode == 0, r.stdout
 
 
+JIRA_REF = (
+    "[PP-1234]: https://ebce-lyrasis.atlassian.net/browse/PP-1234"
+    "?atlOrigin=eyJpIjoiNWRkNTljNzYxNjVmNDY3MDlhMDU5Y2ZhYzA5YTRkZjUiLCJwIjoiZ2l0aHViLWNvbS1KU1cifQ"
+)
+
+
+def _near_limit_body() -> str:
+    # CLEAN_BODY padded to within 100 characters of the 1,500 limit, so any
+    # appended reference line pushes it over if it is counted.
+    filler = "word " * ((1400 - len(CLEAN_BODY.strip())) // 5)
+    return CLEAN_BODY + "\n" + filler.rstrip() + "\n"
+
+
+def test_jira_bot_link_reference_does_not_count_toward_length(tmp_path):
+    body = _near_limit_body()
+    assert len(body.strip()) + len(JIRA_REF) > 1500
+    r = run(tmp_path, CLEAN_TITLE, body + "\n" + JIRA_REF + "\n")
+    assert r.returncode == 0, r.stdout
+
+
+def test_body_over_limit_with_jira_bot_reference_still_fails(tmp_path):
+    body = CLEAN_BODY + "\n" + ("word " * 320) + "\n\n" + JIRA_REF + "\n"
+    r = run(tmp_path, CLEAN_TITLE, body)
+    assert r.returncode == 1
+    assert "characters excluding images and comments" in r.stdout
+
+
+def test_author_link_reference_without_atlorigin_still_counts(tmp_path):
+    own_ref = "[notes]: https://example.com/" + "n" * 140
+    r = run(tmp_path, CLEAN_TITLE, _near_limit_body() + "\n" + own_ref + "\n")
+    assert r.returncode == 1
+    assert "characters excluding images and comments" in r.stdout
+
+
+def test_inline_jira_link_with_atlorigin_still_counts(tmp_path):
+    # Only whole reference-definition lines are dropped; an inline link is
+    # visible text and keeps counting.
+    inline = "See [PP-1234](" + JIRA_REF.split(": ", 1)[1] + ") for details."
+    r = run(tmp_path, CLEAN_TITLE, _near_limit_body() + "\n" + inline + "\n")
+    assert r.returncode == 1
+
+
+def test_inline_jira_link_in_short_body_passes(tmp_path):
+    inline = "Tracked in [PP-1234](https://ebce-lyrasis.atlassian.net/browse/PP-1234)."
+    r = run(tmp_path, CLEAN_TITLE, CLEAN_BODY + "\n" + inline + "\n")
+    assert r.returncode == 0, r.stdout
+
+
 def test_dependabot_is_exempt(tmp_path):
     r = run(tmp_path, "chore(deps): bump fastlane from 2.239.0 to 2.240.1 in /some/long/path",
             "x" * 5000, author="dependabot[bot]")

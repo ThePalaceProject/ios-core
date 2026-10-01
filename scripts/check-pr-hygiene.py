@@ -52,11 +52,18 @@ BANNED = [
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 _MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _HTML_IMG = re.compile(r"<img\b[^>]*>", re.I)
+# The Jira GitHub integration edits the body after creation and appends a
+# link reference definition per linked key, tagged with atlOrigin=. Those lines
+# render as nothing and are not the author's text. Author-written definitions
+# (no atlOrigin=) still count.
+_JIRA_BOT_LINK_REF = re.compile(r"^[ \t]*\[[^\]]+\]:[ \t]*\S*atlOrigin=\S*[ \t]*$", re.M)
 
 
 def countable_body(body: str) -> str:
-    """The body as a reader sees it: no HTML comments, no images."""
+    """The body as a reader sees it: no HTML comments, no images, no
+    reference definitions appended by the Jira integration."""
     text = _HTML_COMMENT.sub("", body)
+    text = _JIRA_BOT_LINK_REF.sub("", text)
     text = _MD_IMAGE.sub("", text)
     text = _HTML_IMG.sub("", text)
     return "\n".join(line.rstrip() for line in text.strip().splitlines())
