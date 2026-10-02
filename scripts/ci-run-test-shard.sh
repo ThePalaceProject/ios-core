@@ -141,7 +141,11 @@ fi
 # can read. When the log has that marker or exit 134 and no test-failure line,
 # the same pass (same classes, same flags) runs once more into a fresh bundle.
 # A crash after a test failed is not retried, because a retry could turn that
-# failure green; a second crash fails the shard.
+# failure green; a second crash fails the shard. Only failures logged before the
+# first marker count: Xcode 26.6 logs the test in flight as failed after the
+# marker when it gives up on it (run 36952741418), and that test must pass on the
+# retry anyway. Exit 134 with no marker counts every failure in the log.
+XCB_INTERNAL_ERROR_TEXT='** INTERNAL ERROR: Uncaught exception **'
 XCB_INTERNAL_ERROR='\*\* INTERNAL ERROR: Uncaught exception \*\*'
 XCB_TEST_FAILED="Test [Cc]ase '[^']+' failed"
 PASS_EXIT=0
@@ -162,6 +166,15 @@ xcodebuild_crashed() {  # $1 = log; exit status of the pass in PASS_EXIT
     [ "$PASS_EXIT" -ne 0 ] || return 1
     [ "$PASS_EXIT" -eq 134 ] || grep -qE "$XCB_INTERNAL_ERROR" "$1"
 }
+failures_before_crash() {  # $1 = log; failed-test lines before the first marker
+    awk -v m="$XCB_INTERNAL_ERROR_TEXT" 'index($0, m) { exit } { print }' "$1" \
+        | grep -E "$XCB_TEST_FAILED" || true
+}
+tests_in_flight_at_crash() {  # $1 = log; names of tests failed after the first marker
+    awk -v m="$XCB_INTERNAL_ERROR_TEXT" 'seen { print } index($0, m) { seen = 1 }' "$1" \
+        | grep -oE "$XCB_TEST_FAILED" | sed -E "s/^Test [Cc]ase '([^']+)' failed$/\1/" \
+        | sort -u | paste -sd, - || true
+}
 run_pass() {
     local bundle="$1" mode="$2"; shift 2
     local retry=()
@@ -171,11 +184,16 @@ run_pass() {
     local log="$OUT/$name.log"
     run_xcodebuild "$bundle" "$log" "${args[@]}"
     xcodebuild_crashed "$log" || return 0
-    if grep -qE "$XCB_TEST_FAILED" "$log"; then
+    if [ -n "$(failures_before_crash "$log")" ]; then
         echo "::error title=xcodebuild crashed after a test failed::shard $SHARD, $name pass: xcodebuild exited $PASS_EXIT after recording a test failure. Not retrying, because a retry could hide that failure."
         exit 1
     fi
-    echo "::warning title=xcodebuild crashed; retrying the pass once::shard $SHARD, $name pass: xcodebuild exited $PASS_EXIT with no test failure recorded (exit 134 or '** INTERNAL ERROR: Uncaught exception **', an XCTHarness crash). Its result bundle is unreadable, so the same classes run once more into a fresh bundle."
+    local in_flight; in_flight="$(tests_in_flight_at_crash "$log")"
+    local discounted=""
+    if [ -n "$in_flight" ]; then
+        discounted=" Discounted the failure of $in_flight, logged after the crash marker: it was the test in flight when xcodebuild crashed, and it must pass on the retry."
+    fi
+    echo "::warning title=xcodebuild crashed; retrying the pass once::shard $SHARD, $name pass: xcodebuild exited $PASS_EXIT with no test failure recorded before the crash (exit 134 or '** INTERNAL ERROR: Uncaught exception **', an XCTHarness crash). Its result bundle is unreadable, so the same classes run once more into a fresh bundle.$discounted"
     local fresh="$OUT/$name-crash-retry.xcresult"
     rm -rf "$bundle"
     run_xcodebuild "$fresh" "$OUT/$name-crash-retry.log" "${args[@]}"
