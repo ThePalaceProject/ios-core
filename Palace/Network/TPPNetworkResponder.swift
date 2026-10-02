@@ -592,84 +592,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
         info.completion(result)
     }
-
-    private func logTaskCompletion(taskID: Int, startDate: Date, metadata: inout [String: Any]) {
-        let elapsed = Date().timeIntervalSince(startDate)
-        metadata["elapsedTime"] = elapsed
-        Log.info(#file, "Task \(taskID) completed (\(metadata["currentRequest"] ?? "nil")), elapsed time: \(elapsed) sec")
-    }
-
-    private func handleNoTaskInfo(for task: URLSessionTask, with networkError: Error?, logMetadata: inout [String: Any]) {
-        logMetadata["NYPLNetworkResponder context"] = "No task info available for task \(task.taskIdentifier). Completion closure could not be called."
-        TPPErrorLogger.logNetworkError(
-            networkError,
-            code: .noTaskInfoAvailable,
-            summary: "Network layer error: task info unavailable",
-            request: task.originalRequest,
-            response: task.response,
-            metadata: logMetadata)
-    }
-
-    private func handleHTTPResponse(_ httpResponse: HTTPURLResponse, for task: URLSessionTask, currentTaskInfo: TPPNetworkTaskInfo, logMetadata: inout [String: Any]) -> Bool {
-        guard httpResponse.isSuccess() else {
-            logMetadata["response"] = httpResponse
-            var err: NSError = NSError()
-            var code: TPPErrorCode = .responseFail
-            var summary: String = Strings.Error.connectionFailed
-            logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
-
-            if httpResponse.statusCode == 401 {
-                let snap = AppContainer.production().accountsManager.currentUserAccount.credentialSnapshot()
-                // Atomic check-and-increment under `retriedURLsLock` (matches the
-                // reset in `clearAllRetries`) so the token-refresh budget can't race
-                // across concurrent 401 delegate callbacks.
-                let shouldRefreshToken: Bool = retriedURLsLock.withLock {
-                    if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
-                        tokenRefreshAttempts += 1
-                        return true
-                    }
-                    return false
-                }
-                if shouldRefreshToken {
-                    return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
-                }
-
-                logMetadata[NSLocalizedDescriptionKey] = Strings.Error.invalidCredentialsErrorMessage
-                code = TPPErrorCode.invalidCredentials
-                summary = Strings.Error.invalidCredentialsErrorMessage
-            }
-
-            err = NSError(domain: "Api call with failure HTTP status",
-                          code: code.rawValue,
-                          userInfo: logMetadata)
-
-            currentTaskInfo.completion(.failure(err, task.response))
-            TPPErrorLogger.logNetworkError(code: code,
-                                           summary: summary,
-                                           request: task.originalRequest,
-                                           metadata: logMetadata)
-            return false
-        }
-
-        return true
-    }
-
-    private func handleProblemDocument(for task: URLSessionTask, with responseData: Data, currentTaskInfo: TPPNetworkTaskInfo, networkError: Error?, logMetadata: [String: Any]) {
-        let errorWithProblemDoc = task.parseAndLogError(fromProblemDocumentData: responseData,
-                                                        networkError: networkError,
-                                                        logMetadata: logMetadata)
-        currentTaskInfo.completion(.failure(errorWithProblemDoc, task.response))
-    }
-
-    private func handleNetworkError(_ networkError: Error, for task: URLSessionTask, currentTaskInfo: TPPNetworkTaskInfo, logMetadata: [String: Any]) {
-        currentTaskInfo.completion(.failure(networkError as TPPUserFriendlyError, task.response))
-        TPPErrorLogger.logNetworkError(
-            networkError,
-            summary: "Network task completed with error",
-            request: task.originalRequest,
-            response: task.response,
-            metadata: logMetadata)
-    }
 }
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
@@ -931,23 +853,6 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
             return injected()
         }
         return AppContainer.production().accountsManager.currentUserAccount
-    }
-
-    func refreshToken(userAccount: TPPUserAccount = AppContainer.production().accountsManager.currentUserAccount) async throws {
-        guard let tokenURL = userAccount.authDefinition?.tokenURL,
-              let username = userAccount.username,
-              let password = userAccount.pin
-        else { return }
-
-        let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
-        let result = await tokenRequest.execute()
-
-        switch result {
-        case .success(let tokenResponse):
-            userAccount.setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
-        case .failure(let error):
-            throw error
-        }
     }
 }
 
