@@ -1146,10 +1146,26 @@ elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.j
       # whole point of the leg.
       COV_OUTPUT=$(python3 scripts/enforce_coverage_floors.py "$COV_JSON" 2>&1)
       COV_RC=$?
+      # Which modules, not just "some module". The detail used to be the bare
+      # string "Coverage below module thresholds" while $COV_OUTPUT held the
+      # table, so reading the failure meant re-deriving it: find this run's
+      # coverage JSON under $TMPDIR and re-run the enforcer by hand.
+      # NF == 4 and a percent in the floor column: the enforcer's trailing
+      # "Coverage gate: FAIL" line also ends in FAIL and is not a module.
+      COV_FAILED_MODULES=$(echo "$COV_OUTPUT" | awk 'NF == 4 && $4 == "FAIL" && $2 ~ /%$/ { printf "%s %s<%s ", $1, $3, $2 }')
       if [ "$COV_RC" -eq 0 ]; then
         record "coverage_floors" "pass" "All module floors met"
+      elif [ "$COV_RC" -eq 1 ] && [ "${TEST_FAIL:-0}" -gt 0 ] 2>/dev/null; then
+        # Coverage from a run that lost tests is lower for that reason alone, so
+        # the number is not evidence about the diff. unit-testing.yml refuses the
+        # comparison in that case and reports the reason in its place; it can
+        # detect it from the shard plan, and this single-pass run cannot, so the
+        # failing-test count stands in. Still a failure — the floors were simply
+        # not the thing that failed.
+        record "coverage_floors" "fail" \
+          "floors NOT evaluated: $TEST_FAIL failing test(s) in the run that produced this coverage. Fix those first; below-floor modules here may be an artifact. Observed: ${COV_FAILED_MODULES:-none}"
       elif [ "$COV_RC" -eq 1 ]; then
-        record "coverage_floors" "fail" "Coverage below module thresholds"
+        record "coverage_floors" "fail" "Coverage below module thresholds: ${COV_FAILED_MODULES:-see $COV_JSON}"
       else
         record "coverage_floors" "fail" "coverage enforcement exited $COV_RC (input error) — the floor was NOT checked"
       fi
