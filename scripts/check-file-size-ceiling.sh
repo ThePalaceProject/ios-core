@@ -84,7 +84,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # in-target and both well under the ceiling. 1546 -> 1234, then
 # -> 1213 when PP-5242 moved the failure-record builder out, then -> 1206
 # when PP-5241 moved its recovery host and two pure error mappers out.
-1206 Palace/Audiobooks/AudiobookSessionManager.swift
+1193 Palace/Audiobooks/AudiobookSessionManager.swift
 1213 Palace/MyBooks/MyBooksDownloadCenter.swift
 1044 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
