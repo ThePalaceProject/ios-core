@@ -282,7 +282,7 @@ final class OpenAccessAdapterTests: XCTestCase {
             if case .success(let value) = result { observed = value }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: bearerPathTimeout)
+        wait(for: [exp], timeout: bearerPathTimeout)  // STARVE-001-OK: stubs answer at once; the wait covers only the main-actor hops
 
         XCTAssertEqual(bearerFetcher.callCount, 1,
                        "A bearer-token wrapper body must trigger exactly one second-leg fetch")
@@ -317,7 +317,7 @@ final class OpenAccessAdapterTests: XCTestCase {
             if case .failure(let err) = result { observed = err }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: bearerPathTimeout)
+        wait(for: [exp], timeout: bearerPathTimeout)  // STARVE-001-OK: stubs answer at once; the wait covers only the main-actor hops
 
         guard case .manifestFetchFailed = observed else {
             XCTFail("Nil second-leg manifest must map to .manifestFetchFailed, got \(String(describing: observed))")
@@ -346,7 +346,7 @@ final class OpenAccessAdapterTests: XCTestCase {
             if case .success(let value) = result { observed = value }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: bearerPathTimeout)
+        wait(for: [exp], timeout: bearerPathTimeout)  // STARVE-001-OK: stubs answer at once; the wait covers only the main-actor hops
 
         XCTAssertEqual(observed?.json["access_token"] as? String, "tok-abc",
                        "Without a fetcher, the body is returned verbatim (back-compat)")
@@ -376,7 +376,7 @@ final class OpenAccessAdapterTests: XCTestCase {
             if case .success(let value) = result { observed = value }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: bearerPathTimeout)
+        wait(for: [exp], timeout: bearerPathTimeout)  // STARVE-001-OK: stubs answer at once; the wait covers only the main-actor hops
 
         XCTAssertEqual(bearerFetcher.callCount, 0,
                        "A plain manifest must NOT trigger the bearer second-leg")
