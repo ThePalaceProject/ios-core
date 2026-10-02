@@ -628,7 +628,9 @@ struct RefreshOutcomeDelivery: @unchecked Sendable {
 
     /// `Task` rather than `MainActor.run` because the call site is not async.
     ///
-    /// Returns the hop so a test can join it. Production call sites discard it —
+    /// Returns the hop so a test can join it; emptying the hop's CLOSURE (not this
+    /// method's body, which would not compile and would score as errored rather
+    /// than killed) is the mutation its test catches. Production call sites discard it —
     /// the delivery is deliberately fire-and-forget there — but without a join a
     /// test can only wait on a deadline, which starves under parallel simulator
     /// clones (STARVE-001).

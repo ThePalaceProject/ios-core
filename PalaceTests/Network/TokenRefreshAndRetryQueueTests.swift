@@ -753,6 +753,6 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             )
             exp.fulfill()
         }
-        await fulfillment(of: [exp], timeout: 5.0) // STARVE-001-OK: bounded by HTTPStubURLProtocol, which answers the token request synchronously; same shape as the sibling refresh tests in this file, not a fire-and-forget poll
+        await fulfillment(of: [exp], timeout: 5.0) // STARVE-001-OK: refreshTokenAndResume exposes no join seam for its completion, so there is nothing to await; drainPendingRefreshWork cannot substitute because it steps the cooperative pool while this delivery arrives on URLSession's own queue — the sibling test at Test 9 keeps its wait for the same reason and drains only afterwards
     }
 }

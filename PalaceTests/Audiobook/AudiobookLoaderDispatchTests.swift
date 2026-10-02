@@ -329,9 +329,11 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// exactly the executor's situation.
     ///
     /// Joins the hop rather than waiting on a deadline, so there is no timeout to
-    /// starve under parallel simulator clones (STARVE-001). Empty
-    /// `deliverOnMain()`'s body and `didDeliver` stays false; drop `@MainActor`
-    /// from its Task and the thread assertion fails.
+    /// starve under parallel simulator clones (STARVE-001). Empty the hop's
+    /// CLOSURE — `Task { @MainActor in }` — and `didDeliver` stays false; drop
+    /// `@MainActor` from that Task and the thread assertion fails. Both verified
+    /// by running them. Emptying the whole method body instead does not compile,
+    /// so it scores as errored rather than killed.
     func testRefreshOutcomeDelivery_firedOffMain_deliversOnTheMainActorWithTheOutcome() async {
         let record = DeliveryRecord()
         let sut = RefreshOutcomeDelivery({ result in
