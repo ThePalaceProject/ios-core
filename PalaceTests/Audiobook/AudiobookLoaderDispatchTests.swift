@@ -307,4 +307,37 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
             return
         }
     }
+
+    // MARK: - PP-5299 — the token-refresh callback must arrive on the main actor
+
+    /// `awaitTokenReady` polls inside an unstructured `Task`, so its completion
+    /// fires on the global executor unless the implementation hops first. The
+    /// caller (`refreshTokenIfNeeded`) continues straight into `@MainActor`
+    /// work — `resolveSource` — so an off-main delivery does not fail a test,
+    /// it traps at the isolation check: `dispatch_assert_queue` inside
+    /// `swift_task_isCurrentExecutorWithFlags`. That was the only crash 3.3.0
+    /// produced (Crashlytics 90c78a67e737857b30512e157c75a045).
+    ///
+    /// This asserts the delivery CONTEXT, not the value. The three tests that
+    /// drive this path in `TokenRefreshAndRetryQueueTests` check the result and
+    /// fulfil an expectation, which passes from any thread — which is why the
+    /// suite stayed green through the regression.
+    ///
+    /// Deliberately indifferent to which branch fires: whether the poll sees a
+    /// valid token or reaches its deadline, the completion must land on main.
+    func testAwaitTokenReady_deliversItsCompletionOnTheMainActor() async {
+        let delivered = expectation(description: "awaitTokenReady fired its completion")
+
+        AudiobookLoader.awaitTokenReady(timeout: 0.2, pollInterval: 0.05) { _ in
+            XCTAssertTrue(
+                Thread.isMainThread,
+                "awaitTokenReady delivered its completion off the main thread. "
+                + "Its caller continues into @MainActor work and will trap at "
+                + "the isolation check rather than fail."
+            )
+            delivered.fulfill()
+        }
+
+        await fulfillment(of: [delivered], timeout: 5.0)
+    }
 }

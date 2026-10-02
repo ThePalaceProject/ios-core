@@ -168,7 +168,11 @@ final class AudiobookLoader {
             switch result {
             case .success:
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
-                completion(.success(()))
+                // PP-5299: the executor delivers this callback on the global
+                // concurrent executor (since 3.3.0 the refresh body runs inside
+                // its own Task), and `completion` continues into @MainActor
+                // `resolveSource`. Hop before delivering.
+                RefreshOutcomeDelivery(completion, outcome: .success(())).deliverOnMain()
             case .failure(let error, _):
                 // PP-4542: the open requested a token but another refresh
                 // (almost always the proactive launch refresh of a near-expiry
@@ -196,7 +200,11 @@ final class AudiobookLoader {
                     return
                 }
                 Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription)")
-                completion(.failure(.tokenRefreshFailed(underlying: error)))
+                // PP-5299: same hop as the success arm above.
+                RefreshOutcomeDelivery(
+                    completion,
+                    outcome: .failure(.tokenRefreshFailed(underlying: error))
+                ).deliverOnMain()
             }
         }
     }
@@ -239,11 +247,11 @@ final class AudiobookLoader {
             let deadline = Date().addingTimeInterval(timeout)
             while true {
                 if !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired {
-                    completionBox.fire(true)
+                    await completionBox.fire(true)
                     return
                 }
                 if Date() >= deadline {
-                    completionBox.fire(false)
+                    await completionBox.fire(false)
                     return
                 }
                 try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
@@ -550,6 +558,11 @@ final class AudiobookLoader {
 ///   loop calls it exactly once (token-ready XOR timeout) from a single Task,
 ///   never concurrently. The wrapped closure is otherwise opaque, hence
 ///   `@unchecked`. Mirrors `SendableDecryptCompletion` in `LCPAudiobooks`.
+/// - Executor invariant (PP-5299): `fire(_:)` is `@MainActor`. The wrapped
+///   closure continues into `@MainActor` work in the caller, so firing it from
+///   the poll `Task`'s executor trapped at the isolation check instead of
+///   failing anything. Call-once and called-on-which-executor are separate
+///   questions, and only the first was stated when this box was introduced.
 private struct TokenReadyCompletionBox: @unchecked Sendable {
     private let completion: (Bool) -> Void
 
@@ -557,7 +570,42 @@ private struct TokenReadyCompletionBox: @unchecked Sendable {
         self.completion = completion
     }
 
+    @MainActor
     func fire(_ becameValid: Bool) {
         completion(becameValid)
+    }
+}
+
+/// Carries a `refreshTokenIfNeeded` outcome from the network executor's
+/// callback executor to the main actor (PP-5299).
+///
+/// `TPPNetworkExecutor.refreshTokenAndResume` has delivered its callback from
+/// inside its own `Task` since 3.3.0, i.e. on the global concurrent executor.
+/// The wrapped completion continues into `@MainActor` work (`resolveSource`),
+/// so delivering it there trapped at the isolation check rather than failing
+/// anything: `dispatch_assert_queue` inside `swift_task_isCurrentExecutorWithFlags`.
+///
+/// Both the completion and the outcome are non-`Sendable` — the outcome wraps an
+/// `Error` existential — so they are captured at construction rather than
+/// crossing the `Task` boundary as arguments. Only this box crosses, hence
+/// `@unchecked`.
+///
+/// - Sendable invariant: constructed on the callback's executor, delivered
+///   exactly once on the main actor, never read concurrently.
+private struct RefreshOutcomeDelivery: @unchecked Sendable {
+    private let completion: (Result<Void, AudiobookLoadError>) -> Void
+    private let outcome: Result<Void, AudiobookLoadError>
+
+    init(
+        _ completion: @escaping (Result<Void, AudiobookLoadError>) -> Void,
+        outcome: Result<Void, AudiobookLoadError>
+    ) {
+        self.completion = completion
+        self.outcome = outcome
+    }
+
+    /// `Task` rather than `MainActor.run` because the call site is not async.
+    func deliverOnMain() {
+        Task { @MainActor in completion(outcome) }
     }
 }
