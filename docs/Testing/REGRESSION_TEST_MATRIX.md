@@ -309,7 +309,7 @@ These are the items currently requiring manual runs that would most reduce per-r
 | Journey to record | Covers | Why it matters |
 |-------------------|--------|----------------|
 | `sign-in-token.yaml` | A1 `token` auth on Lyrasis Reads | Token auth is used by an entire class of libraries; zero current coverage. |
-| `sign-in-saml.yaml` + `sign-out-saml-slo.yaml` | A1/A3-SAML on a SAML test library | SAML flows are IdP-redirect-heavy; AX backend now handles the OAuth consent sheet (13.1.0) so this is newly feasible. |
+| `sign-in-saml.yaml` + `sign-out-saml-slo.yaml` | A1/A3-SAML on a SAML test library | **Stays manual.** The IdP sends a one-time passcode out of band, so a recorded replay cannot complete the sign-in and should not claim to. Automate at most the pre-OTP leg; the OTP and everything after it stay with a human. |
 | `sign-in-oidc.yaml` + `sign-out-oidc.yaml` | A1/A3-OIDC | OIDC was added in this refactor — should have journeys, currently zero. |
 | `hold-to-loan-lcp.yaml` | B7 LCP path | C5 gap from PP-4020; Adobe/LCP not yet exercised end-to-end. |
 | `hold-to-loan-adobe.yaml` | B7 Adobe path | Same. |
