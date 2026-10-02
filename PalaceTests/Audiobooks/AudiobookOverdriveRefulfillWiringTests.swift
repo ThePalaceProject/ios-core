@@ -2,10 +2,10 @@
 //  AudiobookOverdriveRefulfillWiringTests.swift
 //  PalaceTests
 //
-//  Drives the session manager's own bound wiring for the OverDrive
-//  re-fulfilment: which opens re-arm it, what a failure decides from the live
-//  bounds, and that the recovery leaves flight when it ends (PP-4967). The
-//  struct and the reducer are tabled elsewhere; this pins the call sites.
+//  Drives the session manager's bound wiring for the OverDrive re-fulfilment
+//  (PP-4967): `openAudiobook`'s re-arm, what a failure decides from the live
+//  bounds, and the recovery leaving flight. `currentBook` stays nil here, so the
+//  recovery returns as superseded and the `.playbackFailed` arm is not reached.
 //
 
 import XCTest
@@ -135,6 +135,28 @@ final class AudiobookOverdriveRefulfillWiringTests: XCTestCase {
             of: book.identifier, forceRefulfill: false, isColdLoadRecovery: true, isRecoveryReopen: false))
 
         XCTAssertEqual(recovery(for: expired), .overdriveRefulfillExhausted)
+    }
+
+    /// Through `openAudiobook` itself: the recovery's re-open passes
+    /// `isRecoveryReopen`, and that open must not re-arm the bound.
+    func testOpenAudiobook_asRecoveryReopen_doesNotReArm() async throws {
+        _ = await sut.openAudiobook(book, startPlaying: false, forceRefulfill: false)
+        try startRefulfilment()
+        await sut.recoverExpiredOverdriveByRefulfilling(book)
+
+        _ = await sut.openAudiobook(book, startPlaying: false, forceRefulfill: false, isRecoveryReopen: true)
+
+        XCTAssertEqual(recovery(for: expired), .overdriveRefulfillExhausted)
+    }
+
+    func testOpenAudiobook_byPatron_afterExhaustion_reArms() async throws {
+        _ = await sut.openAudiobook(book, startPlaying: false, forceRefulfill: false)
+        try startRefulfilment()
+        await sut.recoverExpiredOverdriveByRefulfilling(book)
+
+        _ = await sut.openAudiobook(book, startPlaying: false, forceRefulfill: false)
+
+        XCTAssertEqual(recovery(for: expired), .overdriveRefulfill)
     }
 
     func testPatronOpen_afterExhaustion_allowsOneMoreRefulfilment() async throws {
