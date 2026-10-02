@@ -1465,6 +1465,9 @@
 /* Alert message when library data fails to load, with retry option */
 "We can’t get your library right now. Please try again." = "In questo momento non è possibile accedere alla sua biblioteca. Riprovi.";
 
+/* Message when an OverDrive audiobook's expired download link could not be replaced */
+"We couldn't get a new download link for this audiobook. Please try again later. If it still won't play, return the audiobook and borrow it again." = "Non è stato possibile ottenere un nuovo link di download per questo audiolibro. Riprovi più tardi. Se ancora non viene riprodotto, restituisca l'audiolibro e lo prenda di nuovo in prestito.";
+
 /* Error message shown when the streaming reader's web view fails to load the title. */
 "We couldn't load this title. Please check your connection and try again." = "Non è stato possibile caricare questo titolo. Verifichi la connessione e riprovi.";
 
