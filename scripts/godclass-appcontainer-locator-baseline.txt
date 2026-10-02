@@ -23,4 +23,6 @@
 #   waves that landed after the 2026-07-31 recount; no per-wave attribution is
 #   claimed because none was measured. test_live_baseline_has_zero_slack now
 #   fails on any slack, so this number must be re-measured, not estimated.
-249
+# 249 -> 248: TPPUserAccount's keychain key derivation reads
+#   AccountsManager.TPPAccountUUIDs[0] instead of AppContainer.production().
+248

@@ -10,10 +10,20 @@
 //
 
 import XCTest
+import PalaceKeychain
 @testable import Palace
 
 @MainActor
 final class TPPUserAccountConcurrencyTests: XCTestCase {
+
+  /// Raw keychain keys a test wrote through `TPPKeychain.shared`.
+  private var rawKeysToRemove: [String] = []
+
+  override func tearDown() {
+    rawKeysToRemove.forEach { TPPKeychain.shared.removeObject(forKey: $0) }
+    rawKeysToRemove = []
+    super.tearDown()
+  }
 
   /// Concurrent increments must each count exactly once.
   ///
@@ -41,5 +51,72 @@ final class TPPUserAccountConcurrencyTests: XCTestCase {
       + "get-then-set (or an early unlock) loses updates under contention, "
       + "which would let a stale sign-out wipe freshly-re-authed credentials."
     )
+  }
+
+  /// A new account's first touch can come from several threads at once, as in
+  /// `TPPNetworkExecutor.executeRequest`. Runs in the ThreadSanitizer lane,
+  /// which reported lazily built keychain variables racing here (CI run 36934646693).
+  func testFirstTouchFromConcurrentThreads_writeIsVisibleToEveryLaterRead() {
+    let accountCount = 100
+    let threadsPerAccount = 8
+
+    for index in 0..<accountCount {
+      let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
+      let token = "token-\(index)"
+
+      DispatchQueue.concurrentPerform(iterations: threadsPerAccount) { thread in
+        if thread == 0 {
+          account.credentials = .token(authToken: token)
+        } else {
+          _ = account.authDefinition
+          _ = account.credentials
+        }
+      }
+
+      XCTAssertEqual(
+        account.authToken,
+        token,
+        "account \(index): the token written during the first concurrent touch "
+        + "must be readable afterwards — a nil here means the write went through "
+        + "a keychain variable that a racing first access then replaced."
+      )
+    }
+  }
+
+  /// An account keeps the same keychain variables across reads, so a value
+  /// another instance writes under the same key is seen only after
+  /// `invalidateCredentialCaches()` (the account-switch path relies on that).
+  func testKeychainVariables_persistAcrossReads_untilCachesAreInvalidated() {
+    let libraryUUID = "test-uuid-\(UUID().uuidString)"
+    let reader: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: libraryUUID)
+    let writer: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: libraryUUID)
+
+    reader.credentials = .token(authToken: "first")
+    writer.credentials = .token(authToken: "second")
+
+    XCTAssertEqual(reader.authToken, "first",
+                   "a second read must use the variable (and cache) the first write populated")
+
+    reader.invalidateCredentialCaches()
+
+    XCTAssertEqual(reader.authToken, "second",
+                   "after invalidation the account must re-read the keychain")
+  }
+
+  /// Keychain keys are a persistence contract: an updated app must find what an
+  /// earlier build stored. Keys carry the library UUID, except for NYPL's.
+  func testKeychainKeys_carryLibraryUUID_exceptForNYPL() {
+    let libraryUUID = "test-uuid-\(UUID().uuidString)"
+    let libraryKey = "TPPAccountDeviceIDKey_\(libraryUUID)"
+    let nyplKey = "TPPAccountDeviceIDKey"
+    rawKeysToRemove = [libraryKey, nyplKey]
+
+    let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: libraryUUID)
+    account.setDeviceID("device-library")
+    XCTAssertEqual(TPPKeychain.shared.object(forKey: libraryKey) as? String, "device-library")
+
+    let nypl: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: AccountsManager.TPPAccountUUIDs[0])
+    nypl.setDeviceID("device-nypl")
+    XCTAssertEqual(TPPKeychain.shared.object(forKey: nyplKey) as? String, "device-nypl")
   }
 }

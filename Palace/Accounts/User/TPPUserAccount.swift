@@ -25,9 +25,11 @@ private enum StorageKey: String {
     func keyForLibrary(uuid libraryUUID: String?) -> String {
         guard
             // historically user data for NYPL has not used keys that contain the
-            // library UUID.
+            // library UUID. Reads the static (what `AccountsManager.tppAccountUUID`
+            // is set from) so keys can be built in `init`, which must not call
+            // `AppContainer.production()`.
             let libraryUUID = libraryUUID,
-            libraryUUID != AppContainer.production().accountsManager.tppAccountUUID else {
+            libraryUUID != AccountsManager.TPPAccountUUIDs[0] else {
             return self.rawValue
         }
 
@@ -61,11 +63,11 @@ private enum StorageKey: String {
     //     them through that serial queue would re-enter it and deadlock. `controlLock`
     //     is a non-recursive leaf lock with no ordering cycle against `accountInfoQueue`.
     //   • `let` fields (`libraryUUID`, `boundLibraryUUID`, `accountInfoQueue`,
-    //     `controlLock`) are immutable; `lazy var` keychain variables are effectively
-    //     immutable after first access and internally queue-synchronized.
+    //     `controlLock`, `keychainTransaction` and the keychain variables) are set
+    //     in `init` and immutable; the variables are internally queue-synchronized.
     private let accountInfoQueue: DispatchQueue
     private let controlLock = NSLock()
-    private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
+    private let keychainTransaction: TPPKeychainVariableTransaction
 
     private var _notifyAccountChange: Bool = true
     private var notifyAccountChange: Bool {
@@ -115,9 +117,9 @@ private enum StorageKey: String {
 
     // MARK: - Initializers
 
-    /// Creates an account bound to a specific library. Keys are computed once
-    /// (lazily on first access) from the immutable `libraryUUID` and never
-    /// change for the lifetime of the instance.
+    /// Creates an account bound to a specific library. Keys are computed once,
+    /// here, from the immutable `libraryUUID` and never change for the lifetime
+    /// of the instance.
     ///
     /// Always construct instances via `AccountsManager.userAccount(for:)` so
     /// there is one cached instance per library — direct `init(libraryUUID:)`
@@ -126,7 +128,24 @@ private enum StorageKey: String {
     init(libraryUUID: String) {
         self.libraryUUID = libraryUUID
         self.boundLibraryUUID = libraryUUID
-        self.accountInfoQueue = DispatchQueue(label: "TPPUserAccount.\(libraryUUID)")
+        let queue = DispatchQueue(label: "TPPUserAccount.\(libraryUUID)")
+        self.accountInfoQueue = queue
+        self.keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: queue)
+        _authorizationIdentifier = StorageKey.authorizationIdentifier.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _adobeToken = StorageKey.adobeToken.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _licensor = StorageKey.licensor.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _patron = StorageKey.patron.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _adobeVendor = StorageKey.adobeVendor.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _provider = StorageKey.provider.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _userID = StorageKey.userID.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _deviceID = StorageKey.deviceID.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _credentials = StorageKey.credentials.keyForLibrary(uuid: libraryUUID).asKeychainCodableVariable(with: queue)
+        _authDefinition = StorageKey.authDefinition.keyForLibrary(uuid: libraryUUID).asKeychainCodableVariable(with: queue)
+        _cookies = StorageKey.cookies.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _authState = StorageKey.authState.keyForLibrary(uuid: libraryUUID).asKeychainCodableVariable(with: queue)
+        _barcode = StorageKey.barcode.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _pin = StorageKey.PIN.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _authToken = StorageKey.authToken.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
         super.init()
     }
 
@@ -268,53 +287,28 @@ private enum StorageKey: String {
     }
 
     // MARK: - Storage
-    private lazy var _authorizationIdentifier: TPPKeychainVariable<String> = StorageKey.authorizationIdentifier
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _adobeToken: TPPKeychainVariable<String> = StorageKey.adobeToken
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _licensor: TPPKeychainVariable<[String: Any]> = StorageKey.licensor
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _patron: TPPKeychainVariable<[String: Any]> = StorageKey.patron
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _adobeVendor: TPPKeychainVariable<String> = StorageKey.adobeVendor
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _provider: TPPKeychainVariable<String> = StorageKey.provider
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _userID: TPPKeychainVariable<String> = StorageKey.userID
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _deviceID: TPPKeychainVariable<String> = StorageKey.deviceID
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _credentials: TPPKeychainCodableVariable<TPPCredentials> = StorageKey.credentials
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainCodableVariable(with: accountInfoQueue)
-    private lazy var _authDefinition: TPPKeychainCodableVariable<AccountDetails.Authentication> = StorageKey.authDefinition
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainCodableVariable(with: accountInfoQueue)
-    private lazy var _cookies: TPPKeychainVariable<[HTTPCookie]> = StorageKey.cookies
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _authState: TPPKeychainCodableVariable<TPPAccountAuthState> = StorageKey.authState
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainCodableVariable(with: accountInfoQueue)
+
+    // Built in `init` rather than as `lazy var`s: Swift does not synchronize a
+    // lazy var's first access, and a new account is often first touched from
+    // several threads at once (`TPPNetworkExecutor` reads `authDefinition` on
+    // the requesting thread).
+    private let _authorizationIdentifier: TPPKeychainVariable<String>
+    private let _adobeToken: TPPKeychainVariable<String>
+    private let _licensor: TPPKeychainVariable<[String: Any]>
+    private let _patron: TPPKeychainVariable<[String: Any]>
+    private let _adobeVendor: TPPKeychainVariable<String>
+    private let _provider: TPPKeychainVariable<String>
+    private let _userID: TPPKeychainVariable<String>
+    private let _deviceID: TPPKeychainVariable<String>
+    private let _credentials: TPPKeychainCodableVariable<TPPCredentials>
+    private let _authDefinition: TPPKeychainCodableVariable<AccountDetails.Authentication>
+    private let _cookies: TPPKeychainVariable<[HTTPCookie]>
+    private let _authState: TPPKeychainCodableVariable<TPPAccountAuthState>
 
     // Legacy
-    private lazy var _barcode: TPPKeychainVariable<String> = StorageKey.barcode
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _pin: TPPKeychainVariable<String> = StorageKey.PIN
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _authToken: TPPKeychainVariable<String> = StorageKey.authToken
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
+    private let _barcode: TPPKeychainVariable<String>
+    private let _pin: TPPKeychainVariable<String>
+    private let _authToken: TPPKeychainVariable<String>
 
     // MARK: - Check (delegates to UserAccountAuthHelper)
 
