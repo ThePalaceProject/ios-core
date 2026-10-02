@@ -753,6 +753,6 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             )
             exp.fulfill()
         }
-        await fulfillment(of: [exp], timeout: 5.0)
+        await fulfillment(of: [exp], timeout: 5.0) // STARVE-001-OK: bounded by HTTPStubURLProtocol, which answers the token request synchronously; same shape as the sibling refresh tests in this file, not a fire-and-forget poll
     }
 }

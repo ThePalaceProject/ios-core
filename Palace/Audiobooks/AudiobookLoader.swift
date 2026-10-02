@@ -627,7 +627,13 @@ struct RefreshOutcomeDelivery: @unchecked Sendable {
     }
 
     /// `Task` rather than `MainActor.run` because the call site is not async.
-    func deliverOnMain() {
+    ///
+    /// Returns the hop so a test can join it. Production call sites discard it —
+    /// the delivery is deliberately fire-and-forget there — but without a join a
+    /// test can only wait on a deadline, which starves under parallel simulator
+    /// clones (STARVE-001).
+    @discardableResult
+    func deliverOnMain() -> Task<Void, Never> {
         Task { @MainActor in completion(outcome) }
     }
 }

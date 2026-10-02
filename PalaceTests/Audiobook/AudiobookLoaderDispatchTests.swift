@@ -328,28 +328,28 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// - proceeding to open audiobook" then the trap). Constructing it off-main is
     /// exactly the executor's situation.
     ///
-    /// Empty `deliverOnMain()`'s body and this fails on the timeout — which is the
-    /// mutant that otherwise hangs an audiobook open forever with no error.
-    /// Drop `@MainActor` from its inner Task and it fails on the thread assertion.
+    /// Joins the hop rather than waiting on a deadline, so there is no timeout to
+    /// starve under parallel simulator clones (STARVE-001). Empty
+    /// `deliverOnMain()`'s body and `didDeliver` stays false; drop `@MainActor`
+    /// from its Task and the thread assertion fails.
     func testRefreshOutcomeDelivery_firedOffMain_deliversOnTheMainActorWithTheOutcome() async {
-        let delivered = expectation(description: "the carrier delivered")
+        let record = DeliveryRecord()
         let sut = RefreshOutcomeDelivery({ result in
             XCTAssertTrue(Thread.isMainThread,
                           "the carrier exists to hop; delivering off-main reproduces PP-5299")
             guard case .failure(.missingCredentialsForTokenRefresh) = result else {
                 return XCTFail("the outcome must survive the hop unchanged, got \(result)")
             }
-            delivered.fulfill()
+            record.didDeliver = true
         }, outcome: .failure(.missingCredentialsForTokenRefresh))
 
-        // Detached so the construction and the fire both happen off the main
-        // actor, as they do when the executor's Task calls back.
-        await Task.detached {
+        let hop = await Task.detached {
             XCTAssertFalse(Thread.isMainThread, "precondition: firing from off-main")
-            sut.deliverOnMain()
+            return sut.deliverOnMain()
         }.value
+        await hop.value
 
-        await fulfillment(of: [delivered], timeout: 5.0)
+        XCTAssertTrue(record.didDeliver, "the carrier never delivered the outcome")
     }
 
     /// The poll's carrier. `awaitTokenReady` fires this from inside an
@@ -358,16 +358,15 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// `await` as a warning only and compiles silently, which is exactly why this
     /// needs a test rather than the compiler.
     ///
-    /// Needs no shared account: the box is constructed and fired directly, so this
-    /// pins the hop without the process-wide state that forced the removal of the
-    /// branch tests.
+    /// Needs no shared account and no deadline: `fire` is awaited, so the
+    /// completion has already run when the detached task returns.
     func testTokenReadyCompletionBox_firedOffMain_deliversOnTheMainActorWithTheValue() async {
-        let delivered = expectation(description: "the poll carrier delivered")
+        let record = DeliveryRecord()
         let sut = TokenReadyCompletionBox({ becameValid in
             XCTAssertTrue(Thread.isMainThread,
                           "awaitTokenReady's carrier must hop; delivering off-main reproduces PP-5299")
             XCTAssertTrue(becameValid, "the value must survive the hop unchanged")
-            delivered.fulfill()
+            record.didDeliver = true
         })
 
         await Task.detached {
@@ -375,6 +374,14 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
             await sut.fire(true)
         }.value
 
-        await fulfillment(of: [delivered], timeout: 5.0)
+        XCTAssertTrue(record.didDeliver, "the poll carrier never delivered")
     }
+}
+
+/// Records that a carrier's completion actually ran, so the tests above can
+/// assert delivery without an `XCTestExpectation` and therefore without a
+/// deadline. A reference type so the completion can set it and the test can read
+/// it afterwards; both happen on the main actor.
+private final class DeliveryRecord: @unchecked Sendable {
+    var didDeliver = false
 }
