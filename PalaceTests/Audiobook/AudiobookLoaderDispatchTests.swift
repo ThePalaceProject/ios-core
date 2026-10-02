@@ -307,4 +307,83 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
             return
         }
     }
+
+    // MARK: - PP-5299 — token-refresh delivery must reach the main actor
+    //
+    // Only the carrier is covered here, deliberately. Tests that pinned
+    // awaitTokenReady's two branches were removed: they could only choose a branch
+    // by writing credentials into the process-wide shared account, which CLAUDE.md
+    // bans and which broke the suite twice — once by leaving an expired token
+    // behind (restarting the whole run) and once by making
+    // AccountsManagerStateMachineWiringTests' single-flight guard emit two
+    // .detailsLoading transitions instead of one.
+    //
+    // Not covered as a result, both deferred to the injection seam on
+    // AudiobookLoader (PP-5301): swapping fire(true)/fire(false), and the fact
+    // that the executor delivers off-main in the first place.
+
+    /// The carrier the FIELD crash walked. `refreshTokenIfNeeded`'s two direct
+    /// executor-callback exits deliver through `RefreshOutcomeDelivery`, and those
+    /// are the exits the Crashlytics stack and log show ("Token refresh successful
+    /// - proceeding to open audiobook" then the trap). Constructing it off-main is
+    /// exactly the executor's situation.
+    ///
+    /// Joins the hop rather than waiting on a deadline, so there is no timeout to
+    /// starve under parallel simulator clones (STARVE-001). Empty the hop's
+    /// CLOSURE — `Task { @MainActor in }` — and `didDeliver` stays false; drop
+    /// `@MainActor` from that Task and the thread assertion fails. Both verified
+    /// by running them. Emptying the whole method body instead does not compile,
+    /// so it scores as errored rather than killed.
+    func testRefreshOutcomeDelivery_firedOffMain_deliversOnTheMainActorWithTheOutcome() async {
+        let record = DeliveryRecord()
+        let sut = RefreshOutcomeDelivery({ result in
+            XCTAssertTrue(Thread.isMainThread,
+                          "the carrier exists to hop; delivering off-main reproduces PP-5299")
+            guard case .failure(.missingCredentialsForTokenRefresh) = result else {
+                return XCTFail("the outcome must survive the hop unchanged, got \(result)")
+            }
+            record.didDeliver = true
+        }, outcome: .failure(.missingCredentialsForTokenRefresh))
+
+        let hop = await Task.detached {
+            XCTAssertFalse(Thread.isMainThread, "precondition: firing from off-main")
+            return sut.deliverOnMain()
+        }.value
+        await hop.value
+
+        XCTAssertTrue(record.didDeliver, "the carrier never delivered the outcome")
+    }
+
+    /// The poll's carrier. `awaitTokenReady` fires this from inside an
+    /// unstructured `Task`, and its completion continues into the caller's
+    /// `@MainActor` work, so `fire` must hop. Dropping `@MainActor` from it leaves
+    /// `await` as a warning only and compiles silently, which is exactly why this
+    /// needs a test rather than the compiler.
+    ///
+    /// Needs no shared account and no deadline: `fire` is awaited, so the
+    /// completion has already run when the detached task returns.
+    func testTokenReadyCompletionBox_firedOffMain_deliversOnTheMainActorWithTheValue() async {
+        let record = DeliveryRecord()
+        let sut = TokenReadyCompletionBox({ becameValid in
+            XCTAssertTrue(Thread.isMainThread,
+                          "awaitTokenReady's carrier must hop; delivering off-main reproduces PP-5299")
+            XCTAssertTrue(becameValid, "the value must survive the hop unchanged")
+            record.didDeliver = true
+        })
+
+        await Task.detached {
+            XCTAssertFalse(Thread.isMainThread, "precondition: firing from off-main")
+            await sut.fire(true)
+        }.value
+
+        XCTAssertTrue(record.didDeliver, "the poll carrier never delivered")
+    }
+}
+
+/// Records that a carrier's completion actually ran, so the tests above can
+/// assert delivery without an `XCTestExpectation` and therefore without a
+/// deadline. A reference type so the completion can set it and the test can read
+/// it afterwards; both happen on the main actor.
+private final class DeliveryRecord: @unchecked Sendable {
+    var didDeliver = false
 }
