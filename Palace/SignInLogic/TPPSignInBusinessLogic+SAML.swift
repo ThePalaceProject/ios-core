@@ -92,7 +92,7 @@ extension TPPSignInBusinessLogic {
     /// Logout is best-effort: any server error calls `completion` without
     /// surfacing anything to the patron, since local credentials are already
     /// cleared at this point in the pipeline.
-    func samlLogOut(accessToken: String?, completion: @escaping () -> Void) {
+    func samlLogOut(accessToken: String?, completion: @escaping @Sendable () -> Void) {
         guard let logoutHref = selectedAuthentication?.samlLogoutHref else {
             completion()
             return

@@ -167,13 +167,21 @@ extension TPPSignInBusinessLogic {
         // DOES opt in, because a patron borrowing with a dead token genuinely
         // needs to re-authenticate and a sign-in prompt is the right answer
         // there. Signing out is the one flow where it never is.
+        // The executor builds its sessions with `delegateQueue: nil`, so this
+        // callback arrives off the main actor, while both handlers below are
+        // main-actor isolated. The callback inherits isolation from this method,
+        // which is why calling them directly type-checks; the inherited
+        // isolation is not the isolation it actually runs under. Hop, so the
+        // call matches where it runs (PP-5301).
         networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
             switch result {
             case .success(let data, let response):
-                self?.processLogOut(data: data,
-                                    response: response,
-                                    for: request,
-                                    barcode: barcode)
+                Task { @MainActor in
+                    self?.processLogOut(data: data,
+                                        response: response,
+                                        for: request,
+                                        barcode: barcode)
+                }
             case .failure(let errorWithProblemDoc, let response):
                 // Do NOT call removeAll() here. Credential cleanup
                 // is handled by completeLogOutProcess() after device
@@ -181,10 +189,12 @@ extension TPPSignInBusinessLogic {
                 // 1. Licensor wiped before deauthorizeDevice() could use it
                 // 2. Double removeAll() → double notification → UI corruption
                 // 3. Race condition with re-authentication
-                self?.processLogOutError(errorWithProblemDoc,
-                                         response: response,
-                                         for: request,
-                                         barcode: barcode)
+                Task { @MainActor in
+                    self?.processLogOutError(errorWithProblemDoc,
+                                             response: response,
+                                             for: request,
+                                             barcode: barcode)
+                }
             }
         }
 
@@ -385,11 +395,14 @@ extension TPPSignInBusinessLogic {
     private func performFinalSignOutCleanup(cmLogoutAccessToken: String? = nil,
                                             completion: @escaping () -> Void) {
         if selectedAuthentication?.isOidc == true {
+            // Built here rather than inside the closure: the logout callback is
+            // `@Sendable`, so it cannot capture the non-Sendable `completion`
+            // directly. The carrier can cross; the bare closure cannot.
+            let completionBox = SignOutCompletionBox(completion)
             oidcLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
                 guard let self = self else {
                     // self deallocated — still clear WebView data and call completion
                     // to ensure the UI state is reset.
-                    let completionBox = SignOutCompletionBox(completion)
                     DispatchQueue.main.async {
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
@@ -402,12 +415,17 @@ extension TPPSignInBusinessLogic {
                     }
                     return
                 }
-                self.clearWebViewData(completion: completion)
+                // `clearWebViewData` is main-actor isolated and this callback
+                // arrives off the main actor. Marking the logout callback
+                // `@Sendable` is what makes the compiler say so (PP-5301).
+                Task { @MainActor in
+                    self.clearWebViewData(completion: completionBox.call)
+                }
             }
         } else if selectedAuthentication?.samlLogoutHref != nil {
+            let completionBox = SignOutCompletionBox(completion)
             samlLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
                 guard let self = self else {
-                    let completionBox = SignOutCompletionBox(completion)
                     DispatchQueue.main.async {
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
@@ -420,7 +438,12 @@ extension TPPSignInBusinessLogic {
                     }
                     return
                 }
-                self.clearWebViewData(completion: completion)
+                // `clearWebViewData` is main-actor isolated and this callback
+                // arrives off the main actor. Marking the logout callback
+                // `@Sendable` is what makes the compiler say so (PP-5301).
+                Task { @MainActor in
+                    self.clearWebViewData(completion: completionBox.call)
+                }
             }
         } else {
             clearWebViewData(completion: completion)

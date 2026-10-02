@@ -9,8 +9,8 @@
 import Foundation
 @testable import Palace
 
-/// Transfers the non-Sendable completion across the `DispatchQueue.main.async`
-/// hop. Safe: it is called exactly once, on the main queue.
+/// Transfers the non-Sendable completion across the delivery-queue hop. Safe:
+/// it is called exactly once, on `TPPRequestExecutorMock.deliveryQueue`.
 private struct SendableResultCompletion: @unchecked Sendable {
     let completion: (NYPLResult<Data>) -> Void
 }
@@ -21,6 +21,14 @@ private struct SendableResultCompletion: @unchecked Sendable {
 class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
 
     private let lock = NSLock()
+
+    /// Production parity: `TPPNetworkExecutor` builds its sessions with
+    /// `delegateQueue: nil`, so every completion it delivers arrives on a
+    /// background queue, never on main. Delivering on main here made this
+    /// double unable to observe a whole class of defect — a completion that
+    /// touches main-actor-isolated state without hopping is fatal in Swift 6
+    /// and the double rendered it harmless.
+    private static let deliveryQueue = DispatchQueue(label: "TPPRequestExecutorMock.delivery")
 
     private var _requestTimeout: TimeInterval = 60
     var requestTimeout: TimeInterval {
@@ -114,7 +122,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
 
         let capturedGeneration = generation
         let completionBox = SendableResultCompletion(completion: completion)
-        DispatchQueue.main.async { [weak self] in
+        Self.deliveryQueue.async { [weak self] in
             guard let self, self.generation == capturedGeneration else { return }
             let completion = completionBox.completion
 
