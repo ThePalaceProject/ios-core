@@ -1954,7 +1954,10 @@ public final class AudiobookSessionManager: ObservableObject {
 
             // Spend the bound here, once, for whichever recovery starts. After
             // the media-services check above, which can claim the failure
-            // without starting any of these.
+            // without starting any of these. Not reached by tests: this arm
+            // needs `currentBook`, which only the full open flow sets.
+            // `AudiobookOverdriveRefulfillWiringTests` drives the methods this
+            // arm and `openAudiobook` call, not these two call sites.
             noteRecoveryStarted(recovery, for: bookId)
 
             switch recovery {
