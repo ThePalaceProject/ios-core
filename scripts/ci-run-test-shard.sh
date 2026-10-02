@@ -48,15 +48,7 @@ rm -rf "$OUT/parallel.xcresult" "$OUT/serial.xcresult" "$OUT/rerun.xcresult" \
        "$OUT/TestResults.xcresult" "$OUT/merged.xcresult" "$OUT/memory-samples.txt" \
        "$OUT"/*-crash-retry.xcresult "$OUT"/*.log
 
-SIMULATOR_ID=$(xcrun simctl list devices available \
-    | grep "iPhone" \
-    | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
-    | head -1)
-if [ -z "$SIMULATOR_ID" ]; then
-    echo "🔴 ERROR: no iPhone simulator available"
-    xcrun simctl list devices available
-    exit 1
-fi
+SIMULATOR_ID=$(python3 "$HERE/ci-resolve-simulator.py") || exit 1
 WORKERS="${CI_TEST_WORKERS:-2}"
 echo "Shard $SHARD on simulator $SIMULATOR_ID, $WORKERS parallel worker(s)"
 

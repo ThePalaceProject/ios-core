@@ -25,6 +25,7 @@ on:
       - '.github/workflows/audiobook-toolkit-tests.yml'
       - 'scripts/fetch-audioengine.sh'
       - 'scripts/xcresult_summary.py'
+      - 'scripts/ci-resolve-simulator.py'
   workflow_dispatch:
 concurrency:
   group: audiobook-toolkit-tests-${{ github.event.pull_request.number || github.ref }}
@@ -35,13 +36,13 @@ permissions:
 jobs:
   toolkit-tests:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 40
     steps:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: 'latest-stable'
+          xcode-version: '26'
 
       - name: Checkout (no submodules)
         uses: actions/checkout@v7
@@ -77,9 +78,7 @@ jobs:
       - name: Select simulator
         id: sim
         run: |
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
-            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
-          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          SIMULATOR_ID=$(python3 scripts/ci-resolve-simulator.py) || exit 1
           echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
 
       - name: Run toolkit tests

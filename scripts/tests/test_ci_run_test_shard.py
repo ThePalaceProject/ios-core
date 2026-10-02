@@ -92,8 +92,11 @@ XCODEBUILD = textwrap.dedent("""\
 
 XCRUN = textwrap.dedent("""\
     #!/bin/bash
-    if [ "$1" = "simctl" ]; then
-      echo "    iPhone 16 Pro (11111111-2222-3333-4444-555555555555) (Shutdown)"; exit 0
+    if [ "$1 $2 $3 $4" = "simctl list -j runtimes" ]; then
+      echo '{"runtimes": [{"identifier": "rt.iOS-26-5", "version": "26.5", "platform": "iOS", "isAvailable": true}]}'; exit 0
+    fi
+    if [ "$1 $2 $3 $4" = "simctl list -j devices" ]; then
+      echo '{"devices": {"rt.iOS-26-5": [{"name": "iPhone 17 Pro", "udid": "11111111-2222-3333-4444-555555555555", "isAvailable": true}]}}'; exit 0
     fi
     if [ "$1 $2" = "xcresulttool merge" ]; then
       out="$4"; shift 4
