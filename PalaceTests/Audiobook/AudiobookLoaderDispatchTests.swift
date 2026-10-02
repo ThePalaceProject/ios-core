@@ -309,60 +309,18 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     }
 
     // MARK: - PP-5299 — token-refresh delivery must reach the main actor
-
-    // These assert the delivery CONTEXT *and* the delivered VALUE. Context alone
-    // leaves `fire(true)`/`fire(false)` interchangeable, and swapping them opens
-    // the audiobook with a still-expired token (the PP-4542 failure mode).
     //
-    // Both branches are pinned rather than left to inherited simulator state.
-    // `awaitTokenReady` polls `authTokenHasExpired` on the production shared
-    // account, so without a reset the branch taken depends on what a previous
-    // suite left in the keychain — which is why an earlier run of this test took
-    // 1.132s (deadline branch) and the next 0.002s (token-already-valid branch).
-    // Same hazard the sibling suite documents at
-    // AudiobookLoaderOPDSShapeMatrixTests's hermetic auth-state guard.
-
-    /// Token already valid: the poll fires on its first iteration with `true`.
-    func testAwaitTokenReady_tokenAlreadyValid_deliversTrueOnTheMainActor() async throws {
-        try KeychainAvailability.skipIfUnavailable()
-        let account = AppContainer.production().accountsManager.currentUserAccount
-        account.removeAll()
-        XCTAssertFalse(account.authTokenHasExpired,
-                       "Precondition: no credentials means the token does not read as expired")
-
-        let delivered = expectation(description: "awaitTokenReady fired")
-        AudiobookLoader.awaitTokenReady(timeout: 2.0, pollInterval: 0.05) { becameValid in
-            XCTAssertTrue(Thread.isMainThread,
-                          "delivered off the main thread; the caller continues into @MainActor work and will trap")
-            XCTAssertTrue(becameValid,
-                          "the token is valid, so the poll must report true, not the deadline value")
-            delivered.fulfill()
-        }
-        await fulfillment(of: [delivered], timeout: 5.0)
-        account.removeAll()
-    }
-
-    /// Token expired for the whole window: the poll reaches its deadline and
-    /// fires `false`. Pins the other arm of the same `fire` funnel.
-    func testAwaitTokenReady_tokenStaysExpired_deliversFalseOnTheMainActor() async throws {
-        try KeychainAvailability.skipIfUnavailable()
-        let account = AppContainer.production().accountsManager.currentUserAccount
-        account.removeAll()
-        account.setAuthToken("stale-token", barcode: "b", pin: "p",
-                             expirationDate: Date(timeIntervalSinceNow: -3600))
-        XCTAssertTrue(account.authTokenHasExpired,
-                      "Precondition: the token must read as expired for the deadline branch")
-
-        let delivered = expectation(description: "awaitTokenReady reached its deadline")
-        AudiobookLoader.awaitTokenReady(timeout: 0.2, pollInterval: 0.05) { becameValid in
-            XCTAssertTrue(Thread.isMainThread, "deadline branch delivered off the main thread")
-            XCTAssertFalse(becameValid,
-                           "the token never became valid, so the poll must report false")
-            delivered.fulfill()
-        }
-        await fulfillment(of: [delivered], timeout: 5.0)
-        account.removeAll()
-    }
+    // Only the carrier is covered here, deliberately. Tests that pinned
+    // awaitTokenReady's two branches were removed: they could only choose a branch
+    // by writing credentials into the process-wide shared account, which CLAUDE.md
+    // bans and which broke the suite twice — once by leaving an expired token
+    // behind (restarting the whole run) and once by making
+    // AccountsManagerStateMachineWiringTests' single-flight guard emit two
+    // .detailsLoading transitions instead of one.
+    //
+    // Not covered as a result, both deferred to the injection seam on
+    // AudiobookLoader (PP-5301): swapping fire(true)/fire(false), and the fact
+    // that the executor delivers off-main in the first place.
 
     /// The carrier the FIELD crash walked. `refreshTokenIfNeeded`'s two direct
     /// executor-callback exits deliver through `RefreshOutcomeDelivery`, and those

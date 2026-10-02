@@ -29,10 +29,17 @@ d31f2212a   held for 3.4.0 — resolve the background .lcpa fetch's library once
 57ced0271   test-only — signal when the continuation lands instead of polling (#1557)
 dbc9ee4ff   test-only — characterize sign-in token-error and readiness paths (#1544)
 
-# NOT waived, deliberately: 9a4b48aa2 (#1571, PP-5293 / PP-5294) keeps a drag
-# over a pending seek and fixes player accessibility labels. It touches
-# production (AudiobookMorphingPlayerView.swift) and is patron-facing, so
-# excluding it is a release-content decision rather than a formality. The gate
-# will keep blocking until it is either cherry-picked here or waived with a
-# reason. Recommendation: hold for 3.4.0, matching 14b195b02 above, because
-# neither is a crash and this line is meant to stay narrow.
+# Owner decision 2026-10-02: only the targeted crash fix ships on this line,
+# nothing extra. 9a4b48aa2 (#1571, PP-5293 / PP-5294) is therefore held for 3.4.0.
+#
+# It is not a one-line fix: five commits carrying a state-machine refactor (the
+# seek slider's hold state extracted into a SeekSliderHold value type), a new
+# runtime VoiceOver audit rule that fails labels containing hint text, and
+# ratcheted-down file-size caps. Each of those is new gate surface on a branch
+# whose purpose is one crash fix. Neither half is a crash, and both behaviours
+# predate 3.3.0, so holding changes nothing for patrons relative to today.
+#
+# Same basis as 14b195b02 above (player minimize for assistive tech), already
+# held. Reversible: cherry-pick it and delete this entry.
+
+9a4b48aa2   held for 3.4.0 — keep a drag over a pending seek; player a11y (PP-5293, PP-5294) (#1571)
