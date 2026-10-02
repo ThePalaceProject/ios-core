@@ -221,6 +221,9 @@ final class OpenAccessAdapterTests: XCTestCase {
 
     // MARK: - PP-4631 bearer-token wrapper recovery
 
+    // The bearer path hops to the main actor more than once; a loaded CI runner has taken 6 s. The assertions are about which result arrives, not speed.
+    private let bearerPathTimeout: TimeInterval = 10.0
+
     /// Stub second-leg fetcher. Records the token + book it was handed and
     /// returns a pre-canned manifest (or nil to simulate a failed second leg).
     private final class StubBearerFetcher: BearerTokenManifestFetching {
@@ -279,7 +282,7 @@ final class OpenAccessAdapterTests: XCTestCase {
             if case .success(let value) = result { observed = value }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 2.0)
+        wait(for: [exp], timeout: bearerPathTimeout)
 
         XCTAssertEqual(bearerFetcher.callCount, 1,
                        "A bearer-token wrapper body must trigger exactly one second-leg fetch")
@@ -314,7 +317,7 @@ final class OpenAccessAdapterTests: XCTestCase {
             if case .failure(let err) = result { observed = err }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 2.0)
+        wait(for: [exp], timeout: bearerPathTimeout)
 
         guard case .manifestFetchFailed = observed else {
             XCTFail("Nil second-leg manifest must map to .manifestFetchFailed, got \(String(describing: observed))")
@@ -343,7 +346,7 @@ final class OpenAccessAdapterTests: XCTestCase {
             if case .success(let value) = result { observed = value }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 2.0)
+        wait(for: [exp], timeout: bearerPathTimeout)
 
         XCTAssertEqual(observed?.json["access_token"] as? String, "tok-abc",
                        "Without a fetcher, the body is returned verbatim (back-compat)")
@@ -373,7 +376,7 @@ final class OpenAccessAdapterTests: XCTestCase {
             if case .success(let value) = result { observed = value }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 2.0)
+        wait(for: [exp], timeout: bearerPathTimeout)
 
         XCTAssertEqual(bearerFetcher.callCount, 0,
                        "A plain manifest must NOT trigger the bearer second-leg")
