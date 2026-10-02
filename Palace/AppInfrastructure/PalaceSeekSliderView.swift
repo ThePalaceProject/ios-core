@@ -20,8 +20,8 @@ import PalaceUtilities
 ///
 /// Behavior: `value` reflects live playback when idle (display-only fallback);
 /// on touch the thumb/track grow (`withAnimation(.easeOut)`), a
-/// `DragGesture(minimumDistance: 0)` continuously tracks the finger via a
-/// `tempValue`, and on release the position is committed once through `onChange`
+/// `DragGesture(minimumDistance: 0)` continuously tracks the finger in a
+/// `SeekSliderHold`, and on release the position is committed once through `onChange`
 /// (plus a light seek-commit haptic). The caller supplies `accessibilityLabel`
 /// at the call site.
 ///
@@ -67,14 +67,7 @@ struct PalaceSeekSliderView: View {
         return min(max(target, 0), 1)
     }
 
-    @State private var tempValue: Double?
-    @State private var isDragging: Bool = false
-    @State private var isCommitting: Bool = false
-    /// Where the displayed position was when the current hold began; the hold
-    /// releases only on a live value nearer the target than half the move.
-    @State private var commitOrigin: Double = 0
-    /// Identifies the latest commit, so only its safety timer can release.
-    @State private var commitGeneration: Int = 0
+    @State private var hold = SeekSliderHold()
 
     private let trackRest: CGFloat = 4
     private let trackActive: CGFloat = 6
@@ -82,8 +75,8 @@ struct PalaceSeekSliderView: View {
     private let thumbActive: CGFloat = 14
     private let hitHeight: CGFloat = 44
 
-    private var currentTrackHeight: CGFloat { isDragging ? trackActive : trackRest }
-    private var currentThumbSize: CGFloat { isDragging ? thumbActive : thumbRest }
+    private var currentTrackHeight: CGFloat { hold.isDragging ? trackActive : trackRest }
+    private var currentThumbSize: CGFloat { hold.isDragging ? thumbActive : thumbRest }
 
     var body: some View {
         GeometryReader { geometry in
@@ -114,30 +107,22 @@ struct PalaceSeekSliderView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
-                        if !isDragging {
-                            withAnimation(.easeOut(duration: 0.15)) { isDragging = true }
+                        if !hold.isDragging {
+                            withAnimation(.easeOut(duration: 0.15)) { hold.beginDrag() }
                         }
-                        let newValue = max(0, min(1, Double(gesture.location.x / width)))
-                        tempValue = newValue
+                        hold.drag(to: max(0, min(1, Double(gesture.location.x / width))))
                     }
                     .onEnded { _ in
-                        withAnimation(.easeOut(duration: 0.2)) { isDragging = false }
-                        if let finalValue = tempValue {
-                            commit(finalValue, from: value)
+                        let commit = withAnimation(.easeOut(duration: 0.2)) {
+                            hold.endDrag(live: value)
                         }
+                        if let commit { send(commit) }
                     }
             )
-            // Release the committed-position hold once live playback progress
-            // has caught up to the seek target (the async seek has landed and
-            // the player is now republishing from the new position). Guarded on
-            // `isCommitting` so idle ticks never touch `tempValue`.
-            .onChange(of: value) { newValue in
-                guard isCommitting, let target = tempValue else { return }
-                if Self.holdReleases(live: newValue, target: target, origin: commitOrigin) {
-                    tempValue = nil
-                    isCommitting = false
-                }
-            }
+            // A live playback value that reaches the held target releases the
+            // hold (the async seek has landed and the player is republishing
+            // from the new position).
+            .onChange(of: value) { hold.liveTick($0) }
         }
         .frame(height: hitHeight)
         .accessibilityValue(spokenValue(displayValue))
@@ -151,7 +136,7 @@ struct PalaceSeekSliderView: View {
     }
 
     private var displayValue: Double {
-        tempValue ?? value
+        hold.displayed(live: value)
     }
 
     /// One VoiceOver step from the displayed position, so repeated swipes
@@ -163,39 +148,22 @@ struct PalaceSeekSliderView: View {
             stepSeconds: direction == .forward ? forwardStepSeconds : backStepSeconds,
             chapterDuration: chapterDuration
         )
-        let origin = displayValue
-        tempValue = target
-        commit(target, from: origin)
+        if let commit = hold.step(to: target, live: value) { send(commit) }
     }
 
-    /// Commits a seek to `finalValue`: the end of a drag and a VoiceOver step
-    /// both land here.
-    private func commit(_ finalValue: Double, from origin: Double) {
-        commitGeneration += 1
-        let generation = commitGeneration
-        commitOrigin = origin
-        isCommitting = true
-        value = finalValue
+    /// Sends the seek `hold` just committed: the end of a drag and a VoiceOver
+    /// step both land here.
+    private func send(_ commit: SeekSliderHold.Commit) {
+        value = commit.target
         // Subtle completion haptic on seek commit (toolkit parity).
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        onChange(finalValue)
-        // HOLD the committed thumb position until the LIVE
-        // playback value converges to the seek target (see
-        // `.onChange(of: value)` below). Unlike the toolkit —
-        // whose binding is not a high-frequency player mirror —
-        // our `value` reads `progress.playbackProgress`, which
-        // the player republishes every tick. A fixed 0.1s clear
-        // let a STALE pre-seek tick overwrite the optimistic
-        // `value = finalValue` before the async seek landed, so
-        // the thumb snapped back to the old position while time
-        // moved forward. We instead keep `tempValue` until the
-        // seek propagates, with a safety timeout so a failed /
-        // silent seek can never wedge the thumb.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            if isCommitting && commitGeneration == generation {
-                tempValue = nil
-                isCommitting = false
-            }
+        onChange(commit.target)
+        // `value` reads `progress.playbackProgress`, which the player
+        // republishes every tick, so the hold keeps the committed position
+        // until the live value converges on it. The timer releases a hold the
+        // live value never reaches (a failed or silent seek).
+        DispatchQueue.main.asyncAfter(deadline: .now() + SeekSliderHold.safetyTimeout) {
+            hold.timerFired(generation: commit.generation)
         }
     }
 
@@ -205,5 +173,95 @@ struct PalaceSeekSliderView: View {
 
     private func thumbOffset(in totalWidth: CGFloat) -> CGFloat {
         CGFloat(displayValue) * (totalWidth - currentThumbSize)
+    }
+}
+
+/// The scrubber's position hold, kept out of the view so every transition can
+/// be driven without a gesture. `heldPosition` is what the thumb shows in
+/// place of the live value: the finger's position while dragging, and the
+/// committed target until playback reaches it.
+struct SeekSliderHold: Equatable {
+    /// How long a commit holds the target when the live value never reaches it.
+    static let safetyTimeout: TimeInterval = 2.0
+
+    /// A seek to send: where to, and which commit's safety timer may release it.
+    struct Commit: Equatable {
+        let target: Double
+        let generation: Int
+    }
+
+    /// One phase at a time, so a drag cannot coexist with a pending hold that a
+    /// tick or a timer would release out from under the finger (PP-5293).
+    enum Phase: Equatable {
+        case idle
+        /// The finger is down; `position` is nil only before its first report.
+        case dragging(position: Double?)
+        /// `target` is shown until live playback reaches it. `origin` is where
+        /// the displayed position was, so the release rule can size the move.
+        case holding(target: Double, origin: Double)
+    }
+
+    private(set) var phase: Phase = .idle
+    /// Identifies the latest commit, so only its safety timer can release.
+    private(set) var generation = 0
+
+    var heldPosition: Double? {
+        switch phase {
+        case .idle: return nil
+        case .dragging(let position): return position
+        case .holding(let target, _): return target
+        }
+    }
+
+    var isDragging: Bool {
+        if case .dragging = phase { return true }
+        return false
+    }
+
+    func displayed(live: Double) -> Double {
+        heldPosition ?? live
+    }
+
+    /// The finger went down. It takes over from any pending hold, keeping the
+    /// thumb where the hold had it until the finger's position arrives.
+    mutating func beginDrag() {
+        phase = .dragging(position: heldPosition)
+    }
+
+    mutating func drag(to position: Double) {
+        phase = .dragging(position: position)
+    }
+
+    /// The finger lifted. Returns the seek to send, or nil when no drag with a
+    /// position is in progress.
+    mutating func endDrag(live: Double) -> Commit? {
+        guard case .dragging(let position) = phase else { return nil }
+        phase = .idle
+        guard let position else { return nil }
+        return commit(position, from: live)
+    }
+
+    /// A VoiceOver step to `target`, from the displayed position. Ignored while
+    /// a finger is down, since the lift commits the finger's position.
+    mutating func step(to target: Double, live: Double) -> Commit? {
+        guard !isDragging else { return nil }
+        return commit(target, from: displayed(live: live))
+    }
+
+    mutating func liveTick(_ live: Double) {
+        guard case .holding(let target, let origin) = phase,
+              PalaceSeekSliderView.holdReleases(live: live, target: target, origin: origin) else { return }
+        phase = .idle
+    }
+
+    mutating func timerFired(generation fired: Int) {
+        guard case .holding = phase, generation == fired else { return }
+        phase = .idle
+    }
+
+    private mutating func commit(_ target: Double, from origin: Double) -> Commit {
+        generation += 1
+        phase = .holding(target: target, origin: origin)
+        return Commit(target: target, generation: generation)
     }
 }

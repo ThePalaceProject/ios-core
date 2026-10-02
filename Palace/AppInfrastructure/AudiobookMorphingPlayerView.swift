@@ -456,12 +456,14 @@ struct AudiobookMorphingPlayerView: View {
                 // non-obvious pull-down-to-minimize gesture, so this ✕ is the
                 // discoverable way out. In the slot the Help entry point used to
                 // hold — Help now lives on book-detail + sign-in only.
+                // `.plain` hit-tests only the glyph; the content shape makes the
+                // whole 44 pt layout frame touchable without moving anything (PP-5294).
                 Button { presenter.closePlayer() } label: {
                     abGlyph(Self.icClose, size: 17)
                         .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .tint(.primary)
+                .buttonStyle(.plain).tint(.primary)
                 .accessibilityLabel(Strings.Generic.close)
                 Spacer()
                 Button { showChaptersBookmarks = true } label: {
@@ -469,10 +471,10 @@ struct AudiobookMorphingPlayerView: View {
                     Image(systemName: "list.bullet")
                         .font(.system(size: 18, weight: .medium))
                         .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                     // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 }
-                .buttonStyle(.plain)
-                .tint(.primary)
+                .buttonStyle(.plain).tint(.primary)
                 .accessibilityLabel(Strings.Generic.tableOfContents)
             }
         }
@@ -484,9 +486,11 @@ struct AudiobookMorphingPlayerView: View {
         Capsule()
             .fill(Color.secondary.opacity(0.4))
             .frame(width: 40, height: 5)
-            // Wider invisible hit zone so the pull-down is easy to grab.
+            // Wider invisible hit zone so the pull-down is easy to grab. The
+            // shape reaches 8 pt past the 28 pt frame for a 44 pt target
+            // without changing the layout (PP-5294).
             .frame(width: 140, height: 28)
-            .contentShape(Rectangle())
+            .contentShape(Rectangle().inset(by: -8))
             .gesture(minimizeDrag)
             // Minimizing is a DRAG, which VoiceOver and Switch Control cannot
             // perform. While this was `.accessibilityHidden(true)` those
@@ -674,6 +678,10 @@ struct AudiobookMorphingPlayerView: View {
         }
         .foregroundStyle(.primary)
         .frame(width: 40, height: 40)
+        .frame(width: 40, height: 44)
+        // 2 pt past each side of the 40 pt layout width, into the row's
+        // spacing, for a 44 pt touch target (PP-5294).
+        .contentShape(Rectangle().inset(by: -2))
     }
 
     /// Bottom control row, mirroring the toolkit `controlPanelView`
@@ -1339,15 +1347,14 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Mini layout
 
-    /// What VoiceOver reads for the mini-player's title/author zone. The zone
-    /// expands the player on tap, so it has to name the book AND say what
-    /// activating it does; the marquee text alone reads as two loose labels.
+    /// What VoiceOver reads for the mini-player's title/author zone: the book
+    /// alone. What activating it does is the `expandPlayerHint` (PP-5294).
     private var miniPlayerAccessibilityLabel: String {
         let title = presenter.currentBook?.title ?? ""
         if let authors = presenter.currentBook?.authors, !authors.isEmpty {
             return String(format: Strings.Generic.nowPlayingLabelTitleAndAuthor, title, authors)
         }
-        return String(format: Strings.Generic.nowPlayingLabelTitleOnly, title)
+        return String(format: Strings.Generic.nowPlayingCompactLabel, title)
     }
 
     private var miniContent: some View {
@@ -1391,23 +1398,22 @@ struct AudiobookMorphingPlayerView: View {
                     MarqueeText(text: authors, font: .subheadline, color: .secondary)
                 }
             }
-            // Tap the cover/title zone to expand.
-            .contentShape(Rectangle())
+            // Tap the cover/title zone to expand. The shape reaches 3 pt past
+            // the ~39.7 pt text block for a 44 pt target (PP-5294).
+            .contentShape(Rectangle().inset(by: -3))
             .onTapGesture { expand() }
             // `onTapGesture` gives VoiceOver nothing to activate, so this zone
             // read as two lines of static text. Collapse the marquee pair into
             // one button that names the book and performs the expand.
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(miniPlayerAccessibilityLabel)
+            .accessibilityHint(Strings.Generic.expandPlayerHint)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { expand() }
 
             Spacer(minLength: 2)
 
-            Button(action: { audiobookSession.skipBack() }) {
-                miniSkipGlyph(asset: Self.icSkipBack, interval: skipBackInterval)
-                    .frame(width: 40, height: 44)
-            }
+            Button { audiobookSession.skipBack() } label: { miniSkipGlyph(asset: Self.icSkipBack, interval: skipBackInterval) }
             .buttonStyle(.plain).tint(.primary)
             .accessibilityLabel(Strings.Generic.skipBackSeconds(skipBackInterval))
 
@@ -1422,10 +1428,7 @@ struct AudiobookMorphingPlayerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
 
-            Button(action: { audiobookSession.skipForward() }) {
-                miniSkipGlyph(asset: Self.icSkipForward, interval: skipForwardInterval)
-                    .frame(width: 40, height: 44)
-            }
+            Button { audiobookSession.skipForward() } label: { miniSkipGlyph(asset: Self.icSkipForward, interval: skipForwardInterval) }
             .buttonStyle(.plain).tint(.primary)
             .accessibilityLabel(Strings.Generic.skipForwardSeconds(skipForwardInterval))
         }
