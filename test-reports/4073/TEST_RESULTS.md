@@ -1,6 +1,6 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-10-02 02:39:46 UTC
+**Generated:** 2026-10-02 03:13:30 UTC
 **Commit:** `4224db4790df`
 **Branch:** `ci/macos26-xcode26-ios265`
 
