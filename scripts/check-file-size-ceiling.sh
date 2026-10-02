@@ -83,7 +83,8 @@ read -r -d '' ALLOWLIST <<'EOF'
 # open-time position decision to AudiobookPositionResolver.swift, both
 # in-target and both well under the ceiling. 1546 -> 1234, then
 # -> 1213 when PP-5242 moved the failure-record builder out, then -> 1206
-# when PP-5241 moved its recovery host and two pure error mappers out.
+# when PP-5241 moved its recovery host and two pure error mappers out, then
+# -> 1193 when PP-4967 moved the OverDrive re-fulfilment out.
 1193 Palace/Audiobooks/AudiobookSessionManager.swift
 1213 Palace/MyBooks/MyBooksDownloadCenter.swift
 1044 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
