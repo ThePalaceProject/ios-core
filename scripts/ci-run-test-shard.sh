@@ -7,7 +7,9 @@
 #
 #   Writes <out-dir>/TestResults.xcresult, <out-dir>/tests.json (the xcresult
 #   test tree), <out-dir>/shard-report.json (what verify-union reads) and
-#   <out-dir>/memory-samples.txt (runner memory every 15 s).
+#   <out-dir>/memory-samples.txt (runner memory every 15 s). After a crashed
+#   pass, and whenever the shard fails, the bundles that were never merged and
+#   the per-pass xcodebuild logs are kept in <out-dir>/partial/ for upload.
 #   Exits non-zero when a test failed after its retries, when a pass produced
 #   no result bundle, or when the bundle does not contain exactly the classes
 #   the plan assigned to this shard.
@@ -46,7 +48,7 @@ mkdir -p "$OUT"
 rm -rf "$OUT/parallel.xcresult" "$OUT/serial.xcresult" "$OUT/rerun.xcresult" \
        "$OUT/relaunch-parallel.xcresult" "$OUT/relaunch-serial.xcresult" \
        "$OUT/TestResults.xcresult" "$OUT/merged.xcresult" "$OUT/memory-samples.txt" \
-       "$OUT"/*-crash-retry.xcresult "$OUT"/*.log
+       "$OUT"/*-crash-retry.xcresult "$OUT"/*.log "$OUT/partial"
 
 SIMULATOR_ID=$(xcrun simctl list devices available \
     | grep "iPhone" \
@@ -101,6 +103,23 @@ SHARD_BUDGET_SECONDS="${SHARD_BUDGET_SECONDS:-1800}"
   echo "🔴 shard $SHARD exceeded ${SHARD_BUDGET_SECONDS}s; interrupting xcodebuild so the result bundle is written"
   pkill -INT -f "xcodebuild test-without-building" || true ) &
 WATCHDOG=$!
+# A crashed pass leaves a bundle that may not be finalized, and a failing shard
+# exits before its bundles are merged into TestResults.xcresult. Either way the
+# failure text would otherwise be lost, so the bundle (readable or not) and the
+# raw log of each pass are moved to $OUT/partial, which the workflow uploads.
+PARTIAL="$OUT/partial"
+keep_partial() {  # paths... -> moved (bundles) or copied (logs) into $PARTIAL
+    local p
+    for p in "$@"; do
+        [ -e "$p" ] || continue
+        mkdir -p "$PARTIAL"
+        rm -rf "${PARTIAL:?}/$(basename "$p")"
+        case "$p" in
+            *.xcresult) mv "$p" "$PARTIAL/" ;;
+            *) cp "$p" "$PARTIAL/" ;;
+        esac
+    done
+}
 cleanup() {
     # Only the passing verdict at the end sets SHARD_PASSED. Anything else that
     # ends the script is a failure: /bin/bash 3.2 reports an unbound-variable
@@ -111,6 +130,13 @@ cleanup() {
         rc=1
     fi
     kill "$WATCHDOG" "$SAMPLER" 2>/dev/null || true
+    if [ "$rc" -ne 0 ]; then
+        local b
+        for b in "$OUT"/*.xcresult; do
+            [ "$b" = "$OUT/TestResults.xcresult" ] || keep_partial "$b"
+        done
+        keep_partial "$OUT"/*.log
+    fi
     python3 "$DIAG_PY" sample "$OUT/memory-samples.txt" --once >/dev/null 2>&1 || true
     python3 "$DIAG_PY" memory-summary "$OUT/memory-samples.txt" | sed "s/^/Shard $SHARD /" || true
     exit "$rc"
@@ -195,7 +221,7 @@ run_pass() {
     fi
     echo "::warning title=xcodebuild crashed; retrying the pass once::shard $SHARD, $name pass: xcodebuild exited $PASS_EXIT with no test failure recorded before the crash (exit 134 or '** INTERNAL ERROR: Uncaught exception **', an XCTHarness crash). Its result bundle is unreadable, so the same classes run once more into a fresh bundle.$discounted"
     local fresh="$OUT/$name-crash-retry.xcresult"
-    rm -rf "$bundle"
+    keep_partial "$bundle" "$log"
     run_xcodebuild "$fresh" "$OUT/$name-crash-retry.log" "${args[@]}"
     if xcodebuild_crashed "$OUT/$name-crash-retry.log"; then
         echo "::error title=xcodebuild crashed again::shard $SHARD, $name pass: the retry also crashed (exit $PASS_EXIT). Failing the shard."

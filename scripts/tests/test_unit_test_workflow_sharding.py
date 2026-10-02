@@ -181,3 +181,21 @@ def test_runner_failures_are_named_separately_in_the_summary_and_the_pr_comment(
         text = s.get("run") or s["with"]["script"]
         assert "steps.parse_results.outputs.runner_failures" in text, name
         assert "steps.completeness.outputs.complete" in text, name
+
+
+def test_partial_results_of_a_crashed_shard_are_uploaded():
+    """Run 36961391002: xcodebuild crashed mid-pass, no TestResults.xcresult was
+    written, and the failure text was lost. The shard keeps the unmerged
+    bundles and pass logs in shard-out/partial; the workflow must upload them."""
+    steps = _steps("test")
+    check = next(s for s in steps if s.get("id") == "partial")
+    assert check["if"] == "always()"
+    assert "shard-out/partial" in check["run"] and "present=true" in check["run"]
+    upload = next(s for s in steps
+                  if "upload-artifact" in s.get("uses", "")
+                  and "partial-test-results" in s["with"]["name"])
+    assert upload["if"].startswith("always()")
+    assert "steps.partial.outputs.present == 'true'" in upload["if"]
+    assert upload["with"]["path"].rstrip("/").endswith("shard-out/partial")
+    assert upload["with"]["if-no-files-found"] == "warn"
+    assert upload.get("continue-on-error") is True
