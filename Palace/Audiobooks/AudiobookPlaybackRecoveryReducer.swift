@@ -30,6 +30,11 @@ enum AudiobookPlaybackRecovery: Equatable {
     /// re-open (PP-4800).
     case overdriveRefulfill
 
+    /// OverDrive signed-URL expiry after this open's one re-fulfilment: the
+    /// fresh link did not play either. Dismiss the player and tell the patron
+    /// what to do (PP-4967).
+    case overdriveRefulfillExhausted
+
     /// Bearer-token vendor entitlement expiry — re-open with `forceRefulfill`
     /// to fetch a fresh manifest (HelpSpot #18471).
     case bearerTokenRefulfill
@@ -72,6 +77,7 @@ struct AudiobookPlaybackFailureContext {
     let book: TPPBook?
     let userAccount: TPPUserAccount
     let isAwaitingContentDownload: Bool
+    let isOverdriveRefulfillInFlight: Bool
     let overdriveRefulfillAlreadyAttempted: Bool
     let bearerTokenRefulfillAlreadyAttempted: Bool
     let coldLoadReopenAlreadyAttempted: Bool
@@ -83,6 +89,7 @@ struct AudiobookPlaybackFailureContext {
         book: TPPBook?,
         userAccount: TPPUserAccount,
         isAwaitingContentDownload: Bool,
+        isOverdriveRefulfillInFlight: Bool = false,
         overdriveRefulfillAlreadyAttempted: Bool,
         bearerTokenRefulfillAlreadyAttempted: Bool,
         coldLoadReopenAlreadyAttempted: Bool,
@@ -93,6 +100,7 @@ struct AudiobookPlaybackFailureContext {
         self.book = book
         self.userAccount = userAccount
         self.isAwaitingContentDownload = isAwaitingContentDownload
+        self.isOverdriveRefulfillInFlight = isOverdriveRefulfillInFlight
         self.overdriveRefulfillAlreadyAttempted = overdriveRefulfillAlreadyAttempted
         self.bearerTokenRefulfillAlreadyAttempted = bearerTokenRefulfillAlreadyAttempted
         self.coldLoadReopenAlreadyAttempted = coldLoadReopenAlreadyAttempted
@@ -111,12 +119,19 @@ enum AudiobookPlaybackRecoveryReducer {
 
     /// Decides what the session publishes and which recovery runs.
     static func decide(_ context: AudiobookPlaybackFailureContext) -> AudiobookPlaybackOutcome {
-        if context.isAwaitingContentDownload {
+        // An OverDrive re-fulfilment in flight is the same situation as a
+        // content wait: the old player's further failures are follow-ons, and
+        // acting on one would race the recovery's own re-open (PP-4967).
+        if context.isAwaitingContentDownload || context.isOverdriveRefulfillInFlight {
             return .suppressFollowOnFailure
         }
+        let recovery = selectRecovery(context)
+        // Exhaustion ends the session. The cold-load term of the disjunction can
+        // still hold here (a first-play failure with its re-open unused), and
+        // holding `.loading` would leave the loading shell up under the alert.
         return .publish(
-            keepsPlayerLoading: recoveryIsExpected(context),
-            recovery: selectRecovery(context)
+            keepsPlayerLoading: recovery != .overdriveRefulfillExhausted && recoveryIsExpected(context),
+            recovery: recovery
         )
     }
 
@@ -178,6 +193,13 @@ enum AudiobookPlaybackRecoveryReducer {
             alreadyAttempted: context.overdriveRefulfillAlreadyAttempted
         ) {
             return .overdriveRefulfill
+        }
+        // The one re-fulfilment ran and the fresh link failed the same way.
+        // Ahead of the cold-load re-open: that re-open reads the manifest the
+        // re-fulfilment just wrote and fails identically (PP-4967).
+        if context.overdriveRefulfillAlreadyAttempted,
+           isOverdriveLinkExpiry(error: context.error, book: context.book) {
+            return .overdriveRefulfillExhausted
         }
 #endif
 
@@ -253,11 +275,17 @@ enum AudiobookPlaybackRecoveryReducer {
         book: TPPBook?,
         alreadyAttempted: Bool
     ) -> Bool {
-        guard !alreadyAttempted, let book else { return false }
+        guard !alreadyAttempted else { return false }
+        return isOverdriveLinkExpiry(error: error, book: book)
+    }
+
+    /// True for an OverDrive title failing with its signed link's expiry
+    /// signal: HTTP 410, or the -1008 AVFoundation reports a 410 on a track
+    /// fetch as (it carries no HTTP status). Offline (-1009) and timeout
+    /// (-1001) are not matched.
+    static func isOverdriveLinkExpiry(error: Error?, book: TPPBook?) -> Bool {
+        guard let book else { return false }
         guard book.distributor?.lowercased() == OverdriveDistributorKey.lowercased() else { return false }
-        // AVFoundation reports a 410 on a track fetch as NSURLErrorDomain -1008
-        // with no HTTP status, so -1008 is treated as the same expiry. Offline
-        // (-1009) and timeout (-1001) are not matched.
         if httpStatusCode(from: error) == 410 { return true }
         return isResourceUnavailable(from: error)
     }

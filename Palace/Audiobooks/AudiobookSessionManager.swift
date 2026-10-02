@@ -215,7 +215,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Emits errors for UI display
     public let errorPublisher = PassthroughSubject<AudiobookSessionError, Never>()
 
-    private let bookRegistry: TPPBookRegistryProvider
+    let bookRegistry: TPPBookRegistryProvider
 
     /// Owns the open-time position decision (local vs server-synced vs
     /// beginning) and the `[AUDIOPOS]` diagnostics that go with it.
@@ -296,6 +296,11 @@ public final class AudiobookSessionManager: ObservableObject {
     /// `MediaServicesResetRecovery.swift`.
     private let mediaServicesResetRecovery: MediaServicesResetRecovery
 
+    /// Starts OverDrive fulfilment for a book through the download centre
+    /// (PP-4800). Injected so the recovery's bookkeeping is testable without
+    /// the production download centre.
+    let overdriveRefulfillStarter: @MainActor (TPPBook) -> Void
+
     // MARK: - Initialization
 
     /// Designated init — every dependency is explicit. `private` so the
@@ -314,7 +319,8 @@ public final class AudiobookSessionManager: ObservableObject {
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing,
         playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding,
         readinessTimeout: TimeInterval,
-        notificationCenter: NotificationCenter
+        notificationCenter: NotificationCenter,
+        overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void
     ) {
         self.bookRegistry = bookRegistry
         self.positionResolver = AudiobookPositionResolver(bookRegistry: bookRegistry)
@@ -331,6 +337,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.playbackCommandFactory = playbackCommandFactory
         self.readinessTimeout = readinessTimeout
         self.mediaServicesResetRecovery = MediaServicesResetRecovery(notificationCenter: notificationCenter)
+        self.overdriveRefulfillStarter = overdriveRefulfillStarter
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
         // Note: Remote commands are handled by the toolkit's MediaControlPublisher.
@@ -368,7 +375,10 @@ public final class AudiobookSessionManager: ObservableObject {
             ToolkitPlayerCommand(player: player)
         },
         readinessTimeout: TimeInterval = 2.0,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void = { book in
+            AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
+        }
     ) {
         self.init(
             bookRegistry: appContainer.bookRegistry,
@@ -384,7 +394,8 @@ public final class AudiobookSessionManager: ObservableObject {
             readinessProbeFactory: readinessProbeFactory,
             playbackCommandFactory: playbackCommandFactory,
             readinessTimeout: readinessTimeout,
-            notificationCenter: notificationCenter
+            notificationCenter: notificationCenter,
+            overdriveRefulfillStarter: overdriveRefulfillStarter
         )
     }
 
@@ -587,28 +598,56 @@ public final class AudiobookSessionManager: ObservableObject {
         return true
     }
 
-    /// PP-4800: per-session bound on the OverDrive expired-URL re-fulfill recovery.
-    /// A book id is inserted when its recovery re-open fires and removed when the
-    /// user initiates a fresh open — so a persistent failure re-fulfills at most
-    /// ONCE per playback session and never loops on the shared handler.
-    private var overdriveRefulfillAttemptedBookIds = Set<String>()
+    /// Per-book bounds on the OverDrive re-fulfilment (PP-4800), the
+    /// bearer-token re-fulfilment (HelpSpot #18471) and the cold-load re-open
+    /// (PP-4542). Each runs at most once per patron-initiated open, so a
+    /// persistent failure reaches the patron-facing error instead of looping.
+    /// Only a patron open re-arms them; see `AudiobookRecoveryAttempts`.
+    private(set) var recoveryAttempts = AudiobookRecoveryAttempts()
 
-    /// HelpSpot #18471: per-session bound on the generalized
-    /// bearer-token mid-listen re-fulfill recovery. A book id is inserted when
-    /// its automatic re-fulfill re-open fires and removed when the user starts a
-    /// fresh open — so an expired-entitlement failure re-fulfills at most ONCE
-    /// per playback session and a persistent failure surfaces the existing
-    /// terminal error instead of looping. Internal so the recovery test can
-    /// assert the bound.
-    var bearerTokenRefulfillAttemptedBookIds = Set<String>()
+    /// Re-arms the recovery bounds when `isPatronOpen`, and returns whether it
+    /// did. Every open reports here, so the re-arm rule has one call site.
+    func noteOpenForRecoveryBounds(of bookId: String, forceRefulfill: Bool, isColdLoadRecovery: Bool, isRecoveryReopen: Bool) -> Bool {
+        let isPatronOpen = AudiobookRecoveryAttempts.isPatronOpen(
+            forceRefulfill: forceRefulfill,
+            isColdLoadRecovery: isColdLoadRecovery,
+            isRecoveryReopen: isRecoveryReopen
+        )
+        if isPatronOpen {
+            recoveryAttempts.notePatronOpen(of: bookId)
+        }
+        return isPatronOpen
+    }
 
-    /// PP-4542: per-session bound on the cold-load auto-reopen recovery. A book
-    /// id is inserted when its automatic re-open fires and removed when the user
-    /// initiates a fresh open — so a cold-load failure auto-reopens at most ONCE
-    /// per playback session and a genuinely persistent failure surfaces the
-    /// "Audiobook Unavailable" alert instead of looping. Visibility is internal
-    /// (not private) so the cold-load recovery test can assert the bound.
-    var coldLoadReopenAttemptedBookIds = Set<String>()
+    /// The decision for one `.playbackFailed`, read from the live bounds.
+    func playbackFailureOutcome(for book: TPPBook?, bookId: String, error: Error?) -> AudiobookPlaybackOutcome {
+        AudiobookPlaybackRecoveryReducer.decide(
+            AudiobookPlaybackFailureContext(
+                error: error,
+                book: book,
+                userAccount: accountsManager.currentUserAccount,
+                isAwaitingContentDownload: awaitingContentDownloadBookIds.contains(bookId),
+                isOverdriveRefulfillInFlight: recoveryAttempts.overdriveRefulfill(for: bookId) == .inFlight,
+                overdriveRefulfillAlreadyAttempted: recoveryAttempts.overdriveRefulfill(for: bookId) != .available,
+                bearerTokenRefulfillAlreadyAttempted: recoveryAttempts.hasAttemptedBearerTokenRefulfill(for: bookId),
+                coldLoadReopenAlreadyAttempted: recoveryAttempts.hasAttemptedColdLoadReopen(for: bookId),
+                hasEverStartedPlayback: hasEverStartedPlayback,
+                contentIsLocal: {
+                    AudiobookSessionManager.audiobookContentIsLocal(bookId)
+                }
+            )
+        )
+    }
+
+    /// Spends the bound of a recovery the `.playbackFailed` arm is starting.
+    func noteRecoveryStarted(_ recovery: AudiobookPlaybackRecovery, for bookId: String) {
+        recoveryAttempts.recordStarted(recovery, for: bookId)
+    }
+
+    /// Takes a finished OverDrive re-fulfilment out of flight.
+    func noteOverdriveRefulfillFinished(for bookId: String) {
+        recoveryAttempts.finishOverdriveRefulfill(for: bookId)
+    }
 
     /// PP-4542 (A): book ids currently parked in the "awaiting content download"
     /// recovery (a fresh-borrow streaming failure whose `.lcpa` hasn't landed
@@ -641,25 +680,6 @@ public final class AudiobookSessionManager: ObservableObject {
         // first position save lands.
         AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
 
-        // A fresh user-initiated open resets the per-session re-fulfill bound so
-        // a later genuine expiry can recover again; the recovery re-open
-        // (forceRefulfill) must NOT reset it, or the bound never holds.
-        if !forceRefulfill {
-            overdriveRefulfillAttemptedBookIds.remove(book.identifier)
-            // Same reset semantics as the OverDrive bound — a fresh
-            // user-initiated open re-arms the bearer-token recovery; the recovery
-            // re-open itself (forceRefulfill) must NOT reset it or the bound never
-            // holds and a persistently-expired title would loop.
-            bearerTokenRefulfillAttemptedBookIds.remove(book.identifier)
-            // The cold-load recovery re-open must NOT reset its own bound, or the
-            // one-shot guard never holds and a persistently-failing book loops
-            // (re-open → fail → re-open …). Mirrors the OverDrive forceRefulfill
-            // guard. PP-4542.
-            if !isColdLoadRecovery {
-                coldLoadReopenAttemptedBookIds.remove(book.identifier)
-            }
-        }
-
         // A recovery re-open (PP-4800) re-opens a book the `.playbackFailed`
         // handler parked at `.loading`, so it must bypass this duplicate-open
         // guard; `loadGeneration` still supersedes any concurrent load.
@@ -674,7 +694,17 @@ public final class AudiobookSessionManager: ObservableObject {
         // never holds. Below the `.alreadyLoading` guard: a re-tap refused
         // while the recovery holds `.loading` opens nothing, so it must not
         // end the episode.
-        if !forceRefulfill && !isColdLoadRecovery && !isRecoveryReopen {
+        //
+        // The same rule re-arms the recovery bounds (PP-4967). The OverDrive
+        // re-fulfilment re-opens with `isRecoveryReopen`; when that re-open
+        // re-armed the bound, a fresh link that also failed started another
+        // re-fulfilment, without end.
+        if noteOpenForRecoveryBounds(
+            of: book.identifier,
+            forceRefulfill: forceRefulfill,
+            isColdLoadRecovery: isColdLoadRecovery,
+            isRecoveryReopen: isRecoveryReopen
+        ) {
             mediaServicesResetRecovery.handleSessionEnded()
         }
 
@@ -1703,77 +1733,6 @@ public final class AudiobookSessionManager: ObservableObject {
         }
     }
 
-#if FEATURE_OVERDRIVE
-    /// PP-4800: recovers an OverDrive audiobook whose on-disk manifest holds
-    /// expired signed URLs (surfaced as AVPlayer -1008). The audiobook loader
-    /// CANNOT re-fulfill OverDrive — its `forceRefulfill` routes to
-    /// `OpenAccessAdapter`, whose generic bearer-token second leg hits OverDrive's
-    /// `downloadlink` WITHOUT the `x-overdrive-scope`/`x-overdrive-patron-
-    /// authorization` headers → 401 (device-confirmed). Only the download path
-    /// (`OverdriveDownloadHandler.processOverdriveDownload`) runs the 302 header
-    /// dance that authorizes fresh URLs. The download center refuses a start for a
-    /// `.downloadSuccessful` book (`DownloadStartCoordinator`: "Ignoring
-    /// nonsensical download request"), so reset to `.downloadNeeded` first, trigger
-    /// the fresh fulfillment, await the registry returning to `.downloadSuccessful`
-    /// (fresh manifest on disk, bounded), then re-open from the fresh LOCAL file.
-    /// Bounded to one attempt/book/session by the caller.
-    private func recoverExpiredOverdriveByRefulfilling(_ book: TPPBook) async {
-        let id = book.identifier
-        // The download center rejects a start for an already-downloaded book, so
-        // mark it needs-download before triggering the fresh OverDrive fulfillment.
-        bookRegistry.setState(.downloadNeeded, for: id)
-        AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
-        let landed = await awaitDownloadSuccessful(id, timeout: 90)
-        // A newer open (user tapped a different book) supersedes this recovery.
-        guard currentBook?.identifier == id else { return }
-        if landed {
-            Log.info(#file, "OverDrive re-fulfillment landed a fresh manifest — re-opening '\(book.title)'")
-            // isRecoveryReopen bypasses openAudiobook's `.alreadyLoading` guard —
-            // `state` is still `.loading` from the anti-flash handler. forceRefulfill
-            // stays false so the re-open reads the freshly-refreshed LOCAL manifest.
-            _ = await openAudiobook(book, startPlaying: true, forceRefulfill: false, isRecoveryReopen: true)
-        } else {
-            Log.info(#file, "OverDrive re-fulfillment did not complete — surfacing unavailable for '\(book.title)'")
-            await dismissAndPresentColdLoadUnavailable()
-        }
-    }
-
-    /// Polls the registry (on the main actor) for `id` reaching a terminal
-    /// download state after a re-fulfillment: `.downloadSuccessful`/`.used` → true
-    /// (fresh manifest on disk); `.downloadFailed`/`.unregistered`/`.unsupported`
-    /// → false; otherwise keep waiting up to `timeout` seconds. Polling (vs a
-    /// Combine subscription racing a timeout) keeps the whole recovery on the main
-    /// actor with no continuation/`Sendable` hazard, and can't miss an event since
-    /// each tick reads the current state. Bails early if a newer open supersedes.
-    private func awaitDownloadSuccessful(_ id: String, timeout: TimeInterval) async -> Bool {
-        let pollNanos: UInt64 = 250_000_000
-        var waited: TimeInterval = 0
-        while waited < timeout {
-            try? await Task.sleep(nanoseconds: pollNanos)
-            waited += 0.25
-            guard currentBook?.identifier == id else { return false }
-            if let outcome = Self.overdriveRefulfillOutcome(for: bookRegistry.state(for: id)) {
-                return outcome
-            }
-        }
-        return false
-    }
-
-    /// Pure classification of a registry state during the OverDrive re-fulfill poll:
-    /// `.some(true)` = a fresh manifest landed (stop polling, re-open); `.some(false)`
-    /// = a terminal failure (stop, surface unavailable); `nil` = not yet terminal
-    /// (keep polling).
-    static func overdriveRefulfillOutcome(for state: TPPBookState) -> Bool? {
-        switch state {
-        case .downloadSuccessful, .used:
-            return true
-        case .downloadFailed, .unregistered, .unsupported:
-            return false
-        default:
-            return nil
-        }
-    }
-#endif
 
     private func validateRequirements(for book: TPPBook) async -> AudiobookSessionError? {
         if !(await isUserAuthenticated()) {
@@ -1864,24 +1823,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // state is NOT derivable from the recovery case — see
             // `AudiobookPlaybackRecoveryReducer`'s header for which case breaks
             // that implication and why.
-            let failedBookId = currentBook?.identifier
-            let outcome = AudiobookPlaybackRecoveryReducer.decide(
-                AudiobookPlaybackFailureContext(
-                    error: error,
-                    book: currentBook,
-                    userAccount: accountsManager.currentUserAccount,
-                    isAwaitingContentDownload: awaitingContentDownloadBookIds.contains(bookId),
-                    overdriveRefulfillAlreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId),
-                    bearerTokenRefulfillAlreadyAttempted: bearerTokenRefulfillAttemptedBookIds.contains(bookId),
-                    coldLoadReopenAlreadyAttempted: coldLoadReopenAttemptedBookIds.contains(bookId),
-                    hasEverStartedPlayback: hasEverStartedPlayback,
-                    contentIsLocal: {
-                        guard let failedBookId else { return false }
-                        return AudiobookSessionManager.audiobookContentIsLocal(failedBookId)
-                    }
-                )
-            )
-
+            let outcome = playbackFailureOutcome(for: currentBook, bookId: bookId, error: error)
             // PP-4542 (A): if we're already parked awaiting this book's content
             // download (a fresh-borrow streaming failure), swallow the streaming
             // player's follow-on failure storm. Without this, a second
@@ -1890,7 +1832,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // await is still in flight — which is exactly what defeated the wait
             // in the field repro.
             guard case .publish(let keepsPlayerLoading, let recovery) = outcome else {
-                Log.info(#file, "Ignoring follow-on playback failure for \(bookId) — already awaiting content download (PP-4542)")
+                Log.info(#file, "Ignoring follow-on playback failure for \(bookId) — a content download (PP-4542) or an OverDrive re-fulfilment (PP-4967) is in flight")
                 return
             }
 
@@ -1926,6 +1868,14 @@ public final class AudiobookSessionManager: ObservableObject {
             // track URL, and book id. PP-5242: repeats within a minute are not
             // re-sent; see `PlaybackFailureRecordDeduplicator`.
             sendPlaybackFailureRecordIfNew(error: error, position: position, bookId: bookId)
+
+            // Spend the bound here, once, for whichever recovery starts. After
+            // the media-services check above, which can claim the failure
+            // without starting any of these. Not reached by tests: this arm
+            // needs `currentBook`, which only the full open flow sets.
+            // `AudiobookOverdriveRefulfillWiringTests` drives the method it
+            // calls, and the recovery's own re-open below, by hand.
+            noteRecoveryStarted(recovery, for: bookId)
 
             switch recovery {
             case .samlReauth:
@@ -1963,13 +1913,23 @@ public final class AudiobookSessionManager: ObservableObject {
                 // One attempt per session.
                 guard let book = currentBook else { return }
                 Log.info(#file, "OverDrive audiobook playback failed on an expired signed URL — re-fulfilling via the download center and re-opening")
-                overdriveRefulfillAttemptedBookIds.insert(bookId)
                 Task { [weak self] in
                     guard let self else { return }
                     guard self.currentBook?.identifier == book.identifier else { return }
                     await self.recoverExpiredOverdriveByRefulfilling(book)
                 }
 #endif
+                return
+
+            case .overdriveRefulfillExhausted:
+                // PP-4967: the fresh link from this open's re-fulfilment failed
+                // the same way. Another re-open replays it, so stop and tell the
+                // patron what to do.
+                Log.info(#file, "OverDrive audiobook still failing on its link after re-fulfilment — dismissing with the link-renewal message")
+                errorPublisher.send(.unknown("Playback failed"))
+                Task { [weak self] in
+                    await self?.dismissAndPresentOverdriveLinkRenewalFailed()
+                }
                 return
 
             case .bearerTokenRefulfill:
@@ -1979,7 +1939,6 @@ public final class AudiobookSessionManager: ObservableObject {
                 // UX. One attempt per book per session.
                 guard let book = currentBook else { return }
                 Log.info(#file, "Bearer-token audiobook playback failed on an expired entitlement — re-fulfilling fresh manifest and re-opening (323-Cause-3)")
-                bearerTokenRefulfillAttemptedBookIds.insert(bookId)
                 Task { [weak self] in
                     guard let self else { return }
                     guard self.currentBook?.identifier == book.identifier else { return }
@@ -1994,7 +1953,6 @@ public final class AudiobookSessionManager: ObservableObject {
                 // stack with the upfront LCP gate in openAudiobook, so the wait
                 // is a single 180s window.
                 guard let book = currentBook else { return }
-                coldLoadReopenAttemptedBookIds.insert(bookId)
                 Log.info(#file, "Cold-load failure while content still downloading — awaiting local content before re-opening (PP-4542)")
                 // Park this book so the streaming player's follow-on failure
                 // storm is swallowed (see the guard at the top of this case)
@@ -2026,7 +1984,6 @@ public final class AudiobookSessionManager: ObservableObject {
                 // error; the toolkit's LCPResourceLoaderDelegate retry is the
                 // primary fix.
                 guard let book = currentBook else { return }
-                coldLoadReopenAttemptedBookIds.insert(bookId)
                 Log.info(#file, "Cold-load failure detected — attempting one automatic re-open before surfacing alert")
                 Task { [weak self] in
                     guard let self else { return }
