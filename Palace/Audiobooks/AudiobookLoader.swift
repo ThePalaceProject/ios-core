@@ -194,7 +194,15 @@ final class AudiobookLoader {
             switch result {
             case .success:
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
-                completion(.success(()))
+                // PP-5299: the executor has delivered this callback from inside
+                // its own Task since at least 3.2.4 — that did not change. What
+                // changed in 3.3.0 is the language mode (876f7637f: SWIFT_VERSION
+                // 5.0 -> 6.0, SWIFT_STRICT_CONCURRENCY = complete), which turns
+                // the dynamic isolation check into an assert instead of a warning.
+                // `completion` continues into @MainActor `resolveSource`, so the
+                // pre-existing off-main delivery became a trap rather than a silent
+                // race. Hop before delivering.
+                RefreshOutcomeDelivery(completion, outcome: .success(())).deliverOnMain()
             case .failure(let error, _):
                 // PP-4542: another refresh (usually the launch-time proactive
                 // refresh) holds the single-flight slot, and
@@ -215,7 +223,11 @@ final class AudiobookLoader {
                     return
                 }
                 Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription)")
-                completion(.failure(.tokenRefreshFailed(underlying: error)))
+                // PP-5299: same hop as the success arm above.
+                RefreshOutcomeDelivery(
+                    completion,
+                    outcome: .failure(.tokenRefreshFailed(underlying: error))
+                ).deliverOnMain()
             }
         }
     }
@@ -246,11 +258,11 @@ final class AudiobookLoader {
             let deadline = Date().addingTimeInterval(timeout)
             while true {
                 if !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired {
-                    completionBox.fire(true)
+                    await completionBox.fire(true)
                     return
                 }
                 if Date() >= deadline {
-                    completionBox.fire(false)
+                    await completionBox.fire(false)
                     return
                 }
                 try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
@@ -570,16 +582,84 @@ final class AudiobookLoader {
 /// can cross into the poll `Task` without forcing `@Sendable` onto the
 /// `awaitTokenReady` signature (which would ripple to its call site).
 ///
-/// - Sendable invariant: the poll loop calls `fire(_:)` exactly once
-///   (token-ready XOR timeout) from a single Task, never concurrently.
-private struct TokenReadyCompletionBox: @unchecked Sendable {
+/// - Sendable invariant: `fire(_:)` forwards to the wrapped closure. The poll
+///   loop calls it exactly once (token-ready XOR timeout) from a single Task,
+///   never concurrently. The wrapped closure is otherwise opaque, hence
+///   `@unchecked`. Mirrors `SendableDecryptCompletion` in `LCPAudiobooks`.
+/// - Executor invariant (PP-5299): `fire(_:)` is `@MainActor`. The wrapped
+///   closure continues into `@MainActor` work in the caller, so firing it from
+///   the poll `Task`'s executor trapped at the isolation check instead of
+///   failing anything. Call-once and called-on-which-executor are separate
+///   questions, and only the first was stated when this box was introduced.
+///   `SendableDecryptCompletion` in `LCPAudiobooks` is the same box WITH the hop
+///   (it fires inside `DispatchQueue.main.async`); this one copied the box and
+///   not the hop.
+/// - `internal` so a test can construct it and assert the hop directly. While it
+///   was `private`, nothing pinned `@MainActor` on `fire`, and removing that
+///   attribute leaves `await` as a warning only — it compiles silently.
+struct TokenReadyCompletionBox: @unchecked Sendable {
     private let completion: (Bool) -> Void
 
     init(_ completion: @escaping (Bool) -> Void) {
         self.completion = completion
     }
 
+    @MainActor
     func fire(_ becameValid: Bool) {
         completion(becameValid)
+    }
+}
+
+/// Carries a `refreshTokenIfNeeded` outcome from the network executor's
+/// callback executor to the main actor (PP-5299).
+///
+/// `TPPNetworkExecutor.refreshTokenAndResume` has delivered its callback from
+/// inside its own `Task` since at least 3.2.4 — verified at that tag, line 492.
+/// The delivery executor did NOT change in 3.3.0. What changed is the language
+/// mode (`876f7637f`: `SWIFT_VERSION` 5.0 -> 6.0, `SWIFT_STRICT_CONCURRENCY =
+/// complete`), which promotes the dynamic isolation check from a legacy warning
+/// to an assert. The wrapped completion continues into `@MainActor` work
+/// (`resolveSource`), so what was a silent data race in 3.2.4 became
+/// `dispatch_assert_queue` inside `swift_task_isCurrentExecutorWithFlags`.
+///
+/// The class this belongs to is therefore NOT "callers of the refresh" — it is
+/// every main-actor-isolated closure invoked off-main anywhere in the app. A
+/// second instance shipped in 3.3.0 and was fixed separately; see the comment at
+/// `AudiobookPositionResolver.awaitRemotePosition`.
+///
+/// `internal` rather than `private` so a test can construct it and assert the
+/// delivery context directly; `private` left the only exits the field crash
+/// walked untestable.
+///
+/// Both the completion and the outcome are non-`Sendable` — the outcome wraps an
+/// `Error` existential — so they are captured at construction rather than
+/// crossing the `Task` boundary as arguments. Only this box crosses, hence
+/// `@unchecked`.
+///
+/// - Sendable invariant: constructed on the callback's executor, delivered
+///   exactly once on the main actor, never read concurrently.
+struct RefreshOutcomeDelivery: @unchecked Sendable {
+    private let completion: (Result<Void, AudiobookLoadError>) -> Void
+    private let outcome: Result<Void, AudiobookLoadError>
+
+    init(
+        _ completion: @escaping (Result<Void, AudiobookLoadError>) -> Void,
+        outcome: Result<Void, AudiobookLoadError>
+    ) {
+        self.completion = completion
+        self.outcome = outcome
+    }
+
+    /// `Task` rather than `MainActor.run` because the call site is not async.
+    ///
+    /// Returns the hop so a test can join it; emptying the hop's CLOSURE (not this
+    /// method's body, which would not compile and would score as errored rather
+    /// than killed) is the mutation its test catches. Production call sites discard it —
+    /// the delivery is deliberately fire-and-forget there — but without a join a
+    /// test can only wait on a deadline, which starves under parallel simulator
+    /// clones (STARVE-001).
+    @discardableResult
+    func deliverOnMain() -> Task<Void, Never> {
+        Task { @MainActor in completion(outcome) }
     }
 }
