@@ -718,4 +718,41 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         XCTAssertEqual(callCount, 1,
                        "Completion must fire EXACTLY once (kills mutation that emits both success-and-failure)")
     }
+
+    // MARK: - Test 10: the delivery executor is characterized, not assumed (PP-5299)
+    //
+    // Pins the single fact AudiobookLoader's main-actor hop exists for: this
+    // completion is NOT delivered on the main actor. It fires from inside the
+    // refresh `Task`, i.e. the global concurrent executor, and has since at least
+    // 3.2.4 — the 3.3.0 language-mode flip (876f7637f: SWIFT_VERSION 5.0 -> 6.0,
+    // SWIFT_STRICT_CONCURRENCY = complete) only promoted the consumer-side
+    // isolation check from a warning to an assert.
+    //
+    // Characterization, not a preference. If someone later marshals delivery
+    // inside the executor (the deferred durable fix), this goes red and names the
+    // transition, instead of the hop in AudiobookLoader quietly becoming dead code
+    // with nothing recording why it was needed.
+
+    func testRefresh_CompletionIsDeliveredOffTheMainActor() async throws {
+        await executor.resetRefreshAttemptCount()
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            guard request.url == tokenURL else { return nil }
+            return .init(statusCode: 200,
+                         headers: nil,
+                         body: Self.tokenResponseJSON(accessToken: "ok"))
+        }
+
+        let exp = expectation(description: "completion fires")
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { _ in
+            XCTAssertFalse(
+                Thread.isMainThread,
+                "refreshTokenAndResume delivered on the main thread. If that is now "
+                + "intended, the @MainActor hop in AudiobookLoader.refreshTokenIfNeeded "
+                + "is redundant and this characterization must be updated with it "
+                + "(PP-5299)."
+            )
+            exp.fulfill()
+        }
+        await fulfillment(of: [exp], timeout: 5.0)
+    }
 }

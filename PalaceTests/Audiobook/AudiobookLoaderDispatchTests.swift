@@ -308,35 +308,88 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         }
     }
 
-    // MARK: - PP-5299 — the token-refresh callback must arrive on the main actor
+    // MARK: - PP-5299 — token-refresh delivery must reach the main actor
 
-    /// `awaitTokenReady` polls inside an unstructured `Task`, so its completion
-    /// fires on the global executor unless the implementation hops first. The
-    /// caller (`refreshTokenIfNeeded`) continues straight into `@MainActor`
-    /// work — `resolveSource` — so an off-main delivery does not fail a test,
-    /// it traps at the isolation check: `dispatch_assert_queue` inside
-    /// `swift_task_isCurrentExecutorWithFlags`. That was the only crash 3.3.0
-    /// produced (Crashlytics 90c78a67e737857b30512e157c75a045).
-    ///
-    /// This asserts the delivery CONTEXT, not the value. The three tests that
-    /// drive this path in `TokenRefreshAndRetryQueueTests` check the result and
-    /// fulfil an expectation, which passes from any thread — which is why the
-    /// suite stayed green through the regression.
-    ///
-    /// Deliberately indifferent to which branch fires: whether the poll sees a
-    /// valid token or reaches its deadline, the completion must land on main.
-    func testAwaitTokenReady_deliversItsCompletionOnTheMainActor() async {
-        let delivered = expectation(description: "awaitTokenReady fired its completion")
+    // These assert the delivery CONTEXT *and* the delivered VALUE. Context alone
+    // leaves `fire(true)`/`fire(false)` interchangeable, and swapping them opens
+    // the audiobook with a still-expired token (the PP-4542 failure mode).
+    //
+    // Both branches are pinned rather than left to inherited simulator state.
+    // `awaitTokenReady` polls `authTokenHasExpired` on the production shared
+    // account, so without a reset the branch taken depends on what a previous
+    // suite left in the keychain — which is why an earlier run of this test took
+    // 1.132s (deadline branch) and the next 0.002s (token-already-valid branch).
+    // Same hazard the sibling suite documents at
+    // AudiobookLoaderOPDSShapeMatrixTests's hermetic auth-state guard.
 
-        AudiobookLoader.awaitTokenReady(timeout: 0.2, pollInterval: 0.05) { _ in
-            XCTAssertTrue(
-                Thread.isMainThread,
-                "awaitTokenReady delivered its completion off the main thread. "
-                + "Its caller continues into @MainActor work and will trap at "
-                + "the isolation check rather than fail."
-            )
+    /// Token already valid: the poll fires on its first iteration with `true`.
+    func testAwaitTokenReady_tokenAlreadyValid_deliversTrueOnTheMainActor() async throws {
+        try KeychainAvailability.skipIfUnavailable()
+        let account = AppContainer.production().accountsManager.currentUserAccount
+        account.removeAll()
+        XCTAssertFalse(account.authTokenHasExpired,
+                       "Precondition: no credentials means the token does not read as expired")
+
+        let delivered = expectation(description: "awaitTokenReady fired")
+        AudiobookLoader.awaitTokenReady(timeout: 2.0, pollInterval: 0.05) { becameValid in
+            XCTAssertTrue(Thread.isMainThread,
+                          "delivered off the main thread; the caller continues into @MainActor work and will trap")
+            XCTAssertTrue(becameValid,
+                          "the token is valid, so the poll must report true, not the deadline value")
             delivered.fulfill()
         }
+        await fulfillment(of: [delivered], timeout: 5.0)
+        account.removeAll()
+    }
+
+    /// Token expired for the whole window: the poll reaches its deadline and
+    /// fires `false`. Pins the other arm of the same `fire` funnel.
+    func testAwaitTokenReady_tokenStaysExpired_deliversFalseOnTheMainActor() async throws {
+        try KeychainAvailability.skipIfUnavailable()
+        let account = AppContainer.production().accountsManager.currentUserAccount
+        account.removeAll()
+        account.setAuthToken("stale-token", barcode: "b", pin: "p",
+                             expirationDate: Date(timeIntervalSinceNow: -3600))
+        XCTAssertTrue(account.authTokenHasExpired,
+                      "Precondition: the token must read as expired for the deadline branch")
+
+        let delivered = expectation(description: "awaitTokenReady reached its deadline")
+        AudiobookLoader.awaitTokenReady(timeout: 0.2, pollInterval: 0.05) { becameValid in
+            XCTAssertTrue(Thread.isMainThread, "deadline branch delivered off the main thread")
+            XCTAssertFalse(becameValid,
+                           "the token never became valid, so the poll must report false")
+            delivered.fulfill()
+        }
+        await fulfillment(of: [delivered], timeout: 5.0)
+        account.removeAll()
+    }
+
+    /// The carrier the FIELD crash walked. `refreshTokenIfNeeded`'s two direct
+    /// executor-callback exits deliver through `RefreshOutcomeDelivery`, and those
+    /// are the exits the Crashlytics stack and log show ("Token refresh successful
+    /// - proceeding to open audiobook" then the trap). Constructing it off-main is
+    /// exactly the executor's situation.
+    ///
+    /// Empty `deliverOnMain()`'s body and this fails on the timeout — which is the
+    /// mutant that otherwise hangs an audiobook open forever with no error.
+    /// Drop `@MainActor` from its inner Task and it fails on the thread assertion.
+    func testRefreshOutcomeDelivery_firedOffMain_deliversOnTheMainActorWithTheOutcome() async {
+        let delivered = expectation(description: "the carrier delivered")
+        let sut = RefreshOutcomeDelivery({ result in
+            XCTAssertTrue(Thread.isMainThread,
+                          "the carrier exists to hop; delivering off-main reproduces PP-5299")
+            guard case .failure(.missingCredentialsForTokenRefresh) = result else {
+                return XCTFail("the outcome must survive the hop unchanged, got \(result)")
+            }
+            delivered.fulfill()
+        }, outcome: .failure(.missingCredentialsForTokenRefresh))
+
+        // Detached so the construction and the fire both happen off the main
+        // actor, as they do when the executor's Task calls back.
+        await Task.detached {
+            XCTAssertFalse(Thread.isMainThread, "precondition: firing from off-main")
+            sut.deliverOnMain()
+        }.value
 
         await fulfillment(of: [delivered], timeout: 5.0)
     }

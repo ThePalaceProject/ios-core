@@ -168,10 +168,14 @@ final class AudiobookLoader {
             switch result {
             case .success:
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
-                // PP-5299: the executor delivers this callback on the global
-                // concurrent executor (since 3.3.0 the refresh body runs inside
-                // its own Task), and `completion` continues into @MainActor
-                // `resolveSource`. Hop before delivering.
+                // PP-5299: the executor has delivered this callback from inside
+                // its own Task since at least 3.2.4 — that did not change. What
+                // changed in 3.3.0 is the language mode (876f7637f: SWIFT_VERSION
+                // 5.0 -> 6.0, SWIFT_STRICT_CONCURRENCY = complete), which turns
+                // the dynamic isolation check into an assert instead of a warning.
+                // `completion` continues into @MainActor `resolveSource`, so the
+                // pre-existing off-main delivery became a trap rather than a silent
+                // race. Hop before delivering.
                 RefreshOutcomeDelivery(completion, outcome: .success(())).deliverOnMain()
             case .failure(let error, _):
                 // PP-4542: the open requested a token but another refresh
@@ -563,6 +567,9 @@ final class AudiobookLoader {
 ///   the poll `Task`'s executor trapped at the isolation check instead of
 ///   failing anything. Call-once and called-on-which-executor are separate
 ///   questions, and only the first was stated when this box was introduced.
+///   `SendableDecryptCompletion` in `LCPAudiobooks` is the same box WITH the hop
+///   (it fires inside `DispatchQueue.main.async`); this one copied the box and
+///   not the hop.
 private struct TokenReadyCompletionBox: @unchecked Sendable {
     private let completion: (Bool) -> Void
 
@@ -580,10 +587,22 @@ private struct TokenReadyCompletionBox: @unchecked Sendable {
 /// callback executor to the main actor (PP-5299).
 ///
 /// `TPPNetworkExecutor.refreshTokenAndResume` has delivered its callback from
-/// inside its own `Task` since 3.3.0, i.e. on the global concurrent executor.
-/// The wrapped completion continues into `@MainActor` work (`resolveSource`),
-/// so delivering it there trapped at the isolation check rather than failing
-/// anything: `dispatch_assert_queue` inside `swift_task_isCurrentExecutorWithFlags`.
+/// inside its own `Task` since at least 3.2.4 — verified at that tag, line 492.
+/// The delivery executor did NOT change in 3.3.0. What changed is the language
+/// mode (`876f7637f`: `SWIFT_VERSION` 5.0 -> 6.0, `SWIFT_STRICT_CONCURRENCY =
+/// complete`), which promotes the dynamic isolation check from a legacy warning
+/// to an assert. The wrapped completion continues into `@MainActor` work
+/// (`resolveSource`), so what was a silent data race in 3.2.4 became
+/// `dispatch_assert_queue` inside `swift_task_isCurrentExecutorWithFlags`.
+///
+/// The class this belongs to is therefore NOT "callers of the refresh" — it is
+/// every main-actor-isolated closure invoked off-main anywhere in the app. A
+/// second instance shipped in 3.3.0 and was fixed separately; see the comment at
+/// `AudiobookSessionManager.awaitRemotePosition`.
+///
+/// `internal` rather than `private` so a test can construct it and assert the
+/// delivery context directly; `private` left the only exits the field crash
+/// walked untestable.
 ///
 /// Both the completion and the outcome are non-`Sendable` — the outcome wraps an
 /// `Error` existential — so they are captured at construction rather than
@@ -592,7 +611,7 @@ private struct TokenReadyCompletionBox: @unchecked Sendable {
 ///
 /// - Sendable invariant: constructed on the callback's executor, delivered
 ///   exactly once on the main actor, never read concurrently.
-private struct RefreshOutcomeDelivery: @unchecked Sendable {
+struct RefreshOutcomeDelivery: @unchecked Sendable {
     private let completion: (Result<Void, AudiobookLoadError>) -> Void
     private let outcome: Result<Void, AudiobookLoadError>
 
