@@ -45,6 +45,21 @@ struct AudiobookRecoveryAttempts {
         coldLoadReopened.remove(bookId)
     }
 
+    /// Spends the bound of the recovery that is starting. Recoveries with no
+    /// bound (re-auth, the terminal outcomes) change nothing.
+    mutating func recordStarted(_ recovery: AudiobookPlaybackRecovery, for bookId: String) {
+        switch recovery {
+        case .overdriveRefulfill:
+            beginOverdriveRefulfill(for: bookId)
+        case .bearerTokenRefulfill:
+            recordBearerTokenRefulfill(for: bookId)
+        case .coldLoadReopen, .coldLoadAwaitContentThenReopen:
+            recordColdLoadReopen(for: bookId)
+        case .samlReauth, .overdriveRefulfillExhausted, .terminal:
+            break
+        }
+    }
+
     // MARK: OverDrive re-fulfilment
 
     func overdriveRefulfill(for bookId: String) -> OverdriveRefulfill {

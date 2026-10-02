@@ -137,6 +137,28 @@ final class AudiobookRecoveryAttemptsTests: XCTestCase {
         XCTAssertEqual(a.overdriveRefulfill(for: book), .available)
     }
 
+    // MARK: - Starting a recovery spends its own bound and no other
+
+    func testRecordStarted_overEveryRecovery() {
+        let cases: [(AudiobookPlaybackRecovery, overdrive: AudiobookRecoveryAttempts.OverdriveRefulfill, bearer: Bool, coldLoad: Bool)] = [
+            (.overdriveRefulfill, .inFlight, false, false),
+            (.bearerTokenRefulfill, .available, true, false),
+            (.coldLoadReopen, .available, false, true),
+            (.coldLoadAwaitContentThenReopen, .available, false, true),
+            (.samlReauth, .available, false, false),
+            (.overdriveRefulfillExhausted, .available, false, false),
+            (.terminal(dismissAndAlert: true), .available, false, false),
+            (.terminal(dismissAndAlert: false), .available, false, false),
+        ]
+        for (recovery, overdrive, bearer, coldLoad) in cases {
+            var a = AudiobookRecoveryAttempts()
+            a.recordStarted(recovery, for: book)
+            XCTAssertEqual(a.overdriveRefulfill(for: book), overdrive, "\(recovery)")
+            XCTAssertEqual(a.hasAttemptedBearerTokenRefulfill(for: book), bearer, "\(recovery)")
+            XCTAssertEqual(a.hasAttemptedColdLoadReopen(for: book), coldLoad, "\(recovery)")
+        }
+    }
+
     // MARK: - Which opens re-arm the bounds
 
     /// Only a patron-initiated open re-arms. Each automatic re-open passes one
