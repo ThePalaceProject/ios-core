@@ -351,4 +351,30 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
 
         await fulfillment(of: [delivered], timeout: 5.0)
     }
+
+    /// The poll's carrier. `awaitTokenReady` fires this from inside an
+    /// unstructured `Task`, and its completion continues into the caller's
+    /// `@MainActor` work, so `fire` must hop. Dropping `@MainActor` from it leaves
+    /// `await` as a warning only and compiles silently, which is exactly why this
+    /// needs a test rather than the compiler.
+    ///
+    /// Needs no shared account: the box is constructed and fired directly, so this
+    /// pins the hop without the process-wide state that forced the removal of the
+    /// branch tests.
+    func testTokenReadyCompletionBox_firedOffMain_deliversOnTheMainActorWithTheValue() async {
+        let delivered = expectation(description: "the poll carrier delivered")
+        let sut = TokenReadyCompletionBox({ becameValid in
+            XCTAssertTrue(Thread.isMainThread,
+                          "awaitTokenReady's carrier must hop; delivering off-main reproduces PP-5299")
+            XCTAssertTrue(becameValid, "the value must survive the hop unchanged")
+            delivered.fulfill()
+        })
+
+        await Task.detached {
+            XCTAssertFalse(Thread.isMainThread, "precondition: firing from off-main")
+            await sut.fire(true)
+        }.value
+
+        await fulfillment(of: [delivered], timeout: 5.0)
+    }
 }

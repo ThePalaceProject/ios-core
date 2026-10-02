@@ -570,7 +570,10 @@ final class AudiobookLoader {
 ///   `SendableDecryptCompletion` in `LCPAudiobooks` is the same box WITH the hop
 ///   (it fires inside `DispatchQueue.main.async`); this one copied the box and
 ///   not the hop.
-private struct TokenReadyCompletionBox: @unchecked Sendable {
+/// - `internal` so a test can construct it and assert the hop directly. While it
+///   was `private`, nothing pinned `@MainActor` on `fire`, and removing that
+///   attribute leaves `await` as a warning only — it compiles silently.
+struct TokenReadyCompletionBox: @unchecked Sendable {
     private let completion: (Bool) -> Void
 
     init(_ completion: @escaping (Bool) -> Void) {
