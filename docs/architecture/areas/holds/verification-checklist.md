@@ -130,6 +130,8 @@ Most UNKNOWN cells reflect the PP-4020 and PP-4358 audit gaps; refresh with each
 - **Hold-ready availability is BOTH `.reserved` and `.ready`** (HoldsReducer.isReserved) — the legacy `HoldsBookViewModel.isReserved` partition lumps them together for list-section purposes, but `BookButtonMapper.map(...)` differentiates them for the action button. Don't unify these predicates.
 - **`HoldNotificationCategoryIdentifier` uses the NYPL prefix** — renaming this string strands in-flight local notifications. Coordinate with CM-side registration before changing.
 - **Throttle key sharing** — `"lastForegroundSyncTimestamp"` is read by both `TPPAppDelegate.syncIfUserHasHolds` and `NotificationService.syncWithThrottle`. Renaming the key in one place leaks duplicate syncs.
+- **The FCM readiness lint does not close the ordering it guards** (PP-4958 — hold-ready pushes stopped reaching ~6,600 patrons, ~53,000 occurrences in 30 days). `PalaceTests/MetaTests/FCMRegistrationReadinessLintTests.swift` reads the source text of `NotificationService.updateToken()` to confirm registration happens inside and after the account-readiness wait. Two rewrites restore the original defect while that check reports clean: wrapping the wait in a second, separate task, and starting the wait without awaiting it until after registration. Quoted strings can also hide code from a text-shaped check. The fix itself is exercised by `NotificationServiceReadinessGateTests`, which runs the real code — it is the regression guard that is porous. If you change this path, assert the observable instead: registration must not run while the account is loading, must run exactly once once it is ready, and must not run at all if loading fails. <!-- audit-verified -->
+
 
 ---
 
