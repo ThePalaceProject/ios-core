@@ -566,6 +566,29 @@ jobs:
           if-no-files-found: ignore
           overwrite: true
 
+      # After an xcodebuild crash or a failed shard, TestResults.xcresult may not
+      # exist. The shard keeps the unmerged bundles (possibly unfinalized) and the
+      # raw xcodebuild log of each pass in shard-out/partial; upload them so the
+      # failure text can still be read with xcresulttool or from the log.
+      - name: Check for partial test results
+        if: always()
+        id: partial
+        run: |
+          if [ -n "$(ls -A "$RUNNER_TEMP/shard-out/partial" 2>/dev/null)" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload partial test results
+        if: always() && steps.partial.outputs.present == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: partial-test-results-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-out/partial/
+          retention-days: 14
+          if-no-files-found: warn
+          overwrite: true
+
       # NOT continue-on-error: the gate cannot prove this shard ran its classes
       # without it, and it must then fail rather than assume.
       - name: Upload shard report

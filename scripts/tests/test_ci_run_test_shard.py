@@ -431,3 +431,54 @@ def test_exit_134_with_a_failure_and_no_crash_marker_is_not_retried(env):
     assert len(_calls(tmp_path)) == 1
     assert "::error title=xcodebuild crashed after a test failed::" in r.stdout
     assert "retrying the pass once" not in r.stdout
+
+
+# --------------------------------------------------------------------------
+# A crashed or failed pass keeps its bundle and log for upload (run 36961391002)
+# --------------------------------------------------------------------------
+
+def _partial(tmp_path):
+    d = tmp_path / "out/partial"
+    return sorted(p.name for p in d.iterdir()) if d.is_dir() else []
+
+
+def test_a_clean_shard_keeps_no_partial_results(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _partial(tmp_path) == []
+
+
+def test_a_crash_after_a_test_failed_keeps_the_unmerged_bundle_and_its_log(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", STUB_CRASH_FAILED="before")
+    assert r.returncode == 1
+    assert not (tmp_path / "out/TestResults.xcresult").exists()
+    assert _partial(tmp_path) == ["parallel.log", "parallel.xcresult"]
+    log = (tmp_path / "out/partial/parallel.log").read_text()
+    assert "Test case 'A.t()' failed" in log
+    assert "** INTERNAL ERROR: Uncaught exception **" in log
+
+
+def test_a_crash_that_is_retried_keeps_the_crashed_bundle_and_log(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _partial(tmp_path) == ["parallel.log", "parallel.xcresult"]
+    assert "** INTERNAL ERROR" in (tmp_path / "out/partial/parallel.log").read_text()
+
+
+def test_a_crash_that_repeats_keeps_both_crashed_passes(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="2")
+    assert r.returncode == 1
+    assert _partial(tmp_path) == ["parallel-crash-retry.log", "parallel-crash-retry.xcresult",
+                                  "parallel.log", "parallel.xcresult"]
+
+
+def test_a_failed_shard_keeps_its_pass_logs(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_FAIL="PalaceTests/A")
+    assert r.returncode == 1
+    assert _partial(tmp_path) == ["parallel.log", "serial.log"]
+    assert "Test case 'A.t()' failed" in (tmp_path / "out/partial/parallel.log").read_text()
