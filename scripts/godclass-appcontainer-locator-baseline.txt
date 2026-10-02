@@ -25,4 +25,9 @@
 #   fails on any slack, so this number must be re-measured, not estimated.
 # 249 -> 248: TPPUserAccount's keychain key derivation reads
 #   AccountsManager.TPPAccountUUIDs[0] instead of AppContainer.production().
-248
+# 248 -> 246: two unreachable methods deleted from TPPNetworkResponder took
+#   their locators with them — handleHTTPResponse's credentialSnapshot() read
+#   and refreshToken(userAccount:)'s default argument. Neither method had a
+#   caller. The file still holds 7 locators, so it is still scanned and still
+#   matching; the drop is removed uses, not a glob that stopped resolving.
+246
