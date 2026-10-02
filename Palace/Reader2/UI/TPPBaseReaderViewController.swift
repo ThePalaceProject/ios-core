@@ -665,10 +665,42 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         return !navigationBarHidden
     }
 
+    /// Pure decision for the navigation bar's visibility.
+    ///
+    /// Pairs with `overlayLabelsHidden`: between them the patron always has one
+    /// of the two — the immersive chrome while the bar is away, the bar itself
+    /// otherwise. VoiceOver keeps the bar regardless of the tracked value,
+    /// because the bar carries the only reachable Back control.
+    static func navigationBarShouldHide(navigationBarHidden: Bool,
+                                        voiceOverRunning: Bool) -> Bool {
+        navigationBarHidden && !voiceOverRunning
+    }
+
     func updateNavigationBar(animated: Bool = true) {
-        let hidden = navigationBarHidden && !UIAccessibility.isVoiceOverRunning
+        let hidden = Self.navigationBarShouldHide(
+            navigationBarHidden: navigationBarHidden,
+            voiceOverRunning: UIAccessibility.isVoiceOverRunning)
         navigationController?.setNavigationBarHidden(hidden, animated: animated)
         setNeedsStatusBarAppearanceUpdate()
+    }
+
+    /// Return the reader to its immersive state through the tracked value, so
+    /// the next tap toggles from what is actually on screen.
+    ///
+    /// Renders unconditionally: `navigationBarHidden`'s `didSet` does not fire
+    /// when the value is already `true`, which is the first-appearance case, and
+    /// routing through the tracked value is what keeps the VoiceOver rule in
+    /// play — a direct `setNavigationBarHidden(true,` would hide the bar from a
+    /// patron whose only Back control it is.
+    func resetNavigationBarToHidden(animated: Bool = false) {
+        navigationBarHidden = true
+        updateNavigationBar(animated: animated)
+        // The chrome has to come back with it. It faded out when the bar was
+        // tapped in, and nothing else re-renders it, so a reset that moved only
+        // the bar would leave the patron with no chrome AND no bar — the one
+        // combination `navigationBarShouldHide` and `overlayLabelsHidden` exist
+        // to rule out.
+        updateOverlayLabelsVisibility(animated: animated)
     }
 
     override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation {
