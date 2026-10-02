@@ -37,7 +37,10 @@ XCODEBUILD = textwrap.dedent("""\
     # STUB_CRASH=<n>: the first n invocations abort the way Xcode 26.3's
     # XCTHarness does (PRs #1562, #1565): the INTERNAL ERROR marker, exit 134,
     # and a bundle directory with nothing readable in it. STUB_CRASH_FAILED
-    # also prints a failed test before the abort; STUB_CRASH_EXIT overrides 134.
+    # also prints a failed test: "after" logs it after the marker, the way Xcode
+    # 26.6 fails the test in flight when it gives up on it (run 36952741418);
+    # "nomarker" exits without the marker; any other value logs it before the
+    # marker. STUB_CRASH_EXIT overrides 134.
     echo "$*" >> "$STUB_LOG"
     bundle=""; prev=""; ids=()
     for a in "$@"; do
@@ -50,9 +53,13 @@ XCODEBUILD = textwrap.dedent("""\
     if [ "$n" -lt "${STUB_CRASH:-0}" ]; then
       echo $((n + 1)) > "$crashes"
       mkdir -p "$bundle"
-      [ -n "${STUB_CRASH_FAILED:-}" ] && echo "Test case 'A.t()' failed on 'Clone 1 of iPhone 16 Pro - Palace (123)' (0.010 seconds)"
-      echo "** INTERNAL ERROR: Uncaught exception **"
-      echo "Uncaught Exception: Unexpected operation <IDERunOperation: 0x1; state = aReF!C>, current operation is (null)"
+      failure="Test case 'A.t()' failed on 'Clone 1 of iPhone 16 Pro - Palace (123)' (120.000 seconds)"
+      case "${STUB_CRASH_FAILED:-}" in ""|after|nomarker) ;; *) echo "$failure";; esac
+      if [ "${STUB_CRASH_FAILED:-}" != "nomarker" ]; then
+        echo "** INTERNAL ERROR: Uncaught exception **"
+        echo "Uncaught Exception: Unexpected operation <IDERunOperation: 0x1; state = aReF!C>, current operation is (null)"
+      fi
+      case "${STUB_CRASH_FAILED:-}" in after|nomarker) echo "$failure";; esac
       exit "${STUB_CRASH_EXIT:-134}"
     fi
     mkdir -p "$bundle"; : > "$bundle/cases"
@@ -385,4 +392,42 @@ def test_a_crash_after_a_test_failed_is_not_retried(env):
     r = _run(tmp_path, e, STUB_CRASH="1", STUB_CRASH_FAILED="1")
     assert r.returncode == 1
     assert len(_calls(tmp_path)) == 1
+    assert "retrying the pass once" not in r.stdout
+
+
+def test_the_test_in_flight_when_xcodebuild_crashed_does_not_block_the_retry(env):
+    """Run 36952741418: Xcode 26.6 logs the in-flight test as failed after the
+    crash marker. That failure is the crash's, so the pass is retried."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", STUB_CRASH_FAILED="after")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len(_calls(tmp_path)) == 3, "crashed parallel pass, its retry, then the serial pass"
+    warning = next(l for l in r.stdout.splitlines()
+                   if l.startswith("::warning title=xcodebuild crashed; retrying the pass once::"))
+    assert "A.t()" in warning, "the annotation names the in-flight test it discounted"
+
+
+def test_the_in_flight_test_must_still_pass_on_the_retry(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", STUB_CRASH_FAILED="after", STUB_FAIL="PalaceTests/A")
+    assert r.returncode == 1
+    assert "retrying the pass once" in r.stdout
+    assert "Shard 0 passed" not in r.stdout
+
+
+def test_a_failure_logged_before_the_crash_marker_is_not_retried(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", STUB_CRASH_FAILED="before")
+    assert r.returncode == 1
+    assert len(_calls(tmp_path)) == 1
+    assert "::error title=xcodebuild crashed after a test failed::" in r.stdout
+    assert "retrying the pass once" not in r.stdout
+
+
+def test_exit_134_with_a_failure_and_no_crash_marker_is_not_retried(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", STUB_CRASH_FAILED="nomarker")
+    assert r.returncode == 1
+    assert len(_calls(tmp_path)) == 1
+    assert "::error title=xcodebuild crashed after a test failed::" in r.stdout
     assert "retrying the pass once" not in r.stdout
