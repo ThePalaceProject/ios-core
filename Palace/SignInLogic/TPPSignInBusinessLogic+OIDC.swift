@@ -191,6 +191,28 @@ extension TPPSignInBusinessLogic {
             return
         }
 
+        // Test seam. With a canned callback armed, deliver it and present
+        // nothing: a unit test cannot dismiss a system browser and a simdrive
+        // journey has no credentials for a live IdP consent page, so without
+        // this the path from URL composition to credential handling is
+        // undrivable. `finalURL` is composed above either way, so the
+        // composition this flow gets wrong in practice stays exercised.
+        //
+        // All the gating lives in `oidcStubCallback`, which is nil in
+        // release builds and nil unless a driver explicitly armed it. This
+        // injects a callback, not a session: the token below still goes through
+        // `validateCredentials()` against the CM, so a fabricated token grants
+        // no access.
+        if let stub = RemoteFeatureFlags.oidcStubCallback() {
+            // Deliberately not describing the mechanism: the branch is dead in
+            // Release but the literal can survive into the shipped binary, and
+            // naming a sign-in bypass there tells anyone running `strings` what
+            // to look for, for no functional benefit.
+            Log.info(#file, "OIDC: delivering an injected callback")
+            handleOIDCCallback(stub)
+            return
+        }
+
         let session = ASWebAuthenticationSession(
             url: finalURL,
             callbackURLScheme: Self.oidcCallbackScheme
