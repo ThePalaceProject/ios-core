@@ -56,7 +56,7 @@ Carthage; Apple Silicon builds DRM natively, no Rosetta needed).
 
 This repo has two layers of automation.
 
-### CI gates (run on every PR, enforced by GitHub)
+### CI gates (run on every PR)
 
 The workflows under [`.github/workflows/`](./.github/workflows) gate every
 pull request:
@@ -67,7 +67,9 @@ pull request:
 - Snapshot tests
 - Lint / accessibility lint
 
-A red CI run blocks merge regardless of who opened the PR.
+A red CI run means do not merge, regardless of who opened the PR. GitHub does
+not enforce this: `develop` and `main` have no branch protection, so the rule
+holds only if whoever merges checks CI first (`CLAUDE.md`, "Red means stop").
 
 Mutation testing and simulator-driven E2E are **not** CI gates. Both need
 something CI does not have — a booted simulator for E2E, and a long serial run
