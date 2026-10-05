@@ -317,6 +317,26 @@ compare_against_baseline() {
 # Pure: takes the base run's text and the class names, echoes one verdict.
 # Kept apart so it can be tested without git, a simulator, or a 15-minute build
 # — the orchestration above is what needs a real tree, the decision is not.
+isolation_split() {
+  # Classify each failing class by whether it PASSED when re-run alone.
+  # Emits "flakes:<names>|real:<names>" with single-space-prefixed name lists.
+  #
+  # Pure, and separate from the run that produces `out`, for the same reason
+  # `baseline_verdict_from_output` is: the decision can then be tested without
+  # git, a simulator or a build, which is also what makes it runnable on the
+  # ubuntu tooling runner.
+  local out="$1" classes="$2"
+  local flakes="" real="" cls
+  for cls in $classes; do
+    if echo "$out" | grep -qE "Test Suite '$cls' passed"; then
+      flakes="$flakes $cls"
+    else
+      real="$real $cls"
+    fi
+  done
+  echo "flakes:${flakes}|real:${real}"
+}
+
 baseline_verdict_from_output() {
   local out="$1" classes="$2"
   local iso_suites new_names cls
@@ -692,17 +712,22 @@ elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
       if [ "$ISO_SUITES" -eq 0 ]; then
         record "unit_tests" "fail" "$TEST_TALLY — isolation re-run produced no suites (build or simulator problem), so flake-vs-regression is UNDETERMINED for:$(echo "$FAILING_CLASSES" | tr '\n' ' ')"
       else
-      REAL_FAIL_NAMES=""
-      for cls in $FAILING_CLASSES; do
-        if echo "$ISOLATED_OUTPUT" | grep -qE "Test Suite '$cls' passed"; then
-          FLAKE_COUNT=$((FLAKE_COUNT + 1))
-        else
-          REAL_FAIL=$((REAL_FAIL + 1))
-          REAL_FAIL_NAMES="$REAL_FAIL_NAMES $cls"
-        fi
-      done
+      ISO_SPLIT=$(isolation_split "$ISOLATED_OUTPUT" "$FAILING_CLASSES")
+      FLAKE_NAMES="${ISO_SPLIT#flakes:}"; FLAKE_NAMES="${FLAKE_NAMES%%|real:*}"
+      REAL_FAIL_NAMES="${ISO_SPLIT#*|real:}"
+      FLAKE_COUNT=$(echo "$FLAKE_NAMES" | wc -w | tr -d ' ')
+      REAL_FAIL=$(echo "$REAL_FAIL_NAMES" | wc -w | tr -d ' ')
       if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
-        record "unit_tests" "pass" "$TEST_TALLY — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
+        # NAME them here too. This was the one verdict that reported a bare count
+        # while every sibling named its classes, and it is the verdict that fires
+        # most often — so the identity of a recurring flake was unrecoverable
+        # afterwards, because the xcresult is deleted when the run ends.
+        #
+        # "pass in isolation" is also not the same as "pre-existing", which this
+        # message used to assert. A branch that newly EXPOSES order-dependent
+        # pollution produces exactly this shape, and the fix for that is not the
+        # fix for a flake someone else owns. Say what was measured.
+        record "unit_tests" "pass" "$TEST_TALLY — $FLAKE_COUNT failing class(es) pass in isolation per --diff-baseline, so they are order- or load-dependent rather than deterministic:$FLAKE_NAMES. Passing alone does NOT establish they are pre-existing — a branch can newly expose pollution. Use --baseline-compare, or scripts/find-test-polluter.sh --victim <class>"
       else
         # "Fails in isolation" does NOT mean "this branch broke it". A
         # deterministic pre-existing failure fails in isolation too, and this
