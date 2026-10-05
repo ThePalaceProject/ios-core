@@ -1482,6 +1482,19 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         XCTAssertFalse(syncManager.needsRebuildFromServer)
         XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
                       "the last-good backup remains intact after a recovering load")
+
+        store.mutateRegistrySync { $0.removeAll() }
+        syncManager.saveSync(for: account)
+        XCTAssertEqual(try? Data(contentsOf: url), Data("{ corrupt".utf8),
+                       "a non-authoritative empty save must not overwrite the primary while the backup holds the shelf")
+        XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
+                      "a non-authoritative empty save must not touch the backup")
+
+        awaitRegistrySaved { syncManager.save(for: account, serverAuthoritative: true) }
+        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
+            return XCTFail("a server-authoritative empty save must write a valid registry")
+        }
+        XCTAssertTrue(recs.isEmpty, "the server sync is the one save allowed to persist the empty shelf")
     }
 
     // MARK: Schema version + migration
