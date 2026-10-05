@@ -58,18 +58,20 @@ This repo has two layers of automation.
 
 ### CI gates (run on every PR)
 
-The workflows under [`.github/workflows/`](./.github/workflows) gate every
-pull request:
+The workflows under [`.github/workflows/`](./.github/workflows) run on every
+pull request. Build and unit tests make up the `build-and-test` check; the
+other items report without failing it:
 
 - Build (Palace and Palace-noDRM targets)
 - Unit tests
 - Coverage floors (`scripts/enforce_coverage_floors.py`), measured and
   reported but not blocking: the step runs with `continue-on-error`, and
-  missing or malformed coverage data is reported as INCOMPLETE rather than
-  as a pass. See
+  incomplete coverage data (for example a missing result bundle or a planned
+  test class that did not run) is reported as INCOMPLETE rather than as a
+  pass. See
   [`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md).
-- Snapshot tests
-- Lint / accessibility lint
+- Snapshot tests, captured as artifacts with no comparison gate
+- Lint / accessibility lint, reported through the ledger (non-blocking)
 
 A red CI run means do not merge, regardless of who opened the PR. GitHub does
 not enforce this: `develop` and `main` have no branch protection, so the rule
