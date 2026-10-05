@@ -1568,21 +1568,32 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
     /// test can hand the same accounts to a real executor.
     @discardableResult
     private func openSyncGate() -> TPPLibraryAccountMock {
+        configureSyncGate(signedIn: true, permissionGranted: true)
+    }
+
+    /// Sets the two patron-controlled inputs of the sync gate on a library
+    /// that supports sync, and pins the annotations URL so no request depends
+    /// on the app's configured library.
+    @discardableResult
+    private func configureSyncGate(signedIn: Bool, permissionGranted: Bool) -> TPPLibraryAccountMock {
         let provider = TPPLibraryAccountMock()
-        let signedIn = TPPUserAccountMock()
-        signedIn._credentials = .token(authToken: "tok",
-                                       barcode: "12345",
-                                       pin: "1234",
-                                       expirationDate: Date().addingTimeInterval(3600))
-        provider.userAccountResolver = { _ in signedIn }
+        let patron = TPPUserAccountMock()
+        if signedIn {
+            patron._credentials = .token(authToken: "tok",
+                                         barcode: "12345",
+                                         pin: "1234",
+                                         expirationDate: Date().addingTimeInterval(3600))
+        }
+        provider.userAccountResolver = { _ in patron }
         // Capture only the first pre-test value, so a second call in one test
         // cannot record the already-granted state as the one to restore.
         if syncPermissionRestore == nil, let details = provider.currentAccount?.details {
             let previous = details.syncPermissionGranted
             syncPermissionRestore = { details.syncPermissionGranted = previous }
         }
-        provider.currentAccount?.details?.syncPermissionGranted = true
+        provider.currentAccount?.details?.syncPermissionGranted = permissionGranted
         TPPAnnotations.accountsManagerOverride = provider
+        TPPAnnotations.annotationsURLOverride = url
         return provider
     }
 
@@ -1897,8 +1908,10 @@ extension TPPAnnotationsHermeticTests {
         )
     }
 
-    // Each helper awaits the completion itself, which every path calls exactly
-    // once, rather than a wall-clock deadline.
+    // Each helper awaits the completion itself rather than a wall-clock
+    // deadline. Every path these tests reach calls back exactly once; the
+    // tests open the sync gate and pin the annotations URL first, because
+    // `uploadLocalBookmarks` does not call back when either is missing.
     private func deleteAndWait(_ annotationId: String) async -> Bool {
         await withCheckedContinuation { continuation in
             TPPAnnotations.deleteBookmark(annotationId: annotationId) { success in
@@ -1952,6 +1965,29 @@ extension TPPAnnotationsHermeticTests {
         let deleted = await deleteAndWait("")
         XCTAssertFalse(deleted)
         XCTAssertEqual(mock.deleteCallCount, 0)
+    }
+
+    // MARK: Sync gate
+
+    /// A signed-in patron who has not granted sync gets no server bookmarks,
+    /// and no request is made.
+    func testGetServerBookmarks_SignedInWithoutSyncPermission_ReturnsNilWithoutRequest() async {
+        configureSyncGate(signedIn: true, permissionGranted: false)
+
+        let result = await getServerBookmarksAndWait(book: AnnotationsTestFixtures.createTestBook(identifier: bookID))
+
+        XCTAssertNil(result)
+        XCTAssertEqual(mock.getCallCount, 0)
+    }
+
+    /// A granted permission does not sync for a signed-out patron.
+    func testGetServerBookmarks_PermissionGrantedButSignedOut_ReturnsNilWithoutRequest() async {
+        configureSyncGate(signedIn: false, permissionGranted: true)
+
+        let result = await getServerBookmarksAndWait(book: AnnotationsTestFixtures.createTestBook(identifier: bookID))
+
+        XCTAssertNil(result)
+        XCTAssertEqual(mock.getCallCount, 0)
     }
 
     // MARK: GET parsing
