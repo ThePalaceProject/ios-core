@@ -1559,6 +1559,15 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         // and an early return logs nothing, which looks exactly like the
         // correct behaviour these tests are trying to prove. Hence the
         // postCallCount assertion in each test.
+        openSyncGate()
+        return spy
+    }
+
+    /// Signs a patron in and grants sync on the current library, so the
+    /// `syncIsPossibleAndPermitted()` guards pass. Returns the provider so a
+    /// test can hand the same accounts to a real executor.
+    @discardableResult
+    private func openSyncGate() -> TPPLibraryAccountMock {
         let provider = TPPLibraryAccountMock()
         let signedIn = TPPUserAccountMock()
         signedIn._credentials = .token(authToken: "tok",
@@ -1572,7 +1581,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         }
         provider.currentAccount?.details?.syncPermissionGranted = true
         TPPAnnotations.accountsManagerOverride = provider
-        return spy
+        return provider
     }
 
     /// The defect this ticket exists for: a write that is safely queued for
@@ -1852,6 +1861,224 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         let url = try! XCTUnwrap(TPPAnnotations.annotationsURL)
         XCTAssertTrue(url.absoluteString.hasPrefix(mainFeed.absoluteString))
         XCTAssertEqual(url.lastPathComponent, "annotations")
+    }
+}
+
+// MARK: - Sync-gated paths (gate open)
+//
+// Every function below early-returns while sync is not permitted, so each test
+// opens the gate first and asserts the request was (or was not) made.
+extension TPPAnnotationsHermeticTests {
+
+    // MARK: DELETE outcomes, through the real executor and responder
+
+    /// A real executor over `MockAnnotationsURLProtocol`, so the DELETE result
+    /// reaches `deleteBookmark` in the shape the responder produces.
+    private func useStubbedRealExecutor(accounts: TPPLibraryAccountMock,
+                                        handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data?)) {
+        MockAnnotationsURLProtocol.reset()
+        MockAnnotationsURLProtocol.requestHandler = handler
+        addTeardownBlock { MockAnnotationsURLProtocol.reset() }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockAnnotationsURLProtocol.self]
+        TPPAnnotations.executorOverride = TPPNetworkExecutor(
+            credentialsProvider: nil,
+            cachingStrategy: .ephemeral,
+            sessionConfiguration: config,
+            accountsManager: accounts
+        )
+    }
+
+    private func deleteAndWait(_ annotationId: String) -> Bool? {
+        let exp = expectation(description: "delete completion")
+        var outcome: Bool?
+        TPPAnnotations.deleteBookmark(annotationId: annotationId) { success in
+            outcome = success
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 5.0)
+        return outcome
+    }
+
+    /// A 404 means the annotation is already gone, which is what the caller
+    /// wanted; reporting failure would make the UI retry a finished delete.
+    func testDeleteBookmark_ServerReturns404_ReportsSuccess() {
+        let accounts = openSyncGate()
+        let annotationId = "https://test.library.org/annotations/already-gone"
+        useStubbedRealExecutor(accounts: accounts) { request in
+            (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!, nil)
+        }
+
+        XCTAssertEqual(deleteAndWait(annotationId), true)
+        XCTAssertEqual(MockAnnotationsURLProtocol.capturedRequests.map(\.httpMethod), ["DELETE"])
+        XCTAssertEqual(MockAnnotationsURLProtocol.capturedRequests.first?.url?.absoluteString, annotationId)
+    }
+
+    func testDeleteBookmark_ServerReturns500_ReportsFailure() {
+        let accounts = openSyncGate()
+        useStubbedRealExecutor(accounts: accounts) { request in
+            (HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!, nil)
+        }
+
+        XCTAssertEqual(deleteAndWait("https://test.library.org/annotations/server-error"), false)
+        XCTAssertEqual(MockAnnotationsURLProtocol.capturedRequests.count, 1)
+    }
+
+    /// With no HTTP response at all the completion must still be called, with
+    /// failure, or the caller waits forever.
+    func testDeleteBookmark_TransportErrorWithoutResponse_ReportsFailure() {
+        let accounts = openSyncGate()
+        useStubbedRealExecutor(accounts: accounts) { _ in
+            throw NSError(domain: "MockURLProtocol", code: -99, userInfo: nil)
+        }
+
+        XCTAssertEqual(deleteAndWait("https://test.library.org/annotations/unreachable"), false)
+    }
+
+    /// An ID that is not a URL is rejected before any request is built.
+    func testDeleteBookmark_SyncPermittedButIDIsNotAURL_ReportsFailureWithoutRequest() {
+        openSyncGate()
+
+        XCTAssertEqual(deleteAndWait(""), false)
+        XCTAssertEqual(mock.deleteCallCount, 0)
+    }
+
+    // MARK: GET parsing
+
+    private func getServerBookmarksAndWait(book: TPPBook,
+                                           motivation: TPPBookmarkSpec.Motivation = .bookmark) -> [Bookmark]? {
+        let exp = expectation(description: "get completion")
+        var outcome: [Bookmark]?
+        TPPAnnotations.getServerBookmarks(forBook: book, atURL: url, motivation: motivation) { bookmarks in
+            outcome = bookmarks
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 1.0)
+        return outcome
+    }
+
+    func testGetServerBookmarks_TransportError_ReturnsNil() {
+        openSyncGate()
+        mock.getStub = (nil, nil, NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut))
+
+        let result = getServerBookmarksAndWait(book: AnnotationsTestFixtures.createTestBook(identifier: bookID))
+
+        XCTAssertNil(result)
+        XCTAssertEqual(mock.getCallCount, 1)
+    }
+
+    func testGetServerBookmarks_BodyIsNotJSON_ReturnsNil() {
+        openSyncGate()
+        mock.getStub = (Data("<html>gateway timeout</html>".utf8), httpResponse(200), nil)
+
+        XCTAssertNil(getServerBookmarksAndWait(book: AnnotationsTestFixtures.createTestBook(identifier: bookID)))
+        XCTAssertEqual(mock.getCallCount, 1)
+    }
+
+    func testGetServerBookmarks_JSONWithoutFirstPageItems_ReturnsNil() {
+        openSyncGate()
+        let body = try! JSONSerialization.data(withJSONObject: ["type": "AnnotationCollection", "total": 0])
+        mock.getStub = (body, httpResponse(200), nil)
+
+        XCTAssertNil(getServerBookmarksAndWait(book: AnnotationsTestFixtures.createTestBook(identifier: bookID)))
+        XCTAssertEqual(mock.getCallCount, 1)
+    }
+
+    /// `/annotations/` returns the patron's annotations for every book; only
+    /// this book's survive parsing.
+    func testGetServerBookmarks_ValidPage_ReturnsOnlyThisBooksBookmarks() {
+        openSyncGate()
+        let mine = AnnotationsTestFixtures.createServerBookmark(annotationId: "https://svr/ann/mine", bookId: bookID)
+        let other = AnnotationsTestFixtures.createServerBookmark(annotationId: "https://svr/ann/other", bookId: "urn:uuid:another-book")
+        mock.getStub = (AnnotationsTestFixtures.serverBookmarksResponse(bookmarks: [mine, other]), httpResponse(200), nil)
+
+        let result = getServerBookmarksAndWait(book: AnnotationsTestFixtures.createTestBook(identifier: bookID))
+
+        XCTAssertEqual(result?.compactMap { ($0 as? TPPReadiumBookmark)?.annotationId }, ["https://svr/ann/mine"])
+        XCTAssertEqual(mock.lastGetRequest?.url, url)
+    }
+
+    // MARK: syncReadingPosition
+
+    func testSyncReadingPosition_SyncPermitted_ReturnsTheServersReadingPosition() async {
+        openSyncGate()
+        let position = AnnotationsTestFixtures.createServerBookmark(annotationId: "https://svr/ann/position",
+                                                                    bookId: bookID,
+                                                                    motivation: .readingProgress)
+        let bookmark = AnnotationsTestFixtures.createServerBookmark(annotationId: "https://svr/ann/bookmark",
+                                                                    bookId: bookID,
+                                                                    motivation: .bookmark)
+        mock.getStub = (AnnotationsTestFixtures.serverBookmarksResponse(bookmarks: [bookmark, position]), httpResponse(200), nil)
+
+        let result = await TPPAnnotations.syncReadingPosition(ofBook: AnnotationsTestFixtures.createTestBook(identifier: bookID),
+                                                              toURL: url)
+
+        XCTAssertEqual((result as? TPPReadiumBookmark)?.annotationId, "https://svr/ann/position")
+        XCTAssertEqual(mock.getCallCount, 1)
+    }
+
+    // MARK: uploadLocalBookmarks
+
+    private func readiumBookmark(annotationId: String?, href: String) -> TPPReadiumBookmark {
+        TPPReadiumBookmark(annotationId: annotationId,
+                           href: href,
+                           chapter: "Chapter",
+                           page: nil,
+                           locationString: "{\"href\":\"\(href)\"}",
+                           progressWithinChapter: 0.5,
+                           progressWithinBook: 0.25,
+                           readingOrderItem: nil,
+                           readingOrderItemOffsetMilliseconds: 0,
+                           time: "2026-01-01T00:00:00Z",
+                           device: "urn:uuid:device")
+    }
+
+    private func uploadAndWait(_ bookmarks: [TPPReadiumBookmark]) -> (updated: [TPPReadiumBookmark], failed: [TPPReadiumBookmark]) {
+        let exp = expectation(description: "upload completion")
+        var outcome: ([TPPReadiumBookmark], [TPPReadiumBookmark]) = ([], [])
+        TPPAnnotations.uploadLocalBookmarks(bookmarks, forBook: bookID) { updated, failed in
+            outcome = (updated, failed)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+        return outcome
+    }
+
+    /// Only bookmarks without a server ID are posted, and an accepted one
+    /// comes back carrying the ID the server assigned.
+    func testUploadLocalBookmarks_PostsOnlyUnsyncedAndAssignsServerID() throws {
+        openSyncGate()
+        let payload: [String: Any] = [
+            TPPBookmarkSpec.Id.key: "https://svr/ann/new",
+            TPPBookmarkSpec.Body.key: [TPPBookmarkSpec.Body.Time.key: "2026-01-01T00:00:01Z"]
+        ]
+        mock.postStub = (try! JSONSerialization.data(withJSONObject: payload), httpResponse(200), nil)
+        let synced = readiumBookmark(annotationId: "https://svr/ann/existing", href: "/one.html")
+        let unsynced = readiumBookmark(annotationId: nil, href: "/two.html")
+
+        let (updated, failed) = uploadAndWait([synced, unsynced])
+
+        XCTAssertEqual(mock.postCallCount, 1)
+        XCTAssertEqual(updated.map(\.href), ["/two.html"])
+        XCTAssertEqual(updated.first?.annotationId, "https://svr/ann/new")
+        XCTAssertTrue(failed.isEmpty)
+        let body = try JSONSerialization.jsonObject(with: XCTUnwrap(mock.lastPostRequest?.httpBody)) as? [String: Any]
+        XCTAssertEqual(body?[TPPBookmarkSpec.Motivation.key] as? String, TPPBookmarkSpec.Motivation.bookmark.rawValue)
+    }
+
+    /// A refused upload is reported as failed and keeps no server ID, so the
+    /// next sync tries it again.
+    func testUploadLocalBookmarks_ServerRefuses_ReportsBookmarkAsFailed() {
+        openSyncGate()
+        mock.postStub = serverRefusal(500)
+        let unsynced = readiumBookmark(annotationId: nil, href: "/two.html")
+
+        let (updated, failed) = uploadAndWait([unsynced])
+
+        XCTAssertEqual(mock.postCallCount, 1)
+        XCTAssertTrue(updated.isEmpty)
+        XCTAssertEqual(failed.map(\.href), ["/two.html"])
+        XCTAssertNil(failed.first?.annotationId)
     }
 }
 
