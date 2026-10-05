@@ -157,5 +157,64 @@ else
 fi
 
 echo
+
+# --- isolation_split -----------------------------------------------------------
+#
+# The all-flaky verdict used to report a bare count while every sibling verdict
+# named its classes, and it is the verdict that fires most often. Because the
+# xcresult is deleted when the run ends, the identity of a recurring flake was
+# unrecoverable afterwards — a real flake went three runs without ever being
+# named. These pin the split that feeds the names into that message.
+
+SPLIT_SRC=$(awk '/^isolation_split\(\) \{/,/^\}/' "$VERIFY_PR")
+if [ -z "$SPLIT_SRC" ]; then
+  echo "FAIL — could not find isolation_split() in scripts/verify-pr.sh"
+  exit 1
+fi
+eval "$SPLIT_SRC"
+
+ISO_OUT=$(printf "Test Suite 'AlphaTests' passed at 1.\nTest Suite 'BetaTests' failed at 2.\n")
+
+echo "isolation_split:"
+
+expect_eq "a class that passes alone is a flake, one that fails alone is not" \
+  "flakes: AlphaTests|real: BetaTests" \
+  "$(isolation_split "$ISO_OUT" "AlphaTests BetaTests")"
+
+expect_eq "all-flaky leaves real empty" \
+  "flakes: AlphaTests|real:" \
+  "$(isolation_split "$ISO_OUT" "AlphaTests")"
+
+expect_eq "all-real leaves flakes empty" \
+  "flakes:|real: BetaTests" \
+  "$(isolation_split "$ISO_OUT" "BetaTests")"
+
+# Fail closed: a class with NO suite line in the isolated output has not been
+# shown to pass, so it must not be counted as a flake. Treating silence as a
+# pass is how an un-run class becomes a clean verdict.
+expect_eq "a class with no suite line is not a flake" \
+  "flakes:|real: GammaTests" \
+  "$(isolation_split "$ISO_OUT" "GammaTests")"
+
+expect_eq "no failing classes yields two empty lists" \
+  "flakes:|real:" \
+  "$(isolation_split "$ISO_OUT" "")"
+
+# The call site derives both counts from these lists with `wc -w`, so the
+# name lists and the counts cannot disagree. Pin that arithmetic here.
+SPLIT=$(isolation_split "$ISO_OUT" "AlphaTests BetaTests")
+FN="${SPLIT#flakes:}"; FN="${FN%%|real:*}"
+RN="${SPLIT#*|real:}"
+expect_eq "flake count derives from the flake names" "1" "$(echo "$FN" | wc -w | tr -d ' ')"
+expect_eq "real count derives from the real names"   "1" "$(echo "$RN" | wc -w | tr -d ' ')"
+
+# The message itself must carry the names. This is the regression that
+# prompted the change, and a count-only message reads as a clean pass.
+ALL_FLAKY_MSG=$(grep -F 'failing class(es) pass in isolation' "$VERIFY_PR" || true)
+expect_contains "the all-flaky verdict interpolates the class names" \
+  'FLAKE_NAMES' "$ALL_FLAKY_MSG"
+expect_contains "the all-flaky verdict does not assert the flakes are pre-existing" \
+  'does NOT establish' "$ALL_FLAKY_MSG"
+
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
