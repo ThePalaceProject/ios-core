@@ -10,11 +10,12 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 # The code this checklist describes, and the develop commit it was last checked against.
 # If any of these files changed since `verified_ref`, re-check the line citations below:
 #   git diff --stat <verified_ref> -- <paths>
-# `fingerprint` is a short hash of the files' git blob ids at that commit.
+# `fingerprint` is reproducible with plain git from the repo root (paths in any order):
+#   git ls-tree <verified_ref> -- <paths> | git hash-object --stdin | cut -c1-8
 sources:
   verified_ref: 3ad580c0d03bf20a7c8583c4b016e0870370bd88
   last_verified: 2026-10-05
-  fingerprint: 'f0d79cac'
+  fingerprint: '6d3df409'
   paths:
     - Palace/Network/TPPNetworkResponder.swift
     - Palace/Network/TPPNetworkExecutor.swift
@@ -42,7 +43,7 @@ sources:
 
 | File | Lines | What it does | Migration status |
 |------|-------|-------------|------------------|
-| `Palace/Network/TPPNetworkResponder.swift` | 426, 435, 516 | Top-of-pipeline `statusCode == 401` checks in `urlSession(_:task:didCompleteWithError:)` that decide whether to drive `refreshTokenAndResume` | **MIGRATED** in PR #1018 (on develop since f380e37c3) — the responder is a thin router. The retry budget is per URL, not per task: `canRetry(url:)` / `markRetried(url:)` against `maxRetryAttempts = 1` (lines 105–107, 208–231), cleared on success (lines 523, 534). `tokenRefreshAttempts` (line 75) is declared and reset in `clearAllRetries` (line 238) but never read. |
+| `Palace/Network/TPPNetworkResponder.swift` | 426, 435, 516 | Top-of-pipeline `statusCode == 401` checks in `urlSession(_:task:didCompleteWithError:)` that decide whether to drive `refreshTokenAndResume` | **MIGRATED** in PR #1018 (on develop since f380e37c3) — the responder is a thin router. The retry budget is per URL, not per task: `canRetry(url:)` / `markRetried(url:)` against `maxRetryAttempts = 1` (lines 105–107, 208–231), cleared on success (line 534) and on permanent failure (line 523). `tokenRefreshAttempts` (line 75) is declared and reset in `clearAllRetries` (line 238) but never read. |
 | `Palace/Network/TPPNetworkResponder.swift` | 597–709 (`handleExpiredTokenIfNeeded`) | Cross-domain 401 carve-out + `markCredentialsStale` + dispatch to `refreshTokenAndResume` | **MIGRATED** in PR #1018 — routes the 401 decision through `AuthErrorClassifier.classify(...)` (constructed at line 635). Cross-domain detection lives behind the classifier (`.ok` outcome short-circuits, line 651). Browser auth: the `/patrons/me` bypass returns early (659–669); any other browser-auth 401 dispatches `AuthCoordinator.refreshCredentialsIfNeeded` (670–687). Non-browser auth keeps the inline `markCredentialsStale` + `refreshTokenAndResume` (690–706) — see Section 4. |
 | `Palace/Network/TPPNetworkExecutor.swift` | 520 | `urlRequest.assumesHTTP3Capable = false` — disables optimistic HTTP/3 upgrade on first contact per host | **STABLE** — historical, not part of PR #1018. Do not re-enable; see Section 7 trap. |
 | `Palace/Network/TPPNetworkExecutor.swift` | 743 (`refreshTokenAndResume(task:accountId:completion:)`) | Single-flight token-refresh + post-refresh resume of the original `URLSessionTask` | **STABLE** — responder-owned task-resume seam. The coordinator's silent refresh path can refresh the token but does NOT re-run THIS URLSessionTask, so this seam stays in the network layer. |
@@ -95,7 +96,7 @@ The responder is now a thin router. The boundary is explicit:
 
 **Stays in the network layer (responder/executor own these):**
 
-1. **Per-URL token-refresh budget** — one refresh-and-retry per URL: `canRetry(url:)` at `TPPNetworkResponder.swift:427` against `maxRetryAttempts = 1` (line 107), recorded by `markRetried(url:)` (line 430), cleared on success (lines 523, 534). This is a REQUEST-layer circuit-breaker; the coordinator's single-flight is a BEARER-layer circuit-breaker. Both serve different roles and both must exist.
+1. **Per-URL token-refresh budget** — one refresh-and-retry per URL: `canRetry(url:)` at `TPPNetworkResponder.swift:427` against `maxRetryAttempts = 1` (line 107), recorded by `markRetried(url:)` (line 430), cleared on success (line 534) and on permanent failure (line 523). This is a REQUEST-layer circuit-breaker; the coordinator's single-flight is a BEARER-layer circuit-breaker. Both serve different roles and both must exist.
 2. **Cross-domain 401 detection** at `TPPNetworkResponder.swift:635–654`. Since PR #1018 this is computed by `AuthErrorClassifier` (classifier returns `.ok` for cross-domain), but the call site is in the responder. The classifier is the seam — the predicate (`URLResponse+TPPAuthentication.isSameDomain`) is the implementation. DO NOT route the cross-domain decision through the coordinator — the coordinator never sees a `.ok` outcome.
 3. **Task resume after refresh** — `networkExecutor.refreshTokenAndResume(task:accountId:)` at `TPPNetworkResponder.swift:704` and `TPPNetworkExecutor.swift:743`. The coordinator can refresh the bearer but cannot re-run a specific `URLSessionTask`; that's a network-executor concern.
 4. **`/patrons/me` browser-auth bypass** — at `TPPNetworkResponder.swift:659–669`. Browser-auth (SAML/OIDC) has two surfaces (bearer + IdP cookie) and the IdP cookie expires faster than the bearer in Gorgon. A 401 from `/patrons/me` while the bearer is still good drove the cross-launch credentials-stale loop fixed in the 3.0.2 hotfix stack (commits 8d1dacafb, 46da46fb7). DO NOT remove this bypass.
@@ -107,7 +108,7 @@ The responder is now a thin router. The boundary is explicit:
 1. **Auth-error classification** — `AuthErrorClassifier.classify(response:problemDocument:body:originalRequestURL:callSite:)` returns `AuthOutcome` (`.ok`, `.expiredToken`, `.invalidCredentials`, `.forbidden`, `.serverError`, `.networkError`). The responder reads the outcome and ROUTES; it does not DECIDE.
 2. **Dispatch matrix per AuthMechanism** — basic/token/saml/oidc/oauthIntermediary fan-out lives in `AuthCoordinator`. See `docs/architecture/areas/auth/verification-checklist.md` Section 3 for the matrix.
 3. **Single-flight semantics** — coordinator owns the per-coordinator-instance single-flight + 30s post-failure cooldown. The network layer's per-task budget is in ADDITION to this, not a substitute for it.
-4. **Telemetry** — every classifier outcome emits via `AuthDecisionRecording`. Network layer does not emit auth telemetry directly.
+4. **Telemetry** — the classifier reports outcomes through `AuthDecisionRecording`, but the responder's classifier has no recorder (see Section 5), so only `AuthCoordinator` steps reach Crashlytics. Network layer does not emit auth telemetry directly.
 
 Architects: if you find yourself adding a new `if statusCode == 401` branch in Palace/Network/, STOP — that decision belongs in `AuthErrorClassifier`. The network layer routes; it does not classify.
 
@@ -123,7 +124,7 @@ Architects: if you find yourself adding a new `if statusCode == 401` branch in P
 | Token-refresh dispatch | `TPPNetworkResponder.swift:703` | `Log.info — Server returned 401 - triggering token refresh (server authority); classifier outcome=<outcome>` | Confirms we entered `refreshTokenAndResume` |
 | Offline queue retry attempt | `TPPNetworkQueue.swift:475` | `Log.debug — Executing "retry" with N row(s) in the table` | Reachability-up retry pass; row count is the offline backlog |
 | Offline queue 4xx/5xx on retry | `TPPNetworkQueue.swift:536` | `Log.warn — Queued Request retry failed with status N` | Queued retry hit an HTTP error; row is dropped after counter exhausted |
-| Classifier outcome | `AuthErrorClassifier.swift` (PalaceAuth) | `classifierOutcome` telemetry event | Source-of-truth for auth-decision audit; payload `(idp_type, library_uuid, status_code, problem_doc_type, decision)` |
+| Classifier outcome | `AuthErrorClassifier.swift:112` (PalaceAuth) | `AuthDecisionStep.classifierClassified` (`"classifier.classified"`, `AuthDecisionPayload.swift:22`), sent to the classifier's injected `AuthDecisionRecording` | Not emitted for network-layer 401s today. `TPPNetworkResponder.swift:635` (and `LoanRenewalService.swift:156`) construct the classifier without a recorder, so it uses the default `NullAuthDecisionRecorder`. The Crashlytics-backed `AuthDecisionRecorder` is passed only to `AuthCoordinator` (`AppContainer.swift:544–551`), so coordinator steps are recorded and responder classifications are not. |
 
 ---
 
@@ -286,7 +287,7 @@ with the patron told their password is wrong. Check both when triaging that repo
 Before any new swarm or /rigorous-fix in this area, the architect should:
 
 1. **Refresh this file's sections 1, 3, and 4** — confirm the call-site map, the request/response flow matrix, and the decision boundary are still accurate. Re-grep `statusCode == 401` and `statusCode == 403` across `Palace/Network/` (`grep -rn 'statusCode == 40[13]' Palace/Network/`) — expected matches are `TPPNetworkResponder.swift` lines 426, 435, 516 and 656; anything else needs triage.
-2. **Verify the cross-domain 401 carve-out still exists.** `grep -n "AuthErrorClassifier(\|outcome == .ok\|patrons/me" Palace/Network/TPPNetworkResponder.swift` — expect the classifier construction (635), the `.ok` short-circuit (651) and the `/patrons/me` browser bypass (659–667). The responder should no longer call `indicatesAuthenticationNeedsRefresh`. Read the surrounding comments; both bypasses have hotfix-driven rationale that should not be silently removed.
+2. **Verify the cross-domain 401 carve-out still exists.** `grep -n "AuthErrorClassifier(\|outcome == .ok\|patrons/me" Palace/Network/TPPNetworkResponder.swift` — expect exactly these lines: 540, 624, 625 (comments mentioning `/patrons/me`), 635 (classifier construction), 651 (the `.ok` short-circuit), and 660, 663, 667 (the `/patrons/me` browser bypass). The responder should no longer call `indicatesAuthenticationNeedsRefresh`. Read the surrounding comments; both bypasses have hotfix-driven rationale that should not be silently removed.
 3. **Verify the per-URL token-refresh budget hasn't been re-implemented somewhere else.** `grep -n 'maxRetryAttempts\|canRetry(url\|markRetried(url' Palace/Network/TPPNetworkResponder.swift` — the budget is `retriedURLs` + `maxRetryAttempts = 1`, owned by `TPPNetworkResponder`. (`tokenRefreshAttempts` still exists at lines 75 and 238 but is never read; it is not the budget.) The coordinator's single-flight is separate and lives in `AuthCoordinator`.
 4. **Confirm `AuthErrorClassifier` is the single seam for auth-error decisions.** `grep -rn 'indicatesAuthenticationNeedsRefresh' Palace/` — only the two known deferrals (`TokenRefreshInterceptor.swift:139`, `DownloadAuthRetryHandler.swift:197`) plus the comments above them (lines 124 and 185) should appear outside the PalaceAuth package's own implementation. Any new call sites are scope debt.
 5. **Re-run the test inventory** — `find PalaceTests/Network -name '*Tests*.swift' | wc -l` was 31 on 2026-10-05. `TPPNetworkResponderAuthCoordinatorTests` and the PalaceAuth `AuthErrorClassifierTests` should be present.
