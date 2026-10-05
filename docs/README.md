@@ -15,7 +15,7 @@ survive the admission test below, index them, and delete the rest**.
 | Why the code is shaped this way — a decision and its rationale | [`architecture/`](./architecture/) — start at its [index](./architecture/README.md) |
 | Whether an area is safe to change, and what to re-verify | `architecture/areas/<area>/verification-checklist.md` |
 | How this project tests, and what a good test looks like | [`Testing/`](./Testing/) — [`TESTING_POSTURE.md`](./Testing/TESTING_POSTURE.md) first |
-| The release regression pass | [`regression-suite/DESIGN.md`](./regression-suite/DESIGN.md), [`Testing/REGRESSION_TEST_MATRIX.md`](./Testing/REGRESSION_TEST_MATRIX.md) |
+| The release regression pass | [`Testing/REGRESSION_TEST_MATRIX.md`](./Testing/REGRESSION_TEST_MATRIX.md); design record of the removed importer: [`regression-suite/DESIGN.md`](./regression-suite/DESIGN.md) |
 | A recurring failure and its class | [`regressions/recurrence-classes.md`](./regressions/recurrence-classes.md) |
 | How to run something operationally | [`Operations/`](./Operations/) |
 | Adding or changing a user-facing string | [`Operations/localization-workflow.md`](./Operations/localization-workflow.md) |
@@ -52,11 +52,12 @@ recoverable from the diff.
 ## What keeps this honest
 
 Prose is the only layer in this repo that can lie, so three mechanical gates hold
-it to account. All three run in `tooling-checks.yml` on every PR, and the first
-two also run in `verify-pr.sh`:
+it to account. All three run in `tooling-checks.yml` on every PR and in
+`verify-pr.sh`:
 
 - **`check-doc-hygiene.sh`** — blocks process and generated artifacts from being
-  committed at all. Denied classes are listed in the script.
+  committed at all. Denied classes are listed in the script. It reads only the
+  files a change adds: in CI, the PR's added files against its base branch.
 - **`check-doc-references-resolve.py`** — every script, workflow, and source path
   a doc names must exist. Pre-existing breakage is baselined in
   `scripts/doc-references-baseline.json`; nothing new may be added, and a
