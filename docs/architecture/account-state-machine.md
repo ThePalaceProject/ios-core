@@ -11,8 +11,7 @@ description: "Account State Machine — Systemic Fix for the Load-Readiness Race
 
 # Account State Machine — Systemic Fix for the Load-Readiness Race Class
 
-**Status:** Proposed (2026-05-18) — PoC on `feature/account-state-machine-3.2.0`. Ships 3.2.0.
-**ForgeOS initiative:** `init_dde7f99a`
+**Status:** Accepted (2026-05-18); implemented in #961 (`AccountStateStore`), shipped in 3.2.0.
 **Companion docs:** [architectural-triad.md](./architectural-triad.md), [swarm-workflow.md](./swarm-workflow.md)
 
 ## TL;DR
