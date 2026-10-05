@@ -995,7 +995,9 @@ private final class ContinuationGuard {
 /// and applied on `install(_:)`, so the early-cancel race cannot strand a caller.
 /// Mirrors `CancellableTaskBox` in `URLSessionNetworkClient`, which already
 /// solved this for the newer client.
-private final class CancellableContinuationBox<T>: @unchecked Sendable {
+/// Internal rather than private so `TPPRequestExecuting`'s async bridge can
+/// reuse it instead of growing a second resume-once guard.
+final class CancellableContinuationBox<T>: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<T, Error>?
     private var task: URLSessionTask?

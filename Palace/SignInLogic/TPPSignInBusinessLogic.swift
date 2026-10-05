@@ -504,8 +504,15 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // be the currently selected library (Settings signs in/out for any
         // library). Naming it here keeps a 401 retry authenticating as the right
         // one.
-        networker.executeRequest(req, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
+        // PP-5301: `await`, not a completion. A completion arrives off the main
+        // actor (`delegateQueue: nil`) while this closure would inherit the
+        // enclosing `@MainActor` isolation and type-check anyway; the six
+        // main-actor members below are reached on the main actor by
+        // construction because the `Task` inherits that isolation.
+        Task { [weak self] in
             guard let self = self else { return }
+            let result = await self.networker.execute(
+                req, enableTokenRefresh: false, accountId: self.libraryAccountID)
 
             let loggingContext: [String: Any] = [
                 "Request": req.loggableString,
@@ -517,9 +524,8 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 self.dispatch(.credentialsValidationSucceeded)
                 // Notify delegate that credentials were received and DRM processing is about to begin
                 // This allows the UI to show a loading indicator after WebView dismisses
-                TPPMainThreadRun.asyncIfNeeded {
-                    self.uiDelegate?.businessLogicDidReceiveCredentials?(self)
-                }
+                // Already on the main actor inside this Task, so no hop needed.
+                self.uiDelegate?.businessLogicDidReceiveCredentials?(self)
 
                 #if FEATURE_DRM_CONNECTOR
                 // PP-3649: Save DRM credentials from profile document but defer Adobe
