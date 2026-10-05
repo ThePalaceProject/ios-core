@@ -63,7 +63,11 @@ pull request:
 
 - Build (Palace and Palace-noDRM targets)
 - Unit tests
-- Coverage floors (`scripts/enforce_coverage_floors.py`)
+- Coverage floors (`scripts/enforce_coverage_floors.py`), measured and
+  reported but not blocking: the step runs with `continue-on-error`, and
+  missing or malformed coverage data is reported as INCOMPLETE rather than
+  as a pass. See
+  [`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md).
 - Snapshot tests
 - Lint / accessibility lint
 
