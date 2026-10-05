@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -95,3 +97,76 @@ def test_summary_and_comment_show_incomplete_and_the_package_table():
         assert "steps.coverage.outputs.coverage_status" in text
         assert "steps.coverage.outputs.coverage_packages" in text
         assert "INCOMPLETE" in text
+
+
+def test_floor_step_and_report_job_can_fail():
+    """The floors block only if their failure fails the report job."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    from workflow_effective_runs import effective_runs
+    runs = effective_runs(WORKFLOW.read_text())
+    assert any("scripts/enforce_coverage_floors.py" in r for r in runs)
+    assert "continue-on-error" not in _step("report", "Enforce Coverage Floors")
+    assert "continue-on-error" not in _jobs()["report"]
+    assert _jobs()["report"]["outputs"]["coverage_floors"] == "${{ steps.coverage_gate.outcome }}"
+
+
+def test_archive_and_publish_still_run_when_the_floors_fail():
+    """A floor failure is when the report matters most; it must still be kept."""
+    for name in ("Upload Test Results", "Upload Snapshot Failures"):
+        assert _step("report", name)["if"].startswith("always() && "), name
+    cond = _jobs()["publish-report"]["if"]
+    assert "needs.report.result == 'failure'" in cond and "needs.report.result == 'success'" in cond
+
+
+def _evaluate(tmp_path, **results):
+    step = next(s for s in _jobs()["build-and-test"]["steps"] if s.get("id") == "eval")
+    env_map = {"CHANGES": "changes", "RUN": "run", "BUILD": "build", "TEST": "test",
+               "REPORT": "report", "FLOORS": "floors"}
+    assert set(step["env"]) == set(env_map)
+    out = tmp_path / "out"
+    out.write_text("")
+    env = {"PATH": "/usr/bin:/bin", "GITHUB_OUTPUT": str(out)}
+    env.update({k: results.get(v, "") for k, v in env_map.items()})
+    r = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True, text=True)
+    return r.returncode, out.read_text(), r.stdout
+
+
+GREEN = dict(changes="success", run="true", build="success", test="success",
+             report="success", floors="success")
+
+
+def test_gate_env_reads_the_report_job():
+    env = next(s for s in _jobs()["build-and-test"]["steps"] if s.get("id") == "eval")["env"]
+    assert env["REPORT"] == "${{ needs.report.result }}"
+    assert env["FLOORS"] == "${{ needs.report.outputs.coverage_floors }}"
+    assert "report" in _jobs()["build-and-test"]["needs"]
+
+
+def test_gate_passes_a_full_green_run(tmp_path):
+    rc, out, _ = _evaluate(tmp_path, **GREEN)
+    assert rc == 0 and "verify=true" in out
+
+
+@pytest.mark.parametrize("override", [
+    {"floors": "failure"},                        # violation (exit 1) or incomplete (exit 3)
+    {"floors": "", "report": "failure"},           # report died before the floor step
+    {"floors": "", "report": "cancelled"},
+    {"report": "failure"},                         # another report step failed
+    {"report": "skipped", "floors": ""},           # run required but no report
+    {"floors": "skipped"},
+])
+def test_gate_fails_when_the_floors_or_report_did_not_pass(tmp_path, override):
+    rc, out, _ = _evaluate(tmp_path, **{**GREEN, **override})
+    assert rc == 1 and "verify=true" not in out
+
+
+def test_gate_passes_a_docs_only_skip(tmp_path):
+    rc, out, _ = _evaluate(tmp_path, changes="success", run="false", build="skipped",
+                           test="skipped", report="skipped")
+    assert rc == 0 and "verify=false" in out
+
+
+def test_gate_rejects_a_skip_where_report_still_ran(tmp_path):
+    rc, _, _ = _evaluate(tmp_path, changes="success", run="false", build="skipped",
+                         test="skipped", report="failure")
+    assert rc == 1

@@ -1,10 +1,9 @@
 # Test Quality Posture (not a coverage roadmap)
 
-**There is no line-coverage target, and coverage does not block a merge.** CI
-measures coverage and reports it against per-module and per-package floors
-(`scripts/coverage-floors.json`), but that step is non-blocking: a floor
-violation or incomplete coverage data shows in the run and the PR comment
-without failing the required check. Details are in
+**There is no line-coverage target.** CI measures coverage against
+per-module and per-package floors (`scripts/coverage-floors.json`), and a floor
+violation or incomplete coverage data fails the required `build-and-test`
+check. Details are in
 `scripts/README_coverage_floors.md`. An earlier version of this file laid out a 6-week plan to hit 80% line coverage. That target has been
 retired: it contradicted the repo's actual quality posture and encouraged
 coverage-only tests, which are explicitly banned (see `CLAUDE.md` →
