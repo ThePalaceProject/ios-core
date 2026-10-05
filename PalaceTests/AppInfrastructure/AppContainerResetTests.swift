@@ -124,6 +124,27 @@ final class AppContainerResetTests: PalaceTestCase {
                        "_resetForTesting() must hand back a fresh presenter instance, not the polluted one")
     }
 
+    /// After a reset, the container-owned services must come from the rebuilt
+    /// graph. A presenter or cache that survived would keep the previous
+    /// graph's accounts manager and registry alive into the next test class.
+    func testResetForTesting_containerOwnedServicesFollowTheRebuiltGraph() {
+        let prePresenter = AppContainer.production().signInModalSheetPresenter
+        let preCache = AppContainer.production().bookCellModelCache
+        let preRepository = AppContainer.production().catalogRepository as AnyObject
+
+        AppContainer._resetForTesting()
+
+        let post = AppContainer.production()
+        XCTAssertFalse(post.signInModalSheetPresenter === prePresenter,
+                       "Reset must hand back a sign-in presenter built against the rebuilt graph")
+        XCTAssertFalse(post.bookCellModelCache === preCache,
+                       "Reset must hand back a book cell cache built against the rebuilt graph")
+        XCTAssertFalse(post.catalogRepository as AnyObject === preRepository,
+                       "Reset must hand back a catalog repository built against the rebuilt graph")
+        XCTAssertTrue(AppContainer.production().signInModalSheetPresenter === post.signInModalSheetPresenter,
+                      "After the reset, production() reads must again share one presenter")
+    }
+
     /// Reset must produce a cached graph whose AccountsManager was built
     /// with the `deferInitialLoadCatalogsForTesting` flag set to `true`.
     /// The observable consequence: immediately after reset, the new
