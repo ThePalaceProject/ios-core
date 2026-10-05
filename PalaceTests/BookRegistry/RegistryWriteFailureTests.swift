@@ -142,7 +142,9 @@ final class RegistryWriteFailureTests: XCTestCase {
     }
 
     /// A new registry instance for `account` that has finished loading from disk.
+    /// Faults are disarmed first so nothing the load writes can fail unseen.
     private func freshReader(account: String) async -> TPPBookRegistry {
+        faults.disarmAll()
         let reader = makeRegistry(account: account)
         await withCheckedContinuation { continuation in
             reader.load(account: account) { continuation.resume() }
@@ -195,8 +197,10 @@ final class RegistryWriteFailureTests: XCTestCase {
                        "a fresh reader must load the last committed shelf, not an empty one")
     }
 
-    /// A primary left torn by a failed save is quarantined on the next load and
-    /// the shelf comes back from the backup, which holds that same save.
+    /// A primary holding truncated bytes after a failed save (what an interrupted
+    /// in-place write would leave; the `.atomic` write itself cannot) is
+    /// quarantined on the next load, and the shelf comes back from the backup,
+    /// which the same save wrote first.
     func testLaterSave_PrimaryTornByInjectedFault_FreshReaderRecoversThatSaveFromBackup() async throws {
         let account = "acct-\(UUID().uuidString)"
         let registry = makeRegistry(account: account)
@@ -255,6 +259,45 @@ final class RegistryWriteFailureTests: XCTestCase {
         let reader = await freshReader(account: account)
         XCTAssertEqual(ids(of: reader), ["seed-0", "seed-1", "later"],
                        "the primary must still commit when only the backup write fails")
+    }
+
+    /// The same backup failure through `saveSync`: the new position must still
+    /// reach the primary, and the previous backup must stay intact.
+    func testSaveSync_InjectedBackupStagingFailure_CommitsNewPosition_AndKeepsPreviousBackup() async throws {
+        let account = "acct-\(UUID().uuidString)"
+        let registry = makeRegistry(account: account)
+        registry.addBook(book("reading"), location: TPPBookLocation(locationString: "page-1", renderer: "test"), state: .holding)
+        await registry._awaitPendingPersistenceForTesting()
+        let backup = RegistryFileRecovery.backupURL(for: try primaryURL(registry, account))
+        let previousBackup = try Data(contentsOf: backup)
+
+        faults.arm(.backupStaging, under: accountDirectory(account))
+        registry.setLocationSync(TPPBookLocation(locationString: "page-2", renderer: "test"), forIdentifier: "reading")
+        await registry._awaitPendingPersistenceForTesting()
+        XCTAssertEqual(faults.fired, [.backupStaging], "premise: the saveSync backup write failed")
+
+        XCTAssertEqual(try Data(contentsOf: backup), previousBackup, "a failed backup write must leave the previous backup")
+        let reader = await freshReader(account: account)
+        XCTAssertEqual(reader.location(forIdentifier: "reading")?.locationString, "page-2",
+                       "the primary must still commit the new position when only the backup write fails")
+    }
+
+    /// When the backup write fails and the primary is then left truncated, the
+    /// previous backup is the last good copy, so the reader gets the shelf as
+    /// it was before the failed save.
+    func testLaterSave_BackupFailsAndPrimaryTorn_FreshReaderRecoversPreviousShelf() async throws {
+        let account = "acct-\(UUID().uuidString)"
+        let registry = makeRegistry(account: account)
+        await add(["seed-0", "seed-1"], to: registry)
+
+        faults.arm(.backupStaging, under: accountDirectory(account))
+        faults.arm(.primary, under: accountDirectory(account), .tearThenFail)
+        await add(["later"], to: registry)
+        XCTAssertEqual(faults.fired, [.backupStaging, .primary], "premise: both writes of the later save failed")
+
+        let reader = await freshReader(account: account)
+        XCTAssertEqual(ids(of: reader), ["seed-0", "seed-1"],
+                       "the previous backup must restore the shelf as it was before the failed save")
     }
 
     /// `writeBackup` removes the old backup before moving the new one in. A
@@ -319,9 +362,7 @@ final class RegistryWriteFailureTests: XCTestCase {
     /// later empty, non-authoritative save is still refused.
     func testFailedSaveDuringRebuildWindow_KeepsLaterEmptySaveRefused() async throws {
         let account = "acct-\(UUID().uuidString)"
-        let primary = accountDirectory(account)
-            .appendingPathComponent("registry", isDirectory: true)
-            .appendingPathComponent("registry.json")
+        let primary = try primaryURL(makeRegistry(account: account), account)
         try FileManager.default.createDirectory(at: primary.deletingLastPathComponent(), withIntermediateDirectories: true)
         let corruptPrimary = Data("{ corrupt, no backup".utf8)
         try corruptPrimary.write(to: primary)

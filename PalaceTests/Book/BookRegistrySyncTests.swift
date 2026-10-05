@@ -1463,9 +1463,9 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     }
 
     func testCorruptLoad_thenNonAuthoritativeEmptySave_isRefused_untilServerSync() {
-        // End-to-end INV-1: corrupt load flags rebuild; a subsequent empty
-        // non-authoritative save must be refused so nothing erases the shelf
-        // before an authoritative sync runs.
+        // End-to-end INV-1: a corrupt load recovered from the backup does not
+        // flag a rebuild, but the backup still holds the shelf, so an empty
+        // non-authoritative save is refused until an authoritative sync runs.
         let (account, url) = makeIsolatedAccount()
         defer { cleanupAccount(url) }
 
