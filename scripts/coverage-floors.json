@@ -10,12 +10,12 @@
     "AudiobookBookmarkBusinessLogic": 0.73
   },
   "package_modules": {
-    "TPPBookRegistry": 0.7967
+    "TPPBookRegistry": 0.7918
   },
   "packages": {
     "PalaceAuth": 0.8029,
     "PalaceBookModel": 0.8499,
-    "PalaceBookRegistry": 0.9169,
+    "PalaceBookRegistry": 0.9159,
     "PalaceCatalog": 0.8712,
     "PalaceFeatureFlags": 0.875,
     "PalaceKeychain": 0.7683,
@@ -23,7 +23,7 @@
     "PalaceNetwork": 0.895,
     "PalacePreferences": 1.0,
     "PalaceReadingPosition": 0.7992,
-    "PalaceTriageBot": 0.1893,
+    "PalaceTriageBot": 0.1891,
     "PalaceUtilities": 0.3434
   },
   "host_packages": {
@@ -35,5 +35,5 @@
   },
   "unmeasured": {},
   "_comment": "Floors gate on TESTABLE coverage — denominator excludes UI/lifecycle files per scripts/coverage-exclude.json. RE-BASELINED 2026-09-02 to the first measurement this gate has ever produced. The previous per-module numbers were carried over unchanged from the pre-testable metric (see git history) and so gated on a denominator they were never computed against; the leg itself never ran, so none had ever been checked. Each floor is the measured value minus 2 points, which absorbs run-to-run variation while still catching a real drop. Ratchet upward as real unit-testable coverage grows; do NOT raise the number by adding more paths to the exclude list. A module in `modules` that cannot be found in the coverage data FAILS the gate — record a deliberate exemption in `unmeasured` with the reason instead, so an extracted module is loud rather than silent.",
-  "_comment_packages": "Package floors are the first measurement (unit-testing run 37333831409, 2026-10-05), rounded down to 4 places, with no slack. `packages` is package source measured by the app suite on the iOS simulator; `host_packages` is the same source measured by the package's own `swift test` on macOS. The two use different instrumentation and are never combined. TPPBookRegistry left `unmeasured` once its source (now in PalaceBookRegistry) was collected; its floor is that run's value, under `package_modules`, which is compared only when the run collected package source (CI does; a local Xcode run does not)."
+  "_comment_packages": "Package floors are the lower of the first two measurements (unit-testing runs 37333831409 and 37350306572, 2026-10-05), rounded down to 4 places, with no further slack. The two runs differed by up to 0.5 points on PalaceBookRegistry, PalaceTriageBot and TPPBookRegistry with no code change, so a single run's value fails the next run. `packages` is package source measured by the app suite on the iOS simulator; `host_packages` is the same source measured by the package's own `swift test` on macOS. The two use different instrumentation and are never combined. TPPBookRegistry left `unmeasured` once its source (now in PalaceBookRegistry) was collected; its floor is that run's value, under `package_modules`, which is compared only when the run collected package source (CI does; a local Xcode run does not)."
 }
