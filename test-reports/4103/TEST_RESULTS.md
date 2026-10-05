@@ -1,6 +1,6 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-10-05 19:27:30 UTC
+**Generated:** 2026-10-05 20:16:04 UTC
 **Commit:** `7a9ea6eee7f3`
 **Branch:** `test/registry-write-failure`
 
