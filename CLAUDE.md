@@ -37,7 +37,7 @@ xcodebuild -project Palace.xcodeproj -scheme Palace \
 - The run ends `** TEST SUCCEEDED **` with no `exceeded execution time allowance` or `Restarting after … test timeout` lines. A timeout is a failure even at 0 assertion failures.
 - Read the count from the top-level `Test Suite 'All tests'` rollup; per-suite `Executed N` lines over-count.
 
-Environment: Xcode 26, iOS 16.0+. Targets `Palace` (full DRM) and `Palace-noDRM` (open source). DRM builds run natively on Apple Silicon.
+Environment: Xcode 26, iOS 17.0+. Targets `Palace` (full DRM) and `Palace-noDRM` (open source). DRM builds run natively on Apple Silicon.
 
 **`nearly matches optional requirement` on an `@objc` delegate is never benign.** The method is not registered as the protocol witness, so the callback is skipped at runtime with no error (this broke web-sheet sign-in when `WKNavigationDelegate` became `@MainActor`, #1205). Match the SDK requirement's isolation exactly, e.g. a `@MainActor` method with an `@escaping @MainActor` handler. Check this warning first when a delegate callback does not fire. Gated by `scripts/check-objc-witness-nearly-matches.sh`.
 
