@@ -1,6 +1,6 @@
 # ADR: Injectable loader factory on AudiobookSessionManager (WS-3 OverDrive re-fulfill)
 
-**Status:** Accepted (coordinator-approved, pending architect SoD)
+**Status:** Accepted; implemented in #1073 (`AudiobookSessionManager.makeLoader`).
 **Date:** 2026-06-11
 **Context:** WS-3 / 3.2.0 crash-triage follow-up — OverDrive expired-signed-URL
 playback dead-end (`fleet/w-lane-overdrive`).

@@ -69,4 +69,3 @@ Until then, the agent has to ask explicitly — `cm_check` / `crashlytics_list_e
 
 - Demo doc `03-improvements-roadmap.md` #12 — production-observability feedback loop
 - The wall-failure catalog's `derived-improvements` list (maintainer harness) — C2 row
-- ForgeOS DNA feedback file (`/Users/mauricework/Desktop/forgeos-dna-vision-feedback.md`) — ask #6 SessionStart DNA surfacing is the ForgeOS-side equivalent

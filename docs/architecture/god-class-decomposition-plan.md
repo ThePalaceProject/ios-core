@@ -1,6 +1,6 @@
 # Palace iOS — Target Architecture & Decomposition Plan (ADR draft)
 
-**Status:** proposed · **Author:** architect agent, 2026-07-23 · **Extends:** `docs/architecture/architectural-triad.md` (Phases 6–7, which this document supersedes with a complete map) · **Vocabulary:** this doc reuses the triad's terms — AppContainer composition root, `Store<State,Action,Environment>`, reducer-as-pure-function, contract-snapshot tests, "load-bearing on day 1."
+**Status:** Accepted, in progress: Wave 3a (`AccountsManager`, #1361, #1363, #1366, #1367, #1368), Wave 5 (`BookDetailViewModel`, #1534) and Wave 6 (`AudiobookSessionManager`, #1539) are merged to develop; see section 4 for remaining waves · **Date:** 2026-07-23 · **Extends:** `docs/architecture/architectural-triad.md` (Phases 6–7, which this document supersedes with a complete map) · **Vocabulary:** this doc reuses the triad's terms — AppContainer composition root, `Store<State,Action,Environment>`, reducer-as-pure-function, contract-snapshot tests, "load-bearing on day 1."
 
 ---
 

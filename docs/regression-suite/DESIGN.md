@@ -1,6 +1,6 @@
 # Palace iOS Regression Suite — Design
 
-**Status:** Draft / proposed (feat/regression-suite, not merged)
+**Status:** Superseded. Implemented in #932; the `scripts/regression/` implementation was removed in #1300 and is no longer in the tree.
 **Author:** This document is a design artifact for review. The orchestrator + importers in `scripts/regression/` are the implementation.
 
 ## Why this exists
