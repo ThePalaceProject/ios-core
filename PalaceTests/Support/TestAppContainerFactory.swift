@@ -34,6 +34,9 @@ import PalaceBookRegistry
 ///   - bookRegistry: Optional explicit override. When `nil` the factory
 ///     constructs a fresh `TPPBookRegistry` wired to the resolved
 ///     `accountsManager` (the production cycle-avoidance pattern).
+///   - networkExecutor: Optional explicit override, e.g. an executor whose
+///     session routes through a test `URLProtocol`. When `nil` the factory
+///     constructs a fresh `.fallback` executor.
 ///
 /// - Returns: A fully wired `AppContainer` distinct from
 ///   `AppContainer.production()`. Does NOT mutate `_cached`.
@@ -47,7 +50,8 @@ import PalaceBookRegistry
 /// the main thread.
 func makeTestAppContainer(
   accountsManager: AccountsManager? = nil,
-  bookRegistry: TPPBookRegistryProvider? = nil
+  bookRegistry: TPPBookRegistryProvider? = nil,
+  networkExecutor: TPPNetworkExecutor? = nil
 ) -> AppContainer {
   // Pin the opt-out flag BEFORE constructing AccountsManager so its init
   // skips the background `loadCatalogs` Task. This mirrors the bootstrap
@@ -63,7 +67,7 @@ func makeTestAppContainer(
   // production builder explains the cycle-avoidance: TPPBookRegistry.init
   // takes AccountsManager as a required dependency, so manager MUST exist
   // first. Same here.
-  let executor = TPPNetworkExecutor(cachingStrategy: .fallback)
+  let executor = networkExecutor ?? TPPNetworkExecutor(cachingStrategy: .fallback)
   let reachability = Reachability()
   let resolvedAccountsManager = accountsManager ?? AccountsManager()
   let imageCache: ImageCacheType = ImageCache.shared
