@@ -917,6 +917,201 @@ final class OIDCCallbackEdgeCaseTests: XCTestCase {
         super.tearDown()
     }
 
+    // MARK: - RFC 6749 plain error codes
+
+    /// An identity provider that follows RFC 6749 §4.1.2.1 sends `error=<code>`,
+    /// not JSON. That is what a patron who declines consent produces.
+    ///
+    /// The error arm required the value to parse as a JSON object, so a bare code
+    /// fell through to the access_token guard, logged, and returned — the patron
+    /// was left on the sheet with no message at all.
+    func testHandleOIDCCallback_withPlainErrorCode_tellsThePatron() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?error=access_denied")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertNil(businessLogic.authToken,
+                     "an error response must not produce a token")
+        XCTAssertTrue(uiDelegate.didEncounterValidationError,
+                      "a plain error code must reach the patron; silence leaves them "
+                      + "on the sheet with no idea the sign-in failed")
+        XCTAssertEqual(uiDelegate.validationErrorTitle, Strings.Error.loginErrorTitle)
+    }
+
+    /// `error_description` is the human-readable half of the same RFC response and
+    /// is what the patron should see when the provider supplies it.
+    func testHandleOIDCCallback_withErrorDescription_showsIt() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let desc = "The+user+denied+the+request"
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=access_denied&error_description=\(desc)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "The user denied the request",
+                       "error_description should be shown, plus-decoded")
+    }
+
+    /// With no description, the code itself is shown rather than nothing.
+    func testHandleOIDCCallback_withPlainErrorCodeOnly_showsTheCode() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?error=temporarily_unavailable")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "temporarily_unavailable",
+                       "absent a description, the code is the only information there is")
+    }
+
+    /// The JSON form the circulation manager sends must keep working: its `title`
+    /// is the message, not the raw JSON.
+    func testHandleOIDCCallback_withJSONError_stillPrefersTitle() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let errorJSON = #"{"title":"Your card has expired"}"#
+        let encoded = errorJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?error=\(encoded)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "Your card has expired",
+                       "the JSON form must still surface its title")
+    }
+
+    /// An empty `error=` is not an error report. Treating it as one would show the
+    /// patron an alert with no text whenever a provider appends the key with no
+    /// value, so this pins the boundary the guard draws.
+    func testHandleOIDCCallback_withEmptyErrorValue_doesNotClaimAnError() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let patronJSON = #"{"name":"Empty Error"}"#
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=&access_token=tok&patron_info=\(encoded)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertFalse(uiDelegate.didEncounterValidationError,
+                       "an empty error value must not surface an empty alert")
+        // The negative above would also hold if the whole error arm were deleted,
+        // so assert the POSITIVE consequence: an empty error does not block an
+        // otherwise good sign-in. That distinguishes "fell through correctly" from
+        // "returned early for some other reason".
+        XCTAssertEqual(businessLogic.authToken, "tok",
+                       "an empty error must not block a valid sign-in")
+    }
+
+    /// An empty `error_description` is not a message.
+    ///
+    /// Without the emptiness check the patron gets the login-failed title with a
+    /// blank body — the same defect the empty-`error=` case guards on the other
+    /// half of this RFC response, so if one is reachable so is this.
+    func testHandleOIDCCallback_withEmptyErrorDescription_fallsBackToTheCode() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=access_denied&error_description=")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "access_denied",
+                       "an empty description must fall back to the code, not show a "
+                       + "blank alert body")
+    }
+
+    /// A JSON object with no usable `title` must not put raw JSON in front of the
+    /// patron when the response also carries a description.
+    func testHandleOIDCCallback_withJSONLackingTitle_prefersTheDescription() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let errorJSON = #"{"code":"expired"}"#
+        let encoded = errorJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=\(encoded)&error_description=Your+session+expired")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "Your session expired",
+                       "a JSON object without a title should yield the description "
+                       + "rather than the raw blob")
+    }
+
+    /// A `title` that is not a String is not a title. It must fall through rather
+    /// than crash or surface something unreadable.
+    func testHandleOIDCCallback_withNonStringJSONTitle_fallsBack() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let errorJSON = #"{"title":42}"#
+        let encoded = errorJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=\(encoded)&error_description=Numeric+title")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "Numeric title")
+    }
+
+    /// A percent escape that decodes to invalid UTF-8 makes `formDecoded` return
+    /// nil, and the raw value is shown — undecoded, but not silence, which is what
+    /// this used to be.
+    ///
+    /// The vector matters. `%ZZ` does NOT reach the fallback: `URL(string:)`
+    /// normalizes the stray `%` to `%25`, so `formDecoded` succeeds and returns
+    /// `access%ZZdenied`. A test built on that passes with the fallback deleted.
+    /// `%FF` is a syntactically valid escape whose byte is not valid UTF-8, so
+    /// `removingPercentEncoding` returns nil and the fallback is the only path to a
+    /// message.
+    ///
+    /// Asserting the MESSAGE, not merely that an error surfaced: the boolean is
+    /// satisfied by the ordinary decode path too, so it cannot tell the fallback
+    /// from its absence.
+    func testHandleOIDCCallback_withUndecodableEscape_showsTheRawValue() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?error=bad%FFcode")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "bad%FFcode",
+                       "an undecodable value must still reach the patron, raw")
+    }
+
+    /// A real error must not permit a sign-in — the dual of "an empty error must
+    /// not block one".
+    ///
+    /// This pins the error arm's TERMINALITY. Before this change the arm was
+    /// entered only for JSON errors, so its `return` was narrow; widening entry to
+    /// any non-empty error makes it load-bearing. Without the `return`, control
+    /// falls to the access_token guard, and a response carrying both a denial and a
+    /// complete valid grant would show the patron the error AND sign them in on a
+    /// grant the provider rejected.
+    ///
+    /// No other test covers it: the only other `error=` URL with an access_token
+    /// carries an EMPTY error, so it never enters the arm.
+    func testHandleOIDCCallback_withErrorAndValidToken_doesNotSignIn() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let patronJSON = #"{"name":"Rejected Grant"}"#
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=access_denied&access_token=tok&patron_info=\(encoded)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertTrue(uiDelegate.didEncounterValidationError,
+                      "the denial must reach the patron")
+        XCTAssertNil(businessLogic.authToken,
+                     "a denial must not also sign the patron in on the rejected grant")
+    }
+
+    /// Provider text has no length contract; an unbounded description must not
+    /// become an unreadable alert.
+    func testHandleOIDCCallback_withVeryLongDescription_isBounded() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let long = String(repeating: "x", count: 900)
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=access_denied&error_description=\(long)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        let shown = uiDelegate.validationErrorMessage ?? ""
+        XCTAssertEqual(shown.count, 300, "the message should be clamped to 300 characters")
+    }
+
     func testHandleOIDCCallback_withOnlyAccessToken_doesNotSetToken() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=only-token")!
