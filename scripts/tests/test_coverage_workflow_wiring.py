@@ -170,3 +170,53 @@ def test_gate_rejects_a_skip_where_report_still_ran(tmp_path):
     rc, _, _ = _evaluate(tmp_path, changes="success", run="false", build="skipped",
                          test="skipped", report="failure")
     assert rc == 1
+
+
+def _run_floor_step(tmp_path, complete, enforcer_rc):
+    """Runs the floor step's script with python3 stubbed to exit `enforcer_rc`."""
+    step = _step("report", "Enforce Coverage Floors")
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "python3").write_text(f"#!/bin/sh\nexit {enforcer_rc}\n")
+    (stub / "python3").chmod(0o755)
+    env = {"PATH": f"{stub}:/usr/bin:/bin", "COMPLETE": complete, "REASON": "shard 2 lost classes"}
+    return subprocess.run(["bash", "-e", "-c", step["run"]], env=env,
+                          capture_output=True, text=True).returncode
+
+
+@pytest.mark.parametrize("complete,enforcer_rc,expected", [
+    ("true", 0, 0),
+    ("true", 1, 1),    # floor violation
+    ("true", 3, 3),    # incomplete coverage data
+    ("false", 0, 1),   # a run that lost classes is never compared, and never passes
+    ("", 0, 1),
+])
+def test_floor_step_exit_status(tmp_path, complete, enforcer_rc, expected):
+    assert _run_floor_step(tmp_path, complete, enforcer_rc) == expected
+
+
+def test_gate_fails_when_report_was_cancelled_after_the_floors_passed(tmp_path):
+    rc, out, _ = _evaluate(tmp_path, **{**GREEN, "report": "cancelled"})
+    assert rc == 1 and "verify=true" not in out
+
+
+@pytest.mark.parametrize("build,test", [("success", "skipped"), ("skipped", "success")])
+def test_gate_rejects_a_skip_where_build_or_test_still_ran(tmp_path, build, test):
+    rc, _, _ = _evaluate(tmp_path, changes="success", run="false", build=build,
+                         test=test, report="skipped")
+    assert rc == 1
+
+
+# Report steps whose failure may fail the job and so the required check. Every
+# other step reports and must be continue-on-error (PP-4988).
+_REPORT_STEPS_THAT_MAY_FAIL = {
+    "Set up Xcode", "Checkout", "Cache Test History", "Find Test Results",
+    "Parse Test Results", "Compare with History", "Save to History",
+    "Parse Code Coverage", "Enforce Coverage Floors", "Process Snapshot Failures",
+    "Report URL", "Note if results could not be archived",
+}
+
+
+def test_only_listed_report_steps_can_fail_the_required_check():
+    can_fail = {s.get("name") for s in _jobs()["report"]["steps"] if not s.get("continue-on-error")}
+    assert can_fail == _REPORT_STEPS_THAT_MAY_FAIL
