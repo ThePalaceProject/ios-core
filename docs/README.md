@@ -15,7 +15,7 @@ survive the admission test below, index them, and delete the rest**.
 | Why the code is shaped this way — a decision and its rationale | [`architecture/`](./architecture/) — start at its [index](./architecture/README.md) |
 | Whether an area is safe to change, and what to re-verify | `architecture/areas/<area>/verification-checklist.md` |
 | How this project tests, and what a good test looks like | [`Testing/`](./Testing/) — [`TESTING_POSTURE.md`](./Testing/TESTING_POSTURE.md) first |
-| The release regression pass | [`Testing/REGRESSION_TEST_MATRIX.md`](./Testing/REGRESSION_TEST_MATRIX.md) |
+| The release regression pass | [`Testing/REGRESSION_TEST_MATRIX.md`](./Testing/REGRESSION_TEST_MATRIX.md); design record of the removed importer: [`regression-suite/DESIGN.md`](./regression-suite/DESIGN.md) |
 | A recurring failure and its class | [`regressions/recurrence-classes.md`](./regressions/recurrence-classes.md) |
 | How to run something operationally | [`Operations/`](./Operations/) |
 | Adding or changing a user-facing string | [`Operations/localization-workflow.md`](./Operations/localization-workflow.md) |

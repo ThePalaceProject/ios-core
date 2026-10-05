@@ -37,7 +37,7 @@ This document maps requirements to their implementing code and corresponding tes
 | `TPPKeychainManager.swift` | `Keychain/TPPKeychainManagerTests.swift`; credential storage in `Palace/Packages/PalaceKeychain/Tests/PalaceKeychainTests/` | 9 tests (archive decoding, error logging); package: 17 tests | Not measured |
 | `TPPUserAccount.swift` | `TPPUserAccountTests.swift` (partial) | - | ~20% |
 | `TPPNetworkExecutor.swift` | `NetworkClientTests.swift` | Limited | ~15% |
-| `TPPSAMLHelper.swift` | `SignInLogic/TPPSAMLFlowTests.swift`, `SignInOAuthErrorPropagationTests.swift` (error-alert guard) | 31 + 8 tests | Not measured |
+| `TPPSAMLHelper.swift` | `SignInLogic/TPPSAMLFlowTests.swift` | 31 tests | Not measured |
 | `TPPAgeCheck.swift` | `TPPAgeCheckTests.swift` | 5 tests | ~60% |
 | `TPPSignInBusinessLogic.swift` | `TPPSignInBusinessLogicTests.swift` | 3 tests | ~25% |
 
