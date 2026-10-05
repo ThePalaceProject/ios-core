@@ -59,8 +59,8 @@ This repo has two layers of automation.
 ### CI gates (run on every PR)
 
 The workflows under [`.github/workflows/`](./.github/workflows) run on every
-pull request. Build and unit tests make up the `build-and-test` check; the
-other items report without failing it:
+pull request. Build and unit tests make up the `build-and-test` check;
+tooling checks fail their own check; the rest report without failing a run:
 
 - Build (Palace and Palace-noDRM targets)
 - Unit tests
@@ -71,7 +71,9 @@ other items report without failing it:
   pass. See
   [`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md).
 - Snapshot tests, captured as artifacts with no comparison gate
-- Lint / accessibility lint, reported through the ledger (non-blocking)
+- Tooling checks (`tooling-checks.yml`: test-quality lint, doc reference,
+  index and hygiene checks), which fail the run on a violation
+- Accessibility lint, reported through the ledger (non-blocking)
 
 A red CI run means do not merge, regardless of who opened the PR. GitHub does
 not enforce this: `develop` and `main` have no branch protection, so the rule
