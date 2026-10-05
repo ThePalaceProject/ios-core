@@ -213,6 +213,105 @@ def test_enumeration_errors_are_refused():
         shards.classes_from_enumeration(doc)
 
 
+# xcodebuild lists a bundle whose test runner crashed before reporting its
+# tests as a one-part identifier, sometimes with an empty `errors` list
+# (reproduced by aborting the PalaceTests host at launch). Runs 37352420633,
+# 37358674499 and 37366744068 failed on exactly that shape.
+def _bare_bundle(classes, bundle, errors=()):
+    doc = _enumeration(classes, extra_ids=[bundle])
+    doc["errors"] = list(errors)
+    return doc
+
+
+def test_a_bare_bundle_without_its_classes_is_an_incomplete_enumeration():
+    doc = _bare_bundle(["PalaceTests/A"], "TenPrintCoverTests")
+    assert shards.enumeration_problems(doc) == [
+        "test bundle 'TenPrintCoverTests' is listed without its tests"]
+    with pytest.raises(shards.PlanError, match="'TenPrintCoverTests' is listed without its tests"):
+        shards.classes_from_enumeration(doc)
+
+
+def test_a_bare_bundle_alongside_its_classes_is_still_incomplete():
+    """Some of the bundle's classes being present does not show all of them are."""
+    doc = _bare_bundle(["PalaceTests/A", "TenPrintCoverTests/T"], "PalaceTests")
+    assert shards.enumeration_problems(doc) == [
+        "test bundle 'PalaceTests' is listed without its tests"]
+    with pytest.raises(shards.PlanError, match="'PalaceTests' is listed without its tests"):
+        shards.classes_from_enumeration(doc)
+
+
+def test_a_complete_enumeration_has_no_problems():
+    doc = _enumeration(["PalaceTests/A", "TenPrintCoverTests/T"],
+                       extra_ids=["PalaceTests/PalaceTestCase"])
+    assert shards.enumeration_problems(doc) == []
+
+
+def test_enumeration_errors_are_a_problem_even_without_a_bare_bundle():
+    doc = _enumeration(["PalaceTests/A", "TenPrintCoverTests/T"])
+    doc["errors"] = ["xctest (1) encountered an error"]
+    assert shards.enumeration_problems(doc) == [
+        "xcodebuild reported errors: ['xctest (1) encountered an error']"]
+
+
+def test_a_malformed_identifier_is_still_refused_as_unrecognised():
+    doc = _enumeration(["PalaceTests/A"], extra_ids=["PalaceTests/A/b/c"])
+    with pytest.raises(shards.PlanError, match="unrecognised"):
+        shards.classes_from_enumeration(doc)
+
+
+class _Runner:
+    """Stands in for xcodebuild: writes the next canned document per call."""
+
+    def __init__(self, docs, codes=None):
+        self.docs, self.codes, self.calls = list(docs), list(codes or [0] * len(docs)), 0
+
+    def __call__(self, path):
+        # xcodebuild exits 64 when the output path already exists.
+        assert not Path(path).exists(), "enumeration output path already exists"
+        doc = self.docs[self.calls]
+        self.calls += 1
+        Path(path).write_text(json.dumps(doc))
+        return self.codes[self.calls - 1]
+
+
+GOOD = _enumeration(["PalaceTests/A", "TenPrintCoverTests/T"])
+
+
+def test_an_incomplete_enumeration_is_retried_once_and_logged(tmp_path):
+    out = tmp_path / "enumeration.json"
+    run, log = _Runner([_bare_bundle(["PalaceTests/A"], "TenPrintCoverTests"), GOOD]), []
+    doc = shards.enumerate_tests(run, out, log=log.append)
+    assert run.calls == 2
+    assert shards.classes_from_enumeration(doc) == ["PalaceTests/A", "TenPrintCoverTests/T"]
+    assert json.loads(out.read_text()) == GOOD
+    assert any("attempt 1 of 2" in m and "'TenPrintCoverTests'" in m for m in log)
+    # The incomplete output is kept for diagnosis next to the good one.
+    kept = json.loads((tmp_path / "enumeration.attempt1.json").read_text())
+    assert {"identifier": "TenPrintCoverTests"} in kept["values"][0]["enabledTests"]
+
+
+def test_a_complete_enumeration_runs_once(tmp_path):
+    run, log = _Runner([GOOD]), []
+    shards.enumerate_tests(run, tmp_path / "e.json", log=log.append)
+    assert run.calls == 1
+    assert log == []
+
+
+def test_an_enumeration_incomplete_twice_fails_closed(tmp_path):
+    bad = _bare_bundle(["PalaceTests/A"], "PalaceTests")
+    run = _Runner([bad, bad, GOOD])
+    with pytest.raises(shards.PlanError, match="incomplete after 2 attempts.*'PalaceTests'"):
+        shards.enumerate_tests(run, tmp_path / "e.json", log=lambda m: None)
+    assert run.calls == 2
+
+
+def test_an_xcodebuild_failure_is_not_retried(tmp_path):
+    run = _Runner([GOOD, GOOD], codes=[65, 0])
+    with pytest.raises(shards.PlanError, match="exited 65"):
+        shards.enumerate_tests(run, tmp_path / "e.json", log=lambda m: None)
+    assert run.calls == 1
+
+
 def test_enumeration_without_values_is_refused():
     with pytest.raises(shards.PlanError, match="values"):
         shards.classes_from_enumeration({"errors": []})
@@ -478,6 +577,63 @@ def test_cli_plan_then_args_cover_every_enumerated_class_once(tmp_path):
             got += [ln.removeprefix("-only-testing:") for ln in out.stdout.splitlines()]
     assert sorted(got) == sorted(classes)
     assert len(got) == len(set(got))
+
+
+def _fake_xcodebuild(tmp_path, docs):
+    """An executable that answers each -enumerate-tests call with the next doc."""
+    for i, d in enumerate(docs):
+        (tmp_path / f"canned{i}.json").write_text(json.dumps(d))
+    fake = tmp_path / "xcodebuild"
+    fake.write_text(f"""#!{sys.executable}
+import pathlib, shutil, sys
+a = sys.argv[1:]
+assert a[:3] == ["test-without-building", "-xctestrun", "R.xctestrun"], a
+assert "-enumerate-tests" in a and a[a.index("-destination") + 1] == "id=SIM", a
+n = pathlib.Path({str(tmp_path / "calls")!r})
+k = int(n.read_text()) if n.exists() else 0
+n.write_text(str(k + 1))
+out = a[a.index("-test-enumeration-output-path") + 1]
+if pathlib.Path(out).exists():
+    sys.exit(64)
+shutil.copy({str(tmp_path)!r} + f"/canned{{k}}.json", a[a.index("-test-enumeration-output-path") + 1])
+""")
+    fake.chmod(0o755)
+    return fake
+
+
+def _cli_plan_enumerating(tmp_path, docs):
+    fake = _fake_xcodebuild(tmp_path, docs)
+    r = _cli("plan", "--xctestrun", "R.xctestrun", "--destination", "id=SIM",
+             "--xcodebuild", str(fake), "--enumeration", str(tmp_path / "enum.json"),
+             "--shards", "2", "--out", str(tmp_path / "plan.json"))
+    return r, int((tmp_path / "calls").read_text())
+
+
+def test_cli_plan_reenumerates_once_after_a_bare_bundle(tmp_path):
+    classes = _realistic_classes()
+    r, calls = _cli_plan_enumerating(
+        tmp_path, [_bare_bundle(classes[:10], "TenPrintCoverTests"), _enumeration(classes)])
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert calls == 2
+    assert "::warning::" in r.stdout and "'TenPrintCoverTests'" in r.stdout
+    plan = json.loads((tmp_path / "plan.json").read_text())
+    assert sorted(plan["classes"]) == sorted(classes)
+
+
+def test_cli_plan_fails_when_the_retry_is_incomplete_too(tmp_path):
+    bad = _bare_bundle(_realistic_classes(), "PalaceTests")
+    r, calls = _cli_plan_enumerating(tmp_path, [bad, bad])
+    assert r.returncode == 1
+    assert calls == 2
+    assert "::error::" in r.stdout
+    assert not (tmp_path / "plan.json").exists()
+
+
+def test_cli_plan_needs_xctestrun_and_destination_together(tmp_path):
+    r = _cli("plan", "--xctestrun", "R.xctestrun", "--enumeration", str(tmp_path / "e.json"),
+             "--shards", "2", "--out", str(tmp_path / "p.json"))
+    assert r.returncode != 0
+    assert "--destination" in r.stdout + r.stderr
 
 
 def test_cli_plan_fails_closed_on_a_bad_isolated_name(tmp_path):

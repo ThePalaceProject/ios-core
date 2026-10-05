@@ -90,13 +90,10 @@ def classes_from_enumeration(doc: dict) -> list[str]:
     fail every run.
     """
     found: set[str] = set()
-    if doc.get("errors"):
-        raise PlanError(f"test enumeration reported errors: {doc['errors']}")
-    values = doc.get("values")
-    if not isinstance(values, list):
-        raise PlanError("enumeration JSON has no 'values' list; was it produced with "
-                        "-test-enumeration-style flat -test-enumeration-format json?")
-    for plan in values:
+    problems = enumeration_problems(doc)
+    if problems:
+        raise PlanError(f"test enumeration is incomplete: {'; '.join(problems)}")
+    for plan in _values(doc):
         for t in plan.get("enabledTests", []) or []:
             parts = str(t.get("identifier", "")).split("/")
             if len(parts) not in (2, 3) or not all(parts):
@@ -104,6 +101,79 @@ def classes_from_enumeration(doc: dict) -> list[str]:
             if len(parts) == 3:
                 found.add(f"{parts[0]}/{parts[1]}")
     return sorted(found)
+
+
+def _values(doc: dict) -> list:
+    values = doc.get("values")
+    if not isinstance(values, list):
+        raise PlanError("enumeration JSON has no 'values' list; was it produced with "
+                        "-test-enumeration-style flat -test-enumeration-format json?")
+    return values
+
+
+def enumeration_problems(doc: dict) -> list[str]:
+    """-> reasons the enumeration may be missing tests; empty when it is complete.
+
+    When a bundle's test runner exits before reporting its tests, xcodebuild
+    still exits 0 and lists the bundle as a one-part identifier with none of
+    its classes; `errors` may be empty. Reproduced by aborting each runner at
+    launch: the PalaceTests host gave {'identifier': 'PalaceTests'} and no
+    errors, the TenPrintCoverTests runner gave its bare name plus an error.
+    Some of a bundle's classes may still be listed, so a bare bundle marks the
+    whole enumeration untrustworthy, not just that bundle.
+    """
+    problems = []
+    if doc.get("errors"):
+        problems.append(f"xcodebuild reported errors: {doc['errors']}")
+    for plan in _values(doc):
+        for t in plan.get("enabledTests", []) or []:
+            ident = str(t.get("identifier", ""))
+            if ident and "/" not in ident:
+                problems.append(f"test bundle {ident!r} is listed without its tests")
+    return problems
+
+
+ENUMERATION_ATTEMPTS = 2
+
+
+def enumerate_tests(run, path: Path, attempts: int = ENUMERATION_ATTEMPTS, log=print) -> dict:
+    """Run the enumeration until it is complete, at most `attempts` times.
+
+    `run(path)` writes the enumeration JSON to `path` and returns the exit
+    status. An incomplete result is moved to `<stem>.attemptN.json` and the
+    enumeration runs again. A non-zero exit is not retried: no case of it is
+    known to pass on a second try. Raises PlanError when no attempt is
+    complete, so a plan is never built from a partial list.
+    """
+    path = Path(path)
+    problems: list[str] = []
+    for attempt in range(1, attempts + 1):
+        status = run(path)
+        if status != 0:
+            raise PlanError(f"test enumeration exited {status}")
+        doc = _load(str(path))
+        problems = enumeration_problems(doc)
+        if not problems:
+            return doc
+        # Moved, not copied: xcodebuild refuses an output path that exists.
+        kept = path.with_name(f"{path.stem}.attempt{attempt}{path.suffix}")
+        path.replace(kept)
+        log(f"::warning::test enumeration attempt {attempt} of {attempts} is incomplete "
+            f"({'; '.join(problems)}); kept as {kept.name}"
+            + ("; enumerating again" if attempt < attempts else ""))
+    raise PlanError(f"test enumeration is incomplete after {attempts} attempts: "
+                    f"{'; '.join(problems)}")
+
+
+def xcodebuild_enumeration(xcodebuild: str, xctestrun: str, destination: str):
+    """-> run(path) for enumerate_tests(): xcodebuild's flat JSON test listing."""
+    def run(path: Path) -> int:
+        return subprocess.run([
+            xcodebuild, "test-without-building", "-xctestrun", xctestrun,
+            "-destination", destination, "-enumerate-tests",
+            "-test-enumeration-style", "flat", "-test-enumeration-format", "json",
+            "-test-enumeration-output-path", str(path)], check=False).returncode
+    return run
 
 
 def check_targets(classes: list[str]) -> None:
@@ -569,7 +639,12 @@ def main(argv: list[str]) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("plan")
-    p.add_argument("--enumeration", required=True, help="xcodebuild -enumerate-tests JSON")
+    p.add_argument("--enumeration", required=True,
+                   help="xcodebuild -enumerate-tests JSON; written here when --xctestrun is given")
+    p.add_argument("--xctestrun", help="enumerate this .xctestrun (with --destination), "
+                   "running it again once if the result is incomplete")
+    p.add_argument("--destination", help="xcodebuild -destination for the enumeration")
+    p.add_argument("--xcodebuild", default="xcodebuild", help=argparse.SUPPRESS)
     p.add_argument("--shards", type=int, required=True)
     p.add_argument("--timings", default=str(DEFAULT_TIMINGS))
     p.add_argument("--isolated", default=str(DEFAULT_ISOLATED))
@@ -620,9 +695,17 @@ def main(argv: list[str]) -> int:
     t.add_argument("--out", default=str(DEFAULT_TIMINGS))
 
     args = ap.parse_args(argv[1:])
+    if args.cmd == "plan" and (args.xctestrun is None) != (args.destination is None):
+        ap.error("plan: --xctestrun and --destination go together")
     try:
         if args.cmd == "plan":
-            classes = classes_from_enumeration(_load(args.enumeration))
+            if args.xctestrun:
+                doc = enumerate_tests(
+                    xcodebuild_enumeration(args.xcodebuild, args.xctestrun, args.destination),
+                    Path(args.enumeration))
+            else:
+                doc = _load(args.enumeration)
+            classes = classes_from_enumeration(doc)
             if not classes:
                 raise PlanError("enumeration produced no classes")
             timings = _load(args.timings) if os.path.exists(args.timings) else {}
