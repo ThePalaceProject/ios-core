@@ -469,14 +469,14 @@ final class SignInModalLifecycleTests: XCTestCase {
         // Inject the spy via the `withSignInModalSheetPresenter(_:)`
         // modifier. The resulting container's computed
         // `signInModalSheetPresenter` returns the spy first (override
-        // branch precedes the static cache short-circuit).
+        // branch precedes the container-owned presenter).
         let testContainer = AppContainer.production().withSignInModalSheetPresenter(spy) // MIGRATED-DEFERRED: withSignInModalSheetPresenter() returns a struct derived FROM the production cache; substituting makeTestAppContainer() would break the seam being tested.
 
         // Sanity-check the seam itself before driving TPPReauthenticator
         // — pin that the override is actually returned by the computed
         // property. If this fails, the rest of the test is meaningless.
         XCTAssertTrue(testContainer.signInModalSheetPresenter === spy,
-                      "Module B seam: withSignInModalSheetPresenter(_:) override must take precedence over the static cache")
+                      "Module B seam: withSignInModalSheetPresenter(_:) override must take precedence over the container-owned presenter")
 
         // Install the test-only AppContainer override so
         // TPPReauthenticator's production seam resolves the spy.
