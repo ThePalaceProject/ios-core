@@ -88,7 +88,7 @@ func makeTestAppContainer(
   // builder has the same order so MBDC's BookReturnService receives a
   // non-nil coordinator. The recorder + provider closures mirror the
   // production wiring. `MainActor.assumeIsolated` mirrors the production
-  // builder at AppContainer.swift:402 — CoordinatorSignInModalPresenter is
+  // builder `_buildCachedAppContainer()` — CoordinatorSignInModalPresenter is
   // `@MainActor`-isolated, and XCTest test methods dispatch on main so the
   // assumption is sound at runtime regardless of the call-site's static
   // isolation context.
@@ -126,9 +126,9 @@ func makeTestAppContainer(
   downloadCenter.lcpStreamingEnabledProvider = { false }
 
   // `UserAccountPublisher.shared` is `@MainActor`-isolated; resolve it via the
-  // same `assumeIsolated` hop the production builder uses at
-  // `AppContainer.swift:478` (XCTest dispatches on main, so the assumption is
-  // sound at runtime regardless of this factory's nonisolated call site).
+  // same `assumeIsolated` hop `_buildCachedAppContainer()` uses (XCTest
+  // dispatches on main, so the assumption is sound at runtime regardless of
+  // this factory's nonisolated call site).
   let userAccountPublisher = MainActor.assumeIsolated { UserAccountPublisher.shared }
 
   // Created eagerly: SQLite cannot open a database under a directory that does
