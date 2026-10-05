@@ -52,11 +52,12 @@ recoverable from the diff.
 ## What keeps this honest
 
 Prose is the only layer in this repo that can lie, so three mechanical gates hold
-it to account. All three run in `tooling-checks.yml` on every PR, and the first
-two also run in `verify-pr.sh`:
+it to account. All three run in `tooling-checks.yml` on every PR and in
+`verify-pr.sh`:
 
 - **`check-doc-hygiene.sh`** — blocks process and generated artifacts from being
-  committed at all. Denied classes are listed in the script.
+  committed at all. Denied classes are listed in the script. It reads only the
+  files a change adds: in CI, the PR's added files against its base branch.
 - **`check-doc-references-resolve.py`** — every script, workflow, and source path
   a doc names must exist. Pre-existing breakage is baselined in
   `scripts/doc-references-baseline.json`; nothing new may be added, and a
