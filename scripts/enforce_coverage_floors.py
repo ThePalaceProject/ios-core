@@ -134,8 +134,18 @@ def find_package_coverage(coverage: Dict, scope_key: str, name: str) -> Optional
     return int(d.get("testable_covered_lines", 0)) / executable if executable else 0.0
 
 
-PACKAGE_SCOPES = (("packages", "packages_app_suite", "pkg:"),
-                  ("host_packages", "packages_host", "host:"))
+# (floors key, report measurement, row prefix, report key listing what the run
+# was required to collect)
+PACKAGE_SCOPES = (("packages", "packages_app_suite", "pkg:", "expected_packages"),
+                  ("host_packages", "packages_host", "host:", "expected_host_packages"))
+
+
+def collected(coverage: Dict, expected_key: str) -> bool:
+    """Whether the run was required to collect this package measurement. CI
+    passes --expect-* to coverage-report.py, so absent data there is already
+    INCOMPLETE; a local Xcode run collects none and its package floors are not
+    compared."""
+    return bool(coverage.get(expected_key))
 
 
 def is_complete(coverage: Dict) -> bool:
@@ -160,7 +170,7 @@ def build_baseline(coverage: Dict, modules: Dict[str, float], metric: str = "tes
             baseline["modules"][name] = floor_of(actual)
         else:
             baseline["modules"][name] = modules[name]
-    for floors_key, scope_key, _ in PACKAGE_SCOPES:
+    for floors_key, scope_key, _, _ in PACKAGE_SCOPES:
         measured = coverage.get(scope_key, {})
         if measured:
             baseline[floors_key] = {n: floor_of(find_package_coverage(coverage, scope_key, n))
@@ -228,7 +238,28 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
             "missing": False,
         })
 
-    for floors_key, scope_key, prefix in PACKAGE_SCOPES:
+    # Modules whose source moved into a local package: gated like `modules`,
+    # but only when the run collected package source.
+    if collected(coverage, "expected_packages"):
+        for name, floor in floors.get("package_modules", {}).items():
+            actual = find_module_coverage(coverage, name)
+            effective_floor = actual if (baseline_only and actual is not None) else float(floor)
+            if actual is None:
+                status = "MISSING"
+            else:
+                status = "PASS" if actual + 1e-9 >= effective_floor else "FAIL"
+            if status != "PASS":
+                all_pass = False
+            rows.append({"module": name, "floor": effective_floor, "actual": actual,
+                         "status": status, "missing": actual is None})
+
+    for floors_key, scope_key, prefix, expected_key in PACKAGE_SCOPES:
+        if not collected(coverage, expected_key):
+            if floors.get(floors_key):
+                log(f"Note: {floors_key} floors not compared; this report did not collect "
+                    f"that measurement (CI does: coverage-report.py --expect-local-packages / "
+                    f"--expect-host-package).")
+            continue
         for name, floor in floors.get(floors_key, {}).items():
             actual = find_package_coverage(coverage, scope_key, name)
             if actual is None:
@@ -303,8 +334,15 @@ def main() -> int:
 
     if args.write_baseline:
         baseline = build_baseline(coverage, floors.get("modules", {}), args.metric)
+        if floors.get("package_modules"):
+            baseline["package_modules"] = build_baseline(
+                coverage, floors["package_modules"], args.metric)["modules"]
+        # Keep the recorded exemptions and their reasons.
+        for key in ("unmeasured", "_comment", "_comment_packages"):
+            if key in floors:
+                baseline[key] = floors[key]
         with open(args.floors, "w") as f:
-            json.dump(baseline, f, indent=2)
+            json.dump(baseline, f, indent=2, ensure_ascii=False)
             f.write("\n")
         log(f"Wrote baseline floors to {args.floors} (metric={args.metric})")
         print_table(evaluate(coverage, baseline, baseline_only=False, metric=args.metric)[0])
@@ -319,7 +357,11 @@ def main() -> int:
                   "host_packages": floors.get("host_packages", {})}
 
     log(f"Gating on '{args.metric}' coverage metric.")
-    rows, all_pass = evaluate(coverage, floors, args.baseline_only, args.metric)
+    try:
+        rows, all_pass = evaluate(coverage, floors, args.baseline_only, args.metric)
+    except ValueError as e:
+        log(f"Error: {e}")
+        return 2
 
     for name, reason in floors.get("unmeasured", {}).items():
         log(f"UNMEASURED  {name}: {reason}")

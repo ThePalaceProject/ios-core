@@ -270,6 +270,10 @@ def build_report(raw: Any,
     return {
         'status': 'incomplete' if reasons else 'complete',
         'incomplete_reasons': reasons,
+        # What this run was required to measure. The floor step compares
+        # package floors only for these; a local run expects none.
+        'expected_packages': sorted(expected_packages or []),
+        'expected_host_packages': sorted(expected_host_packages or []),
         # App measurement, under the field names the gate and reports read.
         'total_coverage': a['total_coverage'],
         'line_coverage': a['total_coverage'],

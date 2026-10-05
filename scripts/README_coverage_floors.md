@@ -23,14 +23,17 @@ step does not block a merge today (see "Warn vs blocking mode").
      instrumentation and platform conditionals; never added to the app suite.
 
    Files matched by `coverage-exclude.json` are reported as excluded in each
-   measurement. Source outside the checkout (tests, third-party, generated) is
-   counted under `unattributed` and in no measurement. A path seen in several
+   measurement. Every other file (PalaceTests and other test sources, the
+   toolkit submodule, anything outside the checkout or generated) is counted
+   under `unattributed` and in no measurement. A path seen in several
    targets is counted once (the entry with the most covered lines) and listed
    under `duplicates`.
 4. `Enforce Coverage Floors` runs
    `scripts/enforce_coverage_floors.py coverage-data.json --floors scripts/coverage-floors.json`
    and prints `module | floor | actual | status`. Package rows are named
    `pkg:<Package>` (app suite) and `host:<Package>` (`swift test`).
+   `package_modules` holds module floors for files that moved into a package
+   (TPPBookRegistry).
 
 ## Incomplete data
 
@@ -48,7 +51,10 @@ A package with no data needs a named exemption in `coverage-exclude.json`
 (`unmeasured_packages`, with the reason and follow-up) to keep the report
 complete. A local Xcode run does not rewrite the coverage metadata, so
 `coverage-report.py` only expects packages when given `--expect-package` or
-`--expect-local-packages` (CI passes the latter).
+`--expect-local-packages` (CI passes the latter). The report records what it
+expected, and the floor step compares `packages`, `package_modules` and
+`host_packages` only for a run that expected that measurement; a local run
+(including `scripts/verify-pr.sh`) compares the app floors and notes the rest.
 
 ## Updating floors
 

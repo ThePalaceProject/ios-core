@@ -14,8 +14,12 @@ the PackageFrameworks binary when there is one, otherwise the app binary the
 target is linked into statically. Every other entry is left as Xcode wrote it.
 
 Usage: ci-xctestrun-package-coverage.py <file.xctestrun> [--repo-root DIR]
-Exit: 0 rewritten, 1 nothing to rewrite or a package source has no binary,
-2 unreadable input.
+A target with no PackageFrameworks binary is assumed to be linked statically
+into the app. If Xcode renames those frameworks, every package falls back to the
+app binary, xccov reports no package files, and the coverage report reads
+INCOMPLETE naming each package.
+
+Exit: 0 rewritten, 1 no coverage metadata or no package sources, 2 unreadable input.
 
 prior-art-checked: the coverage pipeline has no step that edits the xctestrun.
 """

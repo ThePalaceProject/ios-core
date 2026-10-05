@@ -163,6 +163,8 @@ def test_host_package_measurement_is_kept_separate_from_the_app_suite():
         ("Palace/Packages/PalaceAuth/Sources/PalaceAuth/Token.swift", 38, 41),
         ("Palace/Packages/PalaceAuth/Tests/PalaceAuthTests/TokenTests.swift", 50, 50),
         ("Palace/Packages/PalaceAuth/.build/debug/runner.swift", 10, 10),
+        # PalaceAuth depends on PalaceLogging, so its export carries that source too.
+        ("Palace/Packages/PalaceLogging/Sources/PalaceLogging/Log.swift", 7, 90),
     ])
     r = _report(_xccov(_target("Palace.app", APP_FILES + [PKG_FILE])),
                 host_packages={"PalaceAuth": host}, expected_host_packages=["PalaceAuth"])
@@ -369,3 +371,27 @@ def test_source_outside_the_checkout_is_never_app_source():
                        _target("PalaceUIKit.framework", [sibling])))
     assert r["executable_lines"] == 150
     assert r["unattributed"]["executable_lines"] == 55
+
+
+def test_report_records_which_package_measurements_it_expected():
+    """The floor step compares package floors only for measurements the run was
+    required to collect; the report carries that list."""
+    r = _report(_xccov(_target("Palace.app", APP_FILES + [PKG_FILE])),
+                host_packages={"PalaceAuth": _llvm([
+                    ("Palace/Packages/PalaceAuth/Sources/PalaceAuth/Token.swift", 38, 41)])},
+                expected_host_packages=["PalaceAuth"])
+    assert r["expected_packages"] == ["PalaceAuth"]
+    assert r["expected_host_packages"] == ["PalaceAuth"]
+
+
+def test_cli_host_package_without_a_path_is_a_usage_error(tmp_path):
+    xc = _write(tmp_path, "xc.json", _xccov(_target("Palace.app", APP_FILES + [PKG_FILE])))
+    p, _, _ = _run(tmp_path, "--xccov-json", xc, "--host-package", "PalaceAuth")
+    assert p.returncode == 2
+
+
+def test_cli_multiline_reason_stays_one_github_output_line(tmp_path):
+    xc = _write(tmp_path, "xc.json", _xccov(_target("Palace.app", APP_FILES + [PKG_FILE])))
+    _, _, gh = _run(tmp_path, "--xccov-json", xc, "--incomplete-reason", "first\nsecond")
+    line = next(ln for ln in gh.splitlines() if ln.startswith("coverage_incomplete_reason="))
+    assert line == "coverage_incomplete_reason=first second"

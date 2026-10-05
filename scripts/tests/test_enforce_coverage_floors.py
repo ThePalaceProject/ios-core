@@ -25,14 +25,17 @@ def _scope(covered, executable):
             "testable_coverage": 100.0 * covered / executable if executable else 0.0}
 
 
-def _coverage(status="complete", testable=60.0, files=(), packages=None, host=None, reasons=()):
+def _coverage(status="complete", testable=60.0, files=(), packages=None, host=None, reasons=(),
+              expected=("PalaceAuth",), expected_host=("PalaceAuth",)):
     return {
+        "expected_packages": list(expected),
+        "expected_host_packages": list(expected_host),
         "status": status,
         "incomplete_reasons": list(reasons),
         "testable_coverage": testable,
         "targets": [],
         "files": [{"name": n, "path": f"Palace/X/{n}", "covered_lines": c, "executable_lines": e,
-                   "coverage": 100.0 * c / e} for n, c, e in files],
+                   "coverage": 100.0 * c / e if e else 0.0} for n, c, e in files],
         "packages_app_suite": packages or {},
         "packages_host": host or {},
     }
@@ -131,3 +134,77 @@ def test_package_floor_compares_testable_line_counts():
     rows, ok = ecf.evaluate(cov, {"overall": 0.0, "modules": {}, "packages": {"PalaceAuth": 0.34}},
                             baseline_only=False)
     assert not ok
+
+
+def test_report_that_collected_no_package_data_compares_app_floors_only(tmp_path):
+    """A local Xcode run measures the app only; its package floors are not
+    compared (CI expects them, so missing data there is INCOMPLETE instead)."""
+    cov = _coverage(files=[("TPPBook.swift", 80, 100)], expected=(), expected_host=())
+    floors = dict(FLOORS, package_modules={"TPPBookRegistry": 0.5})
+    p = _run(tmp_path, cov, floors)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "pkg:" not in p.stdout and "host:" not in p.stdout and "TPPBookRegistry" not in p.stdout
+    assert "not compared" in p.stderr
+
+
+def test_report_that_collected_app_suite_packages_still_fails_a_missing_one(tmp_path):
+    cov = _coverage(files=[("TPPBook.swift", 80, 100)], packages={}, host={"PalaceAuth": _scope(38, 41)})
+    p = _run(tmp_path, cov, FLOORS)
+    assert p.returncode == 1
+    assert any(ln.startswith("pkg:PalaceAuth") and "MISSING" in ln for ln in p.stdout.splitlines())
+
+
+def test_package_module_floor_is_gated_when_packages_were_collected(tmp_path):
+    floors = dict(FLOORS, package_modules={"TPPBookRegistry": 0.5})
+    low = _coverage(**dict(GOOD, files=[("TPPBook.swift", 80, 100), ("TPPBookRegistry.swift", 1, 10)]))
+    p = _run(tmp_path, low, floors)
+    assert p.returncode == 1
+    assert any(ln.split()[:1] == ["TPPBookRegistry"] and ln.split()[-1] == "FAIL" for ln in p.stdout.splitlines())
+    absent = _coverage(**GOOD)
+    p = _run(tmp_path, absent, floors)
+    assert p.returncode == 1
+    assert any(ln.startswith("TPPBookRegistry") and "MISSING" in ln for ln in p.stdout.splitlines())
+
+
+def test_ambiguous_module_match_is_an_input_error_not_a_violation(tmp_path):
+    cov = _coverage(**GOOD)
+    cov["files"] += [{"name": "TPPBook.swift", "coverage": 10.0}, {"name": "TPPBook.swift", "coverage": 90.0}]
+    p = _run(tmp_path, cov, FLOORS)
+    assert p.returncode == 2
+    assert "Traceback" not in p.stderr
+
+
+def test_write_baseline_records_package_floors_rounded_down(tmp_path):
+    cov = _coverage(**dict(GOOD, packages={"PalaceAuth": _scope(2, 3)}, host={"PalaceAuth": _scope(1, 3)}))
+    covf, flo = tmp_path / "c.json", tmp_path / "f.json"
+    covf.write_text(json.dumps(cov))
+    flo.write_text(json.dumps(FLOORS))
+    p = subprocess.run([sys.executable, str(SCRIPT), str(covf), "--floors", str(flo), "--write-baseline"],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    written = json.loads(flo.read_text())
+    assert written["packages"] == {"PalaceAuth": 0.6666}
+    assert written["host_packages"] == {"PalaceAuth": 0.3333}
+
+
+def test_write_baseline_keeps_package_modules_and_exemptions(tmp_path):
+    cov = _coverage(**dict(GOOD, files=[("TPPBook.swift", 80, 100), ("TPPBookRegistry.swift", 7, 9)]))
+    floors = dict(FLOORS, package_modules={"TPPBookRegistry": 0.5}, unmeasured={"X": "why"})
+    covf, flo = tmp_path / "c.json", tmp_path / "f.json"
+    covf.write_text(json.dumps(cov))
+    flo.write_text(json.dumps(floors))
+    subprocess.run([sys.executable, str(SCRIPT), str(covf), "--floors", str(flo), "--write-baseline"],
+                   capture_output=True, text=True, check=True)
+    written = json.loads(flo.read_text())
+    assert written["package_modules"] == {"TPPBookRegistry": 0.7777}
+    assert written["unmeasured"] == {"X": "why"}
+
+
+def test_write_baseline_refuses_incomplete_data(tmp_path):
+    covf, flo = tmp_path / "c.json", tmp_path / "f.json"
+    covf.write_text(json.dumps(_coverage(status="incomplete", **GOOD)))
+    flo.write_text(json.dumps(FLOORS))
+    p = subprocess.run([sys.executable, str(SCRIPT), str(covf), "--floors", str(flo), "--write-baseline"],
+                       capture_output=True, text=True)
+    assert p.returncode == 3
+    assert json.loads(flo.read_text()) == FLOORS

@@ -196,7 +196,8 @@ def test_present_module_below_floor_fails():
 def test_every_local_package_has_a_floor_or_a_recorded_exemption():
     """Package source is measured now, so an extracted module stays gated: each
     local package carries an app-suite floor, and a module moved into a package
-    (TPPBookRegistry) keeps its module floor instead of an `unmeasured` entry."""
+    (TPPBookRegistry) keeps a floor under `package_modules` instead of an
+    `unmeasured` entry."""
     import json
     floors = json.load(open(os.path.join(REPO, "scripts", "coverage-floors.json")))
     exclude = json.load(open(os.path.join(REPO, "scripts", "coverage-exclude.json")))
@@ -204,5 +205,5 @@ def test_every_local_package_has_a_floor_or_a_recorded_exemption():
     packages = {d for d in os.listdir(os.path.join(REPO, "Palace", "Packages"))
                 if os.path.isfile(os.path.join(REPO, "Palace", "Packages", d, "Package.swift"))}
     assert packages and packages == set(floors["packages"]) | exempt
-    assert "TPPBookRegistry" in floors["modules"]
+    assert "TPPBookRegistry" in floors["package_modules"]
     assert "TPPBookRegistry" not in floors.get("unmeasured", {})
