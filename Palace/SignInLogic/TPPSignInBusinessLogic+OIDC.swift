@@ -275,6 +275,14 @@ extension TPPSignInBusinessLogic {
         }
     }
 
+    /// Decode an `application/x-www-form-urlencoded` value.
+    ///
+    /// `removingPercentEncoding` alone is not enough: form encoding writes a space
+    /// as `+`, which percent-decoding leaves as a literal plus.
+    static func formDecoded(_ raw: String) -> String? {
+        raw.replacingOccurrences(of: "+", with: " ").removingPercentEncoding
+    }
+
     /// Parses the OIDC callback URL returned by the CM after the IdP
     /// authentication completes. Extracts `access_token` and `patron_info`
     /// from query parameters or fragment, then validates credentials.
@@ -304,18 +312,37 @@ extension TPPSignInBusinessLogic {
             kvpairs[key] = value
         }
 
-        if let rawError = kvpairs["error"],
-           let error = rawError
-            .replacingOccurrences(of: "+", with: " ")
-            .removingPercentEncoding,
-           let parsedError = error.parseJSONString as? [String: Any] {
+        // Two shapes arrive here. The circulation manager sends a JSON object with
+        // a `title`; an identity provider following RFC 6749 section 4.1.2.1 sends a
+        // bare `error=<code>` plus an optional `error_description`, which is not
+        // JSON. This arm used to require the value to parse as a JSON object, so a
+        // bare code fell through to the access_token guard below, logged, and
+        // returned — a patron who declined consent was left on the sheet with no
+        // message at all.
+        if let rawError = kvpairs["error"], !rawError.isEmpty {
+            let error = Self.formDecoded(rawError) ?? rawError
+            let message: String
+            if let parsedError = error.parseJSONString as? [String: Any],
+               let title = parsedError["title"] as? String {
+                message = title
+            } else if let description = kvpairs["error_description"]
+                        .flatMap(Self.formDecoded), !description.isEmpty {
+                message = description
+            } else {
+                // The code is the only information the response carries. Showing it
+                // is not friendly, and it is what the provider said.
+                message = error
+            }
+            // Provider-supplied text with no length contract: an unbounded
+            // error_description renders an unreadable alert.
+            let bounded = String(message.prefix(300))
             TPPMainThreadRun.asyncIfNeeded { [weak self] in
                 guard let self = self else { return }
                 self.uiDelegate?.businessLogic(
                     self,
                     didEncounterValidationError: NSError(domain: "OIDC", code: 0),
                     userFriendlyErrorTitle: Strings.Error.loginErrorTitle,
-                    andMessage: parsedError["title"] as? String ?? error)
+                    andMessage: bounded)
             }
             return
         }
@@ -323,9 +350,7 @@ extension TPPSignInBusinessLogic {
         guard
             let authToken = kvpairs["access_token"],
             let patronInfo = kvpairs["patron_info"],
-            let patron = patronInfo
-                .replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding,
+            let patron = Self.formDecoded(patronInfo),
             let parsedPatron = patron.parseJSONString as? [String: Any]
         else {
             TPPErrorLogger.logError(
