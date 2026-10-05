@@ -16,7 +16,7 @@ import PalaceBookModel
 import PalaceBookRegistry
 
 @MainActor
-final class AppContainerOwnedServicesTests: XCTestCase {
+final class AppContainerOwnedServicesTests: PalaceWiringTestCase {
 
     override func setUp() {
         super.setUp()
@@ -38,8 +38,7 @@ final class AppContainerOwnedServicesTests: XCTestCase {
     /// `protocolClass`, so a test can tell which container's session a
     /// request used.
     private func makeContainer(routingThrough protocolClass: AnyClass) -> AppContainer {
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        let accountsManager = AccountsManager()
+        let accountsManager = makeFreshAccountsManager()
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [protocolClass]
         let executor = TPPNetworkExecutor(
