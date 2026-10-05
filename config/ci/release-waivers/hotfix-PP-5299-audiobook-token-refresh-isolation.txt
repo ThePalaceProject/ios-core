@@ -1,0 +1,45 @@
+# Waivers for hotfix/PP-5299-audiobook-token-refresh-isolation (3.3.1, build 512).
+#
+# 3.3.1 was cut on 2026-09-25 for PP-5240 and never submitted, so this rebuilds
+# the same version rather than burning a new one. It now carries two fixes:
+# PP-5240 (streamed LCP audiobooks failing at chapter start on slow connections)
+# and PP-5299 (the audiobook open crashing when the session token has lapsed —
+# the only crash 3.3.0 produces, 9 events on day one of its phased rollout).
+# It stays a deliberately narrow fast-follow.
+#
+# The first nine entries are the set the owner confirmed on 2026-09-25 to hold
+# for 3.4.0, waived identically on the 3.3.1 hotfix. The decision is unchanged;
+# they reach main with release/3.4.0, cut from develop.
+
+e7cb3fb2a   held for 3.4.0 — EPUB edge-tap paging + blank Library line (#1457)
+8694fa746   held for 3.4.0 — OIDC presentation anchor could not host a sheet (#1459)
+3ac01dcc0   held for 3.4.0 — expired token sent to /patrons/me/ (#1453)
+a6ae8e2ef   held for 3.4.0 — Adobe licensor refresh before activation (PP-3649, PP-5118) (#1465)
+54212bf4f   held for 3.4.0 — purge decrypted chapters when a loan ends outside the app (PP-5127) (#1471)
+5958e9235   held for 3.4.0 — downloaded LCP audiobook had no audio (PP-5135)
+850643b41   held for 3.4.0 — extract the LCP open-policy cluster (PP-5135)
+d31f2212a   held for 3.4.0 — resolve the background .lcpa fetch's library once (PP-5145)
+14b195b02   held for 3.4.0 — player minimize non-drag path for assistive tech
+
+# Three further candidates appeared on develop after 3.3.1 was cut. All three
+# are test-only — no production file in any of them — so excluding them changes
+# nothing a patron can reach.
+
+434d82455   test-only — join the circuit-breaker branch on its actual actor (#1519)
+57ced0271   test-only — signal when the continuation lands instead of polling (#1557)
+dbc9ee4ff   test-only — characterize sign-in token-error and readiness paths (#1544)
+
+# Owner decision 2026-10-02: only the targeted crash fix ships on this line,
+# nothing extra. 9a4b48aa2 (#1571, PP-5293 / PP-5294) is therefore held for 3.4.0.
+#
+# It is not a one-line fix: five commits carrying a state-machine refactor (the
+# seek slider's hold state extracted into a SeekSliderHold value type), a new
+# runtime VoiceOver audit rule that fails labels containing hint text, and
+# ratcheted-down file-size caps. Each of those is new gate surface on a branch
+# whose purpose is one crash fix. Neither half is a crash, and both behaviours
+# predate 3.3.0, so holding changes nothing for patrons relative to today.
+#
+# Same basis as 14b195b02 above (player minimize for assistive tech), already
+# held. Reversible: cherry-pick it and delete this entry.
+
+9a4b48aa2   held for 3.4.0 — keep a drag over a pending seek; player a11y (PP-5293, PP-5294) (#1571)
