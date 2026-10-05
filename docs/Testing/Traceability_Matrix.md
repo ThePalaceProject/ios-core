@@ -34,10 +34,10 @@ This document maps requirements to their implementing code and corresponding tes
 
 | File | Test File | Test Methods | Coverage |
 |------|-----------|--------------|----------|
-| `TPPKeychainManager.swift` | `Keychain/TPPKeychainManagerTests.swift` | 9 tests (archive decoding, error logging) | Not measured |
+| `TPPKeychainManager.swift` | `Keychain/TPPKeychainManagerTests.swift`; credential storage in `Palace/Packages/PalaceKeychain/Tests/PalaceKeychainTests/` | 9 tests (archive decoding, error logging); package: 17 tests | Not measured |
 | `TPPUserAccount.swift` | `TPPUserAccountTests.swift` (partial) | - | ~20% |
 | `TPPNetworkExecutor.swift` | `NetworkClientTests.swift` | Limited | ~15% |
-| `TPPSAMLHelper.swift` | `SignInLogic/TPPSAMLFlowTests.swift`, `TPPSAMLSignInTests.swift`, `TPPSAMLLogoutTests.swift` | 31 + 26 + 13 tests | Not measured |
+| `TPPSAMLHelper.swift` | `SignInLogic/TPPSAMLFlowTests.swift`, `SignInOAuthErrorPropagationTests.swift` (error-alert guard) | 31 + 8 tests | Not measured |
 | `TPPAgeCheck.swift` | `TPPAgeCheckTests.swift` | 5 tests | ~60% |
 | `TPPSignInBusinessLogic.swift` | `TPPSignInBusinessLogicTests.swift` | 3 tests | ~25% |
 
@@ -45,7 +45,7 @@ This document maps requirements to their implementing code and corresponding tes
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| AUTH-001 | `TPPKeychainManagerTests.swift` covers archive decoding and error logging only; no test exercises a store-then-read round trip through `TPPKeychainManager` | P0 |
+| AUTH-001 | Credential store/read round trips are covered in `Palace/Packages/PalaceKeychain/Tests/PalaceKeychainTests/` (for example `test_setObject_roundtripsStringAndNumber`); `PalaceTests/Keychain/TPPKeychainManagerTests.swift` covers archive decoding and error logging. `validateKeychain`, `updateKeychainForBackgroundFetch` and the keychain cleanup path have no tests | P0 |
 | AUTH-002 | Retry queue covered by `Network/TokenRefreshAndRetryQueueTests.swift` (single-flight refresh, queued retry with new bearer, 401 and network-error paths); not re-audited for completeness | P0 |
 | AUTH-003 | SAML sign-in, logout and helper covered by `TPPSAMLFlowTests.swift`, `TPPSAMLSignInTests.swift`, `TPPSAMLLogoutTests.swift`; the IdP web page itself is not exercised | P1 |
 | AUTH-005 | Covered by `SignInLogic/TPPSignInBusinessLogicSignOutTests.swift` (deauthorize ordering, Adobe activation preserved on a stale callback); not re-audited for completeness | P0 |
