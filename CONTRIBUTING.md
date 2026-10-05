@@ -70,7 +70,8 @@ tooling checks fail their own check; the rest report without failing a run:
   test class that did not run) is reported as INCOMPLETE rather than as a
   pass. See
   [`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md).
-- Snapshot tests, captured as artifacts with no comparison gate
+- Screenshot captures, stored as artifacts with no comparison gate (the JSON
+  contract-snapshot tests run with the unit tests and do block)
 - Tooling checks (`tooling-checks.yml`: test-quality lint, doc reference,
   index and hygiene checks), which fail the run on a violation
 - Accessibility lint, reported through the ledger (non-blocking)
