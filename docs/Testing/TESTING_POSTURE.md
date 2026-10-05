@@ -49,7 +49,7 @@ Last updated: 2026-07-08
 ### Test Quality Enforcement
 - **Linter**: `scripts/lint-test-quality.py` — detects fluff (set-then-assert), shallow (no real logic), missing asserts
 - **Mutation testing**: `scripts/palace_mutate.py` — comparison, boolean, boundary, return-value operators; 10 mutants/file default
-- **Coverage floors**: `scripts/enforce_coverage_floors.py` + `scripts/coverage-floors.json` — per-module thresholds (46% overall, 30-50% per module)
+- **Coverage floors**: `scripts/enforce_coverage_floors.py` + `scripts/coverage-floors.json` — app overall, per-module and per-package floors. Reported on every PR, not blocking (see `scripts/README_coverage_floors.md`)
 - **Rule**: Every test must kill at least one mutant. Tautology and coverage-only tests are banned.
 
 ### Credibility criterion (applies to ALL tests, including E2E and simdrive replays)
@@ -103,7 +103,7 @@ For unit/integration tests this criterion is enforced by mutation testing + the 
 - **Covers**: BookDetail, AudiobookPlayer, Catalog, MyBooks, Search, Settings, Reservations, Holds, PDF, Facets
 
 ### CI Workflows
-- `unit-testing.yml` — XCTest + coverage + floor enforcement (blocking)
+- `unit-testing.yml` — XCTest + coverage (app and local packages) + floor report (non-blocking: `continue-on-error`; incomplete coverage data is reported as INCOMPLETE, never as a pass)
 - `ui-testing.yml` — E2E test runner (manual trigger)
 - `ledger.yml` — Ledger + QAAtlas + AccessLint (non-blocking)
 

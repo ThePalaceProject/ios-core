@@ -9,6 +9,14 @@ Exit codes:
   0 — all floors met
   1 — one or more floors violated
   2 — input error (missing/empty/invalid coverage data)
+  3 — the coverage data is incomplete (`status` is not `complete`); floors are
+      not compared, because a partial measurement reads as a coverage drop
+
+Floors:
+  overall        app testable coverage (Palace/ outside Palace/Packages)
+  modules        a file stem, or several files with that stem, in the app suite
+  packages       a local package's Sources, measured by the app suite
+  host_packages  a local package's Sources, measured by its own `swift test`
 
 Usage:
   python3 scripts/enforce_coverage_floors.py coverage-data.json
@@ -18,6 +26,7 @@ Usage:
 """
 import argparse
 import json
+import math
 import os
 import sys
 from typing import Dict, Any, List, Tuple, Optional
@@ -93,39 +102,69 @@ def get_overall(coverage: Dict, metric: str = "testable") -> float:
 
 
 def find_module_coverage(coverage: Dict, name: str) -> Optional[float]:
-    """Search targets first, then files (by stem name) for a matching module."""
+    """Search targets first, then files (by stem name) for a matching module.
+
+    Several files with one stem are combined by line counts; a mean of their
+    percentages would weight a 10-line file the same as a 1,000-line one."""
     name_lower = name.lower()
 
     for t in coverage.get("targets", []):
         if t.get("name", "").lower() == name_lower:
             return normalize_fraction(float(t.get("coverage", 0.0)))
 
-    matches: List[float] = []
-    for f in coverage.get("files", []):
-        fname = f.get("name", "")
-        stem = os.path.splitext(os.path.basename(fname))[0]
-        if stem.lower() == name_lower:
-            matches.append(normalize_fraction(float(f.get("coverage", 0.0))))
+    matches = [f for f in coverage.get("files", [])
+               if os.path.splitext(os.path.basename(f.get("name", "")))[0].lower() == name_lower]
+    if not matches:
+        return None
+    if all("executable_lines" in f for f in matches):
+        executable = sum(int(f["executable_lines"]) for f in matches)
+        covered = sum(int(f.get("covered_lines", 0)) for f in matches)
+        return covered / executable if executable else 0.0
+    if len(matches) == 1:
+        return normalize_fraction(float(matches[0].get("coverage", 0.0)))
+    raise ValueError(f"{name}: {len(matches)} files match and not all carry line counts")
 
-    if matches:
-        return sum(matches) / len(matches)
 
-    return None
+def find_package_coverage(coverage: Dict, scope_key: str, name: str) -> Optional[float]:
+    """Testable coverage of one package in one measurement, from line counts."""
+    d = coverage.get(scope_key, {}).get(name)
+    if not d:
+        return None
+    executable = int(d.get("testable_executable_lines", 0))
+    return int(d.get("testable_covered_lines", 0)) / executable if executable else 0.0
+
+
+PACKAGE_SCOPES = (("packages", "packages_app_suite", "pkg:"),
+                  ("host_packages", "packages_host", "host:"))
+
+
+def is_complete(coverage: Dict) -> bool:
+    return coverage.get("status") == "complete"
+
+
+def floor_of(actual: float) -> float:
+    """Round down to 4 places so a floor written from a run passes that run."""
+    return math.floor(actual * 10000) / 10000
 
 
 def build_baseline(coverage: Dict, modules: Dict[str, float], metric: str = "testable") -> Dict[str, Any]:
     """Capture current coverage as the new floor (no-regression baseline)."""
     baseline = {
-        "overall": round(get_overall(coverage, metric), 4),
+        "overall": floor_of(get_overall(coverage, metric)),
         "modules": {},
         "_comment": "Auto-generated baseline (no regression). Ratchet upward as coverage improves.",
     }
     for name in modules.keys():
         actual = find_module_coverage(coverage, name)
         if actual is not None:
-            baseline["modules"][name] = round(actual, 4)
+            baseline["modules"][name] = floor_of(actual)
         else:
             baseline["modules"][name] = modules[name]
+    for floors_key, scope_key, _ in PACKAGE_SCOPES:
+        measured = coverage.get(scope_key, {})
+        if measured:
+            baseline[floors_key] = {n: floor_of(find_package_coverage(coverage, scope_key, n))
+                                    for n in sorted(measured)}
     return baseline
 
 
@@ -189,6 +228,21 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
             "missing": False,
         })
 
+    for floors_key, scope_key, prefix in PACKAGE_SCOPES:
+        for name, floor in floors.get(floors_key, {}).items():
+            actual = find_package_coverage(coverage, scope_key, name)
+            if actual is None:
+                rows.append({"module": prefix + name, "floor": float(floor), "actual": None,
+                             "status": "MISSING", "missing": True})
+                all_pass = False
+                continue
+            effective_floor = actual if baseline_only else float(floor)
+            status = "PASS" if actual + 1e-9 >= effective_floor else "FAIL"
+            if status == "FAIL":
+                all_pass = False
+            rows.append({"module": prefix + name, "floor": effective_floor, "actual": actual,
+                         "status": status, "missing": False})
+
     return rows, all_pass
 
 
@@ -230,6 +284,18 @@ def main() -> int:
     if coverage is None:
         return 2
 
+    if not isinstance(coverage, dict):
+        log("Error: coverage data is not a JSON object")
+        return 2
+
+    if not is_complete(coverage):
+        reasons = coverage.get("incomplete_reasons") or [
+            "the coverage data does not declare itself complete (no `status: complete`)"]
+        print("Coverage gate: INCOMPLETE — floors not compared")
+        for r in reasons:
+            print(f"  - {r}")
+        return 3
+
     floors = load_json(args.floors)
     if floors is None:
         log(f"Note: floors file missing — using empty defaults.")
@@ -248,7 +314,9 @@ def main() -> int:
     if not has_modules:
         log("Notice: coverage-data.json has no per-target/per-file breakdown — "
             "falling back to overall project coverage only.")
-        floors = {"overall": floors.get("overall", 0.0), "modules": {}}
+        floors = {"overall": floors.get("overall", 0.0), "modules": {},
+                  "packages": floors.get("packages", {}),
+                  "host_packages": floors.get("host_packages", {})}
 
     log(f"Gating on '{args.metric}' coverage metric.")
     rows, all_pass = evaluate(coverage, floors, args.baseline_only, args.metric)
