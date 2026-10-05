@@ -366,7 +366,8 @@ def test_the_gates_own_workflow_yields_its_exact_run_count():
     packaging, the gate's verdict) are what the extra lines are. It moved from 214
     to 215 when each shard started checking out the mobile-specs submodule that
     BookmarkSpecConformanceTests reads, and from 215 to 218 when each shard
-    started checking for partial results to upload after a crash. That is the
+    started checking for partial results to upload after a crash, and from 218
+    to 224 when coverage collection gained the package steps. That is the
     cost of the arm, and it
     is the point: a silent change to what the gate can see is exactly what the
     other two forms failed to catch.
@@ -374,8 +375,8 @@ def test_the_gates_own_workflow_yields_its_exact_run_count():
     from pathlib import Path
     wf = Path(__file__).resolve().parent.parent.parent / ".github" / "workflows" / "unit-testing.yml"
     runs = effective_runs(wf.read_text())
-    assert len(runs) == 218, (
-        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 218. "
+    assert len(runs) == 224, (
+        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 224. "
         "If a step was added or removed this is correct — update the number. "
         "If nothing changed in the workflow, the extractor's view of it did."
     )

@@ -228,6 +228,18 @@ jobs:
             --out "$RUNNER_TEMP/plan/shard-plan.json"
           echo "shards=$(python3 -c "import json,sys; print(json.dumps(list(range(int(sys.argv[1])))))" "$SHARDS")" >> "$GITHUB_OUTPUT"
 
+      # build-for-testing records each local package framework in the
+      # xctestrun's coverage metadata as static, and leaves some out, so the
+      # shards' xcresults list those packages with no files. Rewrite those
+      # entries before the products ship. On failure the app coverage is
+      # unaffected and the report names every package it did not receive.
+      - name: Point coverage metadata at the package binaries
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          XCTESTRUN=$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 1 -name "*.xctestrun" | head -1)
+          python3 scripts/ci-xctestrun-package-coverage.py "$XCTESTRUN"
+
       # Everything test-without-building needs, and nothing it does not:
       # object files, module interfaces and dSYMs stay behind (~350 MB).
       # zstd, because upload-artifact's zip does not keep symlinks and is slow.
@@ -502,26 +514,53 @@ jobs:
       # which packages this step covers.
       - name: Run PalaceTriageBot package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceTriageBot
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceTriageBot
 
       - name: Run PalaceAuth package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceAuth
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceAuth
 
       - name: Run PalaceLogging package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceLogging
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceLogging
 
       - name: Run PalaceReadingPosition package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceReadingPosition
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceReadingPosition
 
       # PalaceUtilities is the Phase B1 extraction: the Foundation-only core of
       # Palace/Utilities, with no package dependencies at all. 153 tests, under
       # a second.
       - name: Run PalaceUtilities package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceUtilities
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceUtilities
+
+      # One llvm-cov export per package above, for the report job. A package
+      # whose tests did not finish leaves no file, and the report then reads
+      # as incomplete rather than as that package at 0%.
+      - name: Collect package coverage
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          OUT="$RUNNER_TEMP/package-coverage"
+          mkdir -p "$OUT"
+          for pkg in PalaceTriageBot PalaceAuth PalaceLogging PalaceReadingPosition PalaceUtilities; do
+            src=$(swift test --show-codecov-path --package-path "Palace/Packages/$pkg")
+            if [ -f "$src" ]; then cp "$src" "$OUT/$pkg.json"; else echo "::warning::no coverage file for $pkg at $src"; fi
+          done
+          ls -la "$OUT"
+
+      - name: Upload package coverage
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-coverage
+          path: ${{ runner.temp }}/package-coverage/
+          retention-days: 14
+          if-no-files-found: warn
+          overwrite: true
 
       # The package suite above runs RedactionCorpusTests, but a deny-list guard
       # is only worth its ability to fail. --self-test disables redaction to prove
@@ -723,6 +762,14 @@ jobs:
           pattern: shard-report-*
           path: shard-reports
 
+      - name: Download package coverage
+        if: needs.build.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: package-coverage
+          path: package-coverage
+
       # Whether every planned class ran. Coverage and "all passed" mean nothing
       # over a run that lost classes to a runner failure, and without this the
       # loss reads as a coverage drop (run 36797084975). The gate's own check;
@@ -867,39 +914,47 @@ jobs:
             python3 scripts/test-history.py save test-data.json .test-history || true
           fi
           
+      # Exit 0 is a complete report; exit 3 (with coverage-data.json still
+      # written) names what is missing: no result bundle, an unreadable one, a
+      # shard that lost classes, a package with no data. The steps below read
+      # the status output, not this step's outcome.
       - name: Parse Code Coverage
         if: always()
         id: coverage
+        env:
+          FOUND: ${{ steps.find_results.outputs.found }}
+          RESULT_PATH: ${{ steps.find_results.outputs.path }}
+          COMPLETE: ${{ steps.completeness.outputs.complete }}
+          REASON: ${{ steps.completeness.outputs.reason }}
         run: |
-          RESULT_PATH="${{ steps.find_results.outputs.path }}"
-          
-          # Initialize defaults
-          echo "coverage=0" >> $GITHUB_OUTPUT
-          echo "coverage_formatted=N/A" >> $GITHUB_OUTPUT
-          
-          if [ "${{ steps.find_results.outputs.found }}" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
-            echo "No results for coverage"
-            exit 0
+          set -uo pipefail
+          ARGS=(--json coverage-data.json --repo-root "$GITHUB_WORKSPACE" --expect-local-packages
+                --host-package-dir package-coverage)
+          # The packages the test job runs with `swift test --enable-code-coverage`.
+          for pkg in PalaceTriageBot PalaceAuth PalaceLogging PalaceReadingPosition PalaceUtilities; do
+            ARGS+=(--expect-host-package "$pkg")
+          done
+          if [ "$COMPLETE" != "true" ]; then
+            ARGS+=(--incomplete-reason "not every planned test class ran: ${REASON:-unknown}")
           fi
-          
-          echo "Extracting code coverage..."
-
-          # Validate xcresult bundle integrity before processing — a corrupt
-          # bundle (e.g. from a timeout kill) causes xccov to fail with 0%
-          # coverage, which then trips the coverage floor gate.
-          if ! xcrun xcresulttool get test-results summary --path "$RESULT_PATH" &>/dev/null; then
-            echo "⚠️ xcresult bundle is incomplete or corrupted — skipping coverage"
-            echo "coverage=N/A" >> $GITHUB_OUTPUT
-            echo "coverage_formatted=N/A" >> $GITHUB_OUTPUT
-            exit 0
+          if [ "$FOUND" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
+            ARGS+=(--incomplete-reason "no test result bundle")
+            RESULT_PATH="${RESULT_PATH:-missing.xcresult}"
+          fi
+          python3 scripts/coverage-report.py "$RESULT_PATH" "${ARGS[@]}"
+          RC=$?
+          echo "coverage-report.py exited $RC"
+          if [ "$RC" -ne 0 ] && [ "$RC" -ne 3 ]; then
+            echo "coverage_status=incomplete" >> "$GITHUB_OUTPUT"
+            echo "coverage_incomplete_reason=coverage-report.py exited $RC" >> "$GITHUB_OUTPUT"
+            exit "$RC"
           fi
 
-          python3 scripts/coverage-report.py "$RESULT_PATH" --json coverage-data.json || true
-
-      # Coverage floor gate. Runs in WARN mode (continue-on-error: true) on day one;
-      # flip to blocking by removing continue-on-error after the floors are trusted.
+      # Coverage floor gate. Reports, does not block (continue-on-error): the
+      # floors are already below on several modules, and making it required is
+      # a separate decision. Incomplete data exits 3 and is never a pass.
       - name: Enforce Coverage Floors
-        if: always() && steps.find_results.outputs.found == 'true' && steps.coverage.outputs.coverage != 'N/A'
+        if: always()
         id: coverage_gate
         continue-on-error: true
         env:
@@ -913,7 +968,13 @@ jobs:
             echo "::error title=Coverage floors not evaluated::not every planned test class ran: ${REASON:-unknown}"
             exit 1
           fi
+          set +e
           python3 scripts/enforce_coverage_floors.py coverage-data.json --floors scripts/coverage-floors.json
+          RC=$?
+          if [ "$RC" -eq 3 ]; then
+            echo "::error title=Coverage incomplete::floors not compared; the Parse Code Coverage step names what is missing"
+          fi
+          exit "$RC"
 
       - name: Process Snapshot Failures
         if: always()
@@ -980,7 +1041,9 @@ jobs:
           COVERAGE="${{ steps.coverage.outputs.coverage_formatted }}"
           TOTAL_COVERAGE="${{ steps.coverage.outputs.total_coverage_formatted }}"
           EXCLUDED_FILES="${{ steps.coverage.outputs.excluded_file_count }}"
-          COVERAGE_TARGETS="${{ steps.coverage.outputs.coverage_targets }}"
+          COVERAGE_STATUS="${{ steps.coverage.outputs.coverage_status }}"
+          COVERAGE_INCOMPLETE="${{ steps.coverage.outputs.coverage_incomplete_reason }}"
+          COVERAGE_PACKAGES="${{ steps.coverage.outputs.coverage_packages }}"
           NEW_FAILURES="${{ steps.history.outputs.new_failures }}"
           FIXED_TESTS="${{ steps.history.outputs.fixed_tests }}"
           FLAKY_TESTS="${{ steps.history.outputs.flaky_tests }}"
@@ -1114,6 +1177,10 @@ jobs:
           # Unit test line coverage — testable = denominator excludes UI/lifecycle
           # files listed in scripts/coverage-exclude.json; total = every executable
           # line. We gate on testable; total is shown for continuity.
+          if [ "$COVERAGE_STATUS" != "complete" ]; then
+            echo "**Coverage: INCOMPLETE** — ${COVERAGE_INCOMPLETE:-the coverage step did not produce a report}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
           if [ "$COVERAGE" != "N/A" ] && [ -n "$COVERAGE" ]; then
             echo "**Unit Test Line Coverage (testable surfaces): $COVERAGE**" >> $GITHUB_STEP_SUMMARY
             if [ -n "$TOTAL_COVERAGE" ] && [ "$TOTAL_COVERAGE" != "N/A" ]; then
@@ -1121,12 +1188,14 @@ jobs:
               echo "_Total coverage incl. UI/lifecycle: $TOTAL_COVERAGE ($EXCLUDED_FILES files excluded from testable denominator — see \`scripts/coverage-exclude.json\`)_" >> $GITHUB_STEP_SUMMARY
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
-            if [ -n "$COVERAGE_TARGETS" ]; then
-              echo "| Target | Lines Covered |" >> $GITHUB_STEP_SUMMARY
-              echo "|--------|---------------|" >> $GITHUB_STEP_SUMMARY
-              echo "$COVERAGE_TARGETS" | while IFS='|' read -r name cov covered total; do
+            # Packages are measured apart from the app line above, and the app
+            # suite (iOS) and swift test (macOS) runs are not combined.
+            if [ -n "$COVERAGE_PACKAGES" ]; then
+              echo "| Package | Measured by | Covered / executable | Testable |" >> $GITHUB_STEP_SUMMARY
+              echo "|---------|-------------|----------------------|----------|" >> $GITHUB_STEP_SUMMARY
+              echo "$COVERAGE_PACKAGES" | while IFS='|' read -r scope name covered total pct; do
                 if [ -n "$name" ]; then
-                  echo "| $name | $cov |" >> $GITHUB_STEP_SUMMARY
+                  echo "| $name | $scope | $covered / $total | $pct |" >> $GITHUB_STEP_SUMMARY
                 fi
               done
               echo "" >> $GITHUB_STEP_SUMMARY
@@ -1314,7 +1383,9 @@ jobs:
             const coverage = '${{ steps.coverage.outputs.coverage_formatted }}';
             const totalCoverage = '${{ steps.coverage.outputs.total_coverage_formatted }}';
             const excludedFiles = '${{ steps.coverage.outputs.excluded_file_count }}';
-            const coverageTargets = `${{ steps.coverage.outputs.coverage_targets }}`;
+            const coverageStatus = '${{ steps.coverage.outputs.coverage_status }}';
+            const coverageIncomplete = `${{ steps.coverage.outputs.coverage_incomplete_reason }}`;
+            const coveragePackages = `${{ steps.coverage.outputs.coverage_packages }}`;
             const newFailures = `${{ steps.history.outputs.new_failures }}`;
             const fixedTests = `${{ steps.history.outputs.fixed_tests }}`;
             const flakyTests = `${{ steps.history.outputs.flaky_tests }}`;
@@ -1443,6 +1514,9 @@ jobs:
             // Testing Coverage Breakdown
             body += `### 📊 Testing Coverage Breakdown\n\n`;
 
+            if (coverageStatus !== 'complete') {
+              body += `**Coverage: INCOMPLETE** — ${coverageIncomplete || 'the coverage step did not produce a report'}\n\n`;
+            }
             // Unit test line coverage — testable excludes UI/lifecycle per
             // scripts/coverage-exclude.json; we gate on testable.
             if (coverage && coverage !== 'N/A' && coverage !== '') {
@@ -1450,13 +1524,13 @@ jobs:
               if (totalCoverage && totalCoverage !== 'N/A' && totalCoverage !== '') {
                 body += `_Total coverage incl. UI/lifecycle: ${totalCoverage} (${excludedFiles} files excluded from testable denominator — see \`scripts/coverage-exclude.json\`)_\n\n`;
               }
-              if (coverageTargets && coverageTargets.trim()) {
-                body += `| Target | Lines Covered |\n`;
-                body += `|--------|---------------|\n`;
-                coverageTargets.trim().split('\n').forEach(line => {
-                  const [name, cov] = line.split('|');
+              if (coveragePackages && coveragePackages.trim()) {
+                body += `| Package | Measured by | Covered / executable | Testable |\n`;
+                body += `|---------|-------------|----------------------|----------|\n`;
+                coveragePackages.trim().split('\n').forEach(line => {
+                  const [scope, name, covered, total, pct] = line.split('|');
                   if (name) {
-                    body += `| ${name} | ${cov} |\n`;
+                    body += `| ${name} | ${scope} | ${covered} / ${total} | ${pct} |\n`;
                   }
                 });
                 body += '\n';

@@ -193,12 +193,17 @@ def test_present_module_below_floor_fails():
     assert all_pass is False
 
 
-def test_floors_file_declares_its_unmeasured_exemption():
-    """TPPBookRegistry is not a violation and not a vanished module — it is an
-    unmeasured surface, and that has to be recorded with a reason rather than
-    dropped, or the blind spot becomes invisible again."""
+def test_every_local_package_has_a_floor_or_a_recorded_exemption():
+    """Package source is measured now, so an extracted module stays gated: each
+    local package carries an app-suite floor, and a module moved into a package
+    (TPPBookRegistry) keeps a floor under `package_modules` instead of an
+    `unmeasured` entry."""
     import json
     floors = json.load(open(os.path.join(REPO, "scripts", "coverage-floors.json")))
-    assert "TPPBookRegistry" not in floors["modules"]
-    assert "TPPBookRegistry" in floors["unmeasured"]
-    assert "PalaceBookRegistry" in floors["unmeasured"]["TPPBookRegistry"]
+    exclude = json.load(open(os.path.join(REPO, "scripts", "coverage-exclude.json")))
+    exempt = set(exclude.get("unmeasured_packages", {}))
+    packages = {d for d in os.listdir(os.path.join(REPO, "Palace", "Packages"))
+                if os.path.isfile(os.path.join(REPO, "Palace", "Packages", d, "Package.swift"))}
+    assert packages and packages == set(floors["packages"]) | exempt
+    assert "TPPBookRegistry" in floors["package_modules"]
+    assert "TPPBookRegistry" not in floors.get("unmeasured", {})
