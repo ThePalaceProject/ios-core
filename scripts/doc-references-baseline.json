@@ -277,16 +277,6 @@
       "target": "hold-to-loan-lcp.yaml"
     },
     {
-      "doc": "docs/architecture/areas/network/verification-checklist.md",
-      "kind": "source",
-      "target": "PalaceTests/Network/AuthErrorCategoryTests.swift"
-    },
-    {
-      "doc": "docs/architecture/areas/network/verification-checklist.md",
-      "kind": "source",
-      "target": "PalaceTests/Network/CrossDomain401Tests.swift"
-    },
-    {
       "doc": "docs/architecture/areas/reader/verification-checklist.md",
       "kind": "workflow",
       "target": "reader2-back-button.yaml"
