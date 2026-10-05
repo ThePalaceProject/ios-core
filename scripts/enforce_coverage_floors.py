@@ -335,8 +335,14 @@ def main() -> int:
     if args.write_baseline:
         baseline = build_baseline(coverage, floors.get("modules", {}), args.metric)
         if floors.get("package_modules"):
-            baseline["package_modules"] = build_baseline(
-                coverage, floors["package_modules"], args.metric)["modules"]
+            baseline["package_modules"] = (
+                build_baseline(coverage, floors["package_modules"], args.metric)["modules"]
+                if collected(coverage, "expected_packages") else floors["package_modules"])
+        # A measurement this report did not collect keeps its recorded floors;
+        # a local report would otherwise delete the floors CI compares.
+        for floors_key, _, _, expected_key in PACKAGE_SCOPES:
+            if not collected(coverage, expected_key) and floors_key in floors:
+                baseline[floors_key] = floors[floors_key]
         # Keep the recorded exemptions and their reasons.
         for key in ("unmeasured", "_comment", "_comment_packages"):
             if key in floors:

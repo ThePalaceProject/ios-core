@@ -208,3 +208,34 @@ def test_write_baseline_refuses_incomplete_data(tmp_path):
                        capture_output=True, text=True)
     assert p.returncode == 3
     assert json.loads(flo.read_text()) == FLOORS
+
+
+@pytest.mark.parametrize("expected,expected_host,shown,hidden", [
+    (("PalaceAuth",), (), "pkg:PalaceAuth", "host:PalaceAuth"),
+    ((), ("PalaceAuth",), "host:PalaceAuth", "pkg:PalaceAuth"),
+])
+def test_each_package_floor_follows_its_own_measurement(tmp_path, expected, expected_host, shown, hidden):
+    floors = dict(FLOORS, package_modules={"TPPBookRegistry": 0.5})
+    cov = _coverage(**dict(GOOD, expected=expected, expected_host=expected_host,
+                           files=[("TPPBook.swift", 80, 100), ("TPPBookRegistry.swift", 9, 10)]))
+    p = _run(tmp_path, cov, floors)
+    rows = [ln.split()[0] for ln in p.stdout.splitlines() if ln.strip()]
+    assert shown in rows and hidden not in rows
+    assert ("TPPBookRegistry" in rows) == bool(expected)
+
+
+def test_write_baseline_from_a_local_report_keeps_the_package_floors(tmp_path):
+    """A local report collects no package data; rewriting the baseline from it
+    must not delete the floors CI compares."""
+    cov = _coverage(**dict(GOOD, expected=(), expected_host=(),
+                           files=[("TPPBook.swift", 80, 100), ("TPPBookRegistry.swift", 9, 10)]))
+    floors = dict(FLOORS, package_modules={"TPPBookRegistry": 0.5})
+    covf, flo = tmp_path / "c.json", tmp_path / "f.json"
+    covf.write_text(json.dumps(cov))
+    flo.write_text(json.dumps(floors))
+    subprocess.run([sys.executable, str(SCRIPT), str(covf), "--floors", str(flo), "--write-baseline"],
+                   capture_output=True, text=True, check=True)
+    written = json.loads(flo.read_text())
+    assert written["packages"] == FLOORS["packages"]
+    assert written["host_packages"] == FLOORS["host_packages"]
+    assert written["package_modules"] == {"TPPBookRegistry": 0.5}
