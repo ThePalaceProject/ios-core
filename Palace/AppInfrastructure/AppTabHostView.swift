@@ -77,21 +77,18 @@ struct AppTabHostView: View {
         // player + manager + CarPlay bridge all use.
         self._audiobookSessionPresenter = ObservedObject(initialValue: appContainer.audiobookSessionPresenter)
         self._ratingPromptPresenter = ObservedObject(initialValue: appContainer.ratingPromptPresenter)
-        let client = URLSessionNetworkClient()
-        let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: appContainer.featureFlags)
-        // Cache isolation: scope by the *current* account UUID so a single
-        // repository instance can never serve library A's catalog to
-        // library B if it somehow survives a library switch. The closure
-        // is re-read on every cache-key derivation, so account changes
-        // take effect immediately. See `CatalogRepository.cacheKey(for:)`.
-        let accountsManager = appContainer.accountsManager
-        let repository = CatalogRepository(
-            api: api,
-            accountID: { [weak accountsManager] in accountsManager?.currentAccount?.uuid }
-        )
-        _catalogViewModel = StateObject(wrappedValue: CatalogViewModel(
-            repository: repository,
+        _catalogViewModel = StateObject(wrappedValue: Self.makeCatalogViewModel(appContainer: appContainer))
+        _myBooksViewModel = StateObject(wrappedValue: MyBooksViewModel(appContainer: appContainer))
+    }
+
+    /// The main catalog tab's view model, built on `appContainer`'s services.
+    @MainActor
+    static func makeCatalogViewModel(appContainer: AppContainer) -> CatalogViewModel {
+        // The container's repository is the one the search and lane screens
+        // use, so the tab shares their account-scoped feed cache and sends
+        // requests through the container's network executor.
+        return CatalogViewModel(
+            repository: appContainer.catalogRepository,
             topLevelURLProvider: { appContainer.settings.accountMainFeedURL },
             bookRegistry: appContainer.bookRegistry,
             imageCache: appContainer.imageCache,
@@ -103,9 +100,9 @@ struct AppTabHostView: View {
                 appContainer.featureFlags.isSideLoadingEnabled
                     ? appContainer.sideloadedBookRegistry.allBooks
                     : []
-            }
-        ))
-        _myBooksViewModel = StateObject(wrappedValue: MyBooksViewModel(appContainer: appContainer))
+            },
+            reachability: appContainer.reachability
+        )
     }
 
     // Mini-player inset modifier. Applied to each tab's NavigationHostView

@@ -77,17 +77,13 @@ class CatalogLaneMoreViewModel: ObservableObject {
     url: URL,
     bookRegistry: TPPBookRegistryProvider,
     bookCellModelCache: BookCellModelCache,
-    api: DefaultCatalogAPI? = nil
+    api: DefaultCatalogAPI
   ) {
     self.title = title
     self.url = url
     self.bookRegistry = bookRegistry
     self.bookCellModelCache = bookCellModelCache
-    // Fall back to AppContainer's shared, cached DefaultCatalogAPI instead of
-    // building a throwaway per-init. Production callers
-    // (CatalogLaneMoreView) inject `appContainer.catalogAPI` explicitly; this
-    // default keeps preview/convenience call sites on the same shared instance.
-    self.api = api ?? AppContainer.production().catalogAPI
+    self.api = api
     
     setupObservers()
   }

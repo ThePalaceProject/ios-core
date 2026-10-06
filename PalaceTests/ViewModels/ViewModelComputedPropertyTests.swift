@@ -683,7 +683,8 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
             title: "Test",
             url: URL(string: urlString)!,
             bookRegistry: appContainer.bookRegistry,
-            bookCellModelCache: appContainer.bookCellModelCache
+            bookCellModelCache: appContainer.bookCellModelCache,
+            api: appContainer.catalogAPI
         )
     }
 
@@ -827,7 +828,8 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
             title: "Fiction",
             url: url,
             bookRegistry: appContainer.bookRegistry,
-            bookCellModelCache: appContainer.bookCellModelCache
+            bookCellModelCache: appContainer.bookCellModelCache,
+            api: appContainer.catalogAPI
         )
 
         XCTAssertEqual(viewModel.url, url)

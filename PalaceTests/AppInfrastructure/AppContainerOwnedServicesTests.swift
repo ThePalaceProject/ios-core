@@ -78,6 +78,30 @@ final class AppContainerOwnedServicesTests: PalaceWiringTestCase {
                        "Container B's catalog fetch must go through container B's session, and only its own fetch")
     }
 
+    /// The main catalog tab's fetches must use its container's network session,
+    /// not the session of whichever container `production()` returns.
+    func testCatalogTab_FetchUsesItsContainersSession() async {
+        let container = makeContainer(routingThrough: ContainerASessionProtocol.self)
+        let viewModel = AppTabHostView.makeCatalogViewModel(appContainer: container)
+        let url = URL(string: "https://catalog.example/tab/\(UUID().uuidString)")!
+
+        _ = try? await viewModel.searchRepository.fetchFeed(at: url)
+
+        XCTAssertEqual(TaggedRecordingURLProtocol.requestedURLs(tag: "A"), [url],
+                       "The catalog tab's fetch must go through its own container's session")
+    }
+
+    /// The catalog tab must read and write the same feed cache as the search and
+    /// lane screens built from the same container, so one fetch warms all three.
+    func testCatalogTab_SharesItsContainersCatalogRepository() {
+        let container = makeTestAppContainer()
+
+        let viewModel = AppTabHostView.makeCatalogViewModel(appContainer: container)
+
+        XCTAssertTrue(viewModel.searchRepository as AnyObject === container.catalogRepository as AnyObject,
+                      "The catalog tab must use its container's catalog repository, not a second one")
+    }
+
     /// A book cell model must read the registry of the container whose cache
     /// built it. A shared cache would show container A's loan state in B.
     func testBookCellModelCache_TwoContainers_ModelReadsOnlyItsOwnContainersRegistry() {

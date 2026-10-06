@@ -30,4 +30,7 @@
 #   and refreshToken(userAccount:)'s default argument. Neither method had a
 #   caller. The file still holds 7 locators, so it is still scanned and still
 #   matching; the drop is removed uses, not a glob that stopped resolving.
-246
+# 246 -> 239: CatalogSearchView takes its container (3 owned-service reads and
+#   2 downloadCenter reads), CatalogLaneMoreViewModel requires its catalog API,
+#   and URLSessionNetworkClient's executor default argument had no caller left.
+239

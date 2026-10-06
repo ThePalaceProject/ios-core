@@ -48,33 +48,32 @@ struct CatalogSearchView: View {
         baseURL: @escaping () -> URL?,
         books: [TPPBook],
         onBookSelected: @escaping (TPPBook) -> Void,
-        downloadCenter: MyBooksDownloadCenter = AppContainer.production().downloadCenter
+        appContainer: AppContainer
     ) {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
             repository: repository,
             baseURL: baseURL,
-            bookCellModelCache: AppContainer.production().bookCellModelCache
+            bookCellModelCache: appContainer.bookCellModelCache
         ))
         self.books = books
         self.onBookSelected = onBookSelected
-        self.downloadCenter = downloadCenter
+        self.downloadCenter = appContainer.downloadCenter
     }
 
+    /// Searches through `appContainer`'s catalog repository, so results share
+    /// the feed cache of the catalog screens built from the same container.
     init(
         books: [TPPBook],
-        onBookSelected: @escaping (TPPBook) -> Void
+        onBookSelected: @escaping (TPPBook) -> Void,
+        appContainer: AppContainer
     ) {
-
-        // Use AppContainer's shared, cached CatalogRepository rather than a
-        // throwaway per-init instance.
-        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
-            repository: AppContainer.production().catalogRepository,
+        self.init(
+            repository: appContainer.catalogRepository,
             baseURL: { nil },
-            bookCellModelCache: AppContainer.production().bookCellModelCache
-        ))
-        self.books = books
-        self.onBookSelected = onBookSelected
-        self.downloadCenter = AppContainer.production().downloadCenter
+            books: books,
+            onBookSelected: onBookSelected,
+            appContainer: appContainer
+        )
     }
 
     var body: some View {
