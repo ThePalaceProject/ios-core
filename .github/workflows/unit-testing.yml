@@ -641,12 +641,13 @@ jobs:
         if: steps.tests.outcome == 'failure' || steps.tests_streaming_on.outcome == 'failure'
         run: exit 1
 
-  # The single required check. It passes when every shard passed and the shard
-  # reports together account for every planned class exactly once, or when the
-  # `changes` job found nothing that can affect the tests (build and test then
-  # report `skipped`, which this job reads as a pass only in that case).
+  # The single required check. It passes when every shard passed, the shard
+  # reports together account for every planned class exactly once, and the
+  # report job measured complete coverage that meets every floor; or when the
+  # `changes` job found nothing that can affect the tests (build, test and
+  # report then report `skipped`, which this job reads as a pass only then).
   build-and-test:
-    needs: [changes, build, test]
+    needs: [changes, build, test, report]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -658,21 +659,29 @@ jobs:
           RUN: ${{ needs.changes.outputs.run }}
           BUILD: ${{ needs.build.result }}
           TEST: ${{ needs.test.result }}
+          REPORT: ${{ needs.report.result }}
+          FLOORS: ${{ needs.report.outputs.coverage_floors }}
         run: |
-          echo "changes=$CHANGES run=$RUN build=$BUILD test=$TEST"
+          echo "changes=$CHANGES run=$RUN build=$BUILD test=$TEST report=$REPORT floors=$FLOORS"
           if [ "$CHANGES" != "success" ]; then
             echo "::error::could not decide whether the tests must run (changes job: $CHANGES)"; exit 1
           fi
           if [ "$RUN" = "false" ]; then
-            if [ "$BUILD" = "skipped" ] && [ "$TEST" = "skipped" ]; then
-              echo "No changed path can affect the unit tests; build and test were skipped."
+            if [ "$BUILD" = "skipped" ] && [ "$TEST" = "skipped" ] && [ "$REPORT" = "skipped" ]; then
+              echo "No changed path can affect the unit tests; build, test and report were skipped."
               echo "verify=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::error::tests were not required but build=$BUILD test=$TEST"; exit 1
+            echo "::error::tests were not required but build=$BUILD test=$TEST report=$REPORT"; exit 1
           fi
           if [ "$BUILD" != "success" ]; then echo "::error::build: $BUILD"; exit 1; fi
           if [ "$TEST" != "success" ]; then echo "::error::one or more test shards: $TEST"; exit 1; fi
+          # A floor violation and incomplete coverage both fail the floor step;
+          # an empty value means the report job ended before reaching it.
+          if [ "$FLOORS" != "success" ]; then
+            echo "::error::coverage floors: ${FLOORS:-not evaluated}; the report job's Enforce Coverage Floors step names the rows"; exit 1
+          fi
+          if [ "$REPORT" != "success" ]; then echo "::error::report job: $REPORT"; exit 1; fi
           echo "verify=true" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
@@ -705,14 +714,16 @@ jobs:
           python3 scripts/ci-test-shards.py verify-union --plan plan/shard-plan.json "${REPORTS[@]}"
 
   # Merges the shard bundles and produces the same reports, PR comment and
-  # artifacts the single job did. It does not gate: the pass/fail verdict is
-  # the shards' and `build-and-test`'s. Runs on macOS only because xcresulttool
-  # does; publishing to Pages happens on Linux in `publish-report`.
+  # artifacts the single job did, and enforces the coverage floors, which
+  # `build-and-test` reads. Runs on macOS only because xcresulttool does;
+  # publishing to Pages happens on Linux in `publish-report`.
   report:
     needs: [changes, build, test]
     if: always() && needs.changes.outputs.run == 'true' && needs.build.result != 'skipped' && needs.build.result != 'cancelled'
     runs-on: macos-15
     timeout-minutes: 30
+    outputs:
+      coverage_floors: ${{ steps.coverage_gate.outcome }}
     permissions:
       contents: read
       pull-requests: write
@@ -947,13 +958,14 @@ jobs:
             exit "$RC"
           fi
 
-      # Coverage floor gate. Reports, does not block (continue-on-error): the
-      # floors are already below on several modules, and making it required is
-      # a separate decision. Incomplete data exits 3 and is never a pass.
+      # Coverage floor gate. An app floor (overall, modules) more than the
+      # enforcer's tolerance below its floor exits 1, and incomplete data exits
+      # 3; either fails this job, and `build-and-test` reads the outcome. Package
+      # rows are advisory. The uploads below run on always() so a failure here
+      # keeps them.
       - name: Enforce Coverage Floors
         if: always()
         id: coverage_gate
-        continue-on-error: true
         env:
           COMPLETE: ${{ steps.completeness.outputs.complete }}
           REASON: ${{ steps.completeness.outputs.reason }}
@@ -1308,7 +1320,7 @@ jobs:
           if-no-files-found: ignore
           
       - name: Upload Snapshot Failures
-        if: steps.snapshots.outputs.found == 'true'
+        if: always() && steps.snapshots.outputs.found == 'true'
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
@@ -1331,7 +1343,7 @@ jobs:
       # archive could not be saved — which trains everyone to ignore red, and is
       # how a broken commit gate shipped here once before.
       - name: Upload Test Results
-        if: steps.find_results.outputs.found == 'true'
+        if: always() && steps.find_results.outputs.found == 'true'
         continue-on-error: true
         id: upload_results
         uses: actions/upload-artifact@v7
@@ -1631,10 +1643,11 @@ jobs:
             }
           
   # Pages publishing clones the gh-pages branch, which took ~3.3 minutes of the
-  # macOS job; it needs nothing from macOS, so it runs here.
+  # macOS job; it needs nothing from macOS, so it runs here. It also runs when
+  # `report` failed on the coverage floors, since that report is the one to read.
   publish-report:
     needs: report
-    if: always() && needs.report.result == 'success'
+    if: always() && (needs.report.result == 'success' || needs.report.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
