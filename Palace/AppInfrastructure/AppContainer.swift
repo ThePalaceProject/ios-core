@@ -30,8 +30,9 @@ struct AppContainer: @unchecked Sendable {
     let featureFlags: FeatureFlagProviding
     let downloadCenter: MyBooksDownloadCenter
     /// Fails `downloadCenter`'s in-flight downloads when connectivity drops.
-    /// Held for the container's lifetime; `nil` in containers that reuse
-    /// another container's download center, so one center never gets two.
+    /// Held for the container's lifetime. Tests that build a container around
+    /// another container's download center leave it `nil`, so one center never
+    /// gets two monitors.
     let downloadNetworkLossMonitor: DownloadNetworkLossMonitor?
     let downloadAnnouncementService: DownloadAnnouncementService
     let debugSettings: DebugSettings
@@ -411,16 +412,15 @@ struct AppContainer: @unchecked Sendable {
         self.ownedServicesLink = .owner(AppContainerOwnedServices())
     }
 
-    /// Binds a network-loss monitor to `downloadCenter`'s active-download maps,
-    /// its registry and its failure alert. The monitor gets those three, not
-    /// the center.
+    /// Binds a network-loss monitor to `downloadCenter`'s reachability (the one
+    /// its pre-flight checks read), active-download maps, registry and failure
+    /// alert. The monitor gets those, not the center.
     @MainActor
     static func makeDownloadNetworkLossMonitor(
-        for downloadCenter: MyBooksDownloadCenter,
-        connectivity: AnyPublisher<Bool, Never>
+        for downloadCenter: MyBooksDownloadCenter
     ) -> DownloadNetworkLossMonitor {
         DownloadNetworkLossMonitor(
-            connectivity: connectivity,
+            connectivity: downloadCenter.reachability.connectivityPublisher,
             activeTasks: downloadCenter.stateManager.taskIdentifierToBook,
             activeDownloads: downloadCenter.stateManager.bookIdentifierToDownloadInfo,
             bookRegistry: downloadCenter.bookRegistry,
@@ -575,10 +575,7 @@ struct AppContainer: @unchecked Sendable {
             authCoordinator: authCoordinator
         )
         let downloadNetworkLossMonitor = MainActor.assumeIsolated {
-            makeDownloadNetworkLossMonitor(
-                for: downloadCenter,
-                connectivity: reachability.connectivityPublisher
-            )
+            makeDownloadNetworkLossMonitor(for: downloadCenter)
         }
         // `UserAccountPublisher.shared` is `@MainActor`; the builder only runs
         // from app launch or main-thread test setup, the same precondition

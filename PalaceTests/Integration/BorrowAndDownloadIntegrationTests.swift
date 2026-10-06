@@ -67,9 +67,8 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
             reachability: reachability
         )
         let center: MyBooksDownloadCenter = downloadCenter
-        let connectivity = reachability.connectivityPublisher
         networkLossMonitor = MainActor.assumeIsolated {
-            AppContainer.makeDownloadNetworkLossMonitor(for: center, connectivity: connectivity)
+            AppContainer.makeDownloadNetworkLossMonitor(for: center)
         }
 
         fetchBookResult = nil

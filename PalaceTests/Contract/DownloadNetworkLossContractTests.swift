@@ -34,10 +34,7 @@ final class DownloadNetworkLossContractTests: XCTestCase {
             errorActivityTracker: tracker,
             reachability: reachability
         )
-        let monitor = AppContainer.makeDownloadNetworkLossMonitor(
-            for: center,
-            connectivity: reachability.connectivityPublisher
-        )
+        let monitor = AppContainer.makeDownloadNetworkLossMonitor(for: center)
         return NetworkLossSubject(center: center, monitor: monitor, join: { await monitor.lastFailureTask?.value })
     }
 

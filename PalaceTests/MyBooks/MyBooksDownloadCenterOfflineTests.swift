@@ -67,10 +67,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
             stateManager: stateManager,
             reachability: mockReachability
         )
-        let monitor = AppContainer.makeDownloadNetworkLossMonitor(
-            for: center,
-            connectivity: mockReachability.connectivityPublisher
-        )
+        let monitor = AppContainer.makeDownloadNetworkLossMonitor(for: center)
         return (center, monitor)
     }
 

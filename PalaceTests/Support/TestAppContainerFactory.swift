@@ -126,10 +126,7 @@ func makeTestAppContainer(
   downloadCenter.lcpStreamingEnabledProvider = { false }
 
   let downloadNetworkLossMonitor = MainActor.assumeIsolated {
-    AppContainer.makeDownloadNetworkLossMonitor(
-      for: downloadCenter,
-      connectivity: reachability.connectivityPublisher
-    )
+    AppContainer.makeDownloadNetworkLossMonitor(for: downloadCenter)
   }
 
   // `UserAccountPublisher.shared` is `@MainActor`-isolated; resolve it via the
