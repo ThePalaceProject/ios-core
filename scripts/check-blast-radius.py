@@ -14,9 +14,13 @@ Categories detected (severity in parentheses):
                 let ContentTypeFoo` consumed by downstream modules) where
                 the rationale lives in the comment + audit trail.
   BR-2 (high)   New `#if DEBUG` / `#if !DEBUG` blocks on non-test Swift files.
-                Demoted to medium when the block also references an XCTest
-                env-var gate (e.g. `XCTestConfigurationFilePath`) — that
-                shape is structurally test-only.
+                Demoted to medium when the same file's added lines also
+                reference an XCTest env-var gate (e.g.
+                `XCTestConfigurationFilePath`, comment lines included) or, in
+                code rather than comments, the UI-test launch marker
+                `MockBackendLaunchRequest.scenarioKey`. An app launched by a
+                UI test does not receive `XCTestConfigurationFilePath`, so the
+                launch marker is the UI-test equivalent.
   BR-3 (high)   `public private(set)` declaration whose docstring contains
                 test/verify/spy/observable wording.
   BR-4 (high)   New init parameters added to `AppContainer.swift` or any
@@ -83,6 +87,10 @@ _PUBLIC_PRIVATE_SET_RE = re.compile(
 )
 _IF_DEBUG_RE = re.compile(r"^\s*#if\s+(?:!\s*)?DEBUG\b")
 _XCTEST_ENV_RE = re.compile(r"XCTestConfigurationFilePath|isRunningUnderXCTest")
+# The environment key a UI test sets to start the app against a mock backend
+# scenario (Palace/Settings/Debug/MockBackend/MockBackendLaunchHook.swift).
+_UI_TEST_LAUNCH_MARKER = "MockBackendLaunchRequest.scenarioKey"
+_UI_TEST_LAUNCH_RE = re.compile(r"\b" + re.escape(_UI_TEST_LAUNCH_MARKER) + r"\b")
 _DISCARD_RE = re.compile(r"^\s*let\s+_\s*=\s*(\w[\w\.]*)\s*\(")
 _TODO_TICKET_RE = re.compile(r"//\s*TODO\([A-Z]+-\d+\)")
 _CONTAINER_FILE_RE = re.compile(r"(?:^|/)[A-Z]\w*Container\.swift$")
@@ -122,6 +130,18 @@ _NON_PROD_PATH_SUBSTRINGS = (
     ".forgeos/",
     "scripts/_fixtures/",
 )
+
+
+def _code_part(text: str) -> str:
+    """The code on a line, without `//` comments or block-comment lines.
+
+    Approximate: a `//` inside a string literal also ends the code part, which
+    can only drop a marker, never invent one.
+    """
+    stripped = text.lstrip()
+    if stripped.startswith(("/*", "*")):
+        return ""
+    return re.sub(r"/\*.*?\*/", "", text).split("//", 1)[0]
 
 
 def _is_swift(path: str) -> bool:
@@ -290,25 +310,28 @@ def _scan(added: list[_AddedLine]) -> list[_Finding]:
 
     # Post-pass: emit BR-2 findings with severity demotion.
     file_to_env_hint: dict[str, bool] = {}
+    file_to_launch_gate: dict[str, bool] = {}
     for entry in added:
         if not _is_swift(entry.file_path) or _is_non_prod_swift(entry.file_path):
             continue
         if _XCTEST_ENV_RE.search(entry.text):
             file_to_env_hint[entry.file_path] = True
+        if _UI_TEST_LAUNCH_RE.search(_code_part(entry.text)):
+            file_to_launch_gate[entry.file_path] = True
     for path, line_nos in if_debug_open.items():
-        demoted = file_to_env_hint.get(path, False)
+        if file_to_env_hint.get(path, False):
+            severity, note = "medium", " (demoted: XCTest env-gate present in same diff)"
+        elif file_to_launch_gate.get(path, False):
+            severity, note = "medium", " (demoted: UI-test launch gate present in same diff)"
+        else:
+            severity, note = "high", " — covers sim/dev/TestFlight; prefer XCTest env-var gate"
         for ln in line_nos:
             findings.append(_Finding(
                 code="BR-2",
-                severity=("medium" if demoted else "high"),
+                severity=severity,
                 file_path=path,
                 line_no=ln,
-                description=(
-                    "`#if DEBUG` on prod file"
-                    + (" (demoted: XCTest env-gate present in same diff)"
-                       if demoted else
-                       " — covers sim/dev/TestFlight; prefer XCTest env-var gate")
-                ),
+                description="`#if DEBUG` on prod file" + note,
             ))
 
     findings.sort(key=lambda f: (f.file_path, f.line_no, f.code))

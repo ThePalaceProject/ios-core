@@ -1,0 +1,19 @@
+{
+  "id": "journey_sign_in_and_borrow",
+  "displayName": "Journey: sign in and borrow",
+  "description": "One fixture library with one open-licence EPUB. The loans feed is empty until the borrow route is served.",
+  "launch": {
+    "libraryRegistryURL": "https://palace-fixtures.test/libraries",
+    "libraryID": "urn:uuid:7f1d8a52-3b0e-4c86-9a5e-1f2a3b4c5d6e"
+  },
+  "routes": [
+    { "pathPattern": "^https://palace-fixtures\\.test/libraries(\\?.*)?$", "fixtureName": "registry.json", "statusCode": 200, "contentType": "application/opds+json" },
+    { "pathPattern": "^https://palace-fixtures\\.test/library/authentication_document$", "fixtureName": "auth_document.json", "statusCode": 200, "contentType": "application/vnd.opds.authentication.v1.0+json" },
+    { "pathPattern": "^https://palace-fixtures\\.test/library/patrons/me/?$", "fixtureName": "patron_profile.json", "statusCode": 200, "contentType": "vnd.librarysimplified/user-profile+json" },
+    { "pathPattern": "^https://palace-fixtures\\.test/library/loans/?$", "requiresFlag": "borrowed", "fixtureName": "loans_borrowed.xml", "statusCode": 200, "contentType": "application/atom+xml;profile=opds-catalog;kind=acquisition" },
+    { "pathPattern": "^https://palace-fixtures\\.test/library/loans/?$", "fixtureName": "loans_empty.xml", "statusCode": 200, "contentType": "application/atom+xml;profile=opds-catalog;kind=acquisition" },
+    { "pathPattern": "^https://palace-fixtures\\.test/library/works/quiet-harbors/borrow$", "setsFlag": "borrowed", "fixtureName": "borrow_entry.xml", "statusCode": 201, "contentType": "application/atom+xml;type=entry;profile=opds-catalog" },
+    { "pathPattern": "^https://palace-fixtures\\.test/library/works/quiet-harbors/fulfill$", "fixtureName": "quiet-harbors.epub", "statusCode": 200, "contentType": "application/epub+zip" },
+    { "pathPattern": "^https://palace-fixtures\\.test/library/?(\\?.*)?$", "fixtureName": "catalog.xml", "statusCode": 200, "contentType": "application/atom+xml;profile=opds-catalog;kind=acquisition" }
+  ]
+}

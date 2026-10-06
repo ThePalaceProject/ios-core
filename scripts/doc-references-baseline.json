@@ -112,11 +112,6 @@
       "target": "recording.yaml"
     },
     {
-      "doc": "docs/Testing/TESTING_POSTURE.md",
-      "kind": "workflow",
-      "target": "ui-testing.yml"
-    },
-    {
       "doc": "docs/Testing/Test_Patterns.md",
       "kind": "source",
       "target": "PalaceTests/Fixtures/FixtureLoader.swift"

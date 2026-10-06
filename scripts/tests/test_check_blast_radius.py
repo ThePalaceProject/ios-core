@@ -153,6 +153,84 @@ def test_medium_finding_does_not_block_at_default_high_floor():
     assert "BR-5" in r.stdout
 
 
+# --- BR-2: new `#if DEBUG` on a prod Swift file ----------------------------
+#
+# Demotion scope. XCTest marker (`XCTestConfigurationFilePath`,
+# `isRunningUnderXCTest`): any ADDED line of the SAME file, comment lines
+# included. UI-test launch marker (`MockBackendLaunchRequest.scenarioKey`):
+# ADDED lines of the SAME file, with comment text ignored. Neither crosses files.
+
+_UI_MARKER_GATE = "    if ProcessInfo.processInfo.environment[MockBackendLaunchRequest.scenarioKey] != nil {"
+
+
+def _br2_severity(stdout: str, path: str) -> str | None:
+    for line in stdout.splitlines():
+        if line.startswith(path + ":") and ": BR-2: " in line:
+            return line.split(": BR-2: ", 1)[1].split(":", 1)[0]
+    return None
+
+
+def test_if_debug_without_a_gate_blocks_at_high():
+    """An ordinary new `#if DEBUG` block on a prod file is BR-2 high and blocks."""
+    diff = _diff("Palace/Book/BookDetail.swift", ["#if DEBUG", "    seedTestData()", "#endif"])
+    r = _run(diff)
+    assert r.returncode == 1, f"stdout: {r.stdout!r}"
+    assert _br2_severity(r.stdout, "Palace/Book/BookDetail.swift") == "high"
+
+
+def test_if_debug_gated_on_the_ui_test_launch_marker_is_demoted():
+    """A `#if DEBUG` block whose code reads the UI-test launch marker is
+    medium and does not block at the default floor."""
+    path = "Palace/AppInfrastructure/TPPAppDelegate.swift"
+    diff = _diff(path, ["#if DEBUG", _UI_MARKER_GATE, "        applyHook()", "    }", "#endif"])
+    r = _run(diff)
+    assert r.returncode == 0, f"stdout: {r.stdout!r}"
+    assert _br2_severity(r.stdout, path) == "medium"
+    assert "UI-test launch" in r.stdout
+
+
+@pytest.mark.parametrize("comment", [
+    "    // gated by MockBackendLaunchRequest.scenarioKey",
+    "    /// MockBackendLaunchRequest.scenarioKey",
+    "    seedTestData() // MockBackendLaunchRequest.scenarioKey",
+    " * MockBackendLaunchRequest.scenarioKey",
+    "    /* MockBackendLaunchRequest.scenarioKey */",
+    "    seedTestData() /* MockBackendLaunchRequest.scenarioKey */",
+])
+def test_ui_test_marker_only_in_a_comment_does_not_demote(comment):
+    """Naming the marker in a comment is not a gate; the block stays high."""
+    path = "Palace/Book/BookDetail.swift"
+    diff = _diff(path, ["#if DEBUG", comment, "    seedTestData()", "#endif"])
+    r = _run(diff)
+    assert r.returncode == 1, f"stdout: {r.stdout!r}"
+    assert _br2_severity(r.stdout, path) == "high"
+
+
+def test_ui_test_marker_in_another_file_does_not_demote():
+    """The marker demotes only the file that contains it."""
+    flagged = "Palace/Book/BookDetail.swift"
+    diff = (_diff(flagged, ["#if DEBUG", "    seedTestData()", "#endif"])
+            + _diff("Palace/AppInfrastructure/TPPAppDelegate.swift", [_UI_MARKER_GATE, "    }"]))
+    r = _run(diff)
+    assert r.returncode == 1, f"stdout: {r.stdout!r}"
+    assert _br2_severity(r.stdout, flagged) == "high"
+
+
+@pytest.mark.parametrize("marker_line", [
+    "    guard ProcessInfo.processInfo.environment[\"XCTestConfigurationFilePath\"] != nil else { return }",
+    "    // runs only when XCTestConfigurationFilePath is set",
+])
+def test_xctest_env_demotion_is_unchanged(marker_line):
+    """Characterizes the existing XCTest demotion, comment lines included;
+    the UI-test marker change leaves it as it was."""
+    path = "Palace/Book/BookDetail.swift"
+    diff = _diff(path, ["#if DEBUG", marker_line, "    seedTestData()", "#endif"])
+    r = _run(diff)
+    assert r.returncode == 0, f"stdout: {r.stdout!r}"
+    assert _br2_severity(r.stdout, path) == "medium"
+    assert "XCTest env-gate" in r.stdout
+
+
 # --- BR-4: composition-root init churn on a *Container.swift file ----------
 
 def test_new_init_on_container_file_is_flagged():
