@@ -215,14 +215,11 @@ jobs:
           XCTESTRUN=$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 1 -name "*.xctestrun" | head -1)
           [ -f "$XCTESTRUN" ] || { echo "::error::build-for-testing produced no .xctestrun"; exit 1; }
           mkdir -p "$RUNNER_TEMP/plan"
-          xcodebuild test-without-building \
-            -xctestrun "$XCTESTRUN" \
-            -destination "id=${{ steps.sim.outputs.id }}" \
-            -enumerate-tests \
-            -test-enumeration-style flat \
-            -test-enumeration-format json \
-            -test-enumeration-output-path "$RUNNER_TEMP/plan/enumeration.json"
+          # The planner runs xcodebuild -enumerate-tests itself, and once more
+          # if a bundle comes back without its tests.
           python3 scripts/ci-test-shards.py plan \
+            --xctestrun "$XCTESTRUN" \
+            --destination "id=${{ steps.sim.outputs.id }}" \
             --enumeration "$RUNNER_TEMP/plan/enumeration.json" \
             --shards "$SHARDS" \
             --out "$RUNNER_TEMP/plan/shard-plan.json"

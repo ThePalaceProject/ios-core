@@ -68,8 +68,12 @@ def test_the_matrix_is_the_plans_shard_list():
 def test_the_build_plans_from_the_enumerated_bundle_with_the_configured_count():
     run = _run_text("build")
     assert "build-for-testing" in run
-    assert "-enumerate-tests" in run
     assert "scripts/ci-test-shards.py plan" in run
+    # The planner enumerates (and re-enumerates once) only when handed the
+    # xctestrun and destination; with --enumeration alone it reads a file.
+    plan = run[run.index("scripts/ci-test-shards.py plan"):]
+    assert '--xctestrun "$XCTESTRUN"' in plan
+    assert '--destination "id=${{ steps.sim.outputs.id }}"' in plan
     assert "UNIT_TEST_SHARDS" in run
     assert isinstance(DOC["env"]["UNIT_TEST_SHARDS"], int) and DOC["env"]["UNIT_TEST_SHARDS"] >= 1
 
