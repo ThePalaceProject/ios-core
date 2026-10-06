@@ -115,32 +115,27 @@ final class ReaderBookmarkSyncGateTests: XCTestCase {
         let bookmarks: [TPPReadiumBookmark]
     }
 
-    /// Runs one sync and keeps the main run loop going a little after the
-    /// first callback, so a second callback would be counted.
-    private func syncAndWait(timeout: TimeInterval = 5) -> SyncResult {
-        var calls = 0
-        var success: Bool?
-        var bookmarks: [TPPReadiumBookmark] = []
-        let completed = expectation(description: "syncBookmarks completion")
-        logic.syncBookmarks { ok, list in
-            calls += 1
-            success = ok
-            bookmarks = list
-            if calls == 1 { completed.fulfill() }
+    /// Runs one sync and awaits its callback rather than a wall-clock deadline,
+    /// then drains the main queue once so a second callback would be counted.
+    private func syncAndWait() async -> SyncResult {
+        let box = SyncCallbackBox()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            logic.syncBookmarks { ok, list in
+                if box.record(ok, list) == 1 { continuation.resume() }
+            }
         }
-        wait(for: [completed], timeout: timeout)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
-        return SyncResult(calls: calls, success: success, bookmarks: bookmarks)
+        await drainMainQueueAsync()
+        return SyncResult(calls: box.calls, success: box.success, bookmarks: box.bookmarks)
     }
 
     // MARK: - Sync off
 
     /// A signed-out patron's sync finishes once with the local list and sends nothing.
-    func testSyncBookmarks_WhenSignedOut_CompletesOnceWithLocalBookmarksAndNoRequest() {
+    func testSyncBookmarks_WhenSignedOut_CompletesOnceWithLocalBookmarksAndNoRequest() async {
         configurePatron(signedIn: false, syncPermitted: true)
         let local = addLocalBookmark(annotationId: nil, href: "/one.html")
 
-        let result = syncAndWait()
+        let result = await syncAndWait()
 
         XCTAssertEqual(result.calls, 1)
         XCTAssertEqual(result.success, false)
@@ -151,12 +146,12 @@ final class ReaderBookmarkSyncGateTests: XCTestCase {
 
     /// A patron who turned sync off must not be sent through re-authentication
     /// on book open just because their session expired.
-    func testSyncBookmarks_WhenSyncTurnedOffWithStaleCredentials_DoesNotReauthenticate() {
+    func testSyncBookmarks_WhenSyncTurnedOffWithStaleCredentials_DoesNotReauthenticate() async {
         configurePatron(signedIn: true, syncPermitted: false, staleCredentials: true)
         XCTAssertEqual(patron.authState, .credentialsStale)
         let local = addLocalBookmark(annotationId: nil, href: "/one.html")
 
-        let result = syncAndWait()
+        let result = await syncAndWait()
 
         XCTAssertEqual(reauthenticator.authenticateCallCount, 0)
         XCTAssertEqual(result.calls, 1)
@@ -169,7 +164,7 @@ final class ReaderBookmarkSyncGateTests: XCTestCase {
 
     /// Book open with sync on: unsynced bookmarks are posted first, then the
     /// server list is merged, and the sync reports success.
-    func testSyncBookmarks_WhenSyncOn_UploadsThenMergesServerBookmarks() throws {
+    func testSyncBookmarks_WhenSyncOn_UploadsThenMergesServerBookmarks() async throws {
         configurePatron(signedIn: true, syncPermitted: true)
         _ = addLocalBookmark(annotationId: nil, href: "/one.html")
         let uploadedID = "https://test.library.org/annotations/uploaded"
@@ -189,7 +184,7 @@ final class ReaderBookmarkSyncGateTests: XCTestCase {
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
         }
 
-        let result = syncAndWait()
+        let result = await syncAndWait()
 
         XCTAssertEqual(result.calls, 1)
         XCTAssertEqual(result.success, true)
@@ -200,13 +195,13 @@ final class ReaderBookmarkSyncGateTests: XCTestCase {
 
     /// With sync on, a failed fetch for a patron whose session expired still
     /// tries re-authentication once, using the account the sync gate checked.
-    func testSyncBookmarks_WhenSyncOnAndFetchFailsWithStaleCredentials_Reauthenticates() {
+    func testSyncBookmarks_WhenSyncOnAndFetchFailsWithStaleCredentials_Reauthenticates() async {
         configurePatron(signedIn: true, syncPermitted: true, staleCredentials: true)
         MockAnnotationsURLProtocol.requestHandler = { request in
             (HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!, nil)
         }
 
-        let result = syncAndWait()
+        let result = await syncAndWait()
 
         XCTAssertEqual(reauthenticator.authenticateCallCount, 1)
         XCTAssertEqual(result.calls, 1)
@@ -217,7 +212,7 @@ final class ReaderBookmarkSyncGateTests: XCTestCase {
 
     /// If sync stops being possible after the refresh control was installed,
     /// pulling to refresh must still stop the spinner.
-    func testPullToRefresh_WhenSyncBecameImpossible_EndsRefreshing() throws {
+    func testPullToRefresh_WhenSyncBecameImpossible_EndsRefreshing() async throws {
         configurePatron(signedIn: true, syncPermitted: true)
         let delegate = SyncForwardingDelegate(logic: logic)
         let vc = TPPReaderPositionsVC.newInstance()
@@ -239,10 +234,7 @@ final class ReaderBookmarkSyncGateTests: XCTestCase {
         XCTAssertTrue(refresh.isRefreshing)
         refresh.sendActions(for: .valueChanged)
 
-        let deadline = Date().addingTimeInterval(5)
-        while refresh.isRefreshing && Date() < deadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        }
+        await awaitConditionAsync { !refresh.isRefreshing }
         XCTAssertFalse(refresh.isRefreshing)
         XCTAssertEqual(delegate.syncRequests, 1)
         XCTAssertTrue(MockAnnotationsURLProtocol.capturedRequests.isEmpty)
@@ -262,6 +254,24 @@ final class ReaderBookmarkSyncGateTests: XCTestCase {
                        relatedWorksURL: nil, previewLink: nil, seriesURL: nil, revokeURL: nil,
                        reportURL: nil, timeTrackingURL: nil, contributors: [:], bookDuration: nil,
                        imageCache: MockImageCache())
+    }
+}
+
+/// Counts sync callbacks. The callback can arrive off the main thread when sync
+/// is on, so the counters are lock-guarded.
+private final class SyncCallbackBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var calls = 0
+    private(set) var success: Bool?
+    private(set) var bookmarks: [TPPReadiumBookmark] = []
+
+    func record(_ ok: Bool, _ list: [TPPReadiumBookmark]) -> Int {
+        lock.withLock {
+            calls += 1
+            success = ok
+            bookmarks = list
+            return calls
+        }
     }
 }
 

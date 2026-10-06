@@ -2190,23 +2190,27 @@ extension TPPAnnotationsHermeticTests {
 
     /// The upload group stays balanced when a post cannot be attempted: the
     /// bookmark is reported failed and the upload finishes exactly once.
-    func testUploadLocalBookmarks_NoAnnotationsURL_ReportsFailedAndCompletesOnce() {
+    func testUploadLocalBookmarks_NoAnnotationsURL_ReportsFailedAndCompletesOnce() async {
         openSyncGate()
         TPPAnnotations.annotationsURLOverride = .some(nil)
         var calls = 0
+        var updatedCount = -1
         var failedHrefs: [String] = []
-        let finished = expectation(description: "upload finished")
 
-        TPPAnnotations.uploadLocalBookmarks([unsyncedBookmark()], forBook: bookID) { updated, failed in
-            calls += 1
-            XCTAssertTrue(updated.isEmpty)
-            failedHrefs = failed.map(\.href)
-            if calls == 1 { finished.fulfill() }
+        // The upload reports on the main queue; await it, then drain the main
+        // queue once so a second report would be counted.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPAnnotations.uploadLocalBookmarks([unsyncedBookmark()], forBook: bookID) { updated, failed in
+                calls += 1
+                updatedCount = updated.count
+                failedHrefs = failed.map(\.href)
+                if calls == 1 { continuation.resume() }
+            }
         }
+        await drainMainQueueAsync()
 
-        wait(for: [finished], timeout: 5)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         XCTAssertEqual(calls, 1)
+        XCTAssertEqual(updatedCount, 0)
         XCTAssertEqual(failedHrefs, ["/two.html"])
         XCTAssertEqual(mock.postCallCount, 0)
     }
