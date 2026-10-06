@@ -541,9 +541,9 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
 
         await businessLogic.validateCredentials()
 
-        // The double completes on its own background queue, so the delegate
-        // callback reaches main through `TPPMainThreadRun.asyncIfNeeded`; one
-        // drain settles it. Mirrors the failure case below.
+        // This double resolves inline on the caller's thread; the drain is for
+        // the delegate hop through `TPPMainThreadRun.asyncIfNeeded`. Mirrors
+        // the failure case below.
         await drainMainQueueAsync()
 
         XCTAssertEqual(proxy.receiveCredentialsCallCount, 1,
@@ -558,8 +558,8 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
 
         await businessLogic.validateCredentials()
 
-        // The double completes off-main; the hop to main is FIFO, so once our
-        // no-op block runs every queued completion has already run.
+        // Same inline double; the drain covers the delegate hop, and the main
+        // queue is FIFO, so once our no-op block runs it has already landed.
         await drainMainQueueAsync()
 
         XCTAssertFalse(uiDelegate.didCallDidReceiveCredentials,

@@ -120,8 +120,11 @@ extension TPPSignInBusinessLogic {
         // PP-5301: `await`, not a completion — a completion arrives off the main
         // actor while this closure inherits the enclosing `@MainActor`
         // isolation, which is the shape that crashed in 3.3.0. The `Task`
-        // inherits that isolation and the await resumes inside it.
-        Task {
+        // inherits that isolation and the await resumes inside it, which the
+        // `@MainActor` below states at the site rather than leaving it to the
+        // class annotation in another file — `completion()` is a caller's
+        // closure and must not be delivered off the main actor.
+        Task { @MainActor in
             let result = await networker.execute(
                 request, enableTokenRefresh: false, accountId: libraryAccountID)
             switch result {

@@ -1102,15 +1102,14 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testValidateCredentials_withSelectedAuth_doesNotCrash() async {
-        // Test that validateCredentials can be called without crashing
-        // Note: Actual validation requires network/UI which can't be fully tested here
+    func testValidateCredentials_withSelectedAuth_firesOneValidationRequest() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        // This triggers async network call - we just verify it doesn't crash
         await businessLogic.validateCredentials()
 
-        XCTAssertTrue(true, "Completed without crash")
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "a selected auth method must produce exactly one "
+                       + "credential-validation request")
     }
 
     /// Nothing on the client refuses a validation that has no selected auth

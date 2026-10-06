@@ -28,7 +28,7 @@ description: Per-area verification reference; refresh before changing this area
 | File | Line | Trigger | Notes |
 |------|------|---------|-------|
 | `Palace/AppInfrastructure/DLNavigator.swift` | 86 | Deep-link nav | UIKit context — may fire before SwiftUI root mounts. |
-| `Palace/Network/TPPNetworkExecutor.swift` | 489 | 401 handler | Fire-and-forget (`completion: nil`); may not be on `MainActor`. |
+| `Palace/Network/TPPNetworkExecutor.swift` | 999 | 401 handler | Fire-and-forget (`completion: nil`); may not be on `MainActor`. |
 | `Palace/Holds/HoldsViewModel.swift` | 81 | Place-hold from anonymous state | SwiftUI VM. |
 | `Palace/SignInLogic/TPPReauthenticator.swift` | 54 | Re-auth orchestration | Threaded through coordinator post-PR #1018. |
 | `Palace/Book/UI/BookDetail/BookDetailViewModel.swift` | 659 | Borrow → sign in → resume | **PP-4114 race site.** Sets `showHalfSheet = true` in completion. |
