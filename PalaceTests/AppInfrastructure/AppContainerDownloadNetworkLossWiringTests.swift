@@ -61,6 +61,98 @@ final class AppContainerDownloadNetworkLossWiringTests: XCTestCase {
         XCTAssertEqual(task.state, .canceling)
     }
 
+    /// Copying a container, by value or through a `with...` override, must not
+    /// put a second monitor on its download center: each offline transition
+    /// runs one failure pass, which cancels each active task once.
+    func testContainerCopies_EachOfflineTransitionRunsOneFailurePass() async throws {
+        let registry = TPPBookRegistryMock()
+        let reachability = MockReachability(initiallyConnected: true)
+        let center = MyBooksDownloadCenter(
+            bookRegistry: registry,
+            stateManager: DownloadStateManager(),
+            reachability: reachability
+        )
+        let original = makeContainer(around: center)
+        let containers = [
+            original,
+            original.withSignInModalSheetPresenter(SignInModalSheetPresenter(
+                appContainer: original,
+                currentAccountIDProvider: { nil },
+                needsAuthProvider: { _ in false },
+                driver: { _, _, completion in completion() }
+            )),
+            original.withAudiobookSessionPresenter(SpyAudiobookSessionPresenter())
+        ]
+        let plainCopy = original
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        registry.addBook(book, state: .downloading)
+        let task = CancelCountingDownloadTask(taskIdentifier: 4115)
+        await track(book, with: task, in: center)
+
+        reachability.simulate(connected: false)
+        await awaitFailurePasses(of: containers + [plainCopy])
+
+        XCTAssertEqual(task.cancelCount, 1, "One offline transition must run one failure pass")
+        XCTAssertEqual(registry.state(for: book.identifier), .downloadFailed)
+
+        // Failing the book can drop it from the center's maps; track it again.
+        registry.setState(.downloading, for: book.identifier)
+        await track(book, with: task, in: center)
+        reachability.simulate(connected: true)
+        reachability.simulate(connected: false)
+        await awaitFailurePasses(of: containers + [plainCopy])
+
+        XCTAssertEqual(task.cancelCount, 2, "A second offline transition must run exactly one more pass")
+    }
+
+    /// A container like the factory's, with `center` as its download center and
+    /// the monitor the production builder binds to it.
+    private func makeContainer(around center: MyBooksDownloadCenter) -> AppContainer {
+        let base = makeTestAppContainer()
+        return AppContainer(
+            bookRegistry: base.bookRegistry,
+            networkExecutor: base.networkExecutor,
+            networkQueue: base.networkQueue,
+            reachability: center.reachability,
+            accountsManager: base.accountsManager,
+            settings: base.settings,
+            featureFlags: base.featureFlags,
+            downloadCenter: center,
+            downloadAnnouncementService: base.downloadAnnouncementService,
+            debugSettings: base.debugSettings,
+            imageCache: base.imageCache,
+            imageLoader: base.imageLoader,
+            userAccountPublisher: base.userAccountPublisher,
+            opdsFeedService: base.opdsFeedService,
+            readerService: base.readerService,
+            navigationCoordinatorHub: base.navigationCoordinatorHub,
+            tabRouterHub: base.tabRouterHub,
+            drmAuthorizerProvider: base.drmAuthorizerProvider,
+            authCoordinator: base.authCoordinator,
+            downloadNetworkLossMonitor: AppContainer.makeDownloadNetworkLossMonitor(for: center)
+        )
+    }
+
+    /// Lets the connectivity sink run (it is delivered on `RunLoop.main`), then
+    /// joins the failure pass of every monitor the containers hold.
+    private func awaitFailurePasses(of containers: [AppContainer]) async {
+        await drainMainQueueAsync()
+        await drainMainQueueAsync()
+        var seen: [ObjectIdentifier] = []
+        for monitor in containers.compactMap(\.downloadNetworkLossMonitor)
+        where !seen.contains(ObjectIdentifier(monitor)) {
+            seen.append(ObjectIdentifier(monitor))
+            await monitor.lastFailureTask?.value
+        }
+    }
+
+    private func track(_ book: TPPBook, with task: MockURLSessionDownloadTask, in center: MyBooksDownloadCenter) async {
+        await center.stateManager.taskIdentifierToBook.set(task.taskIdentifier, value: book)
+        await center.stateManager.bookIdentifierToDownloadInfo.set(
+            book.identifier,
+            value: MyBooksDownloadInfo(downloadProgress: 0.2, downloadTask: task, rightsManagement: .none))
+    }
+
     private func track(_ book: TPPBook, taskID: Int, in center: MyBooksDownloadCenter) async -> MockURLSessionDownloadTask {
         let task = MockURLSessionDownloadTask(taskIdentifier: taskID)
         await center.stateManager.taskIdentifierToBook.set(taskID, value: book)
@@ -68,5 +160,16 @@ final class AppContainerDownloadNetworkLossWiringTests: XCTestCase {
             book.identifier,
             value: MyBooksDownloadInfo(downloadProgress: 0.2, downloadTask: task, rightsManagement: .none))
         return task
+    }
+}
+
+/// Counts `cancel()` calls; each network-loss failure pass cancels every
+/// active task once.
+private final class CancelCountingDownloadTask: MockURLSessionDownloadTask, @unchecked Sendable {
+    private(set) var cancelCount = 0
+
+    override func cancel() {
+        cancelCount += 1
+        super.cancel()
     }
 }
