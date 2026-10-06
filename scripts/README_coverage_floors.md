@@ -64,8 +64,8 @@ expected, and the floor step compares `packages`, `package_modules` and
 Edit `scripts/coverage-floors.json`. Floors are fractions (`0.46` = 46%). A
 new or re-baselined floor is the measured value rounded down to 4 places; the
 run-to-run allowance is `APP_FLOOR_TOLERANCE`, not slack in the value. The
-floors set on 2026-09-02 were recorded 2 points below their measurement and
-keep that margin until they are next re-baselined.
+floors set on 2026-09-02 were recorded at least 2 points below their
+measurement and keep that margin until they are next re-baselined.
 
 When code moves between files, re-measure every row it touches from one
 complete CI run. #1603 moved the network-loss handler out of
