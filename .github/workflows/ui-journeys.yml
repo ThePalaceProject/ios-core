@@ -1,0 +1,107 @@
+name: UI Journeys
+
+# Fixture-backed XCUITest journeys (docs/Testing/UI_JOURNEYS.md). They build
+# the app, so they run only when the app, the journeys or the project change.
+# Not a required check: a path-filtered workflow that is required would wait
+# forever on PRs it skips. The unit-test run and its coverage use the Palace
+# scheme and are unaffected; this lane uses the PalaceUITests scheme.
+on:
+  pull_request:
+    paths:
+      - 'Palace/**'
+      - 'PalaceUITests/**'
+      - 'Palace.xcodeproj/**'
+      - 'ios-audiobooktoolkit'
+      - '.github/workflows/ui-journeys.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ui-journeys-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
+      - name: Checkout main repo and submodules
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Cache Swift packages
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/dd/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Checkout Certificates
+        uses: actions/checkout@v7
+        with:
+          repository: ThePalaceProject/mobile-certificates
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          path: ./mobile-certificates
+
+      - name: Checkout Adobe RMSDK
+        uses: ./.github/actions/checkout-adobe
+        with:
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Setup repo with DRM
+        run: ./scripts/setup-repo-drm.sh
+        env:
+          BUILD_CONTEXT: ci
+
+      - name: Build non-Carthage 3rd party dependencies
+        run: ./scripts/build-3rd-party-dependencies.sh
+        env:
+          BUILD_CONTEXT: ci
+
+      - name: Select simulator
+        id: sim
+        run: |
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
+            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
+          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
+
+      # Same ad-hoc signing as the unit-test build; the command matches the
+      # one docs/Testing/UI_JOURNEYS.md gives contributors.
+      - name: Build and run the journeys
+        shell: bash
+        run: |
+          set -o pipefail
+          start=$(date +%s)
+          xcodebuild test \
+            -project Palace.xcodeproj \
+            -scheme PalaceUITests \
+            -destination "id=${{ steps.sim.outputs.id }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -resultBundlePath "$RUNNER_TEMP/UIJourneys.xcresult" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" 2>&1 | tee ui-journeys.log
+          status=${PIPESTATUS[0]}
+          echo "Build and journeys took $(( $(date +%s) - start ))s" >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^Test Case .*(passed|failed)" ui-journeys.log >> "$GITHUB_STEP_SUMMARY" || true
+          exit "$status"
+
+      # On failure the bundle holds a screenshot and the accessibility tree
+      # named after the failing step.
+      - name: Upload journey results
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-journeys-xcresult
+          path: ${{ runner.temp }}/UIJourneys.xcresult
+          retention-days: 7
