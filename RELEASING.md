@@ -83,8 +83,3 @@ The release workflow ([`release-on-merge.yml`](./.github/workflows/release-on-me
 fires on merge to `main` and creates the GitHub release with generated
 release notes; a manual variant is at
 [`release.yml`](./.github/workflows/release.yml).
-
-## Release gate
-
-The GitHub Actions workflows are the release gate. Nothing outside them has to
-pass before a release is tagged.

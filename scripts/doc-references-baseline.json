@@ -405,16 +405,6 @@
       "doc": "docs/architecture/ws4-mac-validation-runbook.md",
       "kind": "workflow",
       "target": ".simdrive/journeys/ws4-ipad-on-mac-exit-adobe-drm.yaml"
-    },
-    {
-      "doc": "docs/regression-suite/CARPLAY-FEASIBILITY.md",
-      "kind": "script",
-      "target": "scripts/regression-carplay-cell.sh"
-    },
-    {
-      "doc": "docs/regression-suite/CARPLAY-FEASIBILITY.md",
-      "kind": "script",
-      "target": "scripts/regression_xcresult_findings.py"
     }
   ]
 }

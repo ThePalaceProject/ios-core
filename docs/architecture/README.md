@@ -32,7 +32,7 @@ where a new document belongs.
 ## Area verification checklists
 
 What to re-verify when you touch an area, and which seams are load-bearing.
-Refresh the relevant one before a swarm or rigorous-fix run.
+Refresh the relevant one before changing code in that area.
 
 | Area | Checklist |
 |---|---|
