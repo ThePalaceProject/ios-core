@@ -16,7 +16,7 @@ import PalaceUtilities
 /// download task and fails the books that are still downloading.
 ///
 /// Owned by `AppContainer`, built against the container's download center by
-/// `AppContainer.makeDownloadNetworkLossMonitor(for:connectivity:)`. It reads
+/// `AppContainer.makeDownloadNetworkLossMonitor(for:)`. It reads
 /// the center's active-download maps and the registry, and reports failures
 /// through `failDownload`; it holds no reference to the center itself.
 @MainActor
