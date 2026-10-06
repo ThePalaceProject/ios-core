@@ -11,6 +11,20 @@ import Foundation
 
 /// Transfers the non-Sendable completion across the delivery-queue hop. Safe:
 /// it is called exactly once, on `TPPRequestExecutorMock.deliveryQueue`.
+/// Resume-once guard for the async bridge above. A continuation resumed twice
+/// traps, and a double that fires its callback twice is a thing tests do
+/// deliberately.
+private final class MockResultCarrier: @unchecked Sendable {
+    private let lock = NSLock()
+    private var used = false
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if used { return false }
+        used = true
+        return true
+    }
+}
+
 private struct SendableResultCompletion: @unchecked Sendable {
     let completion: (NYPLResult<Data>) -> Void
 }
@@ -106,6 +120,23 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
         // Drop any join hook so a stale closure can't fire a torn-down
         // expectation on a later test's request.
         onExecuteRequest = nil
+    }
+
+    /// The protocol's only request entry point. Implemented over this double's
+    /// own callback machinery so the off-main delivery below is preserved: the
+    /// real executor's sessions use `delegateQueue: nil`, and a double that
+    /// delivered on main could not observe the PP-5299 class at all.
+    func execute(_ req: URLRequest,
+                 enableTokenRefresh: Bool,
+                 accountId: String?) async -> NYPLResult<Data> {
+        let carried: SendableNetworkResult = await withCheckedContinuation { continuation in
+            let once = MockResultCarrier()
+            _ = executeRequest(req, enableTokenRefresh: enableTokenRefresh) { result in
+                guard once.claim() else { return }   // a double is allowed to fire twice
+                continuation.resume(returning: SendableNetworkResult(result: result))
+            }
+        }
+        return carried.result
     }
 
     func executeRequest(_ req: URLRequest,

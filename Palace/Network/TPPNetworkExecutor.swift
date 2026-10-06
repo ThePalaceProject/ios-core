@@ -16,6 +16,18 @@ import PalaceNetwork
 // RIPPLES.md as the preferred upstream fix.
 @preconcurrency import PalaceAuth
 
+/// Carries a result across the async path's single continuation.
+///
+/// `NYPLResult` holds a `URLResponse?` and an existential `TPPUserFriendlyError`,
+/// neither `Sendable`, so it cannot cross a continuation boundary unaided.
+/// Confining that one unsafe claim here is the point: it is what lets every
+/// caller `await` a request with no carrier and no hop of its own, which is the
+/// debt the async path exists to retire. Safe because the box resumes exactly
+/// once and the value is read on the awaiting actor, never concurrently.
+struct SendableNetworkResult: @unchecked Sendable {
+    let result: NYPLResult<Data>
+}
+
 enum NYPLResult<SuccessInfo> {
     case success(SuccessInfo, URLResponse?)
     case failure(TPPUserFriendlyError, URLResponse?)
@@ -456,6 +468,75 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         }
 
         return performDataTask(with: req, accountId: accountId, completion: completion)
+    }
+
+    /// Native async request. The only request entry point on
+    /// `TPPRequestExecuting`, and the reason the completion forms were removed
+    /// from it: a completion typed `(NYPLResult<Data>) -> Void` cannot say
+    /// where it runs, so a closure formed in a `@MainActor` context inherits
+    /// that isolation, type-checks, and is then invoked on a background queue
+    /// — the PP-5299 crash class. A continuation resumes on the awaiting
+    /// caller's actor, so there is nothing for a caller to remember.
+    ///
+    /// The decision logic mirrors the callback `executeRequest` deliberately,
+    /// because the account resolution, the SAML short-circuit and the
+    /// near-expiry refresh are behaviour, not plumbing. The one continuation
+    /// sits where the real boundary is — URLSession's callback — rather than
+    /// over a public API, and `setTask` makes the await cancellable, which a
+    /// wrapper over `executeRequest` could not be: that form returns its task
+    /// to its caller and the wrapper discards it.
+    ///
+    /// Returns `NYPLResult` rather than throwing: the failure case carries the
+    /// `URLResponse`, and sign-in reads problem documents off error responses.
+    func execute(_ req: URLRequest,
+                 enableTokenRefresh: Bool,
+                 accountId requestedAccountId: String?) async -> NYPLResult<Data> {
+        let accountId = requestedAccountId ?? accountsManager.currentAccountId
+        let userAccount = accountId.flatMap { accountsManager.userAccount(for: $0) }
+            ?? accountsManager.currentUserAccount
+
+        // SAML auth uses cookies, not tokens — proceed directly.
+        if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
+            return await dataTask(req, accountId: accountId)
+        }
+
+        if enableTokenRefresh,
+           userAccount.authTokenNearExpiry,
+           let authDef = userAccount.authDefinition,
+           authDef.isToken || authDef.isOauth,
+           authDef.tokenURL != nil {
+            Log.info(#file, "Token near expiry - proactively refreshing before request")
+            // Guarded by the same box as the request below: the refresh
+            // callback firing twice would otherwise trap on a double resume.
+            let refreshed = CancellableContinuationBox<Void>()
+            _ = try? await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+                refreshed.install(c)
+                refreshTokenAndResume(task: nil, accountId: accountId) { _ in
+                    refreshed.finish(.success(()))
+                }
+            }
+        }
+
+        return await dataTask(req, accountId: accountId)
+    }
+
+    /// The single continuation in the async path: URLSession's completion is
+    /// the boundary, so this is where bridging belongs.
+    private func dataTask(_ req: URLRequest, accountId: String?) async -> NYPLResult<Data> {
+        let box = CancellableContinuationBox<SendableNetworkResult>()
+        let bridged: SendableNetworkResult? = try? await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = performDataTask(with: req, accountId: accountId) { result in
+                    box.finish(.success(SendableNetworkResult(result: result)))
+                }
+                box.setTask(task)
+            }
+        } onCancel: {
+            box.cancel()
+        }
+        return bridged?.result
+            ?? .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled), nil)
     }
 
     private func performDataTask(with request: URLRequest,

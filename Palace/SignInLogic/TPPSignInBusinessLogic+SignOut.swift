@@ -109,7 +109,7 @@ extension TPPSignInBusinessLogic {
     /// Main entry point for logging a user out.
     ///
     /// - Important: Requires to be called from the main thread.
-    func performLogOut() {
+    func performLogOut() async {
         guard !isSignOutInProgress else {
             Log.warn(#file, "Sign-out already in progress — ignoring re-entrant call")
             return
@@ -167,21 +167,21 @@ extension TPPSignInBusinessLogic {
         // DOES opt in, because a patron borrowing with a dead token genuinely
         // needs to re-authenticate and a sign-in prompt is the right answer
         // there. Signing out is the one flow where it never is.
-        // The executor builds its sessions with `delegateQueue: nil`, so this
-        // callback arrives off the main actor, while both handlers below are
-        // main-actor isolated. The callback inherits isolation from this method,
-        // which is why calling them directly type-checks; the inherited
-        // isolation is not the isolation it actually runs under. Hop, so the
-        // call matches where it runs (PP-5301).
-        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
+        // PP-5301: awaited directly rather than wrapped in a `Task`. This
+        // method is `async`, so a Task here would let it return as soon as the
+        // request was *started* — callers awaiting the sign-out would race it.
+        // Both handlers below are main-actor isolated and this method is on a
+        // `@MainActor` type, so the await resumes there: no hop to remember,
+        // which is what let the class recur.
+        do {
+            let result = await networker.execute(
+                request, enableTokenRefresh: false, accountId: libraryAccountID)
             switch result {
             case .success(let data, let response):
-                Task { @MainActor in
-                    self?.processLogOut(data: data,
-                                        response: response,
-                                        for: request,
-                                        barcode: barcode)
-                }
+                processLogOut(data: data,
+                              response: response,
+                              for: request,
+                              barcode: barcode)
             case .failure(let errorWithProblemDoc, let response):
                 // Do NOT call removeAll() here. Credential cleanup
                 // is handled by completeLogOutProcess() after device
@@ -189,12 +189,10 @@ extension TPPSignInBusinessLogic {
                 // 1. Licensor wiped before deauthorizeDevice() could use it
                 // 2. Double removeAll() → double notification → UI corruption
                 // 3. Race condition with re-authentication
-                Task { @MainActor in
-                    self?.processLogOutError(errorWithProblemDoc,
-                                             response: response,
-                                             for: request,
-                                             barcode: barcode)
-                }
+                processLogOutError(errorWithProblemDoc,
+                                   response: response,
+                                   for: request,
+                                   barcode: barcode)
             }
         }
 

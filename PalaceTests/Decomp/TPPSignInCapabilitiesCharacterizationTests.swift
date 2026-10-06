@@ -242,12 +242,12 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
 
     // B12 — logIn(basic) captures creds, enters validating, and fires the
     // credential-validation request.
-    func test_logIn_basicAuth_capturesCredentials_entersValidating_andFiresRequest() {
+    func test_logIn_basicAuth_capturesCredentials_entersValidating_andFiresRequest() async {
         uiDelegate.username = "login-bc"
         uiDelegate.pin = "login-pin"
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertEqual(businessLogic.capturedBarcode, "login-bc")
         XCTAssertEqual(businessLogic.capturedPin, "login-pin")
@@ -268,12 +268,12 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
 
     // B13 — logIn(OIDC) captures the barcode and notifies willSignIn but does
     // NOT validate directly (it hands off to the external web-auth session).
-    func test_logIn_oidc_capturesBarcode_notifiesWillSignIn_doesNotValidateDirectly() {
+    func test_logIn_oidc_capturesBarcode_notifiesWillSignIn_doesNotValidateDirectly() async {
         uiDelegate.username = "oidc-u"
         uiDelegate.pin = nil
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
         drainMainQueue()   // willSignIn is dispatched async
 
         XCTAssertEqual(businessLogic.capturedBarcode, "oidc-u")

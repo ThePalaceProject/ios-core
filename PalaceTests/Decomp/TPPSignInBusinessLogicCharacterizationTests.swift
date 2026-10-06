@@ -122,7 +122,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     // return nil; validateCredentials must surface a validation error to the UI
     // and fire NO network call. Catches the `guard let req = makeRequest` regression
     // (removing/negating it would proceed to executeRequest).
-    func test_validateCredentials_whenRequestUnbuildable_surfacesError_andFiresNoNetworkCall() {
+    func test_validateCredentials_whenRequestUnbuildable_surfacesError_andFiresNoNetworkCall() async {
         let recording = RecordingSignInUIDelegate()
         let blogic = TPPSignInBusinessLogic(
             libraryAccountID: "totally-unknown-library",   // resolves to detail-less Account
@@ -138,7 +138,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
         XCTAssertNil(blogic.makeRequest(for: .signIn, context: "precondition"),
                      "precondition: makeRequest must be nil for a detail-less library")
 
-        blogic.validateCredentials()
+        await blogic.validateCredentials()
         drainMainQueue()   // the delegate error hop runs via asyncIfNeeded
 
         XCTAssertTrue(networkExecutor.executedRequestURLs.isEmpty,
@@ -154,10 +154,10 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     // A3 — validateCredentials success path routes makeRequest's URL through the
     // executor. Pins the makeRequest→executeRequest wiring at the /patrons/me
     // URL. Catches a change that fires the wrong URL or skips the request.
-    func test_validateCredentials_basicAuth_firesUserProfileRequest() {
+    func test_validateCredentials_basicAuth_firesUserProfileRequest() async {
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()   // executeRequest records URL synchronously
+        await businessLogic.validateCredentials()   // executeRequest records URL synchronously
 
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
                        "validateCredentials must fire exactly one credential-validation request")
@@ -171,13 +171,13 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     // NOT report didReceiveCredentials. Distinct from the callback-order test:
     // here we prove the error CONTENT is surfaced (recording delegate). Catches a
     // regression that swaps the success/failure arms of the executor result switch.
-    func test_validateCredentials_httpFailure_surfacesValidationError_andNoCredentialsReceived() {
+    func test_validateCredentials_httpFailure_surfacesValidationError_andNoCredentialsReceived() async {
         let recording = RecordingSignInUIDelegate()
         businessLogic.uiDelegate = recording
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         networkExecutor.forceFailureStatusCode = 401
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         drainMainQueue()
 
         XCTAssertEqual(recording.validationErrorCount, 1,
@@ -239,12 +239,12 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     // A17 — validateCredentials SUCCESS arm reports didReceiveCredentials (so the
     // UI can show its DRM spinner). Positive complement of A4; catches a regression
     // that drops the businessLogicDidReceiveCredentials call on success.
-    func test_validateCredentials_basicAuthSuccess_reportsDidReceiveCredentials() {
+    func test_validateCredentials_basicAuthSuccess_reportsDidReceiveCredentials() async {
         let recording = RecordingSignInUIDelegate()
         businessLogic.uiDelegate = recording
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         drainMainQueue()
 
         XCTAssertEqual(recording.didReceiveCredentialsCount, 1,

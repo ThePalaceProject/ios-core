@@ -313,30 +313,30 @@ final class OIDCLoginRoutingTests: XCTestCase {
         super.tearDown()
     }
 
-    func testLogIn_withOIDC_callsWillSignIn() {
+    func testLogIn_withOIDC_callsWillSignIn() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertTrue(uiDelegate.didCallWillSignIn,
                       "OIDC logIn should trigger businessLogicWillSignIn")
     }
 
-    func testLogIn_withOIDC_doesNotValidateCredentialsDirectly() {
+    func testLogIn_withOIDC_doesNotValidateCredentialsDirectly() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertFalse(businessLogic.isValidatingCredentials,
                        "OIDC flow should NOT directly call validateCredentials; it uses ASWebAuthenticationSession")
     }
 
-    func testLogIn_withOIDC_capturesCredentials() {
+    func testLogIn_withOIDC_capturesCredentials() async {
         uiDelegate.username = "oidc-user"
         uiDelegate.pin = nil
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertEqual(businessLogic.capturedBarcode, "oidc-user")
     }
@@ -1454,7 +1454,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testSignOut_withOIDC_clearsAuthToken() {
+    func testSignOut_withOIDC_clearsAuthToken() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1471,8 +1471,8 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "OIDC sign-out must clear the auth token")
@@ -1483,7 +1483,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
     /// OIDC sign-out now triggers an explicit browser-based logout (the
     /// ASWebAuthenticationSession step is skipped in the test runner, so this
     /// verifies the rest of the pipeline still completes cleanly).
-    func testSignOut_withOIDC_triggersExplicitLogoutFlowAndCompletesDeauthorization() {
+    func testSignOut_withOIDC_triggersExplicitLogoutFlowAndCompletesDeauthorization() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1499,15 +1499,15 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
                       "OIDC sign-out must notify the UI delegate when complete")
         XCTAssertNil(businessLogic.selectedIDP)
     }
 
-    func testSignOut_withOIDC_clearsPatronInfo() {
+    func testSignOut_withOIDC_clearsPatronInfo() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1523,14 +1523,14 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.patron,
                      "OIDC sign-out must clear patron info")
     }
 
-    func testRegression_signOut_withOAuth_stillClearsToken() {
+    func testRegression_signOut_withOAuth_stillClearsToken() async {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1546,14 +1546,14 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "OAuth sign-out must still work after OIDC changes")
     }
 
-    func testRegression_signOut_withSAML_stillClearsCookies() {
+    func testRegression_signOut_withSAML_stillClearsCookies() async {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
         let cookies = [HTTPCookie(properties: [
             .domain: "idp.example.com", .path: "/",
@@ -1573,14 +1573,14 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "SAML sign-out must still clear tokens after OIDC changes")
     }
 
-    func testSignOut_resetsInFlightAuthState() {
+    func testSignOut_resetsInFlightAuthState() async {
         // performLogOut now dispatches .signOutCompleted after userAccount.removeAll().
         // Verifies the in-flight reducer state (authToken, capturedBarcode, ignoreSignedInState,
         // isLoggingInAfterSignUp) is fully reset — the next sign-in starts from a clean slate.
@@ -1601,8 +1601,8 @@ final class OIDCSignOutRegressionTests: XCTestCase {
 
         let exp = expectation(description: "Sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.authToken, "signOut must clear in-flight authToken")
         XCTAssertNil(businessLogic.capturedBarcode)
