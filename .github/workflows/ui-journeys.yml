@@ -86,7 +86,12 @@ jobs:
           # Diagnostic: if the catalog has not rendered 8s after the app starts,
           # take two stack samples 10s apart, to tell a wait from a slow loop.
           nohup bash -c '
-            for _ in $(seq 1 1200); do pid=$(pgrep -n -f "Palace.app/Palace"); [ -n "$pid" ] && break; sleep 1; done
+            # The PID comes from the launch line the app logs itself: a
+            # process-name match also hits the build tools that link Palace.app.
+            for _ in $(seq 1 1200); do
+              pid=$(grep -m1 -E "MockBackend launch:" "$RUNNER_TEMP/palace-app.log" | sed -nE "s/.*Palace\[([0-9]+):.*/\1/p")
+              [ -n "$pid" ] && break; sleep 1
+            done
             [ -n "$pid" ] || exit 0
             for n in 1 2; do
               sleep $(( n == 1 ? 8 : 10 ))
