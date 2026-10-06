@@ -220,3 +220,19 @@ _REPORT_STEPS_THAT_MAY_FAIL = {
 def test_only_listed_report_steps_can_fail_the_required_check():
     can_fail = {s.get("name") for s in _jobs()["report"]["steps"] if not s.get("continue-on-error")}
     assert can_fail == _REPORT_STEPS_THAT_MAY_FAIL
+
+
+def test_every_floor_scope_is_either_blocking_or_advisory():
+    """A new scope in coverage-floors.json must be placed on one side on purpose."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    import enforce_coverage_floors as ecf
+    floors = json.loads((REPO / "scripts" / "coverage-floors.json").read_text())
+    scopes = {k for k in floors if not k.startswith("_") and k != "unmeasured"}
+    assert scopes == {"overall", "modules"} | set(ecf.ADVISORY_SCOPES)
+    assert not {"overall", "modules"} & set(ecf.ADVISORY_SCOPES)
+
+
+def test_floor_step_compares_the_recorded_floors():
+    run = _step("report", "Enforce Coverage Floors")["run"]
+    assert "--floors scripts/coverage-floors.json" in run
+    assert "--baseline-only" not in run and "--write-baseline" not in run

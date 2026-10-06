@@ -95,16 +95,60 @@ def test_module_below_its_floor_fails(tmp_path):
     assert any(ln.split()[:1] == ["TPPBook"] and ln.split()[-1] == "FAIL" for ln in p.stdout.splitlines())
 
 
-def test_package_below_its_floor_fails(tmp_path):
-    p = _run(tmp_path, _coverage(**dict(GOOD, packages={"PalaceAuth": _scope(10, 40)})), FLOORS)
-    assert p.returncode == 1
-    assert any(ln.startswith("pkg:PalaceAuth") and ln.split()[-1] == "FAIL" for ln in p.stdout.splitlines())
+def _row(stdout, name):
+    return next(ln.split() for ln in stdout.splitlines() if ln.split()[:1] == [name])
 
 
-def test_host_package_below_its_floor_fails(tmp_path):
-    p = _run(tmp_path, _coverage(**dict(GOOD, host={"PalaceAuth": _scope(0, 41)})), FLOORS)
-    assert p.returncode == 1
-    assert any(ln.startswith("host:PalaceAuth") and ln.split()[-1] == "FAIL" for ln in p.stdout.splitlines())
+@pytest.mark.parametrize("covered,code,status", [
+    (500, 0, "PASS"),     # at the floor (0.5 of 1000 lines)
+    (486, 0, "WITHIN"),   # 1.4 points under
+    (485, 0, "WITHIN"),   # exactly the tolerance under
+    (484, 1, "FAIL"),     # 1.6 points under
+])
+def test_app_module_fails_only_beyond_the_tolerance(tmp_path, covered, code, status):
+    """Run-to-run variance on identical code reached 1.2 points (#1601)."""
+    p = _run(tmp_path, _coverage(**dict(GOOD, files=[("TPPBook.swift", covered, 1000)])), FLOORS)
+    assert p.returncode == code, p.stdout + p.stderr
+    assert _row(p.stdout, "TPPBook")[3] == status
+
+
+def test_overall_fails_only_beyond_the_tolerance(tmp_path):
+    assert _run(tmp_path, _coverage(testable=48.6, **GOOD), FLOORS).returncode == 0
+    assert _run(tmp_path, _coverage(testable=48.4, **GOOD), FLOORS).returncode == 1
+
+
+def test_tolerance_is_one_and_a_half_points():
+    assert ecf.APP_FLOOR_TOLERANCE == pytest.approx(0.015)
+
+
+@pytest.mark.parametrize("scope", ["packages", "host"])
+def test_package_five_points_below_its_floor_is_reported_but_does_not_fail(tmp_path, scope):
+    """Package measurements vary between runs of identical code; they are advisory."""
+    low = {"PalaceAuth": _scope(18, 40)}  # 45%, floor 50%
+    p = _run(tmp_path, _coverage(**dict(GOOD, **{scope: low})), FLOORS)
+    assert p.returncode == 0, p.stdout + p.stderr
+    prefix = "pkg:" if scope == "packages" else "host:"
+    assert _row(p.stdout, prefix + "PalaceAuth")[3:] == ["FAIL", "advisory"]
+    assert "advisory" in p.stdout.split("Coverage gate:")[1]
+
+
+def test_package_module_below_its_floor_is_advisory(tmp_path):
+    floors = dict(FLOORS, package_modules={"TPPBookRegistry": 0.5})
+    low = _coverage(**dict(GOOD, files=[("TPPBook.swift", 80, 100), ("TPPBookRegistry.swift", 1, 10)]))
+    p = _run(tmp_path, low, floors)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert _row(p.stdout, "TPPBookRegistry")[3:] == ["FAIL", "advisory"]
+
+
+def test_app_violation_fails_even_when_packages_pass_and_vice_versa(tmp_path):
+    both = _coverage(**dict(GOOD, files=[("TPPBook.swift", 40, 100)], packages={"PalaceAuth": _scope(10, 40)}))
+    assert _run(tmp_path, both, FLOORS).returncode == 1
+
+
+def test_incomplete_report_still_exits_three_with_advisory_packages_low(tmp_path):
+    cov = _coverage(status="incomplete", reasons=["no test result bundle"],
+                    **dict(GOOD, packages={"PalaceAuth": _scope(1, 40)}))
+    assert _run(tmp_path, cov, FLOORS).returncode == 3
 
 
 def test_package_with_a_floor_but_no_data_is_missing_and_fails(tmp_path):
@@ -114,10 +158,12 @@ def test_package_with_a_floor_but_no_data_is_missing_and_fails(tmp_path):
 
 
 def test_violation_rows_keep_the_four_column_shape_verify_pr_parses(tmp_path):
-    """verify-pr.sh reads failing modules with `NF == 4 && $4 == "FAIL"`."""
-    p = _run(tmp_path, _coverage(**dict(GOOD, packages={"PalaceAuth": _scope(10, 40)})), FLOORS)
-    row = next(ln for ln in p.stdout.splitlines() if ln.startswith("pkg:PalaceAuth"))
-    assert len(row.split()) == 4
+    """verify-pr.sh reads failing modules with `NF == 4 && $4 == "FAIL"`; an
+    advisory row has a fifth column so it is shown but not counted."""
+    p = _run(tmp_path, _coverage(**dict(GOOD, files=[("TPPBook.swift", 40, 100)],
+                                        packages={"PalaceAuth": _scope(10, 40)})), FLOORS)
+    assert len(_row(p.stdout, "TPPBook")) == 4
+    assert len(_row(p.stdout, "pkg:PalaceAuth")) == 5
 
 
 def test_module_matching_several_files_uses_line_counts_not_a_mean_of_percentages():
@@ -128,12 +174,12 @@ def test_module_matching_several_files_uses_line_counts_not_a_mean_of_percentage
 
 def test_package_floor_compares_testable_line_counts():
     cov = _coverage(packages={"PalaceAuth": _scope(1, 3)})
-    rows, ok = ecf.evaluate(cov, {"overall": 0.0, "modules": {}, "packages": {"PalaceAuth": 0.3333}},
-                            baseline_only=False)
-    assert ok
-    rows, ok = ecf.evaluate(cov, {"overall": 0.0, "modules": {}, "packages": {"PalaceAuth": 0.34}},
-                            baseline_only=False)
-    assert not ok
+    def status(floor):
+        rows, _ = ecf.evaluate(cov, {"overall": 0.0, "modules": {}, "packages": {"PalaceAuth": floor}},
+                               baseline_only=False)
+        return next(r["status"] for r in rows if r["module"] == "pkg:PalaceAuth")
+    assert status(0.3333) == "PASS"
+    assert status(0.34) == "FAIL"
 
 
 def test_report_that_collected_no_package_data_compares_app_floors_only(tmp_path):
@@ -154,12 +200,8 @@ def test_report_that_collected_app_suite_packages_still_fails_a_missing_one(tmp_
     assert any(ln.startswith("pkg:PalaceAuth") and "MISSING" in ln for ln in p.stdout.splitlines())
 
 
-def test_package_module_floor_is_gated_when_packages_were_collected(tmp_path):
+def test_package_module_with_no_data_fails_when_packages_were_collected(tmp_path):
     floors = dict(FLOORS, package_modules={"TPPBookRegistry": 0.5})
-    low = _coverage(**dict(GOOD, files=[("TPPBook.swift", 80, 100), ("TPPBookRegistry.swift", 1, 10)]))
-    p = _run(tmp_path, low, floors)
-    assert p.returncode == 1
-    assert any(ln.split()[:1] == ["TPPBookRegistry"] and ln.split()[-1] == "FAIL" for ln in p.stdout.splitlines())
     absent = _coverage(**GOOD)
     p = _run(tmp_path, absent, floors)
     assert p.returncode == 1

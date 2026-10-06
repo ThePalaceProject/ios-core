@@ -49,7 +49,7 @@ Last updated: 2026-07-08
 ### Test Quality Enforcement
 - **Linter**: `scripts/lint-test-quality.py` — detects fluff (set-then-assert), shallow (no real logic), missing asserts
 - **Mutation testing**: `scripts/palace_mutate.py` — comparison, boolean, boundary, return-value operators; 10 mutants/file default
-- **Coverage floors**: `scripts/enforce_coverage_floors.py` + `scripts/coverage-floors.json` — app overall, per-module and per-package floors. Checked on every PR; a violation or incomplete coverage data fails the required `build-and-test` check (see `scripts/README_coverage_floors.md`)
+- **Coverage floors**: `scripts/enforce_coverage_floors.py` + `scripts/coverage-floors.json` — app overall, per-module and per-package floors. Checked on every PR. An app floor (overall, per-module) more than 1.5 points below its value, or incomplete coverage data, fails the required `build-and-test` check; package floors are advisory because their measurements vary between runs of identical code (see `scripts/README_coverage_floors.md`)
 - **Rule**: Every test must kill at least one mutant. Tautology and coverage-only tests are banned.
 
 ### Credibility criterion (applies to ALL tests, including E2E and simdrive replays)
@@ -103,7 +103,7 @@ For unit/integration tests this criterion is enforced by mutation testing + the 
 - **Covers**: BookDetail, AudiobookPlayer, Catalog, MyBooks, Search, Settings, Reservations, Holds, PDF, Facets
 
 ### CI Workflows
-- `unit-testing.yml` — XCTest + coverage (app and local packages) + coverage floors (blocking: a violation or INCOMPLETE coverage data fails `build-and-test`; incomplete is never a pass)
+- `unit-testing.yml` — XCTest + coverage (app and local packages) + coverage floors (app floors block beyond a 1.5-point tolerance, package floors are advisory, and INCOMPLETE coverage data fails `build-and-test`; incomplete is never a pass)
 - `ui-testing.yml` — E2E test runner (manual trigger)
 - `ledger.yml` — Ledger + QAAtlas + AccessLint (non-blocking)
 

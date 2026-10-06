@@ -65,10 +65,12 @@ without failing a run:
 
 - Build (Palace and Palace-noDRM targets)
 - Unit tests
-- Coverage floors (`scripts/enforce_coverage_floors.py`), blocking: a floor
-  violation fails `build-and-test`, and so does incomplete coverage data (for
-  example a missing result bundle or a planned test class that did not run),
-  which is reported as INCOMPLETE rather than as a pass. See
+- Coverage floors (`scripts/enforce_coverage_floors.py`): an app floor (overall
+  or per-module) more than 1.5 points below its value fails `build-and-test`,
+  and so does incomplete coverage data (for example a missing result bundle or
+  a planned test class that did not run), which is reported as INCOMPLETE
+  rather than as a pass. Package floors are reported but advisory, because
+  their measurements vary between runs of identical code. See
   [`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md).
 - Screenshot captures, stored as artifacts with no comparison gate (the JSON
   contract-snapshot tests run with the unit tests and do block)

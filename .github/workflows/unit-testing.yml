@@ -958,9 +958,11 @@ jobs:
             exit "$RC"
           fi
 
-      # Coverage floor gate. Blocking: a violation exits 1 and incomplete data
-      # exits 3, either fails this job, and `build-and-test` reads the outcome.
-      # The upload steps below run on always() so a failure here keeps them.
+      # Coverage floor gate. An app floor (overall, modules) more than the
+      # enforcer's tolerance below its floor exits 1, and incomplete data exits
+      # 3; either fails this job, and `build-and-test` reads the outcome. Package
+      # rows are advisory. The uploads below run on always() so a failure here
+      # keeps them.
       - name: Enforce Coverage Floors
         if: always()
         id: coverage_gate

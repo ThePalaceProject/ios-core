@@ -6,8 +6,8 @@ Reads coverage-data.json (produced by scripts/coverage-report.py) and compares
 per-module/per-file/per-target coverage against scripts/coverage-floors.json.
 
 Exit codes:
-  0 — all floors met
-  1 — one or more floors violated
+  0 — every blocking floor met (advisory rows may still read FAIL)
+  1 — a blocking floor violated, or a floor with no data
   2 — input error (missing/empty/invalid coverage data)
   3 — the coverage data is incomplete (`status` is not `complete`); floors are
       not compared, because a partial measurement reads as a coverage drop
@@ -15,8 +15,14 @@ Exit codes:
 Floors:
   overall        app testable coverage (Palace/ outside Palace/Packages)
   modules        a file stem, or several files with that stem, in the app suite
+  package_modules  a module whose source moved into a local package
   packages       a local package's Sources, measured by the app suite
   host_packages  a local package's Sources, measured by its own `swift test`
+
+`overall` and `modules` block, failing only below floor - APP_FLOOR_TOLERANCE.
+The package scopes are advisory: a row below its floor prints FAIL with an
+`advisory` column and does not change the exit code. The coverage floors
+README in this directory says why.
 
 Usage:
   python3 scripts/enforce_coverage_floors.py coverage-data.json
@@ -30,6 +36,17 @@ import math
 import os
 import sys
 from typing import Dict, Any, List, Tuple, Optional
+
+
+# Repeated CI runs of one commit measured the same rows up to 1.2 points apart
+# (#1601), so an app floor fails only when coverage is more than this fraction
+# below it. Floors stay as recorded; the margin lives here, in one place.
+APP_FLOOR_TOLERANCE = 0.015
+
+# Floor scopes whose violations are reported but do not fail the gate. Their
+# measurements varied between runs of identical code with no slack in the
+# floors (#1601). A floor with no data still fails in every scope.
+ADVISORY_SCOPES = ("package_modules", "packages", "host_packages")
 
 
 def log(msg: str) -> None:
@@ -178,6 +195,19 @@ def build_baseline(coverage: Dict, modules: Dict[str, float], metric: str = "tes
     return baseline
 
 
+def app_status(actual: float, floor: float) -> str:
+    """PASS at or above the floor, WITHIN up to the tolerance below it, else FAIL."""
+    if actual + 1e-9 >= floor:
+        return "PASS"
+    if actual + 1e-9 >= floor - APP_FLOOR_TOLERANCE:
+        return "WITHIN"
+    return "FAIL"
+
+
+def advisory_status(actual: float, floor: float) -> str:
+    return "PASS" if actual + 1e-9 >= floor else "FAIL"
+
+
 def format_pct(v: Optional[float]) -> str:
     if v is None:
         return "  N/A "
@@ -194,7 +224,7 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
     if baseline_only:
         overall_floor = overall_actual
 
-    overall_status = "PASS" if overall_actual + 1e-9 >= overall_floor else "FAIL"
+    overall_status = app_status(overall_actual, overall_floor)
     if overall_status == "FAIL":
         all_pass = False
     rows.append({
@@ -203,6 +233,7 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
         "actual": overall_actual,
         "status": overall_status,
         "missing": False,
+        "advisory": False,
     })
 
     unmeasured = floors.get("unmeasured", {})
@@ -223,11 +254,12 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
                 "actual": None,
                 "status": "MISSING",
                 "missing": True,
+                "advisory": False,
             })
             all_pass = False
             continue
         effective_floor = actual if baseline_only else float(floor)
-        status = "PASS" if actual + 1e-9 >= effective_floor else "FAIL"
+        status = app_status(actual, effective_floor)
         if status == "FAIL":
             all_pass = False
         rows.append({
@@ -236,22 +268,22 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
             "actual": actual,
             "status": status,
             "missing": False,
+            "advisory": False,
         })
 
-    # Modules whose source moved into a local package: gated like `modules`,
-    # but only when the run collected package source.
+    # Modules whose source moved into a local package: advisory like the
+    # package scopes, compared only when the run collected package source.
     if collected(coverage, "expected_packages"):
         for name, floor in floors.get("package_modules", {}).items():
             actual = find_module_coverage(coverage, name)
             effective_floor = actual if (baseline_only and actual is not None) else float(floor)
             if actual is None:
                 status = "MISSING"
-            else:
-                status = "PASS" if actual + 1e-9 >= effective_floor else "FAIL"
-            if status != "PASS":
                 all_pass = False
+            else:
+                status = advisory_status(actual, effective_floor)
             rows.append({"module": name, "floor": effective_floor, "actual": actual,
-                         "status": status, "missing": actual is None})
+                         "status": status, "missing": actual is None, "advisory": actual is not None})
 
     for floors_key, scope_key, prefix, expected_key in PACKAGE_SCOPES:
         if not collected(coverage, expected_key):
@@ -264,15 +296,13 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
             actual = find_package_coverage(coverage, scope_key, name)
             if actual is None:
                 rows.append({"module": prefix + name, "floor": float(floor), "actual": None,
-                             "status": "MISSING", "missing": True})
+                             "status": "MISSING", "missing": True, "advisory": False})
                 all_pass = False
                 continue
             effective_floor = actual if baseline_only else float(floor)
-            status = "PASS" if actual + 1e-9 >= effective_floor else "FAIL"
-            if status == "FAIL":
-                all_pass = False
             rows.append({"module": prefix + name, "floor": effective_floor, "actual": actual,
-                         "status": status, "missing": False})
+                         "status": advisory_status(actual, effective_floor), "missing": False,
+                         "advisory": True})
 
     return rows, all_pass
 
@@ -290,10 +320,15 @@ def print_table(rows: List[Dict]) -> None:
         if status == "PASS":
             status_s = green("PASS   ")
         elif status == "FAIL":
-            status_s = red("FAIL   ")
+            status_s = (yellow if r.get("advisory") else red)("FAIL   ")
+        elif status == "WITHIN":
+            status_s = yellow("WITHIN ")
         else:
             status_s = yellow("MISSING")
-        print(f"{r['module'].ljust(width)}  {floor_s:>7}  {actual_s:>7}  {status_s}")
+        # The fifth column keeps an advisory FAIL out of verify-pr.sh's
+        # `NF == 4 && $4 == "FAIL"` count of blocking violations.
+        suffix = " advisory" if r.get("advisory") else ""
+        print(f"{r['module'].ljust(width)}  {floor_s:>7}  {actual_s:>7}  {status_s}{suffix}".rstrip())
 
 
 def main() -> int:
@@ -378,8 +413,15 @@ def main() -> int:
         log(f"Warning: {len(missing)} module(s) not found in coverage data: "
             f"{', '.join(missing)}")
 
+    advisory = [r["module"] for r in rows if r.get("advisory") and r["status"] == "FAIL"]
+    within = [r["module"] for r in rows if r["status"] == "WITHIN"]
+    if within:
+        print(f"\nWithin the {APP_FLOOR_TOLERANCE * 100:.1f}-point tolerance: {', '.join(within)}")
+    if advisory:
+        print(f"Below an advisory floor (not blocking): {', '.join(advisory)}")
     if all_pass:
-        print(green("\nCoverage gate: PASS"))
+        note = f" ({len(advisory)} advisory below floor)" if advisory else ""
+        print(green(f"\nCoverage gate: PASS{note}"))
         return 0
     print(red("\nCoverage gate: FAIL"))
     return 1
