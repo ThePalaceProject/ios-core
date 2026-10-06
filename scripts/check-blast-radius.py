@@ -134,46 +134,54 @@ _NON_PROD_PATH_SUBSTRINGS = (
 
 
 _IF_RE = re.compile(r"^\s*#if\b")
+_POSITIVE_IF_DEBUG_RE = re.compile(r"^\s*#if\s+DEBUG\b")
+_ELSE_RE = re.compile(r"^\s*#(?:else|elseif)\b")
 _ENDIF_RE = re.compile(r"^\s*#endif\b")
 
 
 def _launch_gated_debug_blocks(added: list[_AddedLine]) -> set[tuple[str, int]]:
-    """`(path, line)` of each added `#if DEBUG` whose own block reads the
+    """`(path, line)` of each added `#if DEBUG` whose DEBUG branch reads the
     UI-test launch marker in code.
 
-    Walks each file's added lines in order, tracking `#if`/`#endif` nesting and
-    `/* ... */` comments. A gap in line numbers means unchanged lines sit in
-    between, which may close the block, so open blocks end there. Strings that
-    contain `//` or `/*` are not parsed; that can only hide a marker.
+    Walks each file's added lines in order, tracking `#if`/`#else`/`#endif`
+    nesting and `/* ... */` comments. A gap in line numbers means unchanged
+    lines sit in between, which may close the block, so open blocks end there.
+    String literals and nested block comments are not parsed, so text inside a
+    string can hide or imitate a comment, an `#endif` or the marker; the
+    marker's type exists only under DEBUG, so code that misuses that compiles
+    only in DEBUG builds.
     """
     gated: set[tuple[str, int]] = set()
     path: str | None = None
     previous_line = 0
-    frames: list[tuple[bool, int]] = []   # (is a DEBUG block, its #if line)
+    frames: list[list] = []   # [is the DEBUG branch, the #if line]
     in_comment = False
     for entry in added:
         if entry.file_path != path or entry.line_no != previous_line + 1:
             path, frames, in_comment = entry.file_path, [], False
         previous_line = entry.line_no
         code = entry.text
-        if code.lstrip().startswith("*"):
-            # The body of a block comment whose opening line is unchanged.
-            continue
         if in_comment:
             if "*/" not in code:
                 continue
             code, in_comment = code.split("*/", 1)[1], False
+        elif code.lstrip().startswith("*") and not code.lstrip().startswith("*/"):
+            # The body of a block comment whose opening line is unchanged.
+            continue
         code = re.sub(r"/\*.*?\*/", "", code)
         if "/*" in code:
             code, in_comment = code.split("/*", 1)[0], True
         code = code.split("//", 1)[0]
         if _IF_RE.match(code):
-            frames.append((bool(_IF_DEBUG_RE.match(code)), entry.line_no))
+            frames.append([bool(_POSITIVE_IF_DEBUG_RE.match(code)), entry.line_no])
+        elif _ELSE_RE.match(code):
+            if frames:
+                frames[-1][0] = False
         elif _ENDIF_RE.match(code):
             if frames:
                 frames.pop()
         elif _UI_TEST_LAUNCH_RE.search(code):
-            gated.update((path, line) for is_debug, line in frames if is_debug)
+            gated.update((path, line) for in_debug, line in frames if in_debug)
     return gated
 
 

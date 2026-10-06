@@ -250,6 +250,43 @@ def test_ui_test_marker_inside_a_multiline_block_comment_does_not_demote():
     assert _br2_severity(r.stdout, path) == "high"
 
 
+def test_comment_closer_on_its_own_line_ends_the_comment():
+    """A ` */` line closes the comment, so the second, ungated block is still
+    seen as its own block and stays high."""
+    path = "Palace/AppInfrastructure/TPPAppDelegate.swift"
+    diff = _diff(path, [
+        "#if DEBUG", "    /*", "    note", "     */", "    wipeEverything()", "#endif",
+        "#if DEBUG", _UI_MARKER_GATE, "    }", "#endif",
+    ])
+    r = _run(diff)
+    severities = {ln.split(":")[1]: ln.split(": BR-2: ", 1)[1].split(":", 1)[0]
+                  for ln in r.stdout.splitlines() if ": BR-2: " in ln}
+    assert severities == {"2": "high", "8": "medium"}, r.stdout
+
+
+def test_gated_block_with_a_multiline_comment_before_the_marker_is_demoted():
+    path = "Palace/AppInfrastructure/TPPAppDelegate.swift"
+    diff = _diff(path, ["#if DEBUG", "    /*", "     * why", "     */", _UI_MARKER_GATE, "    }", "#endif"])
+    r = _run(diff)
+    assert r.returncode == 0, f"stdout: {r.stdout!r}"
+    assert _br2_severity(r.stdout, path) == "medium"
+
+
+@pytest.mark.parametrize("opening, branch", [
+    ("#if DEBUG", "#else"),
+    ("#if DEBUG", "#elseif SIMULATOR"),
+    ("#if !DEBUG", None),
+])
+def test_marker_outside_the_debug_branch_does_not_demote(opening, branch):
+    """Only code compiled under DEBUG gates the block: not an `#else` or
+    `#elseif` branch, and not an `#if !DEBUG` block."""
+    path = "Palace/Book/BookDetail.swift"
+    lines = [opening, "    seedTestData()"] + ([branch] if branch else []) + [_UI_MARKER_GATE, "    }", "#endif"]
+    r = _run(_diff(path, lines))
+    assert r.returncode == 1, f"stdout: {r.stdout!r}"
+    assert _br2_severity(r.stdout, path) == "high"
+
+
 @pytest.mark.parametrize("marker_line", [
     "    guard ProcessInfo.processInfo.environment[\"XCTestConfigurationFilePath\"] != nil else { return }",
     "    // runs only when XCTestConfigurationFilePath is set",
