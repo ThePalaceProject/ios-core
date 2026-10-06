@@ -29,8 +29,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"))
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data(#"{"p":1}"#.utf8), nil)
@@ -55,8 +54,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"), holdsCompletion: true)
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         for book in ["book-1", "book-2", "book-3"] {
             queue.addRequest("lib-A", book, URL(string: "https://a.example.org/annotations/\(book)")!,
@@ -83,8 +81,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old", "lib-B": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"))
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -107,8 +104,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .failure)
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -129,8 +125,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .failure)
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -156,8 +151,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "never")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"))
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -178,8 +172,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .failure)
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
         GatedURLProtocol.reset()
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/first")!,
@@ -212,8 +205,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .inProgressElsewhere)
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         for book in ["book-1", "book-2"] {
             queue.addRequest("lib-A", book, URL(string: "https://a.example.org/annotations/\(book)")!,
@@ -237,9 +229,8 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old", "lib-B": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .inProgressElsewhere)
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher,
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher,
                                      canRefreshToken: { $0 == "lib-A" })
-        defer { try? FileManager.default.removeItem(atPath: dir) }
         GatedURLProtocol.reset()
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/first")!,
@@ -274,9 +265,8 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"))
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher,
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher,
                                      canRefreshToken: { _ in false })
-        defer { try? FileManager.default.removeItem(atPath: dir) }
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -296,8 +286,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"), holdsCompletion: true)
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher, refreshTimeout: 0.3)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher, refreshTimeout: 0.3)
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -325,8 +314,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"), holdsCompletion: true)
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -352,8 +340,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"), holdsCompletion: true)
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
         let url = URL(string: "https://a.example.org/annotations/")!
 
         queue.addRequest("lib-A", "book-1", url, .POST, Data(#"{"p":1}"#.utf8), nil)
@@ -381,8 +368,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "new"])
         _ = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"))
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
         GatedURLProtocol.reset()
         GatedURLProtocol.setStatus(200)
         let url = URL(string: "https://a.example.org/annotations/gated")!
@@ -450,8 +436,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
     func testLive_ChallengeCredentialsComeFromTheRowsLibrary() {
         let libraries = TwoLibraries()
         libraries.selected = libraries.uuidB
-        let (queue, _, dir) = makeLiveQueue(libraries)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _, _) = makeLiveQueue(libraries)
 
         let answer = queue.challengeCredentialsForTesting(libraryID: libraries.uuidA)
 
@@ -461,8 +446,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
     func testLive_RefreshesThroughTheExecutor() {
         let libraries = TwoLibraries()
-        let (queue, executor, dir) = makeLiveQueue(libraries)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, executor, _) = makeLiveQueue(libraries)
 
         XCTAssertTrue(queue.tokenRefresherForTesting === executor,
                       "The queue must use the executor's single-flight refresh")
@@ -472,8 +456,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
     /// refresh; one without a token endpoint or without a card cannot.
     func testLive_CanRefreshToken_OnlyForTokenLibrariesWithStoredCredentials() {
         let libraries = TwoLibraries()
-        let (queue, _, dir) = makeLiveQueue(libraries)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _, _) = makeLiveQueue(libraries)
 
         XCTAssertTrue(queue.canRefreshTokenForTesting(libraryID: libraries.uuidA))
         XCTAssertFalse(queue.canRefreshTokenForTesting(libraryID: libraries.uuidNoAuth),
@@ -489,8 +472,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
     func testLive_QueuedRowFor401_RefreshesItsOwnLibraryAndIsDelivered() {
         let libraries = TwoLibraries()
         libraries.selected = libraries.uuidB
-        let (queue, _, dir) = makeLiveQueue(libraries)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _, _) = makeLiveQueue(libraries)
 
         let tokenCalls = SeenHosts()
         let annotationAuth = SeenHosts()
@@ -519,9 +501,10 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
     // MARK: - Executor: sign-in sheet after a refused queue refresh
     //
-    // The completions below are `@Sendable`: the executor calls them from the
-    // cooperative pool, and a closure formed in this `@MainActor` class would
-    // otherwise be main-actor isolated and trap under actor-isolation checks.
+    // `refresh(...)` joins the executor's own completion rather than waiting
+    // on a deadline. Its completion is `@Sendable`: the executor calls it from
+    // the cooperative pool, and a closure formed in this `@MainActor` class
+    // would otherwise be main-actor isolated and trap under isolation checks.
 
     /// A queue refresh refused by the token endpoint marks the credentials
     /// stale but does not raise the sign-in sheet.
@@ -534,10 +517,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
             request.url == libraries.tokenURL_A ? .init(statusCode: 401, headers: nil, body: Data("no".utf8)) : nil
         }
 
-        let done = expectation(description: "refresh finished")
-        executor.refreshTokenAndResume(task: nil, accountId: libraries.uuidA,
-                                       presentsSignInOnFailure: false) { @Sendable _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 5)
+        await refresh(executor, accountId: libraries.uuidA, presentsSignInOnFailure: false)
 
         XCTAssertEqual(libraries.accountA.authState, .credentialsStale)
         XCTAssertEqual(presented.value, 0)
@@ -554,9 +534,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
             request.url == libraries.tokenURL_A ? .init(statusCode: 401, headers: nil, body: Data("no".utf8)) : nil
         }
 
-        let done = expectation(description: "refresh finished")
-        executor.refreshTokenAndResume(task: nil, accountId: libraries.uuidA) { @Sendable _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 5)
+        await refresh(executor, accountId: libraries.uuidA)
 
         XCTAssertEqual(presented.value, 1)
     }
@@ -573,9 +551,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
             request.url == libraries.tokenURL_A ? .init(statusCode: 401, headers: nil, body: Data("no".utf8)) : nil
         }
 
-        let done = expectation(description: "refresh finished")
-        executor.refreshTokenAndResume(task: nil, accountId: libraries.uuidA) { @Sendable _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 5)
+        await refresh(executor, accountId: libraries.uuidA)
 
         XCTAssertEqual(libraries.accountA.authState, .credentialsStale)
         XCTAssertEqual(presented.value, 0)
@@ -589,18 +565,10 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let claimed = await executor.claimTokenRefreshSlotForTesting()
         XCTAssertTrue(claimed, "precondition")
 
-        let done = expectation(description: "refresh answered")
-        let inProgress = LockIsolated<Bool?>(nil)
-        executor.refreshTokenAndResume(task: nil, accountId: libraries.uuidA,
-                                       presentsSignInOnFailure: false) { @Sendable result in
-            if case .failure(let error, _) = result {
-                inProgress.withValue { $0 = (error as NSError).userInfo[TPPNetworkExecutor.refreshInProgressKey] as? Bool }
-            }
-            done.fulfill()
-        }
-        await fulfillment(of: [done], timeout: 5)
+        let reportedInProgress = await refresh(executor, accountId: libraries.uuidA,
+                                               presentsSignInOnFailure: false)
 
-        XCTAssertEqual(inProgress.value, true)
+        XCTAssertTrue(reportedInProgress)
     }
 
     // MARK: - Other statuses unchanged
@@ -609,8 +577,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "old"])
         let server = StubServer(acceptedToken: "new", rejectionStatus: 500)
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"))
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -629,8 +596,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let tokens = TokenBox(["lib-A": "new"])
         let server = StubServer(acceptedToken: "new")
         let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"))
-        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -650,10 +616,9 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
     /// of the row's library. The session's responder would answer with the
     /// selected library's, sending one library's card and PIN to another's server.
     func testDrain_WhenServerChallenges_AnswersWithTheRowsLibraryNotTheSelectedOne() {
-        let (queue, dir) = makeChallengedQueue(rowCredentials: { libraryID in
+        let (queue, _) = makeChallengedQueue(rowCredentials: { libraryID in
             RecordingCredentials("\(libraryID)-patron")
         })
-        defer { try? FileManager.default.removeItem(atPath: dir) }
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -671,8 +636,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
     /// A row whose library has no credentials declines the challenge rather
     /// than falling back to whichever library is selected.
     func testDrain_WhenRowsLibraryHasNoCredentials_DoesNotAnswerWithTheSelectedLibrary() {
-        let (queue, dir) = makeChallengedQueue(rowCredentials: { _ in nil })
-        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let (queue, _) = makeChallengedQueue(rowCredentials: { _ in nil })
 
         queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/")!,
                          .POST, Data("{}".utf8), nil)
@@ -689,6 +653,10 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
     // MARK: - Helpers
 
+    // The queue's SQLite files are left in the test host's tmp directory on
+    // purpose: pending drain closures (the refresh timeout among them) keep a
+    // connection open after a test returns, and deleting the file under an
+    // open connection is an SQLite API violation.
     private func makeQueue(tokens: TokenBox,
                            refresher: SpyRefresher,
                            canRefreshToken: @escaping @Sendable (String) -> Bool = { _ in true },
@@ -736,6 +704,32 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         queue.migrate()
         queue.serialQueue.sync {}
         return (queue, dir)
+    }
+
+    /// Runs one `task: nil` refresh and returns once the executor calls back;
+    /// the result is whether the failure carried `refreshInProgressKey`.
+    @discardableResult
+    private func refresh(_ executor: TPPNetworkExecutor,
+                         accountId: String,
+                         presentsSignInOnFailure: Bool? = nil) async -> Bool {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            let completion: @Sendable (NYPLResult<Data>) -> Void = { result in
+                guard case .failure(let error, _) = result else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                continuation.resume(returning:
+                    (error as NSError).userInfo[TPPNetworkExecutor.refreshInProgressKey] as? Bool == true)
+            }
+            if let presentsSignInOnFailure {
+                executor.refreshTokenAndResume(task: nil, accountId: accountId,
+                                               presentsSignInOnFailure: presentsSignInOnFailure,
+                                               completion: completion)
+            } else {
+                // The default argument is what existing callers get.
+                executor.refreshTokenAndResume(task: nil, accountId: accountId, completion: completion)
+            }
+        }
     }
 
     private func makeExecutor(_ libraries: TwoLibraries) -> TPPNetworkExecutor {
