@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import SwiftUI
 import PalaceAudiobookToolkit
 @testable import Palace
 
@@ -681,5 +682,118 @@ final class AudiobookMorphingPlayerChapterTitleTests: XCTestCase {
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
+    }
+}
+
+// MARK: - Cover art geometry
+
+/// The full player budgets a SQUARE for the cover: `fullContentPortrait` stacks
+/// fixed chrome around it, so a cover that measures taller than it is wide makes
+/// the column overflow the screen at both ends. On an iPhone 17 Pro (402x874) a
+/// 2:3 cover measured 320x480 instead of 320x320, which put the column at 988pt
+/// and left the bottom control row's capsule 7.4pt past the bottom of the screen
+/// and 41.4pt inside the home-indicator inset.
+@MainActor
+final class AudiobookCoverArtLayoutTests: XCTestCase {
+
+    /// Portrait content width of the full player's cover slot: the screen width
+    /// less `coverArt`'s `.padding(.horizontal, 40)`.
+    private static let coverHorizontalPadding: CGFloat = 80
+    /// `coverArt`'s `.frame(maxWidth: 320)` at the portrait call site.
+    private static let coverMaxWidth: CGFloat = 320
+
+    /// A solid image at an exact size, so what the layout reports depends on the
+    /// artwork's aspect ratio and nothing else.
+    private static func artwork(_ width: CGFloat, _ height: CGFloat) -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { ctx in
+            UIColor.systemTeal.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+
+    /// The size the production cover view reports for a proposal — the same
+    /// measurement SwiftUI makes when laying the cover into the player column.
+    ///
+    /// `maxWidth` mirrors the portrait call site's `.frame(maxWidth: 320)`. Pass
+    /// `nil` to measure the cover alone: that frame reports the width it was
+    /// offered when its child is flexible, which hides the cover's own width.
+    private func measuredCover(
+        image: UIImage?,
+        proposing proposal: CGSize,
+        maxWidth: CGFloat? = coverMaxWidth
+    ) -> CGSize {
+        let cover = AudiobookCoverArt(image: image)
+        let host = maxWidth.map { UIHostingController(rootView: AnyView(cover.frame(maxWidth: $0))) }
+            ?? UIHostingController(rootView: AnyView(cover))
+        return host.sizeThatFits(in: proposal)
+    }
+
+    /// A portrait (2:3) cover — the common book ratio, and the one in the
+    /// reported screenshot — must still measure square.
+    func testCoverArt_portraitArtwork_measuresSquare_notTheArtworkRatio() {
+        let measured = measuredCover(image: Self.artwork(600, 900),
+                                     proposing: CGSize(width: 322, height: 874))
+        XCTAssertEqual(measured.width, 320, accuracy: 0.5,
+                       "the cover must fill its 320pt slot")
+        XCTAssertEqual(measured.height, 320, accuracy: 0.5,
+                       "a 2:3 cover must measure 320pt tall, not the artwork's 480pt — the extra height is what pushes the control row off the screen")
+    }
+
+    /// A landscape cover must not report the artwork's width either.
+    func testCoverArt_landscapeArtwork_measuresSquare() {
+        let measured = measuredCover(image: Self.artwork(900, 600),
+                                     proposing: CGSize(width: 322, height: 874))
+        XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
+                       "a 3:2 cover must measure square, not 480x320")
+        XCTAssertEqual(measured.height, 320, accuracy: 0.5)
+    }
+
+    /// The missing-artwork placeholder takes the same square.
+    func testCoverArt_placeholder_measuresSquare() {
+        let measured = measuredCover(image: nil,
+                                     proposing: CGSize(width: 322, height: 874))
+        XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
+                       "the placeholder must occupy the same square as artwork")
+    }
+
+    /// The property that keeps the column inside a short screen: when the stack
+    /// has less height left than the cover's 320pt cap, the cover takes what it
+    /// is offered instead of overflowing. Without this an iPhone SE column still
+    /// runs past the bottom even with a square cover.
+    func testCoverArt_takesOnlyTheHeightOffered_whenTheColumnIsTight() {
+        let measured = measuredCover(image: Self.artwork(600, 900),
+                                     proposing: CGSize(width: 322, height: 210),
+                                     maxWidth: nil)
+        XCTAssertEqual(measured.height, 210, accuracy: 0.5,
+                       "offered 210pt the cover must measure 210pt, not grow to the artwork's height")
+        XCTAssertEqual(measured.width, 210, accuracy: 0.5,
+                       "and stay square while it shrinks")
+    }
+
+    /// Cross-device: the cover slot differs per screen width, and a layout bleed
+    /// that only reproduces on one device is exactly what a single-device journey
+    /// corpus cannot see. Portrait point sizes of the device classes the app
+    /// ships to — home-button, Dynamic Island, and iPad.
+    func testCoverArt_measuresSquareAndWithinBudget_onEveryDeviceClass() {
+        let devices: [(name: String, size: CGSize)] = [
+            ("iPhone SE (3rd generation)", CGSize(width: 375, height: 667)),
+            ("iPhone 13 mini", CGSize(width: 375, height: 812)),
+            ("iPhone 16e", CGSize(width: 390, height: 844)),
+            ("iPhone 17 Pro", CGSize(width: 402, height: 874)),
+            ("iPhone 17 Pro Max", CGSize(width: 440, height: 956)),
+            ("iPad (A16)", CGSize(width: 820, height: 1180))
+        ]
+        let art = Self.artwork(600, 900)
+        for device in devices {
+            let slotWidth = device.size.width - Self.coverHorizontalPadding
+            let measured = measuredCover(
+                image: art,
+                proposing: CGSize(width: slotWidth, height: device.size.height)
+            )
+            XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
+                           "\(device.name): cover measured \(measured) — not square")
+            XCTAssertLessThanOrEqual(measured.height, min(Self.coverMaxWidth, slotWidth) + 0.5,
+                                     "\(device.name): cover is taller than its slot, so the column overflows the screen")
+        }
     }
 }
