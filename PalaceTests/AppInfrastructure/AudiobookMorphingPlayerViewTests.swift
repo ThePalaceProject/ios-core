@@ -797,3 +797,117 @@ final class AudiobookCoverArtLayoutTests: XCTestCase {
         }
     }
 }
+
+// MARK: - Full-player column geometry, across device classes
+
+/// The assertion the owner-reported bleed needs: mount the real full player at
+/// each device's point size and require its bottom controls to land inside the
+/// screen. The simdrive journey corpus cannot do this — all 26 recordings are
+/// captured at 1206x2622 and address absolute pixels — so a layout that only
+/// breaks on one screen size has no automated reader without this.
+///
+/// The host window carries no safe-area insets, and the player reads its own
+/// from the key window (`topSafeInset`/`bottomSafeInset`), so this pins the
+/// weaker property — inside the screen — rather than clear of the home
+/// indicator. Making those two insets injectable would let this assert the
+/// real one.
+@MainActor
+final class AudiobookPlayerColumnLayoutTests: XCTestCase {
+
+    /// Portrait point sizes of the device classes the app ships to: a
+    /// home-button phone, the narrow tier, two Dynamic Island phones and an iPad.
+    private static let deviceClasses: [(name: String, size: CGSize)] = [
+        ("iPhone SE (3rd generation)", CGSize(width: 375, height: 667)),
+        ("iPhone 13 mini", CGSize(width: 375, height: 812)),
+        ("iPhone 17 Pro", CGSize(width: 402, height: 874)),
+        ("iPhone 17 Pro Max", CGSize(width: 440, height: 956)),
+        ("iPad (A16)", CGSize(width: 820, height: 1180))
+    ]
+
+    /// The player's bottom control row, by the labels it publishes. Matching on
+    /// labels rather than positions means a renamed control fails the lookup
+    /// assertion below instead of quietly shrinking the set under test.
+    private var bottomControlLabels: [String] {
+        [Strings.Generic.airplay, Strings.Generic.sleepTimer, Strings.Generic.addBookmark]
+    }
+
+    /// A 2:3 cover — the common book ratio, and the one in the reported
+    /// screenshot. Without real artwork the player draws the square placeholder
+    /// glyph, which cannot reproduce an artwork-driven overflow at all.
+    private static func portraitArtwork() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 600, height: 900)).image { ctx in
+            UIColor.systemTeal.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 600, height: 900))
+        }
+    }
+
+    private func mountExpandedPlayer(size: CGSize) -> AccessibilityAuditHost {
+        let session = SpyShimSession()
+        let presenter = AudiobookSessionPresenter(sessionManager: session)
+        presenter.adoptBook(TPPBookMocker.snapshotAudiobook())
+        presenter.adoptCoverImage(Self.portraitArtwork())
+        presenter.expand()
+
+        let suite = "player-layout.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+
+        let player = AudiobookMorphingPlayerView(
+            presenter: presenter,
+            progress: presenter.progress,
+            audiobookSession: session
+        )
+        .defaultAppStorage(defaults)
+
+        let host = AccessibilityAuditHost(UIHostingController(rootView: player), size: size)
+        // The card slides up from one screen below on first appear; settle past
+        // that spring before reading frames, or every frame reads too low.
+        host.settle(1.5)
+        return host
+    }
+
+    /// Every bottom control must sit inside the screen on every device class.
+    /// Pre-fix this failed on the short screens by up to ~78pt.
+    func testFullPlayer_bottomControlsStayOnScreen_onEveryDeviceClass() {
+        for device in Self.deviceClasses {
+            let host = mountExpandedPlayer(size: device.size)
+            defer { host.tearDown() }
+
+            let elements = AccessibilityTraversalAudit.traverse(host.window)
+            for label in bottomControlLabels {
+                guard let control = elements.first(where: { $0.label == label }) else {
+                    XCTFail("\(device.name): no control labeled \"\(label)\" in the player's accessibility tree — the lookup, not the layout, is what failed here")
+                    continue
+                }
+                XCTAssertLessThanOrEqual(
+                    control.frame.maxY, device.size.height,
+                    "\(device.name): \"\(label)\" ends at \(control.frame.maxY)pt on a \(device.size.height)pt screen — it bleeds off the bottom"
+                )
+                XCTAssertGreaterThanOrEqual(
+                    control.frame.minY, 0,
+                    "\(device.name): \"\(label)\" starts above the top of the screen"
+                )
+            }
+        }
+    }
+
+    /// The transport row must stay on screen too: the overflow is split between
+    /// both ends of the column, so a regression can push either way.
+    func testFullPlayer_transportControlsStayOnScreen_onEveryDeviceClass() {
+        for device in Self.deviceClasses {
+            let host = mountExpandedPlayer(size: device.size)
+            defer { host.tearDown() }
+
+            let elements = AccessibilityTraversalAudit.traverse(host.window)
+            let playLabels = [Strings.Generic.playAudiobook, Strings.Generic.pauseAudiobook]
+            guard let play = elements.first(where: { playLabels.contains($0.label) }) else {
+                XCTFail("\(device.name): no play/pause control in the player's accessibility tree")
+                continue
+            }
+            XCTAssertLessThanOrEqual(play.frame.maxY, device.size.height,
+                                     "\(device.name): play/pause bleeds off the bottom")
+            XCTAssertGreaterThanOrEqual(play.frame.minY, 0,
+                                        "\(device.name): play/pause is pushed off the top")
+        }
+    }
+}
