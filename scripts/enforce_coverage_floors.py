@@ -208,6 +208,14 @@ def advisory_status(actual: float, floor: float) -> str:
     return "PASS" if actual + 1e-9 >= floor else "FAIL"
 
 
+def scope_status(scope: str, actual: float, floor: float) -> Tuple[str, bool]:
+    """-> (status, blocks): advisory scopes never block; the others use the app rule."""
+    if scope in ADVISORY_SCOPES:
+        return advisory_status(actual, floor), False
+    status = app_status(actual, floor)
+    return status, status == "FAIL"
+
+
 def format_pct(v: Optional[float]) -> str:
     if v is None:
         return "  N/A "
@@ -277,13 +285,16 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
         for name, floor in floors.get("package_modules", {}).items():
             actual = find_module_coverage(coverage, name)
             effective_floor = actual if (baseline_only and actual is not None) else float(floor)
+            advisory = "package_modules" in ADVISORY_SCOPES and actual is not None
             if actual is None:
                 status = "MISSING"
                 all_pass = False
             else:
-                status = advisory_status(actual, effective_floor)
+                status, blocks = scope_status("package_modules", actual, effective_floor)
+                if blocks:
+                    all_pass = False
             rows.append({"module": name, "floor": effective_floor, "actual": actual,
-                         "status": status, "missing": actual is None, "advisory": actual is not None})
+                         "status": status, "missing": actual is None, "advisory": advisory})
 
     for floors_key, scope_key, prefix, expected_key in PACKAGE_SCOPES:
         if not collected(coverage, expected_key):
@@ -300,9 +311,12 @@ def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "t
                 all_pass = False
                 continue
             effective_floor = actual if baseline_only else float(floor)
+            status, blocks = scope_status(floors_key, actual, effective_floor)
+            if blocks:
+                all_pass = False
             rows.append({"module": prefix + name, "floor": effective_floor, "actual": actual,
-                         "status": advisory_status(actual, effective_floor), "missing": False,
-                         "advisory": True})
+                         "status": status, "missing": False,
+                         "advisory": floors_key in ADVISORY_SCOPES})
 
     return rows, all_pass
 

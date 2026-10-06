@@ -140,9 +140,33 @@ def test_package_module_below_its_floor_is_advisory(tmp_path):
     assert _row(p.stdout, "TPPBookRegistry")[3:] == ["FAIL", "advisory"]
 
 
-def test_app_violation_fails_even_when_packages_pass_and_vice_versa(tmp_path):
+def test_app_violation_fails_even_when_an_advisory_package_is_also_low(tmp_path):
     both = _coverage(**dict(GOOD, files=[("TPPBook.swift", 40, 100)], packages={"PalaceAuth": _scope(10, 40)}))
     assert _run(tmp_path, both, FLOORS).returncode == 1
+
+
+@pytest.mark.parametrize("scope,key,prefix", [
+    ("packages", "packages", "pkg:"), ("host_packages", "host", "host:")])
+def test_a_scope_removed_from_advisory_blocks_again(monkeypatch, scope, key, prefix):
+    """ADVISORY_SCOPES decides the behaviour, not just the label."""
+    cov = _coverage(**dict(GOOD, **{key: {"PalaceAuth": _scope(18, 40)}}))
+    monkeypatch.setattr(ecf, "ADVISORY_SCOPES", tuple(s for s in ecf.ADVISORY_SCOPES if s != scope))
+    rows, ok = ecf.evaluate(cov, FLOORS, baseline_only=False)
+    row = next(r for r in rows if r["module"] == prefix + "PalaceAuth")
+    assert not ok and row["status"] == "FAIL" and not row["advisory"]
+
+
+def test_package_module_removed_from_advisory_blocks_again(monkeypatch):
+    cov = _coverage(**dict(GOOD, files=[("TPPBook.swift", 80, 100), ("TPPBookRegistry.swift", 1, 10)]))
+    monkeypatch.setattr(ecf, "ADVISORY_SCOPES", ("packages", "host_packages"))
+    _, ok = ecf.evaluate(cov, dict(FLOORS, package_modules={"TPPBookRegistry": 0.5}), baseline_only=False)
+    assert not ok
+
+
+def test_within_rows_are_named_in_the_summary(tmp_path):
+    p = _run(tmp_path, _coverage(**dict(GOOD, files=[("TPPBook.swift", 490, 1000)])), FLOORS)
+    assert p.returncode == 0
+    assert "Within the 1.5-point tolerance: TPPBook" in p.stdout
 
 
 def test_incomplete_report_still_exits_three_with_advisory_packages_low(tmp_path):

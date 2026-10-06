@@ -222,8 +222,9 @@ def test_only_listed_report_steps_can_fail_the_required_check():
     assert can_fail == _REPORT_STEPS_THAT_MAY_FAIL
 
 
-def test_every_floor_scope_is_either_blocking_or_advisory():
-    """A new scope in coverage-floors.json must be placed on one side on purpose."""
+def test_every_floor_scope_in_the_floors_file_is_declared_blocking_or_advisory():
+    """A new scope in coverage-floors.json must be placed on one side on purpose;
+    test_enforce_coverage_floors.py checks that ADVISORY_SCOPES drives behaviour."""
     sys.path.insert(0, str(REPO / "scripts"))
     import enforce_coverage_floors as ecf
     floors = json.loads((REPO / "scripts" / "coverage-floors.json").read_text())
