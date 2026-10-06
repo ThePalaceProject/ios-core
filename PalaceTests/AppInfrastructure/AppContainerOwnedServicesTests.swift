@@ -109,15 +109,16 @@ final class AppContainerOwnedServicesTests: PalaceWiringTestCase {
         let book = makeBook("search-row-\(UUID().uuidString)")
         registry.addBook(book, state: .downloadNeeded)
         let view = CatalogSearchView(books: [book], onBookSelected: { _ in }, appContainer: makeTestAppContainer(bookRegistry: registry))
-        let refreshed = expectation(description: "row refresh for the changed book")
-        let subscription = view.registryChangePublisher.sink { identifier in
-            if identifier == book.identifier { refreshed.fulfill() }
-        }
+        var changed: [String] = []
+        let subscription = view.registryChanges.sink { changed.append($0) }
+        // The mock replays its last state change on subscribe.
+        changed.removeAll()
 
         registry.setState(.downloading, for: book.identifier)
-
-        wait(for: [refreshed], timeout: 5)
         subscription.cancel()
+
+        XCTAssertEqual(changed, [book.identifier],
+                       "Search rows must refresh from the registry of the view's container")
     }
 
     /// A book cell model must read the registry of the container whose cache

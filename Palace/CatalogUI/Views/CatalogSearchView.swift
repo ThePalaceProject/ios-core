@@ -114,11 +114,17 @@ struct CatalogSearchView: View {
 
     // MARK: - Publishers
 
-    var registryChangePublisher: AnyPublisher<String, Never> {
-        // Emit the changed identifier so just the affected result row
-        // refreshes.
+    /// Identifier of each book whose registry state changes, unthrottled.
+    var registryChanges: AnyPublisher<String, Never> {
         bookRegistry.bookStatePublisher
             .map { $0.0 }
+            .eraseToAnyPublisher()
+    }
+
+    private var registryChangePublisher: AnyPublisher<String, Never> {
+        // Emit the changed identifier so just the affected result row
+        // refreshes.
+        registryChanges
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }
