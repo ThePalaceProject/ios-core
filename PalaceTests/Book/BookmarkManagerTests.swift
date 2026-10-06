@@ -112,7 +112,9 @@ final class BookmarkManagerTests: XCTestCase {
         if let annotationId = annotationId {
             dict["annotationId"] = annotationId
         }
-        let jsonData = try! JSONSerialization.data(withJSONObject: dict)
+        // Sorted keys: equal inputs give byte-identical records, which the
+        // identity-based replace and delete rely on.
+        let jsonData = try! JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
         let jsonString = String(data: jsonData, encoding: .utf8)!
         return TPPBookLocation(locationString: jsonString, renderer: renderer)!
     }
@@ -433,6 +435,58 @@ final class BookmarkManagerTests: XCTestCase {
         let bookmarks = manager.genericBookmarks(forIdentifier: book.identifier)
         XCTAssertEqual(bookmarks.count, 1)
         XCTAssertTrue(bookmarks.first?.locationString.contains("50") ?? false)
+    }
+
+    /// A replace that finds no identical record writes and saves nothing.
+    func test_replaceGenericBookmark_NoIdenticalRecord_ChangesAndSavesNothing() {
+        let book = makeBook()
+        addBookToStore(book)
+        let stored = makeLocation(page: 5)
+        manager.addGenericBookmark(stored, forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+        let savesBefore: Int = saveCallCount
+
+        manager.replaceGenericBookmark(makeLocation(page: 5, annotationId: "other"), with: makeLocation(page: 50),
+                                       forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+
+        XCTAssertEqual(manager.genericBookmarks(forIdentifier: book.identifier).map(\.locationString), [stored.locationString])
+        XCTAssertEqual(saveCallCount, savesBefore)
+    }
+
+    /// Deleting by identity removes that record only, not another at the same
+    /// position that a content match would also remove.
+    func test_deleteGenericBookmarkIdenticalTo_RemovesOnlyThatRecordAndSaves() {
+        let book = makeBook()
+        addBookToStore(book)
+        let unsynced = makeLocation(page: 5)
+        let synced = makeLocation(page: 5, annotationId: "srv-1")
+        manager.addGenericBookmark(unsynced, forIdentifier: book.identifier, account: testAccount)
+        manager.addGenericBookmark(synced, forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+        let savesBefore: Int = saveCallCount
+
+        manager.deleteGenericBookmark(identicalTo: makeLocation(page: 5), forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+
+        XCTAssertEqual(manager.genericBookmarks(forIdentifier: book.identifier).map(\.locationString), [synced.locationString])
+        XCTAssertEqual(saveCallCount, savesBefore + 1)
+    }
+
+    /// Deleting a record that is not stored changes and saves nothing.
+    func test_deleteGenericBookmarkIdenticalTo_NoIdenticalRecord_ChangesAndSavesNothing() {
+        let book = makeBook()
+        addBookToStore(book)
+        let stored = makeLocation(page: 5)
+        manager.addGenericBookmark(stored, forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+        let savesBefore: Int = saveCallCount
+
+        manager.deleteGenericBookmark(identicalTo: makeLocation(page: 6), forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+
+        XCTAssertEqual(manager.genericBookmarks(forIdentifier: book.identifier).map(\.locationString), [stored.locationString])
+        XCTAssertEqual(saveCallCount, savesBefore)
     }
 
     func test_addOrReplaceGenericBookmark_addsWhenNew() {

@@ -4,7 +4,8 @@
 //
 //  Audiobook bookmark sync against a server that returns, rejects or keeps
 //  bookmarks: merge, upload of unsynced bookmarks, and deletes that must not
-//  come back on the next sync.
+//  come back on the next sync. The registry is the production BookmarkManager,
+//  because the outcome depends on how stored records are matched.
 //
 
 import XCTest
@@ -25,6 +26,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         private var _deleteCalls: [String] = []
         private var _postedSelectors: [String] = []
         private var _postOutcome: Result<AnnotationResponse?, Error> = .success(nil)
+        private var _onPost: (@Sendable () -> Void)?
 
         var serverBookmarks: [Bookmark]? {
             get { lock.withLock { _serverBookmarks } }
@@ -38,6 +40,11 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         var postOutcome: Result<AnnotationResponse?, Error> {
             get { lock.withLock { _postOutcome } }
             set { lock.withLock { _postOutcome = newValue } }
+        }
+        /// Runs while a bookmark POST is in flight, before the response returns.
+        var onPost: (@Sendable () -> Void)? {
+            get { lock.withLock { _onPost } }
+            set { lock.withLock { _onPost = newValue } }
         }
         var deleteCalls: [String] { lock.withLock { _deleteCalls } }
         var postedSelectors: [String] { lock.withLock { _postedSelectors } }
@@ -54,10 +61,11 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         }
 
         func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse? {
-            let outcome: Result<AnnotationResponse?, Error> = lock.withLock {
+            let (outcome, hook): (Result<AnnotationResponse?, Error>, (@Sendable () -> Void)?) = lock.withLock {
                 _postedSelectors.append(selectorValue)
-                return _postOutcome
+                return (_postOutcome, _onPost)
             }
+            hook?()
             return try outcome.get()
         }
 
@@ -80,7 +88,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
 
     private let bookIdentifier = "urn:uuid:sync-tests-audiobook"
     private var book: TPPBook!
-    private var registry: TPPBookRegistryMock!
+    private var registry: BookmarkManagerBackedRegistry!
     private var server: ScriptedAnnotationsServer!
     private var sut: AudiobookBookmarkBusinessLogic!
     private var tracks: Tracks!
@@ -120,7 +128,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
             bookDuration: nil,
             imageCache: MockImageCache()
         )
-        registry = TPPBookRegistryMock()
+        registry = BookmarkManagerBackedRegistry()
         registry.addBook(book, state: .downloadSuccessful)
         server = ScriptedAnnotationsServer()
         sut = AudiobookBookmarkBusinessLogic(book: book, registry: registry, annotationsManager: server)
@@ -166,11 +174,20 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         init(_ value: Value) { self.value = value }
     }
 
+    /// Stored records exactly as the registry holds them.
+    private var storedRecords: [String] {
+        registry.genericBookmarksForIdentifier(bookIdentifier).map(\.locationString)
+    }
+
+    private var storedDictionaries: [[String: Any]] {
+        registry.genericBookmarksForIdentifier(bookIdentifier).compactMap { $0.locationStringDictionary() }
+    }
+
     // The SUT calls each completion exactly once, so the helpers await the
     // completion itself rather than a wall-clock deadline.
-    private func sync(_ local: [AudioBookmark]) async -> [AudioBookmark] {
+    private func sync() async -> [AudioBookmark] {
         let box: ResultBox<[AudioBookmark]> = await withCheckedContinuation { continuation in
-            sut.syncBookmarks(localBookmarks: local) { bookmarks in
+            sut.syncBookmarks { bookmarks in
                 continuation.resume(returning: ResultBox(bookmarks))
             }
         }
@@ -200,7 +217,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
     func testSync_ServerBookmarkMissingLocally_IsStoredAndReturned() async {
         server.serverBookmarks = [bookmark("srv-1", trackIndex: 2, offsetMs: 42_000)]
 
-        let result = await sync([])
+        let result = await sync()
 
         XCTAssertEqual(result.map(\.annotationId), ["srv-1"])
         XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-1"])
@@ -213,7 +230,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         storeLocally(local)
         server.serverBookmarks = [bookmark("srv-1")]
 
-        let result = await sync([local])
+        let result = await sync()
 
         XCTAssertEqual(result.count, 1)
         XCTAssertEqual(localBookmarks.count, 1)
@@ -229,7 +246,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
                                                       readingOrderItem: nil, readingOrderItemOffsetMilliseconds: 0,
                                                       time: "2026-01-01T00:00:00Z", device: nil)]
 
-        let result = await sync([local])
+        let result = await sync()
 
         XCTAssertEqual(result.map(\.annotationId), ["local-1"])
         XCTAssertEqual(localBookmarks.map(\.annotationId), ["local-1"])
@@ -258,7 +275,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         server.syncPermitted = false
         server.serverBookmarks = [bookmark("srv-2", trackIndex: 3, offsetMs: 9_000)]
 
-        let result = await sync([local])
+        let result = await sync()
 
         XCTAssertEqual(result.map(\.annotationId), ["local-1"])
         XCTAssertEqual(localBookmarks.map(\.annotationId), ["local-1"])
@@ -273,7 +290,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         storeLocally(unsynced)
         server.postOutcome = .success(AnnotationResponse(serverId: "srv-assigned", timeStamp: "2026-01-02T00:00:00Z"))
 
-        _ = await sync([unsynced])
+        _ = await sync()
 
         XCTAssertEqual(server.postedSelectors.count, 1)
         XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-assigned"])
@@ -287,7 +304,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         storeLocally(unsynced)
         server.postOutcome = .failure(NSError(domain: "test", code: 1))
 
-        let result = await sync([unsynced])
+        let result = await sync()
 
         XCTAssertEqual(server.postedSelectors.count, 1)
         XCTAssertEqual(result.map(\.annotationId), [""])
@@ -301,24 +318,272 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         storeLocally(unsynced)
         server.postOutcome = .success(nil)
 
-        _ = await sync([unsynced])
+        _ = await sync()
 
         XCTAssertEqual(server.postedSelectors.count, 1)
         XCTAssertEqual(localBookmarks.map(\.annotationId), [""])
         XCTAssertEqual(localBookmarks.map(\.lastSavedTimeStamp), ["2026-01-01T00:00:00Z"])
     }
 
-    /// A response without a server ID is not a sync: the bookmark keeps no
-    /// server link and stays eligible for the next upload.
-    func testSync_UploadResponseWithoutServerID_BookmarkStaysUnsynced() async {
-        let unsynced = bookmark("")
-        storeLocally(unsynced)
+    /// A response without a server ID is not a sync: the stored record is left
+    /// exactly as it was, unsynced, so the next sync uploads it again.
+    func testSync_UploadResponseWithoutServerID_LeavesStoredRecordUntouched() async {
+        storeLocally(bookmark(""))
+        let before = storedRecords
         server.postOutcome = .success(AnnotationResponse(serverId: nil, timeStamp: nil))
 
-        _ = await sync([unsynced])
+        _ = await sync()
 
         XCTAssertEqual(server.postedSelectors.count, 1)
-        XCTAssertEqual(localBookmarks.map(\.annotationId), [""])
+        XCTAssertEqual(storedRecords, before)
+    }
+
+    /// An empty server ID is treated as no server ID.
+    func testSync_UploadResponseWithEmptyServerID_LeavesStoredRecordUntouched() async {
+        storeLocally(bookmark(""))
+        let before = storedRecords
+        server.postOutcome = .success(AnnotationResponse(serverId: "", timeStamp: "2026-01-02T00:00:00Z"))
+
+        _ = await sync()
+
+        XCTAssertEqual(storedRecords, before)
+    }
+
+    /// A response with an ID but no time links the bookmark and keeps its own time.
+    func testSync_UploadResponseWithIDButNoTimestamp_KeepsStoredTimestamp() async {
+        storeLocally(bookmark(""))
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-1", timeStamp: nil))
+
+        _ = await sync()
+
+        XCTAssertEqual(storedDictionaries.count, 1)
+        XCTAssertEqual(storedDictionaries.first?["annotationId"] as? String, "srv-1")
+        XCTAssertEqual(storedDictionaries.first?["timeStamp"] as? String, "2026-01-01T00:00:00Z")
+    }
+
+    /// The upload writes the server's ID and time into the stored record and
+    /// leaves its other fields as stored; parsing adds a `chapter` the record
+    /// never had, and that must not be written back.
+    func testSync_UploadedRecord_KeepsItsOtherFields() async {
+        storeLocally(bookmark(""))
+        let keysBefore = Set(storedDictionaries.first?.keys.map { $0 } ?? [])
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-1", timeStamp: "2026-01-02T00:00:00Z"))
+
+        _ = await sync()
+
+        XCTAssertEqual(storedDictionaries.count, 1)
+        let record = storedDictionaries.first ?? [:]
+        XCTAssertEqual(Set(record.keys), keysBefore)
+        XCTAssertEqual(record["annotationId"] as? String, "srv-1")
+        XCTAssertEqual(record["timeStamp"] as? String, "2026-01-02T00:00:00Z")
+        XCTAssertEqual(record["readingOrderItem"] as? String, tracks.tracks[0].key)
+        XCTAssertEqual(record["readingOrderItemOffsetMilliseconds"] as? Int, 5_000)
+    }
+
+    /// A bookmark deleted while its upload is in flight is not written back
+    /// when the response arrives.
+    func testSync_BookmarkDeletedDuringUpload_IsNotWrittenBack() async {
+        storeLocally(bookmark(""))
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-1", timeStamp: "2026-01-02T00:00:00Z"))
+        let registry: BookmarkManagerBackedRegistry = self.registry
+        let bookID = bookIdentifier
+        server.onPost = {
+            for record in registry.genericBookmarksForIdentifier(bookID) {
+                registry.deleteGenericBookmark(record, forIdentifier: bookID)
+            }
+        }
+
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors.count, 1)
+        XCTAssertTrue(storedRecords.isEmpty)
+    }
+
+    /// A bookmark the patron deletes while another one uploads is not posted
+    /// afterwards, which would recreate it on the server.
+    func testSync_BookmarkDeletedWhileAnotherUploads_IsNotPosted() async {
+        storeLocally(bookmark("", trackIndex: 1, offsetMs: 1_000))
+        storeLocally(bookmark("", trackIndex: 2, offsetMs: 2_000))
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-1", timeStamp: "2026-01-02T00:00:00Z"))
+        let logic: AudiobookBookmarkBusinessLogic = sut
+        let deletedTrackKey = tracks.tracks[2].key
+        server.onPost = {
+            logic.deleteBookmark(at: AudioBookmark(type: .locatorAudioBookTime, version: 2, timeStamp: "2026-01-01T00:00:00Z",
+                                                   readingOrderItem: deletedTrackKey, readingOrderItemOffsetMilliseconds: 2_000))
+        }
+
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors.count, 1)
+        XCTAssertEqual(localBookmarks.map(\.readingOrderItem), [tracks.tracks[1].key])
+    }
+
+    /// A lone unsynced bookmark is uploaded once; later syncs post nothing.
+    func testSync_LoneUnsyncedBookmark_IsUploadedOnceAcrossSyncs() async {
+        storeLocally(bookmark(""))
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-1", timeStamp: "2026-01-02T00:00:00Z"))
+
+        _ = await sync()
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors.count, 1)
+        XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-1"])
+    }
+
+    // MARK: - Bookmark added while offline
+
+    private func addBookmark(at position: TrackPosition) async {
+        let _: ResultBox<TrackPosition?> = await withCheckedContinuation { continuation in
+            sut.saveBookmark(at: position) { saved in
+                continuation.resume(returning: ResultBox(saved))
+            }
+        }
+    }
+
+    private func deleteFromList(_ position: TrackPosition) async -> Bool {
+        await withCheckedContinuation { continuation in
+            sut.deleteBookmark(at: position) { success in
+                continuation.resume(returning: success)
+            }
+        }
+    }
+
+    /// Adds a bookmark while its POST fails, as it does offline, then opens
+    /// the bookmark list once the server answers.
+    private func addOfflineThenOpenList() async {
+        server.postOutcome = .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
+        await addBookmark(at: TrackPosition(track: tracks.tracks[1], timestamp: 7.0, tracks: tracks))
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-9", timeStamp: "2026-02-02T00:00:00Z"))
+        _ = await fetch()
+    }
+
+    /// A bookmark added offline and synced once is stored once, as the synced record.
+    func testSync_BookmarkAddedOffline_IsStoredOnceAsTheSyncedRecord() async {
+        await addOfflineThenOpenList()
+
+        XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-9"])
+    }
+
+    /// Once a bookmark added offline has synced, opening the list again posts nothing.
+    func testSync_BookmarkAddedOffline_IsNotPostedAgainOnNextSync() async {
+        await addOfflineThenOpenList()
+        let postsAfterFirstSync = server.postedSelectors.count
+
+        _ = await fetch()
+
+        XCTAssertEqual(server.postedSelectors.count, postsAfterFirstSync)
+    }
+
+    /// Deleting a bookmark added offline, after it synced, deletes it on the server.
+    func testDelete_BookmarkAddedOfflineThenSynced_SendsServerDelete() async {
+        await addOfflineThenOpenList()
+        let shown = await fetch()
+        XCTAssertEqual(shown.map(\.annotationId), ["srv-9"])
+        guard let position = shown.first else { return XCTFail("The synced bookmark is not listed") }
+
+        let deleted = await deleteFromList(position)
+
+        XCTAssertTrue(deleted)
+        XCTAssertEqual(server.deleteCalls, ["srv-9"])
+        XCTAssertTrue(storedRecords.isEmpty)
+    }
+
+    /// After deleting that bookmark and reopening the book, it stays deleted.
+    func testReopen_AfterDeletingBookmarkAddedOffline_BookmarkStaysDeleted() async {
+        await addOfflineThenOpenList()
+        server.serverBookmarks = [bookmark("srv-9", trackIndex: 1, offsetMs: 7_000)]
+        let shown = await fetch()
+        guard let position = shown.first else { return XCTFail("The synced bookmark is not listed") }
+        _ = await deleteFromList(position)
+        // The server keeps the bookmark unless it was asked to delete it.
+        if server.deleteCalls.contains("srv-9") { server.serverBookmarks = [] }
+
+        sut = AudiobookBookmarkBusinessLogic(book: book, registry: registry, annotationsManager: server)
+        let reopened = await fetch()
+
+        XCTAssertTrue(reopened.isEmpty)
+        XCTAssertTrue(storedRecords.isEmpty)
+    }
+
+    // MARK: - Duplicate records stored by earlier versions
+
+    /// Stores the pair earlier versions left behind: the unsynced original,
+    /// without a chapter, and the synced copy the upload appended with
+    /// chapter "0". Returns the synced copy's stored record.
+    @discardableResult
+    private func storeDuplicatePair(trackIndex: Int = 1, offsetMs: Int = 7_000) -> String {
+        storeLocally(bookmark("", trackIndex: trackIndex, offsetMs: offsetMs))
+        let syncedCopy = bookmark("srv-9", trackIndex: trackIndex, offsetMs: offsetMs)
+        syncedCopy.chapter = "0"
+        storeLocally(syncedCopy)
+        return storedRecords.last ?? ""
+    }
+
+    /// The pair collapses to the synced record and nothing is posted.
+    func testSync_DuplicatePairFromEarlierVersion_CollapsesToTheSyncedRecord() async {
+        let syncedRecord = storeDuplicatePair()
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-other", timeStamp: nil))
+
+        _ = await sync()
+
+        XCTAssertEqual(storedRecords, [syncedRecord])
+        XCTAssertTrue(server.postedSelectors.isEmpty)
+    }
+
+    /// Later syncs leave the collapsed record as it is.
+    func testSync_DuplicatePairFromEarlierVersion_StaysCollapsedAcrossSyncs() async {
+        let syncedRecord = storeDuplicatePair()
+
+        _ = await sync()
+        _ = await sync()
+
+        XCTAssertEqual(storedRecords, [syncedRecord])
+        XCTAssertTrue(server.postedSelectors.isEmpty)
+    }
+
+    /// When the unsynced copy and the synced record have the same fields apart
+    /// from ID and time, only the unsynced copy is removed.
+    func testSync_UnsyncedCopyBesideSyncedRecordWithSameFields_KeepsTheSyncedRecord() async {
+        storeLocally(bookmark("", trackIndex: 1, offsetMs: 7_000))
+        storeLocally(bookmark("srv-9", trackIndex: 1, offsetMs: 7_000))
+        let syncedRecord = storedRecords.last ?? ""
+
+        _ = await sync()
+
+        XCTAssertEqual(storedRecords, [syncedRecord])
+        XCTAssertTrue(server.postedSelectors.isEmpty)
+    }
+
+    /// An unsynced bookmark is not collapsed into a synced one at a different
+    /// position, even one millisecond or one track away; it is uploaded.
+    func testSync_UnsyncedNextToSyncedAtOtherPositions_IsUploadedAndOthersUntouched() async {
+        storeLocally(bookmark("", trackIndex: 1, offsetMs: 7_000))
+        storeLocally(bookmark("srv-near", trackIndex: 1, offsetMs: 7_001))
+        storeLocally(bookmark("srv-track", trackIndex: 2, offsetMs: 7_000))
+        let untouched = Array(storedRecords.dropFirst())
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-1", timeStamp: "2026-01-02T00:00:00Z"))
+
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors.count, 1)
+        XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-1", "srv-near", "srv-track"])
+        XCTAssertEqual(Array(storedRecords.dropFirst()), untouched)
+    }
+
+    /// The unsynced copy an earlier response without an ID left beside the
+    /// original (chapter "0", empty time) collapses once the original syncs.
+    func testSync_TwoUnsyncedCopiesOfOneBookmark_EndAsOneSyncedRecord() async {
+        storeLocally(bookmark("", trackIndex: 1, offsetMs: 7_000))
+        let leftover = bookmark("", trackIndex: 1, offsetMs: 7_000)
+        leftover.chapter = "0"
+        leftover.lastSavedTimeStamp = ""
+        storeLocally(leftover)
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-1", timeStamp: "2026-01-02T00:00:00Z"))
+
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors.count, 1)
+        XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-1"])
     }
 
     // MARK: - Deletes that must stay deleted
@@ -332,7 +597,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         XCTAssertTrue(deleted)
         server.serverBookmarks = [bookmark("srv-1")]
 
-        let result = await sync([])
+        let result = await sync()
 
         XCTAssertTrue(result.isEmpty)
         XCTAssertTrue(localBookmarks.isEmpty)
@@ -348,7 +613,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         XCTAssertTrue(deleted)
         server.serverBookmarks = [bookmark("srv-duplicate", trackIndex: 1, offsetMs: 7_000)]
 
-        let result = await sync([])
+        let result = await sync()
 
         XCTAssertTrue(result.isEmpty)
         XCTAssertTrue(localBookmarks.isEmpty)
@@ -368,6 +633,20 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         let positions = await fetch()
 
         XCTAssertEqual(positions.map(\.annotationId), ["srv-2"])
+    }
+
+    /// A deleted bookmark written back under another annotation ID is still
+    /// left out: the position alone marks it as deleted.
+    func testFetchBookmarks_DeletedBookmarkWrittenBackUnderOtherID_IsNotReturned() async {
+        let synced = bookmark("srv-1", trackIndex: 1, offsetMs: 7_000)
+        storeLocally(synced)
+        let deleted = await delete(synced)
+        XCTAssertTrue(deleted)
+        storeLocally(bookmark("srv-other", trackIndex: 1, offsetMs: 7_000))
+
+        let positions = await fetch()
+
+        XCTAssertTrue(positions.isEmpty)
     }
 
     /// When the delete by ID fails, the server copy at the same position is
@@ -398,7 +677,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         XCTAssertTrue(deleted)
         XCTAssertEqual(server.deleteCalls, ["stale-id", "srv-real"])
 
-        let resynced = await sync([])
+        let resynced = await sync()
         XCTAssertTrue(resynced.isEmpty)
         XCTAssertTrue(localBookmarks.isEmpty)
     }
@@ -416,7 +695,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         XCTAssertEqual(server.deleteCalls, ["stale-id"])
 
         server.serverBookmarks = [bookmark("stale-id", trackIndex: 1, offsetMs: 7_000)]
-        let resynced = await sync([])
+        let resynced = await sync()
         XCTAssertTrue(resynced.isEmpty)
         XCTAssertTrue(localBookmarks.isEmpty)
     }

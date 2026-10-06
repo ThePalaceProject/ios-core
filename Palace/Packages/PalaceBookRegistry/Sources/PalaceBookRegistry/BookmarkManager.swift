@@ -133,11 +133,31 @@ class BookmarkManager {
     }, onComplete: { [save] in if let account { save(account) } })
   }
 
+  /// Matches by identity, not content: the caller holds the exact record it
+  /// read, while a content match can miss it (parsing adds fields) or hit a
+  /// different record at the same position. A missing record is not re-added,
+  /// so a bookmark deleted during an upload stays deleted.
   func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier identifier: String, account: String?) {
-    store.mutateRegistry({ [weak self] registry in
-      self?.deleteGenericBookmarkInline(oldLocation, forIdentifier: identifier, registry: &registry)
-      self?.addGenericBookmarkInline(newLocation, forIdentifier: identifier, registry: &registry)
-    }, onComplete: { [save] in if let account { save(account) } })
+    var didMutate = false
+    store.mutateRegistry({ registry in
+      guard let index = registry[identifier]?.genericBookmarks?.firstIndex(where: { $0.isSameRecord(as: oldLocation) }) else {
+        Log.info(#function, "No stored record to replace for \(identifier); leaving bookmarks unchanged")
+        return
+      }
+      registry[identifier]?.genericBookmarks?[index] = newLocation
+      didMutate = true
+    }, onComplete: { [save] in if didMutate, let account { save(account) } })
+  }
+
+  func deleteGenericBookmark(identicalTo location: TPPBookLocation, forIdentifier identifier: String, account: String?) {
+    var didMutate = false
+    store.mutateRegistry({ registry in
+      guard let index = registry[identifier]?.genericBookmarks?.firstIndex(where: { $0.isSameRecord(as: location) }) else {
+        return
+      }
+      registry[identifier]?.genericBookmarks?.remove(at: index)
+      didMutate = true
+    }, onComplete: { [save] in if didMutate, let account { save(account) } })
   }
 
   // MARK: - Inline helpers (called within mutateRegistry barrier)
