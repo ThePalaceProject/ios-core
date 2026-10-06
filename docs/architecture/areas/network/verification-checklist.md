@@ -15,7 +15,7 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 sources:
   verified_ref: 4c65025be5a40bfdbe0da6dbd14f4158744d1397
   last_verified: 2026-10-06
-  fingerprint: '6d3df409'
+  fingerprint: '7fb2be1f'
   paths:
     - Palace/Network/TPPNetworkResponder.swift
     - Palace/Network/TPPNetworkExecutor.swift
@@ -24,6 +24,16 @@ sources:
     - Palace/Packages/PalaceAuth/Sources/PalaceAuth/URLResponse+TPPAuthentication.swift
     - Palace/MyBooks/TokenRefreshInterceptor.swift
     - Palace/MyBooks/DownloadAuthRetryHandler.swift
+    - Palace/Reader2/Bookmarks/TPPAnnotations.swift
+    - Palace/OPDS2/Service/TPPCirculationAnalytics.swift
+    - Palace/Packages/PalaceNetwork/Sources/PalaceNetwork/CirculationOfflineSupport.swift
+    - Palace/Network/Core/URLSessionNetworkClient.swift
+    - Palace/AppInfrastructure/AppContainer.swift
+    - Palace/MyBooks/LoanRenewalService.swift
+    - Palace/MyBooks/BookReturnService.swift
+    - Palace/Packages/PalaceAuth/Sources/PalaceAuth/AuthDecisionPayload.swift
+    - Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPProblemDocument.swift
+    - Palace/ErrorHandling/TPPProblemDocument+Localized.swift
 ---
 
 <!-- audit-verified: Owner files in Palace/Network/ confirmed by `ls Palace/Network/` (Core/, TPPNetworkExecutor.swift, TPPNetworkExecutor+AccountNetworking.swift, TPPNetworkResponder.swift, TPPNetworkQueue.swift, TPPRequestExecuting.swift, TPPUserFriendlyError.swift, BundledHTMLViewController.swift, RemoteHTMLViewController.swift). Line citations in Sections 1, 4, 5, 7, 7b and 8 re-verified by grep against develop at 3ad580c0d (2026-10-05). The classifier migration (PR #1018) landed on develop in f380e37c3: `TPPNetworkResponder.handleExpiredTokenIfNeeded` constructs `AuthErrorClassifier` and routes on its outcome; the responder no longer calls `indicatesAuthenticationNeedsRefresh`. Re-grep before assuming. -->
@@ -131,7 +141,7 @@ Architects: if you find yourself adding a new `if statusCode == 401` branch in P
 | Token-refresh dispatch | `TPPNetworkResponder.swift:703` | `Log.info — Server returned 401 - triggering token refresh (server authority); classifier outcome=<outcome>` | Confirms we entered `refreshTokenAndResume` |
 | Offline queue retry attempt | `TPPNetworkQueue.swift:475` | `Log.debug — Executing "retry" with N row(s) in the table` | Reachability-up retry pass; row count is the offline backlog |
 | Offline queue 4xx/5xx on retry | `TPPNetworkQueue.swift:536` | `Log.warn — Queued Request retry failed with status N` | Queued retry hit an HTTP error; row is dropped after counter exhausted |
-| Classifier outcome | `AuthErrorClassifier.swift:112` (PalaceAuth) | `AuthDecisionStep.classifierClassified` (`"classifier.classified"`, `AuthDecisionPayload.swift:22`), sent to the classifier's injected `AuthDecisionRecording` | Not emitted for network-layer 401s today. `TPPNetworkResponder.swift:635` (and `LoanRenewalService.swift:156`) construct the classifier without a recorder, so it uses the default `NullAuthDecisionRecorder`. The Crashlytics-backed `AuthDecisionRecorder` is passed only to `AuthCoordinator` (`AppContainer.swift:530–537`), so coordinator steps are recorded and responder classifications are not. |
+| Classifier outcome | `AuthErrorClassifier.swift:112` (PalaceAuth) | `AuthDecisionStep.classifierClassified` (`"classifier.classified"`, `AuthDecisionPayload.swift:22`), sent to the classifier's injected `AuthDecisionRecording` | Not emitted for network-layer 401s today. `TPPNetworkResponder.swift:635` (and `LoanRenewalService.swift:156`) construct the classifier without a recorder, so it uses the default `NullAuthDecisionRecorder`. The Crashlytics-backed `AuthDecisionRecorder` is passed only to `AuthCoordinator` (`AppContainer.swift:555–562`), so coordinator steps are recorded and responder classifications are not. |
 
 ---
 
@@ -309,7 +319,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
-| 2026-10-06 | network checklist refresh | Corrected Section 3: the executor and responder never enqueue; the queue's live producer is the annotation POST on transport failure, and `enqueueOfflineRequest` (3f659ff2e) accepts GET but has no production caller. Removed the 5xx, `cachePolicy` and PATCH enqueue cells and the "GET requests are NOT enqueued" note; added the DELETE no-refresh row; replaced "per-task budget caps at 2". Corrected the queue's retry description in Section 1 and the "single stubbing seam" claim in Section 2. Added a Section 8 queue self-check. Re-checked the remaining negative claims against 4c65025be. |
+| 2026-10-06 | network checklist refresh | Corrected Section 3: the executor and responder never enqueue; the queue's live producer is the annotation POST on transport failure, and `enqueueOfflineRequest` (3f659ff2e) accepts GET but has no production caller. Removed the 5xx, `cachePolicy` and PATCH enqueue cells and the "GET requests are NOT enqueued" note; added the DELETE no-refresh row; replaced "per-task budget caps at 2". Corrected the queue's retry description in Section 1 and the "single stubbing seam" claim in Section 2. Added a Section 8 queue self-check and the files these claims cite to `sources.paths`; corrected the `AppContainer.swift` coordinator-recorder citation to 555–562. Re-checked the remaining negative claims against 4c65025be. |
 | 2026-10-05 | network checklist refresh | Confirmed the PR #1018 classifier migration is on develop (f380e37c3) and removed the "not yet landed" notes. Re-verified every line citation and the Section 8 self-check against 3ad580c0d. Corrected the retry-budget description: it is one retry per URL (`maxRetryAttempts = 1`), not `tokenRefreshAttempts < 2`. Replaced two test files that were never added (`CrossDomain401Tests`, `AuthErrorCategoryTests`) with the classifier tests that cover the same rules. Added the `sources:` frontmatter. |
 | 2026-09-23 | /rigorous-fix, PR #1462 (PP-5202) | Added Section 7b — the problem-document DECODE seam. Sections 1–7 covered classification over an already-parsed document and were silent on parsing; that gap shipped a sign-in regression where a wrong-typed `show_title` discarded the whole document and a blocked patron was told their password was wrong. Section 7b documents the two parse paths and their different contracts, the `.convertFromSnakeCase` CodingKeys trap and its detector, the no-custom-encoder decision, and the strict/lenient `0` disagreement as known debt. |
 | 2026-05-28 | swarm rigor meta-improvement (chore/swarm-rigor-meta-improvement) | Initial baseline. Mirrors the auth area's `verification-checklist.md` structure. Migration status in Section 1 reflects the swarm_66819d80 design baseline (commit f9e57f7f5 on swarm/swarm_66819d80-scaffold); develop tip still calls `indicatesAuthenticationNeedsRefresh` directly until that swarm lands on develop. |
