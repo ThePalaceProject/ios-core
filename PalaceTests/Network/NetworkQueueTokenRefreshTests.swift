@@ -231,6 +231,43 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         XCTAssertEqual(server.requestCount, 2, "No resend without a new token")
     }
 
+    /// A row that 401s after its library found the slot busy is also kept
+    /// without spending a retry, and only that library's rows are refunded.
+    func testDrain_RowHits401AfterTheSlotWasBusy_IsRefundedAndOtherLibrariesKeepTheirCount() {
+        let tokens = TokenBox(["lib-A": "old", "lib-B": "old"])
+        let server = StubServer(acceptedToken: "new")
+        let refresher = SpyRefresher(tokens: tokens, outcome: .inProgressElsewhere)
+        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher,
+                                     canRefreshToken: { $0 == "lib-A" })
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        GatedURLProtocol.reset()
+
+        queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/first")!,
+                         .POST, Data("{}".utf8), nil)
+        queue.addRequest("lib-A", "book-2", URL(string: "https://a.example.org/annotations/gated")!,
+                         .POST, Data("{}".utf8), nil)
+        queue.addRequest("lib-B", "book-3", URL(string: "https://b.example.org/annotations/")!,
+                         .POST, Data("{}".utf8), nil)
+        queue.serialQueue.sync {}
+
+        queue.retryQueue()
+        expectEventually("lib-A's refresh to find the slot busy") { refresher.libraries == ["lib-A"] }
+        expectEventually("the ungated rows to be refused") { server.requestCount == 2 }
+        settle(queue)
+        GatedURLProtocol.open()
+        expectEventually("the gated row to be refused") { GatedURLProtocol.answered == 1 }
+        settle(queue)
+
+        let retries = Dictionary(uniqueKeysWithValues: queue.persistedRowsForTesting().map { ($0.updateID ?? "", $0.retries) })
+        XCTAssertEqual(retries["book-1"], 0)
+        XCTAssertEqual(retries["book-2"], 0, "The late row is refunded like the first one")
+        XCTAssertEqual(retries["book-3"], 1, "A refund for lib-A must not touch lib-B's row")
+        XCTAssertEqual(refresher.libraries, ["lib-A"], "No second attempt in the same drain")
+
+        queue.retryQueue()
+        expectEventually("the next drain to run") { server.requestCount == 4 }
+    }
+
     /// A library that cannot exchange its card for a token is not sent to the
     /// executor, which would only log a missing-credentials error every drain.
     func testDrain_On401_ForALibraryThatCannotRefresh_DoesNotAskTheExecutor() {
