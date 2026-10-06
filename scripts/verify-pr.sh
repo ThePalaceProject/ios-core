@@ -1141,6 +1141,18 @@ run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" 
 run_phase35_detector "opaque_blob_egress" "check-opaque-blob-egress.py" "block" \
   "No opaque payload reaches an external sink"
 
+# Exit 0 from the enforcer can still carry rows below their recorded floor: an
+# app row within APP_FLOOR_TOLERANCE reads WITHIN, and a package row reads
+# FAIL with a fifth `advisory` column. Count both so the pass detail says so.
+coverage_pass_detail() {
+  local within advisory notes=""
+  within=$(printf '%s\n' "$1" | awk 'NF == 4 && $4 == "WITHIN" && $2 ~ /%$/ { n++ } END { print n + 0 }')
+  advisory=$(printf '%s\n' "$1" | awk 'NF == 5 && $4 == "FAIL" && $5 == "advisory" && $2 ~ /%$/ { n++ } END { print n + 0 }')
+  [ "$within" -gt 0 ] && notes="$within within tolerance"
+  [ "$advisory" -gt 0 ] && notes="${notes:+$notes, }$advisory advisory below floor"
+  echo "All blocking floors met${notes:+ ($notes)}"
+}
+
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
@@ -1179,7 +1191,7 @@ elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.j
       # "Coverage gate: FAIL" line also ends in FAIL and is not a module.
       COV_FAILED_MODULES=$(echo "$COV_OUTPUT" | awk 'NF == 4 && $4 == "FAIL" && $2 ~ /%$/ { printf "%s %s<%s ", $1, $3, $2 }')
       if [ "$COV_RC" -eq 0 ]; then
-        record "coverage_floors" "pass" "All module floors met"
+        record "coverage_floors" "pass" "$(coverage_pass_detail "$COV_OUTPUT")"
       elif [ "$COV_RC" -eq 1 ] && [ "${TEST_FAIL:-0}" -gt 0 ] 2>/dev/null; then
         # Coverage from a run that lost tests is lower for that reason alone, so
         # the number is not evidence about the diff. unit-testing.yml refuses the
