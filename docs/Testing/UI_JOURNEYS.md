@@ -46,8 +46,9 @@ its coverage report do not include these tests.
   routes require (`requiresFlag`), which is how the loans feed gains the book
   after the borrow. Flags persist across a relaunch and clear on reset.
 - **Reader content.** The EPUB reader's text is in the accessibility tree
-  (`app.webViews.staticTexts`), so a journey can assert which chapter is on
-  screen.
+  (`app.webViews.staticTexts`). Readium preloads neighbouring chapters, so
+  assert the expected chapter's heading and the absence of one that should
+  not be loaded.
 - **Synchronisation.** Tests wait for elements and predicates with bounded
   timeouts, never fixed sleeps.
 

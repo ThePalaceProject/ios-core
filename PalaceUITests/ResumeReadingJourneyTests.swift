@@ -28,6 +28,14 @@ final class ResumeReadingJourneyTests: JourneyTestCase {
             waitForPage(showing: lastChapter, "the reader did not move to \(lastChapter)")
         }
 
+        step("Close the book") {
+            // Closing the reader stores the position; terminating straight from
+            // the reader could race the asynchronous registry write.
+            revealReaderChrome()
+            waitFor(app.buttons["Go back"], "the reader has no back button").tap()
+            waitFor(app.descendants(matching: .any)[AccessibilityID.MyBooks.gridView], "closing the book did not return to My Books")
+        }
+
         step("Relaunch the app without resetting it") {
             app.terminate()
             launch(scenario: FixtureLibrary.scenario, resetState: false)
@@ -48,8 +56,9 @@ final class ResumeReadingJourneyTests: JourneyTestCase {
         waitFor(read, "the shelf offers no Read button").tap()
     }
 
-    /// Waits until the page on screen shows `chapter`'s heading, and checks the
-    /// book's opening chapter is not what the reader is showing.
+    /// Waits until the reader has `chapter`'s heading loaded and checks the
+    /// opening chapter is not: Readium preloads neighbours, so the heading
+    /// alone does not prove which chapter is on screen.
     private func waitForPage(showing chapter: String, _ message: String) {
         let heading = app.webViews.staticTexts[chapter].firstMatch
         waitFor(heading, message)
