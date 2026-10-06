@@ -100,8 +100,7 @@ struct AppTabHostView: View {
                 appContainer.featureFlags.isSideLoadingEnabled
                     ? appContainer.sideloadedBookRegistry.allBooks
                     : []
-            },
-            reachability: appContainer.reachability
+            }
         )
     }
 

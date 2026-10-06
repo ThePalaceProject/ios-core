@@ -485,8 +485,8 @@ final class AppContainerIsolationLintTests: XCTestCase {
   /// skipped: package targets cannot see `AppContainer`.
   private static let palaceSourceRoot: URL = repoRoot.appendingPathComponent("Palace")
 
-  /// Most entries the owned-service baseline may hold. Lower it together with
-  /// the baseline when a listed read is removed.
+  /// Entries the owned-service baseline holds. Lowered together with the
+  /// baseline when a listed read is removed; a raise needs both edits.
   static let ownedServiceBaselineCeiling = 11
 
   /// The services `AppContainerOwnedServices` stores, read from its source so
@@ -599,8 +599,8 @@ final class AppContainerIsolationLintTests: XCTestCase {
     XCTAssertGreaterThan(scanned, 100, "Expected to scan the app sources under \(Self.palaceSourceRoot.path)")
 
     let baseline = try Self.ownedServiceBaseline()
-    XCTAssertLessThanOrEqual(baseline.count, Self.ownedServiceBaselineCeiling,
-                             "The owned-service baseline may only shrink; it now has \(baseline.count) entries")
+    XCTAssertEqual(baseline.count, Self.ownedServiceBaselineCeiling,
+                   "The owned-service baseline may only shrink; set ownedServiceBaselineCeiling to its entry count")
 
     let diff = Self.ownedServiceBaselineDiff(found: found, baseline: baseline)
     XCTAssertTrue(diff.unlisted.isEmpty,

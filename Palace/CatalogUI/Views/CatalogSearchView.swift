@@ -4,6 +4,7 @@ import UIKit
 import PalaceNetwork
 import PalaceCatalog
 import PalaceBookModel
+import PalaceBookRegistry
 import PalaceUtilities
 
 // MARK: - Accessibility focus target
@@ -42,6 +43,7 @@ struct CatalogSearchView: View {
     let books: [TPPBook]
     let onBookSelected: (TPPBook) -> Void
     let downloadCenter: MyBooksDownloadCenter
+    private let bookRegistry: TPPBookRegistryProvider
 
     init(
         repository: CatalogRepositoryProtocol,
@@ -53,11 +55,13 @@ struct CatalogSearchView: View {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
             repository: repository,
             baseURL: baseURL,
+            bookRegistry: appContainer.bookRegistry,
             bookCellModelCache: appContainer.bookCellModelCache
         ))
         self.books = books
         self.onBookSelected = onBookSelected
         self.downloadCenter = appContainer.downloadCenter
+        self.bookRegistry = appContainer.bookRegistry
     }
 
     /// Searches through `appContainer`'s catalog repository, so results share
@@ -110,11 +114,10 @@ struct CatalogSearchView: View {
 
     // MARK: - Publishers
 
-    private var registryChangePublisher: AnyPublisher<String, Never> {
+    var registryChangePublisher: AnyPublisher<String, Never> {
         // Emit the changed identifier so just the affected result row
-        // refreshes. Resolved from the shared graph to
-        // match this view's existing `AppContainer.production()` defaults.
-        AppContainer.production().bookRegistry.bookStatePublisher
+        // refreshes.
+        bookRegistry.bookStatePublisher
             .map { $0.0 }
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()

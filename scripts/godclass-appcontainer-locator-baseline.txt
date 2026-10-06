@@ -33,4 +33,6 @@
 # 246 -> 239: CatalogSearchView takes its container (3 owned-service reads and
 #   2 downloadCenter reads), CatalogLaneMoreViewModel requires its catalog API,
 #   and URLSessionNetworkClient's executor default argument had no caller left.
-239
+# 239 -> 238: CatalogSearchView's row-refresh publisher reads its container's
+#   registry.
+238

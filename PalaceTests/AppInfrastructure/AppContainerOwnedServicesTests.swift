@@ -102,6 +102,24 @@ final class AppContainerOwnedServicesTests: PalaceWiringTestCase {
                       "The catalog tab must use its container's catalog repository, not a second one")
     }
 
+    /// Search result rows must refresh from the registry of the container the
+    /// search screen was built with, the one its download center writes to.
+    func testCatalogSearch_RowRefreshFollowsItsContainersRegistry() {
+        let registry = TPPBookRegistryMock()
+        let book = makeBook("search-row-\(UUID().uuidString)")
+        registry.addBook(book, state: .downloadNeeded)
+        let view = CatalogSearchView(books: [book], onBookSelected: { _ in }, appContainer: makeTestAppContainer(bookRegistry: registry))
+        let refreshed = expectation(description: "row refresh for the changed book")
+        let subscription = view.registryChangePublisher.sink { identifier in
+            if identifier == book.identifier { refreshed.fulfill() }
+        }
+
+        registry.setState(.downloading, for: book.identifier)
+
+        wait(for: [refreshed], timeout: 5)
+        subscription.cancel()
+    }
+
     /// A book cell model must read the registry of the container whose cache
     /// built it. A shared cache would show container A's loan state in B.
     func testBookCellModelCache_TwoContainers_ModelReadsOnlyItsOwnContainersRegistry() {
