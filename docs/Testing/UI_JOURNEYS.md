@@ -6,6 +6,7 @@ library account, no network and no private tooling.
 | Journey | Test | What it asserts |
 |---|---|---|
 | Sign in and borrow | `SignInAndBorrowJourneyTests` | Settings shows the account signed in; after one borrow the book becomes readable and My Books holds exactly that one book |
+| Resume reading | `ResumeReadingJourneyTests` | After reading to the last chapter and relaunching, reopening the book shows that chapter, not the first |
 
 ## Run them
 
@@ -44,6 +45,9 @@ its coverage report do not include these tests.
 - **Server-side change.** A route can raise a flag (`setsFlag`) that other
   routes require (`requiresFlag`), which is how the loans feed gains the book
   after the borrow. Flags persist across a relaunch and clear on reset.
+- **Reader content.** The EPUB reader's text is in the accessibility tree
+  (`app.webViews.staticTexts`), so a journey can assert which chapter is on
+  screen.
 - **Synchronisation.** Tests wait for elements and predicates with bounded
   timeouts, never fixed sleeps.
 
