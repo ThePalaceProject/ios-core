@@ -13,6 +13,19 @@ import PalaceBookModel
 @MainActor
 final class AppContainerDownloadNetworkLossWiringTests: XCTestCase {
 
+    /// Entries a test seeded into the shared production center, removed in
+    /// tearDown so they cannot reach a later test even when an assertion fails.
+    private var productionSeed: (center: MyBooksDownloadCenter, taskID: Int, bookID: String)?
+
+    override func tearDown() async throws {
+        if let seed = productionSeed {
+            await seed.center.stateManager.taskIdentifierToBook.remove(seed.taskID)
+            await seed.center.stateManager.bookIdentifierToDownloadInfo.remove(seed.bookID)
+            productionSeed = nil
+        }
+        try await super.tearDown()
+    }
+
     /// A container from the test factory fails a downloading book that its own
     /// center tracks, through its own registry.
     func testFactoryContainer_monitorFailsItsOwnCentersDownload() async throws {
@@ -39,12 +52,11 @@ final class AppContainerDownloadNetworkLossWiringTests: XCTestCase {
         let center = container.downloadCenter
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let taskID = 941_140
+        productionSeed = (center, taskID, book.identifier)
         let task = await track(book, taskID: taskID, in: center)
 
         monitor.failActiveDownloads()
         await monitor.lastFailureTask?.value
-        await center.stateManager.taskIdentifierToBook.remove(taskID)
-        await center.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
 
         XCTAssertEqual(task.state, .canceling)
     }
