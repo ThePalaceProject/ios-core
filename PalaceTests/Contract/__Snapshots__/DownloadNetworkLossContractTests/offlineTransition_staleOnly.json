@@ -1,0 +1,15 @@
+[
+  {
+    "args" : {
+      "book" : "stale-only",
+      "state" : "download-successful"
+    },
+    "method" : "registry.state"
+  },
+  {
+    "args" : {
+      "task" : "5"
+    },
+    "method" : "task.cancel"
+  }
+]

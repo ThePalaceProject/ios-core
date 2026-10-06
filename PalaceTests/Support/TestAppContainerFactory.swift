@@ -125,6 +125,10 @@ func makeTestAppContainer(
   // streaming tests opt IN by setting the provider on their own instance.
   downloadCenter.lcpStreamingEnabledProvider = { false }
 
+  let downloadNetworkLossMonitor = MainActor.assumeIsolated {
+    AppContainer.makeDownloadNetworkLossMonitor(for: downloadCenter)
+  }
+
   // `UserAccountPublisher.shared` is `@MainActor`-isolated; resolve it via the
   // same `assumeIsolated` hop `_buildCachedAppContainer()` uses (XCTest
   // dispatches on main, so the assumption is sound at runtime regardless of
@@ -177,6 +181,7 @@ func makeTestAppContainer(
     navigationCoordinatorHub: NavigationCoordinatorHub(tabRouterHub: tabRouterHub),
     tabRouterHub: tabRouterHub,
     drmAuthorizerProvider: { nil },
-    authCoordinator: authCoordinator
+    authCoordinator: authCoordinator,
+    downloadNetworkLossMonitor: downloadNetworkLossMonitor
   )
 }
