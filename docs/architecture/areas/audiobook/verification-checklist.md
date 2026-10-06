@@ -6,16 +6,15 @@ created: 2026-05-28
 last_refresh: 2026-05-28
 freshness_window: 180d
 owners: [audiobook]
-description: Per-area verification reference; refresh before next swarm/rigorous-fix
+description: Per-area verification reference; refresh before changing this area
 ---
 
-<!-- audit-verified: file paths and line ranges in Section 1 verified by direct Read of Palace/Audiobooks/*.swift and Palace/CarPlay/*.swift on 2026-05-28. Test inventory in Section 6 verified by `find PalaceTests/Audiobook* PalaceTests/CarPlay -name '*.swift'` (37 files). Known-trap claims in Section 7 sourced from MEMORY.md entries explicitly listed in Section 9. Items I could not verify by reading code (regression history details, in-field crash signatures, sim-environment audio limitations) are attributed to their source memory or HelpSpot ticket and not asserted as live code state. -->
 
 # Audiobook area — verification checklist
 
 **Owner area:** `Palace/Audiobooks/`, `Palace/CarPlay/`, plus the audiobook-touching auth surface at `Palace/Audiobooks/AudiobookSessionManager.swift` (SAML re-auth boundary) and the submodule at `ios-audiobooktoolkit/` (PalaceAudiobookToolkit SPM consumer).
 
-**Purpose:** the architect's first deliverable on ANY swarm or /rigorous-fix in this area is *update this file*. Audiobook is the highest-churn area in the project — the toolkit submodule has shipped 25+ revisions with several revert cycles (see `reference_audiobook_toolkit_risk_profile.md`). Cross-vendor regressions are the dominant failure mode and they're invisible without a checklist that names every vendor × scenario.
+**Purpose:** the first deliverable of any non-trivial change in this area is *update this file*. Audiobook is the highest-churn area in the project — the toolkit submodule has shipped 25+ revisions with several revert cycles. Cross-vendor regressions are the dominant failure mode and they're invisible without a checklist that names every vendor × scenario.
 
 **Last refresh:** 2026-05-28 (initial baseline).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
@@ -78,7 +77,7 @@ Additional scenario rows (apply to all vendors):
 
 ---
 
-## 4. Acquisition-chain fixture catalog (subset — full version in MEMORY.md `reference_marketplace_lcp_mime_nesting.md`)
+## 4. Acquisition-chain fixture catalog (subset)
 
 For any predicate that asks "is this book an X audiobook?" — the chain MUST be walked recursively:
 
@@ -135,17 +134,17 @@ Other audiobook-touching test files: `PalaceTests/AudiobookmarkTests.swift`, `Au
 **Tests that test IMPLEMENTATION (rewritable when underlying changes):**
 - Tests asserting on specific call orders inside `AudiobookSessionManager` private methods (the contract is the dual-channel error surface + state-publisher transitions, not the internal sequencing).
 
-**Sim-environment caveat:** none of these tests validate actual audio decode — sim doesn't decode audiobook audio (`feedback_audiobook_sim_audio_limitation.md`). Position-state drivers (skip ±30s, TOC seek, scrubber drag) are the appropriate UI-level checks on sim. Real-device runs required for decoder validation, audio-session interruption, background playback, and playback-rate audibility.
+**Sim-environment caveat:** none of these tests validate actual audio decode — sim doesn't decode audiobook audio. Position-state drivers (skip ±30s, TOC seek, scrubber drag) are the appropriate UI-level checks on sim. Real-device runs required for decoder validation, audio-session interruption, background playback, and playback-rate audibility.
 
 ---
 
 ## 7. Known traps / anti-patterns (lessons from prior work)
 
-1. **PalaceAudiobookToolkit submodule churn — 25+ revisions with revert cycles** (`reference_audiobook_toolkit_risk_profile.md`). Findaway / OverDrive / LCP / open-access all share the same player infrastructure. Every audiobook PR — even single-vendor ones — must run `CrossVendorSmokeTests` and a manual smoke on the 4 backend types before merge. Specific historical regressions: 2.0.2→2.0.4 adaptive memory partial abandonment; 2.0.5→2.1.0 location race + concurrency crashes; 2.2.3→2.2.4 manifest fetch using wrong task type, skipping bearer dance — a contract violation that shipped to prod.
+1. **PalaceAudiobookToolkit submodule churn — 25+ revisions with revert cycles**. Findaway / OverDrive / LCP / open-access all share the same player infrastructure. Every audiobook PR — even single-vendor ones — must run `CrossVendorSmokeTests` and a manual smoke on the 4 backend types before merge. Specific historical regressions: 2.0.2→2.0.4 adaptive memory partial abandonment; 2.0.5→2.1.0 location race + concurrency crashes; 2.2.3→2.2.4 manifest fetch using wrong task type, skipping bearer dance — a contract violation that shipped to prod.
 2. **LCP `play(at:)` continuation-misuse crash on library-swap stress** (2026-05-26 production crash, `lcp_player_continuation_misuse_2026_05_26.md`). `LCPStreamingPlayer.playCallback` 30s timeout DispatchWorkItem can fire before the underlying seek completes; both call the same completion handler. Once `OpenAccessPlayer.play(at:)` wraps in `withCheckedThrowingContinuation` (PR #177), the second resume traps. **Rule:** every `withCheckedContinuation` wrapping a multi-path callback needs a once-guard at the bridge (NSLock + `fired` flag, set under lock, fire outside lock). Fix the source AND guard the bridge. Audit every callback impl before wrapping in a continuation.
-3. **BiblioBoard cross-host token scoping** (`reference_biblioboard_cross_host_token_scoping.md`). `OpenAccessTrack` scoped bearer to `manifest.originHost`. OPDS-for-Distributors puts manifest at `palaceproject.io` and chapter MP3s at the distributor CDN (`library.biblioboard.com`). Mismatch strips Authorization → 403 → `AVPlayerItem .failed` did NOT surface to `playbackStatePublisher` → lock-screen 2s timer walks past playable range with no error UI. **Rule:** auth scope must be "hosts CM authorizes me to talk to," not "the host this URL lives on." Applies to LCP license servers, OverDrive Marketplace, Findaway chunked downloads — every new vendor must answer the token-scoping question explicitly.
-4. **Marketplace LCP MIME-nesting in acquisition chain** (`reference_marketplace_lcp_mime_nesting.md`, PP-4407 / PP-4454). `canOpenBook` checked only `defaultAcquisition.type`, missed LCP MIME 2 levels deep in `indirectAcquisitions`. 639MB `.lcpa` ZIP saved as `.epub` → "Failed to parse local file as JSON." **Rule:** acquisition-chain predicates must be recursive by default. OPDS2 nests arbitrarily; nothing caps depth at 2. Audit any predicate that touches `defaultAcquisition.type` — almost always a bug; should walk the full `indirectAcquisitions` tree.
-5. **iOS sim doesn't decode audiobook audio** (`feedback_audiobook_sim_audio_limitation.md`). Tapping Play flips the UI icon AND tells the player it's playing, but the audio engine doesn't decode (no audio device, AVAudioSession unreliable on sim). Position indicator stays stuck. Drive position state via **skip ±30s / TOC seek / scrubber drag / bookmark navigation** — they exercise the same position-invariant code paths without the decoder. DRM activation, audio-session interruption, background playback, BT reconnect, and playback-rate audibility must be deferred to real device.
+3. **BiblioBoard cross-host token scoping**. `OpenAccessTrack` scoped bearer to `manifest.originHost`. OPDS-for-Distributors puts manifest at `palaceproject.io` and chapter MP3s at the distributor CDN (`library.biblioboard.com`). Mismatch strips Authorization → 403 → `AVPlayerItem .failed` did NOT surface to `playbackStatePublisher` → lock-screen 2s timer walks past playable range with no error UI. **Rule:** auth scope must be "hosts CM authorizes me to talk to," not "the host this URL lives on." Applies to LCP license servers, OverDrive Marketplace, Findaway chunked downloads — every new vendor must answer the token-scoping question explicitly.
+4. **Marketplace LCP MIME-nesting in acquisition chain** (PP-4407 / PP-4454). `canOpenBook` checked only `defaultAcquisition.type`, missed LCP MIME 2 levels deep in `indirectAcquisitions`. 639MB `.lcpa` ZIP saved as `.epub` → "Failed to parse local file as JSON." **Rule:** acquisition-chain predicates must be recursive by default. OPDS2 nests arbitrarily; nothing caps depth at 2. Audit any predicate that touches `defaultAcquisition.type` — almost always a bug; should walk the full `indirectAcquisitions` tree.
+5. **iOS sim doesn't decode audiobook audio**. Tapping Play flips the UI icon AND tells the player it's playing, but the audio engine doesn't decode (no audio device, AVAudioSession unreliable on sim). Position indicator stays stuck. Drive position state via **skip ±30s / TOC seek / scrubber drag / bookmark navigation** — they exercise the same position-invariant code paths without the decoder. DRM activation, audio-session interruption, background playback, BT reconnect, and playback-rate audibility must be deferred to real device.
 6. **CarPlay SIGABRT — dual-channel error + `completion: nil`** (PR #968, `carplay_crash_3_1_0_build_476.md`). Two compounding bugs: (a) `AudiobookSessionManager.openAudiobook` surfaces a single failure through `errorPublisher.send` AND `return .failure` (intentional — phone + CarPlay both need it), (b) every CarPlay state-mutating call (`presentTemplate`/`pushTemplate`/`popTemplate`/`popToRootTemplate`/`dismissTemplate`/`setRootTemplate`) used `completion: nil`. iOS 26 raises NSException at CPInterfaceController.m:481 when one of these calls fails with `completion: nil`. **Rule:** NEVER pass `completion: nil` to any CarPlay state-mutating call. Always provide `{ _, error in if let error = error { Log.warn(...) } }`. Dedup alerts via `interfaceController.presentedTemplate == nil` + local `isPresentingAlert` flag, reset in dismiss-via-OK AND `templateDidDisappear`. CarPlayCrashRegressionTests should enforce this with a globbed static scan (verify file exists in current tree).
 7. **Audio-session interruption (phone call, Siri, other audio) must resume gracefully.** AVAudioSession.interruptionNotification fires on call-in/Siri/Music; the player MUST pause on `.began` and offer/auto-resume on `.ended` with `.shouldResume` option. Regression-prone because sim can't reproduce — real-device only.
 8. **`completion: nil` legacy paths still exist in CarPlay code.** `CarPlayTemplateManager.swift` lines 321, 448, 542, 560 still pass `completion: nil`. Verify on every refresh that these are not state-mutating-from-failure-prone-state paths (e.g., line 321 is `popToRootTemplate` in a guard-protected branch; line 542 is `pushTemplate` for chapter UI). If iOS bumps tighten the CPInterfaceController contract further, these need completion handlers too.
@@ -166,16 +165,16 @@ Other audiobook-touching test files: `PalaceTests/AudiobookmarkTests.swift`, `Au
 
 ---
 
-## 8. Architect's pre-swarm checklist (verify before writing a new contract)
+## 8. Pre-change checklist
 
-Before any new swarm or /rigorous-fix in this area, the architect should:
+Before any non-trivial change in this area:
 
 1. **Refresh sections 1-3** — confirm call-site map, module ownership, vendor × scenario matrix are still accurate. Add new vendors / scenarios; mark removed ones.
 2. **Re-check toolkit submodule SHA** — `git submodule status ios-audiobooktoolkit`. If it moved since last refresh, the matrix in section 3 needs a cross-vendor re-validation. The toolkit is the most regression-prone dependency in the project.
 3. **Re-run cross-vendor smoke test inventory** — `grep "func testSmoke_" PalaceTests/Audiobooks/CrossVendorSmokeTests.swift | wc -l` — should be ≥ 4 (LCP, BearerToken, OpenAccess, LocalFile). If a vendor was added without a smoke test, that's the first gap to close.
 4. **Re-grep `completion: nil` in CarPlay** — `grep -rn "completion: nil" Palace/CarPlay/` — every match needs justification per trap 6 + 8.
 5. **Re-check F-011 / PP-4436 status** — confirm first-open hang is still open or marked closed. If still open, every PR touching `AudiobookSessionManager` / `AudiobookLoader` / `PlaybackBootstrapper` / `NowPlayingCoordinator` must explicitly state whether it affects the suspected race window.
-6. **Re-check critical-path tests pass against current develop BEFORE the swarm starts** — `CrossVendorSmokeTests`, `AudiobookOpenStateRaceTests`, `AudiobookLoadFailureSAMLReauthTests`, `LCPAcquisitionPredicateTests`. Post-swarm regressions become attributable.
+6. **Re-check critical-path tests pass against current develop BEFORE the change starts** — `CrossVendorSmokeTests`, `AudiobookOpenStateRaceTests`, `AudiobookLoadFailureSAMLReauthTests`, `LCPAcquisitionPredicateTests`. Post-swarm regressions become attributable.
 7. **Update Section 9 (refresh history)** with date + your initials.
 
 ---
@@ -188,7 +187,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 | 2026-09-22 | PP-5205 rounds 3-5 | Added traps 14-15: name the value the consumer branches on before writing a predicate about it, and stop iterating at two wrong keyings; `playCallback` has no direct coverage so its suite tally means nothing. |
 | 2026-09-22 | PP-5205 round 2 (reviewer blocks) | Added traps 12-13 from two independent review findings on the same changeset: `.onChange` has no birth fire; an override drops base-method state. |
 | 2026-09-22 | PP-5205 (chapter-seek overlay + label latency) | Added traps 9-11: overlay removal exposes what it covered; two readers of one fact must not disagree on latency; `LCPStreamingPlayer.playCallback` diverges from the base seek path. Sections 1-3 NOT re-derived this pass — this refresh is scoped to section 7. |
-| 2026-05-28 | swarm rigor-meta-improvement (initial baseline) | Initial baseline derived from MEMORY.md audiobook entries (`audiobook_first_open_hang_3_2_0`, `lcp_player_continuation_misuse_2026_05_26`, `carplay_crash_3_1_0_build_476`, `reference_audiobook_toolkit_risk_profile`, `reference_biblioboard_cross_host_token_scoping`, `feedback_audiobook_sim_audio_limitation`, `reference_marketplace_lcp_mime_nesting`) + regression matrix E3-* / B6 / X2 rows + `git log --oneline origin/develop -- Palace/Audiobooks/`. UNKNOWN items called out for follow-up: existence of `PalaceTests/CarPlay/CarPlayCrashRegressionTests`, current state of F-011 / PP-4436, exact line ranges in `LCPAudiobooks.swift` + `CarPlayAudiobookBridge.swift`. |
+| 2026-05-28 | PR #1019 (initial baseline) | Initial baseline derived from earlier audiobook fixes (3.2.0 first-open hang, LCP player continuation misuse, the 3.1.0 CarPlay crash, toolkit risk, BiblioBoard cross-host token scoping, simulator audio limits, Marketplace LCP MIME nesting) + regression matrix E3-* / B6 / X2 rows + `git log --oneline origin/develop -- Palace/Audiobooks/`. UNKNOWN items called out for follow-up: existence of `PalaceTests/CarPlay/CarPlayCrashRegressionTests`, current state of F-011 / PP-4436, exact line ranges in `LCPAudiobooks.swift` + `CarPlayAudiobookBridge.swift`. |
 
 ---
 

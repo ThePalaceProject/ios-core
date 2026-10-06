@@ -362,11 +362,6 @@
       "target": "Palace/SignInLogic/AuthReducer.swift"
     },
     {
-      "doc": "docs/architecture/phase-3.5-class-scan.md",
-      "kind": "workflow",
-      "target": ".simdrive/replays/chaos/lock-screen-engage.yaml"
-    },
-    {
       "doc": "docs/architecture/pp4156-retro-2026-05-04.md",
       "kind": "workflow",
       "target": ".simdrive/journeys/audiobook-download-indicator-stateful.yaml"

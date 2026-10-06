@@ -6,7 +6,7 @@ created: 2026-05-27
 last_refresh: 2026-05-27
 freshness_window: 180d
 owners: [auth]
-description: Per-area verification reference; refresh before next swarm/rigorous-fix
+description: Per-area verification reference; refresh before changing this area
 ---
 
 
@@ -14,7 +14,7 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 
 **Owner area:** `Palace/SignInLogic/`, `Palace/Packages/PalaceAuth/`, `Palace/Accounts/`, and the auth-error decision points in `Palace/Network/TPPNetworkResponder.swift`, `Palace/MyBooks/TokenRefreshInterceptor.swift`, `Palace/MyBooks/DownloadAuthRetryHandler.swift`, `Palace/MyBooks/BorrowOperation.swift`, `Palace/MyBooks/BookReturnService.swift`, `Palace/Audiobooks/AudiobookSessionManager.swift`.
 
-**Purpose:** the architect's first deliverable on ANY swarm or /rigorous-fix in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Without it, every new initiative re-discovers the same surface (PR #1018's architect produced ~1,000 lines of recon docs that should have started from a baseline like this).
+**Purpose:** the first deliverable of any non-trivial change in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Without it, every new initiative re-discovers the same surface (PR #1018's architect produced ~1,000 lines of recon docs that should have started from a baseline like this).
 
 **Last refresh:** 2026-05-28 (post PR #1018 — see `derived-improvements.md` entry for source).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
@@ -144,24 +144,24 @@ Main-target wrapper: `AuthDecisionRecorder` in `Palace/AppInfrastructure/Telemet
 ## 7. Known traps / anti-patterns (lessons from prior work)
 
 - **Foreign-library cross-host 401** (added 2026-06-05 with #1044, which fixed a cross-host logout regression from PR #1018): a 401 from a host that shares base-domain with the current account but does NOT belong to the current account's auth surface (different library backend within `*.palaceproject.io`, e.g. `gorgon.staging.palaceproject.io` vs `minotaur.dev.palaceproject.io`) must NOT be classified as `.reauthRequired`. The base-domain `isSameDomain` helper does NOT catch this. The fix is `Account.authSurfaceHosts` → `AuthErrorClassifier.currentAccountHostsProvider` → Rule 4b (foreign-host 401 → `.ok`). Tests live in `PalaceAuthTests/AuthErrorClassifierTests` (host-scoping tests) and `PalaceTests/Accounts/AccountAuthSurfaceHostsTests`. Property-fuzz Invariant 8 enforces this structurally. Sibling sites `TokenRefreshInterceptor:106` and `DownloadAuthRetryHandler:212` carry inline foreign-host guards with the same closure shape.
-- **Two-surface auth model** (memory `saml_two_surface_auth_model.md`): bearer token + IdP cookie expire independently. Do NOT mark stale on `/patrons/me` 401 alone — the bearer might be valid but the cookie expired, or vice versa.
+- **Two-surface auth model**: bearer token + IdP cookie expire independently. Do NOT mark stale on `/patrons/me` 401 alone — the bearer might be valid but the cookie expired, or vice versa.
 - **OIDC silent reauth uses ASWebAuthenticationSession directly** — not through AuthCoordinator. Don't accidentally route it through the coordinator (would break the silent UX).
 - **Per-book circuit breaker** at BorrowOperation (`hasBorrowReauthBeenAttempted`) — process-wide coordinator single-flight is NOT a substitute. Both layers serve different roles.
 - **Per-task token-refresh budget** at TPPNetworkResponder (`tokenRefreshAttempts < 2`) — preserved through PR #1018 migration. Cross-domain 401 carve-out at line 463 also preserved.
-- **SAML cookie sync** between WKWebView and URLSession is fragile — see `feedback_saml_cookie_sync_workaround.md` (if exists in memory). Don't change cookie handling without device-testing each IdP.
-- **`.accountNotFound` enum case** (memory `enum_conflation_account_not_found`) — currently overloaded with two meanings (real failure vs eviction marker). Next sprint candidate for split. Tests need explicit semantics pins per CLAUDE.md round-trip rules.
+- **SAML cookie sync** between WKWebView and URLSession is fragile. Don't change cookie handling without device-testing each IdP.
+- **`.accountNotFound` enum case** — currently overloaded with two meanings (real failure vs eviction marker). Next sprint candidate for split. Tests need explicit semantics pins per CLAUDE.md round-trip rules.
 
 ---
 
-## 8. Architect's pre-swarm checklist (what to verify before writing a new contract)
+## 8. Pre-change checklist
 
-Before any new swarm or /rigorous-fix in this area, the architect should:
+Before any non-trivial change in this area:
 
 1. **Refresh this file's sections 1-3** — confirm the call-site map, module ownership, and dispatch matrix are still accurate. Add new sites or mark removed ones.
 2. **Re-run the IdP catalog truth-table grep** — `python3 scripts/find-auth-call-sites.py` (if exists) or manual.
 3. **Re-run test inventory** — `find PalaceTests -name "*Auth*Tests.swift" -o -name "*SignIn*Tests.swift" -o -name "*SAML*Tests.swift" | wc -l` — confirm count and update Section 6.
 4. **Re-grep scattered predicates** — `grep -rn "isOauth.*isSaml\|isSaml.*isOauth\|isOauth.*isOidc" Palace/` — any new matches outside Section 1's known sites need triage.
-5. **Re-check critical-path tests pass** — run the must-survive-behavior tests from Section 6 against current `develop` BEFORE the swarm starts, so post-swarm regressions are attributable.
+5. **Re-check critical-path tests pass** — run the must-survive-behavior tests from Section 6 against current `develop` BEFORE the change starts, so later regressions are attributable.
 6. **Update Section 9 (refresh history)** with date + your initials.
 
 ---

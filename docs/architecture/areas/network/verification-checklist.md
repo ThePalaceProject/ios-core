@@ -6,7 +6,7 @@ created: 2026-05-28
 last_refresh: 2026-10-06
 freshness_window: 180d
 owners: [network]
-description: Per-area verification reference; refresh before next swarm/rigorous-fix
+description: Per-area verification reference; refresh before changing this area
 # The code this checklist describes, and the develop commit it was last checked against.
 # If any of these files changed since `verified_ref`, re-check the line citations below:
 #   git diff --stat <verified_ref> -- <paths>
@@ -47,7 +47,7 @@ sources:
 
 **Owner area:** `Palace/Network/` (`TPPNetworkExecutor.swift`, `TPPNetworkResponder.swift`, `TPPNetworkQueue.swift`, `TPPRequestExecuting.swift`, `Core/URLSessionNetworkClient.swift`), plus the auth-error classifier extension `Palace/Packages/PalaceAuth/Sources/PalaceAuth/URLResponse+TPPAuthentication.swift` and the test stub infrastructure at `PalaceTests/HTTPStubURLProtocol.swift`. Two consumer-side files still hold direct auth-classification calls and are tracked in Section 1 as next-sprint candidates: `Palace/MyBooks/TokenRefreshInterceptor.swift` and `Palace/MyBooks/DownloadAuthRetryHandler.swift`.
 
-**Purpose:** the architect's first deliverable on ANY swarm or /rigorous-fix in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Without it, every new initiative re-discovers the same surface (the auth area's PR #1018 architect produced ~1,000 lines of recon docs that should have started from a baseline like this — and the network slice of that recon is what this file captures).
+**Purpose:** the first deliverable of any non-trivial change in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Without it, every new initiative re-discovers the same surface (the auth area's PR #1018 architect produced ~1,000 lines of recon docs that should have started from a baseline like this — and the network slice of that recon is what this file captures).
 
 **Last refresh:** 2026-10-06 (Section 3 offline-queue rows corrected; negative claims re-checked against 4c65025be). Prior: 2026-10-05 (classifier migration confirmed on develop; line citations and the Section 8 self-check re-verified against 3ad580c0d). Prior: 2026-09-23 (Section 7b, the decode seam — PR #1462 / PP-5202); 2026-05-28 (post PR #1018 — see `docs/architecture/areas/auth/verification-checklist.md` for the paired auth surface).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
@@ -304,9 +304,9 @@ with the patron told their password is wrong. Check both when triaging that repo
 
 ---
 
-## 8. Architect's pre-swarm checklist (what to verify before writing a new contract)
+## 8. Pre-change checklist
 
-Before any new swarm or /rigorous-fix in this area, the architect should:
+Before any non-trivial change in this area:
 
 1. **Refresh this file's sections 1, 3, and 4** — confirm the call-site map, the request/response flow matrix, and the decision boundary are still accurate. Re-grep `statusCode == 401` and `statusCode == 403` across `Palace/Network/` (`grep -rn 'statusCode == 40[13]' Palace/Network/`) — expected matches are `TPPNetworkResponder.swift` lines 426, 435, 516 and 656; anything else needs triage.
 2. **Verify the cross-domain 401 carve-out still exists.** `grep -n "AuthErrorClassifier(\|outcome == .ok\|patrons/me" Palace/Network/TPPNetworkResponder.swift` — expect exactly these lines: 540, 624, 625 (comments mentioning `/patrons/me`), 635 (classifier construction), 651 (the `.ok` short-circuit), and 660, 663, 667 (the `/patrons/me` browser bypass). The responder should no longer call `indicatesAuthenticationNeedsRefresh`. Read the surrounding comments; both bypasses have hotfix-driven rationale that should not be silently removed.
@@ -314,7 +314,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 4. **Confirm `AuthErrorClassifier` is the single seam for auth-error decisions.** `grep -rn 'indicatesAuthenticationNeedsRefresh' Palace/` — only the two known deferrals (`TokenRefreshInterceptor.swift:139`, `DownloadAuthRetryHandler.swift:197`) plus the comments above them (lines 124 and 185) should appear outside the PalaceAuth package's own implementation. Any new call sites are scope debt.
 5. **Re-run the test inventory** — `find PalaceTests/Network -name '*Tests*.swift' | wc -l` was 31 on 2026-10-05. `TPPNetworkResponderAuthCoordinatorTests` and the PalaceAuth `AuthErrorClassifierTests` should be present.
 6. **Confirm what reaches the offline queue.** `grep -rn 'enqueueOfflineRequest\|addToOfflineAnalyticsQueue\|addToOfflineQueue\|\.addRequest(' Palace --include='*.swift'` — expect `TPPAnnotations.swift` lines 440, 827, 833, `TPPCirculationAnalytics.swift` lines 55, 64, `TPPNetworkQueue.swift` line 569, and the protocol declaration at `Palace/Packages/PalaceNetwork/Sources/PalaceNetwork/CirculationOfflineSupport.swift:15`. A new caller of `addToOfflineAnalyticsQueue` or `enqueueOfflineRequest` means GET requests are queued in production; update Section 3.
-7. **Re-check critical-path tests pass on develop BEFORE the swarm starts.** Run `TokenRefreshTests`, `TokenRefreshAndRetryQueueTests`, `URLResponseAuthenticationTests`, `MultiLibraryTokenIsolationTests`, and `NetworkQueueTests` in isolation so post-swarm regressions are attributable.
+7. **Re-check critical-path tests pass on develop BEFORE the change starts.** Run `TokenRefreshTests`, `TokenRefreshAndRetryQueueTests`, `URLResponseAuthenticationTests`, `MultiLibraryTokenIsolationTests`, and `NetworkQueueTests` in isolation so later regressions are attributable.
 8. **Confirm HTTP/3 disable is still in place.** `grep -n assumesHTTP3Capable Palace/Network/TPPNetworkExecutor.swift` — should match at line 520. If missing, that's a regression on the historical fix and needs investigation before any new network change ships.
 9. **Update Section 9 (refresh history)** with date + your initials, and the frontmatter `sources:` block (`verified_ref` = the commit you checked against).
 
@@ -326,8 +326,8 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 |------|-------------|-------|
 | 2026-10-06 | network checklist refresh | Corrected Section 3: the executor and responder never enqueue; the queue's live producer is the annotation POST on transport failure, and `enqueueOfflineRequest` (3f659ff2e) accepts GET but has no production caller. Removed the 5xx, `cachePolicy` and PATCH enqueue cells and the "GET requests are NOT enqueued" note; added the DELETE no-refresh row; replaced "per-task budget caps at 2". Corrected the queue's retry description in Section 1 and the "single stubbing seam" claim in Section 2. Added a Section 8 queue self-check and the files these claims cite to `sources.paths`; corrected the `AppContainer.swift` coordinator-recorder citation to 555–562. Stated that queued requests get no token refresh (the drain's completion-handler task does not get the responder's `didCompleteWithError` 401 handling) and are resent on 401 up to the retry cap; corrected the `URLSessionNetworkClient` and `NetworkTransport` descriptions; noted the release-build GET fallback in `enqueueOfflineRequest`. Narrowed the delegate claim: challenge callbacks still reach the responder for queued requests and answer with the selected library's credentials; added that path and its cross-library consequence to Sections 3 and 7. Re-checked the remaining negative claims against 4c65025be. |
 | 2026-10-05 | network checklist refresh | Confirmed the PR #1018 classifier migration is on develop (f380e37c3) and removed the "not yet landed" notes. Re-verified every line citation and the Section 8 self-check against 3ad580c0d. Corrected the retry-budget description: it is one retry per URL (`maxRetryAttempts = 1`), not `tokenRefreshAttempts < 2`. Replaced two test files that were never added (`CrossDomain401Tests`, `AuthErrorCategoryTests`) with the classifier tests that cover the same rules. Added the `sources:` frontmatter. |
-| 2026-09-23 | /rigorous-fix, PR #1462 (PP-5202) | Added Section 7b — the problem-document DECODE seam. Sections 1–7 covered classification over an already-parsed document and were silent on parsing; that gap shipped a sign-in regression where a wrong-typed `show_title` discarded the whole document and a blocked patron was told their password was wrong. Section 7b documents the two parse paths and their different contracts, the `.convertFromSnakeCase` CodingKeys trap and its detector, the no-custom-encoder decision, and the strict/lenient `0` disagreement as known debt. |
-| 2026-05-28 | swarm rigor meta-improvement (chore/swarm-rigor-meta-improvement) | Initial baseline. Mirrors the auth area's `verification-checklist.md` structure. Migration status in Section 1 reflects the PR #1018 design baseline (commit f9e57f7f5); develop tip still calls `indicatesAuthenticationNeedsRefresh` directly until that swarm lands on develop. |
+| 2026-09-23 | PR #1462 (PP-5202) | Added Section 7b — the problem-document DECODE seam. Sections 1–7 covered classification over an already-parsed document and were silent on parsing; that gap shipped a sign-in regression where a wrong-typed `show_title` discarded the whole document and a blocked patron was told their password was wrong. Section 7b documents the two parse paths and their different contracts, the `.convertFromSnakeCase` CodingKeys trap and its detector, the no-custom-encoder decision, and the strict/lenient `0` disagreement as known debt. |
+| 2026-05-28 | PR #1019 (initial baseline) | Initial baseline. Mirrors the auth area's `verification-checklist.md` structure. Migration status in Section 1 reflects the PR #1018 design baseline (commit f9e57f7f5); at the time, develop still called `indicatesAuthenticationNeedsRefresh` directly. |
 
 ---
 

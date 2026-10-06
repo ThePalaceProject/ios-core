@@ -73,7 +73,7 @@ The toolkit called Palace via `AudiobookBookmarkDelegate` (defined in `ios-audio
 
 `Palace/Audiobooks/AudiobookSessionManager.swift:87` and `Palace/Audiobooks/PlaybackBootstrapper.swift:56` both exposed `static let shared`. Three production sites read them (`TPPAppDelegate.swift:55`, `CarPlaySceneDelegate.swift:43`, `BookService.swift:75` — that read moved to `BookOpenRouter.swift` in Wave 5, 2026-09-29; the line reference records where it was at the time of this audit); test sites had `setUp resets shared mock` workarounds for the cross-test bleed.
 
-**Symptom:** initialization order was implicit, CarPlay startup invariants were spread across files, and tests held shared state between runs. The triad-epic singleton purge (PR #866 / #867) had reduced `.shared` from 732 → 344 sites overall, but the audiobook cluster was untouched. <!-- audit-verified: 732 → 344 number per memory `singleton_audit_2026_04_24.md` (referenced in architectural-triad.md). -->
+**Symptom:** initialization order was implicit, CarPlay startup invariants were spread across files, and tests held shared state between runs. The triad-epic singleton purge (PR #866 / #867) had reduced `.shared` from 732 → 344 sites overall, but the audiobook cluster was untouched.
 
 ### Pattern 6 — GCD residue
 
@@ -166,7 +166,7 @@ The smallest phase by LOC (~210 insertions, 316 deletions; net −106). Pre-tria
 
 All three Palace-side phases shipped 2026-05-21 in stacked-PR order. <!-- audit-verified: merge timestamps per `gh pr view` query 2026-05-22. -->
 
-### Phase 1 — PR #979 — `cs_ff3b8638`
+### Phase 1 — PR #979
 
 | Metric | Result | Target |
 |---|---|---|
@@ -182,7 +182,7 @@ All three Palace-side phases shipped 2026-05-21 in stacked-PR order. <!-- audit-
 | Don't-touch violations | **0** | 0 |
 
 
-### Phase 2 — PR #980 — `init_05b6832a`
+### Phase 2 — PR #980
 
 | Metric | Result | Target |
 |---|---|---|
@@ -201,7 +201,7 @@ All three Palace-side phases shipped 2026-05-21 in stacked-PR order. <!-- audit-
 - Audiobook position write throttle: was per-instance debounce; now 15.0s per-book window (matches EPUB). At most 1 POST per 15s of active playback; rapid track-skip cycles within 15s coalesce. Local-save-first invariant unchanged.
 - PDF position write throttle: was unthrottled; now 15.0s per-book window.
 
-### Phase 3 — PR #982 — `init_eb359cf0` / `cs_3c089d95`
+### Phase 3 — PR #982
 
 | Metric | Result | Target |
 |---|---|---|
