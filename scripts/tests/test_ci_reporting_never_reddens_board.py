@@ -91,17 +91,18 @@ def test_the_passfail_gate_is_still_able_to_fail():
     )
 
 
-def test_the_required_check_waits_for_the_tests_and_not_the_reports():
+def test_the_required_check_waits_for_the_tests_and_the_floors_not_publishing():
     """`build-and-test` is the one check branch protection requires.
 
-    It must depend on the build and every shard, so it cannot pass before they
-    finish; and it must not depend on `report` or `publish-report`, so a Pages
-    or PR-comment failure cannot turn it red.
+    It depends on the build, every shard and `report`, whose coverage floor step
+    blocks; the PR-comment and archive steps in `report` are continue-on-error
+    (test above), and it does not depend on `publish-report`, so a Pages or
+    PR-comment failure cannot turn it red.
     """
     gate = _jobs()["build-and-test"]
     needs = set(gate["needs"])
-    assert {"changes", "build", "test"} <= needs
-    assert not needs & {"report", "publish-report"}
+    assert {"changes", "build", "test", "report"} <= needs
+    assert "publish-report" not in needs
     assert gate.get("if") == "always()", (
         "without always() a failed shard SKIPS the gate, and a skipped required "
         "check reports success")

@@ -368,7 +368,9 @@ def test_the_gates_own_workflow_yields_its_exact_run_count():
     BookmarkSpecConformanceTests reads, and from 215 to 218 when each shard
     started checking for partial results to upload after a crash, and from 218
     to 224 when coverage collection gained the package steps, and from 224 to
-    219 when the planner took over running the test enumeration. That is the
+    219 when the planner took over running the test enumeration, and from 219
+    to 234 when the coverage floor step stopped being continue-on-error (its
+    11 lines became effective) and the gate gained the 4 lines that read it. That is the
     cost of the arm, and it
     is the point: a silent change to what the gate can see is exactly what the
     other two forms failed to catch.
@@ -376,8 +378,8 @@ def test_the_gates_own_workflow_yields_its_exact_run_count():
     from pathlib import Path
     wf = Path(__file__).resolve().parent.parent.parent / ".github" / "workflows" / "unit-testing.yml"
     runs = effective_runs(wf.read_text())
-    assert len(runs) == 219, (
-        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 219. "
+    assert len(runs) == 234, (
+        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 234. "
         "If a step was added or removed this is correct — update the number. "
         "If nothing changed in the workflow, the extractor's view of it did."
     )

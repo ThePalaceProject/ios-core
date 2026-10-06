@@ -1,7 +1,8 @@
 {
   "overall": 0.46,
   "modules": {
-    "MyBooksDownloadCenter": 0.66,
+    "MyBooksDownloadCenter": 0.6405,
+    "DownloadNetworkLossMonitor": 1.0,
     "TPPSignInBusinessLogic": 0.91,
     "TPPNetworkExecutor": 0.93,
     "TPPNetworkResponder": 0.71,

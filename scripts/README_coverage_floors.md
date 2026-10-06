@@ -1,7 +1,9 @@
 # Coverage Floor Enforcement
 
-Per-module and per-package coverage floors, reported on every PR. The floor
-step does not block a merge today (see "Warn vs blocking mode").
+Per-module and per-package coverage floors, checked on every PR. An app floor
+(`overall` or a `modules` entry) more than 1.5 points below its recorded value,
+or incomplete coverage data, fails the required `build-and-test` check. Package
+floors are reported but advisory (see "Blocking and advisory floors").
 
 ## How it works
 
@@ -68,15 +70,31 @@ python3 scripts/enforce_coverage_floors.py coverage-data.json \
   --floors scripts/coverage-floors.json --write-baseline
 ```
 
-## Warn vs blocking mode
+## Blocking and advisory floors
 
-The step runs with `continue-on-error: true` in
-`.github/workflows/unit-testing.yml`, so a violation or incomplete data shows in
-the step and the PR comment but does not fail the run. Making it blocking means
-removing `continue-on-error: true` from `Enforce Coverage Floors` and adding the
-report job's result to the required check; with the floors as recorded, several
-modules are below their floor on current develop, so that change has to come
-with either the tests that raise them or an owner decision on the floors.
+| Scope | Blocks the PR | Rule |
+|---|---|---|
+| `overall`, `modules` | yes | fails only when actual < floor - 1.5 points; a row between the floor and that margin reads `WITHIN` |
+| `package_modules`, `packages`, `host_packages` | no | a row below its floor reads `FAIL advisory` and does not change the exit code |
+| a floor with no data in any scope | yes | `MISSING` |
+| incomplete coverage data | yes | exit 3; floors are not compared |
+
+The margin is `APP_FLOOR_TOLERANCE` in `scripts/enforce_coverage_floors.py`; the
+floor values themselves are unchanged. Package floors are advisory because
+their measurements vary between CI runs of identical code: on #1601, three runs
+of the same source (two of one commit; the third changed only a floor value)
+measured TPPBookRegistry at 78.5%, 78.5% and 79.7% and
+pkg:PalaceBookRegistry at 91.5%, 91.5% and 91.7%, against floors of 79.2% and
+91.6% recorded with no slack (`_comment_packages` in `coverage-floors.json`).
+
+`Enforce Coverage Floors` in `.github/workflows/unit-testing.yml` has no
+`continue-on-error`, so a blocking violation (exit 1) or incomplete data (exit 3)
+fails the `report` job. The required `build-and-test` check needs `report` and
+fails unless the floor step's outcome and the report job's result are both
+`success`. A PR whose changed paths cannot affect the unit tests (the `changes`
+job) skips `report` along with build and test, and the gate passes as before.
+
+A floor is lowered only by an owner decision, never to make a PR pass.
 
 ## Local use
 

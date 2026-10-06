@@ -59,16 +59,18 @@ This repo has two layers of automation.
 ### CI gates (run on every PR)
 
 The workflows under [`.github/workflows/`](./.github/workflows) run on every
-pull request. Build and unit tests make up the `build-and-test` check;
-tooling checks fail their own check; the rest report without failing a run:
+pull request. Build, unit tests and coverage floors make up the
+`build-and-test` check; tooling checks fail their own check; the rest report
+without failing a run:
 
 - Build (Palace and Palace-noDRM targets)
 - Unit tests
-- Coverage floors (`scripts/enforce_coverage_floors.py`), measured and
-  reported but not blocking: the step runs with `continue-on-error`, and
-  incomplete coverage data (for example a missing result bundle or a planned
-  test class that did not run) is reported as INCOMPLETE rather than as a
-  pass. See
+- Coverage floors (`scripts/enforce_coverage_floors.py`): an app floor (overall
+  or per-module) more than 1.5 points below its value fails `build-and-test`,
+  and so does incomplete coverage data (for example a missing result bundle or
+  a planned test class that did not run), which is reported as INCOMPLETE
+  rather than as a pass. Package floors are reported but advisory, because
+  their measurements vary between runs of identical code. See
   [`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md).
 - Screenshot captures, stored as artifacts with no comparison gate (the JSON
   contract-snapshot tests run with the unit tests and do block)
