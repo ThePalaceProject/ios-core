@@ -351,7 +351,8 @@ def main() -> int:
     parser.add_argument("--floors", default="scripts/coverage-floors.json",
                         help="Path to coverage-floors.json (default: scripts/coverage-floors.json)")
     parser.add_argument("--baseline-only", action="store_true",
-                        help="Use current actual as floor (no-regression mode).")
+                        help="Compare each row against its own current value; prints the "
+                             "measurements and fails only on a module with no data.")
     parser.add_argument("--write-baseline", action="store_true",
                         help="Write current coverage to the floors file and exit 0.")
     parser.add_argument("--metric", choices=["testable", "total"], default="testable",

@@ -1,9 +1,10 @@
 # Coverage Floor Enforcement
 
-Per-module and per-package coverage floors, checked on every PR. An app floor
-(`overall` or a `modules` entry) more than 1.5 points below its recorded value,
-or incomplete coverage data, fails the required `build-and-test` check. Package
-floors are reported but advisory (see "Blocking and advisory floors").
+Per-module and per-package coverage floors, checked on every PR that can affect
+the unit tests. An app floor (`overall` or a `modules` entry) more than 1.5
+points below its recorded value, or incomplete coverage data, fails the required
+`build-and-test` check. Package floors are reported but advisory (see "Blocking
+and advisory floors").
 
 ## How it works
 
@@ -60,7 +61,17 @@ expected, and the floor step compares `packages`, `package_modules` and
 
 ## Updating floors
 
-Edit `scripts/coverage-floors.json`. Floors are fractions (`0.46` = 46%).
+Edit `scripts/coverage-floors.json`. Floors are fractions (`0.46` = 46%). A
+new or re-baselined floor is the measured value rounded down to 4 places; the
+run-to-run allowance is `APP_FLOOR_TOLERANCE`, not slack in the value. The
+floors set on 2026-09-02 were recorded at least 2 points below their
+measurement and keep that margin until they are next re-baselined.
+
+When code moves between files, re-measure every row it touches from one
+complete CI run. #1603 moved the network-loss handler out of
+`MyBooksDownloadCenter`, which changed that row's line counts; #1601
+re-baselined it to 0.6405 and added `DownloadNetworkLossMonitor` at its
+measured 1.0.
 
 To capture a complete run's actuals as the new baseline (rounded down, so the
 run that wrote them passes):
@@ -96,6 +107,15 @@ job) skips `report` along with build and test, and the gate passes as before.
 
 A floor is lowered only by an owner decision, never to make a PR pass.
 
+### Small files at full coverage
+
+The tolerance is 1.5 percentage points of a row's lines, which for a small file
+is about one line. `DownloadNetworkLossMonitor` has 90 executable lines and a floor of 1.0:
+it fails below 98.5%, so one uncovered line reads `WITHIN` and two (88/90)
+block the PR. Any file under 67 lines at a floor of 1.0 blocks on a single
+line. This is intended for a small, deterministic file that is fully covered.
+When it blocks, add a test for the uncovered lines; do not lower the floor.
+
 ## Local use
 
 ```bash
@@ -103,5 +123,11 @@ python3 scripts/enforce_coverage_floors.py coverage-data.json
 python3 scripts/enforce_coverage_floors.py coverage-data.json --baseline-only
 ```
 
-`--baseline-only` treats the current actual as the floor (no-regression check)
-without modifying the floors file.
+`--baseline-only` compares each row against its own current value, so it prints
+the measurements and fails only on a module with no data. It does not modify
+the floors file and is not a regression check.
+
+`scripts/verify-pr.sh` runs the enforcer on its own result bundle. On a pass it
+records `All blocking floors met`, followed by the number of rows within the
+tolerance and advisory rows below their floor when either is non-zero. It does
+not collect package source, so its runs compare the app floors only.

@@ -98,7 +98,8 @@ private extension CatalogView {
                     repository: viewModel.searchRepository,
                     baseURL: viewModel.searchBaseURL,
                     books: viewModel.state.allBooks,
-                    onBookSelected: presentBookDetail
+                    onBookSelected: presentBookDetail,
+                    appContainer: appContainer
                 )
             } else {
                 catalogStateView

@@ -257,7 +257,8 @@ struct CatalogLaneMoreView: View {
             repository: appContainer.catalogRepository,
             baseURL: { viewModel.url },
             books: viewModel.allBooks,
-            onBookSelected: presentBookDetail
+            onBookSelected: presentBookDetail,
+            appContainer: appContainer
         )
     }
 }
