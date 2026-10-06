@@ -15,28 +15,13 @@ import PalaceBookModel
 @MainActor
 final class DownloadNetworkLossContractTests: XCTestCase {
 
-    private var log: CallLog!
-    private var registry: SpyNetworkLossRegistry!
-    private var stateManager: DownloadStateManager!
-    private var tracker: ErrorActivityTracker!
-
-    override func setUp() {
-        super.setUp()
-        log = CallLog()
-        registry = SpyNetworkLossRegistry(log: log)
-        stateManager = DownloadStateManager(
-            taskPersistence: DownloadTaskPersistence(fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
-                .appendingPathComponent("NetworkLossContract-\(UUID().uuidString).json")))
-        tracker = ErrorActivityTracker()
-    }
-
-    override func tearDown() {
-        log = nil
-        registry = nil
-        stateManager = nil
-        tracker = nil
-        super.tearDown()
-    }
+    // XCTest builds one instance per test method, so these are fresh per test.
+    private let log = CallLog()
+    private lazy var registry = SpyNetworkLossRegistry(log: log)
+    private let stateManager = DownloadStateManager(
+        taskPersistence: DownloadTaskPersistence(fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("NetworkLossContract-\(UUID().uuidString).json")))
+    private let tracker = ErrorActivityTracker()
 
     // MARK: - Subject
 
@@ -49,7 +34,11 @@ final class DownloadNetworkLossContractTests: XCTestCase {
             errorActivityTracker: tracker,
             reachability: reachability
         )
-        return NetworkLossSubject(center: center, join: { await center.lastNetworkLossFailureTask?.value })
+        let monitor = AppContainer.makeDownloadNetworkLossMonitor(
+            for: center,
+            connectivity: reachability.connectivityPublisher
+        )
+        return NetworkLossSubject(center: center, monitor: monitor, join: { await monitor.lastFailureTask?.value })
     }
 
     /// The sink is delivered via `RunLoop.main`; two drains let it run and
@@ -283,6 +272,7 @@ final class DownloadNetworkLossContractTests: XCTestCase {
 /// Holds the subject alive and joins its most recent failure handling.
 private struct NetworkLossSubject {
     let center: MyBooksDownloadCenter
+    let monitor: DownloadNetworkLossMonitor
     let join: @MainActor () async -> Void
 }
 

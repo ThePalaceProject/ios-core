@@ -23,6 +23,7 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
     private var stateManager: DownloadStateManager!
     private var reachability: MockReachability!
     private var downloadCenter: MyBooksDownloadCenter!
+    private var networkLossMonitor: DownloadNetworkLossMonitor!
 
     /// Real registry-mock used by BorrowOperation (the operation has its own
     /// internal closure seams that bypass the registry entirely for the
@@ -65,6 +66,11 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
             stateManager: stateManager,
             reachability: reachability
         )
+        let center: MyBooksDownloadCenter = downloadCenter
+        let connectivity = reachability.connectivityPublisher
+        networkLossMonitor = MainActor.assumeIsolated {
+            AppContainer.makeDownloadNetworkLossMonitor(for: center, connectivity: connectivity)
+        }
 
         fetchBookResult = nil
         fetchBookCalls = []
@@ -74,6 +80,7 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
     override func tearDown() {
         BorrowOperation.clearAllBorrowReauthState()
         HTTPStubURLProtocol.reset()
+        networkLossMonitor = nil
         downloadCenter = nil
         reachability = nil
         stateManager = nil
@@ -259,7 +266,7 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
     /// reachability drop must transition every active download to
     /// .downloadFailed within a deterministic window. Verifies the
     /// composition of:
-    ///   reachability publisher -> MBDC's drop handler -> state manager
+    ///   reachability publisher -> the container's network-loss monitor -> state manager
     ///   teardown -> registry state writes.
     func testReachabilityDrop_DuringActiveDownloads_FailsAllOfThem() async {
         let bookA = makeBook(identifier: "midflight-a")

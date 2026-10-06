@@ -29,6 +29,10 @@ struct AppContainer: @unchecked Sendable {
     /// MockFeatureFlagProvider; production binds RemoteFeatureFlags.shared.
     let featureFlags: FeatureFlagProviding
     let downloadCenter: MyBooksDownloadCenter
+    /// Fails `downloadCenter`'s in-flight downloads when connectivity drops.
+    /// Held for the container's lifetime; `nil` in containers that reuse
+    /// another container's download center, so one center never gets two.
+    let downloadNetworkLossMonitor: DownloadNetworkLossMonitor?
     let downloadAnnouncementService: DownloadAnnouncementService
     let debugSettings: DebugSettings
     let imageCache: ImageCacheType
@@ -381,7 +385,8 @@ struct AppContainer: @unchecked Sendable {
         navigationCoordinatorHub: NavigationCoordinatorHub,
         tabRouterHub: AppTabRouterHub,
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
-        authCoordinator: AuthCoordinator
+        authCoordinator: AuthCoordinator,
+        downloadNetworkLossMonitor: DownloadNetworkLossMonitor? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
@@ -391,6 +396,7 @@ struct AppContainer: @unchecked Sendable {
         self.settings = settings
         self.featureFlags = featureFlags
         self.downloadCenter = downloadCenter
+        self.downloadNetworkLossMonitor = downloadNetworkLossMonitor
         self.downloadAnnouncementService = downloadAnnouncementService
         self.debugSettings = debugSettings
         self.imageCache = imageCache
@@ -403,6 +409,25 @@ struct AppContainer: @unchecked Sendable {
         self.drmAuthorizerProvider = drmAuthorizerProvider
         self.authCoordinator = authCoordinator
         self.ownedServicesLink = .owner(AppContainerOwnedServices())
+    }
+
+    /// Binds a network-loss monitor to `downloadCenter`'s active-download maps,
+    /// its registry and its failure alert. The monitor gets those three, not
+    /// the center.
+    @MainActor
+    static func makeDownloadNetworkLossMonitor(
+        for downloadCenter: MyBooksDownloadCenter,
+        connectivity: AnyPublisher<Bool, Never>
+    ) -> DownloadNetworkLossMonitor {
+        DownloadNetworkLossMonitor(
+            connectivity: connectivity,
+            activeTasks: downloadCenter.stateManager.taskIdentifierToBook,
+            activeDownloads: downloadCenter.stateManager.bookIdentifierToDownloadInfo,
+            bookRegistry: downloadCenter.bookRegistry,
+            failDownload: { [weak downloadCenter] book, message in
+                downloadCenter?.failDownloadWithAlert(for: book, withMessage: message)
+            }
+        )
     }
 
     static func production() -> AppContainer {
@@ -549,6 +574,12 @@ struct AppContainer: @unchecked Sendable {
             reachability: reachability,
             authCoordinator: authCoordinator
         )
+        let downloadNetworkLossMonitor = MainActor.assumeIsolated {
+            makeDownloadNetworkLossMonitor(
+                for: downloadCenter,
+                connectivity: reachability.connectivityPublisher
+            )
+        }
         // `UserAccountPublisher.shared` is `@MainActor`; the builder only runs
         // from app launch or main-thread test setup, the same precondition
         // `authCoordinator` already asserts above.
@@ -602,7 +633,8 @@ struct AppContainer: @unchecked Sendable {
                 return nil
                 #endif
             },
-            authCoordinator: authCoordinator
+            authCoordinator: authCoordinator,
+            downloadNetworkLossMonitor: downloadNetworkLossMonitor
         )
     }
 
