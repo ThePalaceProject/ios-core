@@ -41,8 +41,10 @@ script's header describes the class it targets.
   six run through `run_phase35_detector`; comment hygiene has its own step.
 - **CI** (`.github/workflows/tooling-checks.yml`) runs every pytest suite in
   `scripts/tests/` (step "pytest detector suite") and the hook fixture test
-  `scripts/tests/test_pre_commit_phase35_detectors.sh`. CI checks that the
-  detectors work. It does not run them against the pull request's tree.
+  `scripts/tests/test_pre_commit_phase35_detectors.sh`, and runs comment
+  hygiene (`check-comment-hygiene.py`) over the whole tree on every pull
+  request. The other six detectors are tested in CI but not run against the
+  pull request's tree.
 - **`scripts/pre-commit-phase35-detectors.sh`** runs them against the staged
   diff on `git commit`. It reads a Claude Code PreToolUse hook payload on
   stdin, and the tracked `.claude/settings.json` does not register it, so it

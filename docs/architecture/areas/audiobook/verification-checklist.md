@@ -174,7 +174,7 @@ Before any non-trivial change in this area:
 3. **Re-run cross-vendor smoke test inventory** — `grep "func testSmoke_" PalaceTests/Audiobooks/CrossVendorSmokeTests.swift | wc -l` — should be ≥ 4 (LCP, BearerToken, OpenAccess, LocalFile). If a vendor was added without a smoke test, that's the first gap to close.
 4. **Re-grep `completion: nil` in CarPlay** — `grep -rn "completion: nil" Palace/CarPlay/` — every match needs justification per trap 6 + 8.
 5. **Re-check F-011 / PP-4436 status** — confirm first-open hang is still open or marked closed. If still open, every PR touching `AudiobookSessionManager` / `AudiobookLoader` / `PlaybackBootstrapper` / `NowPlayingCoordinator` must explicitly state whether it affects the suspected race window.
-6. **Re-check critical-path tests pass against current develop BEFORE the change starts** — `CrossVendorSmokeTests`, `AudiobookOpenStateRaceTests`, `AudiobookLoadFailureSAMLReauthTests`, `LCPAcquisitionPredicateTests`. Post-swarm regressions become attributable.
+6. **Re-check critical-path tests pass against current develop BEFORE the change starts** — `CrossVendorSmokeTests`, `AudiobookOpenStateRaceTests`, `AudiobookLoadFailureSAMLReauthTests`, `LCPAcquisitionPredicateTests`. Regressions found after the change then become attributable.
 7. **Update Section 9 (refresh history)** with date + your initials.
 
 ---
