@@ -73,6 +73,17 @@ jobs:
           [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
           echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
 
+      # The app's own log, from before launch, so a slow or failed run shows
+      # what the app was doing. Uploaded with the result bundle below.
+      - name: Start app log capture
+        run: |
+          SIM="${{ steps.sim.outputs.id }}"
+          xcrun simctl boot "$SIM" || true
+          xcrun simctl bootstatus "$SIM" -b
+          echo "Simulator: $(xcrun simctl list devices | grep "$SIM")" >> "$GITHUB_STEP_SUMMARY"
+          nohup xcrun simctl spawn "$SIM" log stream --level info --style compact \
+            --predicate 'process == "Palace"' > "$RUNNER_TEMP/palace-app.log" 2>&1 &
+
       # Same ad-hoc signing as the unit-test build; the command matches the
       # one docs/Testing/UI_JOURNEYS.md gives contributors.
       - name: Build and run the journeys
@@ -96,6 +107,8 @@ jobs:
           status=${PIPESTATUS[0]}
           echo "Build and journeys took $(( $(date +%s) - start ))s" >> "$GITHUB_STEP_SUMMARY"
           grep -E "^Test Case .*(passed|failed)" ui-journeys.log >> "$GITHUB_STEP_SUMMARY"
+          { echo '```'; grep -E "BUILD MARKER|MockBackend \[|\[PERF\]|registry snapshot|Loading catalogs" \
+              "$RUNNER_TEMP/palace-app.log" | cut -c1-220 | head -40; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           # `xcodebuild test` that selects nothing still prints TEST SUCCEEDED.
           passed=$(grep -cE "^Test Case .*passed" ui-journeys.log)
           if [ "$status" -eq 0 ] && [ "$passed" -eq 0 ]; then
@@ -105,12 +118,15 @@ jobs:
           exit "$status"
 
       # On failure the bundle holds a screenshot and the accessibility tree
-      # named after the failing step.
+      # named after the failing step. Uploaded on every run: the app log of a
+      # slow but green run is evidence too.
       - name: Upload journey results
-        if: failure()
+        if: always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: ui-journeys-xcresult
-          path: ${{ runner.temp }}/UIJourneys.xcresult
+          name: ui-journeys-results
+          path: |
+            ${{ runner.temp }}/UIJourneys.xcresult
+            ${{ runner.temp }}/palace-app.log
           retention-days: 7

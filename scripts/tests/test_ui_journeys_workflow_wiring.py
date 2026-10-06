@@ -6,7 +6,7 @@ not touch that run, so it uses its own scheme. Pinned here, parsed as YAML:
   1. it runs on pull requests that change the app, the journeys or the project;
   2. it tests the PalaceUITests scheme with the ad-hoc signing the docs give;
   3. its verdict is xcodebuild's exit status, not the status of a pipe;
-  4. uploading the result bundle cannot fail the job.
+  4. the app's log is captured, and uploading results cannot fail the job.
 
 prior-art-checked: this pins a public GitHub workflow, like
 test_nodrm_workflow_wiring.py; no harness capability inspects repository
@@ -84,7 +84,17 @@ def test_a_run_with_no_passing_journey_fails():
     assert "no journey ran" in run
 
 
-def test_uploading_results_cannot_fail_the_job():
+def test_the_app_log_is_captured_before_the_journeys_run():
+    names = [s.get("name") for s in _steps()]
+    assert names.index("Start app log capture") < names.index("Build and run the journeys")
+    run = _step("Start app log capture")["run"]
+    assert "log stream" in run and "process == \"Palace\"" in run
+    assert "palace-app.log" in run
+
+
+def test_uploading_results_cannot_fail_the_job_and_runs_every_time():
+    """Passing runs upload the app log too: slow-but-green runs need evidence."""
     upload = _step("Upload journey results")
     assert upload.get("continue-on-error") is True
-    assert upload.get("if") == "failure()"
+    assert upload.get("if") == "always()"
+    assert "palace-app.log" in upload["with"]["path"]
