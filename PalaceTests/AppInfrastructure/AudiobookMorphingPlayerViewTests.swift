@@ -685,6 +685,33 @@ final class AudiobookMorphingPlayerChapterTitleTests: XCTestCase {
     }
 }
 
+// MARK: - Layout fixtures shared by the two geometry suites
+
+/// Portrait point sizes of the device classes the app ships to: a home-button
+/// phone, the narrow tier, two Dynamic Island phones and an iPad. A layout that
+/// only breaks on one of these is what a single-device check cannot see.
+enum PlayerLayoutDevices {
+    static let portrait: [(name: String, size: CGSize)] = [
+        ("iPhone SE (3rd generation)", CGSize(width: 375, height: 667)),
+        ("iPhone 13 mini", CGSize(width: 375, height: 812)),
+        ("iPhone 16e", CGSize(width: 390, height: 844)),
+        ("iPhone 17 Pro", CGSize(width: 402, height: 874)),
+        ("iPhone 17 Pro Max", CGSize(width: 440, height: 956)),
+        ("iPad (A16)", CGSize(width: 820, height: 1180))
+    ]
+
+    /// A solid image at an exact size, so what the layout reports depends on the
+    /// artwork's aspect ratio and nothing else. 600x900 is the 2:3 book ratio in
+    /// the reported screenshot; without real artwork the player draws the square
+    /// placeholder glyph, which cannot reproduce an artwork-driven overflow.
+    static func artwork(_ width: CGFloat = 600, _ height: CGFloat = 900) -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { ctx in
+            UIColor.systemTeal.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+}
+
 // MARK: - Cover art geometry
 
 /// The full player budgets a SQUARE for the cover: `fullContentPortrait` stacks
@@ -701,15 +728,6 @@ final class AudiobookCoverArtLayoutTests: XCTestCase {
     private static let coverHorizontalPadding: CGFloat = 80
     /// `coverArt`'s `.frame(maxWidth: 320)` at the portrait call site.
     private static let coverMaxWidth: CGFloat = 320
-
-    /// A solid image at an exact size, so what the layout reports depends on the
-    /// artwork's aspect ratio and nothing else.
-    private static func artwork(_ width: CGFloat, _ height: CGFloat) -> UIImage {
-        UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { ctx in
-            UIColor.systemTeal.setFill()
-            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        }
-    }
 
     /// The size the production cover view reports for a proposal — the same
     /// measurement SwiftUI makes when laying the cover into the player column.
@@ -731,7 +749,7 @@ final class AudiobookCoverArtLayoutTests: XCTestCase {
     /// A portrait (2:3) cover — the common book ratio, and the one in the
     /// reported screenshot — must still measure square.
     func testCoverArt_portraitArtwork_measuresSquare_notTheArtworkRatio() {
-        let measured = measuredCover(image: Self.artwork(600, 900),
+        let measured = measuredCover(image: PlayerLayoutDevices.artwork(),
                                      proposing: CGSize(width: 322, height: 874))
         XCTAssertEqual(measured.width, 320, accuracy: 0.5,
                        "the cover must fill its 320pt slot")
@@ -741,7 +759,7 @@ final class AudiobookCoverArtLayoutTests: XCTestCase {
 
     /// A landscape cover must not report the artwork's width either.
     func testCoverArt_landscapeArtwork_measuresSquare() {
-        let measured = measuredCover(image: Self.artwork(900, 600),
+        let measured = measuredCover(image: PlayerLayoutDevices.artwork(900, 600),
                                      proposing: CGSize(width: 322, height: 874))
         XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
                        "a 3:2 cover must measure square, not 480x320")
@@ -761,7 +779,7 @@ final class AudiobookCoverArtLayoutTests: XCTestCase {
     /// is offered instead of overflowing. Without this an iPhone SE column still
     /// runs past the bottom even with a square cover.
     func testCoverArt_takesOnlyTheHeightOffered_whenTheColumnIsTight() {
-        let measured = measuredCover(image: Self.artwork(600, 900),
+        let measured = measuredCover(image: PlayerLayoutDevices.artwork(),
                                      proposing: CGSize(width: 322, height: 210),
                                      maxWidth: nil)
         XCTAssertEqual(measured.height, 210, accuracy: 0.5,
@@ -775,16 +793,8 @@ final class AudiobookCoverArtLayoutTests: XCTestCase {
     /// corpus cannot see. Portrait point sizes of the device classes the app
     /// ships to — home-button, Dynamic Island, and iPad.
     func testCoverArt_measuresSquareAndWithinBudget_onEveryDeviceClass() {
-        let devices: [(name: String, size: CGSize)] = [
-            ("iPhone SE (3rd generation)", CGSize(width: 375, height: 667)),
-            ("iPhone 13 mini", CGSize(width: 375, height: 812)),
-            ("iPhone 16e", CGSize(width: 390, height: 844)),
-            ("iPhone 17 Pro", CGSize(width: 402, height: 874)),
-            ("iPhone 17 Pro Max", CGSize(width: 440, height: 956)),
-            ("iPad (A16)", CGSize(width: 820, height: 1180))
-        ]
-        let art = Self.artwork(600, 900)
-        for device in devices {
+        let art = PlayerLayoutDevices.artwork()
+        for device in PlayerLayoutDevices.portrait {
             let slotWidth = device.size.width - Self.coverHorizontalPadding
             let measured = measuredCover(
                 image: art,
@@ -814,16 +824,6 @@ final class AudiobookCoverArtLayoutTests: XCTestCase {
 @MainActor
 final class AudiobookPlayerColumnLayoutTests: XCTestCase {
 
-    /// Portrait point sizes of the device classes the app ships to: a
-    /// home-button phone, the narrow tier, two Dynamic Island phones and an iPad.
-    private static let deviceClasses: [(name: String, size: CGSize)] = [
-        ("iPhone SE (3rd generation)", CGSize(width: 375, height: 667)),
-        ("iPhone 13 mini", CGSize(width: 375, height: 812)),
-        ("iPhone 17 Pro", CGSize(width: 402, height: 874)),
-        ("iPhone 17 Pro Max", CGSize(width: 440, height: 956)),
-        ("iPad (A16)", CGSize(width: 820, height: 1180))
-    ]
-
     /// The player's bottom control row, by the labels it publishes. Matching on
     /// labels rather than positions means a renamed control fails the lookup
     /// assertion below instead of quietly shrinking the set under test.
@@ -831,21 +831,11 @@ final class AudiobookPlayerColumnLayoutTests: XCTestCase {
         [Strings.Generic.airplay, Strings.Generic.sleepTimer, Strings.Generic.addBookmark]
     }
 
-    /// A 2:3 cover — the common book ratio, and the one in the reported
-    /// screenshot. Without real artwork the player draws the square placeholder
-    /// glyph, which cannot reproduce an artwork-driven overflow at all.
-    private static func portraitArtwork() -> UIImage {
-        UIGraphicsImageRenderer(size: CGSize(width: 600, height: 900)).image { ctx in
-            UIColor.systemTeal.setFill()
-            ctx.fill(CGRect(x: 0, y: 0, width: 600, height: 900))
-        }
-    }
-
     private func mountExpandedPlayer(size: CGSize) -> AccessibilityAuditHost {
         let session = SpyShimSession()
         let presenter = AudiobookSessionPresenter(sessionManager: session)
         presenter.adoptBook(TPPBookMocker.snapshotAudiobook())
-        presenter.adoptCoverImage(Self.portraitArtwork())
+        presenter.adoptCoverImage(PlayerLayoutDevices.artwork())
         presenter.expand()
 
         let suite = "player-layout.\(UUID().uuidString)"
@@ -869,7 +859,7 @@ final class AudiobookPlayerColumnLayoutTests: XCTestCase {
     /// Every bottom control must sit inside the screen on every device class.
     /// Pre-fix this failed on the short screens by up to ~78pt.
     func testFullPlayer_bottomControlsStayOnScreen_onEveryDeviceClass() {
-        for device in Self.deviceClasses {
+        for device in PlayerLayoutDevices.portrait {
             let host = mountExpandedPlayer(size: device.size)
             defer { host.tearDown() }
 
@@ -894,7 +884,7 @@ final class AudiobookPlayerColumnLayoutTests: XCTestCase {
     /// The transport row must stay on screen too: the overflow is split between
     /// both ends of the column, so a regression can push either way.
     func testFullPlayer_transportControlsStayOnScreen_onEveryDeviceClass() {
-        for device in Self.deviceClasses {
+        for device in PlayerLayoutDevices.portrait {
             let host = mountExpandedPlayer(size: device.size)
             defer { host.tearDown() }
 
