@@ -163,6 +163,10 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
                        "validateCredentials must fire exactly one credential-validation request")
         XCTAssertTrue(networkExecutor.executedRequestURLs.first?.absoluteString.contains(profilePath) ?? false,
                       "the validation request must target the fixture's userProfileUrl (/patrons/me)")
+        XCTAssertEqual(networkExecutor.executedAccountIds, [libraryMock.tppAccountUUID],
+                       "the request must name the library it was built for — a nil "
+                       + "accountId authenticates as whichever library is selected, "
+                       + "which is the PP-4986 defect and is invisible in the response")
         XCTAssertFalse(businessLogic.isValidatingCredentials,
                        "the validating flag must be cleared once a successful "
                        + "validation completes — `await` returns after the success "

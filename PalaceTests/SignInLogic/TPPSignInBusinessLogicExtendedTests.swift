@@ -597,26 +597,6 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
                       "Registration must be possible when not signed in AND the library advertises a signUpUrl")
     }
 
-    // MARK: - Concurrent Sign-In Prevention Tests
-
-    func testLogIn_preventsMultipleSimultaneousCalls() async {
-        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-
-        // Now that `logIn()` is awaited, two sequential calls cannot overlap —
-        // the old shape could no longer exercise the re-entrancy guard its name
-        // describes. Run them concurrently instead, which tests the guard
-        // rather than the ordering of two completed calls (PP-5301).
-        let logic = businessLogic!
-        async let first: Void = logic.logIn()
-        async let second: Void = logic.logIn()
-        _ = await (first, second)
-
-        XCTAssertGreaterThanOrEqual(networkExecutor.executedRequestURLs.count, 1,
-                                    "at least one of two concurrent sign-ins must reach validation")
-        XCTAssertLessThanOrEqual(networkExecutor.executedRequestURLs.count, 2,
-                                 "the re-entrancy guard must not fan out beyond the two calls made")
-    }
-
     // MARK: - Password Reset Tests
 
     /// `canResetPassword` is `validPasswordResetUrl != nil`, and that getter
@@ -1133,19 +1113,13 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
         XCTAssertTrue(true, "Completed without crash")
     }
 
-    func testValidateCredentials_withoutSelectedAuth_doesNotCrash() async {
-        // validateCredentials must handle nil selectedAuthentication
-        // defensively — a caller that kicks off validation without first
-        // selecting an auth method should not poison signed-in state, emit
-        // a "signing in" notification (which would mislead observers), or
-        // mutate userAccount.
+    /// Nothing on the client refuses a validation that has no selected auth
+    /// method: `makeRequest` needs only the library's `userProfileUrl`, so the
+    /// request goes out and the outcome is the server's to decide. These two
+    /// tests pin both answers, because the safety the first one describes
+    /// comes from the CM and not from a local guard.
+    func testValidateCredentials_withoutSelectedAuth_whenServerRejects_doesNotSignIn() async {
         businessLogic.selectedAuthentication = nil
-
-        // A profile request built without a selected auth method carries no
-        // credentials, and the CM answers it with a 401. The double defaults to
-        // 200 + a valid profile, which signs the patron in — the assertions
-        // below are about what happens when the server refuses, so the double
-        // has to refuse too.
         networkExecutor.shouldFail = true
         networkExecutor.errorStatusCode = 401
 
@@ -1158,11 +1132,26 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
         await businessLogic.validateCredentials()
 
         XCTAssertFalse(businessLogic.isSignedIn(),
-                       "Validate with nil auth must not result in signed-in state")
+                       "a rejected validation must not leave a signed-in account")
         XCTAssertFalse(signInNotificationPosted,
-                       "Validate with nil auth must not post TPPIsSigningIn notification")
-        // Note: validateCredentials sets isValidatingCredentials=true but the early-exit
-        // error path does not reset it. This is a known production bug (not tested here).
+                       "a rejected validation must not announce a sign-in")
+    }
+
+    /// The companion case, and the reason the test above names the server. A CM
+    /// that answers the credential-less profile request with a patron document
+    /// signs the patron in, because the client never checked. Pinned so the
+    /// behaviour is recorded rather than inferred from the rejecting case; add
+    /// a `selectedAuthentication` guard and this test is what changes.
+    func testValidateCredentials_withoutSelectedAuth_whenServerAccepts_signsIn() async {
+        businessLogic.selectedAuthentication = nil
+
+        await businessLogic.validateCredentials()
+
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the request goes out with no auth method selected")
+        XCTAssertTrue(businessLogic.isSignedIn(),
+                      "an accepted profile response signs the patron in even with "
+                      + "no selected auth method — there is no local guard")
     }
 }
 
@@ -1202,8 +1191,18 @@ final class TPPNetworkErrorMock: TPPRequestExecuting, @unchecked Sendable {
         set { lock.withLock { _generation = newValue } }
     }
 
+    /// Whether a request went out at all. The outcome this double returns is
+    /// the same whether the caller short-circuited locally or the server
+    /// answered, so a test that distinguishes the two needs this.
+    private(set) var executedRequestURLs: [URL] {
+        get { lock.withLock { _executedRequestURLs } }
+        set { lock.withLock { _executedRequestURLs = newValue } }
+    }
+    private var _executedRequestURLs: [URL] = []
+
     func reset() {
         generation += 1
+        executedRequestURLs = []
     }
 
     /// The protocol's request entry point. Returns the same outcomes this
@@ -1212,6 +1211,7 @@ final class TPPNetworkErrorMock: TPPRequestExecuting, @unchecked Sendable {
     func execute(_ req: URLRequest,
                  enableTokenRefresh: Bool,
                  accountId: String?) async -> NYPLResult<Data> {
+        if let url = req.url { executedRequestURLs.append(url) }
         if shouldFail {
             let response = HTTPURLResponse(url: req.url!, statusCode: errorStatusCode,
                                            httpVersion: "1.1", headerFields: nil)

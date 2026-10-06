@@ -187,6 +187,8 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
 
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
                        "Valid OAuth payload must hand off to validateCredentials()")
+        XCTAssertEqual(businessLogic.userAccount.patron?["name"] as? String, "Alice",
+                       "the patron parsed out of the redirect must reach the account")
     }
 
     func test_handleRedirectURL_missingAccessToken_skipsValidationAndReportsParseError() {

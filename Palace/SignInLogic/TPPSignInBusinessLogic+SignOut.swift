@@ -134,7 +134,8 @@ extension TPPSignInBusinessLogic {
         // enableTokenRefresh stays FALSE here.
         //
         // Turning it on does fetch a fresher licensor, which is what sign-out
-        // needs to deauthorize. But it also arms `TPPNetworkExecutor:882-899`:
+        // needs to deauthorize. But it also arms the 401 branch inside
+        // `TPPNetworkExecutor.refreshTokenAndResume`:
         // when the proactive refresh itself 401s — an expired card, precisely
         // the case this was meant to help — that path calls
         // `markCredentialsStale()` AND
@@ -149,9 +150,9 @@ extension TPPSignInBusinessLogic {
         // false, and the way it was reached is worth recording: the census
         // grepped the LITERAL `enableTokenRefresh: true`, while the contract is
         // semantic — `GET(useTokenIfAvailable: Bool = true)` and three siblings
-        // forward a defaulted-true straight into the same parameter
-        // (TPPNetworkExecutor:388, 676, 700, 720). That arm is live production
-        // and runs constantly.
+        // forward a defaulted-true straight into the same parameter (the
+        // `executeRequest` calls in `TPPNetworkExecutor`'s GET/PUT/POST/DELETE
+        // helpers). That arm is live production and runs constantly.
         //
         // The revert stands anyway, on the narrower ground that actually holds:
         // prompting re-auth mid-BORROW is already this app's design, so the

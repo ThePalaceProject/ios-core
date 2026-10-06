@@ -252,6 +252,20 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
         uiDelegate.pin = "login-pin"
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
+        // Rewrite the delegate the moment the request is dispatched, which is
+        // after `logIn()` captures the credentials and before the success path
+        // persists them. `TPPSignInBusinessLogic+UI` persists
+        // `capturedBarcode ?? uiDelegate?.username`, so a delegate still
+        // holding the typed values lets the fallback satisfy the assertions
+        // below even if the capture never happened. Changing it here is what
+        // makes them discriminate: only the captured value can still be
+        // "login-bc" afterwards. The mock is `@unchecked Sendable` with
+        // lock-guarded properties, and this fires inline on the calling thread.
+        networkExecutor.onExecuteRequest = { [uiDelegate] _ in
+            uiDelegate?.username = "not-the-captured-barcode"
+            uiDelegate?.pin = "not-the-captured-pin"
+        }
+
         await businessLogic.logIn()
 
         // `capturedBarcode`, `capturedPin` and `isValidatingCredentials` are
@@ -263,9 +277,10 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
                        "basic logIn must fire exactly one validation request")
         XCTAssertEqual(businessLogic.userAccount.barcode, "login-bc",
-                       "a successful basic logIn must persist the typed barcode")
+                       "the persisted barcode must be the one logIn captured, "
+                       + "not whatever the delegate holds at persist time")
         XCTAssertEqual(businessLogic.userAccount.PIN, "login-pin",
-                       "a successful basic logIn must persist the typed PIN")
+                       "the persisted PIN must be the one logIn captured")
     }
 
     // SEAM: logIn()'s OAuth (`oauthLogIn`) and SAML (`samlHelper.logIn`) arms

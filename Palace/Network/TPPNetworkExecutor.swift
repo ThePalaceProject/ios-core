@@ -529,11 +529,15 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
             // Boxed like the request below: a refresh callback firing twice
             // would otherwise trap on a double resume.
             let refreshed = CancellableContinuationBox<Void>()
-            _ = try? await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
-                refreshed.install(c)
-                refreshTokenAndResume(task: nil, accountId: accountId) { _ in
-                    refreshed.finish(.success(()))
+            _ = try? await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+                    refreshed.install(c)
+                    refreshTokenAndResume(task: nil, accountId: accountId) { _ in
+                        refreshed.finish(.success(()))
+                    }
                 }
+            } onCancel: {
+                refreshed.cancel()
             }
             return await dataTask(req, accountId: accountId)
         }

@@ -510,6 +510,12 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // class. This method is `async`, so no `Task` wrapper: one here would
         // let it return as soon as the request was started, and a caller
         // awaiting sign-in would race it.
+        //
+        // The awaiting frame holds this object, so a validation already in
+        // flight runs to completion — credentials persisted, DRM credentials
+        // saved — even if the screen that started it goes away. That is
+        // deliberate: the half-finished alternative leaves a patron signed in
+        // on the server with nothing stored locally.
         do {
             let result = await networker.execute(
                 req, enableTokenRefresh: false, accountId: libraryAccountID)
@@ -576,7 +582,9 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 case .success(let tokenResponse):
                     self?.dispatch(.bearerTokenReceived(token: tokenResponse.accessToken,
                                                         expiration: tokenResponse.expirationDate))
-                    self?.startSignInTask { await self?.validateCredentials() }
+                    if let self {
+                        self.startSignInTask { await self.validateCredentials() }
+                    }
                 case .failure(let error):
                     self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
                 }

@@ -405,7 +405,8 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
     ///
     /// A one-word flag with no visible effect on the happy path, which is
     /// exactly why it needs a test. Setting it true arms
-    /// `TPPNetworkExecutor:882-899`: a proactive refresh that 401s — an expired
+    /// the 401 branch of `TPPNetworkExecutor.refreshTokenAndResume`: a
+    /// proactive refresh that 401s — an expired
     /// card, the case someone would flip the flag to help — calls
     /// `markCredentialsStale()` AND `presentSignInModalForCurrentAccount(...)`
     /// when the refreshing account is the current one, which at sign-out it

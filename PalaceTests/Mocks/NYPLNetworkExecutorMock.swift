@@ -72,9 +72,9 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
     /// Whether each executed request asked for a proactive token refresh,
     /// keyed by URL. Recorded because the flag is not observable any other way:
     /// it is consumed inside the executor, and a caller flipping it changes
-    /// which failure arm runs (`TPPNetworkExecutor:882-899` presents the
-    /// sign-in modal on a refresh 401) without changing any response a test
-    /// can see.
+    /// which failure arm runs (the 401 branch of
+    /// `TPPNetworkExecutor.refreshTokenAndResume` presents the sign-in modal)
+    /// without changing any response a test can see.
     private(set) var tokenRefreshByURL: [URL: Bool] {
         get { lock.withLock { _tokenRefreshByURL } }
         set { lock.withLock { _tokenRefreshByURL = newValue } }
@@ -85,6 +85,17 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
         get { lock.withLock { _executedRequestURLs } }
         set { lock.withLock { _executedRequestURLs = newValue } }
     }
+
+    /// The `accountId` each awaited request named, in order. Recorded because
+    /// nothing else can see it: this double answers from its own stubs, so a
+    /// caller passing the wrong library — or nil, meaning "whichever library is
+    /// selected" — produces an identical response. PP-4986 is that defect, and
+    /// Settings signs in and out for a library that is not the selected one.
+    private(set) var executedAccountIds: [String?] {
+        get { lock.withLock { _executedAccountIds } }
+        set { lock.withLock { _executedAccountIds = newValue } }
+    }
+    private var _executedAccountIds: [String?] = []
 
     /// Fired synchronously the instant `executeRequest` records a URL — the
     /// deterministic JOIN seam for tests that need to wake the moment the
@@ -120,6 +131,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
         // Drop any join hook so a stale closure can't fire a torn-down
         // expectation on a later test's request.
         onExecuteRequest = nil
+        executedAccountIds = []
     }
 
     /// The protocol's only request entry point. Implemented over this double's
@@ -129,6 +141,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
     func execute(_ req: URLRequest,
                  enableTokenRefresh: Bool,
                  accountId: String?) async -> NYPLResult<Data> {
+        executedAccountIds.append(accountId)
         let carried: SendableNetworkResult = await withCheckedContinuation { continuation in
             let once = MockResultCarrier()
             _ = executeRequest(req, enableTokenRefresh: enableTokenRefresh) { result in

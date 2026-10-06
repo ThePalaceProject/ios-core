@@ -27,11 +27,12 @@ import Foundation
 /// Outside XCTest nothing is retained and the behaviour is exactly the detached
 /// `Task` these call sites started before.
 ///
-/// An entry keyed on `ObjectIdentifier` cannot be claimed by a later instance
-/// at the same address: the retained task holds the instance, so the address
-/// stays taken until the entry is joined and dropped.
+/// Each task removes its own entry when it finishes, so nothing is retained
+/// past the work itself and an `ObjectIdentifier` cannot be inherited by a
+/// later instance at the same address. Joining is then only about waiting, not
+/// about cleanup.
 @MainActor
-private var inFlightSignInTasks: [ObjectIdentifier: [Task<Void, Never>]] = [:]
+private var inFlightSignInTasks: [ObjectIdentifier: [UUID: Task<Void, Never>]] = [:]
 
 private let isRunningUnderXCTest =
     ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -40,9 +41,20 @@ extension TPPSignInBusinessLogic {
 
     /// Start sign-in work from a synchronous caller. Joinable under XCTest.
     func startSignInTask(_ operation: @escaping @MainActor () async -> Void) {
-        let task = Task { await operation() }
-        guard isRunningUnderXCTest else { return }
-        inFlightSignInTasks[ObjectIdentifier(self), default: []].append(task)
+        guard isRunningUnderXCTest else {
+            Task { await operation() }
+            return
+        }
+        let key = ObjectIdentifier(self)
+        let id = UUID()
+        let task = Task { @MainActor in
+            await operation()
+            inFlightSignInTasks[key]?.removeValue(forKey: id)
+            if inFlightSignInTasks[key]?.isEmpty == true {
+                inFlightSignInTasks[key] = nil
+            }
+        }
+        inFlightSignInTasks[key, default: [:]][id] = task
     }
 
     /// Test-only deterministic join. Awaits every sign-in task this instance
@@ -51,9 +63,7 @@ extension TPPSignInBusinessLogic {
     func _awaitSignInWorkForTesting() async {
         let key = ObjectIdentifier(self)
         while let pending = inFlightSignInTasks[key], !pending.isEmpty {
-            inFlightSignInTasks[key] = []
-            for task in pending { _ = await task.value }
+            for task in pending.values { _ = await task.value }
         }
-        inFlightSignInTasks[key] = nil
     }
 }
