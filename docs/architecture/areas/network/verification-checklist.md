@@ -13,9 +13,9 @@ description: Per-area verification reference; refresh before changing this area
 # `fingerprint` is reproducible with plain git from the repo root (paths in any order):
 #   git ls-tree <verified_ref> -- <paths> | git hash-object --stdin | cut -c1-8
 sources:
-  verified_ref: 4c65025be5a40bfdbe0da6dbd14f4158744d1397
+  verified_ref: 24044428ce1728d625d19cbad55e40872f741fd4
   last_verified: 2026-10-06
-  fingerprint: '0903af80'
+  fingerprint: '8a4f928b'
   paths:
     - Palace/Network/TPPNetworkResponder.swift
     - Palace/Network/TPPNetworkExecutor.swift
@@ -324,6 +324,7 @@ Before any non-trivial change in this area:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
+| 2026-10-06 | PP-5301 | `TPPRequestExecuting` now exposes one `async execute` and the completion requirements are gone; `TPPNetworkExecutor` gained a native async entry point, and the account resolution, SAML short-circuit and near-expiry refresh both entry points need are now one `preflight`. Re-checked the citations into `TPPNetworkExecutor.swift` and corrected four that had shifted: the HTTP/3 opt-out (520 to 620), `refreshTokenAndResume` (743 to 843) and the two initializer ranges (236-240 to 248-252, 239-241 to 251-253). Source comments that cited executor line numbers now name the symbol instead, which is what drifted. |
 | 2026-10-06 | network checklist refresh | Corrected Section 3: the executor and responder never enqueue; the queue's live producer is the annotation POST on transport failure, and `enqueueOfflineRequest` (3f659ff2e) accepts GET but has no production caller. Removed the 5xx, `cachePolicy` and PATCH enqueue cells and the "GET requests are NOT enqueued" note; added the DELETE no-refresh row; replaced "per-task budget caps at 2". Corrected the queue's retry description in Section 1 and the "single stubbing seam" claim in Section 2. Added a Section 8 queue self-check and the files these claims cite to `sources.paths`; corrected the `AppContainer.swift` coordinator-recorder citation to 555–562. Stated that queued requests get no token refresh (the drain's completion-handler task does not get the responder's `didCompleteWithError` 401 handling) and are resent on 401 up to the retry cap; corrected the `URLSessionNetworkClient` and `NetworkTransport` descriptions; noted the release-build GET fallback in `enqueueOfflineRequest`. Narrowed the delegate claim: challenge callbacks still reach the responder for queued requests and answer with the selected library's credentials; added that path and its cross-library consequence to Sections 3 and 7. Re-checked the remaining negative claims against 4c65025be. |
 | 2026-10-05 | network checklist refresh | Confirmed the PR #1018 classifier migration is on develop (f380e37c3) and removed the "not yet landed" notes. Re-verified every line citation and the Section 8 self-check against 3ad580c0d. Corrected the retry-budget description: it is one retry per URL (`maxRetryAttempts = 1`), not `tokenRefreshAttempts < 2`. Replaced two test files that were never added (`CrossDomain401Tests`, `AuthErrorCategoryTests`) with the classifier tests that cover the same rules. Added the `sources:` frontmatter. |
 | 2026-09-23 | PR #1462 (PP-5202) | Added Section 7b — the problem-document DECODE seam. Sections 1–7 covered classification over an already-parsed document and were silent on parsing; that gap shipped a sign-in regression where a wrong-typed `show_title` discarded the whole document and a blocked patron was told their password was wrong. Section 7b documents the two parse paths and their different contracts, the `.convertFromSnakeCase` CodingKeys trap and its detector, the no-custom-encoder decision, and the strict/lenient `0` disagreement as known debt. |
