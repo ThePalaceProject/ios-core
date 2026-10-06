@@ -206,6 +206,23 @@ final class ReaderBookmarkSyncGateTests: XCTestCase {
         XCTAssertEqual(reauthenticator.authenticateCallCount, 1)
         XCTAssertEqual(result.calls, 1)
         XCTAssertEqual(result.success, false)
+        // The re-auth left the session stale, so the fetch is not retried.
+        XCTAssertEqual(MockAnnotationsURLProtocol.capturedRequests.map(\.httpMethod), ["GET"])
+    }
+
+    /// A failed fetch with a valid session is a plain failure: no re-auth prompt.
+    func testSyncBookmarks_WhenSyncOnAndFetchFailsWithValidCredentials_DoesNotReauthenticate() async {
+        configurePatron(signedIn: true, syncPermitted: true)
+        MockAnnotationsURLProtocol.requestHandler = { request in
+            (HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!, nil)
+        }
+
+        let result = await syncAndWait()
+
+        XCTAssertEqual(reauthenticator.authenticateCallCount, 0)
+        XCTAssertEqual(result.calls, 1)
+        XCTAssertEqual(result.success, false)
+        XCTAssertEqual(MockAnnotationsURLProtocol.capturedRequests.map(\.httpMethod), ["GET"])
     }
 
     // MARK: - Pull to refresh
