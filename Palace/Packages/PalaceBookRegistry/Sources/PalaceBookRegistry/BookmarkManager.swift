@@ -136,7 +136,7 @@ class BookmarkManager {
   /// Matches by identity, not content: the caller holds the exact record it
   /// read, while a content match can miss it (parsing adds fields) or hit a
   /// different record at the same position. A missing record is not re-added,
-  /// so a bookmark deleted during an upload stays deleted.
+  /// so a bookmark deleted locally during its upload is not written back.
   func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier identifier: String, account: String?) {
     var didMutate = false
     store.mutateRegistry({ registry in

@@ -74,6 +74,19 @@ final class GenericBookmarkReplaceParityTests: XCTestCase {
         }
     }
 
+    /// Deleting by identity removes the named record and keeps another at the
+    /// same position with the same fields.
+    func testDeleteIdenticalTo_RemovesOnlyTheNamedRecord() {
+        for (name, registry) in registries() {
+            registry.addGenericBookmark(stored, forIdentifier: book.identifier)
+            registry.addGenericBookmark(synced, forIdentifier: book.identifier)
+
+            registry.deleteGenericBookmark(identicalTo: record(stored.locationString), forIdentifier: book.identifier)
+
+            XCTAssertEqual(records(in: registry), [synced.locationString], name)
+        }
+    }
+
     /// A replace for a record deleted in the meantime does not write it back.
     func testReplace_AfterRecordWasDeleted_DoesNotWriteItBack() {
         for (name, registry) in registries() {

@@ -427,6 +427,7 @@ final class BookmarkManagerTests: XCTestCase {
         let original = makeLocation(page: 5, renderer: "r1")
         manager.addGenericBookmark(original, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
+        let savesBefore: Int = saveCallCount
 
         let replacement = makeLocation(page: 50, renderer: "r1")
         manager.replaceGenericBookmark(original, with: replacement, forIdentifier: book.identifier, account: testAccount)
@@ -435,6 +436,8 @@ final class BookmarkManagerTests: XCTestCase {
         let bookmarks = manager.genericBookmarks(forIdentifier: book.identifier)
         XCTAssertEqual(bookmarks.count, 1)
         XCTAssertTrue(bookmarks.first?.locationString.contains("50") ?? false)
+        // The replacement carries the server ID; unsaved, it is lost on relaunch.
+        XCTAssertEqual(saveCallCount, savesBefore + 1)
     }
 
     /// A replace that finds no identical record writes and saves nothing.

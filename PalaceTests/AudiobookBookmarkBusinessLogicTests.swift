@@ -385,7 +385,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
 
     // MARK: - Sync Bookmarks Tests
 
-    func testSyncBookmarks_MergesLocalAndRemote() {
+    func testSyncBookmarks_WithNoServerBookmarks_ReturnsStoredLocalBookmark() {
         mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
         mockAnnotations = TPPAnnotationMock()

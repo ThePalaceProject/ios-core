@@ -361,6 +361,17 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         XCTAssertEqual(storedDictionaries.first?["timeStamp"] as? String, "2026-01-01T00:00:00Z")
     }
 
+    /// An empty time in the response is treated as no time.
+    func testSync_UploadResponseWithIDAndEmptyTimestamp_KeepsStoredTimestamp() async {
+        storeLocally(bookmark(""))
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-1", timeStamp: ""))
+
+        _ = await sync()
+
+        XCTAssertEqual(storedDictionaries.first?["annotationId"] as? String, "srv-1")
+        XCTAssertEqual(storedDictionaries.first?["timeStamp"] as? String, "2026-01-01T00:00:00Z")
+    }
+
     /// The upload writes the server's ID and time into the stored record and
     /// leaves its other fields as stored; parsing adds a `chapter` the record
     /// never had, and that must not be written back.
