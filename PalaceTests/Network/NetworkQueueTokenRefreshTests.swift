@@ -443,6 +443,8 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
                        "No auth definition, nothing to refresh")
         XCTAssertFalse(queue.canRefreshTokenForTesting(libraryID: libraries.uuidNoCard),
                        "A token library with no stored card cannot get a new token")
+        XCTAssertFalse(queue.canRefreshTokenForTesting(libraryID: libraries.uuidBasic),
+                       "A basic-auth library has a card and PIN but no token to refresh")
     }
 
     /// End to end through the real executor: library A's row 401s while B is
@@ -520,6 +522,26 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         await fulfillment(of: [done], timeout: 5)
 
         XCTAssertEqual(presented.value, 1)
+    }
+
+    /// The sheet is only for the selected library: a refused refresh for
+    /// another library marks it stale without interrupting the patron.
+    func testExecutorRefresh_RefusedForANonSelectedLibrary_PresentsNothing() async {
+        let libraries = TwoLibraries()
+        libraries.selected = libraries.uuidB
+        let executor = makeExecutor(libraries)
+        let presented = LockIsolated(0)
+        executor.presentSignInAfterRefusedRefresh = { presented.withValue { $0 += 1 } }
+        HTTPStubURLProtocol.register { @Sendable [libraries] request in
+            request.url == libraries.tokenURL_A ? .init(statusCode: 401, headers: nil, body: Data("no".utf8)) : nil
+        }
+
+        let done = expectation(description: "refresh finished")
+        executor.refreshTokenAndResume(task: nil, accountId: libraries.uuidA) { @Sendable _ in done.fulfill() }
+        await fulfillment(of: [done], timeout: 5)
+
+        XCTAssertEqual(libraries.accountA.authState, .credentialsStale)
+        XCTAssertEqual(presented.value, 0)
     }
 
     /// A `task: nil` refresh that finds the slot taken says so, which is how
@@ -734,12 +756,14 @@ private final class TwoLibraries: NSObject, TPPLibraryAccountsProvider, @uncheck
     let uuidB = "urn:uuid:queue-library-b"
     let uuidNoAuth = "urn:uuid:queue-library-no-auth"
     let uuidNoCard = "urn:uuid:queue-library-no-card"
+    let uuidBasic = "urn:uuid:queue-library-basic"
     let tokenURL_A = URL(string: "https://token.a.example.org/token")!
     let tokenURL_B = URL(string: "https://token.b.example.org/token")!
     let accountA = TPPUserAccountMock()
     let accountB = TPPUserAccountMock()
     let accountNoAuth = TPPUserAccountMock()
     let accountNoCard = TPPUserAccountMock()
+    let accountBasic = TPPUserAccountMock()
     var selected: String
 
     override init() {
@@ -754,6 +778,8 @@ private final class TwoLibraries: NSObject, TPPLibraryAccountsProvider, @uncheck
                               expirationDate: Date().addingTimeInterval(3600))
         accountB.markLoggedIn()
         accountNoCard._authDefinition = Self.tokenAuth(tokenURL_A)
+        accountBasic._authDefinition = Self.basicAuth()
+        accountBasic._credentials = .barcodeAndPin(barcode: "userBasic", pin: "pinBasic")
     }
 
     var tppAccountUUID: String { uuidA }
@@ -766,10 +792,19 @@ private final class TwoLibraries: NSObject, TPPLibraryAccountsProvider, @uncheck
         case uuidB: return accountB
         case uuidNoAuth: return accountNoAuth
         case uuidNoCard: return accountNoCard
+        case uuidBasic: return accountBasic
         default: return TPPUserAccountMock()
         }
     }
     var currentUserAccount: TPPUserAccount { userAccount(for: selected) }
+
+    private static func basicAuth() -> AccountDetails.Authentication {
+        let json = #"{"type": "http://opds-spec.org/auth/basic", "links": []}"#
+        // Fixture literal; a decode failure is a broken test, not a runtime path.
+        let docAuth = try! JSONDecoder().decode(OPDS2AuthenticationDocument.Authentication.self,
+                                                from: Data(json.utf8))
+        return AccountDetails.Authentication(auth: docAuth)
+    }
 
     private static func tokenAuth(_ tokenURL: URL) -> AccountDetails.Authentication {
         let json = """
