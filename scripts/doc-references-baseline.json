@@ -7,11 +7,6 @@
       "target": "scripts/mutate.py"
     },
     {
-      "doc": "docs/Testing/3.3.0-REGRESSION-PLAN.md",
-      "kind": "workflow",
-      "target": "recording.yaml"
-    },
-    {
       "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
       "kind": "script",
       "target": "scripts/regression_crash_harvest.py"
@@ -412,11 +407,6 @@
       "target": ".simdrive/journeys/ws4-ipad-on-mac-exit-adobe-drm.yaml"
     },
     {
-      "doc": "docs/bug-investigation-process.md",
-      "kind": "script",
-      "target": "scripts/build-sim-for-simdrive.sh"
-    },
-    {
       "doc": "docs/regression-suite/CARPLAY-FEASIBILITY.md",
       "kind": "script",
       "target": "scripts/regression-carplay-cell.sh"
@@ -425,21 +415,6 @@
       "doc": "docs/regression-suite/CARPLAY-FEASIBILITY.md",
       "kind": "script",
       "target": "scripts/regression_xcresult_findings.py"
-    },
-    {
-      "doc": "docs/regression-suite/DESIGN.md",
-      "kind": "script",
-      "target": "scripts/regression-report.sh"
-    },
-    {
-      "doc": "docs/regression-suite/DESIGN.md",
-      "kind": "script",
-      "target": "scripts/run-chaos-pass.sh"
-    },
-    {
-      "doc": "docs/regression-suite/DESIGN.md",
-      "kind": "script",
-      "target": "scripts/simdrive-regress.sh"
     }
   ]
 }

@@ -9,7 +9,6 @@ owners: [auth]
 description: Per-area verification reference; refresh before next swarm/rigorous-fix
 ---
 
-<!-- audit-verified: PR #1018 and swarm_66819d80 are real; I orchestrated this swarm today (2026-05-27 → 2026-05-28) and the artifacts referenced exist at .forgeos/swarms/swarm_66819d80/. Migration status per Section 1 was verified by grep/file-read during the swarm's Phase 4/4.5/5. -->
 
 # Auth area — verification checklist
 
@@ -144,7 +143,7 @@ Main-target wrapper: `AuthDecisionRecorder` in `Palace/AppInfrastructure/Telemet
 
 ## 7. Known traps / anti-patterns (lessons from prior work)
 
-- **Foreign-library cross-host 401** (added 2026-06-05 per wall-failure `2026-06-05-pr1018-icarus-cross-host-logout.md`): a 401 from a host that shares base-domain with the current account but does NOT belong to the current account's auth surface (different library backend within `*.palaceproject.io`, e.g. `gorgon.staging.palaceproject.io` vs `minotaur.dev.palaceproject.io`) must NOT be classified as `.reauthRequired`. The base-domain `isSameDomain` helper does NOT catch this. The fix is `Account.authSurfaceHosts` → `AuthErrorClassifier.currentAccountHostsProvider` → Rule 4b (foreign-host 401 → `.ok`). Tests live in `PalaceAuthTests/AuthErrorClassifierTests` (host-scoping tests) and `PalaceTests/Accounts/AccountAuthSurfaceHostsTests`. Property-fuzz Invariant 8 enforces this structurally. Sibling sites `TokenRefreshInterceptor:106` and `DownloadAuthRetryHandler:212` carry inline foreign-host guards with the same closure shape.
+- **Foreign-library cross-host 401** (added 2026-06-05, after PR #1018): a 401 from a host that shares base-domain with the current account but does NOT belong to the current account's auth surface (different library backend within `*.palaceproject.io`, e.g. `gorgon.staging.palaceproject.io` vs `minotaur.dev.palaceproject.io`) must NOT be classified as `.reauthRequired`. The base-domain `isSameDomain` helper does NOT catch this. The fix is `Account.authSurfaceHosts` → `AuthErrorClassifier.currentAccountHostsProvider` → Rule 4b (foreign-host 401 → `.ok`). Tests live in `PalaceAuthTests/AuthErrorClassifierTests` (host-scoping tests) and `PalaceTests/Accounts/AccountAuthSurfaceHostsTests`. Property-fuzz Invariant 8 enforces this structurally. Sibling sites `TokenRefreshInterceptor:106` and `DownloadAuthRetryHandler:212` carry inline foreign-host guards with the same closure shape.
 - **Two-surface auth model** (memory `saml_two_surface_auth_model.md`): bearer token + IdP cookie expire independently. Do NOT mark stale on `/patrons/me` 401 alone — the bearer might be valid but the cookie expired, or vice versa.
 - **OIDC silent reauth uses ASWebAuthenticationSession directly** — not through AuthCoordinator. Don't accidentally route it through the coordinator (would break the silent UX).
 - **Per-book circuit breaker** at BorrowOperation (`hasBorrowReauthBeenAttempted`) — process-wide coordinator single-flight is NOT a substitute. Both layers serve different roles.
@@ -171,7 +170,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
-| 2026-05-28 | swarm_66819d80 architect (via this PR) | Initial baseline derived from PR #1018 Phase 0 recon docs. Lifted from `docs/3.2.0-auth-recon.md` + `-deps.md` + `-test-inventory.md` + `-idp-catalog.md`. |
+| 2026-05-28 | PR #1018 | Initial baseline derived from PR #1018 Phase 0 recon docs. Lifted from `docs/3.2.0-auth-recon.md` + `-deps.md` + `-test-inventory.md` + `-idp-catalog.md`. |
 
 ---
 

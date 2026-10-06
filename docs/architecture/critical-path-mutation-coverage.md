@@ -59,7 +59,7 @@ Reproducible walk used to assemble the inclusion list. Anyone re-running the aud
    - Pure value types and enum definitions (e.g. `TPPMyBooksDownloadInfo.swift` — `@objc enum TPPMyBooksDownloadRightsManagement: Int` only) — no mutable behavior to mutate.
    - View-layer files that only render state set elsewhere (e.g. `TPPBookDetailDownloadFailedView.swift`) — covered by snapshot tests, not mutation.
    - Reader2 rendering-side DRM (`Palace/Reader2/ReaderStackConfiguration/AdobeDRM/*`, `Palace/Reader2/ReaderStackConfiguration/LCP/*`) — exempted, see "Exempted files" below.
-4. **Cross-reference against the audit corpus** (the `phase7-*` audits, kept in the maintainer harness) and the memory pin `phase7_borrow_path_regressions_2026_05_14.md`. Every file those audits called out as F-011 / F-014 / F-017 risk surface must be in the regex.
+4. **Cross-reference against the borrow-path regression findings** F-011 / F-014 / F-017. Every file those findings called out as risk surface must be in the regex.
 5. **Construct a regex** that matches every retained file. Test it against both the retained list (positive cases) and an explicit non-critical sampler (negative cases). The verification commands and output live in the "Verification" section below.
 
 ## Critical-path files
@@ -95,7 +95,7 @@ Files that touch a critical surface but are explicitly **not** in the regex:
 
 **Reasoning.** Reader2 runs inside Readium 3.x's WKWebView. Per CLAUDE.md "E2E / UI sim driving — simdrive": the WKWebView is invisible to the XCTest accessibility tree. Mutation-testing classes inside Reader2 against XCTest-resolved test selectors produces selectors that match zero classes — `palace_mutate.py` would dutifully report 0/0 kill rate for every mutation, which the verify-pr.sh aggregator silently rubber-stamps as "no mutations generated for changed files" (line ~417: `record "mutation" "pass" "No mutations generated for changed files"`).
 
-**Alternative coverage.** Module D of swarm `swarm_eefef87a` (this same swarm) lands contract-snapshot tests at `PalaceTests/Contract/Reader2BookmarkContractTests.swift` and `PalaceTests/Contract/Reader2PositionResumeContractTests.swift`. The contract-snapshot framework (`PalaceTests/Contract/{CallLog,ContractSnapshot}.swift`) records the ordered sequence of dependency calls during a Reader2 scenario, stores the result as a JSON baseline, and asserts the snapshot on every subsequent run. Refactors that change the call contract — including silent breakage of bookmark sync or position resume — drift the snapshot and fail loudly.
+**Alternative coverage.** The same change set lands contract-snapshot tests at `PalaceTests/Contract/Reader2BookmarkContractTests.swift` and `PalaceTests/Contract/Reader2PositionResumeContractTests.swift`. The contract-snapshot framework (`PalaceTests/Contract/{CallLog,ContractSnapshot}.swift`) records the ordered sequence of dependency calls during a Reader2 scenario, stores the result as a JSON baseline, and asserts the snapshot on every subsequent run. Refactors that change the call contract — including silent breakage of bookmark sync or position resume — drift the snapshot and fail loudly.
 
 This is the same pattern CLAUDE.md's "Contract-snapshot tests" section documents for `Borrow`, `BookReturn`, `DownloadStart`, `BorrowReducer`. It catches the same class of bug (silently re-ordered or dropped side-effect calls) that mutation-testing catches, via a different mechanism — and works against WKWebView-bound code where XCTest doesn't.
 
@@ -121,7 +121,7 @@ Pure value type representing an account record. The state machine lives in `Acco
 
 ## Verification
 
-The regex was tested against three buckets: previously-uncovered files (now match), already-covered files (still match), and non-critical files (must NOT match), plus an edge-case sampler for `Borrow`/`Download` name-substring confusion. Captured `2026-05-26` from the swarm `swarm_eefef87a-C` worktree.
+The regex was tested against three buckets: previously-uncovered files (now match), already-covered files (still match), and non-critical files (must NOT match), plus an edge-case sampler for `Borrow`/`Download` name-substring confusion. Captured `2026-05-26`.
 
 **Command (positive — newly-included files):**
 

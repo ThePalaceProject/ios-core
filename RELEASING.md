@@ -84,11 +84,7 @@ fires on merge to `main` and creates the GitHub release with generated
 release notes; a manual variant is at
 [`release.yml`](./.github/workflows/release.yml).
 
-## Internal / agent workflow
+## Release gate
 
-Maintainers run `forge_release_check` (the ForgeOS gate-check) as
-a release gate. ForgeOS verifies that all changesets on the release branch
-have promoted gates before tagging. This is part of the agent workflow
-described in [`CLAUDE.md`](./CLAUDE.md) and is enforced by local git hooks
-on contributor machines. Outside contributors don't need to run ForgeOS;
-the GitHub Actions workflows are the authoritative gate for everyone.
+The GitHub Actions workflows are the release gate. Nothing outside them has to
+pass before a release is tagged.

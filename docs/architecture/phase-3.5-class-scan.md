@@ -11,8 +11,8 @@ description: Phase 3.5 — class scan + detector codify (the wall-as-detector pa
 
 # Phase 3.5 — Class scan + detector codify
 
-**Status:** Active as of 2026-06-05 (swarm_162a3219).
-**Enforcement:** mandatory phase inside `/rigorous-fix` between Phase 3 (skeptic) and Phase 4 (forge-review); cross-referenced from `/swarm` Phase 4 (integrator class-scan reconciliation) and Phase 4.5 check 6.4.
+**Status:** Active as of 2026-06-05.
+**Applies to:** any fix that identifies a bug class, after the fix is written and before review. A new detector also has to meet the admission bar in `CLAUDE.md` ("Adding a detector").
 
 ## The rule
 
@@ -20,24 +20,22 @@ When a bug-class is identified during any phase of a fix — not just a single i
 
 1. **Wipe of current survivors** (the originally-reported instance plus any siblings the scan turned up).
 2. **A detector script** at `scripts/check-<wall-id>.py` that catches future instances.
-3. **A wall-failure entry** (`YYYY-MM-DD-<short-id>`, in the maintainer harness's wall-failure catalog) with `detector_script:` populated (or `no-detector: <specific reason>`).
+3. **A class record**: a numbered lesson in the area's `verification-checklist.md` that names the detector script (or states `no-detector: <specific reason>`).
 
 Without (2), the wall has a hole. Without (3), the lesson is undiscoverable. Without (1), the PR is dishonest. All three are load-bearing.
 
 ## Why Phase 3.5 exists
 
-Before this phase, wall-failure entries proposed permanent fixes — but the fix was often a CLAUDE.md edit ("be more careful when adding new enum values") rather than a runnable check. CLAUDE.md edits are necessary but not sufficient. They depend on the next implementer reading the relevant section at the right time. A detector script does not.
+Before this phase, postmortems proposed permanent fixes — but the fix was often a CLAUDE.md edit ("be more careful when adding new enum values") rather than a runnable check. CLAUDE.md edits are necessary but not sufficient. They depend on the next implementer reading the relevant section at the right time. A detector script does not.
 
-The pattern recurs across the catalog. Examples:
+Examples:
 
-- `2026-05-28-cs847892e8-arch1.md` (fake-wiring-test in `AudiobookSessionManager`) — proposed CLAUDE.md DoD check #7 + skill greps. Same class recurred 1 day later (`2026-05-28-cs9a267b63-arch1.md`, fake-wiring-test in `TPPReauthenticator`). The recurrence was caught in review, and a name-vs-body detector was then wired into the Phase 4.5 skeptic-pass (retired 2026-09-30: it never flagged an instance after landing).
-- `2026-06-03-cs_e0f586cc-modC-get-routing.md` (PP-4161 — Module C unit tests pinned destination state without proving production path) — required two layered escalations to catch. The structural fix was check 6.5 in `swarm/SKILL.md` Phase 4.5, not a docs change.
+- A fake-wiring test in `AudiobookSessionManager` led to a proposed CLAUDE.md check and skill greps. The same class recurred one day later (a fake-wiring test in `TPPReauthenticator`). The recurrence was caught in review, and a name-vs-body detector was then added to the pre-review checks (retired 2026-09-30: it never flagged an instance after landing).
+- PP-4161: unit tests pinned destination state without proving the production path. It took two layered escalations to catch, and the structural fix was a runnable pre-review check, not a docs change.
 
-Phase 3.5 normalizes this: every wall-failure that *can* be codified MUST be codified. The wall is the detector, not the postmortem.
+Phase 3.5 normalizes this: every recurring failure class that *can* be codified MUST be codified. The wall is the detector, not the postmortem.
 
 ## The 5-step loop
-
-See `.claude/skills/rigorous-fix/SKILL.md` Phase 3.5 for the operational checklist. In summary:
 
 1. **Characterize** — write a 1-paragraph definition of the bug class, precise enough to grep.
 2. **Scan** — Tier 1 (`grep`), Tier 2 (Explore subagent), or Tier 3 (dedicated script) — choose by class semantics.
@@ -61,11 +59,11 @@ Tier 3 is non-negotiable when the class is detector-eligible. Tier 1 and Tier 2 
 - **Triage budget.** Small class (≤3 survivors, ≤50 LOC fix): instant fix, no follow-up ticket. Big class (>3 survivors or >50 LOC fix): scope-defer, file a follow-up ticket *and* land the detector. The detector + the deferred-follow-up ticket together IS the wall — neither alone is sufficient.
 - **Detector > wipe.** When the choice is "spend the budget on the wipe vs the detector," prefer the detector. Future instances cost more than current ones.
 
-## The 6 detectors landed in swarm_162a3219
+## The first detector cohort
 
-This swarm produced the first detector cohort under Phase 3.5. Each is a runnable Python script wired into `scripts/verify-pr.sh` + `.claude/settings.json` PreToolUse hooks:
+Six detectors made up the first cohort under Phase 3.5. Each is a runnable Python script wired into `scripts/verify-pr.sh` + `.claude/settings.json` PreToolUse hooks:
 
-| ID | Detector | Catches | Source wall-failure |
+| ID | Detector | Catches | Source |
 |---|---|---|---|
 | D1 | `scripts/check-lcp-acquisition-recursive.py` | `defaultAcquisition.type ==` predicates that don't recurse through indirect chains | PP-4407 audit |
 | D2 | `scripts/check-swiftui-placeholder-a11y.py` | SwiftUI text fields with placeholder strings but no `a11yLabel` / `accessibilityLabel` | PP-4408 audit |
@@ -74,8 +72,8 @@ Four more from the cohort (B foreign-host 401 scoping, D3 completion-nil-error
 suppression, D4 NSError problem-doc preservation, D5 NotificationCenter observer
 storage) were retired on 2026-09-30. None found a live instance when it landed
 or flagged one afterwards; the two above each found live instances in the tree.
-The wall-failure entries under `.forgeos/wall-failures/` still describe the
-classes.
+Their class write-ups were removed from the tree on 2026-09-30 and remain in
+git history.
 
 Each detector ships with:
 
@@ -83,17 +81,17 @@ Each detector ships with:
 - A fixture corpus at `scripts/tests/fixtures/<wall-id>/` (positive + negative cases)
 - `scripts/verify-pr.sh` wire-in via the existing `run_m1_check` helper
 - `.claude/settings.json` PreToolUse hook entry
-- A wall-failure entry with `detector_script:` populated and `detector_status: built`
+- A class record in the area's verification-checklist that names the detector
 
 ## When NO detector is feasible
 
-Some classes are genuinely semantic-only — they depend on runtime state in a 3rd-party library, on the timing of an AVPlayer callback, on whether a SwiftUI environment value is non-nil at first render. For these, `detector_status: no-detector` is acceptable, BUT the entry's frontmatter must populate `no-detector: <specific reason>` and the body's `## No detector — justification` section must spell out:
+Some classes are genuinely semantic-only — they depend on runtime state in a 3rd-party library, on the timing of an AVPlayer callback, on whether a SwiftUI environment value is non-nil at first render. For these, no detector is acceptable, BUT the class record must state `no-detector: <specific reason>` and spell out:
 
 - What semantic information is needed that grep / AST cannot encode.
 - What runtime / dynamic / test-driven check substitutes (e.g., "this class can only be caught by simdrive replay of the lock-screen scenario; see `.simdrive/replays/chaos/lock-screen-engage.yaml`").
 - Why a coarser static heuristic isn't worth the false-positive cost.
 
-"Too hard" is not acceptable. The reviewer pass on the entry will reject vague justifications.
+"Too hard" is not acceptable. Review rejects vague justifications.
 
 ## Cluster-vs-instance decision log
 
@@ -106,7 +104,4 @@ Borderline cases default to *class* — a false-positive detector that flags one
 
 ## Related
 
-- `.claude/skills/rigorous-fix/SKILL.md` — Phase 3.5 operational checklist
-- `.claude/skills/swarm/SKILL.md` — Phase 4.0a + Phase 4.5 check 6.4 (class-scan reconciliation)
-- The wall-failure catalog's README ("Detector requirement"), TEMPLATE (`## Detector script`) and `derived-improvements` list — in the maintainer harness, not this repo
-- `docs/architecture/critical-path-review-policy.md` — adjacent pattern (push-gate)
+- [`CLAUDE.md`](../../CLAUDE.md) — "Adding a detector" and CI rule 4, the admission bar every new gate must meet
