@@ -78,6 +78,9 @@ jobs:
       - name: Build and run the journeys
         shell: bash
         run: |
+          # GitHub runs this shell with -e and pipefail; turn -e off so a
+          # failing run still reaches the status and summary lines below.
+          set +e
           set -o pipefail
           start=$(date +%s)
           xcodebuild test \
@@ -92,7 +95,13 @@ jobs:
             DEVELOPMENT_TEAM="" 2>&1 | tee ui-journeys.log
           status=${PIPESTATUS[0]}
           echo "Build and journeys took $(( $(date +%s) - start ))s" >> "$GITHUB_STEP_SUMMARY"
-          grep -E "^Test Case .*(passed|failed)" ui-journeys.log >> "$GITHUB_STEP_SUMMARY" || true
+          grep -E "^Test Case .*(passed|failed)" ui-journeys.log >> "$GITHUB_STEP_SUMMARY"
+          # `xcodebuild test` that selects nothing still prints TEST SUCCEEDED.
+          passed=$(grep -cE "^Test Case .*passed" ui-journeys.log)
+          if [ "$status" -eq 0 ] && [ "$passed" -eq 0 ]; then
+            echo "::error::no journey ran"
+            status=1
+          fi
           exit "$status"
 
       # On failure the bundle holds a screenshot and the accessibility tree

@@ -48,19 +48,40 @@ def test_runs_on_pull_requests_that_touch_the_app_or_the_journeys():
     assert "workflow_dispatch" in on
 
 
+_SIGNING = ("CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "CODE_SIGN_STYLE=Manual", 'DEVELOPMENT_TEAM=""')
+
+
 def test_tests_the_ui_scheme_not_the_unit_test_scheme():
     run = _step("Build and run the journeys")["run"]
     assert "-scheme PalaceUITests" in run
     assert "-scheme Palace " not in run and "-enableCodeCoverage" not in run
-    for setting in ("CODE_SIGN_IDENTITY=-", "CODE_SIGN_STYLE=Manual", 'DEVELOPMENT_TEAM=""'):
-        assert setting in run, f"{setting} missing; the docs give this signing"
 
 
-def test_verdict_is_xcodebuilds_exit_status():
+def test_signing_matches_the_documented_command():
     run = _step("Build and run the journeys")["run"]
-    assert "set -o pipefail" in run
-    assert "status=${PIPESTATUS[0]}" in run
-    assert run.rstrip().endswith('exit "$status"')
+    docs = (_REPO / "docs/Testing/UI_JOURNEYS.md").read_text()
+    for setting in _SIGNING:
+        assert setting in run, f"{setting} missing from the workflow"
+        assert setting in docs, f"{setting} missing from the documented command"
+
+
+def test_verdict_is_xcodebuilds_exit_status_and_the_summary_is_written_first():
+    """GitHub runs `shell: bash` with -e and pipefail, so without `set +e` a
+    failing xcodebuild ends the step before the status or summary lines run."""
+    lines = [ln.strip() for ln in _step("Build and run the journeys")["run"].splitlines()]
+    xcodebuild = next(i for i, ln in enumerate(lines) if ln.startswith("xcodebuild test"))
+    assert "set +e" in lines[:xcodebuild]
+    tee = next(ln for ln in lines[xcodebuild:] if "| tee ui-journeys.log" in ln)
+    assert "||" not in tee, "a fallback on the pipeline would turn failures into passes"
+    assert "status=${PIPESTATUS[0]}" in lines
+    assert lines[-1] == 'exit "$status"'
+
+
+def test_a_run_with_no_passing_journey_fails():
+    """`xcodebuild test` that runs nothing still prints TEST SUCCEEDED."""
+    run = _step("Build and run the journeys")["run"]
+    assert 'grep -cE "^Test Case .*passed" ui-journeys.log' in run
+    assert "no journey ran" in run
 
 
 def test_uploading_results_cannot_fail_the_job():
