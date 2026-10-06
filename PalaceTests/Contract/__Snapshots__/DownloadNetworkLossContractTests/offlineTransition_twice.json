@@ -1,0 +1,42 @@
+[
+  {
+    "args" : {
+      "book" : "fails-twice",
+      "state" : "downloading"
+    },
+    "method" : "registry.state"
+  },
+  {
+    "args" : {
+      "task" : "7"
+    },
+    "method" : "task.cancel"
+  },
+  {
+    "args" : {
+      "book" : "fails-twice",
+      "state" : "download-failed"
+    },
+    "method" : "registry.addBook"
+  },
+  {
+    "args" : {
+      "book" : "fails-twice",
+      "state" : "downloading"
+    },
+    "method" : "registry.state"
+  },
+  {
+    "args" : {
+      "task" : "8"
+    },
+    "method" : "task.cancel"
+  },
+  {
+    "args" : {
+      "book" : "fails-twice",
+      "state" : "download-failed"
+    },
+    "method" : "registry.addBook"
+  }
+]
