@@ -80,7 +80,7 @@ Helping a patron whose Palace app is in a stuck state that sign-out + uninstall 
 
 Tests are required for production changes. The full workflow — TDD discipline, the local self-check, and the public/private boundary between outside contributors and maintainer-internal agent tooling — is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
-CI runs snapshot tests and builds both `Palace` and `Palace-noDRM` targets. It also reports coverage against floors; that report does not block a merge, and incomplete coverage data is reported as such ([`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md)). Simulator-driven E2E and chaos passes are **not** run by CI — they need a booted simulator and are non-deterministic, so they run locally as part of pre-PR validation. Run `scripts/verify-pr.sh --quick` locally before opening a PR to catch failures before CI does.
+CI runs snapshot tests and builds both `Palace` and `Palace-noDRM` targets. It also checks coverage against floors: an app floor more than 1.5 points below its value, or incomplete coverage data, fails the required `build-and-test` check, and package floors are advisory ([`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md)). Simulator-driven E2E and chaos passes are **not** run by CI — they need a booted simulator and are non-deterministic, so they run locally as part of pre-PR validation. Run `scripts/verify-pr.sh --quick` locally before opening a PR to catch failures before CI does.
 
 # Palace License
 
