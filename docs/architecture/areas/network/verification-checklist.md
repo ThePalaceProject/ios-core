@@ -3,7 +3,7 @@ name: network-verification-checklist
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-10-05
+last_refresh: 2026-10-06
 freshness_window: 180d
 owners: [network]
 description: Per-area verification reference; refresh before next swarm/rigorous-fix
@@ -13,8 +13,8 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 # `fingerprint` is reproducible with plain git from the repo root (paths in any order):
 #   git ls-tree <verified_ref> -- <paths> | git hash-object --stdin | cut -c1-8
 sources:
-  verified_ref: 3ad580c0d03bf20a7c8583c4b016e0870370bd88
-  last_verified: 2026-10-05
+  verified_ref: 4c65025be5a40bfdbe0da6dbd14f4158744d1397
+  last_verified: 2026-10-06
   fingerprint: '6d3df409'
   paths:
     - Palace/Network/TPPNetworkResponder.swift
@@ -34,7 +34,7 @@ sources:
 
 **Purpose:** the architect's first deliverable on ANY swarm or /rigorous-fix in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Without it, every new initiative re-discovers the same surface (the auth area's PR #1018 architect produced ~1,000 lines of recon docs that should have started from a baseline like this — and the network slice of that recon is what this file captures).
 
-**Last refresh:** 2026-10-05 (classifier migration confirmed on develop; line citations and the Section 8 self-check re-verified against 3ad580c0d). Prior: 2026-09-23 (Section 7b, the decode seam — PR #1462 / PP-5202); 2026-05-28 (post PR #1018 / swarm_66819d80 — see `docs/architecture/areas/auth/verification-checklist.md` for the paired auth surface).
+**Last refresh:** 2026-10-06 (Section 3 offline-queue rows corrected; negative claims re-checked against 4c65025be). Prior: 2026-10-05 (classifier migration confirmed on develop; line citations and the Section 8 self-check re-verified against 3ad580c0d). Prior: 2026-09-23 (Section 7b, the decode seam — PR #1462 / PP-5202); 2026-05-28 (post PR #1018 / swarm_66819d80 — see `docs/architecture/areas/auth/verification-checklist.md` for the paired auth surface).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
 
 ---
@@ -48,7 +48,7 @@ sources:
 | `Palace/Network/TPPNetworkExecutor.swift` | 520 | `urlRequest.assumesHTTP3Capable = false` — disables optimistic HTTP/3 upgrade on first contact per host | **STABLE** — historical, not part of PR #1018. Do not re-enable; see Section 7 trap. |
 | `Palace/Network/TPPNetworkExecutor.swift` | 743 (`refreshTokenAndResume(task:accountId:completion:)`) | Single-flight token-refresh + post-refresh resume of the original `URLSessionTask` | **STABLE** — responder-owned task-resume seam. The coordinator's silent refresh path can refresh the token but does NOT re-run THIS URLSessionTask, so this seam stays in the network layer. |
 | `Palace/Network/TPPNetworkExecutor.swift` | 445–455 (proactive refresh branch) | Pre-flight refresh + resume when the token is near expiry (`authTokenNearExpiry`, token/OAuth auth only; SAML skips it at 440–443) | **STABLE** — paired with the responder's reactive path; both call into `refreshTokenAndResume`. |
-| `Palace/Network/TPPNetworkQueue.swift` | 297 (`addRequest`), 457 (`retryQueue`), 487–542 (`retry`) | Offline retry queue (SQLite-backed); reachability-driven `retryQueue()` + per-row retry counter | **STABLE** — no auth-error semantics; queue retries by HTTP status only (`code != 401/403/5xx` paths in the per-row `retry`). Queue does NOT trigger token refresh — it relies on the responder to do that on retry-completion. |
+| `Palace/Network/TPPNetworkQueue.swift` | 297 (`addRequest`), 457 (`retryQueue`), 487–542 (`retry`), 568–585 (`enqueueOfflineRequest`) | Offline retry queue (SQLite-backed); reachability-driven `retryQueue()` (lines 142–147) + per-row retry counter | **STABLE** — no auth-error semantics. The per-row `retry` deletes the row on any 2xx and otherwise logs and keeps it (lines 530–538); rows with `retries > MaxRetriesInQueue` (5, line 110) are deleted at the start of the next drain (line 470). It does not branch on 401/403/5xx. The queue does not trigger token refresh: it attaches the row library's current bearer (line 524) and sends through the executor's transport, whose delegate is the responder (`TPPNetworkExecutor.swift:241`, `AppContainer.swift:599–600`). Section 3 lists what reaches the queue. |
 | `Palace/Packages/PalaceAuth/Sources/PalaceAuth/URLResponse+TPPAuthentication.swift` | 43, 105, 143–159 | `indicatesAuthenticationNeedsRefresh(with:originalRequestURL:)` — the legacy auth-error classifier extension | **LIVE BUT FENCED** — moved into PalaceAuth in earlier extraction. Still called by the two unmigrated consumer-side sites below. Inside `AuthErrorClassifier` it remains the underlying primitive; outside callers should switch to the classifier. |
 | `Palace/Network/Core/URLSessionNetworkClient.swift` | n/a | Pure-transport SPM-bound URLSession wrapper (`PalaceNetwork` module trunk) | **STABLE** — no auth surface; transport-only. |
 
@@ -67,7 +67,7 @@ These two sites are network-adjacent (they're consumer-side auth-decision sites 
 | `Palace/Network/` (main target) | Main target — network layer for the app | `TPPNetworkResponder` (per-task budget + cross-domain detection + task-resume routing), `TPPNetworkExecutor` (request building, HTTP/3 disable, `refreshTokenAndResume`, account-aware credential snapshotting), `TPPNetworkQueue` (SQLite offline queue), `TPPRequestExecuting` protocol, `TPPUserFriendlyError` |
 | `Palace/Network/Core/` (PalaceNetwork SPM) | SPM trunk — pure transport | `URLSessionNetworkClient`, `NetworkTransport` — extracted in commits 3d63372d6 / c00ebc789 / d962f7358. Singleton-free. No `.shared` reads. |
 | `Palace/Packages/PalaceAuth/` | SPM trunk — auth boundary | `AuthErrorClassifier` (the seam for ALL auth-error decisions), `AuthCoordinator`, `AuthOutcome`, `URLResponse+TPPAuthentication` extension (`indicatesAuthenticationNeedsRefresh`). PalaceAuth does NOT link Firebase; emits via the `AuthDecisionRecording` protocol. |
-| `PalaceTests/HTTPStubURLProtocol.swift` | Test infrastructure | `HTTPStubURLProtocol` + `URLSession.stubbedSession()` factory. Single canonical stubbing seam — do not add ad-hoc `URLProtocol` subclasses elsewhere. |
+| `PalaceTests/HTTPStubURLProtocol.swift` | Test infrastructure | `HTTPStubURLProtocol` + `URLSession.stubbedSession()` factory. The preferred stubbing seam for new tests, though not the only one: eight other `URLProtocol` subclasses exist under `PalaceTests/` (for example `NoNetworkURLProtocol.swift:23`, `Bookmarks/TPPAnnotationsTests.swift:18`, `Chaos/ChaosHarness.swift:35`). Prefer `HTTPStubURLProtocol` over adding another. |
 
 ---
 
@@ -77,15 +77,22 @@ Rows = HTTP method; columns = server-side response shape. Cell = what the networ
 
 | Method | 2xx success | 401 + valid bearer in `Authorization` | 401 + expired bearer | 403 | 5xx | Network failure (no response) | Timeout | Cross-domain 301/302 → 401 |
 |--------|-------------|--------------------------------------|---------------------|-----|-----|------------------------------|---------|---------------------------|
-| GET | completion(.success) | classifier → `.expiredToken` → `refreshTokenAndResume(task:)` (responder-owned, single-flight) | same as above; per-task budget caps at 2 | propagate via NYPLProblemReport / completion(.failure) | propagate; queue does NOT auto-retry 5xx (queue is offline-retry only) | offline queue intercepts via `TPPNetworkQueue.addRequest` when reachability is down | propagate as `NSError` URLErrorTimedOut; no auth dispatch | classifier returns `.ok` (cross-domain carve-out) — DO NOT mark stale, DO NOT refresh |
-| POST | completion(.success) | classifier dispatch + per-task budget (same as GET) | same | propagate | propagate; **enqueued** in `TPPNetworkQueue` for retry on reachability-up when `cachePolicy` permits | enqueued for offline retry (the queue's primary use case) | propagate | classifier returns `.ok` |
-| PATCH | completion(.success) | same as POST | same | propagate | enqueued (same as POST) | enqueued | propagate | classifier returns `.ok` |
-| PUT | completion(.success) | same as POST | same | propagate | enqueued | enqueued | propagate | classifier returns `.ok` |
-| DELETE | completion(.success) | same as POST | same | propagate | enqueued | enqueued | propagate | classifier returns `.ok` |
+| GET, POST, PUT | completion(.success) | classifier → `.expiredToken` → `refreshTokenAndResume(task:)` (responder-owned, single-flight) | same as above; one refresh-and-retry per URL (Section 4, item 1) | propagate via NYPLProblemReport / completion(.failure) | propagate | propagate | propagate as `NSError` URLErrorTimedOut; no auth dispatch | classifier returns `.ok` (cross-domain carve-out) — DO NOT mark stale, DO NOT refresh |
+| DELETE | completion(.success) | no refresh: `handleExpiredTokenIfNeeded` returns early for DELETE (`TPPNetworkResponder.swift:602–604`) | same (no refresh) | propagate | propagate | propagate | propagate | not classified (same early return) |
+
+`TPPNetworkExecutor` and `TPPNetworkResponder` never write to `TPPNetworkQueue`; no cell above enqueues. A request reaches the queue only when a caller enqueues it after its own request failed.
+
+**What `TPPNetworkQueue` enqueues** (verified at 4c65025be). The queue stores whatever method its caller passes (`addRequest`, `TPPNetworkQueue.swift:297`; `HTTPMethodType` at lines 18–19 has GET, POST, HEAD, PUT, DELETE, OPTIONS, CONNECT and no PATCH). Two enqueue paths exist:
+
+| Path | Method | Production caller | Condition |
+|------|--------|-------------------|-----------|
+| `TPPAnnotations.addToOfflineQueue` → `addRequest` (`TPPAnnotations.swift:827–834`) | POST | `postAnnotation` at `TPPAnnotations.swift:440`, reached with `queueOffline: true` only from `postReadingPosition` (line 268), which also serves `postListeningPosition` (line 205) and the audiobook bookmark post (line 212). The bookmark posts at lines 334 and 370 pass `queueOffline: false`. | The POST failed with an `NSError` whose code is in `NetworkQueue.StatusCodes` (`TPPNetworkQueue.swift:101–109`: timeout, cannot find or connect to host, connection lost, not connected, roaming off, call active, data not allowed, secure connection failed), checked at `TPPAnnotations.swift:433`. HTTP error responses, including 401 and 5xx, are not enqueued. |
+| `NetworkQueue.enqueueOfflineRequest` (`TPPNetworkQueue.swift:568–585`, added in 3f659ff2e) → `addRequest` | GET | `TPPCirculationAnalytics.addToOfflineAnalyticsQueue` (`TPPCirculationAnalytics.swift:55–72`), which passes `.GET`. That function has no production caller: `post(_:withURL:)` enqueues nothing on failure (lines 40–44); the enqueue shape is pinned only by `TPPCirculationAnalyticsRequestShapeContractTests`. | None today. Wiring the analytics failure path to this function would start enqueuing GET requests. |
 
 Notes:
-- **GET requests are NOT enqueued** by `TPPNetworkQueue` — only state-mutating verbs (POST/PATCH/PUT/DELETE) survive a reachability-down window. GET caller is expected to refetch.
-- **No verb gets retried by the queue on 401** — the queue retries on transport failure, not auth failure. Token refresh is responder-driven, not queue-driven.
+- **GET can be enqueued.** The queue accepts GET through `enqueueOfflineRequest`. No production code calls it today, so the only rows written in practice are annotation POSTs. Do not assume GET is never queued when changing the queue or its drain.
+- **No verb gets retried by the queue on 401** — the queue drains on reachability-up, and its only live producer enqueues on transport failure, not auth failure. Token refresh is responder-driven, not queue-driven.
+- **Offline returns use a different queue.** `BookReturnService`'s `.enqueueOffline` case (`BookReturnService.swift:500`) goes through `offlineReturnEnqueuer` / `OfflineQueueService`, not `TPPNetworkQueue`.
 - **Cross-domain 401** is detected by `URLResponse+TPPAuthentication.isSameDomain` (called from the classifier). The historical anti-pattern was marking Palace credentials stale because biblioboard.com returned 401 — see commit 10b5ecf0a.
 
 ---
@@ -101,7 +108,7 @@ The responder is now a thin router. The boundary is explicit:
 3. **Task resume after refresh** — `networkExecutor.refreshTokenAndResume(task:accountId:)` at `TPPNetworkResponder.swift:704` and `TPPNetworkExecutor.swift:743`. The coordinator can refresh the bearer but cannot re-run a specific `URLSessionTask`; that's a network-executor concern.
 4. **`/patrons/me` browser-auth bypass** — at `TPPNetworkResponder.swift:659–669`. Browser-auth (SAML/OIDC) has two surfaces (bearer + IdP cookie) and the IdP cookie expires faster than the bearer in Gorgon. A 401 from `/patrons/me` while the bearer is still good drove the cross-launch credentials-stale loop fixed in the 3.0.2 hotfix stack (commits 8d1dacafb, 46da46fb7). DO NOT remove this bypass.
 5. **HTTP/3 disable** at `TPPNetworkExecutor.swift:520` (`assumesHTTP3Capable = false`).
-6. **Offline retry queue** — `TPPNetworkQueue` retries on reachability-up, not on auth failure.
+6. **Offline retry queue** — `TPPNetworkQueue` retries on reachability-up (`TPPNetworkQueue.swift:142–147`), not on auth failure.
 
 **Delegated to PalaceAuth (the auth decision is NOT the network layer's concern):**
 
@@ -178,7 +185,7 @@ Domain / contract:
 - Cross-domain 401 does NOT mark Palace credentials stale (`AuthErrorClassifierTests`, `URLResponseAuthenticationTests`, `TPPNetworkResponderAuthCoordinatorTests`)
 - `/patrons/me` browser-auth bypass — bearer-still-valid case (`URLResponseAuthenticationTests`, responder integration)
 - One 401-driven refresh-and-retry per URL (`TokenRefreshTests` / `TokenRefreshAndRetryQueueTests`)
-- Offline queue retries POST/PATCH/PUT/DELETE on reachability-up, NOT on auth failure (`NetworkQueueTests`, `NetworkRetryTests`)
+- Offline queue retries its queued rows on reachability-up, NOT on auth failure (`NetworkQueueTests`, `NetworkRetryTests`)
 - Multi-library credential isolation across concurrent token refreshes (`MultiLibraryTokenIsolationTests`)
 
 **Tests that test IMPLEMENTATION (can be rewritten when underlying changes):**
@@ -196,7 +203,7 @@ Domain / contract:
 - **Task-resume after token refresh is responder-owned** — `networkExecutor.refreshTokenAndResume(task:accountId:)` at `TPPNetworkResponder.swift:704` and `TPPNetworkExecutor.swift:743`. The coordinator's silent refresh refreshes the bearer; it does NOT re-run a specific `URLSessionTask`. If you push task-resume into PalaceAuth, you're conflating two layers.
 - **`TokenRefreshInterceptor.swift:139` and `DownloadAuthRetryHandler.swift:197` still call `indicatesAuthenticationNeedsRefresh` directly.** This is a known PR #1018 deferral — out of scope for the TPPNetworkResponder-focused migration. Any new code in Palace/Network/ MUST go through `AuthErrorClassifier`; do NOT add a third call site of the legacy predicate while the deferral is in flight.
 - **The auth decision is delegated to PalaceAuth.** The network layer should not implement its own auth-error decision logic. The single seam is `AuthErrorClassifier.classify(...)`; the single dispatcher is `AuthCoordinator`. New conditionals on `response.statusCode == 401` or on problem-doc shape should be at the classifier level, not at the responder.
-- **`TPPNetworkQueue` is offline-retry, not auth-retry.** The queue retries POST/PATCH/PUT/DELETE on reachability-up; it does NOT trigger token refresh and does NOT enqueue on 401. Don't add auth-aware behavior to the queue — it'll race with the responder's per-task budget.
+- **`TPPNetworkQueue` is offline-retry, not auth-retry.** The queue retries its stored rows (annotation POSTs today; GET is accepted through `enqueueOfflineRequest`, see Section 3) on reachability-up. It does NOT trigger token refresh, and its only live producer does not enqueue on 401. Don't add auth-aware behavior to the queue — it'll race with the responder's per-task budget.
 - **Account-aware credential snapshotting** — `TPPNetworkExecutor.request(for:useTokenIfAvailable:accountId:)` at line 512 takes a credential snapshot per request to prevent TOCTOU races during account switches. Without this, another thread changing `libraryUUID` between `sharedAccount()` and the property reads causes cross-account credential leaks. PR #1018 preserves this — do not optimize the snapshot away.
 
 ---
@@ -291,9 +298,10 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 3. **Verify the per-URL token-refresh budget hasn't been re-implemented somewhere else.** `grep -n 'maxRetryAttempts\|canRetry(url\|markRetried(url' Palace/Network/TPPNetworkResponder.swift` — the budget is `retriedURLs` + `maxRetryAttempts = 1`, owned by `TPPNetworkResponder`. (`tokenRefreshAttempts` still exists at lines 75 and 238 but is never read; it is not the budget.) The coordinator's single-flight is separate and lives in `AuthCoordinator`.
 4. **Confirm `AuthErrorClassifier` is the single seam for auth-error decisions.** `grep -rn 'indicatesAuthenticationNeedsRefresh' Palace/` — only the two known deferrals (`TokenRefreshInterceptor.swift:139`, `DownloadAuthRetryHandler.swift:197`) plus the comments above them (lines 124 and 185) should appear outside the PalaceAuth package's own implementation. Any new call sites are scope debt.
 5. **Re-run the test inventory** — `find PalaceTests/Network -name '*Tests*.swift' | wc -l` was 31 on 2026-10-05. `TPPNetworkResponderAuthCoordinatorTests` and the PalaceAuth `AuthErrorClassifierTests` should be present.
-6. **Re-check critical-path tests pass on develop BEFORE the swarm starts.** Run `TokenRefreshTests`, `TokenRefreshAndRetryQueueTests`, `URLResponseAuthenticationTests`, `MultiLibraryTokenIsolationTests`, and `NetworkQueueTests` in isolation so post-swarm regressions are attributable.
-7. **Confirm HTTP/3 disable is still in place.** `grep -n assumesHTTP3Capable Palace/Network/TPPNetworkExecutor.swift` — should match at line 520. If missing, that's a regression on the historical fix and needs investigation before any new network change ships.
-8. **Update Section 9 (refresh history)** with date + your initials, and the frontmatter `sources:` block (`verified_ref` = the commit you checked against).
+6. **Confirm what reaches the offline queue.** `grep -rn 'enqueueOfflineRequest\|addToOfflineAnalyticsQueue\|addToOfflineQueue\|\.addRequest(' Palace --include='*.swift'` — expect `TPPAnnotations.swift` lines 440, 827, 833, `TPPCirculationAnalytics.swift` lines 55, 64, `TPPNetworkQueue.swift` line 569, and the protocol declaration at `Palace/Packages/PalaceNetwork/Sources/PalaceNetwork/CirculationOfflineSupport.swift:15`. A new caller of `addToOfflineAnalyticsQueue` or `enqueueOfflineRequest` means GET requests are queued in production; update Section 3.
+7. **Re-check critical-path tests pass on develop BEFORE the swarm starts.** Run `TokenRefreshTests`, `TokenRefreshAndRetryQueueTests`, `URLResponseAuthenticationTests`, `MultiLibraryTokenIsolationTests`, and `NetworkQueueTests` in isolation so post-swarm regressions are attributable.
+8. **Confirm HTTP/3 disable is still in place.** `grep -n assumesHTTP3Capable Palace/Network/TPPNetworkExecutor.swift` — should match at line 520. If missing, that's a regression on the historical fix and needs investigation before any new network change ships.
+9. **Update Section 9 (refresh history)** with date + your initials, and the frontmatter `sources:` block (`verified_ref` = the commit you checked against).
 
 ---
 
@@ -301,6 +309,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
+| 2026-10-06 | network checklist refresh | Corrected Section 3: the executor and responder never enqueue; the queue's live producer is the annotation POST on transport failure, and `enqueueOfflineRequest` (3f659ff2e) accepts GET but has no production caller. Removed the 5xx, `cachePolicy` and PATCH enqueue cells and the "GET requests are NOT enqueued" note; added the DELETE no-refresh row; replaced "per-task budget caps at 2". Corrected the queue's retry description in Section 1 and the "single stubbing seam" claim in Section 2. Added a Section 8 queue self-check. Re-checked the remaining negative claims against 4c65025be. |
 | 2026-10-05 | network checklist refresh | Confirmed the PR #1018 classifier migration is on develop (f380e37c3) and removed the "not yet landed" notes. Re-verified every line citation and the Section 8 self-check against 3ad580c0d. Corrected the retry-budget description: it is one retry per URL (`maxRetryAttempts = 1`), not `tokenRefreshAttempts < 2`. Replaced two test files that were never added (`CrossDomain401Tests`, `AuthErrorCategoryTests`) with the classifier tests that cover the same rules. Added the `sources:` frontmatter. |
 | 2026-09-23 | /rigorous-fix, PR #1462 (PP-5202) | Added Section 7b — the problem-document DECODE seam. Sections 1–7 covered classification over an already-parsed document and were silent on parsing; that gap shipped a sign-in regression where a wrong-typed `show_title` discarded the whole document and a blocked patron was told their password was wrong. Section 7b documents the two parse paths and their different contracts, the `.convertFromSnakeCase` CodingKeys trap and its detector, the no-custom-encoder decision, and the strict/lenient `0` disagreement as known debt. |
 | 2026-05-28 | swarm rigor meta-improvement (chore/swarm-rigor-meta-improvement) | Initial baseline. Mirrors the auth area's `verification-checklist.md` structure. Migration status in Section 1 reflects the swarm_66819d80 design baseline (commit f9e57f7f5 on swarm/swarm_66819d80-scaffold); develop tip still calls `indicatesAuthenticationNeedsRefresh` directly until that swarm lands on develop. |
