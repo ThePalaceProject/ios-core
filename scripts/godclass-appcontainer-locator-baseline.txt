@@ -30,4 +30,7 @@
 #   and refreshToken(userAccount:)'s default argument. Neither method had a
 #   caller. The file still holds 7 locators, so it is still scanned and still
 #   matching; the drop is removed uses, not a glob that stopped resolving.
-246
+# 246 -> 245: TPPReaderBookmarksBusinessLogic.handleBookmarksSyncFail reads the
+#   user account through TPPAnnotations.currentAccountsManager, the source the
+#   sync gate checks, instead of AppContainer.production().
+245
