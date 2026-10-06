@@ -89,7 +89,8 @@ def test_the_app_log_is_captured_before_the_journeys_run():
     assert names.index("Start app log capture") < names.index("Build and run the journeys")
     run = _step("Start app log capture")["run"]
     assert "log stream" in run and "process == \"Palace\"" in run
-    assert "palace-app.log" in run
+    stream = next(ln for ln in run.splitlines() if "palace-app.log" in ln and ">" in ln)
+    assert stream.rstrip().endswith("&"), "the log stream must run in the background or the step never ends"
 
 
 def test_uploading_results_cannot_fail_the_job_and_runs_every_time():

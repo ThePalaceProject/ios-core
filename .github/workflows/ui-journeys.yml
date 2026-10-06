@@ -83,6 +83,17 @@ jobs:
           echo "Simulator: $(xcrun simctl list devices | grep "$SIM")" >> "$GITHUB_STEP_SUMMARY"
           nohup xcrun simctl spawn "$SIM" log stream --level info --style compact \
             --predicate 'process == "Palace"' > "$RUNNER_TEMP/palace-app.log" 2>&1 &
+          # Diagnostic: if the catalog has not rendered 8s after the app starts,
+          # take two stack samples 10s apart, to tell a wait from a slow loop.
+          nohup bash -c '
+            for _ in $(seq 1 1200); do pid=$(pgrep -n -f "Palace.app/Palace"); [ -n "$pid" ] && break; sleep 1; done
+            [ -n "$pid" ] || exit 0
+            for n in 1 2; do
+              sleep $(( n == 1 ? 8 : 10 ))
+              grep -q "\[PERF\] Catalog load" "$RUNNER_TEMP/palace-app.log" && exit 0
+              /usr/bin/sample "$pid" 3 -file "$RUNNER_TEMP/palace-sample-$n.txt"
+            done
+          ' > "$RUNNER_TEMP/palace-sampler.log" 2>&1 &
 
       # Same ad-hoc signing as the unit-test build; the command matches the
       # one docs/Testing/UI_JOURNEYS.md gives contributors.
@@ -129,4 +140,6 @@ jobs:
           path: |
             ${{ runner.temp }}/UIJourneys.xcresult
             ${{ runner.temp }}/palace-app.log
+            ${{ runner.temp }}/palace-sample-*.txt
+            ${{ runner.temp }}/palace-sampler.log
           retention-days: 7
