@@ -6,16 +6,15 @@ created: 2026-05-28
 last_refresh: 2026-05-28
 freshness_window: 180d
 owners: [signin-modal]
-description: Per-area verification reference; refresh before next swarm/rigorous-fix
+description: Per-area verification reference; refresh before changing this area
 ---
 
-<!-- audit-verified: file list, line citations, call-site counts, test inventory, and commit SHAs (8ed7451c1 PR #905, ca5a2fb80/24dc6021d/9ffcfcfcf SignInModal predicate extraction, da9875e28 PR #907 SAML SwiftUI conversion) all confirmed via `ls Palace/SignInLogic/`, `git log --oneline origin/develop`, `grep -rn`, and `wc -l` on 2026-05-28. PP-4421 placeholder fix landed in `Palace/Settings/AccountDetailView.swift` lines 344 & 369 (verified). HelpSpot 17923 revert per `feedback_no_new_copy_without_design.md`. -->
 
 # Sign-in modal area — verification checklist
 
 **Owner area:** `Palace/SignInLogic/SignInModalView.swift`, `Palace/SignInLogic/SignInWebSheet.swift`, `Palace/SignInLogic/SignInWebSheetPresenter.swift`, `Palace/SignInLogic/SignInWebSheetViewModel.swift`, `Palace/SignInLogic/SignInWebViewCoordinator.swift`, and the modal entry points in callers listed below. **Scope distinction:** this file covers the modal *surface* (presentation, dismissal, web-sheet bridge). The sign-in business logic, `TPPSignInBusinessLogic`, auth flow dispatch, and AuthCoordinator routing live in `docs/architecture/areas/auth/verification-checklist.md` — read both before changing anything that crosses the boundary (e.g. the modal's completion hook firing into a coordinator-driven retry).
 
-**Purpose:** the architect's first deliverable on ANY swarm or /rigorous-fix in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. The modal surface has bitten us twice (PP-4114 race, PP-4421 placeholder contrast, HelpSpot 17923 unapproved-copy revert) — each was caused by skipping a precondition that's now codified here.
+**Purpose:** the first deliverable of any non-trivial change in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. The modal surface has bitten us twice (PP-4114 race, PP-4421 placeholder contrast, HelpSpot 17923 unapproved-copy revert) — each was caused by skipping a precondition that's now codified here.
 
 **Last refresh:** 2026-05-28 (initial baseline).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
@@ -145,16 +144,16 @@ The modal surface itself does not emit dedicated analytics events today (it's a 
 - **PP-4421 placeholder contrast** — `SignInModalView` text-field placeholders rendered grayed-out, indistinguishable from disabled fields. Fixed via SwiftUI explicit `prompt:` with `.secondary` foreground (landed in 3.1.0; see `Palace/Settings/AccountDetailView.swift:344, 369` for the canonical pattern — same fix applies if a new field is added to the modal). Do NOT regress by adding a field with bare `TextField("Placeholder", text: $x)`.
 - **HelpSpot 17923 / unapproved-copy revert** — engineering fix added a caption "Tap here to enter your [label]" above each field; the new copy never went through Lyrasis design review. Reverted in PR #976 / `547e185aa`. **NEVER add user-facing copy in this area without design sign-off recorded in the PR description.** Applies to placeholders, button labels, alert text, captions — anything visible to the user. Snapshot tests pinning new strings are also gated.
 - **`SignInWebSheetPresenter` STATIC API** — required an instance adapter (`CoordinatorSignInModalPresenter`) for AuthCoordinator integration in PR #1018. New consumers should use the instance adapter, not the static API. Static API is preserved for `LegacySAMLAuthAdapter` (lines 192, 198) and the legacy SAML callers in `Palace/MyBooks/`; do not add new static-API callers.
-- **Full-SwiftUI modal refactor is in backlog** (~150–200 LOC, 12 call sites — see `memory/signin_modal_swiftui_refactor.md`, Option A from PR #905 follow-up). Until it lands, the modal is a SwiftUI view hosted in a `UIHostingController`, presented imperatively via `TPPPresentationUtils.safelyPresent`. The architecture is *correct but fragile* — any caller that presents a SwiftUI sheet synchronously in the completion is at risk of the PP-4114 race. Wire completion → next-sheet via `@Published` + `.onChange`, not synchronous calls.
+- **Full-SwiftUI modal refactor is in backlog** (~150–200 LOC, 12 call sites; Option A from the PR #905 follow-up). Until it lands, the modal is a SwiftUI view hosted in a `UIHostingController`, presented imperatively via `TPPPresentationUtils.safelyPresent`. The architecture is *correct but fragile* — any caller that presents a SwiftUI sheet synchronously in the completion is at risk of the PP-4114 race. Wire completion → next-sheet via `@Published` + `.onChange`, not synchronous calls.
 - **iOS 26 UITextField focus quirks** affect the modal. Confirm via simdrive after any iOS version bump — focus-on-appear and tab-key dismissal both regressed once on iOS 26 alpha SDKs. Recording the modal-open journey in `.simdrive/journeys/` is the fastest way to catch this.
 - **Deep-link entry from `DLNavigator`** — `application(_:open:)` may fire before the SwiftUI root mounts. Current UIHostingController path tolerates this; a future full-SwiftUI sheet must buffer the request on the coordinator and present once the root view appears.
 - **Fire-and-forget completion** — `TPPNetworkExecutor:489`, `MyBooksViewModel:198` both pass `completion: nil`. The modal-fire-and-forget code path is implicit in `SignInModalPresenter.presentSignInModal` (passes nil through the hosting controller's `onDidFullyDismiss`). Do not assume a completion will run when the caller did not register one.
 
 ---
 
-## 8. Architect's pre-swarm checklist (what to verify before writing a new contract)
+## 8. Pre-change checklist
 
-Before any new swarm or /rigorous-fix in this area, the architect should:
+Before any non-trivial change in this area:
 
 1. **Refresh §1 & §3** — confirm the 9 call-site files + 6 web-sheet caller lines + auth-type matrix are still accurate. `grep -rn "presentSignInModalForCurrentAccount\|SignInModalPresenter\|SignInWebSheetViewModel" Palace/ --include="*.swift"` catches drift.
 2. **Confirm the 4 lifecycle invariants in §4 still hold** — run `PalaceTests/SignInLogic/SignInModalPredicateTests` + `SignInModalSAMLOIDCTests` against current `develop`. If a test is flaky, fix the test before starting the swarm — do NOT skip with `XCTSkip`.
@@ -169,7 +168,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
-| 2026-05-28 | Initial baseline (chore/swarm-rigor-meta-improvement) | Mined from `memory/signin_modal_swiftui_refactor.md`, `feedback_no_new_copy_without_design.md`, PR #905 (`8ed7451c1`), PR #907 (`da9875e28`), PR #938 (mutation-gap close), PR #976 (HelpSpot 17923 revert), PR #1018 (`CoordinatorSignInModalPresenter` adapter). Modal file inventory confirmed via `ls Palace/SignInLogic/` (5 files, 776 LOC total). |
+| 2026-05-28 | PR #1019 (initial baseline) | Derived from PR #905 (`8ed7451c1`), PR #907 (`da9875e28`), PR #938 (mutation-gap close), PR #976 (HelpSpot 17923 revert), PR #1018 (`CoordinatorSignInModalPresenter` adapter). Modal file inventory confirmed via `ls Palace/SignInLogic/` (5 files, 776 LOC total). |
 
 ---
 

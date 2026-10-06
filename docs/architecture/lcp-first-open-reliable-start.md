@@ -55,8 +55,7 @@ engine is ready*.
 - **Extend the readiness gate to LCP (await isLoaded then play)** — rejected:
   deadlocks (isLoaded only flips after play).
 - **Toolkit-side fix in `LCPStreamingPlayer`** — rejected: cross-repo submodule +
-  tagged-release churn is the fragility we avoid (see
-  `reference_audiobook_toolkit_risk_profile.md`); the bug is Palace-side.
+  tagged-release churn is the fragility we avoid; the bug is Palace-side.
 - **Surface a Palace `.error` on exhaustion** — rejected: masks the toolkit's
   own 30s `.failed`.
 
@@ -84,4 +83,3 @@ engine is ready*.
 - Files: `Palace/Audiobooks/AudiobookSessionManager.swift`
   (`confirmLCPFirstPlay`), `Palace/Audiobooks/PlaybackReadinessGate.swift`
   (`isCurrentlyReady`), `PalaceTests/Audiobooks/AudiobookFirstOpenHangTests.swift`.
-- `audiobook_first_open_hang_3_2_0.md` (root cause), `reference_audiobook_toolkit_risk_profile.md`.
