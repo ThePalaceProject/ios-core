@@ -16,6 +16,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
     override func tearDown() {
         HTTPStubURLProtocol.reset()
         GatedURLProtocol.reset()
+        ChallengeLog.resetShared()
         super.tearDown()
     }
 
@@ -310,7 +311,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
     private func makeChallengedQueue(
         rowCredentials: @escaping @Sendable (String) -> NYPLBasicAuthCredentialsProvider?
     ) -> (NetworkQueue, String) {
-        ChallengeLog.shared.reset()
+        ChallengeLog.resetShared()
         let dir = NSTemporaryDirectory() + "queue-challenge-" + UUID().uuidString
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let responder = TPPNetworkResponder(credentialsProvider: nil,
@@ -411,7 +412,7 @@ private final class ChallengeLog: @unchecked Sendable {
     private var _entries: [String] = []
     var entries: [String] { lock.withLock { _entries } }
     func add(_ entry: String) { lock.withLock { _entries.append(entry) } }
-    func reset() { lock.withLock { _entries.removeAll() } }
+    static func resetShared() { shared.lock.withLock { shared._entries.removeAll() } }
 }
 
 /// Records each read of its username, which is how `TPPBasicAuth` consults it.
