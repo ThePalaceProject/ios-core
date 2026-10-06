@@ -602,6 +602,10 @@ struct AppContainer: @unchecked Sendable {
                 authorizationHeaderProvider: { [accountsManager] libraryID in
                     accountsManager.userAccount(for: libraryID)
                         .credentialSnapshot().authToken.map { "Bearer \($0)" }
+                },
+                tokenRefresher: executor,
+                challengeCredentialsProvider: { [accountsManager] libraryID in
+                    accountsManager.userAccount(for: libraryID)
                 }
             ),
             reachability: reachability,

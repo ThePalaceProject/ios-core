@@ -77,6 +77,15 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     /// the window is not a race; it is days.
     private let authorizationHeaderProvider: @Sendable (String) -> String?
 
+    /// Refreshes a library's token when a drained row comes back 401. nil means
+    /// no refresh: the row stays for a later drain.
+    private let tokenRefresher: OfflineQueueTokenRefreshing?
+
+    /// Supplies the credentials that answer an HTTP Basic challenge for a row,
+    /// keyed on the row's library for the same reason as
+    /// `authorizationHeaderProvider`.
+    private let challengeCredentialsProvider: @Sendable (String) -> NYPLBasicAuthCredentialsProvider?
+
     init(transport: NetworkTransport,
          reachability: Reachability,
          databaseDirectory: String = NSSearchPathForDirectoriesInDomains(
@@ -89,12 +98,16 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
          // future caller who forgot to bind it. Sending no credential is the
          // safe failure (the server refuses); silently reaching for a global is
          // not.
-         authorizationHeaderProvider: @escaping @Sendable (String) -> String? = { _ in nil }) {
+         authorizationHeaderProvider: @escaping @Sendable (String) -> String? = { _ in nil },
+         tokenRefresher: OfflineQueueTokenRefreshing? = nil,
+         challengeCredentialsProvider: @escaping @Sendable (String) -> NYPLBasicAuthCredentialsProvider? = { _ in nil }) {
         self.path = databaseDirectory
         self.transport = transport
         self.reachability = reachability
         self.errorLogger = errorLogger
         self.authorizationHeaderProvider = authorizationHeaderProvider
+        self.tokenRefresher = tokenRefresher
+        self.challengeCredentialsProvider = challengeCredentialsProvider
         super.init()
     }
 
@@ -117,6 +130,15 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     private static let TableName = "offline_queue"
 
     private var retryRequestCount = 0
+
+    /// Token refreshes started during the current drain, by library. Touched
+    /// only on `serialQueue`; cleared when a drain starts.
+    private enum DrainRefresh {
+        case inFlight(waiting: [Row])
+        case succeeded
+        case failed
+    }
+    private var drainRefreshes: [String: DrainRefresh] = [:]
     /// Where `simplified.db` lives. Injectable ONLY so the drop paths can be
     /// tested: PP-4987 makes a failed enqueue report to Crashlytics instead of
     /// vanishing, and that guarantee is worthless unless something proves it
@@ -467,6 +489,8 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
                 return
             }
 
+            self.drainRefreshes.removeAll()
+
             let expiredRows = self.sqlTable.filter(self.sqlRetries > self.MaxRetriesInQueue)
             do {
                 try db.run(expiredRows.delete())
@@ -493,13 +517,20 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
             Log.error(#file, "SQLite Error incrementing retry count")
         }
 
-        // Re-attempt network request
-        guard let url = URL(string: requestRow[sqlUrl]) else {
+        guard let urlRequest = makeRequest(for: requestRow) else {
             Log.error(#file, "SQLite: Invalid URL in queue row, skipping: \(requestRow[sqlUrl])")
             deleteRow(db, id: requestRow[sqlID])
             retryRequestCount -= 1
             return
         }
+        send(db, requestRow: requestRow, urlRequest, mayRefreshToken: true)
+    }
+
+    /// Rebuilds the request for a row, attaching the credential current NOW
+    /// for the row's library. Called again after a token refresh so the resend
+    /// carries the new token.
+    private func makeRequest(for requestRow: Row) -> URLRequest? {
+        guard let url = URL(string: requestRow[sqlUrl]) else { return nil }
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = requestRow[sqlMethod]
         urlRequest.httpBody = requestRow[sqlParameters]
@@ -524,21 +555,77 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
         if let authorization = authorizationHeaderProvider(requestRow[sqlLibraryID]) {
             urlRequest.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
+        return urlRequest
+    }
 
+    /// Completion-handler tasks never reach the session delegate's
+    /// `didCompleteWithError`, so the responder's 401 refresh does not run for
+    /// them; a 401 is handled here instead.
+    private func send(_ db: Connection, requestRow: Row, _ urlRequest: URLRequest, mayRefreshToken: Bool) {
         let task = transport.urlSession.dataTask(with: urlRequest) { (_, response, _) in
             self.serialQueue.async {
-                if let response = response as? HTTPURLResponse,
-                   (200...299).contains(response.statusCode) {
-                    Log.info(#file, "Queued Request Upload: Success (\(response.statusCode))")
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                if (200...299).contains(code) {
+                    Log.info(#file, "Queued Request Upload: Success (\(code))")
                     self.deleteRow(db, id: requestRow[self.sqlID])
+                } else if code == 401, mayRefreshToken, self.tokenRefresher != nil {
+                    self.refreshThenResend(db, requestRow: requestRow)
+                    return
                 } else {
-                    let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                     Log.warn(#file, "Queued Request retry failed with status \(code)")
                 }
                 self.retryRequestCount -= 1
             }
         }
+        // Authentication challenges DO reach a completion-handler task's
+        // delegate. Without a task delegate the session's responder answers
+        // with the selected library's credentials, not this row's.
+        task.delegate = RowChallengeResponder(
+            credentials: challengeCredentialsProvider(requestRow[sqlLibraryID]))
         task.resume()
+    }
+
+    /// One refresh per library per drain: rows that 401 while it is in flight
+    /// wait for it, rows that 401 after it resend with the refreshed token.
+    private func refreshThenResend(_ db: Connection, requestRow: Row) {
+        let libraryID = requestRow[sqlLibraryID]
+        switch drainRefreshes[libraryID] {
+        case .inFlight(let waiting):
+            drainRefreshes[libraryID] = .inFlight(waiting: waiting + [requestRow])
+        case .succeeded:
+            resend(db, requestRow: requestRow)
+        case .failed:
+            retryRequestCount -= 1
+        case nil:
+            drainRefreshes[libraryID] = .inFlight(waiting: [requestRow])
+            Log.info(#file, "Queued request got 401; refreshing the token for its library")
+            tokenRefresher?.refreshTokenAndResume(task: nil, accountId: libraryID) { result in
+                let succeeded: Bool
+                if case .success = result { succeeded = true } else { succeeded = false }
+                self.serialQueue.async {
+                    self.finishRefresh(db, libraryID: libraryID, succeeded: succeeded)
+                }
+            }
+        }
+    }
+
+    private func finishRefresh(_ db: Connection, libraryID: String, succeeded: Bool) {
+        guard case .inFlight(let waiting) = drainRefreshes[libraryID] else { return }
+        drainRefreshes[libraryID] = succeeded ? .succeeded : .failed
+        if succeeded {
+            waiting.forEach { resend(db, requestRow: $0) }
+        } else {
+            Log.warn(#file, "Token refresh failed; keeping \(waiting.count) queued request(s) for a later drain")
+            retryRequestCount -= waiting.count
+        }
+    }
+
+    private func resend(_ db: Connection, requestRow: Row) {
+        guard let urlRequest = makeRequest(for: requestRow) else {
+            retryRequestCount -= 1
+            return
+        }
+        send(db, requestRow: requestRow, urlRequest, mayRefreshToken: false)
     }
 
     private func deleteRow(_ db: Connection, id: Int) {
@@ -561,6 +648,44 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
         return db
     }
 }
+
+/// Answers an authentication challenge on one queued request with its own
+/// library's credentials. Set as the task's delegate, which URLSession consults
+/// before the session delegate; the session's responder would answer with the
+/// selected library's credentials.
+private final class RowChallengeResponder: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let credentials: NYPLBasicAuthCredentialsProvider
+
+    init(credentials: NYPLBasicAuthCredentialsProvider?) {
+        self.credentials = credentials ?? NoRowCredentials()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        TPPBasicAuth(credentialsProvider: credentials).response(to: challenge)
+    }
+}
+
+/// A row whose library has no credentials declines a Basic challenge.
+private final class NoRowCredentials: NSObject, NYPLBasicAuthCredentialsProvider {
+    var username: String? { nil }
+    var pin: String? { nil }
+}
+
+/// The executor's single-flight token refresh, as the offline queue uses it.
+/// `TPPNetworkExecutor.refreshTokenAndResume(task:accountId:completion:)` is
+/// the witness; with `task: nil` it refreshes the named account and reports
+/// the outcome without re-running any task.
+protocol OfflineQueueTokenRefreshing: AnyObject, Sendable {
+    func refreshTokenAndResume(task: URLSessionTask?,
+                               accountId: String?,
+                               completion: ((_ result: NYPLResult<Data>) -> Void)?)
+}
+
+extension TPPNetworkExecutor: OfflineQueueTokenRefreshing {}
 
 // Package-protocol seam for the circulation-analytics
 // offline enqueue. Maps the package HTTPMethod onto the app HTTPMethodType
