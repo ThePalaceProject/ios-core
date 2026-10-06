@@ -6,7 +6,7 @@ created: 2026-05-28
 last_refresh: 2026-05-28
 freshness_window: 180d
 owners: [reader]
-description: Per-area verification reference; refresh before next swarm/rigorous-fix
+description: Per-area verification reference; refresh before changing this area
 ---
 
 <!-- audit-verified: file paths in Section 1 (Palace/Reader2/UI/TPPEPUBViewController.swift, Palace/Reader2/UI/ReaderEditingActions.swift, Palace/PDF/Views/PalacePDFView.swift, Palace/PDF/Views/TPPPDFView.swift, Palace/PDF/LCP/LCPPDFs.swift, Palace/PDF/ReadiumPDF/ReadiumPDFViewController.swift, Palace/AppInfrastructure/ReaderService.swift, Palace/AppInfrastructure/NavigationHostView.swift, Palace/Reader2/BusinessLogic/*) were all confirmed to exist via ls/grep on 2026-05-28. PR #1012 (PP-4297) and PR #1008 (PP-4454) verified in `git log --oneline origin/develop -- Palace/Reader2/ Palace/Reader3/`. `TPPBook.isDRMProtected` definition confirmed at Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBook.swift:652. simdrive journeys enumerated from `.simdrive/journeys/reader2-*.yaml`. Regression matrix rows E1, E1-LCP, E1-Adobe, E2, E2-Hang verified in docs/Testing/REGRESSION_TEST_MATRIX.md. Reader3/ confirmed empty except for .DS_Store + an empty ReaderStackConfiguration/ subdirectory — there is no live "Reader3" code; PDF lives under Palace/PDF/. -->
@@ -17,7 +17,7 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 
 **Note on `Palace/Reader3/`:** the directory exists but is empty (only `.DS_Store` + an empty `ReaderStackConfiguration/` subdirectory). PDF rendering lives under `Palace/PDF/`, not `Reader3/`. Treat `Reader3/` as a reserved namespace pending a future move; do not add code there without an explicit ADR.
 
-**Purpose:** the architect's first deliverable on ANY swarm or /rigorous-fix in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Without it, every new initiative re-discovers the same surface (reader copy/paste gating PP-4297 and the Marketplace LCP-PDF open-hang PP-4454 both produced recon docs that should have started from a baseline like this).
+**Purpose:** the first deliverable of any non-trivial change in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Without it, every new initiative re-discovers the same surface (reader copy/paste gating PP-4297 and the Marketplace LCP-PDF open-hang PP-4454 both produced recon docs that should have started from a baseline like this).
 
 **Last refresh:** 2026-05-28 (post PR #1012 PP-4297 + PR #1008 PP-4454 — see commits `d7f115ade` and `16fc46900` on `origin/develop`).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
@@ -194,8 +194,8 @@ The reader area does **not** currently emit a unified `readerOpenOutcome` teleme
 
 ## 7. Known traps / anti-patterns (lessons from prior work)
 
-- **Reader2 nav (back, settings, TOC) is invisible to XCTest.** The Readium 3.x EPUB navigator renders in a `WKWebView` whose tree XCTest cannot see. Any regression in the reading surface MUST be exercised via simdrive (`.simdrive/journeys/reader2-*.yaml`). If you write an XCTest expecting to tap a reader nav-bar button via accessibility id, it will not work. (Memory: `feedback_simdrive_validated.md`.)
-- **`TPPBook.isDRMProtected` is the single gate for copy/paste — keep the predicate recursive.** EPUB gating happens in `ReaderEditingActions.resolve` (DRM → `[]`); PDF gating happens in `PalacePDFView` (`allowsCopy = !isDRMProtected`) and `TPPPDFView` (line 83). `isDRMProtected` walks the full nested acquisition chain via `TPPOPDSAcquisitionPath.supportedAcquisitionPaths(...)`. A flat `defaultAcquisition.type` check WILL miss DRM nested two levels deep — same root cause as PP-4407 (Marketplace audiobook MIME nesting) and PP-4454 (Marketplace LCP-PDF). Recipe memory: `reference_reader_copy_paste_gating.md`. Lesson memory: `reference_marketplace_lcp_mime_nesting.md`.
+- **Reader2 nav (back, settings, TOC) is invisible to XCTest.** The Readium 3.x EPUB navigator renders in a `WKWebView` whose tree XCTest cannot see. Any regression in the reading surface MUST be exercised via simdrive (`.simdrive/journeys/reader2-*.yaml`). If you write an XCTest expecting to tap a reader nav-bar button via accessibility id, it will not work.
+- **`TPPBook.isDRMProtected` is the single gate for copy/paste — keep the predicate recursive.** EPUB gating happens in `ReaderEditingActions.resolve` (DRM → `[]`); PDF gating happens in `PalacePDFView` (`allowsCopy = !isDRMProtected`) and `TPPPDFView` (line 83). `isDRMProtected` walks the full nested acquisition chain via `TPPOPDSAcquisitionPath.supportedAcquisitionPaths(...)`. A flat `defaultAcquisition.type` check WILL miss DRM nested two levels deep — same root cause as PP-4407 (Marketplace audiobook MIME nesting) and PP-4454 (Marketplace LCP-PDF).
 - **VoiceOver passthrough is required for copy/paste gating.** Accessibility selectors (`accessibilityActivate`, `_accessibility*`) must NOT be in the blocked-selector list. The pattern is **super-then-strip** (`buildMenu` calls `super` first, then removes the blocked entries) — this preserves VoiceOver's path. Tested via parity-against-baseline assertion (`viaSubclass == viaBaseline` with `allowsCopy` flipped). Do NOT switch to a strip-then-super pattern.
 - **PDFKit late-inserts.** PDFKit (and iOS itself) may add menu entries during `buildMenu` AFTER your override runs in older patterns. The super-then-strip order in `PalacePDFView.buildMenu` defends against this. Future PDFKit upgrades that change the timing of inserts could re-introduce leaks — re-run `PalacePDFViewTests` against every Xcode upgrade.
 - **Apple-private selectors in the blocked list need individual test pins.** `_share:`, `_lookup:`, `_define:`, `_translate:` are private; each must have its own test or a mutation/Apple-rename will silently degrade the suppression (Share/Lookup might resurface). Failure mode is leak, not crash.
@@ -209,9 +209,9 @@ The reader area does **not** currently emit a unified `readerOpenOutcome` teleme
 
 ---
 
-## 8. Architect's pre-swarm checklist (what to verify before writing a new contract)
+## 8. Pre-change checklist
 
-Before any new swarm or /rigorous-fix in this area, the architect should:
+Before any non-trivial change in this area:
 
 1. **Refresh this file's sections 1–3** — confirm the call-site map, module ownership, and format × DRM matrix are still accurate. Add new sites or mark removed ones.
 2. **For Reader2 (EPUB) changes:** confirm there's a `.simdrive/journeys/reader2-*.yaml` covering the changed surface, OR plan to record one in the same PR. XCTest cannot exercise the WKWebView; if you ship without a simdrive journey, the change is untested at the surface that matters.
@@ -220,7 +220,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 5. **For any "is this acquisition / book / format X?" predicate added or modified:** make it recursive over `indirectAcquisitions[*]` from the start. Re-grep `grep -rn "defaultAcquisition.type" Palace/` after the change — any new flat-walk hits need triage.
 6. **For reader-open path changes (`ReaderService`):** preserve the generation-counter staleness guard. Test cancel-then-reopen across format boundaries (EPUB→PDF, PDF→EPUB).
 7. **Re-run reader test inventory** — `find PalaceTests -path '*Reader*' -o -path '*PDF*' -o -path '*Bookmark*' | wc -l` — confirm count and update Section 6.
-8. **Re-run critical-path tests on develop** BEFORE the swarm starts so post-swarm regressions are attributable.
+8. **Re-run critical-path tests on develop** BEFORE the change starts so later regressions are attributable.
 9. **Update Section 9 (refresh history)** with date + your initials.
 
 ---
@@ -230,7 +230,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
 | 2026-09-14 | PP-5128 (reader TOC blank) | Added `TPPReaderPositionsVCTOCTests.swift` to the §6 XCTest inventory. It pins the main-actor ordering that decides whether the Contents tab renders at all, and the Contents-only scoping of the post-load reload. |
-| 2026-05-28 | swarm rigor meta-improvement (this PR) | Initial baseline. Derived from PR #1012 (PP-4297 copy/paste gating), PR #1008 (PP-4454 Marketplace LCP-PDF), and the in-flight `fix/PP-4297-reader-copy-paste-gating` branch wiring `ReadiumPDFViewController`. Reader3/ confirmed empty — PDF lives under `Palace/PDF/`. |
+| 2026-05-28 | PR #1019 (initial baseline) | Initial baseline. Derived from PR #1012 (PP-4297 copy/paste gating), PR #1008 (PP-4454 Marketplace LCP-PDF), and the in-flight `fix/PP-4297-reader-copy-paste-gating` branch wiring `ReadiumPDFViewController`. Reader3/ confirmed empty — PDF lives under `Palace/PDF/`. |
 
 ---
 

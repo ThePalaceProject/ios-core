@@ -27,7 +27,7 @@ The regex existed before this ADR but was constructed ad-hoc:
 ^Palace/(Audiobooks|SignInLogic|MyBooks/Download|Book/UI/BookDetail/BookButtonMapper)
 ```
 
-The Phase 7 synthesis audit (audit `phase7-synthesis-2026-05-26`) surfaced the problem: `BookButtonMapper.swift` was added as the most recent regex entry (PR #1003, finding #1) only after a sibling audit caught that it was off the strict path despite being a documented F-011-shape risk surface. The audit closes with "every state-machine wiring site needs the strict gate, but there's no enumeration of what 'every site' means." This ADR is that enumeration.
+A 2026-05-26 audit of the borrow path surfaced the problem: `BookButtonMapper.swift` was added to the regex (PR #1003) only after an audit caught that it was off the strict path despite being a risk surface of the PR #890 regression shape. Every state-machine wiring site needs the strict gate, and nothing enumerated those sites. This ADR is that enumeration.
 
 The regex sets the **lower bound** on PR rigor for user-money / access-bearing code paths: sign-in, borrow, download, DRM fulfillment, audiobook playback. Tightening it slows critical PRs on purpose. Loosening it silently regresses the posture audit — which is exactly the failure mode that landed F-011 in PR #990 ("audiobook first-open hang") and the BookButtonMapper gap. The ADR is the maintenance contract so future authors don't trim files from the regex without seeing what they're giving up.
 
@@ -35,7 +35,7 @@ The regex sets the **lower bound** on PR rigor for user-money / access-bearing c
 
 Reproducible walk used to assemble the inclusion list. Anyone re-running the audit (per "Maintenance" below) should follow the same five steps:
 
-1. **List the user-money / access-bearing surfaces** from the project memory rules + CLAUDE.md:
+1. **List the user-money / access-bearing surfaces** from CLAUDE.md:
    - Sign-in (auth, OAuth/SAML/basic/OIDC, reauth, sign-out)
    - Borrow (lifecycle, error presentation, SAML web-view redirect)
    - Download (queue, start, completion, throttle, cancel, error recovery, background/foreground, retry, announcement, alert)
@@ -59,7 +59,7 @@ Reproducible walk used to assemble the inclusion list. Anyone re-running the aud
    - Pure value types and enum definitions (e.g. `TPPMyBooksDownloadInfo.swift` — `@objc enum TPPMyBooksDownloadRightsManagement: Int` only) — no mutable behavior to mutate.
    - View-layer files that only render state set elsewhere (e.g. `TPPBookDetailDownloadFailedView.swift`) — covered by snapshot tests, not mutation.
    - Reader2 rendering-side DRM (`Palace/Reader2/ReaderStackConfiguration/AdobeDRM/*`, `Palace/Reader2/ReaderStackConfiguration/LCP/*`) — exempted, see "Exempted files" below.
-4. **Cross-reference against the audit corpus** (the `phase7-*` audits, kept in the maintainer harness) and the memory pin `phase7_borrow_path_regressions_2026_05_14.md`. Every file those audits called out as F-011 / F-014 / F-017 risk surface must be in the regex.
+4. **Cross-reference against the three borrow-path regressions PR #890 shipped** (missing `.downloadNeeded` reducer case, inverted `attemptDownload` condition, `BookCellModel` ignoring `localBookStateOverride`; listed in the MyBooks verification-checklist). Every file those regressions touched must be in the regex.
 5. **Construct a regex** that matches every retained file. Test it against both the retained list (positive cases) and an explicit non-critical sampler (negative cases). The verification commands and output live in the "Verification" section below.
 
 ## Critical-path files
@@ -78,7 +78,7 @@ Complete table. **Strict mutation kill-rate floor (50%) applies to every entry.*
 | **Download — background / Overdrive** | `Palace/MyBooks/{BackgroundDownloadHandler,OverdriveDownloadHandler}` | `BackgroundDownloadHandler.swift` (URLSession background delegate, file ops), `OverdriveDownloadHandler.swift` (302-redirect fulfillment dance for OD audiobooks) |
 | **DRM fulfillment** | `Palace/MyBooks/{AdobeDRMHandler,LCPFulfillmentHandler,RightsManagementDispatcher}` | `AdobeDRMHandler.swift` (NYPLADEPTDelegate bridge — Adobe fulfilment, file move, rights persistence), `LCPFulfillmentHandler.swift` (LCP license-fulfilment + streaming-license-copy), `RightsManagementDispatcher.swift` (per-rights-management dispatch after `DownloadCompletionParser` extracts rights) |
 | **Audiobook playback (all)** | `Palace/Audiobooks/` (all .swift) | `AudiobookLoader.swift`, `AudiobookPositionPolicy.swift`, `AudiobookSessionManager.swift`, `AudiobookSessionManaging.swift`, `AudioBookVendors+Extensions.swift`, `AudioBookVendorsHelper.swift`, `NowPlayingCoordinator.swift`, `PlaybackBootstrapper.swift`, `TPPReturnPromptHelper.swift`, `DPLA/{DPLAAudiobooks,JWKResponse}.swift`, `LCP/LCPAudiobooks.swift`, `Tracker/{AudiobookDataManager,AudiobookTimeEntry,AudiobookTimeTracker,DataManager}.swift`, `Vendors/{Adapters+Production,AudiobookVendorAdapter,BearerTokenAdapter,LCPAdapter,LocalFileAdapter,OpenAccessAdapter}.swift` |
-| **Auth-critical accounts** | `Palace/Accounts/User/TPPUserAccount`, `Palace/Accounts/Library/AccountsManager` | `TPPUserAccount.swift` (the credential / bearer-token store — every borrow / download eventually reads this), `AccountsManager.swift` (the account-detail state machine — `feedback_round_trip_wiring_tests.md` covers it, but the production code needs mutation gating too) |
+| **Auth-critical accounts** | `Palace/Accounts/User/TPPUserAccount`, `Palace/Accounts/Library/AccountsManager` | `TPPUserAccount.swift` (the credential / bearer-token store — every borrow / download eventually reads this), `AccountsManager.swift` (the account-detail state machine — round-trip wiring tests cover it, but the production code needs mutation gating too) |
 | **Auth-critical network** | `Palace/Network/TPPNetworkExecutor` | `TPPNetworkExecutor.swift` — the `bearerAuthorized(...)` class method + accountId resolution path the swarm Module A is hardening. Auth-token leakage / wrong-account dispatch lives here. |
 | **Payment** | N/A | Palace is a library app — no payment surface. Listed for completeness so a future contributor knows the omission is intentional, not an oversight. |
 
@@ -95,7 +95,7 @@ Files that touch a critical surface but are explicitly **not** in the regex:
 
 **Reasoning.** Reader2 runs inside Readium 3.x's WKWebView. Per CLAUDE.md "E2E / UI sim driving — simdrive": the WKWebView is invisible to the XCTest accessibility tree. Mutation-testing classes inside Reader2 against XCTest-resolved test selectors produces selectors that match zero classes — `palace_mutate.py` would dutifully report 0/0 kill rate for every mutation, which the verify-pr.sh aggregator silently rubber-stamps as "no mutations generated for changed files" (line ~417: `record "mutation" "pass" "No mutations generated for changed files"`).
 
-**Alternative coverage.** Module D of swarm `swarm_eefef87a` (this same swarm) lands contract-snapshot tests at `PalaceTests/Contract/Reader2BookmarkContractTests.swift` and `PalaceTests/Contract/Reader2PositionResumeContractTests.swift`. The contract-snapshot framework (`PalaceTests/Contract/{CallLog,ContractSnapshot}.swift`) records the ordered sequence of dependency calls during a Reader2 scenario, stores the result as a JSON baseline, and asserts the snapshot on every subsequent run. Refactors that change the call contract — including silent breakage of bookmark sync or position resume — drift the snapshot and fail loudly.
+**Alternative coverage.** The same change set lands contract-snapshot tests at `PalaceTests/Contract/Reader2BookmarkContractTests.swift` and `PalaceTests/Contract/Reader2PositionResumeContractTests.swift`. The contract-snapshot framework (`PalaceTests/Contract/{CallLog,ContractSnapshot}.swift`) records the ordered sequence of dependency calls during a Reader2 scenario, stores the result as a JSON baseline, and asserts the snapshot on every subsequent run. Refactors that change the call contract — including silent breakage of bookmark sync or position resume — drift the snapshot and fail loudly.
 
 This is the same pattern CLAUDE.md's "Contract-snapshot tests" section documents for `Borrow`, `BookReturn`, `DownloadStart`, `BorrowReducer`. It catches the same class of bug (silently re-ordered or dropped side-effect calls) that mutation-testing catches, via a different mechanism — and works against WKWebView-bound code where XCTest doesn't.
 
@@ -121,7 +121,7 @@ Pure value type representing an account record. The state machine lives in `Acco
 
 ## Verification
 
-The regex was tested against three buckets: previously-uncovered files (now match), already-covered files (still match), and non-critical files (must NOT match), plus an edge-case sampler for `Borrow`/`Download` name-substring confusion. Captured `2026-05-26` from the swarm `swarm_eefef87a-C` worktree.
+The regex was tested against three buckets: previously-uncovered files (now match), already-covered files (still match), and non-critical files (must NOT match), plus an edge-case sampler for `Borrow`/`Download` name-substring confusion. Captured `2026-05-26`.
 
 **Command (positive — newly-included files):**
 
@@ -258,7 +258,7 @@ Re-run the audit when **any** of the following lands on `develop`:
    - A new auth adapter or post-auth bridge outside `Palace/SignInLogic/` or `Palace/Packages/PalaceAuth/`.
 3. **A new top-level extraction** — e.g. a follow-up SPM extraction in the spirit of `Packages/PalaceAuth`, or a `Packages/PalaceMyBooks` if the MBDC overhaul lands as its own module. The regex must be updated to include the new package path.
 4. **The Reader2 testability story changes.** If a future Readium / XCTest combination becomes mutation-testable (or `simdrive` gains an automated mutation-killing replay corpus that subsumes contract snapshots), revisit the Reader2 exemption.
-5. **A regression of the F-011 / F-014 / F-017 shape ships.** A live bug in a file that *should* have been on the strict path but wasn't is a load-bearing signal — re-run the enumeration in step 2 of "Methodology" and recompute the regex.
+5. **A regression of the PR #890 shape ships.** A live bug in a file that *should* have been on the strict path but wasn't is a load-bearing signal — re-run the enumeration in step 2 of "Methodology" and recompute the regex.
 
 **Re-audit checklist:**
 
@@ -271,7 +271,5 @@ Re-run the audit when **any** of the following lands on `develop`:
 
 ## See also
 
-- audit `phase7-synthesis-2026-05-26` — the audit that surfaced finding #1 (`BookButtonMapper` off the strict path) and motivated this ADR.
-- `feedback_round_trip_wiring_tests.md` (project memory) — the state-machine wiring test pattern that complements the mutation gate on the audit-listed files.
 - CLAUDE.md "Mutation testing" — engine + cache mechanics; this ADR is the **what** gate it applies to.
 - CLAUDE.md "Contract-snapshot tests" — the alternative coverage strategy used for Reader2 and other XCTest-invisible surfaces.

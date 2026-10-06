@@ -151,10 +151,10 @@ correctness.
 - Unit evidence already in hand: build green; 5 guard tests pass; diff-scoped
   mutation 100% (1/1 killed).
 
-## Prior art (SharedMind / ForgeOS ledger)
+## Prior art
 
-`forge_query_mind` surfaced two adjacent entries; neither addresses the
-exit-time static-destructor crash, confirming this decision is net-new:
+Two earlier pieces of work are adjacent; neither addresses the exit-time
+static-destructor crash:
 
 - **ObjC→Swift port (March 2026):** names `recursive_mutex` as a known crash
   class at the ObjC/Swift boundary ("ObjC methods called from async Swift

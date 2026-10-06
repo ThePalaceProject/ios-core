@@ -1909,9 +1909,7 @@ extension TPPAnnotationsHermeticTests {
     }
 
     // Each helper awaits the completion itself rather than a wall-clock
-    // deadline. Every path these tests reach calls back exactly once; the
-    // tests open the sync gate and pin the annotations URL first, because
-    // `uploadLocalBookmarks` does not call back when either is missing.
+    // deadline. Every path these tests reach calls back exactly once.
     private func deleteAndWait(_ annotationId: String) async -> Bool {
         await withCheckedContinuation { continuation in
             TPPAnnotations.deleteBookmark(annotationId: annotationId) { success in
@@ -2124,6 +2122,97 @@ extension TPPAnnotationsHermeticTests {
         XCTAssertTrue(updated.isEmpty)
         XCTAssertEqual(failed.map(\.href), ["/two.html"])
         XCTAssertNil(failed.first?.annotationId)
+    }
+}
+
+// MARK: - Early returns call back exactly once
+//
+// Each early return in the post and upload paths must call its completion, or
+// a caller waiting on it (a DispatchGroup, a pull-to-refresh) never finishes.
+extension TPPAnnotationsHermeticTests {
+
+    private func unsyncedBookmark() -> TPPReadiumBookmark {
+        TPPReadiumBookmark(annotationId: nil, href: "/two.html", chapter: "Chapter", page: nil,
+                           locationString: "{\"href\":\"/two.html\"}",
+                           progressWithinChapter: 0.5, progressWithinBook: 0.25,
+                           readingOrderItem: nil, readingOrderItemOffsetMilliseconds: 0,
+                           time: "2026-01-01T00:00:00Z", device: "urn:uuid:device")
+    }
+
+    /// Sync off reports nothing uploaded and nothing failed, so the caller does
+    /// not re-add every unsynced bookmark as a server bookmark.
+    func testUploadLocalBookmarks_SyncOff_CompletesOnceWithNothingAttempted() {
+        configureSyncGate(signedIn: false, permissionGranted: true)
+        var calls = 0
+        var result: ([TPPReadiumBookmark], [TPPReadiumBookmark])?
+
+        TPPAnnotations.uploadLocalBookmarks([unsyncedBookmark()], forBook: bookID) { updated, failed in
+            calls += 1
+            result = (updated, failed)
+        }
+
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(result?.0.count, 0)
+        XCTAssertEqual(result?.1.count, 0)
+        XCTAssertEqual(mock.postCallCount, 0)
+    }
+
+    /// With no annotations URL the post is not attempted and reports no server
+    /// ID, the same answer as the sync-off path.
+    func testPostReadiumBookmark_NoAnnotationsURL_CompletesOnceWithNil() {
+        openSyncGate()
+        TPPAnnotations.annotationsURLOverride = .some(nil)
+        var calls = 0
+        var response: AnnotationResponse? = AnnotationResponse(serverId: "sentinel", timeStamp: nil)
+
+        TPPAnnotations.postBookmark(unsyncedBookmark(), forBookID: bookID) { calls += 1; response = $0 }
+
+        XCTAssertEqual(calls, 1)
+        XCTAssertNil(response)
+        XCTAssertEqual(mock.postCallCount, 0)
+    }
+
+    func testPostPDFBookmark_NoAnnotationsURL_CompletesOnceWithNil() {
+        openSyncGate()
+        TPPAnnotations.annotationsURLOverride = .some(nil)
+        var calls = 0
+        var response: AnnotationResponse? = AnnotationResponse(serverId: "sentinel", timeStamp: nil)
+
+        TPPAnnotations.postBookmark(TPPPDFPage(pageNumber: 3), annotationsURL: nil, forBookID: bookID) {
+            calls += 1
+            response = $0
+        }
+
+        XCTAssertEqual(calls, 1)
+        XCTAssertNil(response)
+        XCTAssertEqual(mock.postCallCount, 0)
+    }
+
+    /// The upload group stays balanced when a post cannot be attempted: the
+    /// bookmark is reported failed and the upload finishes exactly once.
+    func testUploadLocalBookmarks_NoAnnotationsURL_ReportsFailedAndCompletesOnce() async {
+        openSyncGate()
+        TPPAnnotations.annotationsURLOverride = .some(nil)
+        var calls = 0
+        var updatedCount = -1
+        var failedHrefs: [String] = []
+
+        // The upload reports on the main queue; await it, then drain the main
+        // queue once so a second report would be counted.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPAnnotations.uploadLocalBookmarks([unsyncedBookmark()], forBook: bookID) { updated, failed in
+                calls += 1
+                updatedCount = updated.count
+                failedHrefs = failed.map(\.href)
+                if calls == 1 { continuation.resume() }
+            }
+        }
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(updatedCount, 0)
+        XCTAssertEqual(failedHrefs, ["/two.html"])
+        XCTAssertEqual(mock.postCallCount, 0)
     }
 }
 

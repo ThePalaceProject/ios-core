@@ -6,16 +6,15 @@ created: 2026-05-28
 last_refresh: 2026-05-28
 freshness_window: 180d
 owners: [mybooks]
-description: Per-area verification reference; refresh before next swarm/rigorous-fix
+description: Per-area verification reference; refresh before changing this area
 ---
 
-<!-- audit-verified: file paths under Palace/MyBooks/, Palace/Book/UI/BookDetail/BorrowReducer.swift, and PalaceTests/{MyBooks,Contract,ViewModels}/ all verified via `ls` and `find` against current `chore/swarm-rigor-meta-improvement` HEAD (a71b070bf). Line citations for hasBorrowReauthBeenAttempted (BorrowOperation.swift:92, 601), tokenRefreshAttempts (TPPNetworkResponder.swift:34, 369), BookReturnService setProcessing/removeBook (BookReturnService.swift:139, 221) verified via grep. Contract snapshots inventoried from PalaceTests/Contract/__Snapshots__/. The Phase 7 audit synthesis at audit `phase7-synthesis-2026-05-26` was confirmed referenced by phase7_borrow_path_regressions_2026_05_14.md. The PR #1018 *AuthCoordinator*Tests cited in the user prompt are NOT present locally on this branch and are listed as "scheduled" rather than "extant." -->
 
 # MyBooks area — verification checklist
 
 **Owner area:** `Palace/MyBooks/` (40 files), `Palace/Book/UI/BookDetail/BorrowReducer.swift` (reducer extraction owned by MyBooks lifecycle), and the borrow/return entry points exposed via `Palace/Book/UI/BookDetail/BookDetailViewModel.swift`.
 
-**Purpose:** the architect's first deliverable on ANY swarm or `/rigorous-fix` in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Critical-path area per CLAUDE.md — every change to `Palace/MyBooks/Download*` is gated on ≥100% mutation kill on the changed file (CLAUDE.md "Mutation testing"). Without this baseline, every new initiative re-discovers Phase 7's 21-service decomposition surface (the F-011/F-014 silent regressions that shipped to release/3.1.0 are a permanent reminder).
+**Purpose:** the first deliverable of any non-trivial change in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Critical-path area per CLAUDE.md — every change to `Palace/MyBooks/Download*` is gated on ≥100% mutation kill on the changed file (CLAUDE.md "Mutation testing"). Without this baseline, every new initiative re-discovers Phase 7's 21-service decomposition surface (the F-011/F-014 silent regressions that shipped to release/3.1.0 are a permanent reminder).
 
 **Last refresh:** 2026-05-28 (initial baseline).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
@@ -173,36 +172,36 @@ Contract-snapshot tests in `PalaceTests/Contract/`:
 
 **Scheduled (PR #1018 follow-up — not yet present locally):** `BookReturnServiceAuthCoordinatorTests`, `BorrowOperationAuthCoordinatorTests`, `BookReturnCleverReauthTests`, `BorrowOperationCleverReauthTests`. When PR #1018 lands, these replace ad-hoc auth-routing assertions in the existing test classes.
 
-**Reusable patterns:** `feedback_test_patterns_phase7.md` documents the canonical 10 — Combine subscriber, spy delegate per protocol, closure injection for static-method deps, `@MainActor` test class + `waitForAsync`, `FakeDownloadTask` subclass, JSON round-trip for cross-module Codable inits.
+**Reusable patterns:** Combine subscriber, spy delegate per protocol, closure injection for static-method deps, `@MainActor` test class + `waitForAsync`, `FakeDownloadTask` subclass, JSON round-trip for cross-module Codable inits.
 
 ---
 
 ## 7. Known traps / anti-patterns
 
 - **TPPUserAccount migration safety-net fallbacks** (`incomplete_migrations_antipattern.md` + PR #822 retro): NEVER leave a "safety-net fallback" to the legacy singleton during a migration. PR #822 kept `sharedAccount()` in `AccountsManager.currentUserAccount` when `currentAccountId` was briefly nil — hid the race that produced the spurious login modal during download. Strip legacy from the **protocol** first; let the compiler drive the rest. Audit callers of the protocol, not just the class — injection hides call sites.
-- **BiblioBoard cross-host OpenAccessTrack token scoping** (`reference_biblioboard_cross_host_token_scoping.md`): bearer token was scoped to `manifest.originHost`; OPDS-for-Distributors splits manifest (palaceproject.io) from chapter MP3s (distributor CDN). Scope mismatch → 403 → `AVPlayerItem.failed` didn't surface to `playbackStatePublisher` → lock-screen timer walked past playable range with no error. Auth scope must be "hosts CM authorizes me to talk to," not "the host this URL lives on." Applies to LCP license servers, OverDrive Marketplace, Findaway chunked downloads.
-- **Marketplace LCP MIME-nesting in `canOpenBook` / `pathExtension`** (`reference_marketplace_lcp_mime_nesting.md` + PR #972 / PR #1008): `LCPAudiobooks.canOpenBook` checked only `defaultAcquisition.type`, missed LCP MIME nested two levels deep (`opds-publication+json → LCP license → audiobook+lcp`). 639MB `.lcpa` ZIP saved as `.epub` → "Failed to parse local file as JSON". Acquisition-chain predicates **must be recursive by default** — OPDS2 nests publication types arbitrarily deep. Diagnostic recipe: `xxd <file> | head -1` (PK\x03\x04 = ZIP/LCP, 504B = EPUB).
+- **BiblioBoard cross-host OpenAccessTrack token scoping**: bearer token was scoped to `manifest.originHost`; OPDS-for-Distributors splits manifest (palaceproject.io) from chapter MP3s (distributor CDN). Scope mismatch → 403 → `AVPlayerItem.failed` didn't surface to `playbackStatePublisher` → lock-screen timer walked past playable range with no error. Auth scope must be "hosts CM authorizes me to talk to," not "the host this URL lives on." Applies to LCP license servers, OverDrive Marketplace, Findaway chunked downloads.
+- **Marketplace LCP MIME-nesting in `canOpenBook` / `pathExtension`** (PR #972 / PR #1008): `LCPAudiobooks.canOpenBook` checked only `defaultAcquisition.type`, missed LCP MIME nested two levels deep (`opds-publication+json → LCP license → audiobook+lcp`). 639MB `.lcpa` ZIP saved as `.epub` → "Failed to parse local file as JSON". Acquisition-chain predicates **must be recursive by default** — OPDS2 nests publication types arbitrarily deep. Diagnostic recipe: `xxd <file> | head -1` (PK\x03\x04 = ZIP/LCP, 504B = EPUB).
 - **Per-book reauth circuit breaker** (`BorrowOperation.swift:92`, 601): `hasBorrowReauthBeenAttempted(for: bookId)` is the per-book gate. Process-wide coordinator single-flight is NOT a substitute — both layers serve different roles. Cleared via `clearAllBorrowReauthState` on account switch (line 113).
 - **Per-task token-refresh budget** (`TPPNetworkResponder.swift:34`, 369): `tokenRefreshAttempts < 2` per `TPPNetworkResponder` instance, with cross-domain 401 carve-out. Preserved through PR #1018 migration. Don't replace with coordinator-level counters; this is responder-scoped.
 - **Legacy `else` fallback in BookReturnService** (PR #1018 tech debt): retained for tests that don't inject a coordinator. Delete when all return-flow tests inject the coordinator seam — until then, BorrowOperation / BookReturnService have an extra branch that must be exercised to prevent silent fallback drift.
-- **Reachability subscription pairs** (`feedback_bugfix_PP-4114.md`): BORROW path on `BookCellModel`, IN-PROGRESS DOWNLOAD path on `DownloadNetworkLossMonitor` (owned by `AppContainer`, bound to the download center's maps by `AppContainer.makeDownloadNetworkLossMonitor`; call order pinned by `DownloadNetworkLossContractTests`). Same `connectivityPublisher` source, otherwise independent — different views, state managers, cleanup. When fixing one, audit the other. Pattern: `dropFirst().filter { !$0 }.receive(on: RunLoop.main).sink { ... }` with sink snapshotting state BEFORE mutation (`failDownloadWithAlert` empties dicts asynchronously).
-- **OPDS2 has TWO publication types in the same SPM module** (`feedback_bugfix_PP-4230.md`): `OPDS2Publication` (lightweight) vs `OPDS2FullPublication`. Separate Codable types with separate Metadata structs — drift independently. Lightweight decoder silently drops undeclared fields. Symptom: feature works for some books not others. Adjacent gap: duration hardcoded nil at `OPDS2PublicationExtended.swift:322`.
-- **F-011 / F-014 / F-017 silent decomposition bugs** (`phase7_borrow_path_regressions_2026_05_14.md`): PR #890 shipped 3 silent regressions to release/3.1.0 (missing `.downloadNeeded` reducer case, inverted `attemptDownload` condition, BookCellModel ignoring `localBookStateOverride`). Phase 7 audit complete (2026-05-26 synthesis at audit `phase7-synthesis-2026-05-26`) — no live siblings. Decomposition PRs need invariant-pinning tests, not just per-case tests (e.g. "for every borrow-completed state, acquire flags are cleared").
+- **Reachability subscription pairs** (PP-4114): BORROW path on `BookCellModel`, IN-PROGRESS DOWNLOAD path on `DownloadNetworkLossMonitor` (owned by `AppContainer`, bound to the download center's maps by `AppContainer.makeDownloadNetworkLossMonitor`; call order pinned by `DownloadNetworkLossContractTests`). Same `connectivityPublisher` source, otherwise independent — different views, state managers, cleanup. When fixing one, audit the other. Pattern: `dropFirst().filter { !$0 }.receive(on: RunLoop.main).sink { ... }` with sink snapshotting state BEFORE mutation (`failDownloadWithAlert` empties dicts asynchronously).
+- **OPDS2 has TWO publication types in the same SPM module** (PP-4230): `OPDS2Publication` (lightweight) vs `OPDS2FullPublication`. Separate Codable types with separate Metadata structs — drift independently. Lightweight decoder silently drops undeclared fields. Symptom: feature works for some books not others. Adjacent gap: duration hardcoded nil at `OPDS2PublicationExtended.swift:322`.
+- **F-011 / F-014 / F-017 silent decomposition bugs**: PR #890 shipped 3 silent regressions to release/3.1.0 (missing `.downloadNeeded` reducer case, inverted `attemptDownload` condition, BookCellModel ignoring `localBookStateOverride`). A follow-up audit (2026-05-26) found no live siblings. Decomposition PRs need invariant-pinning tests, not just per-case tests (e.g. "for every borrow-completed state, acquire flags are cleared").
 - **`TPPBookRegistryMock.with(account:perform:)` is a no-op** — the closure parameter is the concrete `TPPBookRegistry` class which the mock can't furnish. Code paths through that method aren't unit-testable against the mock; document inline and rely on integration coverage.
 - **Adobe non-PDF fire-and-forget Task in `RightsManagementDispatcher`** — currently untested; needs an `AdobeDRMService` protocol seam first.
 
 ---
 
-## 8. Architect's pre-swarm checklist
+## 8. Pre-change checklist
 
-Before any new swarm or `/rigorous-fix` in this area:
+Before any non-trivial change in this area:
 
 1. **Refresh §1's call-site map.** Confirm file sizes + line citations against current `develop`. Phase 7 stabilized the surface; new extractions or merges may have shifted lines.
 2. **Re-run `find Palace/MyBooks -name '*.swift' | wc -l`** — expect ~40 files post-Phase 7. Any growth needs categorization in §1.
 3. **Re-inventory contract snapshots:** `ls PalaceTests/Contract/__Snapshots__/{BorrowOperation,BookReturnService,BorrowReducer,DownloadStartCoordinator}ContractTests/`. New snapshots are contract additions — note them in §4.
 4. **Re-grep `default:` in MyBooks switches:** `grep -n "default:" Palace/MyBooks/*.swift Palace/Book/UI/BookDetail/BorrowReducer.swift` — WP3 systemic sweep removed silent `default:` arms; any new occurrence on a `TPPBookState` switch needs review.
 5. **Run critical-path mutation BEFORE changes:** `python3 scripts/palace_mutate.py --file Palace/MyBooks/<file>.swift --tests PalaceTests/<TestClass>` for each touched file. Mutation cache means repeat runs are <1s. Target: ≥100% on `Download*` per CLAUDE.md.
-6. **Verify B7 (hold→loan) UNKNOWNs in §3.** If the swarm touches hold-conversion paths, schedule on-device Adobe + LCP waited-out runs — currently the only stages without green-path evidence.
+6. **Verify B7 (hold→loan) UNKNOWNs in §3.** If the change touches hold-conversion paths, schedule on-device Adobe + LCP waited-out runs — currently the only stages without green-path evidence.
 7. **Re-check the auth-area checklist** (`docs/architecture/areas/auth/verification-checklist.md`) for any changes to `AuthCoordinator` / `AuthErrorClassifier` semantics — MyBooks consumes these.
 8. **Update §9 with date + initials.**
 
@@ -212,7 +211,7 @@ Before any new swarm or `/rigorous-fix` in this area:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
-| 2026-05-28 | swarm-rigor-meta-improvement architect | Initial baseline derived from MEMORY.md MyBooks entries (Phase 7 handoff, borrow-path regressions, TPPUserAccount retro, BiblioBoard, Marketplace LCP, PP-4114/PP-4230 bugfix tips) + `docs/Testing/REGRESSION_TEST_MATRIX.md` B-rows + contract-snapshot inventory + Phase 7 audit synthesis (2026-05-26). File paths/lines verified via `find`/`grep` on `chore/swarm-rigor-meta-improvement` (HEAD a71b070bf). PR #1018 auth-coordinator follow-up tests listed as "scheduled" — not present locally on this branch. |
+| 2026-05-28 | PR #1019 (initial baseline) | Initial baseline derived from earlier MyBooks fixes (borrow-path regressions, TPPUserAccount, BiblioBoard, Marketplace LCP, PP-4114, PP-4230) + `docs/Testing/REGRESSION_TEST_MATRIX.md` B-rows + contract-snapshot inventory + Phase 7 audit synthesis (2026-05-26). File paths/lines verified via `find`/`grep` on the PR #1019 branch (HEAD a71b070bf). PR #1018 auth-coordinator follow-up tests listed as "scheduled" — not present locally on this branch. |
 
 ---
 
