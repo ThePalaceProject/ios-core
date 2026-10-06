@@ -16,11 +16,12 @@ Categories detected (severity in parentheses):
   BR-2 (high)   New `#if DEBUG` / `#if !DEBUG` blocks on non-test Swift files.
                 Demoted to medium when the same file's added lines also
                 reference an XCTest env-var gate (e.g.
-                `XCTestConfigurationFilePath`, comment lines included) or, in
-                code rather than comments, the UI-test launch marker
-                `MockBackendLaunchRequest.scenarioKey`. An app launched by a
-                UI test does not receive `XCTestConfigurationFilePath`, so the
-                launch marker is the UI-test equivalent.
+                `XCTestConfigurationFilePath`, comment lines included), or
+                when code inside that `#if DEBUG` block reads the UI-test
+                launch marker `MockBackendLaunchRequest.scenarioKey`. An app
+                launched by a UI test does not receive
+                `XCTestConfigurationFilePath`, so the launch marker is the
+                UI-test equivalent.
   BR-3 (high)   `public private(set)` declaration whose docstring contains
                 test/verify/spy/observable wording.
   BR-4 (high)   New init parameters added to `AppContainer.swift` or any
@@ -132,16 +133,48 @@ _NON_PROD_PATH_SUBSTRINGS = (
 )
 
 
-def _code_part(text: str) -> str:
-    """The code on a line, without `//` comments or block-comment lines.
+_IF_RE = re.compile(r"^\s*#if\b")
+_ENDIF_RE = re.compile(r"^\s*#endif\b")
 
-    Approximate: a `//` inside a string literal also ends the code part, which
-    can only drop a marker, never invent one.
+
+def _launch_gated_debug_blocks(added: list[_AddedLine]) -> set[tuple[str, int]]:
+    """`(path, line)` of each added `#if DEBUG` whose own block reads the
+    UI-test launch marker in code.
+
+    Walks each file's added lines in order, tracking `#if`/`#endif` nesting and
+    `/* ... */` comments. A gap in line numbers means unchanged lines sit in
+    between, which may close the block, so open blocks end there. Strings that
+    contain `//` or `/*` are not parsed; that can only hide a marker.
     """
-    stripped = text.lstrip()
-    if stripped.startswith(("/*", "*")):
-        return ""
-    return re.sub(r"/\*.*?\*/", "", text).split("//", 1)[0]
+    gated: set[tuple[str, int]] = set()
+    path: str | None = None
+    previous_line = 0
+    frames: list[tuple[bool, int]] = []   # (is a DEBUG block, its #if line)
+    in_comment = False
+    for entry in added:
+        if entry.file_path != path or entry.line_no != previous_line + 1:
+            path, frames, in_comment = entry.file_path, [], False
+        previous_line = entry.line_no
+        code = entry.text
+        if code.lstrip().startswith("*"):
+            # The body of a block comment whose opening line is unchanged.
+            continue
+        if in_comment:
+            if "*/" not in code:
+                continue
+            code, in_comment = code.split("*/", 1)[1], False
+        code = re.sub(r"/\*.*?\*/", "", code)
+        if "/*" in code:
+            code, in_comment = code.split("/*", 1)[0], True
+        code = code.split("//", 1)[0]
+        if _IF_RE.match(code):
+            frames.append((bool(_IF_DEBUG_RE.match(code)), entry.line_no))
+        elif _ENDIF_RE.match(code):
+            if frames:
+                frames.pop()
+        elif _UI_TEST_LAUNCH_RE.search(code):
+            gated.update((path, line) for is_debug, line in frames if is_debug)
+    return gated
 
 
 def _is_swift(path: str) -> bool:
@@ -310,22 +343,19 @@ def _scan(added: list[_AddedLine]) -> list[_Finding]:
 
     # Post-pass: emit BR-2 findings with severity demotion.
     file_to_env_hint: dict[str, bool] = {}
-    file_to_launch_gate: dict[str, bool] = {}
-    for entry in added:
-        if not _is_swift(entry.file_path) or _is_non_prod_swift(entry.file_path):
-            continue
+    prod_swift = [e for e in added if _is_swift(e.file_path) and not _is_non_prod_swift(e.file_path)]
+    for entry in prod_swift:
         if _XCTEST_ENV_RE.search(entry.text):
             file_to_env_hint[entry.file_path] = True
-        if _UI_TEST_LAUNCH_RE.search(_code_part(entry.text)):
-            file_to_launch_gate[entry.file_path] = True
+    launch_gated = _launch_gated_debug_blocks(prod_swift)
     for path, line_nos in if_debug_open.items():
-        if file_to_env_hint.get(path, False):
-            severity, note = "medium", " (demoted: XCTest env-gate present in same diff)"
-        elif file_to_launch_gate.get(path, False):
-            severity, note = "medium", " (demoted: UI-test launch gate present in same diff)"
-        else:
-            severity, note = "high", " — covers sim/dev/TestFlight; prefer XCTest env-var gate"
         for ln in line_nos:
+            if file_to_env_hint.get(path, False):
+                severity, note = "medium", " (demoted: XCTest env-gate present in same diff)"
+            elif (path, ln) in launch_gated:
+                severity, note = "medium", " (demoted: the block reads the UI-test launch marker)"
+            else:
+                severity, note = "high", " — covers sim/dev/TestFlight; prefer XCTest env-var gate"
             findings.append(_Finding(
                 code="BR-2",
                 severity=severity,

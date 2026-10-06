@@ -158,7 +158,8 @@ def test_medium_finding_does_not_block_at_default_high_floor():
 # Demotion scope. XCTest marker (`XCTestConfigurationFilePath`,
 # `isRunningUnderXCTest`): any ADDED line of the SAME file, comment lines
 # included. UI-test launch marker (`MockBackendLaunchRequest.scenarioKey`):
-# ADDED lines of the SAME file, with comment text ignored. Neither crosses files.
+# code (not comments) on ADDED lines INSIDE that `#if DEBUG` block. Neither
+# crosses files.
 
 _UI_MARKER_GATE = "    if ProcessInfo.processInfo.environment[MockBackendLaunchRequest.scenarioKey] != nil {"
 
@@ -186,7 +187,7 @@ def test_if_debug_gated_on_the_ui_test_launch_marker_is_demoted():
     r = _run(diff)
     assert r.returncode == 0, f"stdout: {r.stdout!r}"
     assert _br2_severity(r.stdout, path) == "medium"
-    assert "UI-test launch" in r.stdout
+    assert "UI-test launch marker" in r.stdout
 
 
 @pytest.mark.parametrize("comment", [
@@ -214,6 +215,39 @@ def test_ui_test_marker_in_another_file_does_not_demote():
     r = _run(diff)
     assert r.returncode == 1, f"stdout: {r.stdout!r}"
     assert _br2_severity(r.stdout, flagged) == "high"
+
+
+def test_ui_test_marker_demotes_only_the_block_that_reads_it():
+    """A second, ungated `#if DEBUG` block in the same file stays high."""
+    path = "Palace/AppInfrastructure/TPPAppDelegate.swift"
+    diff = _diff(path, [
+        "#if DEBUG", _UI_MARKER_GATE, "        applyHook()", "    }", "#endif",
+        "#if DEBUG", "    wipeEverything()", "#endif",
+    ])
+    r = _run(diff)
+    assert r.returncode == 1, f"stdout: {r.stdout!r}"
+    severities = {ln.split(":")[1]: ln.split(": BR-2: ", 1)[1].split(":", 1)[0]
+                  for ln in r.stdout.splitlines() if ": BR-2: " in ln}
+    assert severities == {"2": "medium", "7": "high"}, r.stdout
+
+
+def test_ui_test_marker_after_the_block_does_not_demote():
+    """The marker read outside the `#if DEBUG` block does not gate the block."""
+    path = "Palace/AppInfrastructure/TPPAppDelegate.swift"
+    diff = _diff(path, ["#if DEBUG", "    seedTestData()", "#endif", _UI_MARKER_GATE, "    }"])
+    r = _run(diff)
+    assert r.returncode == 1, f"stdout: {r.stdout!r}"
+    assert _br2_severity(r.stdout, path) == "high"
+
+
+def test_ui_test_marker_inside_a_multiline_block_comment_does_not_demote():
+    """A comment body line that does not start with `*` is still a comment."""
+    path = "Palace/Book/BookDetail.swift"
+    diff = _diff(path, ["#if DEBUG", "    /*", "    MockBackendLaunchRequest.scenarioKey", "    */",
+                        "    seedTestData()", "#endif"])
+    r = _run(diff)
+    assert r.returncode == 1, f"stdout: {r.stdout!r}"
+    assert _br2_severity(r.stdout, path) == "high"
 
 
 @pytest.mark.parametrize("marker_line", [
