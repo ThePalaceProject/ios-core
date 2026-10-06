@@ -373,7 +373,7 @@ extension TPPSignInBusinessLogic {
         self.dispatch(.bearerTokenReceived(token: authToken, expiration: nil))
         self.patron = parsedPatron
         // OIDC callback handler is synchronous, so the await needs a Task.
-        Task { await validateCredentials() }
+        startSignInTask { await self.validateCredentials() }
     }
 }
 

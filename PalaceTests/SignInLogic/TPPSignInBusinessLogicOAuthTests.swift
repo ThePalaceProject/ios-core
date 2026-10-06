@@ -182,15 +182,11 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
         // success branch. The store-then-dispatch ORDER is covered where it is
         // deterministic — AuthReducer's own tests in PalaceAuth, against the
         // state machine rather than through the network (PP-5301).
-        let fired = expectation(description: "credential request dispatched")
-        fired.assertForOverFulfill = false
-        networkExecutor.onExecuteRequest = { _ in fired.fulfill() }
-
         postOAuthRedirect(url)
-        await fulfillment(of: [fired], timeout: 5.0)
+        await businessLogic._awaitSignInWorkForTesting()
 
-        XCTAssertGreaterThanOrEqual(networkExecutor.executedRequestURLs.count, 1,
-                                    "Valid OAuth payload must hand off to validateCredentials()")
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "Valid OAuth payload must hand off to validateCredentials()")
     }
 
     func test_handleRedirectURL_missingAccessToken_skipsValidationAndReportsParseError() {
@@ -406,7 +402,7 @@ final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func test_getBearerToken_success_persistsTokenViaTokenRefresher() {
+    func test_getBearerToken_success_persistsTokenViaTokenRefresher() async {
         // §10.2 seam: a successful `TokenResponse` must transition the
         // businessLogic's reducer to a state where the in-flight authToken
         // matches and `validateCredentials()` is invoked. Mutating the
@@ -423,7 +419,8 @@ final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
                                      tokenRefresher: tokenRefresher) {
             completed.fulfill()
         }
-        wait(for: [completed], timeout: 5.0)
+        await fulfillment(of: [completed], timeout: 5.0)   // STARVE-001-OK: TokenRefresherMock resolves a pre-set .success on the caller's own stack — no network and no fire-and-forget task behind this expectation
+        await businessLogic._awaitSignInWorkForTesting()
 
         // The seam mock writes to its local state only — it does NOT persist
         // a token to userAccount. The success branch in getBearerToken is what
@@ -439,8 +436,8 @@ final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
                        "tokenURL must flow through to executeTokenRefresh unchanged")
         XCTAssertEqual(tokenRefresher.lastAccountId, libraryAccountMock.tppAccountUUID,
                        "accountId argument must be the businessLogic's libraryAccountID")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "On success, the businessLogic must hand off to validateCredentials()")
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "On success, the businessLogic must hand off to validateCredentials()")
     }
 
     func test_getBearerToken_failure_doesNotStoreTokenAndSurfacesError() {
@@ -546,7 +543,7 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
         // .main; `businessLogicDidReceiveCredentials` fires synchronously off
         // that same hop via `TPPMainThreadRun.asyncIfNeeded`'s on-main fast
         // path). Mirrors test_validateCredentials_basicAuthFailure below.
-        drainMainQueue()
+        await drainMainQueueAsync()
 
         XCTAssertEqual(proxy.receiveCredentialsCallCount, 1,
                        "businessLogicDidReceiveCredentials must fire exactly once per success")
@@ -563,7 +560,7 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
         // Drain main queue (the executor's completion is dispatched async to .main).
         // DispatchQueue.main is FIFO — once our no-op block runs, every previously
         // queued completion has already run. No fixed-delay padding.
-        drainMainQueue()
+        await drainMainQueueAsync()
 
         XCTAssertFalse(uiDelegate.didCallDidReceiveCredentials,
                        "Failure path must NOT fire businessLogicDidReceiveCredentials — the UI must not show the DRM spinner")

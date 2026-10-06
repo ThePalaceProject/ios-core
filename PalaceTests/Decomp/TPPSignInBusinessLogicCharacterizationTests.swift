@@ -139,7 +139,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
                      "precondition: makeRequest must be nil for a detail-less library")
 
         await blogic.validateCredentials()
-        drainMainQueue()   // the delegate error hop runs via asyncIfNeeded
+        await drainMainQueueAsync()   // the delegate error hop runs via asyncIfNeeded
 
         XCTAssertTrue(networkExecutor.executedRequestURLs.isEmpty,
                       "an unbuildable request must short-circuit BEFORE any network call")
@@ -163,8 +163,11 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
                        "validateCredentials must fire exactly one credential-validation request")
         XCTAssertTrue(networkExecutor.executedRequestURLs.first?.absoluteString.contains(profilePath) ?? false,
                       "the validation request must target the fixture's userProfileUrl (/patrons/me)")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "validateCredentials must enter the validating state")
+        XCTAssertFalse(businessLogic.isValidatingCredentials,
+                       "the validating flag must be cleared once a successful "
+                       + "validation completes — `await` returns after the success "
+                       + "dispatch, so the in-flight `true` is no longer observable "
+                       + "from here")
     }
 
     // A4 — validateCredentials failure (401) surfaces a validation error and does
@@ -178,7 +181,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
         networkExecutor.forceFailureStatusCode = 401
 
         await businessLogic.validateCredentials()
-        drainMainQueue()
+        await drainMainQueueAsync()
 
         XCTAssertEqual(recording.validationErrorCount, 1,
                        "a 401 must surface exactly one validation error to the UI")
@@ -245,7 +248,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
         await businessLogic.validateCredentials()
-        drainMainQueue()
+        await drainMainQueueAsync()
 
         XCTAssertEqual(recording.didReceiveCredentialsCount, 1,
                        "a successful validation must signal didReceiveCredentials exactly once")

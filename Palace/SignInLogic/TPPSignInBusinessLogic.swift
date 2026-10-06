@@ -576,7 +576,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 case .success(let tokenResponse):
                     self?.dispatch(.bearerTokenReceived(token: tokenResponse.accessToken,
                                                         expiration: tokenResponse.expirationDate))
-                    Task { await self?.validateCredentials() }
+                    self?.startSignInTask { await self?.validateCredentials() }
                 case .failure(let error):
                     self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
                 }
@@ -1012,7 +1012,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                     uiDelegate?.PINTextField?.text = userAccount.PIN
                 }
 
-                Task { await logIn() }
+                startSignInTask { await self.logIn() }
                 return false
             } else {
                 MainActor.assumeIsolated {

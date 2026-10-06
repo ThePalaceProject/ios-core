@@ -192,6 +192,7 @@
 		1C1DF3E6F25FB227E234C18D /* DownloadAuthRetryHandlerAuthCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3B8EE3C140BF4313428A81B /* DownloadAuthRetryHandlerAuthCoordinatorTests.swift */; };
 		1C485849A9AFEE9C004F8C8C /* AudiobookPlaybackFailureRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2602091CD4843C2674C6A1 /* AudiobookPlaybackFailureRecord.swift */; };
 		1C4CC3753B75E8677FEB66B0 /* ButtonStateMonotonicClampTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB910D1F15E3A3C24D3E3247 /* ButtonStateMonotonicClampTests.swift */; };
+		1C916824B257B9B872F12480 /* TPPSignInBusinessLogicSignInJoin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B002874352CF9CC17380AA /* TPPSignInBusinessLogicSignInJoin.swift */; };
 		1D0EF39016F5650B63FC093C /* StreamingReaderViewControllerTitleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B286D7B9F1ADC4E49DAEFF77 /* StreamingReaderViewControllerTitleTests.swift */; };
 		1DCB0892788EDE3026D667A3 /* TPPIndeterminateProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F8E5B987D7324D570F67D0 /* TPPIndeterminateProgressView.swift */; };
 		1E021B71311B221A7777B6F7 /* EPUBPositionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36BFAE4E752CA9A1451CDCE /* EPUBPositionTests.swift */; };
@@ -563,6 +564,7 @@
 		55FB16FFA837DFA8E0B19E5E /* TPPOPDSFeed+Networking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E0EAE6DA244AAE005691B /* TPPOPDSFeed+Networking.swift */; };
 		56196EA984C98839164BD951 /* BackupExclusionMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99895C63131766252D87F554 /* BackupExclusionMigration.swift */; };
 		565DA1FA5CDA9B96C9906A64 /* StreamingReaderProgressStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F512B3D5A11D22D6AC2CEC7 /* StreamingReaderProgressStoreTests.swift */; };
+		56816B124E4DF42ECD81F944 /* TPPSignInBusinessLogicSignInJoin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B002874352CF9CC17380AA /* TPPSignInBusinessLogicSignInJoin.swift */; };
 		56CE537E2B81BC80FBF455CD /* TPPAttributedString.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54172B43D47BE5FCE8A1B975 /* TPPAttributedString.swift */; };
 		57767E0C25892BF039EA4EE8 /* ManagedLibraryDebugOverrideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 981BF4C29609E6350DF879C1 /* ManagedLibraryDebugOverrideTests.swift */; };
 		579A71D40BD8C70070D63B59 /* LCPAcquisitionPredicateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97F1FD36814FED60F937463 /* LCPAcquisitionPredicateTests.swift */; };
@@ -2648,6 +2650,7 @@
 		44E59F675A3E4419BE1E24BB /* FacetViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacetViewModelTests.swift; sourceTree = "<group>"; };
 		45081C08344C4032BAB1EE86 /* OPDS2ParsingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDS2ParsingTests.swift; sourceTree = "<group>"; };
 		450A1E779E10FABB4CF59037 /* PalacePressableButtonStyleTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PalacePressableButtonStyleTests.swift; sourceTree = "<group>"; };
+		45B002874352CF9CC17380AA /* TPPSignInBusinessLogicSignInJoin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPSignInBusinessLogicSignInJoin.swift; sourceTree = "<group>"; };
 		45EB45618938C811D051DEB7 /* UIAlertCACommitGuardTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UIAlertCACommitGuardTests.swift; sourceTree = "<group>"; };
 		4609134D5A2D39DD0D8E7DCA /* CatalogAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogAccessibilityTests.swift; sourceTree = "<group>"; };
 		46136706F66E701FB3E45258 /* SingletonResetRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SingletonResetRegistry.swift; sourceTree = "<group>"; };
@@ -4843,6 +4846,7 @@
 				12CC78F892CA5C26671BE206 /* SignInModalPresenter+SignInModalPresenting.swift */,
 				A8829DAED777C8EBAB199D77 /* SignInModalSheetPresenter.swift */,
 				CB91C36D9DC90CDAC98FA568 /* TPPSettingsAuthBridge.swift */,
+				45B002874352CF9CC17380AA /* TPPSignInBusinessLogicSignInJoin.swift */,
 			);
 			path = SignInLogic;
 			sourceTree = "<group>";
@@ -9118,6 +9122,7 @@
 				191FC26FC8FB2089EF7C67D6 /* Strings+Audiobook.swift in Sources */,
 				D384859FACFAC6048DE296BE /* AppContainerOwnedServices.swift in Sources */,
 				23EF3AE450407544D1B6D8C1 /* DownloadNetworkLossMonitor.swift in Sources */,
+				56816B124E4DF42ECD81F944 /* TPPSignInBusinessLogicSignInJoin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9705,6 +9710,7 @@
 				AF291216C4BE965AFCA9CC54 /* Strings+Audiobook.swift in Sources */,
 				D6CD9418D1E020D9057EE7CB /* AppContainerOwnedServices.swift in Sources */,
 				4622EF5CE965471648CB2A29 /* DownloadNetworkLossMonitor.swift in Sources */,
+				1C916824B257B9B872F12480 /* TPPSignInBusinessLogicSignInJoin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

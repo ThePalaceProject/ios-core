@@ -531,7 +531,7 @@ final class OIDCCallbackHandlingTests: XCTestCase {
     }
 
     /// Callback URL uses the custom scheme with query parameters (like Android).
-    func testHandleOIDCCallback_withQueryParams_extractsTokenAndValidates() {
+    func testHandleOIDCCallback_withQueryParams_extractsTokenAndValidates() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
         let patronJSON = "{\"name\":\"OIDC+User\"}"
@@ -544,8 +544,12 @@ final class OIDCCallbackHandlingTests: XCTestCase {
                        "OIDC callback should extract access_token")
         XCTAssertEqual(businessLogic.patron?["name"] as? String, "OIDC User",
                        "OIDC callback should extract patron_info")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "After callback, should be validating credentials against the CM")
+        // The callback handler is synchronous and starts validation in a task,
+        // so the hand-off is observed by joining that task and checking the
+        // request it fired, not by the in-flight validating flag (PP-5301).
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the extracted token must be validated against the CM")
     }
 
     /// CM may also provide tokens as a URL fragment (same as OAuth).
@@ -1340,7 +1344,7 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRegression_oauthRedirect_stillUsesUniversalLinksPrefix() {
+    func testRegression_oauthRedirect_stillUsesUniversalLinksPrefix() async {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
 
         let patronJSON = "{\"name\":\"OAuth+User\"}"
@@ -1355,10 +1359,15 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
 
         XCTAssertEqual(businessLogic.authToken, "oauth-tok",
                        "OAuth redirect through handleRedirectURL must still work")
-        XCTAssertTrue(businessLogic.isValidatingCredentials)
+        // The callback handler is synchronous and starts validation in a task,
+        // so the hand-off is observed by joining that task and checking the
+        // request it fired, not by the in-flight validating flag (PP-5301).
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the extracted token must be validated against the CM")
     }
 
-    func testRegression_samlRedirect_stillUsesUniversalLinksPrefix() {
+    func testRegression_samlRedirect_stillUsesUniversalLinksPrefix() async {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
 
         let patronJSON = "{\"name\":\"SAML+User\"}"
@@ -1373,7 +1382,12 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
 
         XCTAssertEqual(businessLogic.authToken, "saml-tok",
                        "SAML redirect through handleRedirectURL must still work")
-        XCTAssertTrue(businessLogic.isValidatingCredentials)
+        // The callback handler is synchronous and starts validation in a task,
+        // so the hand-off is observed by joining that task and checking the
+        // request it fired, not by the in-flight validating flag (PP-5301).
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the extracted token must be validated against the CM")
     }
 
     func testRegression_oauthRedirect_withError_stillHandlesError() {

@@ -1141,6 +1141,14 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
         // mutate userAccount.
         businessLogic.selectedAuthentication = nil
 
+        // A profile request built without a selected auth method carries no
+        // credentials, and the CM answers it with a 401. The double defaults to
+        // 200 + a valid profile, which signs the patron in — the assertions
+        // below are about what happens when the server refuses, so the double
+        // has to refuse too.
+        networkExecutor.shouldFail = true
+        networkExecutor.errorStatusCode = 401
+
         var signInNotificationPosted = false
         let observer = NotificationCenter.default.addObserver(
             forName: .TPPIsSigningIn, object: nil, queue: nil

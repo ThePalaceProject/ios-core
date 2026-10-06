@@ -246,7 +246,7 @@ extension TPPSignInBusinessLogic {
 
         // OAuth redirect handler is synchronous; the log below already said
         // this was initiated asynchronously, and now it is.
-        Task { await validateCredentials() }
+        startSignInTask { await self.validateCredentials() }
 
         Log.info(#file, "🔐 [REDIRECT] validateCredentials() initiated (async)")
         completion?(nil, nil, nil)

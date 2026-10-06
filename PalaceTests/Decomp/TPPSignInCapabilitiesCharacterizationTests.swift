@@ -227,15 +227,20 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     // B11 — GAP: basic auth WITH saved credentials + usingExistingCredentials
     // returns false (no sign-in UI needed) and drives logIn() directly. The
     // existing suite covers the WITHOUT-creds → true complement.
-    func test_refreshAuthIfNeeded_basicWithSavedCredentials_returnsFalse_andLogsIn() {
+    func test_refreshAuthIfNeeded_basicWithSavedCredentials_returnsFalse_andLogsIn() async {
         signInBasic(barcode: "saved-bc", pin: "saved-pin")
 
         let result = businessLogic.refreshAuthIfNeeded(usingExistingCredentials: true, completion: nil)
 
         XCTAssertFalse(result,
                        "basic auth with saved credentials must NOT require a sign-in UI (returns false)")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "refreshAuthIfNeeded must drive logIn() → validateCredentials for the saved-creds path")
+
+        // The hand-off happens in a task, so it is observed by joining that
+        // task and checking the request it fired. The validating flag is
+        // in-flight state an awaited validation has already cleared.
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "refreshAuthIfNeeded must drive logIn() → validateCredentials for the saved-creds path")
     }
 
     // MARK: - logIn() routing per auth method (safe branches)
@@ -249,12 +254,18 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
 
         await businessLogic.logIn()
 
-        XCTAssertEqual(businessLogic.capturedBarcode, "login-bc")
-        XCTAssertEqual(businessLogic.capturedPin, "login-pin")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "basic logIn routes straight to validateCredentials")
+        // `capturedBarcode`, `capturedPin` and `isValidatingCredentials` are
+        // in-flight reducer state that a completed validation clears, so they
+        // say nothing once `logIn()` has returned. Basic auth also sends no
+        // Authorization header — credentials go via URLAuthenticationChallenge
+        // — so the request itself cannot carry them either. What survives is
+        // the account the validation persisted.
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
                        "basic logIn must fire exactly one validation request")
+        XCTAssertEqual(businessLogic.userAccount.barcode, "login-bc",
+                       "a successful basic logIn must persist the typed barcode")
+        XCTAssertEqual(businessLogic.userAccount.PIN, "login-pin",
+                       "a successful basic logIn must persist the typed PIN")
     }
 
     // SEAM: logIn()'s OAuth (`oauthLogIn`) and SAML (`samlHelper.logIn`) arms
@@ -274,7 +285,7 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
         await businessLogic.logIn()
-        drainMainQueue()   // willSignIn is dispatched async
+        await drainMainQueueAsync()   // willSignIn is dispatched async
 
         XCTAssertEqual(businessLogic.capturedBarcode, "oidc-u")
         XCTAssertFalse(businessLogic.isValidatingCredentials,
