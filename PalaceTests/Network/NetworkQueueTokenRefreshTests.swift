@@ -15,6 +15,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
     override func tearDown() {
         HTTPStubURLProtocol.reset()
+        GatedURLProtocol.reset()
         super.tearDown()
     }
 
@@ -167,6 +168,38 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         XCTAssertEqual(queue.persistedRowsForTesting().count, 1, "The row waits for a later drain")
     }
 
+    /// A row that 401s after its library's refresh already failed this drain is
+    /// kept without another refresh, and the next drain still runs.
+    func testDrain_RowHits401AfterItsLibrarysRefreshFailed_IsKeptAndTheNextDrainRuns() {
+        let tokens = TokenBox(["lib-A": "old"])
+        let server = StubServer(acceptedToken: "new")
+        let refresher = SpyRefresher(tokens: tokens, outcome: .failure)
+        let (queue, dir) = makeQueue(tokens: tokens, refresher: refresher)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        GatedURLProtocol.reset()
+
+        queue.addRequest("lib-A", "book-1", URL(string: "https://a.example.org/annotations/first")!,
+                         .POST, Data("{}".utf8), nil)
+        queue.addRequest("lib-A", "book-2", URL(string: "https://a.example.org/annotations/gated")!,
+                         .POST, Data("{}".utf8), nil)
+        queue.serialQueue.sync {}
+
+        queue.retryQueue()
+        expectEventually("the first row's refresh to fail") { refresher.libraries.count == 1 }
+        settle(queue)
+        GatedURLProtocol.open()
+        expectEventually("the gated row to be refused") { GatedURLProtocol.answered == 1 }
+        settle(queue)
+
+        XCTAssertEqual(refresher.libraries, ["lib-A"], "No second refresh after the first failed")
+        XCTAssertEqual(queue.persistedRowsForTesting().count, 2)
+
+        queue.retryQueue()
+        expectEventually("the next drain to send both rows again") {
+            server.requestCount == 2 && GatedURLProtocol.answered == 2
+        }
+    }
+
     // MARK: - Other statuses unchanged
 
     func testDrain_On500_DoesNotRefreshAndKeepsTheRow() {
@@ -256,7 +289,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         let dir = NSTemporaryDirectory() + "queue-401-" + UUID().uuidString
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
+        config.protocolClasses = [GatedURLProtocol.self, HTTPStubURLProtocol.self]
         let transport = NetworkTransport(delegate: nil, sessionConfiguration: config, requestTimeout: 5)
         let queue = NetworkQueue(transport: transport,
                                  reachability: Reachability(),
@@ -320,6 +353,56 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 }
 
 // MARK: - Test doubles
+
+/// Holds requests whose path ends in `/gated` until `open()`, then answers 401.
+/// Polls from the loading thread's run loop rather than blocking it, because
+/// custom protocols can share one loading thread.
+private final class GatedURLProtocol: URLProtocol {
+    private static let state = GateState()
+    static var answered: Int { state.answered }
+    static func open() { state.setOpen(true) }
+    static func reset() { state.reset() }
+
+    private var timer: Timer?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.path.hasSuffix("/gated") == true
+    }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let timer = Timer(timeInterval: 0.01, target: self, selector: #selector(poll),
+                          userInfo: nil, repeats: true)
+        RunLoop.current.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    @objc private func poll() {
+        guard Self.state.isOpen, let url = request.url else { return }
+        timer?.invalidate()
+        timer = nil
+        let response = HTTPURLResponse(url: url, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil)
+        if let response { client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed) }
+        client?.urlProtocolDidFinishLoading(self)
+        Self.state.recordAnswer()
+    }
+
+    override func stopLoading() {
+        timer?.invalidate()
+        timer = nil
+    }
+}
+
+private final class GateState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _isOpen = false
+    private var _answered = 0
+    var isOpen: Bool { lock.withLock { _isOpen } }
+    var answered: Int { lock.withLock { _answered } }
+    func setOpen(_ value: Bool) { lock.withLock { _isOpen = value } }
+    func recordAnswer() { lock.withLock { _answered += 1 } }
+    func reset() { lock.withLock { _isOpen = false; _answered = 0 } }
+}
 
 /// Which credentials a challenge consulted, and when a load ended.
 private final class ChallengeLog: @unchecked Sendable {
