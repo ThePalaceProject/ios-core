@@ -1463,9 +1463,9 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     }
 
     func testCorruptLoad_thenNonAuthoritativeEmptySave_isRefused_untilServerSync() {
-        // End-to-end INV-1: corrupt load flags rebuild; a subsequent empty
-        // non-authoritative save must be refused so nothing erases the shelf
-        // before an authoritative sync runs.
+        // End-to-end INV-1: a corrupt load recovered from the backup does not
+        // flag a rebuild, but the backup still holds the shelf, so an empty
+        // non-authoritative save is refused until an authoritative sync runs.
         let (account, url) = makeIsolatedAccount()
         defer { cleanupAccount(url) }
 
@@ -1482,6 +1482,19 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         XCTAssertFalse(syncManager.needsRebuildFromServer)
         XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
                       "the last-good backup remains intact after a recovering load")
+
+        store.mutateRegistrySync { $0.removeAll() }
+        syncManager.saveSync(for: account)
+        XCTAssertEqual(try? Data(contentsOf: url), Data("{ corrupt".utf8),
+                       "a non-authoritative empty save must not overwrite the primary while the backup holds the shelf")
+        XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
+                      "a non-authoritative empty save must not touch the backup")
+
+        awaitRegistrySaved { syncManager.save(for: account, serverAuthoritative: true) }
+        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
+            return XCTFail("a server-authoritative empty save must write a valid registry")
+        }
+        XCTAssertTrue(recs.isEmpty, "the server sync is the one save allowed to persist the empty shelf")
     }
 
     // MARK: Schema version + migration

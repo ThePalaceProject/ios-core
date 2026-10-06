@@ -762,8 +762,9 @@ final class BookRegistrySync: @unchecked Sendable {
         // backup exists to recover the SHELF after corruption, and one that is
         // a few positions behind still recovers it.
         if scope == .shelf, !isEmpty || serverAuthoritative {
-          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl)
+          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: dependencies.beforeRegistryWrite)
         }
+        try dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
         if !isEmpty || serverAuthoritative {
           needsRebuildFromServer = false
@@ -825,8 +826,9 @@ final class BookRegistrySync: @unchecked Sendable {
         directoryURL.registryExcludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
         if !isEmpty {
-          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl)
+          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: self.dependencies.beforeRegistryWrite)
         }
+        try self.dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
         if !isEmpty {
           self.needsRebuildFromServer = false
