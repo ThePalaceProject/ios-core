@@ -541,10 +541,9 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
 
         await businessLogic.validateCredentials()
 
-        // Drain main queue (the executor's completion is dispatched async to
-        // .main; `businessLogicDidReceiveCredentials` fires synchronously off
-        // that same hop via `TPPMainThreadRun.asyncIfNeeded`'s on-main fast
-        // path). Mirrors test_validateCredentials_basicAuthFailure below.
+        // The double completes on its own background queue, so the delegate
+        // callback reaches main through `TPPMainThreadRun.asyncIfNeeded`; one
+        // drain settles it. Mirrors the failure case below.
         await drainMainQueueAsync()
 
         XCTAssertEqual(proxy.receiveCredentialsCallCount, 1,
@@ -559,9 +558,8 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
 
         await businessLogic.validateCredentials()
 
-        // Drain main queue (the executor's completion is dispatched async to .main).
-        // DispatchQueue.main is FIFO — once our no-op block runs, every previously
-        // queued completion has already run. No fixed-delay padding.
+        // The double completes off-main; the hop to main is FIFO, so once our
+        // no-op block runs every queued completion has already run.
         await drainMainQueueAsync()
 
         XCTAssertFalse(uiDelegate.didCallDidReceiveCredentials,

@@ -52,12 +52,6 @@ protocol TPPRequestExecuting: Sendable {
 }
 
 extension TPPRequestExecuting {
-    /// Convenience for the common case: the currently selected library.
-    func execute(_ req: URLRequest,
-                 enableTokenRefresh: Bool = true) async -> NYPLResult<Data> {
-        await execute(req, enableTokenRefresh: enableTokenRefresh, accountId: nil)
-    }
-
     var requestTimeout: TimeInterval {
         return Self.defaultRequestTimeout
     }

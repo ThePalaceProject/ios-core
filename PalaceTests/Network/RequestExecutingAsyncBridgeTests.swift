@@ -138,10 +138,13 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
         switch result {
         case .success:
             XCTFail("a 401 must not arrive as success")
-        case let .failure(_, response):
+        case let .failure(error, response):
             XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401,
-                           "the response must survive the await — sign-in reads "
-                           + "the problem document off it")
+                           "the response must survive the await")
+            XCTAssertEqual((error as NSError).problemDocument?.title,
+                           "Invalid credentials",
+                           "the problem document must survive too — sign-in "
+                           + "shows its title rather than a generic failure")
         }
     }
 

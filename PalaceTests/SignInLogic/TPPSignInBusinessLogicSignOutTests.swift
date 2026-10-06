@@ -126,6 +126,19 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         XCTAssertNil(acct.barcode, "No stale barcode may remain")
     }
 
+    /// PP-4986's other half: Settings signs OUT for a library that may not be
+    /// the selected one, and the double answers identically either way, so the
+    /// library the request names is only observable here.
+    func test_signOut_namesTheLibraryItWasBuiltFor() async {
+        await businessLogic.performLogOut()
+
+        XCTAssertEqual(networkExecutor.executedAccountIds,
+                       [libraryAccountMock.tppAccountUUID],
+                       "sign-out must name the library it was built for — a nil "
+                       + "accountId deauthorizes against whichever library is "
+                       + "selected, which is the defect PP-4986 describes")
+    }
+
     func test_signOut_invokesDRMDeauthorizeExactlyOnce() async {
         seedSignedInBasicUserWithAdobe()
 

@@ -528,6 +528,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
             Log.info(#file, "Token near expiry - proactively refreshing before request")
             // Boxed like the request below: a refresh callback firing twice
             // would otherwise trap on a double resume.
+            // No caller cancels an `execute` await today — the sign-in tasks
+            // are unstructured — so this arm is defensive and untested. It
+            // becomes load-bearing the moment a structured caller appears.
             let refreshed = CancellableContinuationBox<Void>()
             _ = try? await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
