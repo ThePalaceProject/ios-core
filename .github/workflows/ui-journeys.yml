@@ -96,7 +96,10 @@ jobs:
             for n in 1 2; do
               sleep $(( n == 1 ? 8 : 10 ))
               grep -q "\[PERF\] Catalog load" "$RUNNER_TEMP/palace-app.log" && exit 0
-              /usr/bin/sample "$pid" 3 -file "$RUNNER_TEMP/palace-sample-$n.txt"
+              # Unprivileged sample cannot see the simulator app on the runner.
+              sudo -n /usr/bin/sample "$pid" 3 -file "$RUNNER_TEMP/palace-sample-$n.txt" \
+                || /usr/bin/sample "$pid" 3 -file "$RUNNER_TEMP/palace-sample-$n.txt"
+              sudo -n chmod a+r "$RUNNER_TEMP/palace-sample-$n.txt" 2>/dev/null
             done
           ' > "$RUNNER_TEMP/palace-sampler.log" 2>&1 &
 
