@@ -149,7 +149,7 @@ Maintainers additionally run through ForgeOS governance gates that hook into `gi
 ## Known Gaps
 
 ### Cannot Automate (Manual Testing Required)
-1. **EPUB/PDF rendering** — Readium WKWebView invisible to XCTest accessibility tree
+1. **EPUB/PDF rendering**: visual layout, page turns and PDF pages are manual. EPUB text is in the XCUITest accessibility tree, which the resume-reading journey uses for position across a relaunch
 2. **DRM fulfillment** — Adobe RMSDK and LCP require actual license servers
 3. **Audiobook playback quality** — Audio output can't be verified programmatically
 4. **Background audio** — System interruptions (phone calls, Siri) need device

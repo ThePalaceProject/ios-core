@@ -140,7 +140,7 @@ flows work at all.
 
 | ID | Area | Description | Variants | Automation | Notes |
 |----|------|-------------|----------|------------|-------|
-| E1 | EPUB reading — DRM-free | Page turn, search, bookmarks, visual settings | Palace Bookshelf title | Manual (Readium WKWebView invisible to XCTest) | Brightness slider (F-037), search order (F-039), nav bar toggle (F-036). |
+| E1 | EPUB reading — DRM-free | Page turn, search, bookmarks, visual settings | Palace Bookshelf title | Fixture journey for position across a relaunch (`ResumeReadingJourneyTests`); manual for the rest | Brightness slider (F-037), search order (F-039), nav bar toggle (F-036). |
 | E1-LCP | EPUB reading — LCP DRM | Same as E1 but with LCP-protected EPUB | *Cyber Risk* on Palace Marketplace | Manual | Same checks + license-file presence, stale-loan DRM error (F-038). |
 | E1-Adobe | EPUB reading — Adobe DRM | Same as E1 but with Adobe RMSDK | Any Adobe-fulfilled title | Manual | Same checks + Adobe activation must be live. Regression target: no `AdobeCertificate` crash. |
 | E2 | PDF reading | Open, navigate, zoom, annotate | PDF on any library | Manual | |
