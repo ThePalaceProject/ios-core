@@ -495,6 +495,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
         // tracked so `cancelBackgroundWork()` cancels it.
         spawnOwnedCrawlTask(priority: .utility, detached: true, firstRun: true) { [weak self] in
             guard let self = self else { return }
+            Log.debug(#file, "Registry first-run task started: \(Self.startQoSDescription())")
 
             if let bundledData = BundledRegistrySnapshot.load(resolver: self.snapshotResourceResolver),
                !Task.isCancelled {
@@ -631,10 +632,26 @@ final class AccountRegistryLoader: @unchecked Sendable {
         }
     }
 
+    /// Thread QoS and task priority at a registry task's first statement, for
+    /// diagnosing late starts on slow machines.
+    private static func startQoSDescription() -> String {
+        let qos: String
+        switch qos_class_self() {
+        case QOS_CLASS_USER_INTERACTIVE: qos = "user-interactive"
+        case QOS_CLASS_USER_INITIATED: qos = "user-initiated"
+        case QOS_CLASS_DEFAULT: qos = "default"
+        case QOS_CLASS_UTILITY: qos = "utility"
+        case QOS_CLASS_BACKGROUND: qos = "background"
+        default: qos = "unspecified"
+        }
+        return "qos=\(qos) priority=\(Task.currentPriority)"
+    }
+
     /// Fallback direct GET when the crawler fails on first launch (owned + drainable).
     private func fallbackFetchFromNetwork(targetUrl: URL, hash: String) {
         spawnOwnedCrawlTask(priority: .utility, detached: true) { [weak self] in
             guard let self = self else { return }
+            Log.debug(#file, "Registry fallback fetch task started: \(Self.startQoSDescription())")
             do {
                 let (data, _) = try await self.networkExecutorProvider().GET(targetUrl, useTokenIfAvailable: false)
                 if Task.isCancelled { return }
