@@ -34,8 +34,11 @@ final class AccountsManagerCacheReadTests: PalaceWiringTestCase {
     /// this hash is the one `preloadAccountsFromDiskCacheSync()` reads.
     private var accountSetHash: String!
 
+    private var savedDeferDiskPreload = true
+
     override func setUpWithError() throws {
         try super.setUpWithError()
+        savedDeferDiskPreload = AccountsManager.deferDiskCachePreloadForTesting
 
         let bundle = Bundle(for: type(of: self))
         guard let feedURL = bundle.url(forResource: "OPDS2CatalogsFeed", withExtension: "json") else {
@@ -51,11 +54,7 @@ final class AccountsManagerCacheReadTests: PalaceWiringTestCase {
     }
 
     override func tearDownWithError() throws {
-        // Restore the disk-cache preload flag defensively in case a test set
-        // it and threw before its own reset.
-        #if DEBUG
-        AccountsManager.deferDiskCachePreloadForTesting = false
-        #endif
+        AccountsManager.deferDiskCachePreloadForTesting = savedDeferDiskPreload
         feedData = nil
         accountSetHash = nil
         try super.tearDownWithError()

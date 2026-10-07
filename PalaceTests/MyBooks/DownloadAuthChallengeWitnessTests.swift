@@ -65,16 +65,6 @@ final class DownloadAuthChallengeWitnessTests: PalaceWiringTestCase {
         return center
     }
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        // Skip the synchronous on-disk cached-account load — its declaration names
-        // it the root of the FLAKE-003 30s CI timeout. Safe here because nothing in
-        // this file reads `accountSets` or `account(uuid:)`; every account read
-        // resolves through `AccountCredentialResolver`, a different structure.
-        // (`deferInitialLoadCatalogsForTesting` is the base class's job.)
-        AccountsManager.deferDiskCachePreloadForTesting = true
-    }
-
     override func tearDown() async throws {
         _signedInCenter = nil
         _signedOutCenter = nil
@@ -83,9 +73,6 @@ final class DownloadAuthChallengeWitnessTests: PalaceWiringTestCase {
         // itself dies with the test.
         mintedLibraryAccounts.forEach { $0.removeAll() }
         mintedLibraryAccounts.removeAll()
-        // Global flag — restore the default rather than leaking the opt-out into
-        // suites that DO read the account registry.
-        AccountsManager.deferDiskCachePreloadForTesting = false
         try await super.tearDown()
     }
 
