@@ -15,6 +15,14 @@ final class AccountsManagerInitPreloadGateTests: PalaceWiringTestCase {
 
     private static let xcTestEnvironment = ["XCTestConfigurationFilePath": "/tmp/fixture.xctestconfiguration"]
 
+    /// This process's real environment without the XCTest key, so the launch is not
+    /// distinguishable from production by an empty environment.
+    private static var launchEnvironment: [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        environment["XCTestConfigurationFilePath"] = nil
+        return environment
+    }
+
     private var feedData: Data!
     private var savedDeferDiskPreload = true
 
@@ -35,15 +43,17 @@ final class AccountsManagerInitPreloadGateTests: PalaceWiringTestCase {
         try super.tearDownWithError()
     }
 
-    /// Outside XCTest, init hydrates the cached registry even with the test-only
-    /// deferral set: the flag must not change simulator, developer or TestFlight launches.
-    func testInit_outsideXCTest_preloadsCachedAccountsEvenWhenDeferralIsSet() {
-        AccountsManager.deferDiskCachePreloadForTesting = true
+    /// Outside XCTest, init hydrates the cached registry whatever the test-only flag
+    /// holds: the flag must not change simulator, developer or TestFlight launches.
+    func testInit_outsideXCTest_preloadsCachedAccountsForEitherFlagValue() {
+        for deferral in [true, false] {
+            AccountsManager.deferDiskCachePreloadForTesting = deferral
 
-        let manager = makeManager(environment: [:])
+            let manager = makeManager(environment: Self.launchEnvironment)
 
-        XCTAssertFalse(manager.accounts().isEmpty,
-                       "A non-XCTest launch must hydrate accounts from the disk cache during init")
+            XCTAssertFalse(manager.accounts().isEmpty,
+                           "A non-XCTest launch must hydrate cached accounts in init (deferral=\(deferral))")
+        }
     }
 
     /// Under XCTest the default skips the preload, so the unit-test host launch does
