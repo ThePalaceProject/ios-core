@@ -117,6 +117,26 @@ class JourneyTestCase: XCTestCase {
         return onScreen.first ?? query.firstMatch
     }
 
+    /// On a simulator that has never answered it, iOS 26 offers to save the
+    /// password once the sign-in form goes away, in a sheet that covers the
+    /// middle of the screen. Call it right after leaving the form. Earlier iOS
+    /// versions do not show the sheet, so they skip the wait.
+    func dismissSavePasswordPromptIfShown(timeout: TimeInterval = 5) {
+        guard #available(iOS 26, *) else { return }
+        let sheet = app.sheets["Save Password?"]
+        guard sheet.waitForExistence(timeout: timeout) else { return }
+        let notNow = sheet.buttons["Not Now"]
+        // A tap during the sheet's presentation animation is dropped, so wait
+        // for the button to take taps and try again while the sheet stays.
+        for _ in 0..<3 where sheet.exists {
+            waitUntil(NSPredicate(format: "hittable == true"), on: notNow, "the Save Password sheet has no Not Now button")
+            notNow.tap()
+            _ = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                                                 object: sheet)], timeout: 3)
+        }
+        XCTAssertFalse(sheet.exists, "the Save Password sheet did not close")
+    }
+
     // MARK: - Navigation
 
     func openTab(_ label: String) {

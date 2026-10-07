@@ -52,6 +52,7 @@ extension JourneyTestCase {
     func borrowFixtureBookFromDetailPage() {
         step("Borrow the book from its detail page") {
             openTab(AccessibilityID.TabBar.catalogTab)
+            dismissSavePasswordPromptIfShown()
             // The row's centre holds its Get button; the title opens the detail page.
             let row = waitFor(app.buttons[AccessibilityID.BookList.cell(FixtureLibrary.bookID)],
                               "the catalog does not list the book")
