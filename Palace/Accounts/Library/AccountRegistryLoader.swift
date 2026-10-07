@@ -496,15 +496,11 @@ final class AccountRegistryLoader: @unchecked Sendable {
         spawnOwnedCrawlTask(priority: .utility, detached: true, firstRun: true) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Registry first-run task started: \(Self.startQoSDescription())")
-            RegistryStartupTrace.startHeartbeat()
-            RegistryStartupTrace.mark("first-run: bundled snapshot load")
 
             if let bundledData = BundledRegistrySnapshot.load(resolver: self.snapshotResourceResolver),
                !Task.isCancelled {
                 Log.info(#file, "First launch — loading bundled registry snapshot for hash \(hash), dataSize=\(bundledData.count)")
-                RegistryStartupTrace.mark("first-run: writeCatalogData")
                 self.registryCache.writeCatalogData(bundledData, hash: hash, isBundled: true)
-                RegistryStartupTrace.mark("first-run: loadAccountSetsAndAuthDoc(bundled)")
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: bundledData, key: hash) { _ in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                 }
@@ -512,7 +508,6 @@ final class AccountRegistryLoader: @unchecked Sendable {
 
             if Task.isCancelled { return }
             Log.debug(#file, "Loading catalogs from network for hash \(hash)…")
-            RegistryStartupTrace.mark("first-run: fetchFromNetwork")
             self.fetchFromNetwork(targetUrl: targetUrl, hash: hash)
         }
     }
@@ -657,7 +652,6 @@ final class AccountRegistryLoader: @unchecked Sendable {
         spawnOwnedCrawlTask(priority: .utility, detached: true) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Registry fallback fetch task started: \(Self.startQoSDescription())")
-            RegistryStartupTrace.mark("fallback: GET")
             do {
                 let (data, _) = try await self.networkExecutorProvider().GET(targetUrl, useTokenIfAvailable: false)
                 if Task.isCancelled { return }
@@ -845,13 +839,9 @@ final class AccountRegistryLoader: @unchecked Sendable {
     ) {
         let completionBox = LoadCompletionBox(handler: completion)
         do {
-            RegistryStartupTrace.mark("load: decode start bytes=\(data.count)")
             let feed = try OPDS2CatalogsFeed.fromData(data)
-            RegistryStartupTrace.mark("load: decode end catalogs=\(feed.catalogs.count); reading current account")
             let hadAccount = currentAccountProvider() != nil
-            RegistryStartupTrace.mark("load: reading accounts for hash")
             let oldAccounts = accountsForKeyProvider(hash)
-            RegistryStartupTrace.mark("load: building accounts")
             let oldAccountsByUUID = Dictionary(
                 oldAccounts.map { ($0.uuid, $0) },
                 uniquingKeysWith: { first, _ in first }
@@ -879,14 +869,12 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 }
             }
 
-            RegistryStartupTrace.mark("load: accounts built n=\(newAccounts.count); replaceBucket start")
             let applied = registryStore.replaceBucket(
                 hash: hash,
                 accounts: newAccounts,
                 // Derived unless a caller explicitly overrides — see the parameter note.
                 isCompleteFeed: isCompleteFeed ?? LibraryCatalogMerger.feedIsPositivelyComplete(feed)
             )
-            RegistryStartupTrace.mark("load: replaceBucket end applied=\(applied)")
             didApplyBucketWrite?(applied)
 
             guard applied else {
@@ -905,7 +893,6 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 return
             }
 
-            RegistryStartupTrace.mark("load: state loop start")
             for newAccount in newAccounts {
                 if newAccount.authenticationDocument != nil,
                    let details = newAccount.details {
@@ -915,7 +902,6 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 }
             }
 
-            RegistryStartupTrace.mark("load: state loop end; auth-doc and notify")
             let group = DispatchGroup()
 
             let accountExistenceChanged = hadAccount != (currentAccountProvider() != nil)
@@ -939,7 +925,6 @@ final class AccountRegistryLoader: @unchecked Sendable {
             }
 
             group.notify(queue: .main) { [self] in
-                RegistryStartupTrace.mark("load: notify on main bytes=\(data.count)")
                 var mainFeed = URL(string: currentAccountProvider()?.catalogUrl ?? "")
                 if let cur = currentAccountProvider(), cur.details?.needsAgeCheck ?? false {
                     mainFeed = cur.details?.defaultAuth?.coppaURL(isOfAge: true)
@@ -1044,45 +1029,4 @@ final class AccountRegistryLoader: @unchecked Sendable {
         return task.isCancelled
     }
     #endif
-}
-
-/// Diagnostic for the catalog stall on the CI runner; removed before merge.
-/// Records the stage the registry startup path is in, and logs it every 2s
-/// from a user-initiated GCD timer outside the cooperative pool, to tell CPU
-/// starvation from a blocked wait.
-enum RegistryStartupTrace {
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var stage = "idle"
-    nonisolated(unsafe) private static var ticks = 0
-    nonisolated(unsafe) private static var sequence = 0
-    nonisolated(unsafe) private static var timer: DispatchSourceTimer?
-
-    static func mark(_ newStage: String) {
-        // The sequence number leads so Palace's log throttle, which keys on a
-        // message's first 30 characters, does not drop adjacent stages.
-        let number = lock.withLock { () -> Int in
-            stage = newStage
-            sequence += 1
-            return sequence
-        }
-        Log.debug(#file, "RegistryTrace \(number) stage: \(newStage)")
-    }
-
-    static func startHeartbeat() {
-        lock.withLock {
-            guard timer == nil else { return }
-            let source = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
-            source.schedule(deadline: .now() + 2, repeating: 2)
-            source.setEventHandler {
-                let (tick, current) = lock.withLock { () -> (Int, String) in
-                    ticks += 1
-                    return (ticks, stage)
-                }
-                Log.debug(#file, "RegistryTrace heartbeat \(tick * 2)s: stage \(current)")
-                if tick >= 30 { lock.withLock { timer?.cancel() } }
-            }
-            timer = source
-            source.resume()
-        }
-    }
 }

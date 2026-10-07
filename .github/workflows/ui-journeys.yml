@@ -81,7 +81,6 @@ jobs:
           xcrun simctl boot "$SIM" || true
           xcrun simctl bootstatus "$SIM" -b
           echo "Simulator: $(xcrun simctl list devices | grep "$SIM")" >> "$GITHUB_STEP_SUMMARY"
-          echo "Runner: $(sysctl -n hw.ncpu) CPUs ($(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || echo ?) performance), load $(sysctl -n vm.loadavg)" >> "$GITHUB_STEP_SUMMARY"
           nohup xcrun simctl spawn "$SIM" log stream --level debug --style compact \
             --predicate 'process == "Palace" AND (messageType != debug OR subsystem == "org.thepalaceproject.palace")' \
             > "$RUNNER_TEMP/palace-app.log" 2>&1 &
@@ -129,7 +128,7 @@ jobs:
           status=${PIPESTATUS[0]}
           echo "Build and journeys took $(( $(date +%s) - start ))s" >> "$GITHUB_STEP_SUMMARY"
           grep -E "^Test Case .*(passed|failed)" ui-journeys.log >> "$GITHUB_STEP_SUMMARY"
-          { echo '```'; grep -E "BUILD MARKER|MockBackend \[|\[PERF\]|registry snapshot|Loading catalogs|task started|RegistryTrace" \
+          { echo '```'; grep -E "BUILD MARKER|MockBackend \[|\[PERF\]|registry snapshot|Loading catalogs|task started" \
               "$RUNNER_TEMP/palace-app.log" | cut -c1-220 | head -40; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           # `xcodebuild test` that selects nothing still prints TEST SUCCEEDED.
           passed=$(grep -cE "^Test Case .*passed" ui-journeys.log)
