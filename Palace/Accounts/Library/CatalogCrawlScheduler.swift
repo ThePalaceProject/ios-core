@@ -13,11 +13,11 @@ import Foundation
 
 /// Injectable spawn seam for AccountsManager's background catalog-crawl Tasks.
 ///
-/// Two arms preserve each call site's exact detached-vs-inheriting semantics and
-/// priority: the init / first-run / slim-refresh sites spawn `detached` at
-/// `.utility`; the `fetchFromNetwork` crawl spawns an inheriting `Task` at
-/// `.userInitiated`; pagination / refresh / preload spawn inheriting `Task`s at
-/// `.utility`.
+/// Two arms preserve each call site's detached-vs-inheriting semantics; the
+/// priority is the caller's. Work the first-run library picker waits on (the
+/// first-run task, the first-page crawl, its direct-GET fallback) runs at
+/// `.userInitiated`; the init hop, slim-snapshot write, pagination, refresh and
+/// preload run at `.utility`.
 struct CrawlTaskScheduler: Sendable {
   /// Spawn an inheriting `Task` at `priority`.
   var spawn: @Sendable (TaskPriority, @escaping @Sendable () async -> Void) -> Task<Void, Never>

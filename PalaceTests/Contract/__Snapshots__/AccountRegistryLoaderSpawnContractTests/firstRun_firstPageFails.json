@@ -1,0 +1,23 @@
+[
+  {
+    "args" : {
+      "detached" : "true",
+      "priority" : "userInitiated"
+    },
+    "method" : "spawn"
+  },
+  {
+    "args" : {
+      "detached" : "false",
+      "priority" : "userInitiated"
+    },
+    "method" : "spawn"
+  },
+  {
+    "args" : {
+      "detached" : "true",
+      "priority" : "userInitiated"
+    },
+    "method" : "spawn"
+  }
+]

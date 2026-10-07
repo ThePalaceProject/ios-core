@@ -1144,6 +1144,7 @@
 		A940C5845CFB8B9A7422E3DE /* PalaceFeatureFlags in Frameworks */ = {isa = PBXBuildFile; productRef = 7F1CB28D175A6A63406EF061 /* PalaceFeatureFlags */; };
 		A961D381DEBCF6341C9C7AA2 /* FontManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA10178BD2885EBF24673F3 /* FontManager.swift */; };
 		A9701CD50E8850215EA9FD69 /* ReadingRulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422FFD436DFCCB056CCF6302 /* ReadingRulerView.swift */; };
+		A97D7AC531F33E8DFC63C647 /* AccountRegistryLoaderSpawnContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA2028177DEB1B9A2FBF26E /* AccountRegistryLoaderSpawnContractTests.swift */; };
 		A99ED22868A0A1698801FDB0 /* AccountsManagerDownloadContextAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7171C65212AB50506BA53D3 /* AccountsManagerDownloadContextAdapter.swift */; };
 		AA225D8E76E146A5132FEA43 /* LCPKeychainMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A303E282D7EFD80AED446401 /* LCPKeychainMigration.swift */; };
 		AAAA00032ECCC53200CDA626 /* SnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = AAAA00012ECCC53200CDA626 /* SnapshotTesting */; };
@@ -2823,6 +2824,7 @@
 		6BEC0E7888809D17645086B9 /* BookmarkSpecConformanceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookmarkSpecConformanceTests.swift; sourceTree = "<group>"; };
 		6C493684B84FF9EDBEBCD104 /* MockCredentialsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockCredentialsProvider.swift; sourceTree = "<group>"; };
 		6C7A26344806FE3471C298DF /* PositionSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PositionSyncTests.swift; sourceTree = "<group>"; };
+		6CA2028177DEB1B9A2FBF26E /* AccountRegistryLoaderSpawnContractTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountRegistryLoaderSpawnContractTests.swift; sourceTree = "<group>"; };
 		6CFC130078A169AED6A9B47B /* PalaceCheckPropertyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalaceCheckPropertyTests.swift; sourceTree = "<group>"; };
 		6CFCFF5C7BF41D65666565EC /* OPDSFeedServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDSFeedServiceTests.swift; sourceTree = "<group>"; };
 		6D3E99EDF9AFB815A1AEDE68 /* PalaceWiringTestCase.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PalaceWiringTestCase.swift; sourceTree = "<group>"; };
@@ -6162,6 +6164,7 @@
 				CE04BB7BA065CC171F20537B /* AccountSwitchBorrowReauthCouplingContractTests.swift */,
 				170477A29A88A56DDCF7CC50 /* AudiobookVendorRecoveryContractTests.swift */,
 				F060B6ED1964EBCAEAADE249 /* DownloadNetworkLossContractTests.swift */,
+				6CA2028177DEB1B9A2FBF26E /* AccountRegistryLoaderSpawnContractTests.swift */,
 			);
 			name = Contract;
 			path = Contract;
@@ -8645,6 +8648,7 @@
 				1BCDA311F7338D86CD9B41A0 /* MockBackendLaunchHookTests.swift in Sources */,
 				FE50C45297AAF4A1734BBEA0 /* AccountSupportEmailRegistryTests.swift in Sources */,
 				741C27438B9E7160926125A4 /* SettingsWebViewConstructionTests.swift in Sources */,
+				A97D7AC531F33E8DFC63C647 /* AccountRegistryLoaderSpawnContractTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

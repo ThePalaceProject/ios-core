@@ -4,8 +4,8 @@
 //  PP-4754: the catalog crawl is owned and deterministically joinable. Runs the
 //  real cold-load spawn chain offline (`NoNetworkURLProtocol`) and asserts that
 //  `_awaitCatalogLoadForTesting()` joins every owned Task without a wall-clock
-//  wait, that the spawn priorities are as designed (the fallback GET is now an
-//  owned detached `.utility` spawn, not fire-and-forget), and that
+//  wait, that the spawn priorities are as designed (the fallback GET is an
+//  owned detached spawn, not fire-and-forget), and that
 //  `cancelAndDrainBackgroundWork()` leaves the owned set empty.
 //
 
@@ -79,18 +79,18 @@ final class AccountsManagerCatalogLoadJoinTests: PalaceWiringTestCase {
         XCTAssertEqual(manager._ownedCrawlTaskCountForTesting, 0,
                        "after the join every owned crawl task must have drained (grow-until-stable reached quiescence)")
 
-        // Scheduling contract: first-run detached .utility → crawl inheriting
-        // .userInitiated → fallback GET detached .utility (the crux: the fallback
-        // is now OWNED, so it appears here at all).
+        // Scheduling contract: first-run detached .userInitiated → crawl inheriting
+        // .userInitiated → fallback GET detached .userInitiated. The first-run picker
+        // waits on all three; the fallback being OWNED is why it appears here at all.
         let spawns = recorder.spawns
         XCTAssertGreaterThanOrEqual(spawns.count, 3,
                                     "cold offline load must spawn first-run, crawl, and the fallback GET")
-        XCTAssertEqual(spawns[0], .init(priority: .utility, detached: true),
-                       "first spawn is the first-run task (detached .utility)")
+        XCTAssertEqual(spawns[0], .init(priority: .userInitiated, detached: true),
+                       "first spawn is the first-run task (detached .userInitiated)")
         XCTAssertEqual(spawns[1], .init(priority: .userInitiated, detached: false),
                        "second spawn is the fetchFromNetwork crawl (inheriting .userInitiated)")
-        XCTAssertEqual(spawns[2], .init(priority: .utility, detached: true),
-                       "third spawn is the wrapped fallback GET (owned detached .utility) — the previously un-drainable write channel")
+        XCTAssertEqual(spawns[2], .init(priority: .userInitiated, detached: true),
+                       "third spawn is the wrapped fallback GET (owned detached .userInitiated) on the first-load path")
     }
 
     // MARK: - 3. Drain completeness for the wrapped fallback GET
@@ -116,7 +116,7 @@ final class AccountsManagerCatalogLoadJoinTests: PalaceWiringTestCase {
         // signature would also satisfy): the 3rd spawn IS the fallback GET.
         let spawns = recorder.spawns
         XCTAssertGreaterThanOrEqual(spawns.count, 3, "sanity: first-run + crawl + fallback GET all spawned")
-        XCTAssertEqual(spawns[2], .init(priority: .utility, detached: true),
+        XCTAssertEqual(spawns[2], .init(priority: .userInitiated, detached: true),
                        "sanity: the 3rd spawn is the owned fallback GET")
 
         // The synchronous drain must leave nothing live — a fire-and-forget

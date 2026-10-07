@@ -491,9 +491,12 @@ final class AccountRegistryLoader: @unchecked Sendable {
         if addLoadingHandler(for: hash, completion) { return }
 
         // Hop the bundled decode + network kickoff OFF the calling thread (cold first
-        // launch reaches here from @MainActor). `.utility` matches the init crawl arms;
-        // tracked so `cancelBackgroundWork()` cancels it.
-        spawnOwnedCrawlTask(priority: .utility, detached: true, firstRun: true) { [weak self] in
+        // launch reaches here from @MainActor). Tracked so `cancelBackgroundWork()`
+        // cancels it. `.userInitiated` because the first-run library picker waits on
+        // the `.TPPCatalogDidLoad` this task posts: the cooperative pool queues a task
+        // behind non-yielding work of its own priority, so at `.utility` it could start
+        // seconds late behind background crawls and preloads.
+        spawnOwnedCrawlTask(priority: .userInitiated, detached: true, firstRun: true) { [weak self] in
             guard let self = self else { return }
 
             if let bundledData = BundledRegistrySnapshot.load(resolver: self.snapshotResourceResolver),
@@ -521,7 +524,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
         }
 
         if TPPConfiguration.customRegistryIsExplicitURL() {
-            fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
+            fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash, priority: .userInitiated)
             return
         }
         spawnOwnedCrawlTask(priority: .userInitiated, detached: false) { [weak self] in
@@ -626,14 +629,16 @@ final class AccountRegistryLoader: @unchecked Sendable {
 
             case .failure(let error):
                 Log.info(#file, "First page crawl failed: \(error), falling back to direct GET to \(targetUrl)")
-                self.fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
+                self.fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash, priority: .userInitiated)
             }
         }
     }
 
-    /// Fallback direct GET when the crawler fails on first launch (owned + drainable).
-    private func fallbackFetchFromNetwork(targetUrl: URL, hash: String) {
-        spawnOwnedCrawlTask(priority: .utility, detached: true) { [weak self] in
+    /// Direct GET of the registry (owned + drainable). Reached from the first-load
+    /// network leg, where `loadCatalogs` completion handlers wait on it, and from the
+    /// background refresh, where nothing does; each caller passes its own priority.
+    private func fallbackFetchFromNetwork(targetUrl: URL, hash: String, priority: TaskPriority) {
+        spawnOwnedCrawlTask(priority: priority, detached: true) { [weak self] in
             guard let self = self else { return }
             do {
                 let (data, _) = try await self.networkExecutorProvider().GET(targetUrl, useTokenIfAvailable: false)
@@ -672,7 +677,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
     /// Background refresh via the incremental crawler; direct-GET fallback.
     private func refreshInBackground(targetUrl: URL, hash: String) {
         if TPPConfiguration.customRegistryIsExplicitURL() {
-            fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
+            fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash, priority: .utility)
             return
         }
         spawnOwnedCrawlTask(priority: .utility, detached: false) { [weak self] in
