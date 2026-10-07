@@ -185,6 +185,15 @@ final class MockBackendLaunchHookTests: XCTestCase {
         XCTAssertEqual(scenario.displayName, "From fixtures")
     }
 
+    /// The cookie store is cleared as files, before anything loads it: the
+    /// HTTPCookieStorage API on the main thread waits on a CFNetwork thread.
+    func testAppDirectories_IncludeTheCookieStore() {
+        let paths = MockBackendLaunchHook.appDirectories().map(\.path)
+
+        XCTAssertTrue(paths.contains { $0.hasSuffix("/Library/Cookies") }, "\(paths)")
+        XCTAssertTrue(paths.contains { $0.hasSuffix("/Library/Caches") }, "the URL cache lives here")
+    }
+
     func testResolveScenario_FallsBackToAnEmbeddedScenario() throws {
         let scenario = try MockBackendLaunchHook.resolveScenario(request("loan_limit", reset: false))
 
