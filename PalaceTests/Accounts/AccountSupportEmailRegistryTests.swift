@@ -51,11 +51,11 @@ final class AccountSupportEmailRegistryTests: XCTestCase {
 
     /// Validating every registry help link must cost less than building one
     /// data detector per link (about 0.1s per registry pass on the simulator).
-    /// Wall-clock, so it runs only with PALACE_TIMING_TESTS=1; see
+    /// Wall-clock, so it runs only with TEST_RUNNER_PALACE_TIMING_TESTS=1; see
     /// docs/architecture/testing-rules-rationale.md, "Load-sensitive tests".
     func testValidatingRegistryHelpLinks_CostsLessThanADetectorPerLink() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["PALACE_TIMING_TESTS"] == "1",
-                          "wall-clock comparison; set PALACE_TIMING_TESTS=1 to run")
+                          "wall-clock comparison; set TEST_RUNNER_PALACE_TIMING_TESTS=1 to run")
         let links = try bundledCatalogs().compactMap(Self.helpHref)
         XCTAssertGreaterThan(links.count, 100)
 
