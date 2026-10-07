@@ -28,7 +28,7 @@ Last updated: 2026-07-08
 | Integration | 6 test files | Fully automated | Yes (in unit suite) |
 | Contract/API | 1 suite + 35 fixtures | Fully automated | Yes (in unit suite) |
 | Snapshot | 11 test files | Automated capture | Artifact only |
-| UI journeys (XCUITest) | `PalaceUITests` against local fixtures; see [UI_JOURNEYS.md](UI_JOURNEYS.md) | Fully automated | No (run locally) |
+| UI journeys (XCUITest) | `PalaceUITests` against local fixtures; see [UI_JOURNEYS.md](UI_JOURNEYS.md) | Fully automated | No (`ui-journeys.yml`, not required) |
 | E2E (simdrive) | Journey corpus is NOT in this repo — it lives in the maintainer's local QA harness (`$PALACE_QA_HARNESS`, default `~/harness/palace-qa`) | MCP-driven replay (SSIM- + structural-gated) | Opt-in and maintainer-local (`verify-pr.sh --simdrive --chaos`); NO CI job replays them, and a clone without the harness exercises them not at all |
 | Security | 3 test files | Fully automated | Yes (in unit suite) |
 | Chaos | 2 test files | Fully automated | Yes (in unit suite) |
@@ -105,6 +105,7 @@ For unit/integration tests this criterion is enforced by mutation testing + the 
 
 ### CI Workflows
 - `unit-testing.yml` — XCTest + coverage (app and local packages) + coverage floors (app floors block beyond a 1.5-point tolerance, package floors are advisory, and INCOMPLETE coverage data fails `build-and-test`; incomplete is never a pass)
+- `ui-journeys.yml`: fixture-backed XCUITest journeys on PRs that change the app, the journeys or the project (not required)
 - `ledger.yml` — Ledger + QAAtlas + AccessLint (non-blocking)
 
 ## Pre-PR Verification

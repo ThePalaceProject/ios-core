@@ -75,7 +75,7 @@ enum MockBackendLaunchHook {
         defaults: UserDefaults,
         appDirectories: [URL],
         fileManager: FileManager = .default,
-        clearSharedStores: () -> Void = clearKeychainCookiesAndURLCache,
+        clearSharedStores: () -> Void = removeAllKeychainItems,
         persistFlags: @escaping @Sendable (Set<String>) -> Void = { flags in
             UserDefaults.standard.set(flags.sorted(), forKey: flagsKey)
         },
@@ -143,19 +143,21 @@ enum MockBackendLaunchHook {
         }
     }
 
-    /// Documents, Library/Application Support, Library/Caches and tmp: where
-    /// the registry, accounts, downloads and catalog caches live.
+    /// Documents, Library/Application Support, Library/Caches (including the
+    /// URL cache), tmp and Library/Cookies. Clearing the cookie store as files,
+    /// before anything loads it, avoids the HTTPCookieStorage API, which makes
+    /// the main thread wait on a CFNetwork thread.
     static func appDirectories(fileManager: FileManager = .default) -> [URL] {
         let searchPaths: [FileManager.SearchPathDirectory] = [.documentDirectory, .applicationSupportDirectory, .cachesDirectory]
+        let library = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first
         return searchPaths.compactMap { fileManager.urls(for: $0, in: .userDomainMask).first }
             + [fileManager.temporaryDirectory]
+            + [library?.appendingPathComponent("Cookies")].compactMap { $0 }
     }
 
     /// Credentials live in the keychain, which survives an app reinstall on
     /// the simulator, so a clean start has to delete them explicitly.
-    static func clearKeychainCookiesAndURLCache() {
-        HTTPCookieStorage.shared.removeCookies(since: .distantPast)
-        URLCache.shared.removeAllCachedResponses()
+    static func removeAllKeychainItems() {
         let classes = [kSecClassGenericPassword, kSecClassInternetPassword,
                        kSecClassCertificate, kSecClassKey, kSecClassIdentity]
         for secClass in classes {

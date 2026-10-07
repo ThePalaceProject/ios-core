@@ -28,6 +28,9 @@ that failed.
 The `PalaceUITests` scheme is separate from `Palace`, so the unit-test run and
 its coverage report do not include these tests.
 
+CI runs the same command in `ui-journeys.yml` on pull requests that change
+`Palace/`, `PalaceUITests/` or the project. It is not a required check.
+
 ## How a journey controls the app
 
 - **Backend.** The test launches the app with `PALACE_MOCK_BACKEND_SCENARIO`
