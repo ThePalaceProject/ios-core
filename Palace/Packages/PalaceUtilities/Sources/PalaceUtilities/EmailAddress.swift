@@ -12,10 +12,11 @@ import Foundation
 @objc public class EmailAddress: NSObject, RawRepresentable, Codable {
     @objc public let rawValue: String
 
-    /// Built once: every Account in the library registry validates its help
-    /// link here at launch, and building a detector per call cost seconds on
-    /// slow devices. NSDataDetector is an NSRegularExpression, which Apple
-    /// documents as immutable and safe to match from several threads at once:
+    /// Built once: every Account in the library registry (about 1,100) validates
+    /// its help link here at launch, and a detector per call made each registry
+    /// pass about six times slower on the iOS simulator. NSDataDetector is an
+    /// NSRegularExpression, which Apple documents as immutable and safe to
+    /// match from several threads at once:
     /// https://developer.apple.com/documentation/foundation/nsregularexpression#Concurrency-and-Thread-Safety
     private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 

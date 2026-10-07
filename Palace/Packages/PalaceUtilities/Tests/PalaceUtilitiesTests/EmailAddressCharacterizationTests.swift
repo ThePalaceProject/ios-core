@@ -25,6 +25,9 @@ final class EmailAddressCharacterizationTests: XCTestCase {
         ("mailto:user@example.com?subject=Help", "user@example.com?subject=Help"),
         ("mailto:user@example.com,other@example.com", nil),
         ("mailto:user%40example.com", nil),
+        // Every "mailto:" is removed, not only the leading one
+        ("mailto:user@example.com?subject=mailto:", "user@example.com?subject="),
+        ("mailto:user@example.com?cc=mailto:x@y.com", "user@example.com?cc=x@y.com"),
         // Whitespace: only U+0020 is stripped, anywhere in the string
         (" mailto:user@example.com ", "user@example.com"),
         ("mailto:cpham@sycuanedu.org ", "cpham@sycuanedu.org"),
