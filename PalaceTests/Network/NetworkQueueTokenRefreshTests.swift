@@ -197,6 +197,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         }
     }
 
+
     // MARK: - Refresh slot held elsewhere, non-token libraries, timeouts
 
     /// Right after reconnect another request may already be refreshing. The
@@ -256,7 +257,10 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         XCTAssertEqual(refresher.libraries, ["lib-A"], "No second attempt in the same drain")
 
         queue.retryQueue()
-        expectEventually("the next drain to run") { server.requestCount == 4 }
+        // The gated resend is awaited too, so no send is left in flight past this test.
+        expectEventually("the next drain to run") {
+            server.requestCount == 4 && GatedURLProtocol.answered == 2
+        }
     }
 
     /// A library that cannot exchange its card for a token is not sent to the
@@ -858,7 +862,9 @@ private final class SeenHosts: @unchecked Sendable {
 
 /// Holds requests whose path ends in `/gated` until `open()`, then answers 401.
 /// Polls from the loading thread's run loop rather than blocking it, because
-/// custom protocols can share one loading thread.
+/// custom protocols can share one loading thread. `reset()` fails any request
+/// still held from an earlier test, so a later `open()` cannot answer it and
+/// count it in that test's `answered`.
 private final class GatedURLProtocol: URLProtocol {
     private static let state = GateState()
     static var answered: Int { state.answered }
@@ -867,6 +873,7 @@ private final class GatedURLProtocol: URLProtocol {
     static func reset() { state.reset() }
 
     private var timer: Timer?
+    private var generation = 0
 
     override class func canInit(with request: URLRequest) -> Bool {
         request.url?.path.hasSuffix("/gated") == true
@@ -874,6 +881,7 @@ private final class GatedURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        generation = Self.state.generation
         let timer = Timer(timeInterval: 0.01, target: self, selector: #selector(poll),
                           userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: .common)
@@ -881,6 +889,12 @@ private final class GatedURLProtocol: URLProtocol {
     }
 
     @objc private func poll() {
+        guard generation == Self.state.generation else {
+            timer?.invalidate()
+            timer = nil
+            client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
+            return
+        }
         guard Self.state.isOpen, let url = request.url else { return }
         timer?.invalidate()
         timer = nil
@@ -901,13 +915,15 @@ private final class GateState: @unchecked Sendable {
     private var _isOpen = false
     private var _answered = 0
     private var _status = 401
+    private var _generation = 0
+    var generation: Int { lock.withLock { _generation } }
     var isOpen: Bool { lock.withLock { _isOpen } }
     var status: Int { lock.withLock { _status } }
     func setStatus(_ value: Int) { lock.withLock { _status = value } }
     var answered: Int { lock.withLock { _answered } }
     func setOpen(_ value: Bool) { lock.withLock { _isOpen = value } }
     func recordAnswer() { lock.withLock { _answered += 1 } }
-    func reset() { lock.withLock { _isOpen = false; _answered = 0; _status = 401 } }
+    func reset() { lock.withLock { _isOpen = false; _answered = 0; _status = 401; _generation += 1 } }
 }
 
 /// Which credentials a challenge consulted, and when a load ended.
