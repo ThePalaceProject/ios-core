@@ -20,18 +20,29 @@ class JourneyTestCase: XCTestCase {
     private(set) var app: XCUIApplication!
     private var currentStep = "launch"
 
-    override func setUp() async throws {
-        try await super.setUp()
+    // No async setUp or tearDown override. With one, and continueAfterFailure
+    // off, XCTest cannot stop the test at a failed assertion: it logs an
+    // assertion failure and exits the test runner, so a failed wait restarts
+    // the runner instead of failing just that test. The main-actor cleanup is
+    // a teardown block that launch(scenario:resetState:) registers.
+    override func setUp() {
+        super.setUp()
         continueAfterFailure = false
     }
 
-    override func tearDown() async throws {
-        if let run = testRun, run.failureCount + run.unexpectedExceptionCount > 0, let app {
-            attach(app: app, named: "Failure in step: \(currentStep)")
+    private var cleanupRegistered = false
+
+    private func registerCleanup() {
+        guard !cleanupRegistered else { return }
+        cleanupRegistered = true
+        addTeardownBlock { @MainActor [weak self] in
+            guard let self else { return }
+            if let run = testRun, run.failureCount + run.unexpectedExceptionCount > 0, let app {
+                attach(app: app, named: "Failure in step: \(currentStep)")
+            }
+            app?.terminate()
+            app = nil
         }
-        app?.terminate()
-        app = nil
-        try await super.tearDown()
     }
 
     // MARK: - Launch
@@ -50,6 +61,7 @@ class JourneyTestCase: XCTestCase {
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
         self.app = app
+        registerCleanup()
     }
 
     /// The fixtures are copied into this test bundle; the app reads them from
