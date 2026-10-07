@@ -71,6 +71,18 @@ final class SettingsWebViewConstructionTests: XCTestCase {
         )
     }
 
+    /// Production never sets the factory, so the default is what patrons get.
+    func testDefaultFactory_BuildsRemotePageWithTheGivenArguments() throws {
+        let url = try XCTUnwrap(URL(string: "https://example.com/licenses"))
+
+        let made = EnvironmentValues().remoteHTMLControllerFactory(url, "Licenses", "Could not load")
+
+        let page = try XCTUnwrap(made as? RemoteHTMLViewController)
+        XCTAssertEqual(page.fileURL, url)
+        XCTAssertEqual(page.title, "Licenses")
+        XCTAssertEqual(page.failureMessage, "Could not load")
+    }
+
     // MARK: - Helpers
 
     private func assertTappingRow(
