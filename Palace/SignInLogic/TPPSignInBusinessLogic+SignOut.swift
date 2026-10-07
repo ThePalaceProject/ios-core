@@ -198,19 +198,19 @@ extension TPPSignInBusinessLogic {
         }
 
         #else
-        // `performLogOut()` requires the main thread (see doc comment above), so
-        // assert the isolation the now-@MainActor `TPPAlertUtils.alert(...)` call
-        // needs in Swift 6 complete-mode. Matches the sibling `+UI.swift` treatment.
-        MainActor.assumeIsolated {
-            if self.bookRegistry.isSyncing {
-                let alert = TPPAlertUtils.alert(
-                    title: "SettingsAccountViewControllerCannotLogOutTitle",
-                    message: "SettingsAccountViewControllerCannotLogOutMessage")
-                uiDelegate?.present(alert, animated: true, completion: nil)
-                isSignOutInProgress = false
-            } else {
-                completeLogOutProcess()
-            }
+        // No `MainActor.assumeIsolated` here: `performLogOut()` is `async` on a
+        // `@MainActor` type, so this body already holds the isolation that the
+        // `@MainActor` `TPPAlertUtils.alert(...)` call needs, and the assertion
+        // form is unavailable from an async context. Only the noDRM target
+        // compiles this arm, which is why the DRM scheme builds without it.
+        if bookRegistry.isSyncing {
+            let alert = TPPAlertUtils.alert(
+                title: "SettingsAccountViewControllerCannotLogOutTitle",
+                message: "SettingsAccountViewControllerCannotLogOutMessage")
+            uiDelegate?.present(alert, animated: true, completion: nil)
+            isSignOutInProgress = false
+        } else {
+            completeLogOutProcess()
         }
         #endif
     }
