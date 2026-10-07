@@ -119,6 +119,7 @@ jobs:
             -destination "id=${{ steps.sim.outputs.id }}" \
             -derivedDataPath "$RUNNER_TEMP/dd" \
             -resultBundlePath "$RUNNER_TEMP/UIJourneys.xcresult" \
+            -collect-test-diagnostics on-failure \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGN_STYLE=Manual \
