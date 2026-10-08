@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload test log
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: toolkit-test-log
           path: ${{ runner.temp }}/toolkit-test.log

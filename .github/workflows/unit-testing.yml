@@ -195,7 +195,7 @@ jobs:
       - name: Upload build results
         if: failure() && steps.build.outcome == 'failure'
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: build-results
           path: ${{ runner.temp }}/BuildResults.xcresult
@@ -249,7 +249,7 @@ jobs:
           ls -la "$RUNNER_TEMP/plan"
 
       - name: Upload test products
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: test-products
           path: ${{ runner.temp }}/plan
@@ -259,7 +259,7 @@ jobs:
 
       # Small and separate, so the gate can check the plan without the products.
       - name: Upload shard plan
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: shard-plan
           path: ${{ runner.temp }}/plan/shard-plan.json
@@ -480,7 +480,7 @@ jobs:
 
       - name: Upload streaming-ON results
         if: steps.tests_streaming_on.outcome == 'failure'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: test-results-streaming-on
           overwrite: true
@@ -551,7 +551,7 @@ jobs:
       - name: Upload package coverage
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: package-coverage
           path: ${{ runner.temp }}/package-coverage/
@@ -582,7 +582,7 @@ jobs:
       - name: Upload Snapshot Failures
         if: always() && steps.snapshots.outputs.count != '0'
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: snapshot-failures-shard-${{ matrix.shard }}
           path: snapshot-failures/
@@ -594,7 +594,7 @@ jobs:
       - name: Upload Test Results
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: test-results-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/shard-out/TestResults.xcresult
@@ -617,7 +617,7 @@ jobs:
       - name: Upload partial test results
         if: always() && steps.partial.outputs.present == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: partial-test-results-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/shard-out/partial/
@@ -629,7 +629,7 @@ jobs:
       # without it, and it must then fail rather than assume.
       - name: Upload shard report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: shard-report-${{ matrix.shard }}
           path: ${{ runner.temp }}/shard-out/shard-report.json
@@ -1298,7 +1298,7 @@ jobs:
       - name: Upload Test Report
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           overwrite: true
           name: test-report
@@ -1309,7 +1309,7 @@ jobs:
       - name: Upload Test Data JSON
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           overwrite: true
           name: test-data
@@ -1322,7 +1322,7 @@ jobs:
       - name: Upload Snapshot Failures
         if: always() && steps.snapshots.outputs.found == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           overwrite: true
           name: snapshot-failures
@@ -1346,7 +1346,7 @@ jobs:
         if: always() && steps.find_results.outputs.found == 'true'
         continue-on-error: true
         id: upload_results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           overwrite: true
           name: test-results
