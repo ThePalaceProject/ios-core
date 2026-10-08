@@ -82,7 +82,7 @@ final class BookRegistryStore: @unchecked Sendable {
   /// and later pass its own reads off as writes.
   private static let barrierOwnerKey: pthread_key_t = {
     var key = pthread_key_t()
-    pthread_key_create(&key, nil)
+    precondition(pthread_key_create(&key, nil) == 0, "BookRegistryStore could not create its thread-specific key")
     return key
   }()
 

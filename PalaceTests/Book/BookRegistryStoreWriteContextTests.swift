@@ -151,6 +151,40 @@ final class BookRegistryStoreWriteContextTests: XCTestCase {
         XCTAssertTrue(recorder.operations.isEmpty)
     }
 
+    /// A write on another store inside this store's write must hand the marker back afterwards.
+    func testWriteAfterOtherStoresWrite_InsideWrite_StillRunsInline() {
+        let otherRecorder = WriteInsideReadRecorder()
+        let other = makeStore(recorder: otherRecorder)
+        var otherRan = false
+        var laterWriteRan = false
+
+        store.performBarrierSync {
+            other.performBarrierSync { otherRan = true }
+            store.performBarrierSync { laterWriteRan = true }
+        }
+
+        XCTAssertTrue(otherRan)
+        XCTAssertTrue(laterWriteRan)
+        XCTAssertTrue(recorder.operations.isEmpty)
+        XCTAssertTrue(otherRecorder.operations.isEmpty)
+    }
+
+    /// A write queued before the store is released still runs; its block decides what to do.
+    func testQueuedAsyncWrite_RunsAfterStoreIsReleased() async {
+        let gate = DispatchSemaphore(value: 0)
+        let ran = expectation(description: "queued write ran")
+        var released: BookRegistryStore? = makeStore(recorder: recorder)
+        weak var weakStore = released
+
+        released?.performBarrier { @Sendable in gate.wait() }
+        released?.performBarrier { @Sendable in ran.fulfill() }
+        released = nil
+        XCTAssertNil(weakStore, "queued writes must not keep the store alive")
+        gate.signal()
+
+        await fulfillment(of: [ran], timeout: 5)
+    }
+
     /// A read nested in a write is still inside the write, so a write under it stays exclusive.
     func testWrite_InsideReadNestedInWrite_RunsInline() async {
         await seed("book-1")
@@ -199,7 +233,8 @@ final class BookRegistryStoreWriteContextTests: XCTestCase {
 
     // MARK: - Concurrency
 
-    /// Readers and writers from many threads, including writes nested in writes; run under TSan.
+    /// Many readers and writers, including writes nested in writes: no write is lost or misreported.
+    /// Under TSan it also checks the reads and writes for races.
     func testConcurrentReadersAndWriters_ApplyEveryWriteAndReportNothing() async {
         let identifiers = (0..<8).map { "book-\($0)" }
         for identifier in identifiers {
