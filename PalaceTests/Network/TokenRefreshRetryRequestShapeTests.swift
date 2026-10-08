@@ -14,9 +14,12 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
 
     private var executor: TPPNetworkExecutor!
     private var userAccount: TPPUserAccountMock!
+    private var libraryAccount: TPPLibraryAccountMock!
 
     private let tokenURL = URL(string: "https://token.example.com/oauth/token")!
     private let apiURL = URL(string: "https://api.example.com/annotations/42")!
+    /// Whether the last caller completion ran on the session's delegate queue.
+    private let completedOnDelegateQueue = LockIsolated<Bool?>(nil)
     private let body = Data(#"{"motivation":"bookmarking","id":"k-42"}"#.utf8)
 
     override func setUp() async throws {
@@ -32,7 +35,7 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
                                           expirationDate: Date().addingTimeInterval(3600))
         userAccount.markLoggedIn()
 
-        let libraryAccount = TPPLibraryAccountMock()
+        libraryAccount = TPPLibraryAccountMock()
         let resolved: TPPUserAccountMock = userAccount
         libraryAccount.userAccountResolver = { _ in resolved }
 
@@ -50,6 +53,7 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
         HTTPStubURLProtocol.reset()
         executor = nil
         userAccount = nil
+        libraryAccount = nil
         super.tearDown()
     }
 
@@ -105,7 +109,9 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
     /// Sends `request` once, then queues that sent task as a 401 retry and
     /// refreshes the token to "fresh-token". Returns every request the server
     /// saw after the first send, and the result the caller finally received.
-    private func sendThenRetryAfterRefresh(_ request: URLRequest)
+    private func sendThenRetryAfterRefresh(_ request: URLRequest,
+                                           dispatchAccountId: String? = nil,
+                                           beforeRefresh: () -> Void = {})
         async throws -> (retries: [SeenRequest], result: NYPLResult<Data>?) {
         let seen = LockIsolated<[SeenRequest]>([])
         HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
@@ -124,14 +130,19 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
         // The first send goes over the wire like production, so the retry is
         // rebuilt from a task that has already been sent.
         let sent = expectation(description: "first send completes")
-        let task = try XCTUnwrap(executor.executeRequest(request, enableTokenRefresh: false) { @Sendable _ in
+        let task = try XCTUnwrap(executor.executeRequest(request,
+                                                         enableTokenRefresh: false,
+                                                         accountId: dispatchAccountId) { @Sendable _ in
             sent.fulfill()
         })
         await fulfillment(of: [sent], timeout: 5.0)   // STARVE-001-OK: the stub answers at once
+        beforeRefresh()
 
         let outcome = LockIsolated<NYPLResult<Data>?>(nil)
         let finished = expectation(description: "caller completion fires after the refresh")
-        executor.refreshTokenAndResume(task: task, accountId: nil) { @Sendable result in
+        let delegateQueue = executor.transport.urlSession.delegateQueue
+        executor.refreshTokenAndResume(task: task, accountId: nil) { @Sendable [completedOnDelegateQueue] result in
+            completedOnDelegateQueue.withValue { $0 = OperationQueue.current === delegateQueue }
             outcome.withValue { $0 = result }
             finished.fulfill()
         }
@@ -176,6 +187,7 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
         assertSameRequestWithFreshBearer(retry, method: "PUT", body: body)
     }
 
+    // The responder does not refresh on a DELETE 401, so production never retries one; kept to pin the rebuild.
     func testRetryAfterRefresh_DELETE_KeepsMethodAndHeadersWithFreshBearer() async throws {
         let retry = try await retryAfterRefresh(of: callerRequest(method: "DELETE", body: nil))
         assertSameRequestWithFreshBearer(retry, method: "DELETE", body: nil)
@@ -191,8 +203,13 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
     func testRetryAfterRefresh_StreamBody_FailsTheCallerAndSendsNothing() async throws {
         var request = callerRequest(method: "POST", body: nil)
         request.httpBodyStream = InputStream(data: body)
+        let responder = executor.responder
 
-        let (retries, result) = try await sendThenRetryAfterRefresh(request)
+        // The 401 that queued this retry marked the URL; marked after the first
+        // send because that send's 200 clears the mark.
+        let (retries, result) = try await sendThenRetryAfterRefresh(request, beforeRefresh: { [apiURL] in
+            responder.markRetried(url: apiURL)
+        })
 
         guard case .failure(let error, _)? = result else {
             return XCTFail("a stream-bodied retry must fail, got \(String(describing: result))")
@@ -200,5 +217,31 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
         XCTAssertEqual((error as NSError).code, TPPErrorCode.responseFail.rawValue)
         XCTAssertEqual(retries.count, 0, "no retry may be sent without its body")
         XCTAssertEqual(userAccount.authToken, "fresh-token", "the refresh itself still succeeded")
+        XCTAssertTrue(responder.canRetry(url: apiURL),
+                      "the failed retry must clear the URL's retry mark so its next 401 can refresh again")
+        XCTAssertEqual(completedOnDelegateQueue.value, true,
+                       "the failure reaches the caller on the queue every other completion uses")
+    }
+
+    /// The account the request was dispatched for has no token by retry time:
+    /// the retry drops the caller's old bearer rather than resending it.
+    func testRetryAfterRefresh_DispatchAccountHasNoToken_SendsNoAuthorization() async throws {
+        let signedOutId = "urn:uuid:signed-out-library"
+        let signedOut = TPPUserAccountMock()
+        let resolved: TPPUserAccountMock = userAccount
+        libraryAccount.userAccountResolver = { id in id == signedOutId ? signedOut : resolved }
+
+        let (retries, result) = try await sendThenRetryAfterRefresh(callerRequest(method: "POST", body: body),
+                                                                    dispatchAccountId: signedOutId)
+
+        guard case .success? = result else {
+            return XCTFail("the retry must still be sent, got \(String(describing: result))")
+        }
+        let retry = try XCTUnwrap(retries.first, "exactly one retry must reach the server")
+        XCTAssertEqual(retries.count, 1)
+        XCTAssertNil(retry.headers["Authorization"],
+                     "no token for the dispatch account: the caller's 'Bearer stale-token' must not be resent")
+        XCTAssertEqual(retry.method, "POST")
+        XCTAssertEqual(retry.body, body)
     }
 }

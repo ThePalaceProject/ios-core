@@ -272,9 +272,11 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
         }
     }
 
-    /// Removes the completion registered for `taskID` and calls it with `error`,
-    /// for a queued retry that cannot be resent.
-    func failCompletion(taskID: TaskID, error: NSError) {
+    /// Fails a queued retry that cannot be resent: clears the URL's retry mark,
+    /// so its next 401 can refresh again, then removes the completion
+    /// registered for `taskID` and calls it with `error`.
+    func failRetry(taskID: TaskID, url: URL?, error: NSError) {
+        clearRetry(url: url)
         var info: TPPNetworkTaskInfo?
         taskInfoQueue.sync {
             info = self.taskInfo.removeValue(forKey: taskID)

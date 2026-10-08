@@ -378,6 +378,53 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
                        "B's stored bearer must be untouched by A's refresh-and-retry")
     }
 
+    /// PP-4986: a retry for a library that signed out after dispatch carries no
+    /// bearer. Keeping the original header would resend B's token; A's is the leak.
+    func test_QueuedRetry_DispatchAccountSignedOut_SendsNoAuthorization() async throws {
+        await executor.resetRefreshAttemptCount()
+
+        let observed = LockedHeaders()
+        let sawRetry = expectation(description: "retried request reached the stub")
+        HTTPStubURLProtocol.register { [tokenURL_A, apiURL_B] request in
+            if request.url == tokenURL_A {
+                return .init(statusCode: 200,
+                             headers: nil,
+                             body: Self.tokenResponseJSON(accessToken: "freshA"))
+            }
+            if request.url == apiURL_B {
+                observed.append(
+                    request.value(forHTTPHeaderField: "Authorization") ?? "<none>")
+                if observed.count == 2 { sawRetry.fulfill() }   // the retry, not the original
+                return .init(statusCode: 200, headers: nil, body: Data())
+            }
+            return nil
+        }
+
+        libraryProvider.switchToB()
+        let sent = expectation(description: "original request completes")
+        let originalTask = executor.GET(request: executor.request(for: apiURL_B, accountId: libraryProvider.uuidB),
+                                        useTokenIfAvailable: true) { _, _, _ in
+            sent.fulfill()
+        }
+        await fulfillment(of: [sent], timeout: 5.0)   // STARVE-001-OK: the stub answers at once
+        let dispatched = try XCTUnwrap(originalTask, "the executor must return the dispatched task")
+
+        // B signs out before the retry is rebuilt.
+        libraryProvider.accountB._credentials = nil
+        await executor.appendTokenRetryForTesting(
+            dispatched, accountIdAtRefreshStart: libraryProvider.uuidA)
+
+        let done = expectation(description: "refresh completes")
+        executor.refreshTokenAndResume(task: nil, accountId: libraryProvider.uuidA) { _ in
+            done.fulfill()
+        }
+        await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: the stub answers at once
+        await fulfillment(of: [sawRetry], timeout: 5.0)   // STARVE-001-OK: fulfilled by the stub on the retry itself
+
+        XCTAssertEqual(observed.all, ["Bearer bearerB", "<none>"],
+                       "the original carries B's bearer; the retry must carry neither B's old bearer nor A's fresh one")
+    }
+
     // MARK: - PP-4986 gap 2: a request BUILT for another library
 
     /// Review found that `executeRequest` resolves `currentAccountId` and

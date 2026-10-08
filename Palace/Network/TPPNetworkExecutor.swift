@@ -891,14 +891,20 @@ extension TPPNetworkExecutor {
                             let rebuildAccountId = stamped ?? queued.accountIdAtRefreshStart
                             guard let mutableRequest = self.retryRequest(from: originalRequest,
                                                                          accountId: rebuildAccountId) else {
-                                let host = originalRequest.url?.host ?? "unknown-host"
+                                let retryURL = originalRequest.url
+                                let host = retryURL?.host ?? "unknown-host"
                                 Log.error(#file, "Token-refresh retry not sent: stream body consumed (host: \(host))")
-                                let message = "The request body could not be resent after a token refresh"
-                                let error = NSError(domain: TPPErrorLogger.clientDomain,
-                                                    code: TPPErrorCode.responseFail.rawValue,
-                                                    userInfo: [NSLocalizedDescriptionKey: message])
-                                self.responder.failCompletion(taskID: oldTask.taskIdentifier, error: error)
-                                oldTask.cancel()
+                                // Delivered on the session's delegate queue, where the
+                                // responder delivers every other task completion.
+                                let responder = self.responder
+                                self.transport.urlSession.delegateQueue.addOperation {
+                                    let message = "The request body could not be resent after a token refresh"
+                                    let error = NSError(domain: TPPErrorLogger.clientDomain,
+                                                        code: TPPErrorCode.responseFail.rawValue,
+                                                        userInfo: [NSLocalizedDescriptionKey: message])
+                                    responder.failRetry(taskID: oldTask.taskIdentifier, url: retryURL, error: error)
+                                    oldTask.cancel()
+                                }
                                 continue
                             }
                             let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
