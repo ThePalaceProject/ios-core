@@ -104,7 +104,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 870 in total, on two CLAUDE.md critical paths (sign-in, borrow). The allowlist
 # only ratchets down, so pinning them costs nothing and closes the regression.
 363  Palace/Accounts/Library/AccountsManager.swift
-634  Palace/SignInLogic/TPPSignInBusinessLogic.swift
+633  Palace/SignInLogic/TPPSignInBusinessLogic.swift
 514  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the
 # ceiling inside the old blind spot; pinned here at its measured size so the

@@ -176,6 +176,41 @@ def add_one(project, file_index, rel_path, targets, group_path, dry_run, verbose
   :added
 end
 
+# This script REWRITES the project file. If the file was already staged when it
+# ran, the rewrite lands in the working tree only, and `git commit` (which
+# commits the index) ships a project file without the entries just added.
+#
+# That happened on PR #1610: a merge conflict was resolved with
+# `checkout --theirs` + `git add`, then this script re-added the extracted view.
+# The commit carried zero Sources entries for it while the working tree carried
+# four, and CI failed with "cannot find 'AudiobookCoverArt' in scope". Every
+# local check passed, because every local check reads the working tree.
+def warn_if_already_staged(project_path)
+  rel = project_path.relative_path_from(REPO_ROOT).to_s
+  status = `git -C #{REPO_ROOT} status --porcelain -- #{rel} 2>/dev/null`
+  return if status.nil? || status.empty?
+
+  # An .xcodeproj is a directory, so status can list several files. Take the
+  # worst case over every line rather than reading only the first: a line for
+  # some other file in the bundle must not mask the one that diverged.
+  diverged = status.lines.any? do |line|
+    index_state = line[0]
+    tree_state = line[1]
+    tree_state == 'M' && index_state != ' ' && index_state != '?'
+  end
+  return unless diverged
+
+  warn ""
+  warn "  WARNING: #{rel} was already staged, and this script has just"
+  warn "  rewritten it. The new entries are in the working tree but NOT in the"
+  warn "  index, so a commit now would omit them and the build would fail on a"
+  warn "  target that needs the file."
+  warn ""
+  warn "  Stage the rewrite before committing:"
+  warn "      git add #{rel}"
+  warn ""
+end
+
 def main(argv)
   opts = parse_args(argv)
 
@@ -220,6 +255,7 @@ def main(argv)
   if !opts[:dry_run] && counts[:added].positive?
     project.save
     puts "saved #{project_path.relative_path_from(REPO_ROOT)}" if opts[:verbose]
+    warn_if_already_staged(project_path)
   end
 
   puts "\nadded=#{counts[:added]} skipped=#{counts[:skipped]} failed=#{counts[:failed]}"

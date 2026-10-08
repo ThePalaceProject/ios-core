@@ -599,3 +599,98 @@ def test_uncommitted_test_files_returns_None_when_git_cannot_answer(tmp_path):
         assert mod.uncommitted_test_files() is None
     finally:
         os.chdir(cwd)
+
+
+# --- (v) a respelled wait is not a new wait --------------------------------
+#
+# Making an enclosing test `async` forces `wait(for:)` to become
+# `await fulfillment(of:)` — `wait(for:)` blocks the main executor and is
+# unavailable there. The line is new text for a wait that already existed, so
+# flagging it would report an exposure the diff did not add. These pin that the
+# narrowing is scoped to real conversions and does not become a blanket excuse.
+
+def _conversion_diff(path: str, removed: list[str], added: list[str]) -> str:
+    """A unified diff over one hunk that removes `removed` and adds `added`."""
+    body = "".join(f"-{l}\n" for l in removed) + "".join(f"+{l}\n" for l in added)
+    return (
+        f"diff --git a/{path} b/{path}\n"
+        "index 1111111..2222222 100644\n"
+        f"--- a/{path}\n"
+        f"+++ b/{path}\n"
+        f"@@ -10,{len(removed)} +10,{len(added)} @@\n"
+        f"{body}"
+    )
+
+
+def test_wait_for_to_fulfillment_conversion_is_not_flagged():
+    diff = _conversion_diff(
+        "PalaceTests/Foo/BarTests.swift",
+        ["        wait(for: [exp], timeout: 5.0)"],
+        ["        await fulfillment(of: [exp], timeout: 5.0)"],
+    )
+    assert _LTQ.lint_starvation_diff(diff) == []
+
+
+def test_conversion_with_an_identifier_timeout_is_not_flagged():
+    diff = _conversion_diff(
+        "PalaceTests/Foo/BarTests.swift",
+        ["        wait(for: [exp], timeout: timeout)"],
+        ["        await fulfillment(of: [exp], timeout: timeout)"],
+    )
+    assert _LTQ.lint_starvation_diff(diff) == []
+
+
+def test_waitforexpectations_to_fulfillment_conversion_is_not_flagged():
+    diff = _conversion_diff(
+        "PalaceTests/Foo/BarTests.swift",
+        ["        waitForExpectations(timeout: 5.0)"],
+        ["        await fulfillment(of: [exp], timeout: 5.0)"],
+    )
+    assert _LTQ.lint_starvation_diff(diff) == []
+
+
+def test_a_genuinely_new_wait_beside_a_conversion_is_still_flagged():
+    """One removal excuses one addition. The second is new and must fire."""
+    diff = _conversion_diff(
+        "PalaceTests/Foo/BarTests.swift",
+        ["        wait(for: [exp], timeout: 5.0)"],
+        ["        await fulfillment(of: [exp], timeout: 5.0)",
+         "        await fulfillment(of: [exp], timeout: 5.0)"],
+    )
+    findings = _LTQ.lint_starvation_diff(diff)
+    assert len(findings) == 1, findings
+
+
+def test_a_new_wait_with_a_different_timeout_is_still_flagged():
+    """Same expectations, longer deadline — a change in exposure, not a respelling."""
+    diff = _conversion_diff(
+        "PalaceTests/Foo/BarTests.swift",
+        ["        wait(for: [exp], timeout: 5.0)"],
+        ["        await fulfillment(of: [exp], timeout: 30.0)"],
+    )
+    assert len(_LTQ.lint_starvation_diff(diff)) == 1
+
+
+def test_a_new_wait_on_other_expectations_is_still_flagged():
+    diff = _conversion_diff(
+        "PalaceTests/Foo/BarTests.swift",
+        ["        wait(for: [exp], timeout: 5.0)"],
+        ["        await fulfillment(of: [somethingElse], timeout: 5.0)"],
+    )
+    assert len(_LTQ.lint_starvation_diff(diff)) == 1
+
+
+def test_a_wait_removed_in_another_hunk_does_not_excuse_an_addition():
+    """Matching is per hunk; a removal far away is unrelated work."""
+    path = "PalaceTests/Foo/BarTests.swift"
+    diff = (
+        f"diff --git a/{path} b/{path}\n"
+        "index 1111111..2222222 100644\n"
+        f"--- a/{path}\n"
+        f"+++ b/{path}\n"
+        "@@ -10,1 +10,0 @@\n"
+        "-        wait(for: [exp], timeout: 5.0)\n"
+        "@@ -90,0 +90,1 @@\n"
+        "+        await fulfillment(of: [exp], timeout: 5.0)\n"
+    )
+    assert len(_LTQ.lint_starvation_diff(diff)) == 1

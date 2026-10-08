@@ -165,24 +165,30 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
 
     // MARK: - handleRedirectURL success / failure paths
 
-    func test_handleRedirectURL_validPayload_storesAuthTokenAndPatron() {
+    func test_handleRedirectURL_validPayload_storesAuthTokenAndPatron() async {
         let url = cleverRedirectURL(accessToken: "clever-token-abc",
                                     patron: ["name": "Alice"])
 
+        // This test used to assert that the token and patron were stored BEFORE
+        // validateCredentials() dispatched its request, by reading them after a
+        // synchronous call. Both are transient — the reducer clears them once
+        // sign-in settles — and the call is now awaited, so that ordering is no
+        // longer observable from outside without racing the completion. Two
+        // attempts to sample it mid-flight were worse than the gap: one raced,
+        // and one crashed the suite asserting isolation inside the mock's seam.
+        //
+        // What remains asserted is the durable fact: a valid payload dispatches
+        // the credential request at all, which the parser only does on its
+        // success branch. The store-then-dispatch ORDER is covered where it is
+        // deterministic — AuthReducer's own tests in PalaceAuth, against the
+        // state machine rather than through the network (PP-5301).
         postOAuthRedirect(url)
+        await businessLogic._awaitSignInWorkForTesting()
 
-        // Token and patron must be captured into the businessLogic in-flight state
-        // BEFORE validateCredentials() fires its async network call. If a change
-        // swaps the assignment order (or drops one) this assertion fails.
-        XCTAssertEqual(businessLogic.authToken, "clever-token-abc",
-                       "access_token from redirect payload must be stored as the in-flight auth token")
-        XCTAssertEqual(businessLogic.patron?["name"] as? String, "Alice",
-                       "patron_info JSON must be decoded and assigned to businessLogic.patron")
-        // Following the assign, validateCredentials() is invoked which flips
-        // the validating flag — its presence proves we exited the parser via
-        // the success branch, not via any of the early-return error branches.
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "Valid OAuth payload must hand off to validateCredentials()")
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "Valid OAuth payload must hand off to validateCredentials()")
+        XCTAssertEqual(businessLogic.userAccount.patron?["name"] as? String, "Alice",
+                       "the patron parsed out of the redirect must reach the account")
     }
 
     func test_handleRedirectURL_missingAccessToken_skipsValidationAndReportsParseError() {
@@ -398,7 +404,7 @@ final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func test_getBearerToken_success_persistsTokenViaTokenRefresher() {
+    func test_getBearerToken_success_persistsTokenViaTokenRefresher() async {
         // §10.2 seam: a successful `TokenResponse` must transition the
         // businessLogic's reducer to a state where the in-flight authToken
         // matches and `validateCredentials()` is invoked. Mutating the
@@ -415,7 +421,8 @@ final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
                                      tokenRefresher: tokenRefresher) {
             completed.fulfill()
         }
-        wait(for: [completed], timeout: 5.0)
+        await fulfillment(of: [completed], timeout: 5.0)   // STARVE-001-OK: TokenRefresherMock resolves a pre-set .success on the caller's own stack — no network and no fire-and-forget task behind this expectation
+        await businessLogic._awaitSignInWorkForTesting()
 
         // The seam mock writes to its local state only — it does NOT persist
         // a token to userAccount. The success branch in getBearerToken is what
@@ -431,8 +438,8 @@ final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
                        "tokenURL must flow through to executeTokenRefresh unchanged")
         XCTAssertEqual(tokenRefresher.lastAccountId, libraryAccountMock.tppAccountUUID,
                        "accountId argument must be the businessLogic's libraryAccountID")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "On success, the businessLogic must hand off to validateCredentials()")
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "On success, the businessLogic must hand off to validateCredentials()")
     }
 
     func test_getBearerToken_failure_doesNotStoreTokenAndSurfacesError() {
@@ -522,7 +529,7 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func test_validateCredentials_basicAuthSuccess_firesDidReceiveCredentialsCallback() {
+    func test_validateCredentials_basicAuthSuccess_firesDidReceiveCredentialsCallback() async {
         // The success branch must fire businessLogicDidReceiveCredentials
         // so the UI can show its DRM spinner. The delegate mock exposes
         // didCallDidReceiveCredentials which flips inside the method body.
@@ -532,30 +539,28 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
         let proxy = TPPSignInOutBusinessLogicUIDelegateMockReceiveProxy(wrapped: originalDelegate)
         businessLogic.uiDelegate = proxy
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
-        // Drain main queue (the executor's completion is dispatched async to
-        // .main; `businessLogicDidReceiveCredentials` fires synchronously off
-        // that same hop via `TPPMainThreadRun.asyncIfNeeded`'s on-main fast
-        // path). Mirrors test_validateCredentials_basicAuthFailure below.
-        drainMainQueue()
+        // This double resolves inline on the caller's thread; the drain is for
+        // the delegate hop through `TPPMainThreadRun.asyncIfNeeded`. Mirrors
+        // the failure case below.
+        await drainMainQueueAsync()
 
         XCTAssertEqual(proxy.receiveCredentialsCallCount, 1,
                        "businessLogicDidReceiveCredentials must fire exactly once per success")
     }
 
-    func test_validateCredentials_basicAuthFailure_doesNotFireReceiveCredentialsCallback() {
+    func test_validateCredentials_basicAuthFailure_doesNotFireReceiveCredentialsCallback() async {
         // Failure must NOT call didReceiveCredentials — that callback signals
         // "credentials accepted, DRM next" and would mislead the UI.
         networkExecutor.shouldFail = true
         networkExecutor.errorStatusCode = 401
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
-        // Drain main queue (the executor's completion is dispatched async to .main).
-        // DispatchQueue.main is FIFO — once our no-op block runs, every previously
-        // queued completion has already run. No fixed-delay padding.
-        drainMainQueue()
+        // Same inline double; the drain covers the delegate hop, and the main
+        // queue is FIFO, so once our no-op block runs it has already landed.
+        await drainMainQueueAsync()
 
         XCTAssertFalse(uiDelegate.didCallDidReceiveCredentials,
                        "Failure path must NOT fire businessLogicDidReceiveCredentials — the UI must not show the DRM spinner")

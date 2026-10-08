@@ -268,7 +268,7 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
     // NOT drop the tap. It awaits readiness and, once details land, FIRES the
     // credential request. We assert the request count transitions 0 → 1 across
     // the `.detailsLoading` → `.detailsLoaded` boundary.
-    func testLogIn_racingAuthDocLoad_firesRequestOnceReady() throws {
+    func testLogIn_racingAuthDocLoad_firesRequestOnceReady() async throws {
         let mockExecutor = businessLogic.networker as! TPPRequestExecutorMock
         let basicDetails = try singleBasicAuthDetails()
 
@@ -279,7 +279,7 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
         XCTAssertNil(businessLogic.selectedAuthentication,
                      "pre-condition: during .detailsLoading the auth is unresolved — the 479 silent-no-op trigger")
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         // Pre-fix (479): logIn() returned immediately, no request ever fired.
         XCTAssertEqual(mockExecutor.executedRequestURLs.count, 0,
@@ -300,7 +300,10 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
         fired.assertForOverFulfill = false  // at-least-one semantics; retries may fire >1
         mockExecutor.onExecuteRequest = { _ in fired.fulfill() }
         setLoadState(.detailsLoaded(basicDetails))
-        wait(for: [fired], timeout: 5.0)
+        // `await fulfillment`, not `wait(for:)`: the retried logIn dispatches its
+        // request from a main-actor `Task`, which cannot start while a blocking
+        // wait holds the main thread. The assertions below are unchanged.
+        await fulfillment(of: [fired], timeout: 5.0)
 
         XCTAssertGreaterThanOrEqual(mockExecutor.executedRequestURLs.count, 1,
                                     "after readiness, the raced Sign-in must fire the credential request — NOT silently drop (the 479 regression)")
