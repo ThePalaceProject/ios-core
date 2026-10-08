@@ -552,6 +552,21 @@ extension TPPNetworkExecutor {
         return urlRequest
     }
 
+    /// The request resent after a token refresh: the caller's request, method,
+    /// body and headers included, with only the bearer replaced. Credentials come
+    /// from a snapshot of `accountId`'s account, as in `request(for:accountId:)`.
+    /// Returns nil for a stream body, which the first send has already consumed.
+    func retryRequest(from original: URLRequest, accountId: String?) -> URLRequest? {
+        if original.httpBody == nil, original.httpBodyStream != nil {
+            return nil
+        }
+        var retry = original
+        let resolvedId = accountId ?? accountsManager.currentAccountId ?? ""
+        let snapshot = accountsManager.userAccount(for: resolvedId).credentialSnapshot()
+        retry.setValue(snapshot.authToken.map { "Bearer \($0)" }, forHTTPHeaderField: "Authorization")
+        return retry
+    }
+
     @objc func clearCache() {
         transport.clearCache()
     }
@@ -847,7 +862,7 @@ extension TPPNetworkExecutor {
                         for queued in queuedTasks {
                             let oldTask = queued.task
                             guard let originalRequest = oldTask.originalRequest,
-                                  let originalURL = originalRequest.url else {
+                                  originalRequest.url != nil else {
                                 continue
                             }
 
@@ -874,8 +889,18 @@ extension TPPNetworkExecutor {
                                 Log.warn(#file, "Retry has no dispatch provenance (host: \(host)); falling back to the account current at refresh-start — this request may authenticate as the wrong library (PP-4986). All five known producers stamp; an unstamped task here is a producer the census did not predict.")
                             }
                             let rebuildAccountId = stamped ?? queued.accountIdAtRefreshStart
-                            let mutableRequest = self.request(for: originalURL,
-                                                              accountId: rebuildAccountId)
+                            guard let mutableRequest = self.retryRequest(from: originalRequest,
+                                                                         accountId: rebuildAccountId) else {
+                                let host = originalRequest.url?.host ?? "unknown-host"
+                                Log.error(#file, "Token-refresh retry not sent: stream body consumed (host: \(host))")
+                                let message = "The request body could not be resent after a token refresh"
+                                let error = NSError(domain: TPPErrorLogger.clientDomain,
+                                                    code: TPPErrorCode.responseFail.rawValue,
+                                                    userInfo: [NSLocalizedDescriptionKey: message])
+                                self.responder.failCompletion(taskID: oldTask.taskIdentifier, error: error)
+                                oldTask.cancel()
+                                continue
+                            }
                             let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
                             // A retry can itself 401. Without this the second
                             // round loses provenance and falls back to current.

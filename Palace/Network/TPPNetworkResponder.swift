@@ -272,6 +272,16 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
         }
     }
 
+    /// Removes the completion registered for `taskID` and calls it with `error`,
+    /// for a queued retry that cannot be resent.
+    func failCompletion(taskID: TaskID, error: NSError) {
+        var info: TPPNetworkTaskInfo?
+        taskInfoQueue.sync {
+            info = self.taskInfo.removeValue(forKey: taskID)
+        }
+        info?.completion(.failure(error, nil))
+    }
+
     /// Test seam: the bytes accumulated for `taskID` so far, or nil if no task
     /// info is registered under that id.
     ///
