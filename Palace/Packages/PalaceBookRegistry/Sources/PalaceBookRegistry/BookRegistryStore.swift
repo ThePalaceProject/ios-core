@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import PalaceBookModel
+import PalaceLogging
 
 /// Thread-safe in-memory storage for book registry records.
 /// Uses a concurrent DispatchQueue with barrier writes for thread safety.
@@ -26,7 +27,9 @@ import PalaceBookModel
 ///   The `syncQueueKey` `DispatchSpecific` guard makes the sync helpers
 ///   re-entrant (a barrier block that calls back into `performSync` runs
 ///   inline instead of deadlocking) without ever escaping the serialized
-///   write window. No property is read or written outside these helpers.
+///   write window. A synchronous write runs inline only inside a write of this
+///   store (`barrierOwnerKey`); started inside a read it is reported and skipped
+///   (PP-5274). No property is read or written outside these helpers.
 ///   The Combine subjects (`registrySubject`, `bookStateSubject`) are `let`
 ///   and thread-safe by construction. Therefore instances are safe to share
 ///   across concurrency domains: the class carries its own synchronization,
@@ -67,10 +70,55 @@ final class BookRegistryStore: @unchecked Sendable {
   /// `NotificationService` lives in the app target. Defaults to a no-op for tests.
   private let onAvailabilityChange: @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void
 
+  /// Called when a synchronous write starts inside a read; the write is then
+  /// skipped. Injected so tests can observe it without trapping.
+  private let onWriteInsideRead: @Sendable (_ operation: String) -> Void
+
+  /// Thread-specific slot naming the store whose barrier write this thread is
+  /// running. On `syncQueue` without it, the caller is a read, which other
+  /// reads run alongside. Keyed by store so one store's write does not admit an
+  /// inline write on another store's read. Per thread rather than `@TaskLocal`,
+  /// because a `Task` started inside a write would inherit a task-local marker
+  /// and later pass its own reads off as writes.
+  private static let barrierOwnerKey: pthread_key_t = {
+    var key = pthread_key_t()
+    pthread_key_create(&key, nil)
+    return key
+  }()
+
+  private var ownerToken: UnsafeMutableRawPointer { Unmanaged.passUnretained(self).toOpaque() }
+
+  private var isRunningBarrier: Bool {
+    pthread_getspecific(Self.barrierOwnerKey) == ownerToken
+  }
+
+  private func runAsBarrierOwner(_ body: () -> Void) {
+    let previous = pthread_getspecific(Self.barrierOwnerKey)
+    pthread_setspecific(Self.barrierOwnerKey, ownerToken)
+    defer { pthread_setspecific(Self.barrierOwnerKey, previous) }
+    body()
+  }
+
+  /// Debug builds stop here. Release builds log and skip the write: running it
+  /// inline races the concurrent reads, a synchronous barrier would wait on the
+  /// read that is waiting on it, and deferring it as an async barrier would
+  /// return before the change exists, so callers that read their own results
+  /// (`updatedBookMetadata`, the loans reconciliation's `changesMade`) would
+  /// act on a write that has not happened. Skipping leaves the registry and
+  /// the caller agreeing that nothing changed.
+  static let reportWriteInsideRead: @Sendable (_ operation: String) -> Void = { operation in
+    assertionFailure("BookRegistryStore.\(operation) started inside a read of the store (PP-5274)")
+    Log.error(#file, "BookRegistryStore.\(operation) started inside a read of the store; write skipped")
+  }
+
   // MARK: - Init
 
-  init(onAvailabilityChange: @escaping @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void = { _, _ in }) {
+  init(
+    onAvailabilityChange: @escaping @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void = { _, _ in },
+    onWriteInsideRead: @escaping @Sendable (_ operation: String) -> Void = BookRegistryStore.reportWriteInsideRead
+  ) {
     self.onAvailabilityChange = onAvailabilityChange
+    self.onWriteInsideRead = onWriteInsideRead
     syncQueue.setSpecific(key: syncQueueKey, value: ())
   }
 
@@ -96,15 +144,29 @@ final class BookRegistryStore: @unchecked Sendable {
     // single-threaded execution the parameter already had — so no capture races
     // another thread. Mirrors `SyncCallbacks` / `SendableErrorDocument`.
     let carrier = BarrierBlockBox(block)
-    syncQueue.async(flags: .barrier) { carrier.run() }
+    // Weak, so a queued write does not extend the store's lifetime; the
+    // blocks themselves capture the store weakly and return if it is gone.
+    syncQueue.async(flags: .barrier) { [weak self] in
+      guard let self else { return carrier.run() }
+      self.runAsBarrierOwner { carrier.run() }
+    }
   }
 
-  func performBarrierSync(_ block: () -> Void) {
-    if DispatchQueue.getSpecific(key: syncQueueKey) != nil {
-      block()
-    } else {
-      syncQueue.sync(flags: .barrier, execute: block)
+  /// Runs `block` as an exclusive write and returns `true`. Inside a write of
+  /// this store it runs inline. Inside a read it is reported through
+  /// `onWriteInsideRead`, not run, and returns `false`.
+  @discardableResult
+  func performBarrierSync(_ block: () -> Void, operation: String = "performBarrierSync") -> Bool {
+    guard DispatchQueue.getSpecific(key: syncQueueKey) != nil else {
+      syncQueue.sync(flags: .barrier) { runAsBarrierOwner(block) }
+      return true
     }
+    guard isRunningBarrier else {
+      onWriteInsideRead(operation)
+      return false
+    }
+    block()
+    return true
   }
 
   // MARK: - Test-only deterministic-join seam
@@ -148,12 +210,12 @@ final class BookRegistryStore: @unchecked Sendable {
     _ block: (_ registry: inout [String: TPPBookRegistryRecord]) -> Void,
     onComplete: (() -> Void)? = nil
   ) {
-    performBarrierSync { block(&self.registry) }
+    guard performBarrierSync({ block(&self.registry) }, operation: "mutateRegistrySync") else { return }
     // Second barrier dispatch: inout access from `block` has fully ended before
     // `onComplete` runs. onComplete can safely read `self.registry` (e.g. to
     // snapshot it for save) without tripping exclusivity.
     if let onComplete = onComplete {
-      performBarrierSync { onComplete() }
+      performBarrierSync({ onComplete() }, operation: "mutateRegistrySync")
     }
   }
 
@@ -322,11 +384,7 @@ final class BookRegistryStore: @unchecked Sendable {
       self.registry[book.identifier]?.book = updatedBook
       result = updatedBook
     }
-    if DispatchQueue.getSpecific(key: syncQueueKey) != nil {
-      block()
-    } else {
-      syncQueue.sync(flags: .barrier, execute: block)
-    }
+    performBarrierSync(block, operation: "updatedBookMetadata")
     return result
   }
 
