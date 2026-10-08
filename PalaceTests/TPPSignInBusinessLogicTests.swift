@@ -179,7 +179,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         XCTAssertTrue(samlHeaderValue?.starts(with: "Bearer") ?? false)
     }
 
-    func testLogInFlow() throws {
+    func testLogInFlow() async throws {
         // preconditions
         let user = businessLogic.userAccount
         XCTAssertNil(user.deviceID, "user.deviceID precondition should be nil")
@@ -188,10 +188,13 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         XCTAssertNil(user.barcode, "user.barcode precondition should be nil")
         XCTAssertNil(user.pin, "user.pin precondition should be nil")
 
-        // Test that logIn() can be called and sets isValidatingCredentials
+        // Test that logIn() reaches credential validation. Asserted on the
+        // request rather than the transient validating flag, which an awaited
+        // call has already cleared by the time it returns (PP-5301).
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-        businessLogic.logIn()
-        XCTAssertTrue(businessLogic.isValidatingCredentials)
+        await businessLogic.logIn()
+        let executor = businessLogic.networker as? TPPRequestExecutorMock
+        XCTAssertGreaterThanOrEqual(executor?.executedRequestURLs.count ?? 0, 1)
 
         // Verify preconditions are still valid
         XCTAssertNotNil(user)

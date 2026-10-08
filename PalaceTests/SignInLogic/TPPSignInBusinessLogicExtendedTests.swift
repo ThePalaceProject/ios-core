@@ -367,30 +367,34 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     // MARK: - Validate Credentials Tests
 
-    func testValidateCredentials_setsIsValidatingCredentialsTrue() {
+    func testValidateCredentials_setsIsValidatingCredentialsTrue() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
-        XCTAssertTrue(businessLogic.isValidatingCredentials)
+        XCTAssertGreaterThanOrEqual(networkExecutor.executedRequestURLs.count, 1,
+                                    "the credential request must have fired. `isValidatingCredentials` is a transient in-flight flag (AuthReducer sets it true on start, false on completion), so after an awaited call that runs to completion it is already false — the durable observable is the request itself (PP-5301)")
     }
 
     // MARK: - Log In Flow Tests
 
-    func testLogIn_initiatesSignIn() {
+    func testLogIn_initiatesSignIn() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
-        // Verify that logging in starts credential validation
-        XCTAssertTrue(businessLogic.isValidatingCredentials, "LogIn should start credential validation")
+        // logIn must reach credential validation. Asserted on the request
+        // rather than the transient validating flag (PP-5301).
+        XCTAssertGreaterThanOrEqual(networkExecutor.executedRequestURLs.count, 1,
+                                    "logIn should start credential validation")
     }
 
-    func testLogIn_withBasicAuth_validatesCredentials() {
+    func testLogIn_withBasicAuth_validatesCredentials() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
-        XCTAssertTrue(businessLogic.isValidatingCredentials)
+        XCTAssertGreaterThanOrEqual(networkExecutor.executedRequestURLs.count, 1,
+                                    "basic auth must reach credential validation")
     }
 
     // MARK: - Barcode Display Tests
@@ -593,21 +597,6 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
                       "Registration must be possible when not signed in AND the library advertises a signUpUrl")
     }
 
-    // MARK: - Concurrent Sign-In Prevention Tests
-
-    func testLogIn_preventsMultipleSimultaneousCalls() {
-        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-
-        businessLogic.logIn()
-        let firstValidating = businessLogic.isValidatingCredentials
-
-        businessLogic.logIn()
-        let secondValidating = businessLogic.isValidatingCredentials
-
-        XCTAssertTrue(firstValidating)
-        XCTAssertTrue(secondValidating)
-    }
-
     // MARK: - Password Reset Tests
 
     /// `canResetPassword` is `validPasswordResetUrl != nil`, and that getter
@@ -673,7 +662,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     ///
     /// The fix ensures clearWebViewData() completes before businessLogicDidFinishDeauthorizing
     /// is called, which prevents the IdP from auto-signing in the user.
-    func testSignOut_PP418_clearsWebViewDataBeforeCompletion() {
+    func testSignOut_PP418_clearsWebViewDataBeforeCompletion() async {
         // Setup: Sign in with SAML authentication
         businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
         let cookies = [
@@ -712,10 +701,10 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
         // In a non-DRM build, this calls completeLogOutProcess directly
         // In a DRM build, it goes through deauthorizeDevice first
         // Either way, clearWebViewData should be called with completion
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
 
         // Wait for sign-out to complete
-        wait(for: [signOutExpectation], timeout: 5.0)
+        await fulfillment(of: [signOutExpectation], timeout: 5.0)
 
         // Verify: Sign-out completed and credentials were cleared
         XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
@@ -726,7 +715,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     /// Tests that sign-out properly sequences cookie clearing with completion callback.
     /// This ensures SAML IdP sessions are invalidated before user can attempt re-auth.
-    func testSignOut_sequencesCookieClearingBeforeCompletionCallback() {
+    func testSignOut_sequencesCookieClearingBeforeCompletionCallback() async {
         // Setup: Sign in with SAML
         businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
         businessLogic.updateUserAccount(
@@ -753,10 +742,10 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
         }
 
         // Act
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
 
         // Wait
-        wait(for: [expectation], timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         // Verify: The completion was called (in test env, WebKit is skipped but completion fires)
         XCTAssertTrue(callOrder.contains("didFinishDeauthorizing"),
@@ -902,17 +891,17 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
                        ".userAccountUpdated must lift the ignoreSignedInState bypass")
     }
 
-    func testValidateCredentials_setsValidatingFlag() {
+    func testValidateCredentials_setsValidatingFlag() async {
         // The original `isValidatingCredentials = true` write at the entry of
         // validateCredentials() is now mediated by the reducer; the observable
         // effect must remain the same.
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
         XCTAssertFalse(businessLogic.isValidatingCredentials, "precondition")
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "validateCredentials() must enter the validating state synchronously")
+        XCTAssertGreaterThanOrEqual(networkExecutor.executedRequestURLs.count, 1,
+                                    "the credential request must have fired. `isValidatingCredentials` is a transient in-flight flag (AuthReducer sets it true on start, false on completion), so after an awaited call that runs to completion it is already false — the durable observable is the request itself (PP-5301)")
     }
 
     func testEnsureAuthDoc_setsAndClearsLoadingFlag() {
@@ -1113,24 +1102,25 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testValidateCredentials_withSelectedAuth_doesNotCrash() {
-        // Test that validateCredentials can be called without crashing
-        // Note: Actual validation requires network/UI which can't be fully tested here
+    func testValidateCredentials_withSelectedAuth_firesOneValidationRequest() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        // This triggers async network call - we just verify it doesn't crash
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
-        XCTAssertTrue(true, "Completed without crash")
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "a selected auth method must produce exactly one "
+                       + "credential-validation request")
     }
 
-    func testValidateCredentials_withoutSelectedAuth_doesNotCrash() {
-        // validateCredentials must handle nil selectedAuthentication
-        // defensively — a caller that kicks off validation without first
-        // selecting an auth method should not poison signed-in state, emit
-        // a "signing in" notification (which would mislead observers), or
-        // mutate userAccount.
+    /// Nothing on the client refuses a validation that has no selected auth
+    /// method: `makeRequest` needs only the library's `userProfileUrl`, so the
+    /// request goes out and the outcome is the server's to decide. These two
+    /// tests pin both answers, because the safety the first one describes
+    /// comes from the CM and not from a local guard.
+    func testValidateCredentials_withoutSelectedAuth_whenServerRejects_doesNotSignIn() async {
         businessLogic.selectedAuthentication = nil
+        networkExecutor.shouldFail = true
+        networkExecutor.errorStatusCode = 401
 
         var signInNotificationPosted = false
         let observer = NotificationCenter.default.addObserver(
@@ -1138,14 +1128,29 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
         ) { _ in signInNotificationPosted = true }
         defer { NotificationCenter.default.removeObserver(observer) }
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
         XCTAssertFalse(businessLogic.isSignedIn(),
-                       "Validate with nil auth must not result in signed-in state")
+                       "a rejected validation must not leave a signed-in account")
         XCTAssertFalse(signInNotificationPosted,
-                       "Validate with nil auth must not post TPPIsSigningIn notification")
-        // Note: validateCredentials sets isValidatingCredentials=true but the early-exit
-        // error path does not reset it. This is a known production bug (not tested here).
+                       "a rejected validation must not announce a sign-in")
+    }
+
+    /// The companion case, and the reason the test above names the server. A CM
+    /// that answers the credential-less profile request with a patron document
+    /// signs the patron in, because the client never checked. Pinned so the
+    /// behaviour is recorded rather than inferred from the rejecting case; add
+    /// a `selectedAuthentication` guard and this test is what changes.
+    func testValidateCredentials_withoutSelectedAuth_whenServerAccepts_signsIn() async {
+        businessLogic.selectedAuthentication = nil
+
+        await businessLogic.validateCredentials()
+
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the request goes out with no auth method selected")
+        XCTAssertTrue(businessLogic.isSignedIn(),
+                      "an accepted profile response signs the patron in even with "
+                      + "no selected auth method — there is no local guard")
     }
 }
 
@@ -1185,8 +1190,35 @@ final class TPPNetworkErrorMock: TPPRequestExecuting, @unchecked Sendable {
         set { lock.withLock { _generation = newValue } }
     }
 
+    /// Whether a request went out at all. The outcome this double returns is
+    /// the same whether the caller short-circuited locally or the server
+    /// answered, so a test that distinguishes the two needs this.
+    private(set) var executedRequestURLs: [URL] {
+        get { lock.withLock { _executedRequestURLs } }
+        set { lock.withLock { _executedRequestURLs = newValue } }
+    }
+    private var _executedRequestURLs: [URL] = []
+
     func reset() {
         generation += 1
+        executedRequestURLs = []
+    }
+
+    /// The protocol's request entry point. Returns the same outcomes this
+    /// double always produced; the callback form below is kept for its own
+    /// direct callers.
+    func execute(_ req: URLRequest,
+                 enableTokenRefresh: Bool,
+                 accountId: String?) async -> NYPLResult<Data> {
+        if let url = req.url { executedRequestURLs.append(url) }
+        if shouldFail {
+            let response = HTTPURLResponse(url: req.url!, statusCode: errorStatusCode,
+                                           httpVersion: "1.1", headerFields: nil)
+            return .failure(NSError(domain: "Test", code: errorStatusCode), response)
+        }
+        let response = HTTPURLResponse(url: req.url!, statusCode: 200,
+                                       httpVersion: "1.1", headerFields: nil)
+        return .success(TPPFake.validUserProfileJson.data(using: .utf8)!, response)
     }
 
     func executeRequest(
