@@ -877,7 +877,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
                      "syncUrl must not be captured for a short-circuited re-entrant sync")
     }
 
-    func test_sync_whenNotSyncing_withCredentialsAndNoLoansUrl_resolvesToLoaded() throws {
+    func test_sync_whenNotSyncing_withCredentialsAndNoLoansUrl_resolvesToLoaded() async throws {
         // Contrast to the re-entrancy test: SAME credentialed fixture with a
         // nil loansUrl, but currentState is .loaded (not .syncing). Now the
         // re-entrancy guard does NOT fire, so sync() proceeds into the Task,
@@ -900,12 +900,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
         let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
 
-        let exp = expectation(description: "sync resolved")
-        syncManager.sync(currentState: .loaded, setState: setState) { errorDoc, newBooks in
-            completionArgs = (errorDoc, newBooks)
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 3.0)
+        syncManager.sync(currentState: .loaded, setState: setState) { completionArgs = ($0, $1) }
+        await syncManager._awaitSyncTasksForTesting()
 
         // sync() sets .syncing, then awaitReady resolves with no loansUrl → .loaded.
         XCTAssertEqual(received.last, .loaded,
@@ -1095,7 +1091,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         })
     }
 
-    func test_sync_whenFeedFetchFails_revertsToLoadedAndForwardsErrorDocument() throws {
+    func test_sync_whenFeedFetchFails_revertsToLoadedAndForwardsErrorDocument() async throws {
         let (_, cleanup) = try seedCredentialedLoansAccount()
         defer { cleanup() }
 
@@ -1106,12 +1102,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
-        let exp = expectation(description: "feed fetch failure resolved")
-        sut.sync(currentState: .loaded, setState: { received.append($0) }) { errorDoc, newBooks in
-            completionArgs = (errorDoc, newBooks)
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 3.0)
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { completionArgs = ($0, $1) }
+        await sut._awaitSyncTasksForTesting()
 
         XCTAssertEqual(fetcher.resetCacheCalls, [true],
                        "loans sync must request a cache-reset fetch (resetCache: true) through the widened seam — got \(fetcher.resetCacheCalls)")
@@ -1125,7 +1117,28 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
                      "syncUrl must be cleared after a failed feed fetch")
     }
 
-    func test_sync_whenFeedFetchSucceeds_resolvesToSyncedAndClearsSyncUrl() throws {
+    /// The sync join must cover a fetch that is still in flight when the test
+    /// starts waiting; otherwise these tests depend on host speed again (PP-5296).
+    func test_awaitSyncTasks_whenFeedFetchIsStillInFlight_returnsOnlyAfterCompletion() async throws {
+        let (_, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+
+        let fetcher = StubOPDSFeedFetcher()
+        fetcher.fetchDelayNanoseconds = 250_000_000
+        fetcher.stubbedError = NSError(domain: "P5.feedFetch", code: 503)
+        let sut = makeSyncManager(feedFetcher: fetcher)
+
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completionCount = 0
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { _, _ in completionCount += 1 }
+        await sut._awaitSyncTasksForTesting()
+
+        XCTAssertEqual(completionCount, 1,
+                       "the join must not return before the delayed fetch resolves and completion fires")
+        XCTAssertEqual(received, [.syncing, .loaded])
+    }
+
+    func test_sync_whenFeedFetchSucceeds_resolvesToSyncedAndClearsSyncUrl() async throws {
         let (_, cleanup) = try seedCredentialedLoansAccount()
         defer { cleanup() }
 
@@ -1135,12 +1148,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
-        let exp = expectation(description: "feed fetch succeeded")
-        sut.sync(currentState: .loaded, setState: { received.append($0) }) { errorDoc, newBooks in
-            completionArgs = (errorDoc, newBooks)
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 3.0)
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { completionArgs = ($0, $1) }
+        await sut._awaitSyncTasksForTesting()
 
         XCTAssertEqual(fetcher.resetCacheCalls, [true],
                        "successful loans sync must also request a cache-reset fetch")
@@ -1154,7 +1163,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
                      "syncUrl must be cleared once the synced reconciliation completes")
     }
 
-    func test_sync_whenAwaitReadyFails_revertsToLoadedWithoutFetching() throws {
+    func test_sync_whenAwaitReadyFails_revertsToLoadedWithoutFetching() async throws {
         try KeychainAvailability.skipIfUnavailable()
         let (uuid, seedCleanup) = seedFixtureCurrentAccount()
         defer { seedCleanup() }
@@ -1174,12 +1183,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
-        let exp = expectation(description: "awaitReady failure resolved")
-        sut.sync(currentState: .loaded, setState: { received.append($0) }) { errorDoc, newBooks in
-            completionArgs = (errorDoc, newBooks)
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 3.0)
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { completionArgs = ($0, $1) }
+        await sut._awaitSyncTasksForTesting()
 
         XCTAssertTrue(fetcher.resetCacheCalls.isEmpty,
                       "awaitReady() failure must abort BEFORE the feed fetch — the fetcher must never be called")
@@ -1729,14 +1734,16 @@ final class SpyRegistryDownloadService: RegistryDownloadServicing, @unchecked Se
 
 /// Lock-backed fake `OPDSFeedFetching` for the feed-fetch-branch tests.
 /// `@unchecked Sendable` invariant: the only concurrently-touched mutable state
-/// (`_resetCacheCalls`) is guarded by `lock`; `stubbedError` / `stubbedFeed` are
-/// set once on the test thread before the SUT runs and only read on the fetch
-/// path thereafter.
+/// (`_resetCacheCalls`) is guarded by `lock`; `stubbedError`, `stubbedFeed` and
+/// `fetchDelayNanoseconds` are set once on the test thread before the SUT runs
+/// and only read on the fetch path thereafter.
 private final class StubOPDSFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
     private let lock = NSLock()
     private var _resetCacheCalls: [Bool] = []
     var stubbedError: Error?
     var stubbedFeed: TPPOPDSFeed?
+    /// Holds each fetch open for this long before resolving; 0 resolves at once.
+    var fetchDelayNanoseconds: UInt64 = 0
 
     /// The `resetCache` argument observed on each `fetchFeed` call, in order.
     var resetCacheCalls: [Bool] {
@@ -1750,6 +1757,7 @@ private final class StubOPDSFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
 
     func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
         lock.withLock { _resetCacheCalls.append(resetCache) }
+        if fetchDelayNanoseconds > 0 { try? await Task.sleep(nanoseconds: fetchDelayNanoseconds) }
         if let stubbedError { throw stubbedError }
         if let stubbedFeed { return stubbedFeed }
         throw NSError(domain: "StubOPDSFeedFetcher", code: -1,
