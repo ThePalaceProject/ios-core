@@ -10,36 +10,41 @@ import Foundation
 
 let TPPDefaultRequestTimeout: TimeInterval = 30.0
 
-protocol TPPRequestExecuting {
-    /// Execute a given request.
+/// `Sendable` states what every conformer already guarantees rather than
+/// imposing anything new: `TPPNetworkExecutor` is declared `@unchecked
+/// Sendable`, and so is each test double. Saying it here is what makes
+/// `execute` reachable from an isolated context — without it, awaiting a
+/// request from a `@MainActor` caller means sending the executor across
+/// isolation, which the compiler refuses.
+protocol TPPRequestExecuting: Sendable {
+    /// Perform a request and return its result.
+    ///
     /// - Parameters:
-    ///   - req: The request to perform.
-    ///   - completion: Always called when the resource is either fetched from
-    /// the network or from the cache.
-    /// - Returns: The task issueing the given request.
-    @discardableResult
-    func executeRequest(_ req: URLRequest,
-                        enableTokenRefresh: Bool,
-                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask?
-
-    /// Dispatch a request that was built for a SPECIFIC library rather than the
-    /// currently selected one.
+    ///   - req: the request to perform.
+    ///   - enableTokenRefresh: refresh a near-expiry token before dispatching.
+    ///   - accountId: the library this request was BUILT for; `nil` means the
+    ///     currently selected one. PP-4986: a 401 retry rebuilds the request
+    ///     from the account stamped on its task, so a caller that built for
+    ///     another library — Settings sign-in and sign-out via
+    ///     `TPPSignInBusinessLogic`, `NotificationService.deleteToken(for:)` —
+    ///     must name it, or the retry authenticates as the wrong library.
     ///
-    /// PP-4986: the retry queue rebuilds a 401'd request using the account
-    /// stamped on its task, and the default `executeRequest` stamps
-    /// `currentAccountId` — because that is what it resolves. Callers that build
-    /// for another library (Settings sign-in/sign-out via
-    /// `TPPSignInBusinessLogic`, `NotificationService.deleteToken(for:)` — see the note below —) must
-    /// say so here, or a retry authenticates as the wrong library.
+    /// This replaced two completion-handler requirements. A completion typed
+    /// `(NYPLResult<Data>) -> Void` cannot say where it runs: the executor's
+    /// sessions use `delegateQueue: nil`, so every completion arrives off the
+    /// main actor, while a closure formed in a `@MainActor` context inherits
+    /// that isolation and type-checks anyway. That mismatch is the PP-5299
+    /// crash class, and at a completion call site the only remedies were a hop
+    /// the author had to remember or an `@unchecked Sendable` carrier. A
+    /// continuation resumes on the awaiting caller's actor, so the hazard is
+    /// unrepresentable here rather than merely avoided.
     ///
-    /// Additive rather than a signature change: conformers and mocks that do not
-    /// implement it inherit the default below, which delegates and behaves
-    /// exactly as before.
-    @discardableResult
-    func executeRequest(_ req: URLRequest,
-                        enableTokenRefresh: Bool,
-                        accountId: String?,
-                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask?
+    /// Returns `NYPLResult` rather than throwing because the failure case
+    /// carries the `URLResponse`, and sign-in reads problem documents off
+    /// error responses.
+    func execute(_ req: URLRequest,
+                 enableTokenRefresh: Bool,
+                 accountId: String?) async -> NYPLResult<Data>
 
     var requestTimeout: TimeInterval {get}
 
@@ -47,30 +52,12 @@ protocol TPPRequestExecuting {
 }
 
 extension TPPRequestExecuting {
-    /// Default: ignore the account and behave exactly as the two-argument form.
-    /// A conformer that cannot honour per-request accounts is no worse than it
-    /// was; only `TPPNetworkExecutor` overrides this.
-    @discardableResult
-    func executeRequest(_ req: URLRequest,
-                        enableTokenRefresh: Bool,
-                        accountId: String?,
-                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
-        executeRequest(req, enableTokenRefresh: enableTokenRefresh, completion: completion)
-    }
-
     var requestTimeout: TimeInterval {
         return Self.defaultRequestTimeout
     }
 
     static var defaultRequestTimeout: TimeInterval {
         return TPPDefaultRequestTimeout
-    }
-
-    @discardableResult
-    func executeRequest(_ req: URLRequest,
-                        useTokenIfAvailable: Bool = true,
-                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-        URLSessionDataTask()
     }
 }
 

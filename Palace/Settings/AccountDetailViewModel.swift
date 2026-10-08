@@ -428,18 +428,22 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         // Browser-based auth (OAuth, OIDC) opens directly without
         // on-device credential collection. SAML goes through samlHelper
         // (also a WebView, but routed via the default logIn() switch).
+        // This view model is the outermost UI boundary: SwiftUI actions are
+        // synchronous closures, so the sign-in is started in a `Task` here
+        // rather than pushing `async` further out into the views. Inside the
+        // Task the work runs on the main actor by construction (PP-5301).
         if businessLogic.selectedAuthentication?.isOauth == true ||
            businessLogic.selectedAuthentication?.isOidc == true {
-            businessLogic.logIn()
+            Task { await businessLogic.logIn() }
             return
         }
 
         guard canSignIn else { return }
 
         if let tokenURL = selectedUserAccount.authDefinition?.tokenURL {
-            businessLogic.logIn(with: tokenURL)
+            Task { await businessLogic.logIn(with: tokenURL) }
         } else {
-            businessLogic.logIn()
+            Task { await businessLogic.logIn() }
         }
     }
 
@@ -549,7 +553,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     func selectSAMLIDP(_ idp: OPDS2SamlIDP) {
         businessLogic.selectedIDP = idp
-        businessLogic.logIn()
+        Task { await businessLogic.logIn() }
     }
 
     func openRegistration() {

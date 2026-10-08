@@ -313,30 +313,30 @@ final class OIDCLoginRoutingTests: XCTestCase {
         super.tearDown()
     }
 
-    func testLogIn_withOIDC_callsWillSignIn() {
+    func testLogIn_withOIDC_callsWillSignIn() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertTrue(uiDelegate.didCallWillSignIn,
                       "OIDC logIn should trigger businessLogicWillSignIn")
     }
 
-    func testLogIn_withOIDC_doesNotValidateCredentialsDirectly() {
+    func testLogIn_withOIDC_doesNotValidateCredentialsDirectly() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertFalse(businessLogic.isValidatingCredentials,
                        "OIDC flow should NOT directly call validateCredentials; it uses ASWebAuthenticationSession")
     }
 
-    func testLogIn_withOIDC_capturesCredentials() {
+    func testLogIn_withOIDC_capturesCredentials() async {
         uiDelegate.username = "oidc-user"
         uiDelegate.pin = nil
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertEqual(businessLogic.capturedBarcode, "oidc-user")
     }
@@ -531,7 +531,7 @@ final class OIDCCallbackHandlingTests: XCTestCase {
     }
 
     /// Callback URL uses the custom scheme with query parameters (like Android).
-    func testHandleOIDCCallback_withQueryParams_extractsTokenAndValidates() {
+    func testHandleOIDCCallback_withQueryParams_extractsTokenAndValidates() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
         let patronJSON = "{\"name\":\"OIDC+User\"}"
@@ -544,8 +544,12 @@ final class OIDCCallbackHandlingTests: XCTestCase {
                        "OIDC callback should extract access_token")
         XCTAssertEqual(businessLogic.patron?["name"] as? String, "OIDC User",
                        "OIDC callback should extract patron_info")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "After callback, should be validating credentials against the CM")
+        // The callback handler is synchronous and starts validation in a task,
+        // so the hand-off is observed by joining that task and checking the
+        // request it fired, not by the in-flight validating flag (PP-5301).
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the extracted token must be validated against the CM")
     }
 
     /// CM may also provide tokens as a URL fragment (same as OAuth).
@@ -1340,7 +1344,7 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRegression_oauthRedirect_stillUsesUniversalLinksPrefix() {
+    func testRegression_oauthRedirect_stillUsesUniversalLinksPrefix() async {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
 
         let patronJSON = "{\"name\":\"OAuth+User\"}"
@@ -1355,10 +1359,15 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
 
         XCTAssertEqual(businessLogic.authToken, "oauth-tok",
                        "OAuth redirect through handleRedirectURL must still work")
-        XCTAssertTrue(businessLogic.isValidatingCredentials)
+        // The callback handler is synchronous and starts validation in a task,
+        // so the hand-off is observed by joining that task and checking the
+        // request it fired, not by the in-flight validating flag (PP-5301).
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the extracted token must be validated against the CM")
     }
 
-    func testRegression_samlRedirect_stillUsesUniversalLinksPrefix() {
+    func testRegression_samlRedirect_stillUsesUniversalLinksPrefix() async {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
 
         let patronJSON = "{\"name\":\"SAML+User\"}"
@@ -1373,7 +1382,12 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
 
         XCTAssertEqual(businessLogic.authToken, "saml-tok",
                        "SAML redirect through handleRedirectURL must still work")
-        XCTAssertTrue(businessLogic.isValidatingCredentials)
+        // The callback handler is synchronous and starts validation in a task,
+        // so the hand-off is observed by joining that task and checking the
+        // request it fired, not by the in-flight validating flag (PP-5301).
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the extracted token must be validated against the CM")
     }
 
     func testRegression_oauthRedirect_withError_stillHandlesError() {
@@ -1454,7 +1468,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testSignOut_withOIDC_clearsAuthToken() {
+    func testSignOut_withOIDC_clearsAuthToken() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1471,8 +1485,8 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "OIDC sign-out must clear the auth token")
@@ -1483,7 +1497,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
     /// OIDC sign-out now triggers an explicit browser-based logout (the
     /// ASWebAuthenticationSession step is skipped in the test runner, so this
     /// verifies the rest of the pipeline still completes cleanly).
-    func testSignOut_withOIDC_triggersExplicitLogoutFlowAndCompletesDeauthorization() {
+    func testSignOut_withOIDC_triggersExplicitLogoutFlowAndCompletesDeauthorization() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1499,15 +1513,15 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
                       "OIDC sign-out must notify the UI delegate when complete")
         XCTAssertNil(businessLogic.selectedIDP)
     }
 
-    func testSignOut_withOIDC_clearsPatronInfo() {
+    func testSignOut_withOIDC_clearsPatronInfo() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1523,14 +1537,14 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.patron,
                      "OIDC sign-out must clear patron info")
     }
 
-    func testRegression_signOut_withOAuth_stillClearsToken() {
+    func testRegression_signOut_withOAuth_stillClearsToken() async {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1546,14 +1560,14 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "OAuth sign-out must still work after OIDC changes")
     }
 
-    func testRegression_signOut_withSAML_stillClearsCookies() {
+    func testRegression_signOut_withSAML_stillClearsCookies() async {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
         let cookies = [HTTPCookie(properties: [
             .domain: "idp.example.com", .path: "/",
@@ -1573,14 +1587,14 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "SAML sign-out must still clear tokens after OIDC changes")
     }
 
-    func testSignOut_resetsInFlightAuthState() {
+    func testSignOut_resetsInFlightAuthState() async {
         // performLogOut now dispatches .signOutCompleted after userAccount.removeAll().
         // Verifies the in-flight reducer state (authToken, capturedBarcode, ignoreSignedInState,
         // isLoggingInAfterSignUp) is fully reset — the next sign-in starts from a clean slate.
@@ -1601,8 +1615,8 @@ final class OIDCSignOutRegressionTests: XCTestCase {
 
         let exp = expectation(description: "Sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.authToken, "signOut must clear in-flight authToken")
         XCTAssertNil(businessLogic.capturedBarcode)
@@ -2010,67 +2024,6 @@ final class OIDCReauthOnExpiredTokenTests: XCTestCase {
 
         XCTAssertEqual(businessLogic.userAccount.authToken, "new-fresh-token")
         XCTAssertTrue(businessLogic.isSignedIn())
-    }
-}
-
-// MARK: - Tests: AccountDetailViewModel Sign-In with Stale Credentials
-
-@MainActor
-final class OIDCViewModelSignInTests: XCTestCase {
-
-    /// Per-test isolated container — built via `makeTestAppContainer()` so
-    /// each test method gets a fresh service graph (no cross-test pollution
-    /// through `AppContainer._cached`).
-    private var appContainer: AppContainer!
-
-    override func setUp() {
-        super.setUp()
-        appContainer = makeTestAppContainer()
-    }
-
-    override func tearDown() {
-        appContainer = nil
-        super.tearDown()
-    }
-
-    func testSignIn_withStaleOIDCCredentials_proceedsToLogin() {
-        guard let libraryID = appContainer.accountsManager.currentAccountId else {
-            return
-        }
-
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: appContainer)
-
-        let userAccount = viewModel.selectedUserAccount
-        let originalState = userAccount.authState
-
-        // The signIn guard should allow stale credentials through:
-        // guard !isSignedIn || needsReauth else { ... }
-        let isSignedIn = userAccount.hasCredentials() && userAccount.authState != .loggedOut
-        let needsReauth = userAccount.authState == .credentialsStale
-
-        if isSignedIn && needsReauth {
-            XCTAssertTrue(true, "Stale credentials should bypass the sign-out guard")
-        } else if !isSignedIn {
-            XCTAssertTrue(true, "Not signed in - normal sign-in flow")
-        }
-
-        _ = originalState
-    }
-
-    func testSignIn_withActiveCredentials_showsSignOutAlert() {
-        guard let libraryID = appContainer.accountsManager.currentAccountId else {
-            return
-        }
-
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: appContainer)
-
-        let isSignedIn = viewModel.isSignedIn
-        let isStale = viewModel.selectedUserAccount.authState == .credentialsStale
-
-        if isSignedIn && !isStale {
-            // This should trigger presentSignOutAlert, not the login flow
-            XCTAssertTrue(true, "Active (non-stale) credentials should show sign-out alert")
-        }
     }
 }
 
