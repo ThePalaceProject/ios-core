@@ -207,3 +207,72 @@ def test_every_local_package_has_a_floor_or_a_recorded_exemption():
     assert packages and packages == set(floors["packages"]) | exempt
     assert "TPPBookRegistry" in floors["package_modules"]
     assert "TPPBookRegistry" not in floors.get("unmeasured", {})
+
+
+# ---------------------------------------------------------------------------
+# The coverage leg's pass message. Exit 0 from the enforcer can still carry
+# rows below their recorded floor: app rows within APP_FLOOR_TOLERANCE
+# (`WITHIN`) and package rows that are advisory (`FAIL advisory`).
+# ---------------------------------------------------------------------------
+
+def _enforcer_output(tmp_path, app_covered, pkg_covered):
+    """Real enforcer output for one app module and one advisory package row."""
+    import json
+    coverage = {
+        "status": "complete", "testable_coverage": 60.0, "targets": [],
+        "expected_packages": ["PalaceAuth"], "expected_host_packages": [],
+        "files": [{"name": "TPPBook.swift", "path": "Palace/X/TPPBook.swift",
+                   "covered_lines": app_covered, "executable_lines": 1000,
+                   "coverage": app_covered / 10.0}],
+        "packages_app_suite": {"PalaceAuth": {"testable_covered_lines": pkg_covered,
+                                              "testable_executable_lines": 100,
+                                              "testable_coverage": float(pkg_covered)}},
+        "packages_host": {},
+    }
+    floors = {"overall": 0.5, "modules": {"TPPBook": 0.5}, "packages": {"PalaceAuth": 0.5}}
+    cov, flo = tmp_path / "cov.json", tmp_path / "floors.json"
+    cov.write_text(json.dumps(coverage))
+    flo.write_text(json.dumps(floors))
+    r = subprocess.run(["python3", ENFORCE, str(cov), "--floors", str(flo)],
+                       capture_output=True, text=True, cwd=REPO)
+    assert r.returncode == 0, r.stdout + r.stderr
+    return r.stdout + r.stderr
+
+
+def _pass_detail(enforcer_output):
+    """Run verify-pr.sh's own coverage_pass_detail on the enforcer output."""
+    script = (
+        f"eval \"$(sed -n '/^coverage_pass_detail() {{/,/^}}/p' '{VERIFY}')\"; "
+        'coverage_pass_detail "$1"'
+    )
+    out = subprocess.run(["bash", "-c", script, "bash", enforcer_output],
+                         capture_output=True, text=True, check=True)
+    return out.stdout.strip()
+
+
+def test_pass_message_with_every_row_at_or_above_its_floor(tmp_path):
+    assert _pass_detail(_enforcer_output(tmp_path, 800, 80)) == "All blocking floors met"
+
+
+def test_pass_message_counts_advisory_rows_below_their_floor(tmp_path):
+    assert _pass_detail(_enforcer_output(tmp_path, 800, 10)) == \
+        "All blocking floors met (1 advisory below floor)"
+
+
+def test_pass_message_counts_app_rows_within_the_tolerance(tmp_path):
+    """490/1000 against a 0.5 floor is 1 point under: exit 0, row reads WITHIN."""
+    assert _pass_detail(_enforcer_output(tmp_path, 490, 80)) == \
+        "All blocking floors met (1 within tolerance)"
+
+
+def test_pass_message_counts_both_kinds(tmp_path):
+    assert _pass_detail(_enforcer_output(tmp_path, 490, 10)) == \
+        "All blocking floors met (1 within tolerance, 1 advisory below floor)"
+
+
+def test_coverage_leg_records_the_computed_pass_message():
+    src = open(VERIFY, encoding="utf-8").read()
+    i = src.index("# 4. Coverage floors")
+    block = src[i:i + 4000]
+    assert 'record "coverage_floors" "pass" "$(coverage_pass_detail "$COV_OUTPUT")"' in block
+    assert "All module floors met" not in src

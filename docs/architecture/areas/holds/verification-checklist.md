@@ -6,16 +6,16 @@ created: 2026-05-28
 last_refresh: 2026-05-28
 freshness_window: 180d
 owners: [holds]
-description: Per-area verification reference; refresh before next swarm/rigorous-fix
+description: Per-area verification reference; refresh before changing this area
 ---
 
-<!-- audit-verified: All file paths and line numbers were spot-read against the working tree on 2026-05-28 (branch chore/swarm-rigor-meta-improvement). Palace/Holds/ contains exactly the 3 files listed in Section 1 per `ls Palace/Holds/`. Test inventory verified via `find PalaceTests -name '*Hold*Tests.swift'`. Regression matrix rows B3/B4/B7/C4/N1/N4 quoted from docs/Testing/REGRESSION_TEST_MATRIX.md. HelpSpot ticket numbers (17960 Derryl, 17971 Heather), F-numbers (F-035, F-065, F-072, F-081), and JIRA ticket IDs (PP-3702, PP-3811, PP-4020, PP-4258, PP-4259, PP-4358) sourced from the regression matrix + git log -- Palace/Holds/. NotificationService.swift line numbers (484-579) verified via Read of that range. -->
+<!-- audit-verified: All file paths and line numbers were spot-read against the working tree on 2026-05-28 (PR #1019). Palace/Holds/ contains exactly the 3 files listed in Section 1 per `ls Palace/Holds/`. Test inventory verified via `find PalaceTests -name '*Hold*Tests.swift'`. Regression matrix rows B3/B4/B7/C4/N1/N4 quoted from docs/Testing/REGRESSION_TEST_MATRIX.md. HelpSpot ticket numbers (17960 Derryl, 17971 Heather), F-numbers (F-035, F-065, F-072, F-081), and JIRA ticket IDs (PP-3702, PP-3811, PP-4020, PP-4258, PP-4259, PP-4358) sourced from the regression matrix + git log -- Palace/Holds/. NotificationService.swift line numbers (484-579) verified via Read of that range. -->
 
 # Holds area — verification checklist
 
 **Owner area:** `Palace/Holds/` (HoldsReducer, HoldsViewModel, HoldsView) and the holds-adjacent surfaces in `Palace/Notifications/NotificationService.swift` (hold-ready push routing), `Palace/AppInfrastructure/TPPAppDelegate.swift` (`syncIfUserHasHolds`), `Palace/AppInfrastructure/AppTabHostView.swift` (holds tab + badge), `Palace/Book/UI/BookDetail/BookDetailViewModel.swift` (`didSelectReserve` / `cancelHold` dispatch), `Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift` (cell-side reserve/cancel-hold paths), `Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonState.swift` + `BookButtonMapper` (`canHold`, `holding`, `holdingFrontOfQueue`, `managingHold`, hold-ready transition).
 
-**Purpose:** the architect's first deliverable on ANY swarm or /rigorous-fix in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN.
+**Purpose:** the first deliverable of any non-trivial change in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN.
 
 **Last refresh:** 2026-05-28 (initial baseline — derived from PR #947 (BUG-004), the HoldsReducer extraction commits 06bf675d7 + 17b029d09, and HelpSpot triage on 17960/17971).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
@@ -80,7 +80,7 @@ Most UNKNOWN cells reflect the PP-4020 and PP-4358 audit gaps; refresh with each
 | Trigger | Where it lands | What it should do | What can go wrong |
 |---------|---------------|------------------|-------------------|
 | Hold-ready push tap (background → foreground) | `NotificationService.userNotificationCenter(didReceive:)` (line 485) | `syncWithThrottle` first, then `decideHoldNavigation` → `tabRouterHub.navigate(to: .holds)` if account supports reservations | 30s shared throttle key can skip a real fresh-state fetch if user just foregrounded — see HelpSpot 17960 (Derryl) where ready push fired but holds list disagreed |
-| Hold-ready push tap (cold launch) | Same path, but `awaitReady()` may not yet have details | `decideHoldNavigation` waits on `currentAccount.awaitReady()`; falls to `.skipDetailsFailed` on error | Cold-launch eviction race (memory `enum_conflation_account_not_found`) can return `.detailsFailed(.accountNotFound)` even when account is valid; awaitReady gate is the seam to harden |
+| Hold-ready push tap (cold launch) | Same path, but `awaitReady()` may not yet have details | `decideHoldNavigation` waits on `currentAccount.awaitReady()`; falls to `.skipDetailsFailed` on error | Cold-launch eviction race can return `.detailsFailed(.accountNotFound)` even when account is valid; awaitReady gate is the seam to harden |
 | App foreground while holds tab active | `applicationDidBecomeActive` → `TPPAppDelegate.syncIfUserHasHolds()` (line 297) | If user has holds AND throttle elapsed (>30s), sync registry + update badge | Throttle is shared with notification path — back-to-back push tap + foreground can leak a single sync; intentional |
 | Manual tab-switch to holds | `AppTabHostView` `onChange(of: selectedTab)` (line 99) | `bookRegistry.sync()` unconditionally (F-035) | None known; unconditional sync acceptable here because user-initiated |
 | Pull-to-refresh on holds list | `HoldsView.content` `.refreshable { model.refresh() }` (line 145) | `HoldsViewModel.refresh()` → either `bookRegistry.sync()` or `presentSignIn` if no creds | If `presentSignIn` is invoked and user cancels, the spinner clears via the completion closure |
@@ -135,9 +135,9 @@ Most UNKNOWN cells reflect the PP-4020 and PP-4358 audit gaps; refresh with each
 
 ---
 
-## 7. Architect's pre-swarm checklist (what to verify before writing a new contract)
+## 7. Pre-change checklist
 
-Before any new swarm or /rigorous-fix in this area, the architect should:
+Before any non-trivial change in this area:
 
 1. **Refresh this file's sections 1-4** — confirm the call-site map, module ownership, distributor matrix, and notification routing model are still accurate.
 2. **Verify hold-ready notification ↔ holds-list coherence (N4)** — run the N4 manual row against a multi-hold account; confirm tab-switch sync (F-035) AND throttle-shared foreground sync both fire. Include the ALREADY-ON-HOLDS case: tapping a hold-ready notification while the Holds tab is already selected changes no tab, so the `onChange`-driven F-035 sync does not fire and the list refreshes only via the foreground path. That has always been true (PP-5051 kept it); it is called out here because PP-5051 made tapping the notification also return that tab to its root, which makes a stale list more visible.
@@ -153,7 +153,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
-| 2026-05-28 | Initial baseline (chore/swarm-rigor-meta-improvement) | Derived from PR #947 (BUG-004 anonymous suppression), commit 06bf675d7 (HoldsReducer extraction + 11 tests), commit 17b029d09 (AppContainer DI migration), regression matrix rows B3/B4/B7/C4/N1/N4, HelpSpot triage (17960 Derryl, 17971 Heather), PR #1018 area-checklist pattern. |
+| 2026-05-28 | PR #1019 (initial baseline) | Derived from PR #947 (BUG-004 anonymous suppression), commit 06bf675d7 (HoldsReducer extraction + 11 tests), commit 17b029d09 (AppContainer DI migration), regression matrix rows B3/B4/B7/C4/N1/N4, HelpSpot triage (17960 Derryl, 17971 Heather), PR #1018 area-checklist pattern. |
 
 ---
 

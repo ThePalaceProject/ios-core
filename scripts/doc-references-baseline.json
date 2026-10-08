@@ -7,11 +7,6 @@
       "target": "scripts/mutate.py"
     },
     {
-      "doc": "docs/Testing/3.3.0-REGRESSION-PLAN.md",
-      "kind": "workflow",
-      "target": "recording.yaml"
-    },
-    {
       "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
       "kind": "script",
       "target": "scripts/regression_crash_harvest.py"
@@ -115,11 +110,6 @@
       "doc": "docs/Testing/TESTING_POSTURE.md",
       "kind": "workflow",
       "target": "recording.yaml"
-    },
-    {
-      "doc": "docs/Testing/TESTING_POSTURE.md",
-      "kind": "workflow",
-      "target": "ui-testing.yml"
     },
     {
       "doc": "docs/Testing/Test_Patterns.md",
@@ -367,11 +357,6 @@
       "target": "Palace/SignInLogic/AuthReducer.swift"
     },
     {
-      "doc": "docs/architecture/phase-3.5-class-scan.md",
-      "kind": "workflow",
-      "target": ".simdrive/replays/chaos/lock-screen-engage.yaml"
-    },
-    {
       "doc": "docs/architecture/pp4156-retro-2026-05-04.md",
       "kind": "workflow",
       "target": ".simdrive/journeys/audiobook-download-indicator-stateful.yaml"
@@ -410,36 +395,6 @@
       "doc": "docs/architecture/ws4-mac-validation-runbook.md",
       "kind": "workflow",
       "target": ".simdrive/journeys/ws4-ipad-on-mac-exit-adobe-drm.yaml"
-    },
-    {
-      "doc": "docs/bug-investigation-process.md",
-      "kind": "script",
-      "target": "scripts/build-sim-for-simdrive.sh"
-    },
-    {
-      "doc": "docs/regression-suite/CARPLAY-FEASIBILITY.md",
-      "kind": "script",
-      "target": "scripts/regression-carplay-cell.sh"
-    },
-    {
-      "doc": "docs/regression-suite/CARPLAY-FEASIBILITY.md",
-      "kind": "script",
-      "target": "scripts/regression_xcresult_findings.py"
-    },
-    {
-      "doc": "docs/regression-suite/DESIGN.md",
-      "kind": "script",
-      "target": "scripts/regression-report.sh"
-    },
-    {
-      "doc": "docs/regression-suite/DESIGN.md",
-      "kind": "script",
-      "target": "scripts/run-chaos-pass.sh"
-    },
-    {
-      "doc": "docs/regression-suite/DESIGN.md",
-      "kind": "script",
-      "target": "scripts/simdrive-regress.sh"
     }
   ]
 }

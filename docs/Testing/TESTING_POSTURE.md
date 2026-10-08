@@ -28,6 +28,7 @@ Last updated: 2026-07-08
 | Integration | 6 test files | Fully automated | Yes (in unit suite) |
 | Contract/API | 1 suite + 35 fixtures | Fully automated | Yes (in unit suite) |
 | Snapshot | 11 test files | Automated capture | Artifact only |
+| UI journeys (XCUITest) | `PalaceUITests` against local fixtures; see [UI_JOURNEYS.md](UI_JOURNEYS.md) | Fully automated | No (`ui-journeys.yml`, not required) |
 | E2E (simdrive) | Journey corpus is NOT in this repo — it lives in the maintainer's local QA harness (`$PALACE_QA_HARNESS`, default `~/harness/palace-qa`) | MCP-driven replay (SSIM- + structural-gated) | Opt-in and maintainer-local (`verify-pr.sh --simdrive --chaos`); NO CI job replays them, and a clone without the harness exercises them not at all |
 | Security | 3 test files | Fully automated | Yes (in unit suite) |
 | Chaos | 2 test files | Fully automated | Yes (in unit suite) |
@@ -49,7 +50,7 @@ Last updated: 2026-07-08
 ### Test Quality Enforcement
 - **Linter**: `scripts/lint-test-quality.py` — detects fluff (set-then-assert), shallow (no real logic), missing asserts
 - **Mutation testing**: `scripts/palace_mutate.py` — comparison, boolean, boundary, return-value operators; 10 mutants/file default
-- **Coverage floors**: `scripts/enforce_coverage_floors.py` + `scripts/coverage-floors.json` — app overall, per-module and per-package floors. Checked on every PR. An app floor (overall, per-module) more than 1.5 points below its value, or incomplete coverage data, fails the required `build-and-test` check; package floors are advisory because their measurements vary between runs of identical code (see `scripts/README_coverage_floors.md`)
+- **Coverage floors**: `scripts/enforce_coverage_floors.py` + `scripts/coverage-floors.json` — app overall, per-module and per-package floors. Checked on every PR that can affect the unit tests. An app floor (overall, per-module) more than 1.5 points below its value, or incomplete coverage data, fails the required `build-and-test` check; package floors are advisory because their measurements vary between runs of identical code (see `scripts/README_coverage_floors.md`)
 - **Rule**: Every test must kill at least one mutant. Tautology and coverage-only tests are banned.
 
 ### Credibility criterion (applies to ALL tests, including E2E and simdrive replays)
@@ -104,7 +105,7 @@ For unit/integration tests this criterion is enforced by mutation testing + the 
 
 ### CI Workflows
 - `unit-testing.yml` — XCTest + coverage (app and local packages) + coverage floors (app floors block beyond a 1.5-point tolerance, package floors are advisory, and INCOMPLETE coverage data fails `build-and-test`; incomplete is never a pass)
-- `ui-testing.yml` — E2E test runner (manual trigger)
+- `ui-journeys.yml`: fixture-backed XCUITest journeys on PRs that change the app, the journeys or the project (not required)
 - `ledger.yml` — Ledger + QAAtlas + AccessLint (non-blocking)
 
 ## Pre-PR Verification
@@ -149,7 +150,7 @@ Maintainers additionally run through ForgeOS governance gates that hook into `gi
 ## Known Gaps
 
 ### Cannot Automate (Manual Testing Required)
-1. **EPUB/PDF rendering** — Readium WKWebView invisible to XCTest accessibility tree
+1. **EPUB/PDF rendering**: visual layout, page turns and PDF pages are manual. EPUB text is in the XCUITest accessibility tree, which the resume-reading journey uses for position across a relaunch
 2. **DRM fulfillment** — Adobe RMSDK and LCP require actual license servers
 3. **Audiobook playback quality** — Audio output can't be verified programmatically
 4. **Background audio** — System interruptions (phone calls, Siri) need device
@@ -228,6 +229,7 @@ python3 scripts/generate-regression-report.py --csv findings.csv \
 ## Related Documents
 - [Coverage Roadmap](Coverage_Roadmap.md) — per-module coverage targets
 - [Test Patterns](Test_Patterns.md) — mock patterns, stubbing, fixtures
+- [UI Journeys](UI_JOURNEYS.md): fixture-backed XCUITest journeys and how to run them
 - [Traceability Matrix](Traceability_Matrix.md) — requirements → tests mapping
 - [Legacy SpecterQA Regression Plan](../../.simdrive/_archive/REGRESSION_PLAN.md) — archive, kept for reference
 - [Active simdrive Gap Analysis](../../.simdrive/journeys/_GAP_ANALYSIS.md) — current coverage gaps + tier breakdown

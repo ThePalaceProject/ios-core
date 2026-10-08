@@ -97,8 +97,9 @@ protocol AnnotationsManager {
 
     /// Test-only override for the annotations URL. CI runners have no signed-in
     /// library, so `mainFeedURL()` is nil and every annotation request would
-    /// early-return. Never set from production code.
-    nonisolated(unsafe) static var annotationsURLOverride: URL?
+    /// early-return. `.some(nil)` forces the no-URL path; `nil` means no
+    /// override. Never set from production code.
+    nonisolated(unsafe) static var annotationsURLOverride: URL??
 
     // MARK: - Deletion-chain test join seam
     //
@@ -154,7 +155,7 @@ protocol AnnotationsManager {
     /// Returns the accounts provider TPPAnnotations should use for the
     /// current call. In production this is always `.shared`. In tests,
     /// setting `accountsManagerOverride` lets the test inject a mock.
-    fileprivate static var currentAccountsManager: TPPLibraryAccountsProvider {
+    static var currentAccountsManager: TPPLibraryAccountsProvider {
         return accountsManagerOverride ?? AppContainer.production().accountsManager
     }
 
@@ -311,13 +312,11 @@ protocol AnnotationsManager {
             return
         }
 
-        guard let annotationsURL = annotationsURL ?? TPPAnnotations.annotationsURL else {
-            Log.error(#file, "Annotations URL was nil while posting bookmark")
-            return
-        }
-
-        guard let selectorValue = page.bookmarkSelector else {
-            Log.error(#file, "Bookmark selectorValue was nil while posting bookmark")
+        // nil, like the sync-off path: nothing was sent, so there is no server ID.
+        guard let annotationsURL = annotationsURL ?? TPPAnnotations.annotationsURL,
+              let selectorValue = page.bookmarkSelector else {
+            Log.error(#file, "Annotations URL or bookmark selector was nil while posting bookmark")
+            completion(nil)
             return
         }
 
@@ -353,6 +352,7 @@ protocol AnnotationsManager {
 
         guard let annotationsURL = TPPAnnotations.annotationsURL else {
             Log.error(#file, "Annotations URL was nil while posting bookmark")
+            completion(nil)
             return
         }
 
@@ -740,6 +740,9 @@ protocol AnnotationsManager {
                                     completion: @escaping ([TPPReadiumBookmark], [TPPReadiumBookmark]) -> Void) {
         if !syncIsPossibleAndPermitted() {
             Log.debug(#file, "Account does not support sync or sync is disabled.")
+            // Same result as an empty input: nothing was attempted, so nothing
+            // is reported as failed (the caller re-adds failed bookmarks locally).
+            completion([], [])
             return
         }
 

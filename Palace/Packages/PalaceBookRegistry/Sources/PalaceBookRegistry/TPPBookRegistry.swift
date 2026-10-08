@@ -53,7 +53,12 @@ public protocol TPPBookRegistryProvider: Sendable {
     func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
     func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
     func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
+    /// Replaces, in place, the stored record that `isSameRecord(as: oldLocation)`.
+    /// Does nothing when that record is no longer stored.
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier: String)
+    /// Removes the one stored record that `isSameRecord(as: location)`, leaving
+    /// other records at the same position alone.
+    func deleteGenericBookmark(identicalTo location: TPPBookLocation, forIdentifier bookIdentifier: String)
     func addBook(_ book: TPPBook, location: TPPBookLocation?, state: TPPBookState, fulfillmentId: String?, readiumBookmarks: [TPPReadiumBookmark]?, genericBookmarks: [TPPBookLocation]?)
     func removeBook(forIdentifier bookIdentifier: String)
     /// Server-authority-aware removal. `serverAuthoritative: true` marks the
@@ -892,6 +897,12 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
         bookmarks.replaceGenericBookmark(oldLocation, with: newLocation,
                                           forIdentifier: bookIdentifier,
                                           account: accountScope.currentAccountID)
+    }
+
+    // PUBLIC_INTENT: witness for the public TPPBookRegistryProvider requirement, like its generic-bookmark siblings.
+    public func deleteGenericBookmark(identicalTo location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+        bookmarks.deleteGenericBookmark(identicalTo: location, forIdentifier: bookIdentifier,
+                                         account: accountScope.currentAccountID)
     }
 }
 
