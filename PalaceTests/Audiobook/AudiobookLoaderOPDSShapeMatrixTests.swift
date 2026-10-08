@@ -78,11 +78,10 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
         }
 
         func resolveManifest(
-            for book: TPPBook,
-            completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-        ) {
+            for book: TPPBook
+        ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
             resolveCallCount += 1
-            completion(.success((json: ["@type": "Audiobook"], decryptor: nil)))
+            return .success((json: ["@type": "Audiobook"], decryptor: nil))
         }
     }
 
@@ -204,12 +203,9 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
 
     /// Drive `load()` and tolerate downstream `build()` failure — we only
     /// care which adapter's `resolveManifest` is invoked.
-    private func runLoad(book: TPPBook, chain: [AudiobookVendorAdapter]) {
+    private func runLoad(book: TPPBook, chain: [AudiobookVendorAdapter]) async {
         let loader = AudiobookLoader(adapters: chain)
-        let exp = expectation(description: "load completes")
-        exp.assertForOverFulfill = false
-        loader.load(book) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 5.0)
+        _ = await loader.load(book)
     }
 
     // MARK: - The matrix
@@ -220,7 +216,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     /// PP-4407 worked fine on. Both the recursive predicate and the
     /// property-check predicate agree on TRUE here, so routing is
     /// identical: LCP wins.
-    func testMatrix_OPDS1XMLFeedTopLevelLCP_routesToLCP() {
+    func testMatrix_OPDS1XMLFeedTopLevelLCP_routesToLCP() async {
         let book = makeBook(acquisitions: [
             acquisition(
                 type: lcpLicenseMIME,
@@ -229,7 +225,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
         ])
         let spies = makeProductionChainSpies()
 
-        runLoad(book: book, chain: spies.chain)
+        await runLoad(book: book, chain: spies.chain)
 
         XCTAssertEqual(spies.lcp?.resolveCallCount, 1,
                        "XML /loans/ shape with top-level LCP MIME must route to LCP adapter")
@@ -247,7 +243,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     /// on the 3.0.3 release branch (never forward-merged to develop). If
     /// this test ever fails, the Marketplace audiobook open regression has
     /// reopened.
-    func testMatrix_OPDS2JSONFeedNestedLCP_routesToLCP() {
+    func testMatrix_OPDS2JSONFeedNestedLCP_routesToLCP() async {
         // PP-4407 / commit ca2ff13b6: Marketplace OPDS-2 JSON shape.
         let book = makeBook(acquisitions: [
             acquisition(
@@ -259,7 +255,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
         ])
         let spies = makeProductionChainSpies()
 
-        runLoad(book: book, chain: spies.chain)
+        await runLoad(book: book, chain: spies.chain)
 
         XCTAssertEqual(spies.lcp?.resolveCallCount, 1,
                        "JSON /groups/ shape with nested LCP MIME must route to LCP — PP-4407 kill point (commit ca2ff13b6)")
@@ -281,13 +277,13 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     /// record (the toolkit picks up Findaway from `manifest.@type` at
     /// `build()` time). The loader's chain MUST route this to
     /// OpenAccessAdapter — never LCP, never BearerToken.
-    func testMatrix_findawayTypedManifest_routesToOpenAccessAdapter() {
+    func testMatrix_findawayTypedManifest_routesToOpenAccessAdapter() async {
         let book = makeBook(acquisitions: [
             acquisition(type: findawayMIME)
         ])
         let spies = makeProductionChainSpies()
 
-        runLoad(book: book, chain: spies.chain)
+        await runLoad(book: book, chain: spies.chain)
 
 #if LCP
         XCTAssertEqual(spies.lcp?.resolveCallCount, 0,
@@ -302,13 +298,13 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     /// Row 5 — open-access audiobook with a bearer-token wrapper at the
     /// top-level acquisition `type`. Routes to BearerTokenAdapter (the
     /// MIME-gated adapter in the production chain).
-    func testMatrix_openAccessWithBearerToken_routesToBearerTokenAdapter() {
+    func testMatrix_openAccessWithBearerToken_routesToBearerTokenAdapter() async {
         let book = makeBook(acquisitions: [
             acquisition(type: bearerTokenMIME)
         ])
         let spies = makeProductionChainSpies()
 
-        runLoad(book: book, chain: spies.chain)
+        await runLoad(book: book, chain: spies.chain)
 
 #if LCP
         XCTAssertEqual(spies.lcp?.resolveCallCount, 0,
@@ -329,7 +325,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     /// This pins the exact routing fact the PP-4631 fix relies on; if the gate
     /// is ever broadened to match nested bearer MIME, revisit this test AND the
     /// OpenAccess fallback together.
-    func testMatrix_nestedBearerTokenMIME_fallsThroughToOpenAccess() {
+    func testMatrix_nestedBearerTokenMIME_fallsThroughToOpenAccess() async {
         let book = makeBook(acquisitions: [
             acquisition(
                 type: openAccessAudiobookMIME,
@@ -338,7 +334,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
         ])
         let spies = makeProductionChainSpies()
 
-        runLoad(book: book, chain: spies.chain)
+        await runLoad(book: book, chain: spies.chain)
 
 #if LCP
         XCTAssertEqual(spies.lcp?.resolveCallCount, 0,
@@ -355,13 +351,13 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     /// the "do nothing fancy" base case — a regression that accidentally
     /// MIME-matched everything would short-circuit OpenAccess and fail
     /// this test.
-    func testMatrix_openAccessNoDRM_routesToOpenAccessAdapter() {
+    func testMatrix_openAccessNoDRM_routesToOpenAccessAdapter() async {
         let book = makeBook(acquisitions: [
             acquisition(type: openAccessAudiobookMIME)
         ])
         let spies = makeProductionChainSpies()
 
-        runLoad(book: book, chain: spies.chain)
+        await runLoad(book: book, chain: spies.chain)
 
 #if LCP
         XCTAssertEqual(spies.lcp?.resolveCallCount, 0,
@@ -381,7 +377,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     // removeAll() restores routing. Stub the clear to a no-op and this test goes
     // red (authTokenHasExpired stays true + resolveCallCount 0) — that's the
     // red-first guarantee that the hermetic reset is load-bearing.
-    func testHermeticGuard_clearingExpiredToken_unblocksAdapterRouting() {
+    func testHermeticGuard_clearingExpiredToken_unblocksAdapterRouting() async {
         let account = AppContainer.production().accountsManager.currentUserAccount // MIGRATED-DEFERRED: hermetic guard reads the production shared currentUserAccount that AudiobookLoader's token gate reads
         account.setAuthToken("stale-token", barcode: "b", pin: "p",
                              expirationDate: Date(timeIntervalSinceNow: -3600)) // expired 1h ago
@@ -396,7 +392,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
 
         let book = makeBook(acquisitions: [acquisition(type: openAccessAudiobookMIME)])
         let spies = makeProductionChainSpies()
-        runLoad(book: book, chain: spies.chain)
+        await runLoad(book: book, chain: spies.chain)
 
         XCTAssertEqual(spies.openAccess.resolveCallCount, 1,
                        "With auth state cleared, the loader's token gate passes and the adapter chain routes (no longer skipped)")

@@ -157,22 +157,19 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         state = .loading
         Log.debug(#file, "Downloading sample from: \(sample.url.absoluteString)")
 
-        _ = sample.fetchSample { [weak self]  result in
-            guard let self = self else { return }
-
-            switch result {
+        // Awaited, so both arms resume on this `@MainActor` type and neither
+        // needs the `DispatchQueue.main.async` they used to carry (PP-5301).
+        Task { @MainActor in
+            switch await sample.fetchSample() {
             case let .failure(error, _):
                 Log.error(#file, "Sample download failed for \(self.sample.url): \(error.localizedDescription)")
                 TPPErrorLogger.logError(error, summary: "Failed to download sample")
-                DispatchQueue.main.async { self.state = .paused }
-                return
+                self.state = .paused
             case let .success(data, _):
-                DispatchQueue.main.async {
-                    do {
-                        try self.setupPlayer(data: data)
-                    } catch {
-                        Log.error(#file, "Sample player setup failed: \(error.localizedDescription)")
-                    }
+                do {
+                    try self.setupPlayer(data: data)
+                } catch {
+                    Log.error(#file, "Sample player setup failed: \(error.localizedDescription)")
                 }
             }
         }

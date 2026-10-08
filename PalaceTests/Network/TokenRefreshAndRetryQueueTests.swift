@@ -710,17 +710,24 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 10: the delivery executor is characterized, not assumed (PP-5299)
     //
-    // Pins the single fact AudiobookLoader's main-actor hop exists for: this
-    // completion is NOT delivered on the main actor. It fires from inside the
-    // refresh `Task`, i.e. the global concurrent executor, and has since at least
-    // 3.2.4 — the 3.3.0 language-mode flip (876f7637f: SWIFT_VERSION 5.0 -> 6.0,
-    // SWIFT_STRICT_CONCURRENCY = complete) only promoted the consumer-side
-    // isolation check from a warning to an assert.
+    // This completion is NOT delivered on the main actor. It fires from inside
+    // the refresh `Task`, i.e. the global concurrent executor, and has since at
+    // least 3.2.4 — the 3.3.0 language-mode flip (876f7637f: SWIFT_VERSION 5.0
+    // -> 6.0, SWIFT_STRICT_CONCURRENCY = complete) only promoted the
+    // consumer-side isolation check from a warning to an assert.
+    //
+    // Who depends on that fact changed with PP-5301. It used to be the
+    // main-actor hop in `AudiobookLoader.refreshTokenIfNeeded`, which is gone:
+    // that caller awaits `refreshToken(accountId:)` and resumes on its own
+    // actor. What depends on it now is that wrapper itself — it bridges this
+    // completion to a continuation — plus the four callers still on the
+    // completion form (`TPPMigrationManager`, `TPPNetworkQueue`,
+    // `BackgroundDownloadHandler`, `TPPNetworkResponder`), all of which are
+    // nonisolated types and so are unaffected either way.
     //
     // Characterization, not a preference. If someone later marshals delivery
-    // inside the executor (the deferred durable fix), this goes red and names the
-    // transition, instead of the hop in AudiobookLoader quietly becoming dead code
-    // with nothing recording why it was needed.
+    // inside the executor, this goes red and names the transition rather than
+    // letting the async wrapper's continuation hop become silently redundant.
 
     func testRefresh_CompletionIsDeliveredOffTheMainActor() async throws {
         await executor.resetRefreshAttemptCount()
@@ -742,7 +749,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             )
             exp.fulfill()
         }
-        await fulfillment(of: [exp], timeout: 5.0) // STARVE-001-OK: refreshTokenAndResume exposes no join seam for its completion, so there is nothing to await; drainPendingRefreshWork cannot substitute because it steps the cooperative pool while this delivery arrives on URLSession's own queue — the sibling test at Test 9 keeps its wait for the same reason and drains only afterwards
+        await fulfillment(of: [exp], timeout: 5.0) // STARVE-001-OK: awaiting `refreshToken(accountId:)` would characterize the async wrapper instead of the completion form this test is about, so the wait cannot be replaced by it; drainPendingRefreshWork cannot substitute either, because it is a bounded eight-yield step rather than a join of the refresh Task and that chain contains real suspensions — the sibling test at Test 9 keeps its wait for the same reason and drains only afterwards
 
         // Drain afterwards, matching the siblings above: the wait returns when the
         // completion fires, which is not the same moment the refresh's remaining

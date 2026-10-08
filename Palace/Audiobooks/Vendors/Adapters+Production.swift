@@ -26,13 +26,10 @@ final class ProductionAudiobookManifestFetcher: AudiobookManifestNetworkFetching
         self.executor = executor
     }
 
-    func fetchData(
-        from url: URL,
-        completion: @escaping (Data?, URLResponse?, Error?) -> Void
-    ) {
-        _ = executor.GET(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: true) { data, response, error in
-            completion(data, response, error)
-        }
+    func fetchData(from url: URL) async throws -> (Data, URLResponse?) {
+        try await executor.GET(request: URLRequest(url: url),
+                               cachePolicy: .useProtocolCachePolicy,
+                               useTokenIfAvailable: true)
     }
 }
 
@@ -53,11 +50,12 @@ final class ProductionAudiobookFileReader: AudiobookFileReading {
 /// `MyBooksSimplifiedBearerToken.refreshToken(from:completion:)` so the
 /// refresh seam is substitutable from the LocalFileAdapter test surface.
 final class ProductionBearerTokenRefresher: BearerTokenRefreshing {
-    func refreshToken(
-        from fulfillURL: URL,
-        completion: @escaping @Sendable (MyBooksSimplifiedBearerToken?) -> Void
-    ) {
-        MyBooksSimplifiedBearerToken.refreshToken(from: fulfillURL, completion: completion)
+    func refreshToken(from fulfillURL: URL) async -> MyBooksSimplifiedBearerToken? {
+        await withCheckedContinuation { continuation in
+            MyBooksSimplifiedBearerToken.refreshToken(from: fulfillURL) { token in
+                continuation.resume(returning: token)
+            }
+        }
     }
 }
 
@@ -68,10 +66,16 @@ final class ProductionBearerTokenRefresher: BearerTokenRefreshing {
 final class ProductionBearerTokenManifestFetcher: BearerTokenManifestFetching {
     func fetchManifest(
         with token: MyBooksSimplifiedBearerToken,
-        for book: TPPBook,
-        completion: @escaping ([String: Any]?) -> Void
-    ) {
-        BookService.fetchManifestWithBearerToken(token, for: book, completion: completion)
+        for book: TPPBook
+    ) async -> [String: Any]? {
+        // `[String: Any]` is not `Sendable`, so the continuation carries it in
+        // `ManifestJSONBox`; the resumption lands back on this actor.
+        let boxed: ManifestJSONBox? = await withCheckedContinuation { continuation in
+            BookService.fetchManifestWithBearerToken(token, for: book) { json in
+                continuation.resume(returning: json.map(ManifestJSONBox.init))
+            }
+        }
+        return boxed?.value
     }
 }
 
@@ -95,9 +99,8 @@ final class BearerTokenMIMEGate: AudiobookVendorAdapter {
     }
 
     func resolveManifest(
-        for book: TPPBook,
-        completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-    ) {
-        wrapped.resolveManifest(for: book, completion: completion)
+        for book: TPPBook
+    ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
+        await wrapped.resolveManifest(for: book)
     }
 }

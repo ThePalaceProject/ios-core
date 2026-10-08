@@ -85,7 +85,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # -> 1213 when PP-5242 moved the failure-record builder out, then -> 1206
 # when PP-5241 moved its recovery host and two pure error mappers out, then
 # -> 1193 when PP-4967 moved the OverDrive re-fulfilment out.
-1193 Palace/Audiobooks/AudiobookSessionManager.swift
+1183 Palace/Audiobooks/AudiobookSessionManager.swift
 # 1213 -> 1172 when the mid-download network-loss handler moved to
 # DownloadNetworkLossMonitor.swift.
 1172 Palace/MyBooks/MyBooksDownloadCenter.swift

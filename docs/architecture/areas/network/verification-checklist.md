@@ -309,6 +309,209 @@ with the patron told their password is wrong. Check both when triaging that repo
 
 ---
 
+## 7c. Delivery isolation — where a completion runs (added 2026-10-08, PP-5301)
+
+Section 7b covers what a response *says*. This section covers *where the answer
+arrives*, which is a separate question and the one that crashed 3.3.0.
+
+### The mechanism
+
+The executor builds its sessions with `delegateQueue: nil`, so
+`TPPNetworkResponder` fires every caller completion on a background thread.
+That has been true since long before 3.3.0 and did not change.
+
+What changed is the language mode (`876f7637f`: `SWIFT_VERSION` 5.0 → 6.0,
+`SWIFT_STRICT_CONCURRENCY = complete`). A closure written inside a `@MainActor`
+type **inherits main-actor isolation**, and a parameter typed
+`(NYPLResult<Data>) -> Void` carries no isolation of its own, so the mismatch
+type-checks. Under Swift 5 that was a warning nobody read; under Swift 6 the
+isolation check is an assert, and the first main-actor-only call inside such a
+completion traps in `swift_task_isCurrentExecutorWithFlags`.
+
+Three instances reached patrons or review this way, and every one was found by a
+person reading code:
+
+| Where | Found | Outcome |
+|---|---|---|
+| `AudiobookLoader.refreshTokenIfNeeded` | 3.3.0 field crash (PP-5299) | fixed on 3.3.x with a hop, then made unrepresentable here |
+| `AudiobookSessionManager.awaitRemotePosition` | 3.3.0 field crash | fixed separately |
+| `EpubSampleFactory.createSample` → `BookCellModel` | reading, PP-5301 | fixed here; reachable by tapping a sample with no network |
+
+### The reviewer rule
+
+Three questions, in order. Stop at the first "no".
+
+1. **Is the closure written inside a `@MainActor` type or function?** If not,
+   it is nonisolated and this class cannot apply.
+2. **Is it delivered by something that answers off the main actor?** Anything
+   through `TPPNetworkExecutor`, `TPPNetworkResponder`, `refreshTokenAndResume`,
+   `URLSession`, Firebase Messaging, or a `Task` the callee started. A callee
+   that documents main delivery, or one whose parameter is `@Sendable`, is not
+   this.
+3. **Does the closure body reach main-actor-only work?** A `@MainActor` method
+   or property, a published property, UIKit. Note it reaches it at the **first**
+   such statement — a `DispatchQueue.main.async` further down is below the thing
+   being checked and does not save the statements above it.
+
+Three yeses is an instance. The tell that finds them fastest is an **asymmetric
+hop**: one arm of the same closure wrapped in a main hop and another not. Both
+3.3.0 crashes and the sample-factory instance had exactly that shape, and the
+author of each had clearly known the main thread mattered on the path they
+wrapped.
+
+### The remedy, in preference order
+
+1. **Await the call.** A continuation resumes on the awaiting caller's actor, so
+   the hazard is not guarded — it cannot be written. This is what PP-5301 did
+   across sign-in, the audiobook load path, the sample paths and the profile
+   document.
+2. **Mark the callee's completion parameter `@Sendable`.** The closure can then
+   no longer inherit isolation, and the compiler names every call site that was
+   relying on it. Correct, but it leaves each caller to arrange its own hop.
+3. **Hop inside the closure.** Fixes nothing the isolation check objects to
+   unless the hop is the *first* statement and nothing above it touches
+   main-actor state. Treat as a last resort and say why.
+
+A `@unchecked Sendable` box around a completion is not a remedy for this class.
+It silences the Sendable diagnostic, which is a different question, and leaves
+the isolation mismatch exactly as it was — that is what every carrier PP-5301
+deleted was doing.
+
+### Decision: no new gate
+
+An automated check was considered and **declined**, because the compiler already
+is one. Remedies 1 and 2 are both compiler-enforced: once a completion parameter
+is `@Sendable` or the call is `async`, a future caller cannot reintroduce the
+mismatch without a build error. A `check-*` script would re-derive, less
+reliably, what the type system already decides — and would need a heuristic for
+"reaches main-actor-only work", which is exactly the part reading gets wrong.
+
+Two measurements support this over a detector:
+
+- Reading does not enumerate the population. Four sites were traced by hand
+  during this work and the consequence was wrong at every one.
+- `-enable-actor-data-race-checks` *does* reproduce the class on demand (it
+  turns the sign-out suite red at the same assert as the field crash), but it is
+  stricter than a release build: it also objects to a completion's own entry,
+  not just to main-actor work inside it. That makes it a good instrument for
+  finding candidates and a commitment as a gate — switching it on in CI means
+  finishing the parameter migration everywhere first, not only where a patron
+  could crash. It is not on today, and turning it on is its own decision.
+
+What is in place instead: `TPPRequestExecuting` has no completion-handler
+requirement left, so the laundering shape is unreachable through the protocol.
+Where a completion-handler entry point survives on the concrete executor, the
+caller rings that reach main-actor work have been converted.
+
+### Still completion-shaped, and why that is safe
+
+These were examined and cleared rather than converted. Each is safe for a stated
+reason, not by inspection of the happy path:
+
+- `URLSessionNetworkClient` (5 sites) — every call is inside a
+  cancellation-aware continuation bridge; the closure only resumes it.
+- `TPPOPDSFeed.withURL` → `OPDSFeedService` — the handler's every exit is
+  dispatched through `TPPAsyncDispatch`, which is the **global** queue, not
+  main; the single Swift consumer is an `actor` that bridges it straight to a
+  continuation. The signature is Objective-C-facing (`NSDictionary`).
+- `NetworkExecutorRenewalPoster.post` — a continuation bridge inside a
+  nonisolated `Sendable` type; `RenewalPosting` is already `async`.
+- `NotificationService`'s three `addBearerAndExecute` calls — the type is
+  nonisolated, so its closures are, and none reaches main-actor-only work. The
+  separate `accountId` defect on this path (PP-4986) is recorded at
+  `TPPNetworkExecutor.performDataTask`.
+- `Account.loadAuthenticationDocument` and `Account.loadLogo` — `Account` is
+  nonisolated, so the closures these build are too. Their *callers* pass
+  main-actor-isolated closures, and those callers hop; the hops are present at
+  every call site today. This is remedy 3, and it is the largest remaining
+  completion surface in the app: nine call sites, including the sign-in
+  single-flight guard in `AuthDocumentLoader`. Converting it is tracked work,
+  not a claim about today's safety.
+
+---
+
+## 7d. The three callback surfaces outside the network layer (PP-5301)
+
+PP-5301 named three surfaces the first pass never reached. Each was audited by
+the rule in 7c. Two are clear for a stated reason; one has a defect that is
+upstream, and one unresolved candidate.
+
+### Firebase — clear by construction
+
+Both consumers are nonisolated: `FirebaseManager` and `NotificationService` are
+each `@unchecked Sendable` classes with no actor isolation. Every closure they
+hand Firebase Messaging or Remote Config is therefore nonisolated, so question 1
+of the rule answers no. This holds for the whole surface, not a sampled part of
+it — a future `@MainActor` consumer of a Firebase callback would need the rule
+applied again.
+
+### The reading engine (Readium 3.x) — clear, and enforced by the compiler
+
+`NavigatorDelegate`, `VisualNavigatorDelegate` and `EPUBNavigatorDelegate` are
+declared `@MainActor` in the pinned toolkit, and `PDFNavigatorDelegate` inherits
+it. Readium states the isolation in its own types, so the four Palace
+conformances cannot be entered off the main actor without a build error. This is
+remedy 2 from 7c applied upstream, and it is why none of those four needs
+`@preconcurrency`.
+
+`DecorableNavigator` is the exception: it is nonisolated, and
+`TPPEPUBViewController` conforms `@preconcurrency`. It is cleared because
+nothing in Readium calls it on an external conformer — the protocol is mentioned
+in two files there, its own declaration and `EPUBNavigatorViewController`'s
+conformance — so the only caller is Palace, from the main actor. If a Readium
+upgrade starts dispatching decorations itself, re-check this one first.
+
+The `@preconcurrency import ReadiumShared` / `ReadiumNavigator` at the top of
+the reader files are about `Sendable` on value types (`Locator`, `Decoration`),
+a different question; the reason is recorded at
+`TPPBaseReaderViewController.swift:40`.
+
+### The audiobook toolkit — the hazard is real and the hops are present
+
+`AudiobookBookmarkDelegate` is a nonisolated protocol, but every completion
+passed to it is built inside `DefaultAudiobookManager`, which is `@MainActor`.
+Those closures therefore inherit main-actor isolation, and two of them write
+`bookmarks` on the manager — `saveBookmark` at `AudiobookManager.swift:815` and
+`deleteBookmark` at `:826`. Palace's conformer,
+`AudiobookBookmarkBusinessLogic`, is nonisolated and does its work on the
+network. So this is the full shape: a main-actor closure, invoked by nonisolated
+Palace code, that touches main-actor state.
+
+It does not fire today because Palace hops at every exit that reaches those two
+closures (`saveBookmark`, `deleteBookmark`, `deleteBookmarkByContentMatch`,
+`finalizeSync` all deliver through `DispatchQueue.main.async`). That is remedy 3
+— correct, and dependent on four separate call sites staying correct.
+`saveListeningPosition`'s early exit does not hop, and is safe only because the
+toolkit's closure for it writes a local variable and touches nothing isolated.
+
+The durable fix is upstream: marking the four `AudiobookBookmarkDelegate`
+completions `@MainActor`, which makes the hops the compiler's job instead of the
+author's. That is a change in the toolkit submodule and is not made here.
+
+### Unresolved: `AVSpeechSynthesizerDelegate` in reader TTS
+
+`TPPPublicationSpeechSynthesizer` is `@MainActor` and conforms
+`@preconcurrency AVSpeechSynthesizerDelegate`
+(`TPPPublicationSpeechSynthesizer.swift:364`). The one implemented method calls
+`didFinishUtterance()`, which reads `state` and can call `playNextUtterance` —
+main-actor state on a main-actor type. A `@preconcurrency` conformance accepts
+the isolation mismatch and checks it at runtime, so if AVFoundation delivers
+this callback off the main actor it traps rather than warns.
+
+Whether it does is not settled. Apple does not document a delivery queue for
+`AVSpeechSynthesizerDelegate`, and reading cannot answer it — that is the
+mistake 7c records. The sibling case has an answer and states it:
+`AudiobookSamplePlayer`'s `AVAudioPlayerDelegate` conformance carries a comment
+explaining that AVFoundation delivers on the run loop where the player was
+created, which is always main there. This one carries no such comment.
+
+The discriminating check, for whoever picks it up: build with
+`-enable-actor-data-race-checks`, start TTS on an EPUB, and let one utterance
+finish. A trap in `speechSynthesizer(_:didFinish:)` settles it; a clean finish
+means the delivery is main and the conformance should say so in a comment.
+
+---
+
 ## 8. Pre-change checklist
 
 Before any non-trivial change in this area:

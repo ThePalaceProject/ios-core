@@ -98,7 +98,7 @@ enum BookService {
         _ token: MyBooksSimplifiedBearerToken,
         for book: TPPBook,
         session: URLSession = .shared,
-        completion: @escaping ([String: Any]?) -> Void
+        completion: @escaping @Sendable ([String: Any]?) -> Void
     ) {
         var request = URLRequest(url: token.location)
         request.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
@@ -107,42 +107,30 @@ enum BookService {
 
         Log.info(#file, "  📡 Fetching manifest from bearer token location: \(token.location.host ?? "unknown")")
 
-        // Boxed rather than marking the parameter `@Sendable`, which would
-        // ripple onto `BearerTokenManifestFetching` and its conformers.
-        let completionBox = ManifestCompletionBox(completion)
         let task = session.dataTask(with: request) { data, response, error in
             if let error = error {
                 Log.error(#file, "  ❌ Network error fetching manifest via bearer token: \(error.localizedDescription)")
-                completionBox.completion(nil)
+                completion(nil)
                 return
             }
             guard let data = data, !data.isEmpty else {
                 Log.error(#file, "  ❌ No data received from bearer token manifest fetch")
-                completionBox.completion(nil)
+                completion(nil)
                 return
             }
             if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
                 Log.error(#file, "  ❌ Bearer token manifest fetch failed with HTTP \(httpResponse.statusCode)")
-                completionBox.completion(nil)
+                completion(nil)
                 return
             }
             guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
                 Log.error(#file, "  ❌ Failed to parse bearer token manifest as JSON")
-                completionBox.completion(nil)
+                completion(nil)
                 return
             }
             Log.info(#file, "  ✅ Successfully fetched manifest via bearer token (\(data.count) bytes)")
-            completionBox.completion(json)
+            completion(json)
         }
         task.resume()
     }
-}
-
-/// Sendable carrier for `fetchManifestWithBearerToken`'s non-Sendable completion.
-///
-/// `@unchecked Sendable` invariant: `completion` is stored once and invoked
-/// exactly once, on the URLSession delegate queue, for a single request.
-private final class ManifestCompletionBox: @unchecked Sendable {
-    let completion: ([String: Any]?) -> Void
-    init(_ completion: @escaping ([String: Any]?) -> Void) { self.completion = completion }
 }

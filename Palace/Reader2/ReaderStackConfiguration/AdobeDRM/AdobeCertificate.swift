@@ -477,22 +477,20 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         guard let account = AppContainer.production().accountsManager.currentAccount else {
             return nil
         }
-        return await boundedLicensor(timeout: profileDocumentTimeout) { done in
+        return await boundedLicensor(timeout: profileDocumentTimeout, awaiting: {
             // `enableTokenRefresh: true`. This fetch is the whole point of the
             // PP-3649 refresh, and the case it exists for — a session old
             // enough that the stored licensor died — is also the case where the
             // bearer token has expired. Sending it as-is earns a 401 and a
             // fallback to the stale licensor, i.e. no refresh at all.
-            account.getProfileDocument(enableTokenRefresh: true) { document in
-                guard let drm = document?.drm?.first,
-                      let vendor = drm.vendor, !vendor.isEmpty,
-                      let clientToken = drm.clientToken, !clientToken.isEmpty else {
-                    done(nil)
-                    return
-                }
-                done(drm.licensor)
+            let document = await account.getProfileDocument(enableTokenRefresh: true)
+            guard let drm = document?.drm?.first,
+                  let vendor = drm.vendor, !vendor.isEmpty,
+                  let clientToken = drm.clientToken, !clientToken.isEmpty else {
+                return nil
             }
-        }.licensor
+            return drm.licensor
+        }).licensor
     }
 
     /// How long the borrow path will wait for the profile-document fetch before
@@ -554,6 +552,45 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
             }
 
             produce { licensor in
+                deadline.cancel()
+                once.finish(licensor, timedOut: false)
+            }
+        }
+        if box.timedOut {
+            Log.error(#file, "Adobe licensor refresh timed out after \(timeout)s — activating with the stored licensor (PP-3649)")
+        }
+        return (box.licensor, box.timedOut)
+    }
+
+    /// Same deadline and the same at-most-once latch, for a producer that is
+    /// `async` rather than callback-shaped.
+    ///
+    /// It exists because `Account.getProfileDocument` is awaited now (PP-5301).
+    /// Feeding an `await` back into the callback form above would mean carrying
+    /// its non-`Sendable` `done` closure into a `Task` behind an `@unchecked
+    /// Sendable` box — the construct that change removes, reintroduced here to
+    /// serve the one call site. The latch is shared, so the timeout behaviour
+    /// the tests on the callback form pin cannot drift between the two.
+    static func boundedLicensor(
+        timeout: TimeInterval,
+        awaiting produce: @escaping @Sendable () async -> [String: Any]?
+    ) async -> (licensor: [String: Any]?, timedOut: Bool) {
+        let box: LicensorBox = await withCheckedContinuation { (continuation: CheckedContinuation<LicensorBox, Never>) in
+            let once = OneShotValueContinuation(continuation)
+
+            let deadline = Task {
+                // Return rather than fall through on cancellation, for the
+                // reason recorded on the callback form above.
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                } catch {
+                    return
+                }
+                once.finish(nil, timedOut: true)
+            }
+
+            Task {
+                let licensor = await produce()
                 deadline.cancel()
                 once.finish(licensor, timedOut: false)
             }
