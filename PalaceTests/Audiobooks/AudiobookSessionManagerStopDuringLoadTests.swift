@@ -101,6 +101,15 @@ final class AudiobookSessionManagerStopDuringLoadTests: PalaceWiringTestCase {
         return adapters.count > index ? adapters[index] : nil
     }
 
+    /// A replaced open returns `.alreadyLoading`, which CarPlay shows no alert
+    /// for; any other failure would read as "Playback failed".
+    private func assertSuperseded(_ bookId: String, file: StaticString = #filePath, line: UInt = #line) {
+        guard case .failure(.alreadyLoading)? = openResults[bookId] else {
+            return XCTFail("expected .alreadyLoading for \(bookId), got \(String(describing: openResults[bookId]))",
+                           file: file, line: line)
+        }
+    }
+
     private func recordStates() {
         sut.playbackStatePublisher
             .sink { [unowned self] in self.publishedStates.append($0) }
@@ -119,7 +128,7 @@ final class AudiobookSessionManagerStopDuringLoadTests: PalaceWiringTestCase {
         adapter.complete(with: .failure(.manifestFetchFailed))
 
         await awaitConditionAsync { self.openResults["book-a"] != nil }
-        if case .success? = openResults["book-a"] { XCTFail("a stopped open must not report success") }
+        assertSuperseded("book-a")
         XCTAssertEqual(sut.state, .idle, "the late cancellation must not replace the stopped session's state")
         XCTAssertEqual(publishedStates, [], "nothing may be published after the stop")
         XCTAssertTrue(publishedErrors.isEmpty, "a closed book must not surface an error: \(publishedErrors)")
@@ -141,6 +150,7 @@ final class AudiobookSessionManagerStopDuringLoadTests: PalaceWiringTestCase {
 
         adapterA.complete(with: .failure(.manifestFetchFailed))
         await awaitConditionAsync { self.openResults[bookA.identifier] != nil }
+        assertSuperseded(bookA.identifier)
         XCTAssertFalse(publishedStates.contains(.error(bookId: bookA.identifier, message: "Load cancelled")),
                        "A's cancellation must not publish over B's open: \(publishedStates)")
         XCTAssertTrue(publishedErrors.isEmpty, "A's cancellation must not surface an error: \(publishedErrors)")
@@ -168,6 +178,7 @@ final class AudiobookSessionManagerStopDuringLoadTests: PalaceWiringTestCase {
 
         adapterA.complete(with: .failure(.manifestFetchFailed))
         await awaitConditionAsync { self.openResults[bookA.identifier] != nil }
+        assertSuperseded(bookA.identifier)
 
         XCTAssertEqual(sut.state, .loading(bookId: bookB.identifier), "A's cancellation must not replace B's load")
         XCTAssertTrue(publishedErrors.isEmpty, "A's cancellation must not surface an error: \(publishedErrors)")

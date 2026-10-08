@@ -24,8 +24,9 @@ enum CarPlayPlaybackError: Error {
     case drmError
     case notDownloaded
     case unknown
-    /// A stop or a newer open replaced this open (PP-5302). The patron already
-    /// moved on, so there is nothing to report.
+    /// The open returned `.alreadyLoading`: a stop or a newer open replaced it
+    /// (PP-5302), the same book was already loading, or the LCP content gate
+    /// found a newer open. Nothing to report to the patron.
     case superseded
 
     init(from sessionError: AudiobookSessionError) {
