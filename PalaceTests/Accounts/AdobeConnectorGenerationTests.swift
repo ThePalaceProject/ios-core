@@ -1,0 +1,119 @@
+//
+//  AdobeConnectorGenerationTests.swift
+//
+
+import XCTest
+@testable import Palace
+
+/// Pins the per-library marker that records which DRM connector performed a
+/// device activation (PP-5251).
+///
+/// Why a marker and not the licensor: `removeAll()` clears every other credential
+/// key but never `_licensor`, whose only writer is `setLicensor`. `hasLicensor()`
+/// is therefore true forever after a first sign-in and cannot stand for
+/// "an activation exists".
+final class AdobeConnectorGenerationTests: XCTestCase {
+
+    /// Pins the accessor pair only. `write()` is write-through, so this read is
+    /// answered from the in-memory cache and would pass even if the value could
+    /// not be stored. `testRefreshFromKeychainPicksUpAnotherInstancesGeneration`
+    /// is what proves an `NSNumber` survives the keychain.
+    func testGenerationIsReadableAfterWriting() {
+        let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
+        XCTAssertNil(account.adobeActivationConnectorGeneration,
+                     "a fresh library has no recorded activation generation")
+
+        account.setAdobeActivationConnectorGeneration(AdobeConnectorGeneration.current)
+
+        XCTAssertEqual(account.adobeActivationConnectorGeneration,
+                       AdobeConnectorGeneration.current)
+    }
+
+    /// The defect class this exists to prevent. A marker that survives sign-out
+    /// reports "activated under this connector" for a device that is no longer
+    /// activated at all, so the migration would skip a patron who needs it.
+    func testSignOutClearsTheGeneration() {
+        let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
+        account.setAdobeActivationConnectorGeneration(AdobeConnectorGeneration.current)
+        XCTAssertNotNil(account.adobeActivationConnectorGeneration)
+
+        account.removeAll()
+
+        XCTAssertNil(account.adobeActivationConnectorGeneration,
+                     "removeAll() must clear the generation; _licensor is the "
+                     + "counter-example that made this test necessary")
+    }
+
+    /// Two libraries must not share a marker: a patron can be activated under one
+    /// connector for one library and a different one for another.
+    func testGenerationIsScopedPerLibrary() {
+        let a: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
+        let b: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
+
+        a.setAdobeActivationConnectorGeneration(AdobeConnectorGeneration.current)
+
+        XCTAssertEqual(a.adobeActivationConnectorGeneration, AdobeConnectorGeneration.current)
+        XCTAssertNil(b.adobeActivationConnectorGeneration)
+    }
+
+    /// The constant is hand-assigned, so a test ties it to something checkable.
+    /// `libhobbes-iOS.a` carries `hobbes.build`: 118378 and 187526 on the two
+    /// Adobe-era drops, 187639 on Wipro 2.0. When a future drop moves that number
+    /// this fails and forces a decision rather than silently mis-targeting the
+    /// migration.
+    func testBuildNumbersMapToTheExpectedGenerations() {
+        XCTAssertEqual(AdobeConnectorGeneration.generation(forConnectorBuild: "118378"), 1,
+                       "the connector that shipped from 2021 to 2025 is generation 1")
+        XCTAssertEqual(AdobeConnectorGeneration.generation(forConnectorBuild: "187526"), 1,
+                       "the later Adobe-era drop is the same generation: same service")
+        XCTAssertEqual(AdobeConnectorGeneration.generation(forConnectorBuild: "187639"), 2,
+                       "Wipro 2.0 is generation 2")
+    }
+
+    /// An unknown build must not silently resolve to a generation: that is how a
+    /// new vendor drop would quietly inherit "already migrated".
+    func testAnUnknownBuildHasNoGeneration() {
+        XCTAssertNil(AdobeConnectorGeneration.generation(forConnectorBuild: "999999"))
+        XCTAssertNil(AdobeConnectorGeneration.generation(forConnectorBuild: ""))
+    }
+
+    /// The marker is one of the keys `invalidateAllKeychainCaches()` drops. A key
+    /// left off that list serves a stale cached value after the keychain changes
+    /// under it, which for this marker means reporting "activated under this
+    /// connector" for an activation that has since been replaced.
+    func testRefreshFromKeychainPicksUpAnotherInstancesGeneration() {
+        let libraryUUID = "test-uuid-\(UUID().uuidString)"
+        let writer: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: libraryUUID)
+        let reader: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: libraryUUID)
+
+        // Prime the reader's cache with the absent value before the writer acts.
+        XCTAssertNil(reader.adobeActivationConnectorGeneration)
+        writer.setAdobeActivationConnectorGeneration(AdobeConnectorGeneration.current)
+
+        _ = reader.refreshCredentialsFromKeychain()
+
+        XCTAssertEqual(reader.adobeActivationConnectorGeneration,
+                       AdobeConnectorGeneration.current,
+                       "refreshCredentialsFromKeychain must drop this key's cache "
+                       + "along with the rest")
+    }
+
+#if FEATURE_DRM_CONNECTOR
+    /// The keystone. `current` is hand-assigned, so without this a connector
+    /// swap that nobody paired with a constant bump would leave every migration
+    /// decision reading the wrong generation, and nothing would say so.
+    func testCurrentGenerationDescribesTheLinkedConnector() {
+        let build = AdobeConnectorBuild.current
+
+        XCTAssertFalse(build.isEmpty,
+                       "the SDK registered no hobbes.build, so the generation "
+                       + "constant has nothing to be validated against")
+        XCTAssertEqual(AdobeConnectorGeneration.generation(forConnectorBuild: build),
+                       AdobeConnectorGeneration.current,
+                       "linked connector build \(build) does not map to "
+                       + "AdobeConnectorGeneration.current "
+                       + "(\(AdobeConnectorGeneration.current)); a connector swap "
+                       + "has to move the constant and the table together")
+    }
+#endif
+}
