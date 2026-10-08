@@ -105,14 +105,15 @@ final class OPDS2CatalogsFeedDateDecodingTests: XCTestCase {
         }
     }
 
-    /// Decodes running on many threads at once, mixing plain and fractional
-    /// dates, all read the same values as a serial decode.
+    /// Decodes running on many threads at once, alternating plain and fractional
+    /// dates, all read the same values as a serial decode. The formatters are
+    /// shared, so a parse that changed one would surface here as a wrong value.
     func testFromData_ConcurrentDecodes_AgreeWithSerialDecode() throws {
-        let inputs = ["2026-04-15T10:00:00Z", "2026-04-15T10:00:00.123Z", "2026-04-15T05:00:00-05:00", "bad"]
+        let inputs = ["2026-04-15T10:00:00Z", "2026-04-15T10:00:00.123Z", "2026-04-15T05:00:00.5-05:00", "bad"]
         let payloads = try inputs.map(Self.feedJSON(updated:))
         let expected = try inputs.map(Self.decodedSeconds)
 
-        let iterations = 400
+        let iterations = 8_000
         let results = UnsafeMutableBufferPointer<Double?>.allocate(capacity: iterations)
         defer { results.deallocate() }
         let buffer = results
