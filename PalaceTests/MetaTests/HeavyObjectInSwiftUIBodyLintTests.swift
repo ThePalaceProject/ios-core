@@ -170,6 +170,50 @@ final class HeavyObjectInSwiftUIBodyLintTests: XCTestCase {
         XCTAssertEqual(scan(source).map(\.line), [3, 4])
     }
 
+    /// A sheet's content closure is view content, unlike its event modifiers.
+    func testReports_ConstructionInSheetContent() {
+        let source = """
+        struct V: View {
+            var body: some View {
+                Text("a")
+                    .sheet(isPresented: $shown) { Holder(WKWebView()) }
+            }
+        }
+        """
+        XCTAssertEqual(scan(source).map(\.line), [4])
+    }
+
+    /// A string inside an interpolation does not end the outer string, so its
+    /// brace does not close the scope.
+    func testReports_AfterBraceInsideInterpolatedString() {
+        let source = #"""
+        struct V: View {
+            var body: some View {
+                Text("\(label("}")) items")
+                Holder(WKWebView())
+            }
+        }
+        """#
+        XCTAssertEqual(scan(source).map(\.line), [4])
+    }
+
+    /// A truncated file whose scope never closes is skipped without reading past its end.
+    func testScopes_UnclosedScopeIsSkipped() {
+        let source = """
+        struct V: View {
+            var body: some View {
+                Holder(WKWebView())
+        """
+        XCTAssertEqual(scan(source), [])
+    }
+
+    /// Non-ASCII bytes are blanked so byte offsets, UTF-16 offsets and lines agree.
+    func testLexer_BlanksNonASCIIOutsideStrings() {
+        let stripped = Scanner.stripCommentsAndStrings("let caf\u{00C0} = 1\nlet w = 2")
+        XCTAssertTrue(stripped.utf8.allSatisfy { $0 < 0x80 }, stripped)
+        XCTAssertEqual(stripped.utf8.count, "let caf\u{00C0} = 1\nlet w = 2".utf8.count)
+    }
+
     /// SDK controllers are heavy too, including names that begin with `A`.
     func testReports_SDKControllerInBody() {
         let source = """
