@@ -448,7 +448,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
     /// Public entrypoint — stale-while-revalidate: memory hit → immediate (refresh if
     /// stale); disk hit → immediate + background refresh; miss → bundled fast-path + network.
     func loadCatalogs(completion: ((Bool) -> Void)?) {
-        let targetUrl = TPPConfiguration.customUrl()
+        let targetUrl = TPPConfiguration.customUrl(settings: settings)
             ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrl
                     : TPPConfiguration.prodUrl)
@@ -523,7 +523,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
             _fetchFromNetworkCountLock.unlock()
         }
 
-        if TPPConfiguration.customRegistryIsExplicitURL() {
+        if TPPConfiguration.customRegistryIsExplicitURL(settings: settings) {
             fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash, priority: .userInitiated)
             return
         }
@@ -676,7 +676,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
 
     /// Background refresh via the incremental crawler; direct-GET fallback.
     private func refreshInBackground(targetUrl: URL, hash: String) {
-        if TPPConfiguration.customRegistryIsExplicitURL() {
+        if TPPConfiguration.customRegistryIsExplicitURL(settings: settings) {
             fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash, priority: .utility)
             return
         }

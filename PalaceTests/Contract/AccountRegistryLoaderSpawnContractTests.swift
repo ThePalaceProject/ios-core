@@ -98,43 +98,84 @@ final class AccountRegistryLoaderSpawnContractTests: PalaceWiringTestCase {
 
     // MARK: - Background refresh
 
-    /// A stale in-memory registry is refreshed at `.utility`, and its direct-GET
-    /// fallback stays `.utility`: the patron already has a registry to look at.
-    func testLoadCatalogs_WhenLoadedRegistryIsStale_RefreshAndItsFallbackStayUtility() async {
+    /// A stale in-memory registry is refreshed at `.utility`, and `fallbackDirectRefresh`
+    /// stays `.utility`: the patron already has a registry to look at.
+    func testLoadCatalogs_WhenLoadedRegistryIsStale_RefreshAndItsFallbackStayUtility() async throws {
         let recorder = SpawnRecorder(runsOperations: true)
-        let store = AccountRegistryStore()
-        let loader = makeLoader(
-            scheduler: recorder.scheduler(),
-            cache: StubCache(isStale: true),
-            fetcher: FailingFetcher(),
-            store: store
-        )
-        let account = Account(
-            publication: OPDS2Publication(links: [], metadata: .init(id: "resident", title: "Resident"), images: nil),
-            imageCache: MockImageCache()
-        )
-        XCTAssertTrue(store.replaceBucket(hash: registryHash(), accounts: [account], isCompleteFeed: true),
-                      "precondition: the registry is already loaded")
+        let store = try loadedStore()
+        let loader = makeLoader(scheduler: recorder.scheduler(), cache: StubCache(isStale: true), fetcher: FailingFetcher(), store: store)
+        let completions = CompletionRecorder()
+
+        loader.loadCatalogs(completion: { completions.record($0) })
+        XCTAssertEqual(completions.values, [true], "a loaded registry completes before any refresh task runs")
+        await loader._awaitCatalogLoadForTesting()
+
+        XCTAssertEqual(recorder.spawns, [
+            Spawn(.utility, detached: false),  // incremental crawl refresh
+            Spawn(.utility, detached: true),   // fallbackDirectRefresh after the crawl fails
+        ])
+        XCTAssertEqual(completions.values, [true], "the refresh does not complete the caller again")
+        XCTAssertEqual(loader._ownedCrawlTaskCountForTesting, 0)
+        ContractSnapshot.assert(recorder.log, named: "staleRefresh_crawlFails")
+    }
+
+    // MARK: - Explicit custom registry URL (developer setting; the crawler is bypassed)
+
+    /// With an explicit registry URL the first-load GET is the only network leg the
+    /// waiting completion depends on, so it runs at `.userInitiated`.
+    func testLoadCatalogs_WhenRegistryURLIsExplicit_FirstLoadGETRunsAtUserInitiated() async {
+        settings.customLibraryRegistryServer = Self.explicitRegistryURL
+        let recorder = SpawnRecorder(runsOperations: true)
+        let loader = makeLoader(scheduler: recorder.scheduler(), cache: StubCache(), fetcher: FailingFetcher())
         let completions = CompletionRecorder()
 
         loader.loadCatalogs(completion: { completions.record($0) })
         await loader._awaitCatalogLoadForTesting()
 
-        XCTAssertEqual(completions.values, [true], "a loaded registry completes immediately, before the refresh")
         XCTAssertEqual(recorder.spawns, [
-            Spawn(.utility, detached: false),  // incremental crawl refresh
-            Spawn(.utility, detached: true),   // direct-GET fallback after the crawl fails
+            Spawn(.userInitiated, detached: true),  // first-run
+            Spawn(.userInitiated, detached: true),  // direct GET of the explicit URL
         ])
+        XCTAssertEqual(completions.values, [false], "the waiting completion fires once, from the failed GET")
         XCTAssertEqual(loader._ownedCrawlTaskCountForTesting, 0)
-        ContractSnapshot.assert(recorder.log, named: "staleRefresh_crawlFails")
+    }
+
+    /// With an explicit registry URL, refreshing an already-loaded registry is
+    /// background work and its direct GET stays `.utility`.
+    func testLoadCatalogs_WhenRegistryURLIsExplicitAndStale_RefreshGETStaysUtility() async throws {
+        settings.customLibraryRegistryServer = Self.explicitRegistryURL
+        let recorder = SpawnRecorder(runsOperations: true)
+        let store = try loadedStore()
+        let loader = makeLoader(scheduler: recorder.scheduler(), cache: StubCache(isStale: true), fetcher: FailingFetcher(), store: store)
+        let completions = CompletionRecorder()
+
+        loader.loadCatalogs(completion: { completions.record($0) })
+        await loader._awaitCatalogLoadForTesting()
+
+        XCTAssertEqual(recorder.spawns, [Spawn(.utility, detached: true)])
+        XCTAssertEqual(completions.values, [true])
+        XCTAssertEqual(loader._ownedCrawlTaskCountForTesting, 0)
     }
 
     // MARK: - Helpers
 
+    private static let explicitRegistryURL = "https://registry.example.test/libraries"
+
     private func registryHash() -> String {
-        let targetUrl = TPPConfiguration.customUrl()
+        let targetUrl = TPPConfiguration.customUrl(settings: settings)
             ?? (settings.useBetaLibraries ? TPPConfiguration.betaUrl : TPPConfiguration.prodUrl)
         return targetUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
+    }
+
+    /// A store whose bucket for the current registry hash already holds one library.
+    private func loadedStore() throws -> AccountRegistryStore {
+        let store = AccountRegistryStore()
+        let account = Account(
+            publication: OPDS2Publication(links: [], metadata: .init(id: "resident", title: "Resident"), images: nil),
+            imageCache: MockImageCache()
+        )
+        let applied = store.replaceBucket(hash: registryHash(), accounts: [account], isCompleteFeed: true)
+        return try XCTUnwrap(applied ? store : nil, "precondition: the registry is already loaded")
     }
 
     /// Built with the production encoder so the fixture decodes the way the app's bytes do.
