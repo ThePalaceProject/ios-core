@@ -130,9 +130,9 @@ final class BookRegistrySync: @unchecked Sendable {
   /// deterministically via `_awaitScheduledRedownloadsForTesting()`.
   ///
   /// Production behavior is unchanged: same delay, same main-queue delivery, same
-  /// fire-and-forget semantics — only a reference is kept, and only under XCTest. The
-  /// env-var gate (rather than `#if DEBUG`) keeps the scheduling path free of
-  /// conditional compilation, matching `AccountRegistryLoader._trackedCrawlTasks`.
+  /// fire-and-forget semantics — only a reference is kept, and only under XCTest
+  /// (see `XCTestJoinableTasks`).
+  ///
   /// PER-INSTANCE, deliberately NOT static. A static array is shared by every
   /// `BookRegistrySync` in the test process, so one test's join drains another
   /// test's tasks — the join returns early, its assertion runs before the schedule

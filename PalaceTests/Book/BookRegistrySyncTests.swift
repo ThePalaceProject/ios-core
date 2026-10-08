@@ -898,14 +898,16 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
+        var completionCount = 0
         let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
 
-        syncManager.sync(currentState: .loaded, setState: setState) { completionArgs = ($0, $1) }
+        syncManager.sync(currentState: .loaded, setState: setState) { completionArgs = ($0, $1); completionCount += 1 }
         await syncManager._awaitSyncTasksForTesting()
 
         // sync() sets .syncing, then awaitReady resolves with no loansUrl → .loaded.
-        XCTAssertEqual(received.last, .loaded,
+        XCTAssertEqual(received, [.syncing, .loaded],
                        "no-loansUrl account must end in .loaded after awaitReady, not stay .syncing — got \(received)")
+        XCTAssertEqual(completionCount, 1)
         XCTAssertNil(completionArgs?.errorDoc,
                      "anonymous/no-loansUrl resolution is not an error — errorDocument must be nil")
         XCTAssertEqual(completionArgs?.newBooks, false,
@@ -1102,13 +1104,15 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
-        sut.sync(currentState: .loaded, setState: { received.append($0) }) { completionArgs = ($0, $1) }
+        var completionCount = 0
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { completionArgs = ($0, $1); completionCount += 1 }
         await sut._awaitSyncTasksForTesting()
 
         XCTAssertEqual(fetcher.resetCacheCalls, [true],
                        "loans sync must request a cache-reset fetch (resetCache: true) through the widened seam — got \(fetcher.resetCacheCalls)")
-        XCTAssertEqual(received.last, .loaded,
+        XCTAssertEqual(received, [.syncing, .loaded],
                        "a feed-fetch failure must revert state to .loaded, not leave it stuck .syncing — got \(received)")
+        XCTAssertEqual(completionCount, 1)
         XCTAssertEqual(completionArgs?.errorDoc?["p5.marker"] as? String, "boom",
                        "the thrown NSError.userInfo must be forwarded to completion as the error document")
         XCTAssertEqual(completionArgs?.newBooks, false,
@@ -1148,13 +1152,15 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
-        sut.sync(currentState: .loaded, setState: { received.append($0) }) { completionArgs = ($0, $1) }
+        var completionCount = 0
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { completionArgs = ($0, $1); completionCount += 1 }
         await sut._awaitSyncTasksForTesting()
 
         XCTAssertEqual(fetcher.resetCacheCalls, [true],
                        "successful loans sync must also request a cache-reset fetch")
-        XCTAssertEqual(received.last, .synced,
+        XCTAssertEqual(received, [.syncing, .synced],
                        "a successful feed fetch must land the registry in .synced — got \(received)")
+        XCTAssertEqual(completionCount, 1)
         XCTAssertNil(completionArgs?.errorDoc,
                      "a successful sync is not an error — errorDocument must be nil")
         XCTAssertEqual(completionArgs?.newBooks, false,
@@ -1183,13 +1189,15 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
-        sut.sync(currentState: .loaded, setState: { received.append($0) }) { completionArgs = ($0, $1) }
+        var completionCount = 0
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { completionArgs = ($0, $1); completionCount += 1 }
         await sut._awaitSyncTasksForTesting()
 
         XCTAssertTrue(fetcher.resetCacheCalls.isEmpty,
                       "awaitReady() failure must abort BEFORE the feed fetch — the fetcher must never be called")
-        XCTAssertEqual(received.last, .loaded,
+        XCTAssertEqual(received, [.syncing, .loaded],
                        "an awaitReady failure reverts to .loaded so BookRegistrySync's own retry policy re-drives — got \(received)")
+        XCTAssertEqual(completionCount, 1)
         XCTAssertNil(completionArgs?.errorDoc,
                      "the awaitReady catch resolves with a nil error document (distinct from the loans-fetch error path)")
         XCTAssertEqual(completionArgs?.newBooks, false)
