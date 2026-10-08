@@ -229,7 +229,7 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
                                         expirationDate: nil,
                                         patron: nil,
                                         cookies: nil)
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
         await waitUntil("sign-in profile request fires") {
             !profileRequests.isEmpty
@@ -308,7 +308,7 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
 
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         businessLogic.userAccount.removeAll()
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
         await fulfillment(of: [validationStateExpectation], timeout: 5)
 
@@ -356,14 +356,14 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
                                         patron: nil, cookies: nil)
 
         // First attempt: 503.
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         await waitUntil("first attempt resolves") { callCount >= 1 }
         XCTAssertEqual(callCount, 1)
 
         // Second attempt: 200. The same business-logic + executor pair
         // handles it — no fresh setup, mirroring the way the UI would
         // retry from a single signed-out screen.
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         await waitUntil("retry succeeds") { callCount >= 2 && lastSuccessRequest != nil }
         XCTAssertEqual(callCount, 2)
         XCTAssertNotNil(lastSuccessRequest,
@@ -420,7 +420,7 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         businessLogic.userAccount.setBarcode("u", PIN: "p")
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         await fulfillment(of: [errorExpectation], timeout: 5)
 
         // Service Unavailable from problem-doc must surface as the
