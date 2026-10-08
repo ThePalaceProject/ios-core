@@ -1349,6 +1349,7 @@
 		C8876BE8C4B5606146B6488C /* DownloadAccountContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A731B2809097BED1D69F274 /* DownloadAccountContext.swift */; };
 		C89594A0D21089924B82E71D /* TypographyServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1B8AF7EB40C9DE22ED5ED0 /* TypographyServiceProtocol.swift */; };
 		C8DC8F9202D050EEFBC61B4C /* SettingsSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551562029D888E2A48F22A52 /* SettingsSkeletonView.swift */; };
+		C900C303CF79CF5D1F310617 /* AccountRegistryLoaderCompletionQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C2ABDB1B3BC959AAB50ECA /* AccountRegistryLoaderCompletionQueueTests.swift */; };
 		C998049BB2CFF2AE01EA1C36 /* TypographySettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D440766BDBF7EFBBA87B19A /* TypographySettingsViewModelTests.swift */; };
 		C9C0443BDCA64CFA42558EE0 /* PalaceBookRegistry in Frameworks */ = {isa = PBXBuildFile; productRef = 1F6FCF4928205B68989B8F7E /* PalaceBookRegistry */; };
 		C9C85413F54B67C21D06B3E5 /* SignInAndBorrowJourneyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0444CB0E69D7F4DEEA0C7D /* SignInAndBorrowJourneyTests.swift */; };
@@ -2417,6 +2418,7 @@
 		145DA49521544A420055DB93 /* PureLayout.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PureLayout.framework; path = Carthage/Build/iOS/PureLayout.framework; sourceTree = "<group>"; };
 		148B1C1721710C6800FF64AB /* NYPLAEToolkit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NYPLAEToolkit.framework; path = Carthage/Build/iOS/NYPLAEToolkit.framework; sourceTree = "<group>"; };
 		148B1C1C21710C6800FF64AB /* NYPLAudiobookToolkit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NYPLAudiobookToolkit.framework; path = Carthage/Build/iOS/NYPLAudiobookToolkit.framework; sourceTree = "<group>"; };
+		14C2ABDB1B3BC959AAB50ECA /* AccountRegistryLoaderCompletionQueueTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountRegistryLoaderCompletionQueueTests.swift; sourceTree = "<group>"; };
 		14C78FDF4D5C0DE3F151FAE5 /* AccessibilityPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityPreferences.swift; sourceTree = "<group>"; };
 		14F9B1EBDBC5BEDE0D0180FF /* AudiobookDownloadProgressPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookDownloadProgressPolicy.swift; sourceTree = "<group>"; };
 		151A1BCD2A3E9E836B277A8C /* NYPLXMLTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NYPLXMLTests.swift; sourceTree = "<group>"; };
@@ -4710,6 +4712,7 @@
 				961A50A55D93F25C61ED9712 /* RegistryTruncationRegressionTests.swift */,
 				0065F00B80717E3586903AC8 /* AccountsManagerCollaboratorInitRaceTests.swift */,
 				CBB7870534A8A46A986B00B2 /* AccountSupportEmailRegistryTests.swift */,
+				14C2ABDB1B3BC959AAB50ECA /* AccountRegistryLoaderCompletionQueueTests.swift */,
 			);
 			path = Accounts;
 			sourceTree = "<group>";
@@ -8657,6 +8660,7 @@
 				FE50C45297AAF4A1734BBEA0 /* AccountSupportEmailRegistryTests.swift in Sources */,
 				741C27438B9E7160926125A4 /* SettingsWebViewConstructionTests.swift in Sources */,
 				CC1DC590DCE16AA76F6318EE /* OPDS2CatalogsFeedDateDecodingTests.swift in Sources */,
+				C900C303CF79CF5D1F310617 /* AccountRegistryLoaderCompletionQueueTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
