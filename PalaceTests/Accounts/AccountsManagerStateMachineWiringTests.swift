@@ -876,17 +876,8 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
     // MARK: - Test 4: Single-flight per-UUID auth doc fetch
 
-    /// Counts `Account.loadAuthenticationDocument` invocations and, optionally,
-    /// holds the first one open until the test releases it.
-    ///
-    /// The single-flight tests use an Account with no auth-document URL, so
-    /// `loadAuthenticationDocument` reports `.noURL` through `errorReporter`
-    /// synchronously and completes `false` without touching the network. That
-    /// report is therefore one-per-fetch-attempt, and it runs inside the
-    /// loader's in-flight window (after the slot is claimed, before the
-    /// completion clears it). Blocking the first report is the equivalent of
-    /// holding a stubbed network response: the first fetch stays in flight for
-    /// exactly as long as the test needs.
+    /// Counts fetch attempts via the per-attempt `.noURL` report, which runs inside
+    /// the loader's in-flight window; blocking the first report holds that fetch open.
     private final class FetchGate: ErrorReporting, @unchecked Sendable {
         /// Longer than the two waits the in-flight test makes while holding.
         private static let holdCeiling: TimeInterval = 60
@@ -922,6 +913,14 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     /// soon as its event happens; the bound only decides how long a broken
     /// build takes to report, so it is sized for a heavily loaded runner.
     private static let singleFlightWaitCeiling: TimeInterval = 15
+
+    /// Thread-safe holder for one completion value.
+    private final class ResultBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value: Bool?
+        var value: Bool? { lock.withLock { _value } }
+        func set(_ newValue: Bool) { lock.withLock { _value = newValue } }
+    }
 
     /// Records `stateStream` transitions for one account: for each terminal
     /// transition, how many `.detailsLoading` transitions preceded it.
@@ -968,7 +967,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
                 if recorder.record(state) { terminals.fulfill() }
             }
         }
-        wait(for: [subscribed], timeout: Self.singleFlightWaitCeiling)
+        wait(for: [subscribed], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
         return task
     }
 
@@ -990,10 +989,8 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     /// `Account.loadAuthenticationDocument` again — the state stream's
     /// broadcast covers the second caller.
     ///
-    /// The overlap is enforced, not hoped for: the first fetch is held open
-    /// (see `FetchGate`) while the second caller runs to completion, and only
-    /// then released. The second caller therefore always meets an in-flight
-    /// slot, and the result does not depend on thread scheduling.
+    /// The first fetch is held open (see `FetchGate`) until the second caller has
+    /// completed, so the second caller always meets an in-flight slot.
     func testSingleFlight_secondCallerDuringInflightFetch_doesNotFetchAgain() {
         let firstFetchEntered = expectation(description: "first fetch is in flight")
         let gate = FetchGate(holdingFirstFetch: firstFetchEntered)
@@ -1013,20 +1010,27 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         DispatchQueue.global().async {
             manager.fetchAuthDocumentWithStateMachine(for: account) { _ in firstDone.fulfill() }
         }
-        wait(for: [firstFetchEntered], timeout: Self.singleFlightWaitCeiling)
+        wait(for: [firstFetchEntered], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
 
         // First fetch is in flight and held. The second caller must complete
         // without fetching.
         let secondDone = expectation(description: "second caller completes while the first is held")
+        let secondResult = ResultBox()
         DispatchQueue.global().async {
-            manager.fetchAuthDocumentWithStateMachine(for: account) { _ in secondDone.fulfill() }
+            manager.fetchAuthDocumentWithStateMachine(for: account) { success in
+                secondResult.set(success)
+                secondDone.fulfill()
+            }
         }
-        wait(for: [secondDone], timeout: Self.singleFlightWaitCeiling)
+        wait(for: [secondDone], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
         XCTAssertEqual(gate.fetchAttempts, 1,
                        "A caller arriving while a fetch is in flight must not fetch again")
+        // A deduped caller reports success so a caller balancing a DispatchGroup does not treat it as a failure.
+        XCTAssertEqual(secondResult.value, true,
+                       "A deduped caller's completion must report true")
 
         gate.release()
-        wait(for: [firstDone, terminal], timeout: Self.singleFlightWaitCeiling)
+        wait(for: [firstDone, terminal], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
 
         XCTAssertEqual(gate.fetchAttempts, 1,
                        "Two overlapping callers for one UUID must produce exactly one fetch")
@@ -1052,13 +1056,13 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         DispatchQueue.global().async {
             manager.fetchAuthDocumentWithStateMachine(for: account) { _ in firstDone.fulfill() }
         }
-        wait(for: [firstDone], timeout: Self.singleFlightWaitCeiling)
+        wait(for: [firstDone], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
 
         let secondDone = expectation(description: "second caller completes")
         DispatchQueue.global().async {
             manager.fetchAuthDocumentWithStateMachine(for: account) { _ in secondDone.fulfill() }
         }
-        wait(for: [secondDone, terminals], timeout: Self.singleFlightWaitCeiling)
+        wait(for: [secondDone, terminals], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
 
         XCTAssertEqual(gate.fetchAttempts, 2,
                        "A caller arriving after the prior fetch completed must fetch again")
