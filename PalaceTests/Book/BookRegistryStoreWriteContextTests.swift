@@ -141,13 +141,15 @@ final class BookRegistryStoreWriteContextTests: XCTestCase {
 
     func testPerformBarrierSync_InsideSyncWrite_RunsInline() {
         var innerRan = false
+        var innerReturned = false
 
         let outerRan = store.performBarrierSync {
-            store.performBarrierSync { innerRan = true }
+            innerReturned = store.performBarrierSync { innerRan = true }
         }
 
         XCTAssertTrue(outerRan)
         XCTAssertTrue(innerRan)
+        XCTAssertTrue(innerReturned, "an inline write reports that it ran")
         XCTAssertTrue(recorder.operations.isEmpty)
     }
 
@@ -169,7 +171,7 @@ final class BookRegistryStoreWriteContextTests: XCTestCase {
         XCTAssertTrue(otherRecorder.operations.isEmpty)
     }
 
-    /// A write queued before the store is released still runs; its block decides what to do.
+    /// A queued write does not keep the store alive, and still runs after the store is released.
     func testQueuedAsyncWrite_RunsAfterStoreIsReleased() async {
         let gate = DispatchSemaphore(value: 0)
         let ran = expectation(description: "queued write ran")

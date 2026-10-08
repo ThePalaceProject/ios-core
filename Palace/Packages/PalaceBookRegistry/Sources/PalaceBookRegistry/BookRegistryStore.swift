@@ -86,16 +86,18 @@ final class BookRegistryStore: @unchecked Sendable {
     return key
   }()
 
-  private var ownerToken: UnsafeMutableRawPointer { Unmanaged.passUnretained(self).toOpaque() }
+  /// This store's address, used only as an identity in the slot; it is never
+  /// dereferenced, so holding it does not keep the store alive.
+  private var ownerToken: UInt { UInt(bitPattern: Unmanaged.passUnretained(self).toOpaque()) }
 
   private var isRunningBarrier: Bool {
-    pthread_getspecific(Self.barrierOwnerKey) == ownerToken
+    UInt(bitPattern: pthread_getspecific(Self.barrierOwnerKey)) == ownerToken
   }
 
-  private func runAsBarrierOwner(_ body: () -> Void) {
-    let previous = pthread_getspecific(Self.barrierOwnerKey)
-    pthread_setspecific(Self.barrierOwnerKey, ownerToken)
-    defer { pthread_setspecific(Self.barrierOwnerKey, previous) }
+  private static func runAsBarrierOwner(_ token: UInt, _ body: () -> Void) {
+    let previous = pthread_getspecific(barrierOwnerKey)
+    pthread_setspecific(barrierOwnerKey, UnsafeRawPointer(bitPattern: token))
+    defer { pthread_setspecific(barrierOwnerKey, previous) }
     body()
   }
 
@@ -144,12 +146,8 @@ final class BookRegistryStore: @unchecked Sendable {
     // single-threaded execution the parameter already had — so no capture races
     // another thread. Mirrors `SyncCallbacks` / `SendableErrorDocument`.
     let carrier = BarrierBlockBox(block)
-    // Weak, so a queued write does not extend the store's lifetime; the
-    // blocks themselves capture the store weakly and return if it is gone.
-    syncQueue.async(flags: .barrier) { [weak self] in
-      guard let self else { return carrier.run() }
-      self.runAsBarrierOwner { carrier.run() }
-    }
+    let token = ownerToken
+    syncQueue.async(flags: .barrier) { Self.runAsBarrierOwner(token) { carrier.run() } }
   }
 
   /// Runs `block` as an exclusive write and returns `true`. Inside a write of
@@ -158,7 +156,7 @@ final class BookRegistryStore: @unchecked Sendable {
   @discardableResult
   func performBarrierSync(_ block: () -> Void, operation: String = "performBarrierSync") -> Bool {
     guard DispatchQueue.getSpecific(key: syncQueueKey) != nil else {
-      syncQueue.sync(flags: .barrier) { runAsBarrierOwner(block) }
+      syncQueue.sync(flags: .barrier) { Self.runAsBarrierOwner(ownerToken, block) }
       return true
     }
     guard isRunningBarrier else {
