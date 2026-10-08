@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import SwiftUI
 import PalaceAudiobookToolkit
 @testable import Palace
 
@@ -681,5 +682,222 @@ final class AudiobookMorphingPlayerChapterTitleTests: XCTestCase {
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
+    }
+}
+
+// MARK: - Layout fixtures shared by the two geometry suites
+
+/// Portrait point sizes of the device classes the app ships to: a home-button
+/// phone, the narrow tier, two Dynamic Island phones and an iPad. A layout that
+/// only breaks on one of these is what a single-device check cannot see.
+enum PlayerLayoutDevices {
+    static let portrait: [(name: String, size: CGSize)] = [
+        ("iPhone SE (3rd generation)", CGSize(width: 375, height: 667)),
+        ("iPhone 13 mini", CGSize(width: 375, height: 812)),
+        ("iPhone 16e", CGSize(width: 390, height: 844)),
+        ("iPhone 17 Pro", CGSize(width: 402, height: 874)),
+        ("iPhone 17 Pro Max", CGSize(width: 440, height: 956)),
+        ("iPad (A16)", CGSize(width: 820, height: 1180))
+    ]
+
+    /// A solid image at an exact size, so what the layout reports depends on the
+    /// artwork's aspect ratio and nothing else. 600x900 is the 2:3 book ratio in
+    /// the reported screenshot; without real artwork the player draws the square
+    /// placeholder glyph, which cannot reproduce an artwork-driven overflow.
+    static func artwork(_ width: CGFloat = 600, _ height: CGFloat = 900) -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { ctx in
+            UIColor.systemTeal.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+}
+
+// MARK: - Cover art geometry
+
+/// The full player budgets a SQUARE for the cover: `fullContentPortrait` stacks
+/// fixed chrome around it, so a cover that measures taller than it is wide makes
+/// the column overflow the screen at both ends. On an iPhone 17 Pro (402x874) a
+/// 2:3 cover measured 320x480 instead of 320x320, which put the column at 988pt
+/// and left the bottom control row's capsule 7.4pt past the bottom of the screen
+/// and 41.4pt inside the home-indicator inset.
+@MainActor
+final class AudiobookCoverArtLayoutTests: XCTestCase {
+
+    /// Portrait content width of the full player's cover slot: the screen width
+    /// less `coverArt`'s `.padding(.horizontal, 40)`.
+    private static let coverHorizontalPadding: CGFloat = 80
+    /// `coverArt`'s `.frame(maxWidth: 320)` at the portrait call site.
+    private static let coverMaxWidth: CGFloat = 320
+
+    /// The size the production cover view reports for a proposal — the same
+    /// measurement SwiftUI makes when laying the cover into the player column.
+    ///
+    /// `maxWidth` mirrors the portrait call site's `.frame(maxWidth: 320)`. Pass
+    /// `nil` to measure the cover alone: that frame reports the width it was
+    /// offered when its child is flexible, which hides the cover's own width.
+    private func measuredCover(
+        image: UIImage?,
+        proposing proposal: CGSize,
+        maxWidth: CGFloat? = coverMaxWidth
+    ) -> CGSize {
+        let cover = AudiobookCoverArt(image: image)
+        let host = maxWidth.map { UIHostingController(rootView: AnyView(cover.frame(maxWidth: $0))) }
+            ?? UIHostingController(rootView: AnyView(cover))
+        return host.sizeThatFits(in: proposal)
+    }
+
+    /// A portrait (2:3) cover — the common book ratio, and the one in the
+    /// reported screenshot — must still measure square.
+    func testCoverArt_portraitArtwork_measuresSquare_notTheArtworkRatio() {
+        let measured = measuredCover(image: PlayerLayoutDevices.artwork(),
+                                     proposing: CGSize(width: 322, height: 874))
+        XCTAssertEqual(measured.width, 320, accuracy: 0.5,
+                       "the cover must fill its 320pt slot")
+        XCTAssertEqual(measured.height, 320, accuracy: 0.5,
+                       "a 2:3 cover must measure 320pt tall, not the artwork's 480pt — the extra height is what pushes the control row off the screen")
+    }
+
+    /// A landscape cover must not report the artwork's width either.
+    func testCoverArt_landscapeArtwork_measuresSquare() {
+        let measured = measuredCover(image: PlayerLayoutDevices.artwork(900, 600),
+                                     proposing: CGSize(width: 322, height: 874))
+        XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
+                       "a 3:2 cover must measure square, not 480x320")
+        XCTAssertEqual(measured.height, 320, accuracy: 0.5)
+    }
+
+    /// The missing-artwork placeholder takes the same square.
+    func testCoverArt_placeholder_measuresSquare() {
+        let measured = measuredCover(image: nil,
+                                     proposing: CGSize(width: 322, height: 874))
+        XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
+                       "the placeholder must occupy the same square as artwork")
+    }
+
+    /// The property that keeps the column inside a short screen: when the stack
+    /// has less height left than the cover's 320pt cap, the cover takes what it
+    /// is offered instead of overflowing. Without this an iPhone SE column still
+    /// runs past the bottom even with a square cover.
+    func testCoverArt_takesOnlyTheHeightOffered_whenTheColumnIsTight() {
+        let measured = measuredCover(image: PlayerLayoutDevices.artwork(),
+                                     proposing: CGSize(width: 322, height: 210),
+                                     maxWidth: nil)
+        XCTAssertEqual(measured.height, 210, accuracy: 0.5,
+                       "offered 210pt the cover must measure 210pt, not grow to the artwork's height")
+        XCTAssertEqual(measured.width, 210, accuracy: 0.5,
+                       "and stay square while it shrinks")
+    }
+
+    /// Cross-device: the cover slot differs per screen width, and a layout bleed
+    /// that only reproduces on one device is exactly what a single-device journey
+    /// corpus cannot see. Portrait point sizes of the device classes the app
+    /// ships to — home-button, Dynamic Island, and iPad.
+    func testCoverArt_measuresSquareAndWithinBudget_onEveryDeviceClass() {
+        let art = PlayerLayoutDevices.artwork()
+        for device in PlayerLayoutDevices.portrait {
+            let slotWidth = device.size.width - Self.coverHorizontalPadding
+            let measured = measuredCover(
+                image: art,
+                proposing: CGSize(width: slotWidth, height: device.size.height)
+            )
+            XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
+                           "\(device.name): cover measured \(measured) — not square")
+            XCTAssertLessThanOrEqual(measured.height, min(Self.coverMaxWidth, slotWidth) + 0.5,
+                                     "\(device.name): cover is taller than its slot, so the column overflows the screen")
+        }
+    }
+}
+
+// MARK: - Full-player column geometry, across device classes
+
+/// The assertion the owner-reported bleed needs: mount the real full player at
+/// each device's point size and require its bottom controls to land inside the
+/// screen. The simdrive journey corpus cannot do this — all 26 recordings are
+/// captured at 1206x2622 and address absolute pixels — so a layout that only
+/// breaks on one screen size has no automated reader without this.
+///
+/// The host window carries no safe-area insets, and the player reads its own
+/// from the key window (`topSafeInset`/`bottomSafeInset`), so this pins the
+/// weaker property — inside the screen — rather than clear of the home
+/// indicator. Making those two insets injectable would let this assert the
+/// real one.
+@MainActor
+final class AudiobookPlayerColumnLayoutTests: XCTestCase {
+
+    /// The player's bottom control row, by the labels it publishes. Matching on
+    /// labels rather than positions means a renamed control fails the lookup
+    /// assertion below instead of quietly shrinking the set under test.
+    private var bottomControlLabels: [String] {
+        [Strings.Generic.airplay, Strings.Generic.sleepTimer, Strings.Generic.addBookmark]
+    }
+
+    private func mountExpandedPlayer(size: CGSize) -> AccessibilityAuditHost {
+        let session = SpyShimSession()
+        let presenter = AudiobookSessionPresenter(sessionManager: session)
+        presenter.adoptBook(TPPBookMocker.snapshotAudiobook())
+        presenter.adoptCoverImage(PlayerLayoutDevices.artwork())
+        presenter.expand()
+
+        let suite = "player-layout.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+
+        let player = AudiobookMorphingPlayerView(
+            presenter: presenter,
+            progress: presenter.progress,
+            audiobookSession: session
+        )
+        .defaultAppStorage(defaults)
+
+        let host = AccessibilityAuditHost(UIHostingController(rootView: player), size: size)
+        // The card slides up from one screen below on first appear; settle past
+        // that spring before reading frames, or every frame reads too low.
+        host.settle(1.5)
+        return host
+    }
+
+    /// Every bottom control must sit inside the screen on every device class.
+    /// Pre-fix this failed on the short screens by up to ~78pt.
+    func testFullPlayer_bottomControlsStayOnScreen_onEveryDeviceClass() {
+        for device in PlayerLayoutDevices.portrait {
+            let host = mountExpandedPlayer(size: device.size)
+            defer { host.tearDown() }
+
+            let elements = AccessibilityTraversalAudit.traverse(host.window)
+            for label in bottomControlLabels {
+                guard let control = elements.first(where: { $0.label == label }) else {
+                    XCTFail("\(device.name): no control labeled \"\(label)\" in the player's accessibility tree — the lookup, not the layout, is what failed here")
+                    continue
+                }
+                XCTAssertLessThanOrEqual(
+                    control.frame.maxY, device.size.height,
+                    "\(device.name): \"\(label)\" ends at \(control.frame.maxY)pt on a \(device.size.height)pt screen — it bleeds off the bottom"
+                )
+                XCTAssertGreaterThanOrEqual(
+                    control.frame.minY, 0,
+                    "\(device.name): \"\(label)\" starts above the top of the screen"
+                )
+            }
+        }
+    }
+
+    /// The transport row must stay on screen too: the overflow is split between
+    /// both ends of the column, so a regression can push either way.
+    func testFullPlayer_transportControlsStayOnScreen_onEveryDeviceClass() {
+        for device in PlayerLayoutDevices.portrait {
+            let host = mountExpandedPlayer(size: device.size)
+            defer { host.tearDown() }
+
+            let elements = AccessibilityTraversalAudit.traverse(host.window)
+            let playLabels = [Strings.Generic.playAudiobook, Strings.Generic.pauseAudiobook]
+            guard let play = elements.first(where: { playLabels.contains($0.label) }) else {
+                XCTFail("\(device.name): no play/pause control in the player's accessibility tree")
+                continue
+            }
+            XCTAssertLessThanOrEqual(play.frame.maxY, device.size.height,
+                                     "\(device.name): play/pause bleeds off the bottom")
+            XCTAssertGreaterThanOrEqual(play.frame.minY, 0,
+                                        "\(device.name): play/pause is pushed off the top")
+        }
     }
 }
