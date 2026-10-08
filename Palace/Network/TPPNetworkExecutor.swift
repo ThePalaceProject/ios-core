@@ -219,6 +219,8 @@ private final class CompletionResultBox: @unchecked Sendable {
 ///     (never mutated after construction; nil otherwise → lazy production read).
 ///   • `tokenRefreshWatchdogSeconds` — `var` with ZERO mutation sites repo-wide;
 ///     effectively constant after init.
+///   • `presentSignInAfterRefusedRefresh` — `var`, replaced only by tests before
+///     any refresh starts; production never writes it.
 /// NOT `final`: three PalaceTests mocks subclass this for stubbing
 /// (SpyAudiobookNetworkExecutor, MockNetworkExecutorForSync, RecordingExecutorMock).
 /// They add only test-only or lock-guarded state, so they don't defeat the
@@ -233,6 +235,14 @@ private final class CompletionResultBox: @unchecked Sendable {
     /// slow-but-progressing refresh. Overridable so tests can drive it fast.
     static let defaultTokenRefreshWatchdogSeconds: TimeInterval = 75
     var tokenRefreshWatchdogSeconds: TimeInterval = TPPNetworkExecutor.defaultTokenRefreshWatchdogSeconds
+
+    /// Shows the sign-in sheet after the token endpoint refuses the stored
+    /// credentials. Replaceable so tests can observe whether it ran; the
+    /// container is read only when it is called, never during init.
+    var presentSignInAfterRefusedRefresh: @MainActor () -> Void = {
+        AppContainer.production().signInModalSheetPresenter
+            .presentSignInModalForCurrentAccount(completion: nil)
+    }
 
     // `internal` (default) rather than `private` so adversarial tests can
     // wire a completion onto a synthetic task before invoking
@@ -847,7 +857,17 @@ extension TPPNetworkExecutor {
         return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
     }
 
-    func refreshTokenAndResume(task: URLSessionTask?, accountId: String? = nil, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
+    /// Set to `true` in the `userInfo` of the failure reported when a
+    /// `task: nil` refresh finds another refresh already holding the slot.
+    static let refreshInProgressKey = "TPPNetworkExecutorRefreshInProgress"
+
+    /// - Parameter presentsSignInOnFailure: `false` for refreshes nobody is
+    ///   looking at (the offline queue drains in the background). A refused
+    ///   refresh still marks the credentials stale; only the sheet is skipped.
+    func refreshTokenAndResume(task: URLSessionTask?,
+                               accountId: String? = nil,
+                               presentsSignInOnFailure: Bool = true,
+                               completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
         let capturedAccountId = accountId ?? accountsManager.currentAccountId
         // Box the non-`Sendable` completion so it can cross the `@Sendable` Task
         // boundaries below (this Task and the nested token-refresh continuation)
@@ -871,7 +891,10 @@ extension TPPNetworkExecutor {
                         self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
                     }
                 } else {
-                    let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
+                    let error = NSError(domain: TPPErrorLogger.clientDomain,
+                                        code: TPPErrorCode.invalidCredentials.rawValue,
+                                        userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress",
+                                                   Self.refreshInProgressKey: true])
                     completionBox?.call(NYPLResult.failure(error, nil))
                 }
                 return
@@ -994,9 +1017,9 @@ extension TPPNetworkExecutor {
                                 // account, not the current account at 401-receipt time.
                                 // no-host-scoping: closure-bound capturedAccountId (see comment above)
                                 self.accountsManager.userAccount(for: capturedAccountId ?? self.accountsManager.currentAccountId ?? "").markCredentialsStale()
-                                if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
-                                    AppContainer.production().signInModalSheetPresenter
-                                        .presentSignInModalForCurrentAccount(completion: nil)
+                                if presentsSignInOnFailure,
+                                   capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
+                                    self.presentSignInAfterRefusedRefresh()
                                 }
                             }
                         }

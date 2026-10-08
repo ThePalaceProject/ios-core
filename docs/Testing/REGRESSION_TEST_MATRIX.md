@@ -15,6 +15,17 @@ Standing test area checklist for release-gate regression testing. Derived from t
 - **P1** — Core experience. Reading, playback, sync, catalog. Test every release.
 - **P2** — Polish and edge cases. Sample based on what changed.
 
+## Evidence types
+
+The Automation column says what kind of evidence covers a row. Only the first two run from a clean checkout.
+
+- **Fixture journey**: an XCUITest in `PalaceUITests` drives the app against local fixtures ([UI_JOURNEYS.md](UI_JOURNEYS.md)). It proves the app's own wiring, not a real server, identity provider or DRM.
+- **Integration**: unit-suite tests against the mock backend or stubbed HTTP, such as `PalaceTests/Integration/`.
+- **Device**: needs a physical device: licensed DRM, background audio, lock screen, CarPlay, real VoiceOver.
+- **Manual**: a person runs it against a live library, including every external SAML or OIDC identity provider.
+
+Rows marked "simdrive" use maintainer-local tooling that is not in this repository; for anyone else they are manual.
+
 ---
 
 ## Test Fixtures
@@ -65,7 +76,7 @@ Every auth row below must be run against **each** auth type listed in the "Auth 
 
 | ID | Area | Description | Auth Types | Automation | Notes |
 |----|------|-------------|------------|------------|-------|
-| A1 | Sign in (settings) | Sign in via Settings > Libraries > Account | All 7 (basic, token, oauth, saml, oidc, anonymous, coppa) | Partial (simdrive: basic, token) | Check nav title (F-001), form fields rendered correctly per auth type, error messages. Anonymous / COPPA should show no login form. |
+| A1 | Sign in (settings) | Sign in via Settings > Libraries > Account | All 7 (basic, token, oauth, saml, oidc, anonymous, coppa) | Fixture journey for basic (`SignInAndBorrowJourneyTests`); manual for the rest | Check nav title (F-001), form fields rendered correctly per auth type, error messages. Anonymous / COPPA should show no login form. |
 | A2 | Sign in (just-in-time) | Sign-in prompt triggered by borrow/download | basic, token, oauth, saml, oidc | Manual (simdrive for basic) | Verify prompt appears, completes, resumes the original action without losing context. Anonymous libraries must **not** trigger JIT (SQ-005 regression). **PP-4428 got past this row: on an OIDC library fronted by Google SSO the prompt did not appear at all after tapping Borrow.** Run the JIT path once per *identity provider*, not once per auth type — the auth type was covered and the provider was the variable. Clear the web-sheet session first, or a live cookie hides it. |
 | A3 | Sign out (basic/token/anonymous) | Sign out and verify credential cleanup | basic, token, anonymous | Partial (simdrive) | No credential bleed in keychain. No stale UI. No hang (F-080 regression). |
 | A3-SAML | Sign out (SAML SLO) | SAML Single Logout via CM | saml | Manual | Verify `/logout` endpoint called with correct params. PP-3452 refactored this. |
@@ -83,7 +94,7 @@ Borrow and fulfillment paths branch by distributor. Every circulation row below 
 
 | ID | Area | Description | Distributors | Automation | Notes |
 |----|------|-------------|--------------|------------|-------|
-| B1 | Borrow (generic) | Borrow a book from catalog | All 7 distributors | Partial (simdrive) | Check borrow sheet, button states, OPDS entry refresh. |
+| B1 | Borrow (generic) | Borrow a book from catalog | All 7 distributors | Fixture journey for a DRM-free EPUB (`SignInAndBorrowJourneyTests`); manual per distributor | Check borrow sheet, button states, OPDS entry refresh. |
 | B2 | Return | Return a borrowed book | All 7 distributors | Partial (simdrive) | Verify confirmation alert (PR #803), auto-dismiss, registry cleanup. F-012: revoke endpoint returns XML but client parses as JSON. |
 | B3 | Place hold | Place a hold on unavailable title | All distributors that support holds | Manual | Check hold confirmation, Holds tab update. Anonymous libraries should not offer hold. |
 | B4 | Cancel hold | Cancel an existing hold | All | Manual | Verify state sync in search/list view (F-065), Holds tab refresh. |
@@ -129,7 +140,7 @@ flows work at all.
 
 | ID | Area | Description | Variants | Automation | Notes |
 |----|------|-------------|----------|------------|-------|
-| E1 | EPUB reading — DRM-free | Page turn, search, bookmarks, visual settings | Palace Bookshelf title | Manual (Readium WKWebView invisible to XCTest) | Brightness slider (F-037), search order (F-039), nav bar toggle (F-036). |
+| E1 | EPUB reading — DRM-free | Page turn, search, bookmarks, visual settings | Palace Bookshelf title | Fixture journey for position across a relaunch (`ResumeReadingJourneyTests`); manual for the rest | Brightness slider (F-037), search order (F-039), nav bar toggle (F-036). |
 | E1-LCP | EPUB reading — LCP DRM | Same as E1 but with LCP-protected EPUB | *Cyber Risk* on Palace Marketplace | Manual | Same checks + license-file presence, stale-loan DRM error (F-038). |
 | E1-Adobe | EPUB reading — Adobe DRM | Same as E1 but with Adobe RMSDK | Any Adobe-fulfilled title | Manual | Same checks + Adobe activation must be live. Regression target: no `AdobeCertificate` crash. |
 | E2 | PDF reading | Open, navigate, zoom, annotate | PDF on any library | Manual | |

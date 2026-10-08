@@ -596,13 +596,10 @@ struct AppContainer: @unchecked Sendable {
             // otherwise re-enter `AppContainer.production()` from the queue's
             // serial queue at drain time. Same reasoning as the featureFlags
             // note below: the composition root is the binding site.
-            networkQueue: NetworkQueue(
-                transport: executor.transport,
+            networkQueue: NetworkQueue.live(
+                executor: executor,
                 reachability: reachability,
-                authorizationHeaderProvider: { [accountsManager] libraryID in
-                    accountsManager.userAccount(for: libraryID)
-                        .credentialSnapshot().authToken.map { "Bearer \($0)" }
-                }
+                accountsManager: accountsManager
             ),
             reachability: reachability,
             accountsManager: accountsManager,
