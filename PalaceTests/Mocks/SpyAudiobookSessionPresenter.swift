@@ -175,9 +175,12 @@ final class SpyShimSession: AudiobookSessionManaging {
     private(set) var lastStopPlaybackDismissPhoneUI: Bool?
     private(set) var lastStopPlaybackPersistFinalPosition: Bool?
 
+    /// What `openAudiobook` returns.
+    var openAudiobookResult: Result<Void, AudiobookSessionError> = .failure(.unknown("spy shim"))
+
     @discardableResult
     func openAudiobook(_ book: TPPBook, startPlaying: Bool) async -> Result<Void, AudiobookSessionError> {
-        .failure(.unknown("spy shim"))
+        openAudiobookResult
     }
     func play() {}
     func pause() {}
