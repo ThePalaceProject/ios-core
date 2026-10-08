@@ -105,7 +105,12 @@ final class AudiobookLoader {
     func load(_ book: TPPBook, completion: @escaping (Result<LoadedAudiobook, AudiobookLoadError>) -> Void) {
         let finish: (Result<LoadedAudiobook, AudiobookLoadError>) -> Void = { [weak self] result in
             Task { @MainActor in
-                guard let self else { return }
+                // The session manager awaits this completion with no timeout,
+                // and releasing the loader is how closing mid-load cancels it.
+                guard let self else {
+                    completion(.failure(.cancelled))
+                    return
+                }
                 if self.isCancelled {
                     completion(.failure(.cancelled))
                     return
