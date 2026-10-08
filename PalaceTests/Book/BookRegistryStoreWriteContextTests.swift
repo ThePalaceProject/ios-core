@@ -174,17 +174,17 @@ final class BookRegistryStoreWriteContextTests: XCTestCase {
     /// A queued write does not keep the store alive, and still runs after the store is released.
     func testQueuedAsyncWrite_RunsAfterStoreIsReleased() async {
         let gate = DispatchSemaphore(value: 0)
-        let ran = expectation(description: "queued write ran")
         var released: BookRegistryStore? = makeStore(recorder: recorder)
         weak var weakStore = released
 
-        released?.performBarrier { @Sendable in gate.wait() }
-        released?.performBarrier { @Sendable in ran.fulfill() }
-        released = nil
-        XCTAssertNil(weakStore, "queued writes must not keep the store alive")
-        gate.signal()
-
-        await fulfillment(of: [ran], timeout: 5)
+        // Resumed only by the second queued write, so returning proves it ran.
+        await withCheckedContinuation { (queuedWriteRan: CheckedContinuation<Void, Never>) in
+            released?.performBarrier { @Sendable in gate.wait() }
+            released?.performBarrier { @Sendable in queuedWriteRan.resume() }
+            released = nil
+            XCTAssertNil(weakStore, "queued writes must not keep the store alive")
+            gate.signal()
+        }
     }
 
     /// A read nested in a write is still inside the write, so a write under it stays exclusive.
