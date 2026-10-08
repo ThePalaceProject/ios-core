@@ -68,7 +68,7 @@ final class HeavyObjectInSwiftUIBodyLintTests: XCTestCase {
     /// The class census reaches the named types and subclasses declared in the app.
     func testHeavyTypeCensus_IncludesSeedsAndAppSubclasses() {
         for name in ["WKWebView", "RemoteHTMLViewController", "BundledHTMLViewController",
-                     "TPPAccountList", "TPPEPUBViewController"] {
+                     "TPPAccountList", "TPPEPUBViewController", "EPUBNavigatorViewController"] {
             XCTAssertTrue(Self.heavyTypes.contains(name), "\(name) missing from the heavy-type census")
         }
     }
@@ -128,6 +128,58 @@ final class HeavyObjectInSwiftUIBodyLintTests: XCTestCase {
         }
         """
         XCTAssertEqual(scan(source).map(\.typeName), ["WKWebView", "BundledHTMLViewController"])
+    }
+
+    /// `.init`, generic and module-qualified spellings are constructions too.
+    func testReports_InitGenericAndModuleQualifiedSpellings() {
+        let source = """
+        struct V: View {
+            var body: some View {
+                let a = RemoteHTMLViewController.init(URL: url, title: "", failureMessage: "")
+                let b = UIHostingController<Text>(rootView: Text(""))
+                let c = SafariServices.SFSafariViewController(url: url)
+                let d = WKWebView.init(frame: .zero)
+            }
+        }
+        """
+        XCTAssertEqual(scan(source).map(\.line), [3, 4, 5, 6])
+    }
+
+    /// A ToolbarContent body is rebuilt with the view that owns it.
+    func testReports_ConstructionInToolbarContent() {
+        let source = """
+        struct V: View {
+            private var toolbarItems: some ToolbarContent {
+                ToolbarItem { Holder(WKWebView()) }
+            }
+        }
+        """
+        XCTAssertEqual(scan(source).map(\.scope), ["toolbarItems"])
+    }
+
+    /// A local named like an event modifier is content, not an event closure.
+    func testReports_ContentAfterBareIdentifierNamedLikeModifier() {
+        let source = """
+        struct V: View {
+            var body: some View {
+                if let task { Holder(WKWebView()) }
+                if async { Holder(WKWebView()) }
+            }
+        }
+        """
+        XCTAssertEqual(scan(source).map(\.line), [3, 4])
+    }
+
+    /// SDK controllers are heavy too, including names that begin with `A`.
+    func testReports_SDKControllerInBody() {
+        let source = """
+        struct V: View {
+            var body: some View {
+                Holder(AVPlayerViewController())
+            }
+        }
+        """
+        XCTAssertEqual(scan(source).map(\.typeName), ["AVPlayerViewController"])
     }
 
     func testReports_ConstructionInViewReturningFunction() {
@@ -229,6 +281,26 @@ final class HeavyObjectInSwiftUIBodyLintTests: XCTestCase {
         XCTAssertEqual(scan(source), [])
     }
 
+    /// An explicit generic argument does not hide the autoclosure callee.
+    func testIgnores_GenericAutoclosureWrapperArgument() {
+        let source = """
+        struct V: View {
+            var body: some View {
+                UIViewControllerWrapper<RemoteHTMLViewController>(
+                    RemoteHTMLViewController(URL: url, title: "", failureMessage: ""),
+                    updater: { _ in }
+                )
+            }
+        }
+        """
+        XCTAssertEqual(scan(source), [])
+    }
+
+    /// A truncated file that ends in `#` is lexed without reading past its end.
+    func testLexer_SourceEndingInHashIsKeptIntact() {
+        XCTAssertEqual(Scanner.stripCommentsAndStrings("let a = 1 #"), "let a = 1 #")
+    }
+
     func testIgnores_ActionAndEventClosures() {
         let source = """
         struct V: View {
@@ -280,7 +352,7 @@ final class HeavyObjectInSwiftUIBodyLintTests: XCTestCase {
         XCTAssertEqual(scan(source), [])
     }
 
-    /// Member access and type annotations are not constructions.
+    /// Member access, type annotations, casts and type checks are not constructions.
     func testIgnores_NonConstructionReferences() {
         let source = """
         struct V: View {
@@ -289,6 +361,10 @@ final class HeavyObjectInSwiftUIBodyLintTests: XCTestCase {
                 let type = WKWebView.self
                 let page: RemoteHTMLViewController? = cached
                 Holder(factory.RemoteHTMLViewController(x))
+                if let vc = presenter as? UIViewController { Text("a") }
+                if host is WKWebView { Text("b") }
+                let web = view as! WKWebView
+                let generic = presenter as? UIHostingController<Text>
             }
         }
         """

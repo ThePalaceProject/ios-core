@@ -10,25 +10,32 @@ import Foundation
 
 /// A source scanner, not a parser. It removes comments and string literals,
 /// finds the scopes that run each time a view's content is built, and reports
-/// direct initialiser calls of heavyweight types inside them.
+/// initialiser calls of heavyweight types inside them: `T(`, `T {`, `T<A>(`,
+/// `T.init(` and a module-qualified `UIKit.T(`.
 ///
-/// Scopes: the braces of `var <name>: some View` / `AnyView` (including `body`)
-/// and of `func ... -> some View` / `AnyView`, matched brace by brace.
+/// Scopes: the braces of `var <name>: some View` / `some ToolbarContent` /
+/// `AnyView` (including `body`) and of `func ... -> ` the same types, matched
+/// brace by brace.
 ///
 /// Inside a scope these are deferred and not reported:
 /// - an argument of a call whose parameter is `@autoclosure` (`autoclosureCallees`);
 /// - a closure passed with an action label (`action:`, `perform:`, ...);
-/// - the trailing closure of an event modifier (`onAppear`, `task`, ...), of
-///   `Task`, and of a `Button` that has no `action:` argument.
+/// - the trailing closure of an event modifier written as a member (`.onAppear`,
+///   `.task`, ...), of `Task`, and of a `Button` that has no `action:` argument.
+/// A type named after `as`, `as?`, `as!` or `is` is a cast or check, not a call.
 ///
 /// Known limits:
 /// - only direct initialisers are seen; a helper method or factory that builds
-///   a controller (`coordinator.makeController()`) is not followed;
+///   a controller (`coordinator.makeController()`) is not followed, nor is an
+///   implicit member (`let w: WKWebView = .init()`);
+/// - stored properties and `init` of a view (`@State var vc = Controller()`)
+///   are not scopes, although they also run on every parent re-render;
 /// - a closure stored in a local (`let make = { Controller() }`) is reported,
 ///   although it may never run;
 /// - content closures (`.sheet { }`, `NavigationLink { }`) count as view content;
 /// - a `func` whose parameter list contains `{` (a default closure) is not
-///   recognised as a scope;
+///   recognised as a scope, and a regex literal containing a brace can move a
+///   scope's end;
 /// - types are matched by name only, so a local type that shadows a heavy name
 ///   is reported.
 enum SwiftUIBodyConstructionScanner {
@@ -47,8 +54,9 @@ enum SwiftUIBodyConstructionScanner {
         "WKWebView", "RemoteHTMLViewController", "BundledHTMLViewController",
     ]
 
-    /// SDK roots of the class census. These and every subclass declared in the
-    /// scanned sources are heavy.
+    /// SDK and dependency roots of the class census. These and every subclass
+    /// declared in the scanned sources are heavy. Readium's navigators are
+    /// listed because they are declared outside `Palace/` and own web views.
     static let sdkRootTypes: Set<String> = [
         "UIViewController", "UINavigationController", "UITableViewController",
         "UICollectionViewController", "UIPageViewController", "UITabBarController",
@@ -56,6 +64,14 @@ enum SwiftUIBodyConstructionScanner {
         "UIActivityViewController", "UIDocumentPickerViewController",
         "UIImagePickerController", "SFSafariViewController", "AVPlayerViewController",
         "MFMailComposeViewController", "QLPreviewController", "WKWebView",
+        "PHPickerViewController", "SKStoreProductViewController",
+        "EPUBNavigatorViewController", "PDFNavigatorViewController",
+    ]
+
+    /// Modules a heavy type may be qualified with (`UIKit.UIViewController(`).
+    static let moduleQualifiers: Set<String> = [
+        "UIKit", "WebKit", "SwiftUI", "SafariServices", "AVKit", "MessageUI",
+        "QuickLook", "PhotosUI", "StoreKit", "ReadiumNavigator",
     ]
 
     /// Calls whose first argument is `@autoclosure`, so a controller written
@@ -69,12 +85,13 @@ enum SwiftUIBodyConstructionScanner {
         "onCompletion", "completion", "completionHandler", "handler",
     ]
 
-    /// Callees whose trailing closure runs on an event, not during rendering.
-    static let deferredTrailingCallees: Set<String> = [
+    /// Members whose trailing closure runs on an event, not during rendering.
+    /// They count only when written after a `.`, so `if let task { }` is content.
+    static let deferredTrailingMembers: Set<String> = [
         "onAppear", "onDisappear", "task", "onChange", "onReceive", "onSubmit",
         "onTapGesture", "onLongPressGesture", "onEnded", "onChanged", "onOpenURL",
         "refreshable", "onDrop", "onDelete", "onMove", "onContinueUserActivity",
-        "Task", "detached", "async", "asyncAfter",
+        "detached", "async", "asyncAfter",
     ]
 
     // MARK: - Heavy type census
@@ -152,9 +169,10 @@ enum SwiftUIBodyConstructionScanner {
     struct Scope { let name: String; let open: Int; let close: Int }
 
     private static let scopeHeaders = [
-        try! NSRegularExpression(pattern: #"\bvar\s+(\w+)\s*:\s*(?:some\s+View|AnyView)\s*\{"#),
         try! NSRegularExpression(
-            pattern: #"\bfunc\s+(\w+)[^{};]*?->\s*(?:some\s+View|AnyView)\s*(?:where\s[^{]*)?\{"#),
+            pattern: #"\bvar\s+(\w+)\s*:\s*(?:some\s+(?:View|ToolbarContent)|AnyView)\s*\{"#),
+        try! NSRegularExpression(
+            pattern: #"\bfunc\s+(\w+)[^{};]*?->\s*(?:some\s+(?:View|ToolbarContent)|AnyView)\s*(?:where\s[^{]*)?\{"#),
     ]
 
     /// View-content scopes in comment- and string-free ASCII `code`.
@@ -192,9 +210,12 @@ enum SwiftUIBodyConstructionScanner {
     private struct Frame {
         let isParen: Bool
         let callee: String
+        let calleeIsMember: Bool
         let deferred: Bool
         var sawActionLabel = false
     }
+
+    private typealias ClosedParen = (end: Int, callee: String, calleeIsMember: Bool, sawAction: Bool)
 
     private static func isIdentByte(_ b: UInt8) -> Bool {
         (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A) || b == 0x5F
@@ -207,6 +228,17 @@ enum SwiftUIBodyConstructionScanner {
     /// The identifier that ends at `end` (inclusive), skipping a generic
     /// argument list such as `Wrapper<Foo>`.
     private static func identifier(endingAt end: Int, in bytes: [UInt8]) -> String {
+        identifierAndStart(endingAt: end, in: bytes).name
+    }
+
+    /// True when the identifier ending at `end` is written after a `.`.
+    private static func isMember(endingAt end: Int, in bytes: [UInt8]) -> Bool {
+        let start = identifierAndStart(endingAt: end, in: bytes).start
+        let p = previousNonSpace(before: start, in: bytes)
+        return p >= 0 && bytes[p] == UInt8(ascii: ".")
+    }
+
+    private static func identifierAndStart(endingAt end: Int, in bytes: [UInt8]) -> (name: String, start: Int) {
         var j = end
         if j >= 0, bytes[j] == UInt8(ascii: ">") {
             var depth = 0
@@ -218,8 +250,67 @@ enum SwiftUIBodyConstructionScanner {
         }
         var start = j
         while start >= 0, isIdentByte(bytes[start]) { start -= 1 }
-        guard start < j else { return "" }
-        return String(decoding: bytes[(start + 1)...j], as: UTF8.self)
+        guard start < j else { return ("", max(end, 0)) }
+        return (String(decoding: bytes[(start + 1)...j], as: UTF8.self), start + 1)
+    }
+
+    /// Index just past a balanced `<...>` that starts at `open`, or nil.
+    private static func skipGenericArguments(from open: Int, in bytes: [UInt8], limit: Int) -> Int? {
+        var depth = 0
+        var j = open
+        while j < limit {
+            switch bytes[j] {
+            case UInt8(ascii: "<"): depth += 1
+            case UInt8(ascii: ">"):
+                depth -= 1
+                if depth == 0 { return j + 1 }
+            case UInt8(ascii: "{"), UInt8(ascii: "}"), UInt8(ascii: ";"), UInt8(ascii: "\n"):
+                return nil
+            default: break
+            }
+            j += 1
+        }
+        return nil
+    }
+
+    private static func nextNonSpace(from index: Int, in bytes: [UInt8], limit: Int) -> Int {
+        var j = index
+        while j < limit, isSpace(bytes[j]) { j += 1 }
+        return j
+    }
+
+    /// True when the heavy name at `start..<end` is called: followed by `(` or a
+    /// trailing `{`, optionally after generic arguments or `.init`.
+    private static func isCall(nameEnd end: Int, in bytes: [UInt8], limit: Int) -> Bool {
+        var j = nextNonSpace(from: end, in: bytes, limit: limit)
+        guard j < limit else { return false }
+        if bytes[j] == UInt8(ascii: "<") {
+            guard let past = skipGenericArguments(from: j, in: bytes, limit: limit) else { return false }
+            j = nextNonSpace(from: past, in: bytes, limit: limit)
+            return j < limit && bytes[j] == UInt8(ascii: "(")
+        }
+        let initCall = Array(".init".utf8)
+        if j + initCall.count < limit, Array(bytes[j..<(j + initCall.count)]) == initCall,
+           !isIdentByte(bytes[j + initCall.count]) {
+            j = nextNonSpace(from: j + initCall.count, in: bytes, limit: limit)
+        }
+        return j < limit && (bytes[j] == UInt8(ascii: "(") || bytes[j] == UInt8(ascii: "{"))
+    }
+
+    /// True when the name at `start` is used as a type rather than called:
+    /// a cast or check (`as`, `as?`, `as!`, `is`) or a member of a value.
+    private static func isTypeReference(nameStart start: Int, in bytes: [UInt8]) -> Bool {
+        let p = previousNonSpace(before: start, in: bytes)
+        guard p >= 0 else { return false }
+        if bytes[p] == UInt8(ascii: ".") {
+            return !moduleQualifiers.contains(identifier(endingAt: previousNonSpace(before: p, in: bytes), in: bytes))
+        }
+        if bytes[p] == UInt8(ascii: "?") || bytes[p] == UInt8(ascii: "!") {
+            return p > 0 && identifier(endingAt: p - 1, in: bytes) == "as"
+        }
+        guard isIdentByte(bytes[p]) else { return false }
+        let word = identifier(endingAt: p, in: bytes)
+        return word == "as" || word == "is"
     }
 
     private static func previousNonSpace(before index: Int, in bytes: [UInt8]) -> Int {
@@ -232,7 +323,7 @@ enum SwiftUIBodyConstructionScanner {
         in bytes: [UInt8], from open: Int, to close: Int, heavyTypes: Set<String>
     ) -> [(Int, String)] {
         var stack: [Frame] = []
-        var lastClosedParen: (end: Int, callee: String, sawAction: Bool)?
+        var lastClosedParen: ClosedParen?
         var out: [(Int, String)] = []
         var i = open + 1
         while i < close {
@@ -243,15 +334,14 @@ enum SwiftUIBodyConstructionScanner {
                 // Type names start with a capital; `action` is the one lower-case word read.
                 guard (b >= 0x41 && b <= 0x5A) || b == UInt8(ascii: "a") else { i = end; continue }
                 let name = String(decoding: bytes[i..<end], as: UTF8.self)
-                var next = end
-                while next < close, isSpace(bytes[next]) { next += 1 }
+                let next = nextNonSpace(from: end, in: bytes, limit: close)
                 if name == "action", next < close, bytes[next] == UInt8(ascii: ":"),
                    let top = stack.indices.last, stack[top].isParen {
                     stack[top].sawActionLabel = true
                 }
-                if heavyTypes.contains(name), next < close,
-                   bytes[next] == UInt8(ascii: "(") || bytes[next] == UInt8(ascii: "{"),
-                   bytes[max(previousNonSpace(before: i, in: bytes), 0)] != UInt8(ascii: "."),
+                if heavyTypes.contains(name),
+                   isCall(nameEnd: end, in: bytes, limit: close),
+                   !isTypeReference(nameStart: i, in: bytes),
                    !stack.contains(where: \.deferred) {
                     out.append((i, name))
                 }
@@ -262,17 +352,18 @@ enum SwiftUIBodyConstructionScanner {
             case UInt8(ascii: "("):
                 let callee = identifier(endingAt: i - 1, in: bytes)
                 stack.append(Frame(isParen: true, callee: callee,
+                                   calleeIsMember: isMember(endingAt: i - 1, in: bytes),
                                    deferred: autoclosureCallees.contains(callee)))
             case UInt8(ascii: ")"):
                 if let frame = stack.popLast(), frame.isParen {
-                    lastClosedParen = (i, frame.callee, frame.sawActionLabel)
+                    lastClosedParen = (i, frame.callee, frame.calleeIsMember, frame.sawActionLabel)
                 }
             case UInt8(ascii: "["):
-                stack.append(Frame(isParen: false, callee: "", deferred: false))
+                stack.append(Frame(isParen: false, callee: "", calleeIsMember: false, deferred: false))
             case UInt8(ascii: "]"), UInt8(ascii: "}"):
                 _ = stack.popLast()
             case UInt8(ascii: "{"):
-                stack.append(Frame(isParen: false, callee: "",
+                stack.append(Frame(isParen: false, callee: "", calleeIsMember: false,
                                    deferred: closureIsDeferred(at: i, in: bytes, lastClosedParen: lastClosedParen)))
             default:
                 break
@@ -283,7 +374,7 @@ enum SwiftUIBodyConstructionScanner {
     }
 
     private static func closureIsDeferred(
-        at brace: Int, in bytes: [UInt8], lastClosedParen: (end: Int, callee: String, sawAction: Bool)?
+        at brace: Int, in bytes: [UInt8], lastClosedParen: ClosedParen?
     ) -> Bool {
         let p = previousNonSpace(before: brace, in: bytes)
         guard p >= 0 else { return false }
@@ -293,10 +384,12 @@ enum SwiftUIBodyConstructionScanner {
         if bytes[p] == UInt8(ascii: ")") {
             guard let closed = lastClosedParen, closed.end == p else { return false }
             if closed.callee == "Button" { return !closed.sawAction }
-            return deferredTrailingCallees.contains(closed.callee)
+            return closed.callee == "Task"
+                || (closed.calleeIsMember && deferredTrailingMembers.contains(closed.callee))
         }
         let callee = identifier(endingAt: p, in: bytes)
-        return callee == "Button" || deferredTrailingCallees.contains(callee)
+        if callee == "Button" || callee == "Task" { return true }
+        return deferredTrailingMembers.contains(callee) && isMember(endingAt: p, in: bytes)
     }
 
     // MARK: - Lexing
