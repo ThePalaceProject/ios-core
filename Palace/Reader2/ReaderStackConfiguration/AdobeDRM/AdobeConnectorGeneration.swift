@@ -76,3 +76,34 @@ enum AdobeConnectorGeneration {
         generationsByBuild[build]
     }
 }
+
+#if FEATURE_DRM_CONNECTOR
+extension TPPDRMAuthorizing {
+    /// Whether THIS connector can use the activation already on the device.
+    ///
+    /// `isUserAuthorized` answers a weaker question — "did some connector
+    /// activate this device" — and across a connector change it lies: the Wipro
+    /// binaries report an Adobe-era activation as authorized and then fail every
+    /// operation with `E_ACT_NOT_READY` (PP-5026).
+    ///
+    /// Every site that decides whether to SKIP activation must ask this instead.
+    /// Three did not when the gate was first added — `shouldSkipAdobeActivation`,
+    /// `logInIfUserAuthorized` and `didSelectRead` — and because the shipped
+    /// generation equals `preMarker`, nothing would have failed at the bump: the
+    /// migration would simply never fire on those paths.
+    ///
+    /// The generation is tested first so a decision already known does not enter
+    /// the non-thread-safe RMSDK.
+    func canUseRecordedActivation(userID: String?,
+                                  deviceID: String?,
+                                  recordedGeneration: Int?,
+                                  current: Int = AdobeConnectorGeneration.current) -> Bool {
+        guard let userID, let deviceID else { return false }
+        guard !AdobeConnectorGeneration.needsReactivation(recorded: recordedGeneration,
+                                                          current: current) else {
+            return false
+        }
+        return isUserAuthorized(userID, withDevice: deviceID)
+    }
+}
+#endif

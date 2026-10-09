@@ -368,13 +368,17 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
 
     /// Safely check if a user is authorized for DRM content.
     /// Returns false if DRM is not available.
-    func isUserAuthorized(_ userID: String?, deviceID: String?) -> Bool {
-        guard let adept = adeptInstance,
-              let userID = userID,
-              let deviceID = deviceID else {
-            return false
-        }
-        return adept.isUserAuthorized(userID, withDevice: deviceID)
+    /// Renamed from `isUserAuthorized`: the old name invited callers to treat
+    /// the connector's own verdict as sufficient, which it is not across a
+    /// connector change. Taking the recorded generation makes the bare question
+    /// unaskable through this service.
+    func canUseRecordedActivation(userID: String?,
+                                  deviceID: String?,
+                                  recordedGeneration: Int?) -> Bool {
+        guard let adept = adeptInstance else { return false }
+        return adept.canUseRecordedActivation(userID: userID,
+                                              deviceID: deviceID,
+                                              recordedGeneration: recordedGeneration)
     }
 
     /// Safely set the delegate for DRM callbacks.
@@ -642,12 +646,11 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         // than treated as unknown — see `AdobeConnectorGeneration.preMarker`.
         // The generation is checked BEFORE `isUserAuthorized` so a decision
         // already known does not enter the non-thread-safe RMSDK.
-        if let userID = userAccount.userID,
-           let deviceID = userAccount.deviceID,
-           !AdobeConnectorGeneration.needsReactivation(
-               recorded: userAccount.adobeActivationConnectorGeneration,
-               current: connectorGeneration),
-           authorizer()?.isUserAuthorized(userID, withDevice: deviceID) == true {
+        if authorizer()?.canUseRecordedActivation(
+               userID: userAccount.userID,
+               deviceID: userAccount.deviceID,
+               recordedGeneration: userAccount.adobeActivationConnectorGeneration,
+               current: connectorGeneration) == true {
             Log.info(#file, "Adobe device already activated — skipping activation")
             return
         }

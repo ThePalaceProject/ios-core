@@ -25,6 +25,22 @@ final class AdobeActivationWriteLintTests: XCTestCase {
         return !line.contains("TPPErrorLogger") && !line.contains("Crashlytics")
     }
 
+    /// A production site deciding whether to skip activation from the
+    /// connector's bare verdict. `canUseRecordedActivation` is the only correct
+    /// question; three sites asked the bare one when the gate was first added,
+    /// and because the shipped generation equals `preMarker` nothing would have
+    /// failed at the bump — the migration would just never fire there.
+    ///
+    /// The declaration, the wrapper's own delegation and the registry's
+    /// unrelated `isUserAuthorizedForRegistry` are not decisions.
+    static func asksTheBareAuthorizationQuestion(_ line: String) -> Bool {
+        guard line.contains("isUserAuthorized(") else { return false }
+        if line.contains("func isUserAuthorized") { return false }
+        if line.contains("isUserAuthorizedForRegistry") { return false }
+        if line.contains("return isUserAuthorized(") { return false }
+        return true
+    }
+
     private func productionSwiftFiles() throws -> [URL] {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // MetaTests
@@ -81,6 +97,39 @@ final class AdobeActivationWriteLintTests: XCTestCase {
             "an Adobe activation must be recorded with setAdobeActivation(userID:deviceID:generation:) "
             + "so the connector that produced it is never lost. Violators: \(violators)"
         )
+    }
+
+    /// The three bypasses, pinned so they cannot come back.
+    func testNoProductionFileDecidesFromTheBareAuthorizationCheck() throws {
+        let files = try productionSwiftFiles()
+        XCTAssertGreaterThan(files.count, 100,
+                             "expected to walk the production sources, found \(files.count)")
+
+        var violators: [String] = []
+        for url in files {
+            guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            for line in src.split(separator: "\n", omittingEmptySubsequences: false) {
+                let text = String(line)
+                guard Self.asksTheBareAuthorizationQuestion(text) else { continue }
+                violators.append("\(url.lastPathComponent): \(text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+
+        XCTAssertTrue(
+            violators.isEmpty,
+            "deciding whether to skip Adobe activation must go through "
+            + "canUseRecordedActivation, which also tests the connector generation. "
+            + "Violators: \(violators)"
+        )
+    }
+
+    func testBareAuthorizationPredicateMatchesADecisionButNotADeclaration() {
+        XCTAssertTrue(Self.asksTheBareAuthorizationQuestion(
+            "   drmAuthorizer.isUserAuthorized(userID, withDevice: deviceID) else {"))
+        XCTAssertFalse(Self.asksTheBareAuthorizationQuestion(
+            "    func isUserAuthorized(_ userID: String?, deviceID: String?) -> Bool {"))
+        XCTAssertFalse(Self.asksTheBareAuthorizationQuestion("        if !isUserAuthorizedForRegistry() {"))
+        XCTAssertFalse(Self.asksTheBareAuthorizationQuestion("let x = 1"))
     }
 
     /// Proves the lint can fail, by calling the predicate the corpus scan uses.

@@ -264,6 +264,41 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
                        + "would leave the device permanently unmigrated")
     }
 
+    /// The ordering QA found unasserted: a stale generation must be decided
+    /// WITHOUT entering the connector, which is Adobe's non-thread-safe RMSDK.
+    /// Swapping the two conditions leaves every other assertion in this file
+    /// green, so only a call counter can pin it.
+    func testStaleGeneration_DecidesWithoutEnteringTheConnector() async throws {
+        drm.isUserAuthorizedReturnValue = true
+        drm.authorizeShouldSucceed = true
+        let account = GenerationAccount(licensor: Self.validLicensor,
+                                        userID: "old-user",
+                                        deviceID: "old-device",
+                                        generation: 1)
+
+        try await activate(account, connectorGeneration: 2)
+
+        XCTAssertEqual(drm.isUserAuthorizedCallCount, 0,
+                       "a generation mismatch is already decisive; asking the "
+                       + "connector first would enter the RMSDK for nothing")
+        XCTAssertEqual(drm.authorizeCallCount, 1)
+    }
+
+    /// And the other side: when the generation matches, the connector IS asked.
+    /// Without this the test above is satisfied by never calling it at all.
+    func testMatchingGeneration_DoesAskTheConnector() async throws {
+        drm.isUserAuthorizedReturnValue = true
+        let account = GenerationAccount(licensor: Self.validLicensor,
+                                        userID: "user",
+                                        deviceID: "device",
+                                        generation: AdobeConnectorGeneration.current)
+
+        try await activate(account)
+
+        XCTAssertEqual(drm.isUserAuthorizedCallCount, 1,
+                       "a matching generation is not sufficient on its own")
+    }
+
     // MARK: - The write
 
     /// Closes the loop. An activation that records no generation is backfilled
