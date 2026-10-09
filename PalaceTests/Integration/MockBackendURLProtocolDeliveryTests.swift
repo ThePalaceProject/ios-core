@@ -140,7 +140,7 @@ final class MockBackendURLProtocolDeliveryTests: XCTestCase {
             returned.fulfill()
         }
         thread.start()
-        wait(for: [finished, returned], timeout: 5)
+        wait(for: [finished, returned], timeout: 5) // STARVE-001-OK: dedicated run-loop thread, no Task or cooperative pool
         // Let any late, unexpected client call land before reading the log.
         Thread.sleep(forTimeInterval: 0.1)
         thread.cancel()
