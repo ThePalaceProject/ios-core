@@ -77,7 +77,7 @@ extension TPPSignInBusinessLogic {
     ///
     /// Logout is best-effort: any server error calls `completion` without
     /// surfacing anything to the patron, since local credentials are already cleared.
-    func oidcLogOut(accessToken: String?, completion: @escaping () -> Void) {
+    func oidcLogOut(accessToken: String?, completion: @escaping @Sendable () -> Void) {
         guard let logoutHref = selectedAuthentication?.oidcLogoutHref else {
             completion()
             return
@@ -117,7 +117,16 @@ extension TPPSignInBusinessLogic {
         Log.debug(#file, "OIDC logout: calling CM end-session endpoint: \(logoutURL)")
 
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
-        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { result in
+        // PP-5301: `await`, not a completion — a completion arrives off the main
+        // actor while this closure inherits the enclosing `@MainActor`
+        // isolation, which is the shape that crashed in 3.3.0. The `Task`
+        // inherits that isolation and the await resumes inside it, which the
+        // `@MainActor` below states at the site rather than leaving it to the
+        // class annotation in another file — `completion()` is a caller's
+        // closure and must not be delivered off the main actor.
+        Task { @MainActor in
+            let result = await networker.execute(
+                request, enableTokenRefresh: false, accountId: libraryAccountID)
             switch result {
             case .success:
                 Log.debug(#file, "OIDC logout: CM session invalidated successfully")
@@ -366,7 +375,8 @@ extension TPPSignInBusinessLogic {
 
         self.dispatch(.bearerTokenReceived(token: authToken, expiration: nil))
         self.patron = parsedPatron
-        validateCredentials()
+        // OIDC callback handler is synchronous, so the await needs a Task.
+        startSignInTask { await self.validateCredentials() }
     }
 }
 

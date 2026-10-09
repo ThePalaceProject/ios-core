@@ -91,21 +91,33 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
     }
 
     /// Awaits the next `businessLogicDidFinishDeauthorizing` callback.
-    private func awaitDeauthorize(timeout: TimeInterval = 5.0) {
+    /// Settle the deauthorize, whether it has already happened or is still in
+    /// flight.
+    ///
+    /// The earlier version armed its handler only after the sign-out call and
+    /// then blocked. That worked while `performLogOut()` returned as soon as it
+    /// had dispatched its request: the deauthorize landed afterwards, so the
+    /// handler was in place. Now the call is awaited and the whole sign-out —
+    /// deauthorize included — has finished by the time it returns, so arming
+    /// afterwards waits for an event that already fired. Checking the recorded
+    /// flag first covers that ordering, and `await fulfillment` covers the
+    /// other without holding the main thread.
+    private func awaitDeauthorize(timeout: TimeInterval = 5.0) async {
+        if uiDelegate.didCallDidFinishDeauthorizing { return }
         let exp = expectation(description: "deauthorize completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
-        wait(for: [exp], timeout: timeout)
+        await fulfillment(of: [exp], timeout: timeout)
     }
 
     // MARK: - Sign-out happy path
 
-    func test_signOut_clearsCredentialsFromKeychainAfterDeauthorize() {
+    func test_signOut_clearsCredentialsFromKeychainAfterDeauthorize() async {
         seedSignedInBasicUserWithAdobe()
         let acct = businessLogic.userAccount as! TPPUserAccountMock
         XCTAssertTrue(acct.hasCredentials(), "precondition: signed in")
 
-        businessLogic.performLogOut()
-        awaitDeauthorize()
+        await businessLogic.performLogOut()
+        await awaitDeauthorize()
 
         // Sign-out must wipe credentials from the (mocked) keychain.
         XCTAssertFalse(acct.hasCredentials(),
@@ -114,11 +126,24 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         XCTAssertNil(acct.barcode, "No stale barcode may remain")
     }
 
-    func test_signOut_invokesDRMDeauthorizeExactlyOnce() {
+    /// PP-4986's other half: Settings signs OUT for a library that may not be
+    /// the selected one, and the double answers identically either way, so the
+    /// library the request names is only observable here.
+    func test_signOut_namesTheLibraryItWasBuiltFor() async {
+        await businessLogic.performLogOut()
+
+        XCTAssertEqual(networkExecutor.executedAccountIds,
+                       [libraryAccountMock.tppAccountUUID],
+                       "sign-out must name the library it was built for — a nil "
+                       + "accountId deauthorizes against whichever library is "
+                       + "selected, which is the defect PP-4986 describes")
+    }
+
+    func test_signOut_invokesDRMDeauthorizeExactlyOnce() async {
         seedSignedInBasicUserWithAdobe()
 
-        businessLogic.performLogOut()
-        awaitDeauthorize()
+        await businessLogic.performLogOut()
+        await awaitDeauthorize()
 
         XCTAssertEqual(drmAuthorizer.deauthorizeCallCount, 1,
                        "deauthorize() must be invoked exactly once per sign-out — duplicates indicate the success-path AND the error-path BOTH ran")
@@ -126,7 +151,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
                       "deauthorize() must be invoked at least once when a licensor is present")
     }
 
-    func test_signOut_callsWillSignOutBeforeDeauthorize() {
+    func test_signOut_callsWillSignOutBeforeDeauthorize() async {
         // willSignOut signals the UI to start its "Signing Out..." spinner.
         // It must fire as the first delegate event, BEFORE the network call.
         seedSignedInBasicUserWithAdobe()
@@ -144,8 +169,8 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        wait(for: [exp], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertTrue(willSignOutFiredBeforeDeauth,
                       "businessLogicWillSignOut must fire before businessLogicDidFinishDeauthorizing")
@@ -170,7 +195,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         // Defer the DRM deauthorize completion so we can simulate a race.
         drmAuthorizer.shouldDeferDeauthorize = true
 
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
 
         // Drain the userProfile request → deauthorize() gets called → its
         // completion is captured (deferred). JOIN the "deauthorize invoked"
@@ -226,7 +251,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         let acct = businessLogic.userAccount as! TPPUserAccountMock
 
         drmAuthorizer.shouldDeferDeauthorize = true
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
 
         // Join the "deauthorize invoked" edge deterministically (mock seam)
         // instead of Timer-polling `deauthorizeWasCalled` on a 5s ceiling.
@@ -259,7 +284,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         seedSignedInBasicUserWithAdobe()
         drmAuthorizer.shouldDeferDeauthorize = true
 
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
 
         // Join the first sign-out reaching deauthorize deterministically
         // (mock seam) instead of Timer-polling on a 5s wall-clock ceiling.
@@ -268,7 +293,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         // Second call must be coalesced — must not trigger another network request
         // or another deauthorize.
         let countBefore = drmAuthorizer.deauthorizeCallCount
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
         // Drain the runloop to give a hypothetical second sign-out a chance to
         // spin up. FIFO guarantee means every earlier-queued block has run by
         // the time the assertion below executes. `drainMainQueueAsync` (not the
@@ -288,7 +313,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
 
     // MARK: - Sign-out 401 silent path
 
-    func test_signOut_401Response_doesNotShowSignOutErrorToUser() {
+    func test_signOut_401Response_doesNotShowSignOutErrorToUser() async {
         // A 401 on sign-out is the expected "token expired during idle" path
         // (PP-3491 trail). It must NOT surface a confusing
         // "Unexpected Credentials" alert to the user — it must take the
@@ -296,8 +321,8 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         seedSignedInBasicUserWithAdobe()
         networkExecutor.forceFailureStatusCode = 401
 
-        businessLogic.performLogOut()
-        awaitDeauthorize()
+        await businessLogic.performLogOut()
+        await awaitDeauthorize()
 
         XCTAssertFalse(uiDelegate.didCallSignOutError,
                        "401 on sign-out must NOT surface a sign-out error to the user (silent cleanup path)")
@@ -308,15 +333,15 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
                        "Local credentials must still be cleared even on the 401-silent path")
     }
 
-    func test_signOut_500Response_surfacesSignOutErrorAndStillCleansUp() {
+    func test_signOut_500Response_surfacesSignOutErrorAndStillCleansUp() async {
         // A 500 (server error) on sign-out: must report the error to the
         // delegate AND still complete local cleanup. The "always cleanup
         // locally" invariant from the production code's comment.
         seedSignedInBasicUserWithAdobe()
         networkExecutor.forceFailureStatusCode = 500
 
-        businessLogic.performLogOut()
-        awaitDeauthorize()
+        await businessLogic.performLogOut()
+        await awaitDeauthorize()
 
         XCTAssertTrue(uiDelegate.didCallSignOutError,
                       "Non-401 server error must surface didEncounterSignOutError so the UI can show it")
@@ -328,7 +353,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
 
     // MARK: - Sign-out clears in-flight businesslogic state
 
-    func test_signOut_clearsSelectedIDP() {
+    func test_signOut_clearsSelectedIDP() async {
         seedSignedInBasicUserWithAdobe()
         // simulate a saml-style selectedIDP being set
         businessLogic.selectedIDP = nil // can't easily build an OPDS2SamlIDP here;
@@ -336,14 +361,14 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         // completeLogOutProcess always sets `selectedIDP = nil`. We
         // verify the post-condition rather than the assignment path.
 
-        businessLogic.performLogOut()
-        awaitDeauthorize()
+        await businessLogic.performLogOut()
+        await awaitDeauthorize()
 
         XCTAssertNil(businessLogic.selectedIDP,
                      "completeLogOutProcess must set selectedIDP to nil")
     }
 
-    func test_signOut_clearsSAMLHelperState() {
+    func test_signOut_clearsSAMLHelperState() async {
         // The SAML helper retains cookies between flows; sign-out must
         // clear them so a fresh sign-in starts with a clean slate.
         seedSignedInBasicUserWithAdobe()
@@ -356,14 +381,14 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         businessLogic.samlHelper.cookies = [cookie]
         XCTAssertEqual(businessLogic.samlHelper.cookies?.count, 1, "precondition")
 
-        businessLogic.performLogOut()
-        awaitDeauthorize()
+        await businessLogic.performLogOut()
+        await awaitDeauthorize()
 
         XCTAssertNil(businessLogic.samlHelper.cookies,
                      "Sign-out must call samlHelper.clearState() — cookies must be nil after sign-out")
     }
 
-    func test_signOut_resetsBookRegistry() {
+    func test_signOut_resetsBookRegistry() async {
         // Sign-out must reset the book registry FOR THIS LIBRARY so the
         // next user's book state doesn't leak across. The mock's `reset(_:)`
         // both flips isSyncing=false AND clears the registry dictionary —
@@ -378,8 +403,8 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         let fakeRecord = TPPBookRegistryRecord(book: fakeBook, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
         bookRegistry.registry[fakeBook.identifier] = fakeRecord
 
-        businessLogic.performLogOut()
-        awaitDeauthorize()
+        await businessLogic.performLogOut()
+        await awaitDeauthorize()
 
         XCTAssertFalse(bookRegistry.isSyncing,
                        "Sign-out must reset() the book registry — the mock's reset(_:) clears isSyncing")
@@ -393,7 +418,8 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
     ///
     /// A one-word flag with no visible effect on the happy path, which is
     /// exactly why it needs a test. Setting it true arms
-    /// `TPPNetworkExecutor:882-899`: a proactive refresh that 401s — an expired
+    /// the 401 branch of `TPPNetworkExecutor.refreshTokenAndResume`: a
+    /// proactive refresh that 401s — an expired
     /// card, the case someone would flip the flag to help — calls
     /// `markCredentialsStale()` AND `presentSignInModalForCurrentAccount(...)`
     /// when the refreshing account is the current one, which at sign-out it
@@ -412,7 +438,7 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
     func test_signOutProfileRequest_doesNotArmProactiveTokenRefresh() async {
         seedSignedInBasicUserWithAdobe()
 
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
         await drainMainQueueAsync()
 
         let asked = networkExecutor.tokenRefreshByURL
