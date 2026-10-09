@@ -488,11 +488,15 @@ def kill_rerun_candidates(tests_doc: dict) -> tuple[int, list[str]]:
     return KILLS_ONLY, [f["id"] for f in failures]
 
 
+RERUN_PASSES = {"Passed", "Expected Failure"}
+
+
 def rerun_outcome(expected_ids: list[str], rerun_doc: dict) -> list[str]:
     """-> problems; empty means every re-run test ran and passed.
 
     Checked by name, because xcodebuild runs nothing for an `-only-testing`
-    identifier that matches nothing and still exits 0.
+    identifier that matches nothing and still exits 0. "Expected Failure" is
+    the result of a test inside XCTExpectFailure that behaved, so it passes.
     """
     results: dict[str, str] = {}
 
@@ -514,7 +518,7 @@ def rerun_outcome(expected_ids: list[str], rerun_doc: dict) -> list[str]:
         r = results.get(i)
         if r is None:
             problems.append(f"{i} did not run on the second chance")
-        elif r != "Passed":
+        elif r not in RERUN_PASSES:
             problems.append(f"{i} {r.lower()} on the second chance")
     return problems
 

@@ -554,6 +554,22 @@ def test_rerun_outcome_requires_every_id_to_have_run_and_passed():
     assert shards.rerun_outcome(ids, a_killed) == ["PalaceTests/S/testA failed on the second chance"]
 
 
+def test_rerun_outcome_counts_an_expected_failure_as_a_pass():
+    """Run 37993767978: a test wrapped in XCTExpectFailure reports "Expected
+    Failure" when it behaves, so its second chance must count as a pass."""
+    ids = ["PalaceTests/S/testA"]
+    expected = _doc(_case("S/testA()", "Expected Failure"))
+    assert shards.rerun_outcome(ids, expected) == []
+
+
+def test_rerun_outcome_still_fails_a_failed_or_skipped_second_chance():
+    ids = ["PalaceTests/S/testA"]
+    failed = _doc(_case("S/testA()", "Failed"))
+    assert shards.rerun_outcome(ids, failed) == ["PalaceTests/S/testA failed on the second chance"]
+    skipped = _doc(_case("S/testA()", "Skipped"))
+    assert shards.rerun_outcome(ids, skipped) == ["PalaceTests/S/testA skipped on the second chance"]
+
+
 # --------------------------------------------------------------------------
 # CLI wiring: plan -> args covers the enumeration exactly
 # --------------------------------------------------------------------------
