@@ -427,7 +427,6 @@ struct AudiobookMorphingPlayerView: View {
     /// drag zone.
     private var coverArt: some View {
         coverImageOrPlaceholder
-            .aspectRatio(1, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
             .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
@@ -1228,7 +1227,6 @@ struct AudiobookMorphingPlayerView: View {
             VStack(spacing: 24) {
                 Spacer(minLength: 24)
                 coverImageOrPlaceholder
-                    .aspectRatio(1, contentMode: .fit)
                     .frame(maxWidth: 240)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
@@ -1482,21 +1480,8 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Shared cover
 
-    @ViewBuilder
     private var coverImageOrPlaceholder: some View {
-        if let cover = presenter.coverImage {
-            Image(uiImage: cover)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .accessibilityLabel(Strings.Generic.bookCover)
-        } else {
-            Image(systemName: "book.closed")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .foregroundStyle(.secondary)
-                .padding(8)
-                .accessibilityLabel(Strings.Generic.bookCover)
-        }
+        AudiobookCoverArt(image: presenter.coverImage)
     }
 
     // MARK: - Gestures

@@ -28,7 +28,7 @@ description: Per-area verification reference; refresh before changing this area
 | File | Line | Trigger | Notes |
 |------|------|---------|-------|
 | `Palace/AppInfrastructure/DLNavigator.swift` | 86 | Deep-link nav | UIKit context — may fire before SwiftUI root mounts. |
-| `Palace/Network/TPPNetworkExecutor.swift` | 489 | 401 handler | Fire-and-forget (`completion: nil`); may not be on `MainActor`. |
+| `Palace/Network/TPPNetworkExecutor.swift` | 999 | 401 handler | Fire-and-forget (`completion: nil`); may not be on `MainActor`. |
 | `Palace/Holds/HoldsViewModel.swift` | 81 | Place-hold from anonymous state | SwiftUI VM. |
 | `Palace/SignInLogic/TPPReauthenticator.swift` | 54 | Re-auth orchestration | Threaded through coordinator post-PR #1018. |
 | `Palace/Book/UI/BookDetail/BookDetailViewModel.swift` | 659 | Borrow → sign in → resume | **PP-4114 race site.** Sets `showHalfSheet = true` in completion. |
@@ -147,7 +147,7 @@ The modal surface itself does not emit dedicated analytics events today (it's a 
 - **Full-SwiftUI modal refactor is in backlog** (~150–200 LOC, 12 call sites; Option A from the PR #905 follow-up). Until it lands, the modal is a SwiftUI view hosted in a `UIHostingController`, presented imperatively via `TPPPresentationUtils.safelyPresent`. The architecture is *correct but fragile* — any caller that presents a SwiftUI sheet synchronously in the completion is at risk of the PP-4114 race. Wire completion → next-sheet via `@Published` + `.onChange`, not synchronous calls.
 - **iOS 26 UITextField focus quirks** affect the modal. Confirm via simdrive after any iOS version bump — focus-on-appear and tab-key dismissal both regressed once on iOS 26 alpha SDKs. Recording the modal-open journey in `.simdrive/journeys/` is the fastest way to catch this.
 - **Deep-link entry from `DLNavigator`** — `application(_:open:)` may fire before the SwiftUI root mounts. Current UIHostingController path tolerates this; a future full-SwiftUI sheet must buffer the request on the coordinator and present once the root view appears.
-- **Fire-and-forget completion** — `TPPNetworkExecutor:489`, `MyBooksViewModel:198` both pass `completion: nil`. The modal-fire-and-forget code path is implicit in `SignInModalPresenter.presentSignInModal` (passes nil through the hosting controller's `onDidFullyDismiss`). Do not assume a completion will run when the caller did not register one.
+- **Fire-and-forget completion** — `TPPNetworkExecutor:999`, `MyBooksViewModel:198` both pass `completion: nil`. The modal-fire-and-forget code path is implicit in `SignInModalPresenter.presentSignInModal` (passes nil through the hosting controller's `onDidFullyDismiss`). Do not assume a completion will run when the caller did not register one.
 
 ---
 

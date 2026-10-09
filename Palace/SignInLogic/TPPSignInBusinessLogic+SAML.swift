@@ -92,7 +92,7 @@ extension TPPSignInBusinessLogic {
     /// Logout is best-effort: any server error calls `completion` without
     /// surfacing anything to the patron, since local credentials are already
     /// cleared at this point in the pipeline.
-    func samlLogOut(accessToken: String?, completion: @escaping () -> Void) {
+    func samlLogOut(accessToken: String?, completion: @escaping @Sendable () -> Void) {
         guard let logoutHref = selectedAuthentication?.samlLogoutHref else {
             completion()
             return
@@ -120,7 +120,16 @@ extension TPPSignInBusinessLogic {
         Log.debug(#file, "SAML logout: calling CM saml_logout_redirect: \(logoutURL)")
 
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
-        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { result in
+        // PP-5301: `await`, not a completion — a completion arrives off the main
+        // actor while this closure inherits the enclosing `@MainActor`
+        // isolation, which is the shape that crashed in 3.3.0. The `Task`
+        // inherits that isolation and the await resumes inside it, which the
+        // `@MainActor` below states at the site rather than leaving it to the
+        // class annotation in another file — `completion()` is a caller's
+        // closure and must not be delivered off the main actor.
+        Task { @MainActor in
+            let result = await networker.execute(
+                request, enableTokenRefresh: false, accountId: libraryAccountID)
             switch result {
             case .success:
                 Log.debug(#file, "SAML logout: CM session invalidated successfully")
