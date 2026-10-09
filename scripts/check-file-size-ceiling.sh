@@ -89,7 +89,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 1213 -> 1172 when the mid-download network-loss handler moved to
 # DownloadNetworkLossMonitor.swift.
 1172 Palace/MyBooks/MyBooksDownloadCenter.swift
-1044 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
+1029 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 871  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 367 under this metric, not 366: #1520 landed
@@ -104,7 +104,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 870 in total, on two CLAUDE.md critical paths (sign-in, borrow). The allowlist
 # only ratchets down, so pinning them costs nothing and closes the regression.
 367  Palace/Accounts/Library/AccountsManager.swift
-634  Palace/SignInLogic/TPPSignInBusinessLogic.swift
+633  Palace/SignInLogic/TPPSignInBusinessLogic.swift
 514  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the
 # ceiling inside the old blind spot; pinned here at its measured size so the
