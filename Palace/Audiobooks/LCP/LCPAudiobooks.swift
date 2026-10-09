@@ -427,8 +427,7 @@ extension LCPAudiobooks {
             let completionBox = SendableDecryptCompletion(completion)
             Task {
                 do {
-                    let data = try await resource.read().get()
-                    try data.write(to: resultUrl, options: .atomic)
+                    try await LCPTrackFileWriter.write(resource, to: resultUrl)
                     DispatchQueue.main.async {
                         completionBox.fire(nil)
                     }
@@ -471,6 +470,64 @@ private extension Publication {
         }
 
         return resource
+    }
+}
+
+/// Writes a decrypted LCP track to disk without holding the whole track in
+/// memory (PP-5347: a full `read()` of a long track ran 3.3.1 out of memory).
+///
+/// The track is streamed into a hidden sibling file and moved into place only
+/// once complete, because the toolkit treats any file at the destination as an
+/// already-decrypted track.
+enum LCPTrackFileWriter {
+    static let defaultChunkSize: UInt64 = 1024 * 1024
+
+    static func write(
+        _ resource: Resource,
+        to destination: URL,
+        chunkSize: UInt64 = defaultChunkSize,
+        fileManager: FileManager = .default
+    ) async throws {
+        // Readium's CBC resource refuses ranged reads when it cannot compute the
+        // plaintext length, but still decrypts a whole read. Keep that path.
+        guard case .success(.some) = await resource.estimatedLength() else {
+            let data = try await resource.read().get()
+            try data.write(to: destination, options: .atomic)
+            return
+        }
+
+        let partial = destination.deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).partial")
+        guard fileManager.createFile(atPath: partial.path, contents: nil) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: partial.path])
+        }
+
+        do {
+            let handle = try FileHandle(forWritingTo: partial)
+            do {
+                var offset: UInt64 = 0
+                while true {
+                    let chunk = try await resource.read(range: offset ..< offset + chunkSize).get()
+                    try handle.write(contentsOf: chunk)
+                    offset += UInt64(chunk.count)
+                    // Readium clamps ranges to the resource length, so a short read is the end.
+                    if UInt64(chunk.count) < chunkSize { break }
+                }
+                try handle.close()
+            } catch {
+                try? handle.close()
+                throw error
+            }
+
+            if fileManager.fileExists(atPath: destination.path) {
+                _ = try fileManager.replaceItemAt(destination, withItemAt: partial)
+            } else {
+                try fileManager.moveItem(at: partial, to: destination)
+            }
+        } catch {
+            try? fileManager.removeItem(at: partial)
+            throw error
+        }
     }
 }
 
