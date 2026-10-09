@@ -170,10 +170,11 @@ extension Account {
 
     // MARK: - Internal Transition Seam
 
-    /// Drive the state machine. Writers are the account-loading code
-    /// (`AccountsManager`, `AccountRegistryLoader`, `AuthDocumentLoader`, and
-    /// `loadAuthenticationDocument` on success) and unit tests; call sites that
-    /// need `AccountDetails` use `awaitReady()`.
+    /// Drive the state machine. Callers are the account-loading code
+    /// (`AccountRegistryLoader`, `AuthDocumentLoader`, and
+    /// `loadAuthenticationDocument` on success) and unit tests; `AccountsManager`
+    /// writes its eviction marker to the store directly. Call sites that need
+    /// `AccountDetails` use `awaitReady()`.
     func _setState(_ state: LoadState) {
         AccountStateStore.shared.setState(state, for: uuid)
     }
