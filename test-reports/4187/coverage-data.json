@@ -73,15 +73,15 @@
     },
     "PalaceLogging": {
       "file_count": 3,
-      "covered_lines": 78,
+      "covered_lines": 88,
       "executable_lines": 283,
-      "testable_covered_lines": 78,
+      "testable_covered_lines": 88,
       "testable_executable_lines": 283,
       "excluded_file_count": 0,
       "excluded_covered_lines": 0,
       "excluded_executable_lines": 0,
-      "total_coverage": 27.56183745583039,
-      "testable_coverage": 27.56183745583039
+      "total_coverage": 31.09540636042403,
+      "testable_coverage": 31.09540636042403
     },
     "PalaceReadingPosition": {
       "file_count": 6,
