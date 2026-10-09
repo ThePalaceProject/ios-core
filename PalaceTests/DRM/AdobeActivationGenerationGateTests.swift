@@ -102,10 +102,27 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
         await MainActor.run {}
     }
 
+    /// Counts how many times the authorizer CLOSURE was invoked — not how many
+    /// times `authorize` was called. Resolving the closure reaches
+    /// `NYPLADEPT.sharedInstance()`, which initialises the non-thread-safe
+    /// RMSDK, so "did we ask the connector" and "did we construct it" are
+    /// different questions and only the second one was ever observed.
+    private let authorizerResolutions = AuthorizerResolutionCounter()
+
+    final class AuthorizerResolutionCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _count = 0
+        var count: Int { lock.withLock { _count } }
+        func record() { lock.withLock { _count += 1 } }
+    }
+
     private func activate(_ account: GenerationAccount,
                           connectorGeneration: Int = AdobeConnectorGeneration.current) async throws {
         try await service.ensureDeviceActivated(
-            authorizer: { [drm] in drm },
+            authorizer: { [drm, authorizerResolutions] in
+                authorizerResolutions.record()
+                return drm
+            },
             userAccount: account,
             isDRMAvailable: true,
             connectorGeneration: connectorGeneration
@@ -236,6 +253,42 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
         XCTAssertEqual(drm.authorizeCallCount, 1,
                        "the second operation must skip: a migration that re-activates "
                        + "every time spends an activation slot on each one")
+    }
+
+    /// The laziness invariant, which was documented in two comments and enforced
+    /// by nothing. Inlining the optionals into the predicate call is
+    /// boolean-identical — the predicate guards nils itself — so it compiles and
+    /// leaves every other test green, while production resolves
+    /// `NYPLADEPT.sharedInstance()` on every borrow for a library with no Adobe
+    /// licensor. Measured survivor before this existed.
+    func testNoIdentifiers_DoesNotEvenResolveTheAuthorizer() async throws {
+        let account = GenerationAccount(licensor: Self.validLicensor)
+        XCTAssertNil(account.userID)
+        XCTAssertNil(account.deviceID)
+        drm.authorizeShouldSucceed = true
+
+        try await activate(account)
+
+        XCTAssertEqual(authorizerResolutions.count, 1,
+                       "the activation path resolves the authorizer exactly once, to "
+                       + "authorize — not a second time for a gate decision the "
+                       + "identifiers already settle")
+    }
+
+    /// The other direction: when identifiers exist the gate does resolve it, so
+    /// the test above cannot be satisfied by never resolving at all.
+    func testWithIdentifiers_TheGateResolvesTheAuthorizer() async throws {
+        drm.isUserAuthorizedReturnValue = true
+        let account = GenerationAccount(licensor: Self.validLicensor,
+                                        userID: "user",
+                                        deviceID: "device",
+                                        generation: AdobeConnectorGeneration.current)
+
+        try await activate(account)
+
+        XCTAssertGreaterThanOrEqual(authorizerResolutions.count, 1,
+                                    "the gate must ask the connector when the "
+                                    + "identifiers do not settle the question")
     }
 
     // MARK: - The connector swap, driven through the gate

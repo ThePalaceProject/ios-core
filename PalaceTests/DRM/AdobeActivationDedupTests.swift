@@ -268,7 +268,11 @@ final class AdobeActivationDedupTests: XCTestCase {
         XCTAssertEqual(attempts, 0, "the fast path must not even claim the single-flight slot")
     }
 
-    func test_ensureDeviceActivated_whenDRMUnavailable_throwsWithoutEnteringAdobe() async {
+    /// Renamed: this asserts `authorizeCallCount`, i.e. that no activation was
+    /// attempted. It does NOT observe whether the authorizer closure was
+    /// resolved, which is what constructs the RMSDK — that invariant is pinned
+    /// by `AdobeActivationGenerationGateTests`.
+    func test_ensureDeviceActivated_whenDRMUnavailable_throwsWithoutAttemptingAuthorize() async {
         do {
             try await service.ensureDeviceActivated(authorizer: { [drm] in drm },
                                                     userAccount: account,
