@@ -42,8 +42,13 @@ final class ProductionAudiobookManifestFetcher: AudiobookManifestNetworkFetching
         // the fetch still succeeds — after a wasted round trip, a spurious
         // token exchange, the per-URL retry budget (`maxRetryAttempts = 1`) and
         // `markCredentialsStale()`, which can surface as an unprompted
-        // re-login. It is terminal only where the repair declines: basic auth,
-        // and browser reauth (`TPPNetworkResponder.swift:659`).
+        // re-login. It is terminal where the repair declines: basic auth,
+        // browser reauth (`TPPNetworkResponder.swift:659`), and — the worst
+        // case rather than the mild one — a token or OAuth library missing a
+        // `tokenURL`, barcode or pin, because `markCredentialsStale()` fires at
+        // `:695` before `canRefreshToken` is evaluated at `:697`, so those land
+        // on `return false` with credentials already marked and no retry to
+        // heal them.
         try await executor.GET(request: executor.request(for: url),
                                cachePolicy: .useProtocolCachePolicy,
                                useTokenIfAvailable: true)

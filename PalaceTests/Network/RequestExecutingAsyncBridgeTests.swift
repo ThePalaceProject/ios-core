@@ -161,9 +161,11 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
     // bearer token from every audiobook manifest fetch and LCP license
     // re-download. The repair path would have rescued most of those — the
     // retry is rebuilt through `request(for:)` — at the cost of a wasted trip,
-    // a spurious token exchange and `markCredentialsStale()`; it is terminal
-    // only for basic and browser reauth. The header is the thing to assert
-    // either way.
+    // a spurious token exchange and `markCredentialsStale()`, and it is
+    // terminal for several auth shapes — enumerated once at
+    // `ProductionAudiobookManifestFetcher.fetchData` rather than repeated here,
+    // so the list cannot drift between the two. The header is the thing to
+    // assert either way.
 
     func testProductionManifestFetcher_sendsTheBearerToken() async throws {
         let seen = HeaderRecorder()
@@ -178,7 +180,8 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
 
         XCTAssertEqual(seen.value, "Bearer fresh",
                        "the manifest fetch must carry the account's bearer token — a bare "
-                       + "URLRequest(url:) reaches the CM unauthenticated and the 401 is terminal")
+                       + "URLRequest(url:) reaches the CM unauthenticated, costing a 401 round trip "
+                       + "and a spurious refresh at best")
     }
 
     func testExecutorFetchLicense_sendsTheBearerToken() async throws {

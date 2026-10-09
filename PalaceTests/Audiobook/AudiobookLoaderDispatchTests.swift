@@ -338,12 +338,14 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
                        + "contending for the PP-4542 single-flight slot")
     }
 
-    /// Counts refresh-seam invocations across the `@Sendable` boundary.
-    private final class RefreshCallCounter: @unchecked Sendable {
-        private let lock = NSLock()
-        private var count = 0
-        func increment() { lock.lock(); count += 1; lock.unlock() }
-        var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    /// Counts refresh-seam invocations. A reference type so the closure can
+    /// record into it; no lock and no `Sendable` waiver, because `refreshToken`
+    /// is not `@Sendable` and this class is `@MainActor`, so every access is on
+    /// the main actor (checklist §7c, question 1). That it compiles is the
+    /// evidence — a real boundary here would not.
+    private final class RefreshCallCounter {
+        private(set) var value = 0
+        func increment() { value += 1 }
     }
 
     // MARK: - PP-5299 — the refresh outcome must reach the main actor
@@ -356,9 +358,19 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     // reachable and the hop is a property of the language rather than of a
     // carrier someone has to remember to use.
 
-    /// The success exit the field crash walked. A refresh that answers from off
-    /// the main actor — which is what the production executor does, firing from
-    /// inside its own `Task` — must still have the chain run on the main actor.
+    /// The success exit the field crash walked: a refresh that suspends must
+    /// still leave the chain running on the main actor.
+    ///
+    /// Note what the seam does and does not reproduce. `refreshToken` is not
+    /// `@Sendable` and this class is `@MainActor`, so by §7c question 1 the
+    /// closure below inherits main-actor isolation and answers on the main
+    /// actor — it cannot stand in for off-main delivery, and an earlier version
+    /// of this comment claimed it did. What it does reproduce is the
+    /// suspension: the detached hop crosses executors before answering, so the
+    /// resumption is real rather than synchronous. Off-main delivery now lives
+    /// inside `refreshToken(accountId:)`'s continuation bridge, which is the
+    /// point of the conversion, and is covered in
+    /// `RequestExecutingAsyncBridgeTests`.
     ///
     /// `resolveCallCount` is the assertion that goes red on a behaviour change:
     /// swapping this exit's outcome, or dropping the proceed, leaves it at 0.
@@ -388,8 +400,8 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         _ = await loader.load(makeBook())
 
         XCTAssertEqual(probe.resolveCallCount, 1,
-                       "a successful refresh must proceed to the adapter chain — reached on the main "
-                       + "actor, which the probe asserts on entry, even though the refresh answered off it")
+                       "a successful refresh must proceed to the adapter chain, reached on the main "
+                       + "actor, which the probe asserts on entry")
     }
 
     /// The failure exit. A refresh that fails must surface
@@ -586,8 +598,9 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         }
     }
 
-    /// Carries the account id out of the injected refresh closure.
-    private final class AccountIdRecorder: @unchecked Sendable {
+    /// Carries the account id out of the injected refresh closure. Same
+    /// reasoning as `RefreshCallCounter`: no waiver needed.
+    private final class AccountIdRecorder {
         var value: String?
     }
 }
