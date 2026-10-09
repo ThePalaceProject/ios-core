@@ -776,8 +776,10 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                         Log.info(#file, "On-demand Adobe activation succeeded")
                         TPPMainThreadRun.asyncIfNeeded {
                             // One write: the generation belongs to this
-                            // activation, and a record without it re-activates
-                            // on every later Adobe operation.
+                            // activation. Omitting it would leave a record that
+                            // reads as pre-marker, which re-activates on every
+                            // later Adobe operation once `current` moves past
+                            // `preMarker`.
                             userAccount.setAdobeActivation(
                                 userID: userID,
                                 deviceID: deviceID,

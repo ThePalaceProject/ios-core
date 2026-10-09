@@ -205,7 +205,8 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
                                           deviceID: "device-1",
                                           // PP-5251: "already authorized" now also
                                           // requires the recorded connector to match,
-                                          // so an unstamped record re-activates and this
+                                          // so a record stamped with an older
+                                          // generation re-activates and this
                                           // test stops measuring the skip path.
                                           generation: AdobeConnectorGeneration.current)
 

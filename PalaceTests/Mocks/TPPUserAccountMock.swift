@@ -124,7 +124,8 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
     override var adobeActivationConnectorGeneration: Int? {
         mockLock.withLock { _adobeActivationConnectorGeneration }
     }
-    /// Must be overridden alongside the getters above. Without it the inherited
+    /// Must be overridden alongside the getters above, AND cleared in
+    /// `removeAll()` below. Without it the inherited
     /// implementation writes the real keychain-backed storage, which these
     /// overridden getters never read — so a successful activation would look
     /// lost — and it writes under this mock's fixed, process-shared library
@@ -348,6 +349,10 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
             _removeAllCallCount += 1
             _adobeToken = nil
             _patron = nil
+            // Production clears this in removeAll(); without it the mock keeps a
+            // marker across sign-out, and a sign-out-then-migrate test would
+            // conclude the migration correctly skips.
+            _adobeActivationConnectorGeneration = nil
             _adobeVendor = nil
             _provider = nil
             _userID = nil

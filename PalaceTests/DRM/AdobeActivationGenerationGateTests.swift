@@ -117,8 +117,11 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
     /// operation failed with `E_ACT_NOT_READY`.
     func testStaleGeneration_ReActivates_EvenThoughTheConnectorSaysAuthorized() async throws {
         drm.isUserAuthorizedReturnValue = true
-        // One generation BELOW current, i.e. the Adobe-era activation a Wipro
-        // build inherits. Distinct from an absent marker, which is backfilled.
+        // One generation BELOW current — with current == 1 that is 0, a value
+        // nothing writes. It stands for any recorded-but-mismatched generation;
+        // the Adobe-era-on-Wipro cell proper is (1, 2), tabled in
+        // testNeedsReactivation_EveryCombination. Distinct from an absent
+        // marker, which is backfilled.
         let account = GenerationAccount(licensor: Self.validLicensor,
                                         userID: "old-user",
                                         deviceID: "old-device",
@@ -174,9 +177,8 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
     }
 
     /// The other half: the gate must not re-activate on every call once the
-    /// device is activated under this connector. Without this the migration
-    /// re-activates on every Adobe operation and spends an activation slot each
-    /// time.
+    /// device is activated under this connector, or the migration would spend an
+    /// activation slot on every Adobe operation.
     func testCurrentGeneration_SkipsActivation() async throws {
         drm.isUserAuthorizedReturnValue = true
         let account = GenerationAccount(licensor: Self.validLicensor,
@@ -192,8 +194,9 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
 
     // MARK: - The write
 
-    /// Closes the loop. If activation does not record the generation, the gate
-    /// above stays unsatisfied forever and re-activates on every operation.
+    /// Closes the loop. An activation that records no generation is backfilled
+    /// to `preMarker`, so once `current` moves past it the gate above would
+    /// re-activate on every operation and never be satisfied.
     func testSuccessfulActivation_RecordsTheCurrentGeneration() async throws {
         drm.isUserAuthorizedReturnValue = false
         drm.authorizeShouldSucceed = true

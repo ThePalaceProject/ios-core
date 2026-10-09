@@ -191,9 +191,10 @@ final class AdobeConnectorGenerationTests: XCTestCase {
     func testAbsentMarkerIsBackfilledToThePreMarkerGeneration() {
         XCTAssertEqual(AdobeConnectorGeneration.preMarker, 1,
                        "every connector that has shipped (118378, 187526) is generation 1")
+        // A literal, not `preMarker`: `(nil ?? preMarker) != preMarker` is false
+        // for every value of `preMarker`, so that form cannot fail.
         XCTAssertFalse(
-            AdobeConnectorGeneration.needsReactivation(recorded: nil,
-                                                       current: AdobeConnectorGeneration.preMarker),
+            AdobeConnectorGeneration.needsReactivation(recorded: nil, current: 1),
             "an unmarked activation must not be redone while the connector is unchanged"
         )
     }

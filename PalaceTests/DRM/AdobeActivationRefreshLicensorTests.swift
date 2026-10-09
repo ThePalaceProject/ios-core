@@ -292,7 +292,7 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
     /// activated device must not spend a profile-document round trip.
     func test_ensureDeviceActivated_whenAlreadyAuthorized_neverRefreshes() async throws {
         // PP-5251: "already authorized" now also requires the recorded connector
-        // to match, so an unstamped record re-activates and this test stops
+        // to match, so a record stamped older re-activates and this test stops
         // measuring the skip path it is named for.
         let account = RecordingAccount(licensor: staleLicensor(),
                                        userID: "user-1", deviceID: "device-1",

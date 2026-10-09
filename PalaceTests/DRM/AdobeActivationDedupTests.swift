@@ -250,8 +250,9 @@ final class AdobeActivationDedupTests: XCTestCase {
 
     func test_ensureDeviceActivated_whenDeviceAlreadyActivated_neverEntersAdobe() async throws {
         // Seeded as a CURRENT-generation activation: the gate skips only when the
-        // recorded connector matches, so an unstamped record would re-activate
-        // and this test would no longer be measuring deduplication.
+        // recorded connector matches, so a record stamped with an older
+        // generation would re-activate and this test would no longer be
+        // measuring deduplication.
         account.setAdobeActivation(userID: "existing-user",
                                    deviceID: "existing-device",
                                    generation: AdobeConnectorGeneration.current)

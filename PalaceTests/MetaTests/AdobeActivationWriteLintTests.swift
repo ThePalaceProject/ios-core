@@ -1,24 +1,15 @@
 //  AdobeActivationWriteLintTests.swift
 //
-//  PP-5251. The activation record is userID + deviceID + the connector
-//  generation that produced them. A production site that writes the identifiers
-//  without the generation leaves a device that looks activated under an unknown
-//  connector, which the gate in `ensureDeviceActivated` treats as needing
-//  migration — so it would re-activate on every Adobe operation, spending an
-//  activation slot each time.
+//  PP-5251. An Adobe activation is userID + deviceID + the connector generation
+//  that produced them. This pins that no production site writes the identifiers
+//  without the generation; `testNoProductionFileWritesTheActivationIdentifiersSeparately`
+//  carries why that matters.
 //
-//  `AdobeActivationAccount` no longer offers the separate setters, so the
-//  on-demand path cannot regress. `TPPSignInBusinessLogic+DRM` holds a concrete
-//  `TPPUserAccount`, where they are still reachable, and the setters keep
-//  legitimate non-activation uses in tests (simulating a second device, for
-//  instance). This pins the production boundary instead of removing them.
 
 import XCTest
 @testable import Palace
 
 final class AdobeActivationWriteLintTests: XCTestCase {
-
-    private static let declaringFile = "TPPUserAccount.swift"
 
     /// The lint's predicate, extracted so the tests below exercise THIS code
     /// rather than a copy. Inline, it was uncoupled from them: renaming it to
@@ -53,6 +44,18 @@ final class AdobeActivationWriteLintTests: XCTestCase {
         return files
     }
 
+    /// A production site that writes the identifiers without the generation
+    /// leaves a record the gate backfills to `AdobeConnectorGeneration.preMarker`.
+    /// That is right for a device activated before the marker existed and wrong
+    /// for one activated under a later connector: it would re-activate on every
+    /// Adobe operation once `current` moves past `preMarker`, spending an
+    /// activation slot each time. The backfill makes this lint matter more, not
+    /// less — it is what keeps an absent marker from being silently optimistic.
+    ///
+    /// `AdobeActivationAccount` no longer offers the separate setters, so the
+    /// on-demand path cannot regress. `TPPSignInBusinessLogic+DRM` holds a
+    /// concrete `TPPUserAccount`, where they are still reachable, and they keep
+    /// legitimate non-activation uses in tests (simulating a second device).
     func testNoProductionFileWritesTheActivationIdentifiersSeparately() throws {
         let files = try productionSwiftFiles()
         // A lint whose corpus is empty reports a pass. Prove it found the tree.
@@ -60,7 +63,11 @@ final class AdobeActivationWriteLintTests: XCTestCase {
                              "expected to walk the production sources, found \(files.count)")
 
         var violators: [String] = []
-        for url in files where url.lastPathComponent != Self.declaringFile {
+        // No file is exempt. Exempting TPPUserAccount.swift bought nothing — its
+        // only matching line is TPPErrorLogger.setUserID, which the predicate
+        // already skips, and declarations do not match — while hiding a future
+        // `self.setUserID(...)` added in the one file where those setters live.
+        for url in files {
             guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }
             for line in src.split(separator: "\n", omittingEmptySubsequences: false) {
                 let text = String(line)

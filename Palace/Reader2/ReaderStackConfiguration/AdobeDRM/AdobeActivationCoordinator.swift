@@ -27,15 +27,18 @@ protocol AdobeActivationAccount: AnyObject, Sendable {
     /// Records an activation as ONE unit.
     ///
     /// Replaces the former `setUserID` / `setDeviceID` pair. The generation is a
-    /// required argument on purpose: an activation whose connector is unrecorded
-    /// reads as "needs migration" forever, so the gate in
-    /// `ensureDeviceActivated` would re-activate on every Adobe operation. A
-    /// required parameter makes that state unreachable rather than merely
-    /// tested. The three fields are also written under one transaction, so no
-    /// reader observes a half-written record. That is mutual exclusion, not
-    /// durability: they remain three keychain writes, and a crash between them
-    /// can still leave identifiers without a generation — which the gate reads
-    /// as needing re-activation, the safe direction.
+    /// required argument on purpose: an unrecorded generation is backfilled to
+    /// `AdobeConnectorGeneration.preMarker`, which is correct for a device
+    /// activated before the marker existed and WRONG for one activated under a
+    /// later connector — that device would read as pre-marker and re-activate on
+    /// every Adobe operation once `current` moves past it. A required parameter
+    /// makes that state unreachable rather than merely tested.
+    ///
+    /// The three fields are also written under one transaction, so no reader
+    /// observes a half-written record. That is mutual exclusion, not durability:
+    /// they remain three keychain writes, and a crash between them leaves
+    /// identifiers that read as pre-marker — harmless on a pre-marker build,
+    /// and still migrating once `current` moves past it.
     func setAdobeActivation(userID: String, deviceID: String, generation: Int)
     /// Persists a licensor refreshed at activation time (PP-3649). The
     /// keychain copy is written at sign-in and never updated otherwise, which
