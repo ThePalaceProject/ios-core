@@ -84,26 +84,23 @@ jobs:
           nohup xcrun simctl spawn "$SIM" log stream --level debug --style compact \
             --predicate 'process == "Palace" AND (messageType != debug OR subsystem == "org.thepalaceproject.palace")' \
             > "$RUNNER_TEMP/palace-app.log" 2>&1 &
-          # TEMPORARY DIAGNOSTIC (revert before merge): sample every app launch
-          # every 5s for its first 120s, to capture the main thread during a stall.
-          SIM="$SIM" nohup bash -c '
-            seen=""
-            for _ in $(seq 1 3600); do
-              for pid in $(pgrep -f "Devices/$SIM/.*Palace.app/Palace$"); do
-                case " $seen " in *" $pid "*) continue;; esac
-                seen="$seen $pid"
-                echo "$(date -u +%H:%M:%S.%N) launch pid $pid"
-                ( for n in $(seq 1 24); do
-                    sleep 3
-                    kill -0 "$pid" 2>/dev/null || exit 0
-                    f="$RUNNER_TEMP/palace-sample-$pid-$n.txt"
-                    sudo -n /usr/bin/sample "$pid" 2 -file "$f" >/dev/null 2>&1 \
-                      || /usr/bin/sample "$pid" 2 -file "$f" >/dev/null 2>&1
-                    sudo -n chmod a+r "$f" 2>/dev/null
-                    echo "$(date -u +%H:%M:%S) sampled $pid #$n"
-                  done ) &
-              done
-              sleep 1
+          # Diagnostic: if the catalog has not rendered 8s after the app starts,
+          # take two stack samples 10s apart, to tell a wait from a slow loop.
+          nohup bash -c '
+            # The PID comes from the launch line the app logs itself: a
+            # process-name match also hits the build tools that link Palace.app.
+            for _ in $(seq 1 1200); do
+              pid=$(grep -m1 -E "MockBackend launch:" "$RUNNER_TEMP/palace-app.log" | sed -nE "s/.*Palace\[([0-9]+):.*/\1/p")
+              [ -n "$pid" ] && break; sleep 1
+            done
+            [ -n "$pid" ] || exit 0
+            for n in 1 2; do
+              sleep $(( n == 1 ? 8 : 10 ))
+              grep -q "\[PERF\] Catalog load" "$RUNNER_TEMP/palace-app.log" && exit 0
+              # Unprivileged sample cannot see the simulator app on the runner.
+              sudo -n /usr/bin/sample "$pid" 3 -file "$RUNNER_TEMP/palace-sample-$n.txt" \
+                || /usr/bin/sample "$pid" 3 -file "$RUNNER_TEMP/palace-sample-$n.txt"
+              sudo -n chmod a+r "$RUNNER_TEMP/palace-sample-$n.txt" 2>/dev/null
             done
           ' > "$RUNNER_TEMP/palace-sampler.log" 2>&1 &
 
