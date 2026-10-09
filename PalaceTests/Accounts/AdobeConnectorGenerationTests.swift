@@ -23,7 +23,8 @@ final class AdobeConnectorGenerationTests: XCTestCase {
         XCTAssertNil(account.adobeActivationConnectorGeneration,
                      "a fresh library has no recorded activation generation")
 
-        account.setAdobeActivationConnectorGeneration(AdobeConnectorGeneration.current)
+        account.setAdobeActivation(userID: "user", deviceID: "device",
+                                   generation: AdobeConnectorGeneration.current)
 
         XCTAssertEqual(account.adobeActivationConnectorGeneration,
                        AdobeConnectorGeneration.current)
@@ -34,7 +35,8 @@ final class AdobeConnectorGenerationTests: XCTestCase {
     /// activated at all, so the migration would skip a patron who needs it.
     func testSignOutClearsTheGeneration() {
         let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
-        account.setAdobeActivationConnectorGeneration(AdobeConnectorGeneration.current)
+        account.setAdobeActivation(userID: "user", deviceID: "device",
+                                   generation: AdobeConnectorGeneration.current)
         XCTAssertNotNil(account.adobeActivationConnectorGeneration)
 
         account.removeAll()
@@ -50,7 +52,8 @@ final class AdobeConnectorGenerationTests: XCTestCase {
         let a: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
         let b: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
 
-        a.setAdobeActivationConnectorGeneration(AdobeConnectorGeneration.current)
+        a.setAdobeActivation(userID: "user", deviceID: "device",
+                             generation: AdobeConnectorGeneration.current)
 
         XCTAssertEqual(a.adobeActivationConnectorGeneration, AdobeConnectorGeneration.current)
         XCTAssertNil(b.adobeActivationConnectorGeneration)
@@ -88,7 +91,8 @@ final class AdobeConnectorGenerationTests: XCTestCase {
 
         // Prime the reader's cache with the absent value before the writer acts.
         XCTAssertNil(reader.adobeActivationConnectorGeneration)
-        writer.setAdobeActivationConnectorGeneration(AdobeConnectorGeneration.current)
+        writer.setAdobeActivation(userID: "user", deviceID: "device",
+                                  generation: AdobeConnectorGeneration.current)
 
         _ = reader.refreshCredentialsFromKeychain()
 
@@ -154,6 +158,44 @@ final class AdobeConnectorGenerationTests: XCTestCase {
         XCTAssertEqual(reader.deviceID, "device")
         XCTAssertEqual(reader.adobeActivationConnectorGeneration,
                        AdobeConnectorGeneration.current)
+    }
+
+    // MARK: - The re-activation policy, every cell
+
+    /// `needsReactivation` decides whether a patron's device gets re-activated,
+    /// so the whole table is walked rather than the three cells the gate happens
+    /// to reach. `current` is injected because the shipped constant is 1 today
+    /// and the Wipro cases are the ones that matter most.
+    func testNeedsReactivation_EveryCombination() {
+        // recorded, current, expected
+        let cases: [(Int?, Int, Bool, String)] = [
+            (nil, 1, false, "an existing install on an unchanged connector keeps the fast path"),
+            (nil, 2, true,  "an existing install must migrate once Wipro ships"),
+            (1,   1, false, "activated under the current connector"),
+            (1,   2, true,  "activated under the Adobe-era connector, now on Wipro"),
+            (2,   2, false, "activated under Wipro, still on Wipro"),
+            (2,   1, true,  "a downgrade: recorded ahead of current must be redone"),
+            (0,   1, true,  "a generation older than any that shipped must be redone")
+        ]
+        for (recorded, current, expected, why) in cases {
+            XCTAssertEqual(
+                AdobeConnectorGeneration.needsReactivation(recorded: recorded, current: current),
+                expected,
+                "recorded=\(recorded.map(String.init) ?? "nil") current=\(current): \(why)"
+            )
+        }
+    }
+
+    /// The backfill constant is load-bearing: it is what keeps every existing
+    /// patron on the fast path while the connector is unchanged.
+    func testAbsentMarkerIsBackfilledToThePreMarkerGeneration() {
+        XCTAssertEqual(AdobeConnectorGeneration.preMarker, 1,
+                       "every connector that has shipped (118378, 187526) is generation 1")
+        XCTAssertFalse(
+            AdobeConnectorGeneration.needsReactivation(recorded: nil,
+                                                       current: AdobeConnectorGeneration.preMarker),
+            "an unmarked activation must not be redone while the connector is unchanged"
+        )
     }
 
 #if FEATURE_DRM_CONNECTOR

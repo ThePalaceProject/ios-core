@@ -117,6 +117,8 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
     /// operation failed with `E_ACT_NOT_READY`.
     func testStaleGeneration_ReActivates_EvenThoughTheConnectorSaysAuthorized() async throws {
         drm.isUserAuthorizedReturnValue = true
+        // One generation BELOW current, i.e. the Adobe-era activation a Wipro
+        // build inherits. Distinct from an absent marker, which is backfilled.
         let account = GenerationAccount(licensor: Self.validLicensor,
                                         userID: "old-user",
                                         deviceID: "old-device",
@@ -129,9 +131,16 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
                        + "however authorized isUserAuthorized reports it")
     }
 
-    /// An install that activated before the marker existed. Every 3.3.x install
-    /// looks like this, so absent must mean "redo", not "assume current".
-    func testAbsentGeneration_ReActivates() async throws {
+    /// An install that activated before the marker existed — every 3.3.x install.
+    ///
+    /// It must KEEP the fast path while the connector is unchanged. Re-activating
+    /// here would put every existing patron's first post-upgrade Adobe borrow
+    /// through the full activation path, which needs a licensor whose client
+    /// token expires after 60 minutes, and would fail borrows that previously
+    /// succeeded. `AdobeConnectorGeneration.preMarker` carries the reasoning;
+    /// `testNeedsReactivation_EveryCombination` pins the Wipro side, where the
+    /// same absent marker does re-activate.
+    func testAbsentGeneration_KeepsTheFastPath_WhileTheConnectorIsUnchanged() async throws {
         drm.isUserAuthorizedReturnValue = true
         let account = GenerationAccount(licensor: Self.validLicensor,
                                         userID: "old-user",
@@ -140,9 +149,28 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
 
         try await activate(account)
 
+        XCTAssertEqual(drm.authorizeCallCount, 0,
+                       "an unmarked activation is backfilled to the pre-marker "
+                       + "generation, which equals current on this build")
+    }
+
+    /// The gate cell nothing covered: identifiers present, generation current,
+    /// but the connector itself says the device is NOT authorized. Deleting the
+    /// `isUserAuthorized` conjunct from the compound guard left the suite green
+    /// without this, because every other false case has no identifiers.
+    func testCurrentGenerationButConnectorSaysUnauthorized_ReActivates() async throws {
+        drm.isUserAuthorizedReturnValue = false
+        drm.authorizeShouldSucceed = true
+        let account = GenerationAccount(licensor: Self.validLicensor,
+                                        userID: "user",
+                                        deviceID: "device",
+                                        generation: AdobeConnectorGeneration.current)
+
+        try await activate(account)
+
         XCTAssertEqual(drm.authorizeCallCount, 1,
-                       "no recorded generation means the connector that activated this "
-                       + "device is unknown, which is not the same as current")
+                       "a matching generation does not override the connector's own "
+                       + "verdict that the device is not authorized")
     }
 
     /// The other half: the gate must not re-activate on every call once the

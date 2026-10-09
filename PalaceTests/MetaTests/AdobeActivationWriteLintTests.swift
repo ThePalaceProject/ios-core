@@ -20,6 +20,20 @@ final class AdobeActivationWriteLintTests: XCTestCase {
 
     private static let declaringFile = "TPPUserAccount.swift"
 
+    /// The lint's predicate, extracted so the tests below exercise THIS code
+    /// rather than a copy. Inline, it was uncoupled from them: renaming it to
+    /// `.setUserId(` left both "predicate" tests green while the corpus scan
+    /// passed on everything.
+    ///
+    /// `TPPErrorLogger.setUserID` and `Crashlytics.setUserID` are unrelated APIs
+    /// that happen to share the selector.
+    static func isSeparateActivationWrite(_ line: String) -> Bool {
+        guard line.contains(".setUserID(") || line.contains(".setDeviceID(") else {
+            return false
+        }
+        return !line.contains("TPPErrorLogger") && !line.contains("Crashlytics")
+    }
+
     private func productionSwiftFiles() throws -> [URL] {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // MetaTests
@@ -48,16 +62,9 @@ final class AdobeActivationWriteLintTests: XCTestCase {
         var violators: [String] = []
         for url in files where url.lastPathComponent != Self.declaringFile {
             guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            // `TPPErrorLogger.setUserID` and `Crashlytics.setUserID` are
-            // different APIs that happen to share the selector.
             for line in src.split(separator: "\n", omittingEmptySubsequences: false) {
                 let text = String(line)
-                guard text.contains(".setUserID(") || text.contains(".setDeviceID(") else {
-                    continue
-                }
-                if text.contains("TPPErrorLogger") || text.contains("Crashlytics") {
-                    continue
-                }
+                guard Self.isSeparateActivationWrite(text) else { continue }
                 violators.append("\(url.lastPathComponent): \(text.trimmingCharacters(in: .whitespaces))")
             }
         }
@@ -69,17 +76,17 @@ final class AdobeActivationWriteLintTests: XCTestCase {
         )
     }
 
-    /// Proves the lint can fail: the predicate it uses must match a line that
-    /// looks like the defect.
+    /// Proves the lint can fail, by calling the predicate the corpus scan uses.
     func testLintPredicateMatchesASeparateWrite() {
-        let offending = "        self.userAccount.setUserID(userID)"
-        XCTAssertTrue(offending.contains(".setUserID("))
-        XCTAssertFalse(offending.contains("TPPErrorLogger"))
+        XCTAssertTrue(Self.isSeparateActivationWrite("        self.userAccount.setUserID(userID)"))
+        XCTAssertTrue(Self.isSeparateActivationWrite("        acct.setDeviceID(deviceID)"))
     }
 
-    /// ...and that it does not flag the two APIs that share the selector.
+    /// ...and that it does not flag the two unrelated APIs that share the
+    /// selector, nor an unrelated line.
     func testLintPredicateIgnoresTheLoggerAndCrashlytics() {
-        XCTAssertTrue("TPPErrorLogger.setUserID(barcode)".contains("TPPErrorLogger"))
-        XCTAssertTrue("Crashlytics.crashlytics().setUserID(x)".contains("Crashlytics"))
+        XCTAssertFalse(Self.isSeparateActivationWrite("TPPErrorLogger.setUserID(barcode)"))
+        XCTAssertFalse(Self.isSeparateActivationWrite("Crashlytics.crashlytics().setUserID(x)"))
+        XCTAssertFalse(Self.isSeparateActivationWrite("let x = 1"))
     }
 }

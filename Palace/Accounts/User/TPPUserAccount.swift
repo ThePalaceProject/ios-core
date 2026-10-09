@@ -485,10 +485,9 @@ private enum StorageKey: String {
     /// Records an Adobe activation as one unit: the identifiers Adobe returned
     /// plus the connector generation that produced them.
     ///
-    /// The identifiers and the generation describe the same event, and a record
-    /// carrying identifiers with no generation reads as "activated by an unknown
-    /// connector" — which the activation gate treats as needing migration. One
-    /// transaction keeps them from diverging.
+    /// The identifiers and the generation describe the same event. One
+    /// transaction keeps a reader from observing a half-written record; it does
+    /// not make the three keychain writes durable as a unit.
     func setAdobeActivation(userID: String, deviceID: String, generation: Int) {
         keychainTransaction.perform {
             _userID.write(userID)
@@ -499,11 +498,6 @@ private enum StorageKey: String {
         // notify twice. Once, after the transaction, keeps the signal while
         // matching the single logical change — dropping it would silently stop
         // telling observers that an activation landed.
-        notifyAccountDidChange()
-    }
-
-    func setAdobeActivationConnectorGeneration(_ generation: Int) {
-        _adobeActivationConnectorGeneration.write(NSNumber(value: generation))
         notifyAccountDidChange()
     }
 

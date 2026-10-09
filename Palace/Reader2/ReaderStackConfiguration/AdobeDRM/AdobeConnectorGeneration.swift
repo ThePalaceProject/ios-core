@@ -42,6 +42,31 @@ enum AdobeConnectorGeneration {
         "187639": 2,
     ]
 
+    /// The generation an activation carrying no marker was made under.
+    ///
+    /// Only 118378 (wired 2021-06-10 to 2025-05-21) and 187526 (since) have ever
+    /// shipped, and both are generation 1, so an activation that predates the
+    /// marker is generation 1 by construction.
+    ///
+    /// Reading an absent marker as "unknown, therefore re-activate" instead
+    /// would move every existing patron's first post-upgrade Adobe borrow off
+    /// the fast path and onto the full activation path, which needs a licensor
+    /// whose client token expires after 60 minutes. A failed re-mint there
+    /// (PP-5025's race, a 401, an expired certificate) fails a borrow that
+    /// previously succeeded, on a build where the connector did not change.
+    /// Backfilling costs nothing today and still fires the migration for
+    /// exactly the affected population once `current` moves past 1.
+    static let preMarker = 1
+
+    /// Whether the recorded activation must be redone before the connector this
+    /// binary links can use it.
+    ///
+    /// Pure so the states can be tabled: `AdobeConnectorGenerationTests` walks
+    /// every combination rather than only the three the gate happens to reach.
+    static func needsReactivation(recorded: Int?, current: Int = current) -> Bool {
+        (recorded ?? preMarker) != current
+    }
+
     static func generation(forConnectorBuild build: String) -> Int? {
         generationsByBuild[build]
     }

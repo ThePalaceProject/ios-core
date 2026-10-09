@@ -31,8 +31,11 @@ protocol AdobeActivationAccount: AnyObject, Sendable {
     /// reads as "needs migration" forever, so the gate in
     /// `ensureDeviceActivated` would re-activate on every Adobe operation. A
     /// required parameter makes that state unreachable rather than merely
-    /// tested. The three fields are also one keychain transaction, so a crash
-    /// cannot leave identifiers without a generation.
+    /// tested. The three fields are also written under one transaction, so no
+    /// reader observes a half-written record. That is mutual exclusion, not
+    /// durability: they remain three keychain writes, and a crash between them
+    /// can still leave identifiers without a generation — which the gate reads
+    /// as needing re-activation, the safe direction.
     func setAdobeActivation(userID: String, deviceID: String, generation: Int)
     /// Persists a licensor refreshed at activation time (PP-3649). The
     /// keychain copy is written at sign-in and never updated otherwise, which

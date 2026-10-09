@@ -632,11 +632,14 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         // then fail every operation with `E_ACT_NOT_READY` (PP-5026). So
         // "already activated" has to mean "activated under THIS connector".
         //
-        // A nil generation is an install that activated before the marker
-        // existed, which is not the same as current — it must re-activate.
+        // An absent marker is backfilled to the pre-marker generation rather
+        // than treated as unknown — see `AdobeConnectorGeneration.preMarker`.
+        // The generation is checked BEFORE `isUserAuthorized` so a decision
+        // already known does not enter the non-thread-safe RMSDK.
         if let userID = userAccount.userID,
            let deviceID = userAccount.deviceID,
-           userAccount.adobeActivationConnectorGeneration == AdobeConnectorGeneration.current,
+           !AdobeConnectorGeneration.needsReactivation(
+               recorded: userAccount.adobeActivationConnectorGeneration),
            authorizer()?.isUserAuthorized(userID, withDevice: deviceID) == true {
             Log.info(#file, "Adobe device already activated — skipping activation")
             return
