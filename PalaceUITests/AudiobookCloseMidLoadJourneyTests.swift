@@ -20,7 +20,7 @@ private enum FixtureAudiobook {
 final class AudiobookCloseMidLoadJourneyTests: JourneyTestCase {
 
     /// Closing the player mid-load returns the patron to a usable shelf with
-    /// no spinner or error left behind, and the book then loads again. In Debug,
+    /// no spinner or error left behind, also after a second open. In Debug,
     /// `openAudiobook`'s local `loader` outlives the await, so the released-loader
     /// exit is out of reach here; `AudiobookLoaderReleasedMidLoadTests` covers it.
     func testClosingThePlayerWhileItLoads_LeavesTheBookReadyToOpenAgain() {
@@ -57,23 +57,20 @@ final class AudiobookCloseMidLoadJourneyTests: JourneyTestCase {
             assertNoLoadErrorShown()
         }
 
-        step("Opening the book again runs the load to the end") {
+        // This step shows the shelf stays usable with no error after a second
+        // open; it cannot tell a finished load from a quietly cancelled one.
+        // AudiobookSessionManagerStopDuringLoadTests covers those late results.
+        step("Opening the book again leaves a usable shelf with no error") {
             listenButton().tap()
             // The scenario holds this open briefly too, so the loading player is
             // reliably on screen and proves the tap started an open.
             let loading = app.descendants(matching: .any)[playerLoadingLabel]
             waitFor(loading, "the second open never showed the loading player")
-            waitUntil(NSPredicate(format: "exists == false"), on: loading, "the reopened audiobook never finished loading")
-            // Test artefact, not the behaviour under test: AVPlayer cannot fetch
-            // the fixture audio, so the bound player fails. Whether that ends in
-            // this alert or a silent dismissal depends on whether AVPlayer reported
-            // playing first, which varies with machine load.
-            let unavailable = app.alerts["Audiobook Unavailable"]
-            if unavailable.waitForExistence(timeout: 5) {
-                unavailable.buttons["OK"].tap()
-            }
-            waitUntil(NSPredicate(format: "enabled == true"), on: listenButton(), "the Listen button stayed busy after the reopen")
+            waitUntil(NSPredicate(format: "exists == false"), on: loading, "the second open's loading player never cleared")
+            dismissAudiobookUnavailableAlerts()
+            waitUntil(NSPredicate(format: "enabled == true"), on: listenButton(), "the Listen button stayed busy after the second open")
             XCTAssertEqual(listenButton().activityIndicators.count, 0, "the Listen button still shows a spinner")
+            assertNoLoadErrorShown()
         }
     }
 
@@ -88,6 +85,23 @@ final class AudiobookCloseMidLoadJourneyTests: JourneyTestCase {
         let shelf = waitFor(app.descendants(matching: .any)[AccessibilityID.MyBooks.gridView], "My Books shows no shelf")
         let listen = shelf.buttons.matching(identifier: AccessibilityID.BookDetail.listenButton).firstMatch
         return waitFor(listen, "the shelf offers no Listen button")
+    }
+
+    /// Test artefact, not the behaviour under test: AVPlayer cannot fetch the
+    /// fixture audio, so the bound player fails. That ends in zero or more
+    /// "Audiobook Unavailable" alerts, depending on whether AVPlayer reported
+    /// playing first; only that alert is dismissed here.
+    private func dismissAudiobookUnavailableAlerts() {
+        let unavailable = app.alerts["Audiobook Unavailable"]
+        var dismissed = 0
+        while dismissed < 5, unavailable.waitForExistence(timeout: 3) {
+            unavailable.buttons["OK"].tap()
+            dismissed += 1
+            // A queued copy can replace it at once, so this wait may time out.
+            _ = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                                                 object: unavailable)], timeout: 2)
+        }
+        XCTAssertFalse(unavailable.exists, "the Audiobook Unavailable alert kept coming back")
     }
 
     private func assertNoLoadErrorShown() {
