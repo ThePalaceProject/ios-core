@@ -258,7 +258,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         defer { recorder.stop() }
         setLoading()
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
         await Task.yield()
 
         XCTAssertTrue(networkExecutor.executedRequestURLs.isEmpty,
@@ -278,7 +278,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         accepted.assertForOverFulfill = false
         uiDelegate.onDidReceiveCredentials = { accepted.fulfill() }
 
-        businessLogic.logIn()                       // defers on awaitReady()
+        await businessLogic.logIn()                       // defers on awaitReady()
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         setLoaded()                                 // resolves the gate
 
@@ -305,8 +305,8 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         setLoading()
         let fired = expectRequestFired()
 
-        businessLogic.logIn()
-        businessLogic.logIn()
+        await businessLogic.logIn()
+        await businessLogic.logIn()
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         setLoaded()
 
@@ -325,7 +325,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         defer { recorder.stop() }
         setLoading()
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
         setFailed()
 
         await awaitConditionAsync(timeout: 5.0) { recorder.payloads.contains(false) }
@@ -347,7 +347,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         let recorder = SigningInNotificationRecorder()
         defer { recorder.stop() }
         setLoading()
-        businessLogic.logIn()
+        await businessLogic.logIn()
         setFailed()
         await awaitConditionAsync(timeout: 5.0) { recorder.payloads.contains(false) }
 
@@ -355,7 +355,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         // the guard was released by the first attempt's failure arm.
         setLoading()
         let fired = expectRequestFired("second deferred tap fires")
-        businessLogic.logIn()
+        await businessLogic.logIn()
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         setLoaded()
 
@@ -379,7 +379,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         defer { recorder.stop() }
         setLoading()
 
-        businessLogic.logIn()                       // no selectedAuthentication set
+        await businessLogic.logIn()                       // no selectedAuthentication set
         setLoaded()
 
         await awaitConditionAsync(timeout: 5.0) { recorder.payloads.contains(false) }
@@ -408,7 +408,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         let recorder = SigningInNotificationRecorder()
         defer { recorder.stop() }
 
-        orphan.logIn()
+        await orphan.logIn()
         for _ in 0..<5 { await Task.yield() }
 
         XCTAssertNil(orphan.libraryAccount, "fixture precondition: the empty UUID resolves to no account")
@@ -429,8 +429,8 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         networkExecutor.onExecuteRequest = { _ in fired.fulfill() }
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
-        businessLogic.logIn()
-        businessLogic.logIn()
+        await businessLogic.logIn()
+        await businessLogic.logIn()
 
         await fulfillment(of: [fired], timeout: 5.0)   // STARVE-001-OK: onExecuteRequest is set directly on NYPLNetworkExecutorMock and fires inline per request — no real network
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 2,

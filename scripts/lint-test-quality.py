@@ -24,6 +24,7 @@ Usage:
 import re
 import os
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -278,19 +279,67 @@ def parse_added_lines(diff_text: str) -> List["_AddedLine"]:
     return added
 
 
+# A deadline wait reduced to the pair that identifies it: the expectations it
+# waits on and the timeout it allows. `wait(for:timeout:)` and
+# `fulfillment(of:timeout:)` are the same wait spelled for a sync and an async
+# caller, so they normalize to the same signature; `waitForExpectations` names
+# no expectations and gets a placeholder, which deliberately matches only
+# another `waitForExpectations`.
+_WAIT_SIGNATURE_RE = re.compile(
+    r'\bwait\(for:\s*(?P<exps_sync>\[[^\]]*\])\s*,\s*timeout:\s*(?P<to_sync>[\w.]+)'
+    r'|\bfulfillment\(of:\s*(?P<exps_async>\[[^\]]*\])\s*,\s*timeout:\s*(?P<to_async>[\w.]+)'
+    r'|\bwaitForExpectations\(\s*timeout:\s*(?P<to_bare>[\w.]+)'
+)
+
+
+def _wait_signature(text: str):
+    """The (expectations, timeout) pair a deadline wait is waiting on, or None."""
+    m = _WAIT_SIGNATURE_RE.search(text)
+    if not m:
+        return None
+    exps = m.group('exps_sync') or m.group('exps_async') or '<unnamed>'
+    timeout = m.group('to_sync') or m.group('to_async') or m.group('to_bare')
+    return (re.sub(r'\s+', '', exps), timeout)
+
+
 def lint_starvation_diff(diff_text: str) -> List[Violation]:
     """DIFF-SCOPED STARVE-001 scan: flag NEW deadline-poll waits on added lines
-    of changed test files. Never scans the full tree (see the module note)."""
+    of changed test files. Never scans the full tree (see the module note).
+
+    A wait that the same hunk also REMOVES, on the same expectations and the
+    same timeout, is not new — it is the pre-existing wait respelled, which is
+    what making an enclosing test `async` forces (`wait(for:)` is unavailable
+    there, so it becomes `await fulfillment(of:)`). Flagging that would report
+    a starvation exposure the diff did not add, against the rule's own scoping
+    note: STARVE-001 fires on genuinely NEW code. Matching is per hunk and
+    consumes one removal per added line, so converting one wait does not excuse
+    four new ones beside it.
+    """
     findings: List[Violation] = []
-    for al in parse_added_lines(diff_text):
-        if not _is_test_swift(al.path):
+    for path, added, removed in _parse_hunks(diff_text):
+        if not _is_test_swift(path):
             continue
-        stripped = al.text.strip()
-        if stripped.startswith('//'):
-            continue
-        if ALLOWLIST_COMMENT_RE['STARVE-001'].search(al.text):
-            continue
-        if any(pat.search(al.text) for pat in STARVE_PATTERNS):
+        converted = Counter(
+            sig for sig in (_wait_signature(t) for t in removed) if sig
+        )
+        for al in added:
+            stripped = al.text.strip()
+            if stripped.startswith('//'):
+                continue
+            if ALLOWLIST_COMMENT_RE['STARVE-001'].search(al.text):
+                continue
+            if not any(pat.search(al.text) for pat in STARVE_PATTERNS):
+                continue
+            sig = _wait_signature(al.text)
+            # `waitForExpectations` names no expectations, so a conversion from
+            # it is matched on the timeout alone.
+            bare = ('<unnamed>', sig[1]) if sig else None
+            if sig and converted[sig] > 0:
+                converted[sig] -= 1
+                continue
+            if bare and converted[bare] > 0:
+                converted[bare] -= 1
+                continue
             findings.append(Violation(
                 file=al.path,
                 line=al.line_no,
@@ -299,6 +348,62 @@ def lint_starvation_diff(diff_text: str) -> List[Violation]:
                 detail=STARVE_DETAIL,
             ))
     return findings
+
+
+def _parse_hunks(diff_text: str):
+    """Yield `(path, added, removed)` per diff hunk.
+
+    `added` holds `_AddedLine`s with post-image line numbers, `removed` the raw
+    text of the `-` lines. Per-hunk grouping is what lets an added line be
+    matched against the removal it replaced.
+    """
+    hunk_re = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@')
+    cur_path = None
+    new_lineno = 0
+    added: List[_AddedLine] = []
+    removed: List[str] = []
+
+    def flush():
+        if cur_path is not None and (added or removed):
+            yield_value = (cur_path, list(added), list(removed))
+            added.clear()
+            removed.clear()
+            return yield_value
+        added.clear()
+        removed.clear()
+        return None
+
+    for raw in diff_text.split('\n'):
+        if raw.startswith('+++ '):
+            out = flush()
+            if out:
+                yield out
+            p = raw[4:].strip()
+            if p == '/dev/null':
+                cur_path = None
+            else:
+                cur_path = p[2:] if p.startswith('b/') else p
+            continue
+        if raw.startswith('--- '):
+            continue
+        m = hunk_re.match(raw)
+        if m:
+            out = flush()
+            if out:
+                yield out
+            new_lineno = int(m.group(1))
+            continue
+        if raw.startswith('+'):
+            if cur_path is not None:
+                added.append(_AddedLine(cur_path, new_lineno, raw[1:]))
+            new_lineno += 1
+        elif raw.startswith('-'):
+            removed.append(raw[1:])
+        elif raw.startswith(' '):
+            new_lineno += 1
+    out = flush()
+    if out:
+        yield out
 
 
 def _git_diff(base: str) -> str:

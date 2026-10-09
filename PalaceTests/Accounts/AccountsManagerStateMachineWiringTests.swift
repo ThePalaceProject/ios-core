@@ -13,6 +13,7 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
+import PalaceLogging
 
 @MainActor
 final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
@@ -875,19 +876,102 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
     // MARK: - Test 4: Single-flight per-UUID auth doc fetch
 
-    /// Contract: when two concurrent `fetchAuthDocumentWithStateMachine`
-    /// calls land for the same UUID, only one invocation of
-    /// `Account.loadAuthenticationDocument` may fire. The second caller
-    /// must NOT trigger a duplicate HTTP request — the state stream's
-    /// broadcast (`CurrentValueSubject`) covers multi-consumer observation.
-    ///
-    /// Exercises the single-flight set's deduplication directly. We use an
-    /// Account whose loadAuthenticationDocument short-circuits (no auth-doc
-    /// URL) so the test doesn't depend on network mocking. The wiring
-    /// inserts/removes the UUID from `inflightAuthDocFetches` around the
-    /// call; the second caller observes the UUID is present and returns
-    /// without invoking the loader again.
-    func testSingleFlight_twoConcurrentAwaiters_oneNetworkRequest() {
+    /// Counts fetch attempts via the per-attempt `.noURL` report, which runs inside
+    /// the loader's in-flight window; blocking the first report holds that fetch open.
+    private final class FetchGate: ErrorReporting, @unchecked Sendable {
+        /// Longer than the two waits the in-flight test makes while holding.
+        private static let holdCeiling: TimeInterval = 60
+        private let lock = NSLock()
+        private var _fetchAttempts = 0
+        /// When non-nil, the first fetch fulfills this and then parks until `release()`.
+        private let firstFetchEntered: XCTestExpectation?
+        private let releaseFirstFetch = DispatchSemaphore(value: 0)
+
+        init(holdingFirstFetch firstFetchEntered: XCTestExpectation?) {
+            self.firstFetchEntered = firstFetchEntered
+        }
+
+        var fetchAttempts: Int { lock.withLock { _fetchAttempts } }
+
+        func report(_ error: any Error, summary: String, metadata: [String: Any]?) {}
+
+        func report(code: Int, summary: String, metadata: [String: Any]?) {
+            guard code == TPPErrorCode.noURL.rawValue else { return }
+            let attempt: Int = lock.withLock { _fetchAttempts += 1; return _fetchAttempts }
+            guard let firstFetchEntered, attempt == 1 else { return }
+            firstFetchEntered.fulfill()
+            // Bounded so a test that fails before releasing cannot park this
+            // thread forever. It must outlast every wait the test makes while
+            // holding, or the hold would end early and break the overlap.
+            _ = releaseFirstFetch.wait(timeout: .now() + Self.holdCeiling)
+        }
+
+        func release() { releaseFirstFetch.signal() }
+    }
+
+    /// Upper bound on each wait in the single-flight tests. Every wait ends as
+    /// soon as its event happens; the bound only decides how long a broken
+    /// build takes to report, so it is sized for a heavily loaded runner.
+    private static let singleFlightWaitCeiling: TimeInterval = 15
+
+    /// Thread-safe holder for one completion value.
+    private final class ResultBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value: Bool?
+        var value: Bool? { lock.withLock { _value } }
+        func set(_ newValue: Bool) { lock.withLock { _value = newValue } }
+    }
+
+    /// Records `stateStream` transitions for one account: for each terminal
+    /// transition, how many `.detailsLoading` transitions preceded it.
+    private final class StateRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _detailsLoadingCount = 0
+        private var _loadingCountAtTerminal: [Int] = []
+
+        var loadingCountAtTerminal: [Int] { lock.withLock { _loadingCountAtTerminal } }
+
+        /// Returns true when `state` is terminal.
+        func record(_ state: Account.LoadState) -> Bool {
+            lock.withLock {
+                switch state {
+                case .detailsLoading:
+                    _detailsLoadingCount += 1
+                    return false
+                case .detailsFailed, .detailsLoaded:
+                    _loadingCountAtTerminal.append(_detailsLoadingCount)
+                    return true
+                default:
+                    return false
+                }
+            }
+        }
+    }
+
+    /// Subscribes to `account.stateStream` and returns once the subscription is
+    /// attached. `terminals` is fulfilled once per terminal transition.
+    private func observeStates(
+        of account: Account,
+        recorder: StateRecorder,
+        terminals: XCTestExpectation
+    ) -> Task<Void, Never> {
+        // `.detailsLoading` is set synchronously at fetch entry and the
+        // CurrentValueSubject only replays the latest value, so the sink must be
+        // attached (first replayed value seen) before any fetch starts.
+        let subscribed = expectation(description: "stream subscription attached")
+        subscribed.assertForOverFulfill = false
+        let task = Task {
+            var firstSeen = false
+            for await state in account.stateStream {
+                if !firstSeen { firstSeen = true; subscribed.fulfill() }
+                if recorder.record(state) { terminals.fulfill() }
+            }
+        }
+        wait(for: [subscribed], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
+        return task
+    }
+
+    private func makeSingleFlightAccount(gate: FetchGate) -> Account {
         let metadata = OPDS2Publication.Metadata(
             updated: Date(),
             description: "single-flight test",
@@ -896,97 +980,94 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         )
         let pub = OPDS2Publication(links: [], metadata: metadata, images: nil)
         let account = Account(publication: pub, imageCache: MockImageCache())
+        account.errorReporter = gate
+        return account
+    }
 
+    /// Contract: a `fetchAuthDocumentWithStateMachine` call for a UUID whose
+    /// fetch is still in flight must not invoke
+    /// `Account.loadAuthenticationDocument` again — the state stream's
+    /// broadcast covers the second caller.
+    ///
+    /// The first fetch is held open (see `FetchGate`) until the second caller has
+    /// completed, so the second caller always meets an in-flight slot.
+    func testSingleFlight_secondCallerDuringInflightFetch_doesNotFetchAgain() {
+        let firstFetchEntered = expectation(description: "first fetch is in flight")
+        let gate = FetchGate(holdingFirstFetch: firstFetchEntered)
+        // Release on every exit path so a failed assertion cannot leave the
+        // first caller's thread parked.
+        defer { gate.release() }
+        let account = makeSingleFlightAccount(gate: gate)
         let manager = makeFreshAccountsManager()
 
-        // Track how many times `.detailsLoading` is set — that's our proxy
-        // for "number of loader invocations", since the wiring fires
-        // `_setState(.detailsLoading)` once at the entry of each non-deduped
-        // call. A duplicate fetch would observe two `.detailsLoading`
-        // transitions.
-        // Swift 6: NSLock.lock()/unlock() are unavailable in async contexts, and
-        // the captured `var` counters would be data races inside the Task. Fold
-        // both into one lock-guarded @unchecked Sendable box shared by the stream
-        // task and the assertion below.
-        final class Counters: @unchecked Sendable {
-            private let lock = NSLock()
-            private var _detailsLoadingCount = 0
-            private var _sawTerminal = false
-            var detailsLoadingCount: Int { lock.withLock { _detailsLoadingCount } }
-            func incrementDetailsLoading() { lock.withLock { _detailsLoadingCount += 1 } }
-            /// True exactly once — on the first terminal transition.
-            func markTerminalOnce() -> Bool {
-                lock.withLock {
-                    if _sawTerminal { return false }
-                    _sawTerminal = true
-                    return true
-                }
-            }
-        }
-        let counters = Counters()
-        let observed = expectation(description: "stream reaches terminal")
-        observed.assertForOverFulfill = false
+        let recorder = StateRecorder()
+        let terminal = expectation(description: "stream reaches a terminal")
+        terminal.assertForOverFulfill = false
+        let streamTask = observeStates(of: account, recorder: recorder, terminals: terminal)
+        defer { streamTask.cancel() }
 
-        // `.detailsLoading` is set SYNCHRONOUSLY at the entry of a non-deduped
-        // fetch, and `stateStream`'s CurrentValueSubject only replays the latest
-        // value to a late subscriber. Gate the concurrent fetches on the stream
-        // sink being attached (first replayed value observed) so the single
-        // `.detailsLoading` transition is not raced away before we can count it.
-        let subscribed = expectation(description: "stream subscription attached")
-        subscribed.assertForOverFulfill = false
-        let streamTask = Task {
-            var firstSeen = false
-            for await state in account.stateStream {
-                if !firstSeen { firstSeen = true; subscribed.fulfill() }
-                if case .detailsLoading = state {
-                    counters.incrementDetailsLoading()
-                }
-                if case .detailsFailed = state {
-                    if counters.markTerminalOnce() { observed.fulfill() }
-                }
-                if case .detailsLoaded = state {
-                    if counters.markTerminalOnce() { observed.fulfill() }
-                }
-            }
-        }
-        wait(for: [subscribed], timeout: 2.0)
-
-        // Fire two near-simultaneous calls for the SAME UUID. The second
-        // must observe the single-flight set and return without calling
-        // loadAuthenticationDocument again.
-        let exp1 = expectation(description: "first caller completes")
-        let exp2 = expectation(description: "second caller completes")
-        let group = DispatchGroup()
-        group.enter()
-        group.enter()
-
+        let firstDone = expectation(description: "first caller completes")
         DispatchQueue.global().async {
-            manager.fetchAuthDocumentWithStateMachine(for: account) { _ in
-                exp1.fulfill()
-                group.leave()
-            }
+            manager.fetchAuthDocumentWithStateMachine(for: account) { _ in firstDone.fulfill() }
         }
+        wait(for: [firstFetchEntered], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
+
+        // First fetch is in flight and held. The second caller must complete
+        // without fetching.
+        let secondDone = expectation(description: "second caller completes while the first is held")
+        let secondResult = ResultBox()
         DispatchQueue.global().async {
-            manager.fetchAuthDocumentWithStateMachine(for: account) { _ in
-                exp2.fulfill()
-                group.leave()
+            manager.fetchAuthDocumentWithStateMachine(for: account) { success in
+                secondResult.set(success)
+                secondDone.fulfill()
             }
         }
+        wait(for: [secondDone], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
+        XCTAssertEqual(gate.fetchAttempts, 1,
+                       "A caller arriving while a fetch is in flight must not fetch again")
+        // A deduped caller reports success so a caller balancing a DispatchGroup does not treat it as a failure.
+        XCTAssertEqual(secondResult.value, true,
+                       "A deduped caller's completion must report true")
 
-        wait(for: [exp1, exp2, observed], timeout: 3.0)
+        gate.release()
+        wait(for: [firstDone, terminal], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
 
-        // Drain the main queue to ensure any post-terminal Combine emissions
-        // from the stream task have landed before we read the count below.
-        drainMainQueue()
-        streamTask.cancel()
+        XCTAssertEqual(gate.fetchAttempts, 1,
+                       "Two overlapping callers for one UUID must produce exactly one fetch")
+        XCTAssertEqual(recorder.loadingCountAtTerminal.first, 1,
+                       "Two overlapping callers for one UUID must produce exactly one .detailsLoading transition")
+    }
 
-        let count = counters.detailsLoadingCount
+    /// Contract, other side: single-flight dedupes only while a fetch is in
+    /// flight. Once the first fetch has completed, a later caller for the same
+    /// UUID starts a fresh fetch rather than being swallowed by a stale slot.
+    func testSingleFlight_callerAfterPriorFetchCompleted_fetchesAgain() {
+        let gate = FetchGate(holdingFirstFetch: nil)
+        let account = makeSingleFlightAccount(gate: gate)
+        let manager = makeFreshAccountsManager()
 
-        // The kill case: a non-single-flight wiring would fire
-        // `_setState(.detailsLoading)` twice. The single-flight guard
-        // ensures only ONE transition through `.detailsLoading`.
-        XCTAssertEqual(count, 1,
-                       "Single-flight guard must produce exactly one .detailsLoading transition for two concurrent callers on the same UUID; got \(count)")
+        let recorder = StateRecorder()
+        let terminals = expectation(description: "stream reaches two terminals")
+        terminals.expectedFulfillmentCount = 2
+        let streamTask = observeStates(of: account, recorder: recorder, terminals: terminals)
+        defer { streamTask.cancel() }
+
+        let firstDone = expectation(description: "first caller completes")
+        DispatchQueue.global().async {
+            manager.fetchAuthDocumentWithStateMachine(for: account) { _ in firstDone.fulfill() }
+        }
+        wait(for: [firstDone], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
+
+        let secondDone = expectation(description: "second caller completes")
+        DispatchQueue.global().async {
+            manager.fetchAuthDocumentWithStateMachine(for: account) { _ in secondDone.fulfill() }
+        }
+        wait(for: [secondDone, terminals], timeout: Self.singleFlightWaitCeiling)  // STARVE-001-OK: the test dispatches this work itself; the bound only sets how long a regression takes to report
+
+        XCTAssertEqual(gate.fetchAttempts, 2,
+                       "A caller arriving after the prior fetch completed must fetch again")
+        XCTAssertEqual(recorder.loadingCountAtTerminal, [1, 2],
+                       "Each sequential fetch must enter .detailsLoading before its own terminal")
     }
 
     // MARK: - Test 5: Library reselect → .detailsEvicted(.libraryDeselected) for prior

@@ -296,6 +296,14 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
     }
     func canRefreshTokenForTesting(libraryID: String) -> Bool { canRefreshToken(libraryID) }
 
+    /// Rows the current drain has sent but not yet settled, including rows
+    /// waiting on a token refresh. Zero means a new `retryQueue()` will drain
+    /// rather than bail out, so tests wait on this instead of a fixed delay.
+    /// NOTE: takes `serialQueue.sync` — never call it from inside that queue.
+    var outstandingDrainRequestsForTesting: Int {
+        serialQueue.sync { retryRequestCount }
+    }
+
     /// NOTE: takes `serialQueue.sync` — never call it from inside that queue.
     func persistedRowsForTesting() -> [PersistedRow] {
         serialQueue.sync {

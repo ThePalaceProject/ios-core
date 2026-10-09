@@ -485,7 +485,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
     /// including those that require negotiation with 3rd parties (such as
     /// Clever and SAML), validate said credentials against the Circulation
     /// Manager servers and call back to the UI once that's concluded.
-    func validateCredentials() {
+    func validateCredentials() async {
         dispatch(.credentialsValidationStarted)
 
         guard let req = makeRequest(for: .signIn, context: uiContext) else {
@@ -504,22 +504,34 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // be the currently selected library (Settings signs in/out for any
         // library). Naming it here keeps a 401 retry authenticating as the right
         // one.
-        networker.executeRequest(req, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
-            guard let self = self else { return }
+        // PP-5301: awaited directly. A completion would arrive off the main
+        // actor (`delegateQueue: nil`) while the closure inherited this
+        // method's `@MainActor` isolation and type-checked anyway — the crash
+        // class. This method is `async`, so no `Task` wrapper: one here would
+        // let it return as soon as the request was started, and a caller
+        // awaiting sign-in would race it.
+        //
+        // The awaiting frame holds this object, so a validation already in
+        // flight runs to completion — credentials persisted, DRM credentials
+        // saved — even if the screen that started it goes away. That is
+        // deliberate: the half-finished alternative leaves a patron signed in
+        // on the server with nothing stored locally.
+        do {
+            let result = await networker.execute(
+                req, enableTokenRefresh: false, accountId: libraryAccountID)
 
             let loggingContext: [String: Any] = [
                 "Request": req.loggableString,
-                "Attempted Barcode": self.uiDelegate?.username?.md5hex() ?? "N/A",
-                "Context": self.uiContext]
+                "Attempted Barcode": uiDelegate?.username?.md5hex() ?? "N/A",
+                "Context": uiContext]
 
             switch result {
             case .success(let responseData, _):
                 self.dispatch(.credentialsValidationSucceeded)
                 // Notify delegate that credentials were received and DRM processing is about to begin
                 // This allows the UI to show a loading indicator after WebView dismisses
-                TPPMainThreadRun.asyncIfNeeded {
-                    self.uiDelegate?.businessLogicDidReceiveCredentials?(self)
-                }
+                // Already on the main actor inside this Task, so no hop needed.
+                self.uiDelegate?.businessLogicDidReceiveCredentials?(self)
 
                 #if FEATURE_DRM_CONNECTOR
                 // PP-3649: Save DRM credentials from profile document but defer Adobe
@@ -570,7 +582,9 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 case .success(let tokenResponse):
                     self?.dispatch(.bearerTokenReceived(token: tokenResponse.accessToken,
                                                         expiration: tokenResponse.expirationDate))
-                    self?.validateCredentials()
+                    if let self {
+                        self.startSignInTask { await self.validateCredentials() }
+                    }
                 case .failure(let error):
                     self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
                 }
@@ -682,12 +696,12 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         }
     }
 
-    @objc func logIn() {
-        logIn(with: nil)
+    func logIn() async {
+        await logIn(with: nil)
     }
 
     /// Initiates process of signing in with the server.
-    @objc func logIn(with tokenURL: URL? = nil) {
+    func logIn(with tokenURL: URL? = nil) async {
         // Nothing to do without a selected auth method. But on a fast
         // (programmatic or quick-tap) sign-in the user can submit before the
         // account's `authentication_document` has finished loading — at which
@@ -730,13 +744,13 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                   let password = self.uiDelegate?.pin,
                   let tokenURL = tokenURL ?? userAccount.authDefinition?.tokenURL
             else {
-                validateCredentials()
+                await validateCredentials()
                 return
             }
 
             getBearerToken(username: username, password: password, tokenURL: tokenURL)
         case .basic, .coppa, .anonymous, .none:
-            validateCredentials()
+            await validateCredentials()
         }
     }
 
@@ -786,14 +800,16 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 _ = try await account.awaitReady()
             } catch {
                 Log.warn(#file, "Sign-in awaited readiness but the auth document did not load: \(error)")
-                TPPMainThreadRun.asyncIfNeeded { [weak self] in
-                    NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
-                    self?.isAwaitingReadinessForLogIn = false
-                }
+                NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
+                self?.isAwaitingReadinessForLogIn = false
                 return
             }
 
-            TPPMainThreadRun.asyncIfNeeded { [weak self] in
+            // Both arms previously hopped through `TPPMainThreadRun`. That hop
+            // was redundant: this `Task` is formed in a `@MainActor` type, so it
+            // inherits that isolation and its body already runs there. Removing
+            // it is also what lets the re-entry below be awaited (PP-5301).
+            do {
                 guard let self else { return }
                 // Details are loaded now; `selectedAuthentication` resolves via
                 // `loadedAccountDetails?.auths`. Re-enter the normal path. If it
@@ -802,7 +818,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 // prevents a second await, so a nil here falls through to the
                 // (now harmless) silent return on the recursive call.
                 if self.selectedAuthentication != nil {
-                    self.logIn(with: tokenURL)
+                    await self.logIn(with: tokenURL)
                 } else {
                     NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
                 }
@@ -1004,7 +1020,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                     uiDelegate?.PINTextField?.text = userAccount.PIN
                 }
 
-                logIn()
+                startSignInTask { await self.logIn() }
                 return false
             } else {
                 MainActor.assumeIsolated {

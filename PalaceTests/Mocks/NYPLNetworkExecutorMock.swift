@@ -9,8 +9,22 @@
 import Foundation
 @testable import Palace
 
-/// Transfers the non-Sendable completion across the `DispatchQueue.main.async`
-/// hop. Safe: it is called exactly once, on the main queue.
+/// Transfers the non-Sendable completion across the delivery-queue hop. Safe:
+/// it is called exactly once, on `TPPRequestExecutorMock.deliveryQueue`.
+/// Resume-once guard for the async bridge above. A continuation resumed twice
+/// traps, and a double that fires its callback twice is a thing tests do
+/// deliberately.
+private final class MockResultCarrier: @unchecked Sendable {
+    private let lock = NSLock()
+    private var used = false
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if used { return false }
+        used = true
+        return true
+    }
+}
+
 private struct SendableResultCompletion: @unchecked Sendable {
     let completion: (NYPLResult<Data>) -> Void
 }
@@ -21,6 +35,14 @@ private struct SendableResultCompletion: @unchecked Sendable {
 class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
 
     private let lock = NSLock()
+
+    /// Production parity: `TPPNetworkExecutor` builds its sessions with
+    /// `delegateQueue: nil`, so every completion it delivers arrives on a
+    /// background queue, never on main. Delivering on main here made this
+    /// double unable to observe a whole class of defect — a completion that
+    /// touches main-actor-isolated state without hopping is fatal in Swift 6
+    /// and the double rendered it harmless.
+    private static let deliveryQueue = DispatchQueue(label: "TPPRequestExecutorMock.delivery")
 
     private var _requestTimeout: TimeInterval = 60
     var requestTimeout: TimeInterval {
@@ -50,9 +72,9 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
     /// Whether each executed request asked for a proactive token refresh,
     /// keyed by URL. Recorded because the flag is not observable any other way:
     /// it is consumed inside the executor, and a caller flipping it changes
-    /// which failure arm runs (`TPPNetworkExecutor:882-899` presents the
-    /// sign-in modal on a refresh 401) without changing any response a test
-    /// can see.
+    /// which failure arm runs (the 401 branch of
+    /// `TPPNetworkExecutor.refreshTokenAndResume` presents the sign-in modal)
+    /// without changing any response a test can see.
     private(set) var tokenRefreshByURL: [URL: Bool] {
         get { lock.withLock { _tokenRefreshByURL } }
         set { lock.withLock { _tokenRefreshByURL = newValue } }
@@ -63,6 +85,17 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
         get { lock.withLock { _executedRequestURLs } }
         set { lock.withLock { _executedRequestURLs = newValue } }
     }
+
+    /// The `accountId` each awaited request named, in order. Recorded because
+    /// nothing else can see it: this double answers from its own stubs, so a
+    /// caller passing the wrong library — or nil, meaning "whichever library is
+    /// selected" — produces an identical response. PP-4986 is that defect, and
+    /// Settings signs in and out for a library that is not the selected one.
+    private(set) var executedAccountIds: [String?] {
+        get { lock.withLock { _executedAccountIds } }
+        set { lock.withLock { _executedAccountIds = newValue } }
+    }
+    private var _executedAccountIds: [String?] = []
 
     /// Fired synchronously the instant `executeRequest` records a URL — the
     /// deterministic JOIN seam for tests that need to wake the moment the
@@ -98,6 +131,25 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
         // Drop any join hook so a stale closure can't fire a torn-down
         // expectation on a later test's request.
         onExecuteRequest = nil
+        executedAccountIds = []
+    }
+
+    /// The protocol's only request entry point. Implemented over this double's
+    /// own callback machinery so the off-main delivery below is preserved: the
+    /// real executor's sessions use `delegateQueue: nil`, and a double that
+    /// delivered on main could not observe the PP-5299 class at all.
+    func execute(_ req: URLRequest,
+                 enableTokenRefresh: Bool,
+                 accountId: String?) async -> NYPLResult<Data> {
+        executedAccountIds.append(accountId)
+        let carried: SendableNetworkResult = await withCheckedContinuation { continuation in
+            let once = MockResultCarrier()
+            _ = executeRequest(req, enableTokenRefresh: enableTokenRefresh) { result in
+                guard once.claim() else { return }   // a double is allowed to fire twice
+                continuation.resume(returning: SendableNetworkResult(result: result))
+            }
+        }
+        return carried.result
     }
 
     func executeRequest(_ req: URLRequest,
@@ -114,7 +166,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
 
         let capturedGeneration = generation
         let completionBox = SendableResultCompletion(completion: completion)
-        DispatchQueue.main.async { [weak self] in
+        Self.deliveryQueue.async { [weak self] in
             guard let self, self.generation == capturedGeneration else { return }
             let completion = completionBox.completion
 

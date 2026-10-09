@@ -227,34 +227,60 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     // B11 — GAP: basic auth WITH saved credentials + usingExistingCredentials
     // returns false (no sign-in UI needed) and drives logIn() directly. The
     // existing suite covers the WITHOUT-creds → true complement.
-    func test_refreshAuthIfNeeded_basicWithSavedCredentials_returnsFalse_andLogsIn() {
+    func test_refreshAuthIfNeeded_basicWithSavedCredentials_returnsFalse_andLogsIn() async {
         signInBasic(barcode: "saved-bc", pin: "saved-pin")
 
         let result = businessLogic.refreshAuthIfNeeded(usingExistingCredentials: true, completion: nil)
 
         XCTAssertFalse(result,
                        "basic auth with saved credentials must NOT require a sign-in UI (returns false)")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "refreshAuthIfNeeded must drive logIn() → validateCredentials for the saved-creds path")
+
+        // The hand-off happens in a task, so it is observed by joining that
+        // task and checking the request it fired. The validating flag is
+        // in-flight state an awaited validation has already cleared.
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "refreshAuthIfNeeded must drive logIn() → validateCredentials for the saved-creds path")
     }
 
     // MARK: - logIn() routing per auth method (safe branches)
 
     // B12 — logIn(basic) captures creds, enters validating, and fires the
     // credential-validation request.
-    func test_logIn_basicAuth_capturesCredentials_entersValidating_andFiresRequest() {
+    func test_logIn_basicAuth_capturesCredentials_entersValidating_andFiresRequest() async {
         uiDelegate.username = "login-bc"
         uiDelegate.pin = "login-pin"
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
-        businessLogic.logIn()
+        // Rewrite the delegate the moment the request is dispatched, which is
+        // after `logIn()` captures the credentials and before the success path
+        // persists them. `TPPSignInBusinessLogic+UI` persists
+        // `capturedBarcode ?? uiDelegate?.username`, so a delegate still
+        // holding the typed values lets the fallback satisfy the assertions
+        // below even if the capture never happened. Changing it here is what
+        // makes them discriminate: only the captured value can still be
+        // "login-bc" afterwards. The mock is `@unchecked Sendable` with
+        // lock-guarded properties, and this fires inline on the calling thread.
+        networkExecutor.onExecuteRequest = { [uiDelegate] _ in
+            uiDelegate?.username = "not-the-captured-barcode"
+            uiDelegate?.pin = "not-the-captured-pin"
+        }
 
-        XCTAssertEqual(businessLogic.capturedBarcode, "login-bc")
-        XCTAssertEqual(businessLogic.capturedPin, "login-pin")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "basic logIn routes straight to validateCredentials")
+        await businessLogic.logIn()
+
+        // `capturedBarcode`, `capturedPin` and `isValidatingCredentials` are
+        // in-flight reducer state that a completed validation clears, so they
+        // say nothing once `logIn()` has returned. Basic auth also sends no
+        // Authorization header — credentials go via URLAuthenticationChallenge
+        // — so the request itself cannot carry them either. What survives is
+        // the account the validation persisted.
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
                        "basic logIn must fire exactly one validation request")
+        XCTAssertEqual(businessLogic.userAccount.barcode, "login-bc",
+                       "the persisted barcode must be the one logIn captured, "
+                       + "not whatever the delegate holds at persist time")
+        XCTAssertEqual(businessLogic.userAccount.PIN, "login-pin",
+                       "the persisted PIN must be the one logIn captured")
     }
 
     // SEAM: logIn()'s OAuth (`oauthLogIn`) and SAML (`samlHelper.logIn`) arms
@@ -268,13 +294,13 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
 
     // B13 — logIn(OIDC) captures the barcode and notifies willSignIn but does
     // NOT validate directly (it hands off to the external web-auth session).
-    func test_logIn_oidc_capturesBarcode_notifiesWillSignIn_doesNotValidateDirectly() {
+    func test_logIn_oidc_capturesBarcode_notifiesWillSignIn_doesNotValidateDirectly() async {
         uiDelegate.username = "oidc-u"
         uiDelegate.pin = nil
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
-        drainMainQueue()   // willSignIn is dispatched async
+        await businessLogic.logIn()
+        await drainMainQueueAsync()   // willSignIn is dispatched async
 
         XCTAssertEqual(businessLogic.capturedBarcode, "oidc-u")
         XCTAssertFalse(businessLogic.isValidatingCredentials,

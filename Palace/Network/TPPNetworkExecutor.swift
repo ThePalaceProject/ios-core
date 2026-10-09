@@ -16,6 +16,18 @@ import PalaceNetwork
 // RIPPLES.md as the preferred upstream fix.
 @preconcurrency import PalaceAuth
 
+/// Carries a result across the async path's single continuation.
+///
+/// `NYPLResult` holds a `URLResponse?` and an existential `TPPUserFriendlyError`,
+/// neither `Sendable`, so it cannot cross a continuation boundary unaided.
+/// Confining that one unsafe claim here is the point: it is what lets every
+/// caller `await` a request with no carrier and no hop of its own, which is the
+/// debt the async path exists to retire. Safe because the box resumes exactly
+/// once and the value is read on the awaiting actor, never concurrently.
+struct SendableNetworkResult: @unchecked Sendable {
+    let result: NYPLResult<Data>
+}
+
 enum NYPLResult<SuccessInfo> {
     case success(SuccessInfo, URLResponse?)
     case failure(TPPUserFriendlyError, URLResponse?)
@@ -444,12 +456,44 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
                         enableTokenRefresh: Bool,
                         accountId requestedAccountId: String?,
                         completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
+        switch preflight(enableTokenRefresh: enableTokenRefresh,
+                         accountId: requestedAccountId) {
+        case .dispatch(let accountId):
+            return performDataTask(with: req, accountId: accountId, completion: completion)
+
+        case .refreshThenDispatch(let accountId):
+            Log.info(#file, "Token near expiry - proactively refreshing before request")
+            refreshTokenAndResume(task: nil, accountId: accountId) { [weak self] _ in
+                _ = self?.performDataTask(with: req, accountId: accountId, completion: completion)
+            }
+            return nil
+        }
+    }
+
+    /// What both request entry points must settle before dispatching: whose
+    /// credentials apply, and whether the token needs refreshing first.
+    ///
+    /// Shared so the two cannot drift. They differ in how they carry the task
+    /// — the callback form hands its `URLSessionDataTask` back to the caller,
+    /// the async form keeps it in a box so the await stays cancellable — but
+    /// not in when a refresh happens, and a request authenticating as the
+    /// wrong library or skipping a refresh is a sign-in failure either way.
+    private enum RequestPreflight {
+        case dispatch(accountId: String?)
+        case refreshThenDispatch(accountId: String?)
+    }
+
+    private func preflight(enableTokenRefresh: Bool,
+                           accountId requestedAccountId: String?) -> RequestPreflight {
+        // PP-4986: nil means the currently selected library, which is what
+        // every caller meant before `accountId` existed.
         let accountId = requestedAccountId ?? accountsManager.currentAccountId
-        let userAccount = accountId.flatMap { accountsManager.userAccount(for: $0) } ?? accountsManager.currentUserAccount
+        let userAccount = accountId.flatMap { accountsManager.userAccount(for: $0) }
+            ?? accountsManager.currentUserAccount
 
         // SAML auth uses cookies, not tokens - proceed directly
         if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
-            return performDataTask(with: req, accountId: accountId, completion: completion)
+            return .dispatch(accountId: accountId)
         }
 
         // Proactive token refresh: if token will expire soon, refresh before the request
@@ -458,14 +502,77 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
            let authDef = userAccount.authDefinition,
            authDef.isToken || authDef.isOauth,
            authDef.tokenURL != nil {
-            Log.info(#file, "Token near expiry - proactively refreshing before request")
-            refreshTokenAndResume(task: nil, accountId: accountId) { [weak self] _ in
-                _ = self?.performDataTask(with: req, accountId: accountId, completion: completion)
-            }
-            return nil
+            return .refreshThenDispatch(accountId: accountId)
         }
 
-        return performDataTask(with: req, accountId: accountId, completion: completion)
+        return .dispatch(accountId: accountId)
+    }
+
+    /// Native async request. The only request entry point on
+    /// `TPPRequestExecuting`, and the reason the completion forms were removed
+    /// from it: a completion typed `(NYPLResult<Data>) -> Void` cannot say
+    /// where it runs, so a closure formed in a `@MainActor` context inherits
+    /// that isolation, type-checks, and is then invoked on a background queue
+    /// — the PP-5299 crash class. A continuation resumes on the awaiting
+    /// caller's actor, so there is nothing for a caller to remember.
+    ///
+    /// The account resolution, the SAML short-circuit and the near-expiry
+    /// refresh are shared with the callback form through `preflight`, so the
+    /// two entry points cannot disagree about which credentials apply. Only
+    /// the task plumbing differs: the one continuation sits where the real
+    /// boundary is — URLSession's callback — and `setTask` makes the await
+    /// cancellable, which a wrapper over `executeRequest` could not be, since
+    /// that form returns its task to its caller.
+    ///
+    /// Returns `NYPLResult` rather than throwing: the failure case carries the
+    /// `URLResponse`, and sign-in reads problem documents off error responses.
+    func execute(_ req: URLRequest,
+                 enableTokenRefresh: Bool,
+                 accountId requestedAccountId: String?) async -> NYPLResult<Data> {
+        switch preflight(enableTokenRefresh: enableTokenRefresh,
+                         accountId: requestedAccountId) {
+        case .dispatch(let accountId):
+            return await dataTask(req, accountId: accountId)
+
+        case .refreshThenDispatch(let accountId):
+            Log.info(#file, "Token near expiry - proactively refreshing before request")
+            // Boxed like the request below: a refresh callback firing twice
+            // would otherwise trap on a double resume.
+            // No caller cancels an `execute` await today — the sign-in tasks
+            // are unstructured — so this arm is defensive and untested. It
+            // becomes load-bearing the moment a structured caller appears.
+            let refreshed = CancellableContinuationBox<Void>()
+            _ = try? await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+                    refreshed.install(c)
+                    refreshTokenAndResume(task: nil, accountId: accountId) { _ in
+                        refreshed.finish(.success(()))
+                    }
+                }
+            } onCancel: {
+                refreshed.cancel()
+            }
+            return await dataTask(req, accountId: accountId)
+        }
+    }
+
+    /// The single continuation in the async path: URLSession's completion is
+    /// the boundary, so this is where bridging belongs.
+    private func dataTask(_ req: URLRequest, accountId: String?) async -> NYPLResult<Data> {
+        let box = CancellableContinuationBox<SendableNetworkResult>()
+        let bridged: SendableNetworkResult? = try? await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.install(continuation)
+                let task = performDataTask(with: req, accountId: accountId) { result in
+                    box.finish(.success(SendableNetworkResult(result: result)))
+                }
+                box.setTask(task)
+            }
+        } onCancel: {
+            box.cancel()
+        }
+        return bridged?.result
+            ?? .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled), nil)
     }
 
     private func performDataTask(with request: URLRequest,
@@ -847,7 +954,7 @@ extension TPPNetworkExecutor {
                         for queued in queuedTasks {
                             let oldTask = queued.task
                             guard let originalRequest = oldTask.originalRequest,
-                                  let originalURL = originalRequest.url else {
+                                  originalRequest.url != nil else {
                                 continue
                             }
 
@@ -874,8 +981,11 @@ extension TPPNetworkExecutor {
                                 Log.warn(#file, "Retry has no dispatch provenance (host: \(host)); falling back to the account current at refresh-start — this request may authenticate as the wrong library (PP-4986). All five known producers stamp; an unstamped task here is a producer the census did not predict.")
                             }
                             let rebuildAccountId = stamped ?? queued.accountIdAtRefreshStart
-                            let mutableRequest = self.request(for: originalURL,
-                                                              accountId: rebuildAccountId)
+                            // Per-account snapshot of the dispatch account, as in `request(for:accountId:)`.
+                            let resolvedId = rebuildAccountId ?? self.accountsManager.currentAccountId ?? ""
+                            let snapshot = self.accountsManager.userAccount(for: resolvedId).credentialSnapshot()
+                            guard let mutableRequest = self.resendableRetry(of: oldTask, original: originalRequest,
+                                                                            credentials: snapshot) else { continue }
                             let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
                             // A retry can itself 401. Without this the second
                             // round loses provenance and falls back to current.
@@ -1018,7 +1128,9 @@ private final class ContinuationGuard {
 /// and applied on `install(_:)`, so the early-cancel race cannot strand a caller.
 /// Mirrors `CancellableTaskBox` in `URLSessionNetworkClient`, which already
 /// solved this for the newer client.
-private final class CancellableContinuationBox<T>: @unchecked Sendable {
+/// Internal rather than private so `TPPRequestExecuting`'s async bridge can
+/// reuse it instead of growing a second resume-once guard.
+final class CancellableContinuationBox<T>: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<T, Error>?
     private var task: URLSessionTask?

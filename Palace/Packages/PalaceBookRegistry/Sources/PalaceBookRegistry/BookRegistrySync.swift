@@ -130,12 +130,9 @@ final class BookRegistrySync: @unchecked Sendable {
   /// deterministically via `_awaitScheduledRedownloadsForTesting()`.
   ///
   /// Production behavior is unchanged: same delay, same main-queue delivery, same
-  /// fire-and-forget semantics — only a reference is kept, and only under XCTest. The
-  /// env-var gate (rather than `#if DEBUG`) keeps the scheduling path free of
-  /// conditional compilation, matching `AccountRegistryLoader._trackedCrawlTasks`.
-  private static let _isRunningUnderXCTest =
-    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-
+  /// fire-and-forget semantics — only a reference is kept, and only under XCTest
+  /// (see `XCTestJoinableTasks`).
+  ///
   /// PER-INSTANCE, deliberately NOT static. A static array is shared by every
   /// `BookRegistrySync` in the test process, so one test's join drains another
   /// test's tasks — the join returns early, its assertion runs before the schedule
@@ -144,8 +141,13 @@ final class BookRegistrySync: @unchecked Sendable {
   /// revision of this seam was static and failed
   /// `test_load_contentMissingEntirely_schedulesTheOrphanRedownload` on CI while
   /// passing locally, where the interleaving happened to be benign.
-  private let _scheduledRedownloadsLock = NSLock()
-  nonisolated(unsafe) private var _scheduledRedownloads: [Task<Void, Never>] = []
+  private let _scheduledRedownloads = XCTestJoinableTasks()
+
+  /// The `Task` each `sync(...)` call spawns, retained under XCTest so a test can
+  /// join the whole sync (readiness wait, feed fetch, final main-actor block)
+  /// instead of waiting on a wall-clock deadline (PP-5296). Per-instance for the
+  /// same reason as `_scheduledRedownloads`.
+  private let _syncTasks = XCTestJoinableTasks()
 
   /// Schedules `body` on the main queue after `delay`, retaining the Task under XCTest.
   private func trackScheduledRedownload(
@@ -157,19 +159,7 @@ final class BookRegistrySync: @unchecked Sendable {
       guard !Task.isCancelled else { return }
       body()
     }
-    guard Self._isRunningUnderXCTest else { return }
-    _scheduledRedownloadsLock.lock()
-    _scheduledRedownloads.append(task)
-    _scheduledRedownloadsLock.unlock()
-  }
-
-  /// Snapshot-then-await without holding the lock across an await (Swift 6 bans it).
-  /// Does NOT clear: a join must be idempotent, so a second call cannot silently
-  /// return early because the first drained the list.
-  private func _snapshotScheduledRedownloadsForTesting() -> [Task<Void, Never>] {
-    _scheduledRedownloadsLock.lock()
-    defer { _scheduledRedownloadsLock.unlock() }
-    return _scheduledRedownloads
+    _scheduledRedownloads.retain(task)
   }
 
   /// How many re-downloads this instance has registered so far.
@@ -181,18 +171,21 @@ final class BookRegistrySync: @unchecked Sendable {
   /// which makes it useless as a regression test — this is a property of the
   /// code and holds on an idle machine.
   func _scheduledRedownloadCountForTesting() -> Int {
-    _scheduledRedownloadsLock.lock()
-    defer { _scheduledRedownloadsLock.unlock() }
-    return _scheduledRedownloads.count
+    _scheduledRedownloads.count
   }
 
   /// Test-only NARROW deterministic JOIN seam: awaits every re-download this
   /// instance scheduled, including its delay, so a test can assert on what was (or
   /// was not) scheduled without a wall-clock deadline.
   func _awaitScheduledRedownloadsForTesting() async {
-    for task in _snapshotScheduledRedownloadsForTesting() {
-      _ = await task.value
-    }
+    await _scheduledRedownloads.awaitAll()
+  }
+
+  /// Test-only join for every `sync(...)` Task this instance started. On return,
+  /// the sync's final `setState` and `completion` have run (both are called inside
+  /// the Task's last main-actor block), or the sync returned before reaching them.
+  func _awaitSyncTasksForTesting() async {
+    await _syncTasks.awaitAll()
   }
 
   func registryUrl(for account: String) -> URL? {
@@ -506,7 +499,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // The callbacks are still only invoked inside `MainActor.run`, on main.
     let callbacks = SyncCallbacks(setState: setState, completion: completion)
 
-    Task { [weak self] in
+    let syncTask = Task { [weak self] in
       guard let self else { return }
 
       // PP-4407: await account readiness before reading loansUrl; on a cold
@@ -682,6 +675,7 @@ final class BookRegistrySync: @unchecked Sendable {
         callbacks.completion?(nil, changesMade)
       }
     }
+    _syncTasks.retain(syncTask)
   }
 
   /// Persist the registry for the given account. The caller MUST pass the account
@@ -1164,4 +1158,34 @@ enum RegistrySaveScope {
   /// posts a change: positions are saved every few seconds of playback, and no
   /// observer of the shelf renders one.
   case positionOnly
+}
+
+/// Retains fire-and-forget Tasks while running under XCTest so a test can join
+/// them; a no-op outside XCTest, so production keeps no references. The
+/// env-var gate (rather than `#if DEBUG`) keeps the spawning code free of
+/// conditional compilation, matching `AccountRegistryLoader._trackedCrawlTasks`.
+///
+/// `@unchecked Sendable`: `tasks` is only read or written under `lock`.
+private final class XCTestJoinableTasks: @unchecked Sendable {
+  private static let isRunningUnderXCTest =
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+  private let lock = NSLock()
+  private var tasks: [Task<Void, Never>] = []
+
+  func retain(_ task: Task<Void, Never>) {
+    guard Self.isRunningUnderXCTest else { return }
+    lock.withLock { tasks.append(task) }
+  }
+
+  var count: Int { lock.withLock { tasks.count } }
+
+  /// Snapshots under the lock, then awaits outside it (Swift 6 forbids holding a
+  /// lock across an await). Does not clear the list: a join must be idempotent,
+  /// so a second call cannot return early because the first drained it.
+  func awaitAll() async {
+    for task in lock.withLock({ tasks }) {
+      _ = await task.value
+    }
+  }
 }
