@@ -112,7 +112,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
         queue.retryQueue()
         expectEventually("the refresh to be attempted") { refresher.libraries.count == 1 }
-        settle(queue)
+        awaitDrainFinished(queue)
 
         XCTAssertEqual(server.requestCount, 1, "No resend after a failed refresh")
         XCTAssertEqual(queue.persistedRowsForTesting().map(\.retries), [1],
@@ -135,10 +135,10 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         for drain in 1...attempts {
             queue.retryQueue()
             expectEventually("drain \(drain) to attempt a refresh") { refresher.libraries.count == drain }
-            settle(queue)
+            awaitDrainFinished(queue)
         }
         queue.retryQueue()
-        settle(queue)
+        awaitDrainFinished(queue)
 
         XCTAssertTrue(queue.persistedRowsForTesting().isEmpty,
                       "A row past MaxRetriesInQueue is deleted even when every drain ends in a 401")
@@ -159,7 +159,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
         queue.retryQueue()
         expectEventually("the resend to be refused") { server.requestCount == 2 }
-        settle(queue)
+        awaitDrainFinished(queue)
 
         XCTAssertEqual(refresher.libraries, ["lib-A"], "One refresh per library per drain")
         XCTAssertEqual(server.requestCount, 2)
@@ -183,10 +183,13 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
         queue.retryQueue()
         expectEventually("the first row's refresh to fail") { refresher.libraries.count == 1 }
-        settle(queue)
+        // The failed refresh has settled once only the gated row is outstanding.
+        expectEventually("only the gated row to be outstanding") {
+            queue.outstandingDrainRequestsForTesting == 1
+        }
         GatedURLProtocol.open()
         expectEventually("the gated row to be refused") { GatedURLProtocol.answered == 1 }
-        settle(queue)
+        awaitDrainFinished(queue)
 
         XCTAssertEqual(refresher.libraries, ["lib-A"], "No second refresh after the first failed")
         XCTAssertEqual(queue.persistedRowsForTesting().count, 2)
@@ -216,7 +219,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
         queue.retryQueue()
         expectEventually("both rows to be refused") { server.requestCount == 2 }
-        settle(queue)
+        awaitDrainFinished(queue)
 
         XCTAssertEqual(refresher.libraries, ["lib-A"], "One attempt per library per drain")
         XCTAssertEqual(queue.persistedRowsForTesting().map(\.retries), [0, 0],
@@ -245,10 +248,12 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         queue.retryQueue()
         expectEventually("lib-A's refresh to find the slot busy") { refresher.libraries == ["lib-A"] }
         expectEventually("the ungated rows to be refused") { server.requestCount == 2 }
-        settle(queue)
+        expectEventually("only the gated row to be outstanding") {
+            queue.outstandingDrainRequestsForTesting == 1
+        }
         GatedURLProtocol.open()
         expectEventually("the gated row to be refused") { GatedURLProtocol.answered == 1 }
-        settle(queue)
+        awaitDrainFinished(queue)
 
         let retries = Dictionary(uniqueKeysWithValues: queue.persistedRowsForTesting().map { ($0.updateID ?? "", $0.retries) })
         XCTAssertEqual(retries["book-1"], 0)
@@ -278,7 +283,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
         queue.retryQueue()
         expectEventually("the row to be refused") { server.requestCount == 1 }
-        settle(queue)
+        awaitDrainFinished(queue)
 
         XCTAssertEqual(refresher.libraries, [])
         XCTAssertEqual(queue.persistedRowsForTesting().map(\.retries), [1])
@@ -298,8 +303,8 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
         queue.retryQueue()
         expectEventually("the refresh to start") { refresher.libraries.count == 1 }
-        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
-        settle(queue)
+        // Released by the 0.3s refresh timeout, not by the held completion.
+        awaitDrainFinished(queue)
 
         queue.retryQueue()
         expectEventually("the next drain to run after the timeout") { server.requestCount == 2 }
@@ -327,13 +332,42 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         queue.retryQueue()
         expectEventually("the refresh to start") { refresher.libraries.count == 1 }
         queue.retryQueue()
-        settle(queue)
-        XCTAssertEqual(server.requestCount, 1)
-        XCTAssertEqual(refresher.libraries.count, 1)
+        queue.serialQueue.sync {}
 
         refresher.release()
-        expectEventually("the row to be delivered") { queue.persistedRowsForTesting().isEmpty }
-        XCTAssertEqual(server.requestCount, 2)
+        awaitDrainFinished(queue)
+        XCTAssertTrue(queue.persistedRowsForTesting().isEmpty)
+        XCTAssertEqual(server.requestCount, 2, "One send and one resend; the second drain sent nothing")
+        XCTAssertEqual(refresher.libraries.count, 1, "The second drain started no refresh")
+    }
+
+    // MARK: - Drain bookkeeping seen by tests
+
+    /// The count the waits above rely on: every row a drain sends stays
+    /// outstanding until its response is handled, and only then reaches zero.
+    func testOutstandingDrainRequests_CountsSentRowsUntilEachResponseIsHandled() {
+        let tokens = TokenBox(["lib-A": "new"])
+        _ = StubServer(acceptedToken: "new")
+        let refresher = SpyRefresher(tokens: tokens, outcome: .success(newToken: "new"))
+        let (queue, _) = makeQueue(tokens: tokens, refresher: refresher)
+        GatedURLProtocol.reset()
+        GatedURLProtocol.setStatus(200)
+
+        for book in ["book-1", "book-2"] {
+            queue.addRequest("lib-A", book, URL(string: "https://a.example.org/\(book)/gated")!,
+                             .POST, Data("{}".utf8), nil)
+        }
+        queue.serialQueue.sync {}
+
+        queue.retryQueue()
+        XCTAssertEqual(queue.outstandingDrainRequestsForTesting, 2,
+                       "Both rows are on the wire, so both are outstanding")
+
+        GatedURLProtocol.open()
+        expectEventually("both sends to be answered") { GatedURLProtocol.answered == 2 }
+        awaitDrainFinished(queue)
+        XCTAssertTrue(queue.persistedRowsForTesting().isEmpty,
+                      "Zero is reported only after both responses deleted their rows")
     }
 
     // MARK: - Supersede during a refresh or an in-flight send
@@ -355,7 +389,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         queue.addRequest("lib-A", "book-1", url, .POST, Data(#"{"p":2}"#.utf8), nil)
         queue.serialQueue.sync {}
         refresher.release()
-        settle(queue)
+        awaitDrainFinished(queue)
 
         XCTAssertEqual(server.requestCount, 1, "The old body is not resent")
         XCTAssertEqual(queue.persistedRowsForTesting().map(\.parameters), [Data(#"{"p":2}"#.utf8)],
@@ -386,7 +420,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
         GatedURLProtocol.open()
         expectEventually("the first send to be answered") { GatedURLProtocol.answered == 1 }
-        settle(queue)
+        awaitDrainFinished(queue)
 
         XCTAssertEqual(queue.persistedRowsForTesting().map(\.parameters), [Data(#"{"p":2}"#.utf8)],
                        "Deleting by row id alone would drop the newer write")
@@ -589,7 +623,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
         queue.retryQueue()
         expectEventually("the row to be sent") { server.requestCount == 1 }
-        settle(queue)
+        awaitDrainFinished(queue)
 
         XCTAssertEqual(refresher.libraries, [], "Only a 401 means the credential needs refreshing")
         XCTAssertEqual(server.requestCount, 1)
@@ -630,7 +664,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 
         queue.retryQueue()
         expectEventually("the challenge to be answered") { !ChallengeLog.shared.entries.isEmpty }
-        settle(queue)
+        awaitDrainFinished(queue)
 
         // Only credential reads are asserted; when the stub load ends is timing.
         XCTAssertEqual(ChallengeLog.shared.entries.filter { $0.hasPrefix("asked:") }, ["asked:lib-A-patron"],
@@ -759,8 +793,18 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
         return (queue, executor, dir)
     }
 
-    /// Lets in-flight completions land: the response, the 401 handling and the
-    /// refresh completion each hop onto the serial queue.
+    /// Waits until the drain has settled every row it sent, so a following
+    /// `retryQueue()` drains instead of finding the previous drain still open.
+    private func awaitDrainFinished(_ queue: NetworkQueue,
+                                    file: StaticString = #filePath,
+                                    line: UInt = #line) {
+        expectEventually("the drain to settle every row", {
+            queue.outstandingDrainRequestsForTesting == 0
+        }, file: file, line: line)
+    }
+
+    /// Absence window for a completion that must have no effect, so there is
+    /// no queue state to wait on.
     private func settle(_ queue: NetworkQueue) {
         for _ in 0..<5 {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))

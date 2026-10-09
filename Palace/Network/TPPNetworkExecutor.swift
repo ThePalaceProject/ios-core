@@ -954,7 +954,7 @@ extension TPPNetworkExecutor {
                         for queued in queuedTasks {
                             let oldTask = queued.task
                             guard let originalRequest = oldTask.originalRequest,
-                                  let originalURL = originalRequest.url else {
+                                  originalRequest.url != nil else {
                                 continue
                             }
 
@@ -981,8 +981,11 @@ extension TPPNetworkExecutor {
                                 Log.warn(#file, "Retry has no dispatch provenance (host: \(host)); falling back to the account current at refresh-start — this request may authenticate as the wrong library (PP-4986). All five known producers stamp; an unstamped task here is a producer the census did not predict.")
                             }
                             let rebuildAccountId = stamped ?? queued.accountIdAtRefreshStart
-                            let mutableRequest = self.request(for: originalURL,
-                                                              accountId: rebuildAccountId)
+                            // Per-account snapshot of the dispatch account, as in `request(for:accountId:)`.
+                            let resolvedId = rebuildAccountId ?? self.accountsManager.currentAccountId ?? ""
+                            let snapshot = self.accountsManager.userAccount(for: resolvedId).credentialSnapshot()
+                            guard let mutableRequest = self.resendableRetry(of: oldTask, original: originalRequest,
+                                                                            credentials: snapshot) else { continue }
                             let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
                             // A retry can itself 401. Without this the second
                             // round loses provenance and falls back to current.
