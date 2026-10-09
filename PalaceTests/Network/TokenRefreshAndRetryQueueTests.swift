@@ -142,10 +142,13 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     /// non-async context where `wait()` is allowed) on a Dispatch thread — never
     /// a cooperative-pool thread — and resuming a continuation when it returns is
     /// the correct off-pool bridge. Resumes the instant the semaphore is
-    /// signaled, never on a wall-clock deadline.
-    private func awaitSemaphore(_ sem: DispatchSemaphore) async {
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global().async { sem.wait(); cont.resume() }
+    /// signaled. The 60s bound is a hang guard, not a deadline: a signal that
+    /// never comes (a dropped retry) fails the test instead of stalling the run.
+    private func awaitSemaphore(_ sem: DispatchSemaphore,
+                                file: StaticString = #filePath,
+                                line: UInt = #line) async {
+        if await awaitSemaphore(sem, timeout: .now() + 60.0) == .timedOut {
+            XCTFail("the awaited signal never arrived within the 60s hang guard", file: file, line: line)
         }
     }
 
