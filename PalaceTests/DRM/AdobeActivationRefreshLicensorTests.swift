@@ -338,10 +338,12 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
     func test_boundedLicensor_whenTheProducerNeverAnswers_returnsNilAtTheDeadline() async {
         let started = Date()
 
-        let result = await AdobeDRMService.boundedLicensor(timeout: 0.4) { _ in
-            // Deliberately drops the completion, as a URLSession task that
-            // never calls back would.
-        }
+        let result = await AdobeDRMService.boundedLicensor(timeout: 0.4, awaiting: {
+            // Never answers inside the deadline, as a request that never calls
+            // back would. The deadline must be what releases the await.
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            return nil
+        })
 
         let elapsed = Date().timeIntervalSince(started)
         XCTAssertNil(result.licensor, "a fetch that never answers must yield nil, not a value")
@@ -359,9 +361,9 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
     func test_boundedLicensor_whenTheProducerAnswers_returnsItWithoutWaiting() async {
         let started = Date()
 
-        let result = await AdobeDRMService.boundedLicensor(timeout: 30) { done in  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
-            done(["vendor": "v", "clientToken": "a|b"])
-        }
+        let result = await AdobeDRMService.boundedLicensor(timeout: 30, awaiting: {  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
+            ["vendor": "v", "clientToken": "a|b"]
+        })
 
         XCTAssertEqual(result.licensor?["clientToken"] as? String, "a|b")
         XCTAssertFalse(result.timedOut,
@@ -376,9 +378,9 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
     func test_boundedLicensor_whenTheProducerAnswersNil_returnsPromptly() async {
         let started = Date()
 
-        let result = await AdobeDRMService.boundedLicensor(timeout: 30) { done in  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
-            done(nil)
-        }
+        let result = await AdobeDRMService.boundedLicensor(timeout: 30, awaiting: {  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
+            nil
+        })
 
         XCTAssertNil(result.licensor)
         XCTAssertFalse(result.timedOut,
@@ -387,18 +389,27 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 5.0)
     }
 
-    /// A completion handler invoked twice would resume a `CheckedContinuation`
-    /// twice — a hard runtime trap, not a recoverable error. The latch is
-    /// load-bearing, not defensive styling, so it gets an assertion.
-    func test_boundedLicensor_whenTheProducerAnswersTwice_doesNotTrap() async {
-        let result = await AdobeDRMService.boundedLicensor(timeout: 30) { done in  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
-            done(["vendor": "v", "clientToken": "first|token"])
-            done(["vendor": "v", "clientToken": "second|token"])
-        }
+    /// Resuming a `CheckedContinuation` twice is a hard runtime trap, not a
+    /// recoverable error, so the at-most-once latch is load-bearing rather than
+    /// defensive styling.
+    ///
+    /// The old form of this case drove a completion handler invoked twice. An
+    /// `async` producer cannot answer twice — it returns once — so that shape is
+    /// no longer representable through this surface. What remains, and is the
+    /// race the latch actually exists for, is a producer that answers AFTER the
+    /// deadline has already claimed the continuation. Without the latch that
+    /// late answer is a second `resume` and this test crashes rather than fails.
+    func test_boundedLicensor_whenTheProducerAnswersAfterTheDeadline_keepsTheTimeout() async {
+        let result = await AdobeDRMService.boundedLicensor(timeout: 0.2, awaiting: {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            return ["vendor": "v", "clientToken": "late|token"]
+        })
 
-        XCTAssertEqual(result.licensor?["clientToken"] as? String, "first|token",
-                       "the first answer wins; the second must be dropped, not resumed")
-        XCTAssertFalse(result.timedOut)
+        XCTAssertTrue(result.timedOut,
+                      "the deadline claimed the latch first, so the caller must still be told it timed out")
+        XCTAssertNil(result.licensor,
+                     "an answer that lands after the deadline must be dropped, not resumed into the "
+                     + "continuation the deadline already used")
     }
 
     /// The constant the borrow path actually uses must be a real bound.

@@ -790,13 +790,15 @@ private final class AccountBoolFlag: @unchecked Sendable {
         guard !isLoadingLogo else { return }
         isLoadingLogo = true
 
-        // The three callers are SwiftUI views, so this starts on the main
-        // actor and `fetchImage` keeps it there (PP-5301). Every touch below —
-        // `isLoadingLogo`, `logo`, the `logoDelegate` callback, `imageCache` —
-        // was already main-only, arranged by a `DispatchQueue.main.async`
-        // inside the network completion and an `@unchecked Sendable` box to
-        // carry the non-`Sendable` values across it. Awaiting makes the
-        // isolation the language's rather than that hop's.
+        // `Account` is not isolated, so the guard and the flag above run in
+        // whatever isolation the caller had — in practice a SwiftUI view, on
+        // the main actor. What this change moves is everything after the fetch:
+        // `logo`, the `logoDelegate` callback and `imageCache` used to reach
+        // the main queue through a `DispatchQueue.main.async` inside the
+        // network completion, carrying the non-`Sendable` values in a box
+        // (PP-5301). `fetchImage` is `@MainActor`, so the language places them
+        // now, and the cache-hit path resets the flag on the main actor too,
+        // which the hop-based version did not.
         Task { @MainActor [weak self] in
             guard let self else { return }
             let image = await self.fetchImage(from: url)

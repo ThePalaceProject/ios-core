@@ -108,16 +108,6 @@ extension TPPNetworkExecutor {
         }
     }
 
-    /// Refresh the account token for `accountId` and report the outcome.
-    ///
-    /// `refreshTokenAndResume`'s completion fires from inside that method's own
-    /// `Task`, i.e. the cooperative pool, so a caller on an actor had to hop
-    /// the outcome itself — `AudiobookLoader` crashed in 3.3.0 for not doing so
-    /// at one exit (PP-5299). Awaiting resumes on the caller's actor instead,
-    /// which is why the loader no longer carries a hop.
-    ///
-    /// `presentsSignInOnFailure` is not exposed: every awaiting caller handles
-    /// its own failure, and the default is what the callback form already used.
     /// Awaited `GET` that reports an `NYPLResult` rather than throwing.
     ///
     /// Distinct from the `async throws` `GET` overloads above because the
@@ -135,6 +125,16 @@ extension TPPNetworkExecutor {
         return await execute(req, enableTokenRefresh: useTokenIfAvailable, accountId: nil)
     }
 
+    /// Refresh the account token for `accountId` and report the outcome.
+    ///
+    /// `refreshTokenAndResume`'s completion fires from inside that method's own
+    /// `Task`, i.e. the cooperative pool, so a caller on an actor had to hop
+    /// the outcome itself — `AudiobookLoader` crashed in 3.3.0 for not doing so
+    /// at one exit (PP-5299). Awaiting resumes on the caller's actor instead,
+    /// which is why the loader no longer carries a hop.
+    ///
+    /// `presentsSignInOnFailure` is not exposed: every awaiting caller handles
+    /// its own failure, and the default is what the callback form already used.
     func refreshToken(accountId: String?) async -> NYPLResult<Data> {
         let box = CancellableContinuationBox<RefreshOutcomeBox>()
         do {

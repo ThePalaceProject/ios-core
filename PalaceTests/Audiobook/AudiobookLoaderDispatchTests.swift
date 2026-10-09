@@ -309,6 +309,16 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
             XCTFail("expected .cancelled when loader is cancelled before dispatch, got \(String(describing: seenError))")
             return
         }
+        // The returned error alone cannot see the early return added for this:
+        // without it `load` still walks the whole pipeline and the final
+        // `settle` overrides the adapter's success to `.cancelled`, so the
+        // assertion above passes either way. What distinguishes them is the
+        // work NOT done — a superseded open must not spend a token refresh and
+        // a manifest fetch whose result it will discard.
+        XCTAssertEqual(openAccess.canHandleCallCount, 0,
+                       "a loader cancelled before load must not consult the adapter chain at all")
+        XCTAssertEqual(openAccess.resolveCallCount, 0,
+                       "and must not fetch a manifest it is going to throw away")
     }
 
     // MARK: - PP-5299 — the refresh outcome must reach the main actor
@@ -336,12 +346,16 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
             adapters: [probe],
             currentUserAccount: { expiredAccount },
             refreshToken: { _ in
-                // Do the work off the main actor, the way the executor does:
+                // Does its work off the main actor, the way the executor does:
                 // `refreshTokenAndResume` fires from inside its own `Task`.
-                // Only the `Bool` crosses back, so the premise is observable
-                // without sending a non-`Sendable` result across isolation.
-                let ranOnMain = await Task.detached { Self.isOnMainThread() }.value
-                XCTAssertFalse(ranOnMain, "premise: this refresh does its work off the main actor")
+                //
+                // Deliberately not asserted here. This closure is a stored
+                // property on a `@MainActor` type, so it is main-actor isolated
+                // whatever it delegates to, and an assertion that
+                // `Task.detached` ran off-main would only restate that type's
+                // definition. What the test turns on is below: the chain is
+                // reached, and the probe asserts the actor it is reached on.
+                _ = await Task.detached { Self.isOnMainThread() }.value
                 return .success(Data(), nil)
             },
             currentAccountId: { "lib-1" },

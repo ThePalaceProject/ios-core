@@ -151,6 +151,14 @@ final class AudiobookLoader {
             isCancelled ? .failure(.cancelled) : result
         }
 
+        // A loader cancelled before `load` is a superseded open, and the result
+        // was already going to be `.cancelled`. Returning here rather than at
+        // the end means it no longer spends a token refresh and a manifest
+        // fetch first — the old shape ran the whole pipeline and discarded it.
+        guard !isCancelled else {
+            return .failure(.cancelled)
+        }
+
         if case .failure(let err) = await refreshTokenIfNeeded(for: book) {
             return settle(.failure(err))
         }

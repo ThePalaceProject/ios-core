@@ -37,7 +37,9 @@ extension Account {
 
     /// - Parameter performRequest: injected request seam so tests can observe
     ///   whether the request was issued. Production passes nil and gets the
-    ///   real executor.
+    ///   real executor. `@Sendable` because this method is nonisolated, so the
+    ///   seam is invoked from whatever executor the caller is on; a test that
+    ///   records through it needs its own synchronization.
     /// - Parameter userAccount: injected account seam so tests can stage
     ///   credentials. Production passes nil and gets the shared account for
     ///   this library's UUID.
@@ -50,15 +52,21 @@ extension Account {
     ///   only refreshes token/OAuth credentials with a `tokenURL`, so this is a
     ///   no-op for basic auth and for a healthy session.
     ///
-    /// `@MainActor` and `async` (PP-5301). This used to take a completion and
-    /// hop it to the main queue itself, because the network layer delivers off
-    /// the main actor while the closure a `@MainActor` caller passed inherited
-    /// main-actor isolation — the PP-5299 crash class. Awaiting resumes on the
-    /// caller's actor, so the delivery contract this method always had is now
-    /// the language's rather than a hop a future caller could drop.
-    @MainActor
+    /// `async` (PP-5301). This used to take a completion and hop it to the main
+    /// queue itself, because the network layer delivers off the main actor
+    /// while the closure a `@MainActor` caller passed inherited main-actor
+    /// isolation — the PP-5299 crash class. Awaiting resumes on the caller's
+    /// own actor, so no hop is needed and none can be forgotten.
+    ///
+    /// Deliberately NOT `@MainActor`. All three callers are nonisolated
+    /// (`AdobeDRMService.freshLicensorFromProfileDocument`,
+    /// `NotificationService.performTokenRegistration` and `.deleteToken`), so
+    /// annotating it would put the keychain-backed credential gate and the
+    /// document decode on the main actor for no caller's benefit — and would
+    /// force `UserProfileDocument` to be `Sendable` just to hand the result
+    /// back. Resuming on the caller's actor is a property of `async` alone.
     func getProfileDocument(
-        performRequest: ((URLRequest, Bool) async -> NYPLResult<Data>)? = nil,
+        performRequest: (@Sendable (URLRequest, Bool) async -> NYPLResult<Data>)? = nil,
         userAccount injectedUserAccount: TPPUserAccount? = nil,
         enableTokenRefresh: Bool = false
     ) async -> UserProfileDocument? {

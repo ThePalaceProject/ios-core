@@ -85,13 +85,13 @@ final class AccountProfileDocumentTests: XCTestCase {
         XCTAssertNotNil(account.details?.userProfileUrl,
                         "Test setup precondition: auth doc must declare a user-profile URL.")
 
-        let start = Date()
         let profileDocument = await account.getProfileDocument()
 
+        // No wall-clock bound: elapsed time held whether or not a request went
+        // out, so it never distinguished the gate from a fast network. The
+        // seam-driven cases below assert the absence of a request directly.
         XCTAssertNil(profileDocument,
                      "Gate must short-circuit when no credentials are stored.")
-        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0,
-                          "Gate must NOT issue a network request — it returns before any transport.")
     }
 
     // MARK: - The gate decision (states x events, asserted directly)
@@ -233,7 +233,7 @@ final class AccountProfileDocumentTests: XCTestCase {
         XCTAssertNotNil(account.details?.userProfileUrl,
                         "Precondition: the auth doc must declare a profile URL, or this proves nothing")
 
-        var issued: [URLRequest] = []
+        let issued = RequestRecorder()
         var completions: [UserProfileDocument?] = []
 
         // No expectation and no deadline: the call is awaited, so there is
@@ -242,14 +242,16 @@ final class AccountProfileDocumentTests: XCTestCase {
         // it reaches `performRequest`, so the assertions below read a settled
         // result rather than a sampled one.
         completions.append(await account.getProfileDocument(performRequest: { request, _ in
-            issued.append(request)
+            issued.record(request)
             return .failure(NSError(domain: "unused", code: 0), nil)
         }))
 
-        XCTAssertEqual(completions.count, 1,
-                       "The blocked path must answer — once")
+        // No `completions.count == 1`: this test appends once itself and an
+        // awaited return cannot fire zero or twice, so that assertion could not
+        // fail. The callback form it replaced observed the PRODUCTION
+        // completion, where the count was a real question.
         XCTAssertNil(completions.first ?? nil, "A blocked request yields no profile document")
-        XCTAssertTrue(issued.isEmpty,
+        XCTAssertTrue(issued.values.isEmpty,
                       "With no credentials the gate must block BEFORE the network. A request here is the "
                       + "/patrons/me/ 401 storm of PP-4164 / F-007 — and it is observable now, where the "
                       + "old timing-based guard could not see it.")
@@ -317,17 +319,17 @@ final class AccountProfileDocumentTests: XCTestCase {
         XCTAssertTrue(user.isTokenRefreshRequired(),
                       "Precondition: a refresh CAN repair this — that is what makes blocking it a regression")
 
-        var issued: [URLRequest] = []
+        let issued = RequestRecorder()
         _ = await account.getProfileDocument(performRequest: { request, _ in
-            issued.append(request)
+            issued.record(request)
             return .failure(NSError(domain: "unused", code: 0), nil)
         }, userAccount: user)
 
-        XCTAssertEqual(issued.count, 1,
+        XCTAssertEqual(issued.values.count, 1,
                        "An expired token a refresh can repair MUST still be sent: the 401 path refreshes and "
                        + "re-drives the task, so blocking here deletes a working repair (the round-2 regression). "
                        + "Zero requests means an `if authTokenHasExpired` slipped in above the gate.")
-        XCTAssertEqual(issued.first?.url?.absoluteString, "https://example.invalid/patrons/me/",
+        XCTAssertEqual(issued.values.first?.url?.absoluteString, "https://example.invalid/patrons/me/",
                        "and it must be THIS library's profile URL")
     }
 
@@ -351,13 +353,13 @@ final class AccountProfileDocumentTests: XCTestCase {
         XCTAssertFalse(user.isTokenRefreshRequired(),
                        "Precondition: NO refresh can repair this — no token URL to refresh against")
 
-        var issued: [URLRequest] = []
+        let issued = RequestRecorder()
         _ = await account.getProfileDocument(performRequest: { request, _ in
-            issued.append(request)
+            issued.record(request)
             return .failure(NSError(domain: "unused", code: 0), nil)
         }, userAccount: user)
 
-        XCTAssertTrue(issued.isEmpty,
+        XCTAssertTrue(issued.values.isEmpty,
                       "An expired token nothing can repair must NOT be sent — its 401 returns the OPDS auth "
                       + "document the app reads back as \"signed out\", which is the defect this gate exists for.")
     }
@@ -381,13 +383,13 @@ final class AccountProfileDocumentTests: XCTestCase {
         let user = TPPUserAccountTestFactory.makeIsolated()
         user.setBarcode("1234567890", PIN: "1234")
 
-        var flags: [Bool] = []
+        let flags = RefreshFlagRecorder()
         _ = await account.getProfileDocument(performRequest: { _, refresh in
-            flags.append(refresh)
+            flags.record(refresh)
             return .failure(NSError(domain: "unused", code: 0), nil)
         }, userAccount: user)
 
-        XCTAssertEqual(flags, [false],
+        XCTAssertEqual(flags.values, [false],
                        "background profile polls (NotificationService, LibrariesSectionViewModel) must not "
                        + "spend a token exchange; only the borrow path opts in")
     }
@@ -397,13 +399,13 @@ final class AccountProfileDocumentTests: XCTestCase {
         let user = TPPUserAccountTestFactory.makeIsolated()
         user.setBarcode("1234567890", PIN: "1234")
 
-        var flags: [Bool] = []
+        let flags = RefreshFlagRecorder()
         _ = await account.getProfileDocument(performRequest: { _, refresh in
-            flags.append(refresh)
+            flags.record(refresh)
             return .failure(NSError(domain: "unused", code: 0), nil)
         }, userAccount: user, enableTokenRefresh: true)
 
-        XCTAssertEqual(flags, [true],
+        XCTAssertEqual(flags.values, [true],
                        "the caller asked for a proactive refresh and the executor never heard about it — "
                        + "the Adobe licensor refresh would fetch with an expired bearer and 401")
     }
@@ -620,4 +622,23 @@ final class AccountProfileDocumentTests: XCTestCase {
                 credentials: .token(authToken: "t", barcode: "b", pin: "p", expirationDate: future)),
             "A token expiring in the future is not expired — pins the comparison direction")
     }
+}
+
+/// Lock-backed recorders for the `performRequest` seam.
+///
+/// `getProfileDocument` is nonisolated, so its seam is `@Sendable` and is
+/// invoked from whatever executor the caller is on. A plain captured `var`
+/// array would be a data race, not a convenience.
+private final class RequestRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [URLRequest] = []
+    func record(_ request: URLRequest) { lock.lock(); storage.append(request); lock.unlock() }
+    var values: [URLRequest] { lock.lock(); defer { lock.unlock() }; return storage }
+}
+
+private final class RefreshFlagRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Bool] = []
+    func record(_ flag: Bool) { lock.lock(); storage.append(flag); lock.unlock() }
+    var values: [Bool] { lock.lock(); defer { lock.unlock() }; return storage }
 }

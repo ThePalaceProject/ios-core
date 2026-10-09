@@ -45,6 +45,12 @@ final class AudiobookLoaderTests: XCTestCase {
     /// loader surfaces a definitive error on the network path instead of
     /// waiting forever (which was the old BookService behavior's failure
     /// mode combined with a 20s session-manager timeout).
+    ///
+    /// Integration-shaped on purpose: a bare `AudiobookLoader()` means the
+    /// production adapter chain and a real request. It carries no test deadline
+    /// (STARVE-001), so the bound is the executor's own request timeout rather
+    /// than a wall-clock number here. The trade is diagnosability: a hang
+    /// surfaces as a suite-level time allowance rather than this assertion.
     func testLoad_missingLocalFileAndUnreachableURL_failsWithManifestError() async {
         let loader = AudiobookLoader()
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)

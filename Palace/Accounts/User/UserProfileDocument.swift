@@ -144,17 +144,3 @@ import Foundation
         }
     }
 }
-
-/// `@unchecked Sendable`: every stored property on `UserProfileDocument` and on
-/// its nested `DRMObject`, `Link` and `Settings` is a `let`, assigned once by
-/// the decoder and only read afterwards — `licensor` and `loggableSummary` are
-/// computed. The `@unchecked` waiver covers only what the compiler cannot infer
-/// through `NSObject`.
-///
-/// Declared so the document can be returned from the `@MainActor`
-/// `Account.getProfileDocument` to its nonisolated callers (PP-5301). That
-/// method used to deliver through a `DispatchQueue.main.async` hop carrying an
-/// `@unchecked Sendable` box; stating this type's immutability removes the need
-/// for both. In an extension rather than on the declaration so the public
-/// surface above is unchanged.
-extension UserProfileDocument: @unchecked Sendable {}

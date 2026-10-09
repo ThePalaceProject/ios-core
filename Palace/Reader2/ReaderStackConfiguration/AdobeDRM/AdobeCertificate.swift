@@ -502,13 +502,12 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// borrow takes.
     static let profileDocumentTimeout: TimeInterval = 20
 
-    /// Awaits a callback-style licensor producer under a wall-clock deadline.
+/// Awaits a licensor producer under a wall-clock deadline.
     ///
     /// Bounded because this sits on the BORROW path and OUTSIDE the activation
     /// deadline below — `resolve` runs before `activationCoordinator.activate`,
-    /// so nothing downstream would ever have rescued it. `getProfileDocument`
-    /// hands its completion to `URLSession` via the executor, and this branch
-    /// has already shipped one ten-hour hang from an await with no bound; an
+    /// so nothing downstream would ever have rescued it. This branch has
+    /// already shipped one ten-hour hang from an await with no bound; an
     /// unresumed continuation here would wedge the borrow the same way, with
     /// the added cruelty that the fallback it is guarding (activate with the
     /// stored licensor) works perfectly well.
@@ -517,8 +516,18 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// below records why the group cannot work: it awaits every child on scope
     /// exit and `cancelAll()` is only cooperative, so a continuation nobody
     /// resumes keeps the group — and the caller — suspended forever. Whichever
-    /// arrives first here, the producer's completion or the deadline, claims
-    /// the continuation and the caller genuinely unwinds.
+    /// arrives first here, the producer's answer or the deadline, claims the
+    /// continuation and the caller genuinely unwinds.
+    ///
+    /// The producer is `async` rather than callback-shaped because
+    /// `Account.getProfileDocument` is awaited now (PP-5301). There was briefly
+    /// a second, callback-shaped overload beside this one so the existing tests
+    /// could keep driving the old shape; it is gone, because it had no
+    /// production caller and its deadline race was a verbatim copy of this one.
+    /// Only the continuation latch was shared, so the two could have drifted
+    /// with the suite green — which is what a comment here previously claimed
+    /// was impossible.
+    ///
     /// - Returns: the licensor the producer supplied, and whether the DEADLINE
     ///   is what released the await.
     ///
@@ -531,7 +540,7 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     ///   report to the caller, where it is observable.
     static func boundedLicensor(
         timeout: TimeInterval,
-        produce: @escaping (@escaping ([String: Any]?) -> Void) -> Void
+        awaiting produce: @escaping @Sendable () async -> [String: Any]?
     ) async -> (licensor: [String: Any]?, timedOut: Bool) {
         let box: LicensorBox = await withCheckedContinuation { (continuation: CheckedContinuation<LicensorBox, Never>) in
             let once = OneShotValueContinuation(continuation)
@@ -551,44 +560,6 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                 once.finish(nil, timedOut: true)
             }
 
-            produce { licensor in
-                deadline.cancel()
-                once.finish(licensor, timedOut: false)
-            }
-        }
-        if box.timedOut {
-            Log.error(#file, "Adobe licensor refresh timed out after \(timeout)s — activating with the stored licensor (PP-3649)")
-        }
-        return (box.licensor, box.timedOut)
-    }
-
-    /// Same deadline and the same at-most-once latch, for a producer that is
-    /// `async` rather than callback-shaped.
-    ///
-    /// It exists because `Account.getProfileDocument` is awaited now (PP-5301).
-    /// Feeding an `await` back into the callback form above would mean carrying
-    /// its non-`Sendable` `done` closure into a `Task` behind an `@unchecked
-    /// Sendable` box — the construct that change removes, reintroduced here to
-    /// serve the one call site. The latch is shared, so the timeout behaviour
-    /// the tests on the callback form pin cannot drift between the two.
-    static func boundedLicensor(
-        timeout: TimeInterval,
-        awaiting produce: @escaping @Sendable () async -> [String: Any]?
-    ) async -> (licensor: [String: Any]?, timedOut: Bool) {
-        let box: LicensorBox = await withCheckedContinuation { (continuation: CheckedContinuation<LicensorBox, Never>) in
-            let once = OneShotValueContinuation(continuation)
-
-            let deadline = Task {
-                // Return rather than fall through on cancellation, for the
-                // reason recorded on the callback form above.
-                do {
-                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                } catch {
-                    return
-                }
-                once.finish(nil, timedOut: true)
-            }
-
             Task {
                 let licensor = await produce()
                 deadline.cancel()
@@ -600,7 +571,6 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         }
         return (box.licensor, box.timedOut)
     }
-
     /// Reads `account.licensor`, and if it is absent, re-reads it until it
     /// appears or `budget` is exhausted.
     ///

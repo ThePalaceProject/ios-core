@@ -201,6 +201,11 @@ private final class CompletionBox<T>: @unchecked Sendable {
 /// Sendable` sound — the honest alternative to marking the completion `@Sendable`
 /// (which would ripple onto the public `executeTokenRefresh` signature) or waiting
 /// on `TokenResponse: Sendable` from PalaceAuth. Mirrors `CompletionBox`.
+private final class CompletionResultBox: @unchecked Sendable {
+    let result: Result<TokenResponse, Error>
+    init(_ result: Result<TokenResponse, Error>) { self.result = result }
+}
+
 /// Carries a `refreshToken(accountId:)` outcome across its checked
 /// continuation. `NYPLResult<Data>` holds an `Error` existential and a
 /// `URLResponse?`, so it is not `Sendable`.
@@ -211,11 +216,6 @@ private final class CompletionBox<T>: @unchecked Sendable {
 struct RefreshOutcomeBox: @unchecked Sendable {
     let value: NYPLResult<Data>
     init(_ value: NYPLResult<Data>) { self.value = value }
-}
-
-private final class CompletionResultBox: @unchecked Sendable {
-    let result: Result<TokenResponse, Error>
-    init(_ result: Result<TokenResponse, Error>) { self.result = result }
 }
 
 /// `@unchecked Sendable`: lets the executor satisfy the now-`Sendable`

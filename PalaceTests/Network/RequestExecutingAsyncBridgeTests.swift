@@ -61,6 +61,101 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
         try await super.tearDown()
     }
 
+    // MARK: - The two awaited entry points added for PP-5301
+    //
+    // Both are production wiring: `fetchResult(from:)` is what
+    // `Sample.fetchSample` calls and `refreshToken(accountId:)` is
+    // `AudiobookLoader`'s default refresh — the PP-5299 path. Each wraps a
+    // completion-handler form in a continuation, so a double resume would be a
+    // hard trap rather than a failure, and neither had a test calling it.
+
+    /// `fetchResult` reports the failure response rather than discarding it,
+    /// which is the whole reason it exists beside the `async throws` `GET`
+    /// overloads: callers read problem documents off error responses and
+    /// `throws` loses them.
+    func testFetchResult_on401_reportsFailureCarryingTheResponse() async {
+        HTTPStubURLProtocol.register { @Sendable [apiURL] request in
+            guard request.url == apiURL else { return nil }
+            return .init(statusCode: 401, headers: nil, body: Data("{}".utf8))
+        }
+
+        let result = await executor.fetchResult(from: apiURL, useTokenIfAvailable: false)
+
+        guard case .failure(_, let response) = result else {
+            return XCTFail("a 401 must surface as .failure, got \(result)")
+        }
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401,
+                       "the response must be carried on the failure — discarding it is what the "
+                       + "throwing overload does and why this entry point exists")
+    }
+
+    /// The success path, and the property that makes awaiting a fix rather than
+    /// a style choice: the caller resumes on its own actor.
+    func testFetchResult_onSuccess_returnsBodyAndResumesOnTheCallersActor() async {
+        HTTPStubURLProtocol.register { @Sendable [apiURL] request in
+            guard request.url == apiURL else { return nil }
+            return .init(statusCode: 200, headers: nil, body: Data("payload".utf8))
+        }
+
+        let result = await executor.fetchResult(from: apiURL, useTokenIfAvailable: false)
+
+        MainActor.assertIsolated("this test case is @MainActor; an awaited result must resume here")
+        guard case .success(let data, _) = result else {
+            return XCTFail("expected success, got \(result)")
+        }
+        XCTAssertEqual(String(data: data, encoding: .utf8), "payload")
+    }
+
+    /// `refreshToken` bridges `refreshTokenAndResume`, whose completion fires
+    /// from inside its own `Task`. The awaited form must answer exactly once:
+    /// the continuation box is the only thing standing between a second
+    /// completion and a crash.
+    func testRefreshToken_whenTheTokenEndpointAnswers_resumesExactlyOnce() async {
+        let hits = CallCounter()
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            guard request.url == tokenURL else { return nil }
+            hits.increment()
+            return .init(statusCode: 200,
+                         headers: nil,
+                         body: Self.tokenJSON("refreshed-by-await"))
+        }
+
+        let result = await executor.refreshToken(accountId: nil)
+
+        MainActor.assertIsolated("the refresh must resume on the caller's actor, not the refresh Task's")
+        guard case .success = result else {
+            return XCTFail("a 200 from the token endpoint must surface as .success, got \(result)")
+        }
+        XCTAssertEqual(hits.value, 1, "exactly one token request per awaited refresh")
+        XCTAssertEqual(userAccount.authToken, "refreshed-by-await",
+                       "the refreshed token must reach the account, not just the caller")
+    }
+
+    /// The failure arm. A rejected refresh must come back as `.failure` rather
+    /// than hanging — an unresumed continuation here would wedge every awaiting
+    /// caller, which on the audiobook path is the open itself.
+    func testRefreshToken_whenTheTokenEndpointRejects_reportsFailureRatherThanHanging() async {
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            guard request.url == tokenURL else { return nil }
+            return .init(statusCode: 401, headers: nil, body: Data("{}".utf8))
+        }
+
+        let result = await executor.refreshToken(accountId: nil)
+
+        guard case .failure = result else {
+            return XCTFail("a refused refresh must surface as .failure, got \(result)")
+        }
+    }
+
+    /// Thread-safe counter: the stub runs on URLSession's queue, so a plain
+    /// captured `var` would be a data race rather than a convenience.
+    private final class CallCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        func increment() { lock.lock(); count += 1; lock.unlock() }
+        var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    }
+
     private nonisolated static func makeTokenAuth(tokenURL: URL) -> AccountDetails.Authentication {
         let json = """
         {
