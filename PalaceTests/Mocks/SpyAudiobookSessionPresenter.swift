@@ -155,6 +155,8 @@ final class SpyShimSession: AudiobookSessionManaging {
     var isPlaying: Bool = false
     var coverImage: UIImage?
     var hasActiveManager: Bool = false
+    /// False keeps the full player on its loading overlay.
+    var isLoaded: Bool = true
 
     let playbackStatePublisher = PassthroughSubject<AudiobookSessionState, Never>()
     let chapterUpdatePublisher = PassthroughSubject<(chapters: [Chapter], current: Chapter?), Never>()
