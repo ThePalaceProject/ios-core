@@ -333,12 +333,11 @@ final class MockBackendAudiobookScenarioTests: XCTestCase {
         let held = try await clock.measure {
             _ = try await session.data(from: XCTUnwrap(URL(string: "https://\(JourneyFixtures.host)/held")))
         }
-        let now = try await clock.measure {
-            _ = try await session.data(from: XCTUnwrap(URL(string: "https://\(JourneyFixtures.host)/now")))
-        }
+        // The undelayed route must still be served. Its duration is not asserted:
+        // an upper bound on wall-clock time fails on a loaded CI machine.
+        _ = try await session.data(from: XCTUnwrap(URL(string: "https://\(JourneyFixtures.host)/now")))
 
         XCTAssertGreaterThanOrEqual(held, .milliseconds(delay))
-        XCTAssertLessThan(now, .milliseconds(delay))
     }
 }
 

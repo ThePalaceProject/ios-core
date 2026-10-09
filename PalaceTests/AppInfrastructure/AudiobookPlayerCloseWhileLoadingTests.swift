@@ -3,8 +3,10 @@
 //  PalaceTests
 //
 //  The full player's loading overlays are opaque and cover its top row, so the
-//  close control is drawn again above them. These tests mount the real player
-//  and check that a patron can still close it while it loads (PP-5302).
+//  close control is drawn again above them (PP-5302). These tests mount the real
+//  player and check the accessibility tree while it loads: one Close, first in
+//  VoiceOver order, that stops playback. They cannot see z-order; the UI journey
+//  `AudiobookCloseMidLoadJourneyTests` guards that the ✕ is tappable.
 //
 
 import SwiftUI
@@ -57,14 +59,14 @@ final class AudiobookPlayerCloseWhileLoadingTests: XCTestCase {
             == AudiobookMorphingPlayerView.closeAboveLoadingOverlayIdentifier
     }
 
-    /// While loading, exactly one close control is reachable, it is the one above
-    /// the overlay, it comes first, and it ends the session.
-    private func assertClosesWhileCovered(_ host: AccessibilityAuditHost, _ session: SpyShimSession,
+    /// While loading, exactly one Close is reachable, it is the overlay copy, it is
+    /// first in VoiceOver order, and activating it ends the session.
+    private func assertSingleCloseStopsPlayback(_ host: AccessibilityAuditHost, _ session: SpyShimSession,
                                           file: StaticString = #filePath, line: UInt = #line) async throws {
         let closes = closeElements(in: host)
         XCTAssertEqual(closes.count, 1, "one close control, not one per layer", file: file, line: line)
         let close = try XCTUnwrap(closes.first, file: file, line: line)
-        XCTAssertTrue(isFloatingClose(close), "the close control must be drawn above the loading overlay",
+        XCTAssertTrue(isFloatingClose(close), "the reachable Close must be the overlay copy, not the covered one",
                       file: file, line: line)
         XCTAssertTrue(close.isActionable, file: file, line: line)
         let firstActionable = AccessibilityTraversalAudit.traverse(host.window).first { $0.isActionable }
@@ -76,19 +78,19 @@ final class AudiobookPlayerCloseWhileLoadingTests: XCTestCase {
         XCTAssertEqual(session.lastStopPlaybackDismissPhoneUI, true, file: file, line: line)
     }
 
-    func testLoadingSkeleton_closeControlSitsAboveItAndStopsPlayback() async throws {
+    func testLoadingSkeleton_offersOneCloseFirstThatStopsPlayback() async throws {
         let (host, session) = mountPlayer { _, session in session.isLoaded = false }
 
-        try await assertClosesWhileCovered(host, session)
+        try await assertSingleCloseStopsPlayback(host, session)
     }
 
-    func testDownloadingPanel_closeControlSitsAboveItAndStopsPlayback() async throws {
+    func testDownloadingPanel_offersOneCloseFirstThatStopsPlayback() async throws {
         let (host, session) = mountPlayer { presenter, session in
             session.isLoaded = false
             presenter.showDownloadProgress(0.3)
         }
 
-        try await assertClosesWhileCovered(host, session)
+        try await assertSingleCloseStopsPlayback(host, session)
     }
 
     /// A loaded player draws no overlay, so only the top row's own close shows.

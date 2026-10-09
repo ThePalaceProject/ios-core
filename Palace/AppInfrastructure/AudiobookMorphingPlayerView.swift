@@ -302,7 +302,10 @@ struct AudiobookMorphingPlayerView: View {
         }
         // Loading spinner → 30s timeout → error+retry, over the whole player.
         .overlay { loadingOverlay }
-        .overlay(alignment: .topLeading) { closeAboveLoadingOverlay }
+        .overlay(alignment: .topLeading) {
+            AudiobookPlayerCloseAboveLoadingOverlay(
+                presenter: presenter, overlayState: loadingOverlayCurrentState, topInset: topSafeInset)
+        }
         // Transient bookmark-added / playback-error toast.
         .overlay(alignment: .bottom) { toastOverlay }
         .accessibilityElement(children: .contain)
@@ -458,7 +461,7 @@ struct AudiobookMorphingPlayerView: View {
                 // hold — Help now lives on book-detail + sign-in only.
                 // While a loading overlay covers this row, the copy drawn above
                 // it is the one VoiceOver reaches, so this one stays out.
-                closeButton
+                AudiobookPlayerCloseButton(presenter: presenter)
                     .accessibilityHidden(Self.loadingOverlayCoversControls(loadingOverlayCurrentState))
                 Spacer()
                 Button { showChaptersBookmarks = true } label: {
@@ -475,43 +478,6 @@ struct AudiobookMorphingPlayerView: View {
         }
         .padding(.horizontal, 8)
         .padding(.top, topSafeInset + 8)
-    }
-
-    // `.plain` hit-tests only the glyph; the content shape makes the whole
-    // 44 pt layout frame touchable without moving anything (PP-5294).
-    private var closeButton: some View {
-        Button { presenter.closePlayer() } label: {
-            abGlyph(Self.icClose, size: 17)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain).tint(.primary)
-        .accessibilityLabel(Strings.Generic.close)
-    }
-
-    /// The loading overlays are opaque and cover `topControls`, so without this
-    /// the patron could not close a player that is still loading (PP-5302).
-    /// Drawn at the ✕'s own position in `topControls`.
-    @ViewBuilder
-    private var closeAboveLoadingOverlay: some View {
-        if Self.loadingOverlayCoversControls(loadingOverlayCurrentState) {
-            closeButton
-                .accessibilityIdentifier(Self.closeAboveLoadingOverlayIdentifier)
-                .accessibilitySortPriority(1)
-                .padding(.horizontal, 8)
-                .padding(.top, topSafeInset + 8)
-        }
-    }
-
-    static let closeAboveLoadingOverlayIdentifier = "audiobookPlayer.closeAboveLoadingOverlay"
-
-    /// The overlay states drawn opaque over the whole player, which hide the
-    /// close control. `.awaitingReload` draws nothing and `.hidden` is loaded.
-    nonisolated static func loadingOverlayCoversControls(_ state: LoadingOverlayState) -> Bool {
-        switch state {
-        case .skeleton, .downloading, .loadError: return true
-        case .hidden, .awaitingReload: return false
-        }
     }
 
     private var grabber: some View {
@@ -670,7 +636,7 @@ struct AudiobookMorphingPlayerView: View {
     /// Asset names for Alissa's revised audiobook icon set (PP-4911), vectorized
     /// from her design exports into template imagesets so they tint by appearance
     /// and stay crisp at any size — replacing the SF Symbols that didn't match.
-    private static let icClose = "ABPlayerClose"
+    static let icClose = "ABPlayerClose"
     private static let icSkipBack = "ABPlayerSkipBack"
     private static let icSkipForward = "ABPlayerSkipForward"
     private static let icPlay = "ABPlayerPlay"
