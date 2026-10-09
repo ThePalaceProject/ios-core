@@ -168,10 +168,12 @@ extension Account {
         }
     }
 
-    // MARK: - Internal Transition Seam (for AccountsManager + tests)
+    // MARK: - Internal Transition Seam
 
-    /// Drive the state machine. Only AccountsManager and unit tests should
-    /// call this; call sites that need `AccountDetails` use `awaitReady()`.
+    /// Drive the state machine. Writers are the account-loading code
+    /// (`AccountsManager`, `AccountRegistryLoader`, `AuthDocumentLoader`, and
+    /// `loadAuthenticationDocument` on success) and unit tests; call sites that
+    /// need `AccountDetails` use `awaitReady()`.
     func _setState(_ state: LoadState) {
         AccountStateStore.shared.setState(state, for: uuid)
     }

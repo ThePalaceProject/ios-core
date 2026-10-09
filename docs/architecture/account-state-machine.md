@@ -128,7 +128,13 @@ detailsLoading ──auth doc parse success──────────→ det
 detailsLoading ──auth doc fetch fails────────────→ detailsFailed(Error)
 detailsFailed ──user-initiated retry─────────────→ detailsLoading
 detailsLoaded ──library reselect / sign-out──────→ notLoaded
+any but detailsLoading/detailsEvicted ──direct loadAuthenticationDocument success──→ detailsLoaded(Details)
 ```
+
+A direct `Account.loadAuthenticationDocument` call (sign-in's retry, library
+switches) records its details too, so `details` and `loadState` cannot disagree.
+It leaves `detailsLoading` to the in-flight state-machine fetch and never
+overwrites `detailsEvicted`.
 
 **Invariant:** monotonic forward under the cold-launch path; cycles only on user-initiated retry or library reselect/sign-out.
 
