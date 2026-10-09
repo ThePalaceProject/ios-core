@@ -33,12 +33,39 @@ final class AdobeActivationWriteLintTests: XCTestCase {
     ///
     /// The declaration, the wrapper's own delegation and the registry's
     /// unrelated `isUserAuthorizedForRegistry` are not decisions.
-    static func asksTheBareAuthorizationQuestion(_ line: String) -> Bool {
+    static func asksTheBareAuthorizationQuestion(_ line: String,
+                                                 inFile fileName: String = "") -> Bool {
         guard line.contains("isUserAuthorized(") else { return false }
         if line.contains("func isUserAuthorized") { return false }
-        if line.contains("isUserAuthorizedForRegistry") { return false }
-        if line.contains("return isUserAuthorized(") { return false }
+        // Scoped to the file that defines the policy. Unqualified `isUserAuthorized(`
+        // compiles exactly inside a `TPPDRMAuthorizing` extension, which is where a
+        // new bypass would live — a global exemption would wave it through.
+        if fileName == "AdobeConnectorGeneration.swift",
+           line.contains("return isUserAuthorized(") {
+            return false
+        }
         return true
+    }
+
+    /// A `canUseRecordedActivation` call that does not pass the account's recorded
+    /// generation.
+    ///
+    /// Routing a site through the predicate is not the same as asking the right
+    /// question: substituting `recordedGeneration: AdobeConnectorGeneration.current`
+    /// keeps the call, keeps the name, and restores PP-5026 silently. The earlier
+    /// lint checked only the method name, which is not where the meaning lives,
+    /// and `palace_mutate` emits no argument-substitution mutants — so neither
+    /// guard could see it. `shouldSkipAdobeActivation` has behavioural tests;
+    /// this covers the call sites that do not.
+    static func passesAConstantGeneration(_ line: String) -> Bool {
+        guard line.contains("recordedGeneration:") else { return false }
+        // A declaration is not a call. The first version of this predicate
+        // flagged both parameter declarations and the service wrapper's
+        // forward — the lint found shapes I had not considered, which is the
+        // lint working, but they are not decisions.
+        if line.contains("recordedGeneration: Int?") { return false }
+        if line.contains("recordedGeneration: recordedGeneration") { return false }
+        return !line.contains("adobeActivationConnectorGeneration")
     }
 
     private func productionSwiftFiles() throws -> [URL] {
@@ -110,7 +137,8 @@ final class AdobeActivationWriteLintTests: XCTestCase {
             guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }
             for line in src.split(separator: "\n", omittingEmptySubsequences: false) {
                 let text = String(line)
-                guard Self.asksTheBareAuthorizationQuestion(text) else { continue }
+                guard Self.asksTheBareAuthorizationQuestion(
+                        text, inFile: url.lastPathComponent) else { continue }
                 violators.append("\(url.lastPathComponent): \(text.trimmingCharacters(in: .whitespaces))")
             }
         }
@@ -128,8 +156,72 @@ final class AdobeActivationWriteLintTests: XCTestCase {
             "   drmAuthorizer.isUserAuthorized(userID, withDevice: deviceID) else {"))
         XCTAssertFalse(Self.asksTheBareAuthorizationQuestion(
             "    func isUserAuthorized(_ userID: String?, deviceID: String?) -> Bool {"))
-        XCTAssertFalse(Self.asksTheBareAuthorizationQuestion("        if !isUserAuthorizedForRegistry() {"))
         XCTAssertFalse(Self.asksTheBareAuthorizationQuestion("let x = 1"))
+    }
+
+    /// The policy file's own unqualified call is exempt only THERE. An earlier
+    /// version exempted it everywhere, which would have waved through a new
+    /// bypass added in any other `TPPDRMAuthorizing` extension.
+    func testTheUnqualifiedCallIsExemptOnlyInThePolicyFile() {
+        let line = "        return isUserAuthorized(userID, withDevice: deviceID)"
+        XCTAssertFalse(Self.asksTheBareAuthorizationQuestion(
+            line, inFile: "AdobeConnectorGeneration.swift"))
+        XCTAssertTrue(Self.asksTheBareAuthorizationQuestion(
+            line, inFile: "SomeOtherAuthorizerExtension.swift"))
+    }
+
+    /// `isUserAuthorizedForRegistry` is rejected by the first guard, not by an
+    /// exclusion: the substring `isUserAuthorized(` does not occur in it. An
+    /// earlier version carried a dead exclusion for it, and the test that
+    /// documented that exclusion passed through a different branch.
+    func testTheRegistryClosureIsRejectedByTheFirstGuard() {
+        XCTAssertFalse("isUserAuthorizedForRegistry(".contains("isUserAuthorized("))
+        XCTAssertFalse(Self.asksTheBareAuthorizationQuestion("        if !isUserAuthorizedForRegistry() {"))
+    }
+
+    /// Every production site must pass the account's recorded generation, not a
+    /// constant. This is the guard the name-only lint could not provide.
+    func testEveryProductionCallSitePassesTheRecordedGeneration() throws {
+        let files = try productionSwiftFiles()
+        XCTAssertGreaterThan(files.count, 100,
+                             "expected to walk the production sources, found \(files.count)")
+
+        var violators: [String] = []
+        var callSites = 0
+        for url in files {
+            guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            for line in src.split(separator: "\n", omittingEmptySubsequences: false) {
+                let text = String(line)
+                guard text.contains("recordedGeneration:") else { continue }
+                callSites += 1
+                if Self.passesAConstantGeneration(text) {
+                    violators.append("\(url.lastPathComponent): \(text.trimmingCharacters(in: .whitespaces))")
+                }
+            }
+        }
+
+        // A lint that finds no call sites reports a pass. There are four:
+        // three decision sites plus the service wrapper's own parameter.
+        XCTAssertGreaterThanOrEqual(callSites, 4,
+                                    "expected the recordedGeneration call sites, found \(callSites)")
+        XCTAssertTrue(
+            violators.isEmpty,
+            "a skip-activation decision must use the account's recorded generation; "
+            + "a constant restores PP-5026 while keeping the call shape. Violators: \(violators)"
+        )
+    }
+
+    func testConstantGenerationPredicateDistinguishesTheTwoForms() {
+        XCTAssertTrue(Self.passesAConstantGeneration(
+            "        recordedGeneration: AdobeConnectorGeneration.current) else {"))
+        XCTAssertTrue(Self.passesAConstantGeneration("   recordedGeneration: 1,"))
+        XCTAssertFalse(Self.passesAConstantGeneration(
+            "        recordedGeneration: userAccount.adobeActivationConnectorGeneration) else {"))
+        XCTAssertFalse(Self.passesAConstantGeneration("let x = 1"))
+        // Not decisions: the parameter declaration and the wrapper's forward.
+        XCTAssertFalse(Self.passesAConstantGeneration("                recordedGeneration: Int?,"))
+        XCTAssertFalse(Self.passesAConstantGeneration(
+            "                       recordedGeneration: recordedGeneration)"))
     }
 
     /// Proves the lint can fail, by calling the predicate the corpus scan uses.

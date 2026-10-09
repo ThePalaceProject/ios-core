@@ -646,9 +646,16 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         // than treated as unknown — see `AdobeConnectorGeneration.preMarker`.
         // The generation is checked BEFORE `isUserAuthorized` so a decision
         // already known does not enter the non-thread-safe RMSDK.
-        if authorizer()?.canUseRecordedActivation(
-               userID: userAccount.userID,
-               deviceID: userAccount.deviceID,
+        // The identifiers are unwrapped FIRST so `authorizer()` is not evaluated
+        // for a patron who has never activated: it resolves
+        // `NYPLADEPT.sharedInstance()`, which initialises the RMSDK. Folding the
+        // nil-checks into the predicate cost that laziness, which the doc comment
+        // on the convenience overload still claimed.
+        if let userID = userAccount.userID,
+           let deviceID = userAccount.deviceID,
+           authorizer()?.canUseRecordedActivation(
+               userID: userID,
+               deviceID: deviceID,
                recordedGeneration: userAccount.adobeActivationConnectorGeneration,
                current: connectorGeneration) == true {
             Log.info(#file, "Adobe device already activated — skipping activation")

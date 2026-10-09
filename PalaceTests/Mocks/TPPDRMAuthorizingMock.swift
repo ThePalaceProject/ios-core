@@ -289,6 +289,10 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
             _deferredAuthCompletions = []
             _authorizeDeferralDrained = false
             _drainedOutcome = (true, nil)
+            // The counter is read-only, so it clears here rather than through a
+            // setter. Omitting it left "Resets all tracking properties" false,
+            // and any suite reusing the mock would read a carried count.
+            _isUserAuthorizedCallCount = 0
         }
     }
 }
