@@ -75,14 +75,20 @@ final class TPPPresentationUtilsTests: XCTestCase {
         let alert = makeAlert()
         present(alert, on: root)
         let sheet = makeSheet()
+        let presented = expectation(description: "sheet presented")
 
-        TPPPresentationUtils.safelyPresent(sheet, animated: false, completion: nil,
+        TPPPresentationUtils.safelyPresent(sheet, animated: false,
+                                           completion: { presented.fulfill() },
                                            rootProvider: { root })
         pump(0.6)
 
         XCTAssertNil(alert.presentedViewController,
                      "presenting from a UIAlertController is the fe741015 crash")
         XCTAssertTrue(root.presentedViewController === alert)
+
+        // Drain the queued retry inside this test so it cannot fire in a later one.
+        dismissPresented(on: root)
+        wait(for: [presented], timeout: 3)
     }
 
     /// Deferred, not dropped: once the alert is dismissed the sheet is
