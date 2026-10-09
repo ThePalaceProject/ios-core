@@ -26,24 +26,29 @@ protocol LCPAdapterDownloadCenter: AnyObject {
     func fileUrl(for identifier: String) -> URL?
 }
 
+/// `@MainActor` and `async` for the reason recorded on
+/// `AudiobookVendorAdapter` (PP-5301): the license re-download used to deliver
+/// on URLSession's queue into a main-actor adapter.
+@MainActor
 protocol LCPAdapterNetworkExecutor: AnyObject {
-    @discardableResult
-    func GET(
-        _ reqURL: URL,
-        completion: @escaping (_ result: Data?, _ response: URLResponse?, _ error: Error?) -> Void
-    ) -> URLSessionDataTask?
+    /// The license body and its `URLResponse`. Throws the transport error
+    /// rather than returning it beside the data.
+    func fetchLicense(from reqURL: URL) async throws -> (Data, URLResponse?)
 }
 
 extension MyBooksDownloadCenter: LCPAdapterDownloadCenter {}
 
 extension TPPNetworkExecutor: LCPAdapterNetworkExecutor {
-    // Swift protocol conformance can't pick up the 4-arg @objc GET with
-    // defaults, so we bridge with a 2-arg overload that fills the defaults.
-    func GET(
-        _ reqURL: URL,
-        completion: @escaping (_ result: Data?, _ response: URLResponse?, _ error: Error?) -> Void
-    ) -> URLSessionDataTask? {
-        return GET(reqURL, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: true, completion: completion)
+    func fetchLicense(from reqURL: URL) async throws -> (Data, URLResponse?) {
+        // `request(for:)` for the reason recorded on
+        // `ProductionAudiobookManifestFetcher.fetchData`: the request-taking
+        // overload dispatches what it is handed, so a bare `URLRequest(url:)`
+        // reaches the CM with no bearer token. That comment also records what
+        // it actually costs, which is a 401 round trip and a spurious refresh
+        // rather than a terminal failure on the default auth types.
+        try await GET(request: request(for: reqURL),
+                      cachePolicy: .useProtocolCachePolicy,
+                      useTokenIfAvailable: true)
     }
 }
 
@@ -71,19 +76,13 @@ final class LCPAdapter: AudiobookVendorAdapter {
     }
 
     func resolveManifest(
-        for book: TPPBook,
-        completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-    ) {
-        // Boxed once: the completion crosses several `@Sendable` boundaries.
-        let completionBox = AudiobookAdapterCompletionBox(completion)
-        prepareLCPSource(for: book) { [weak self] sourceResult in
-            guard let self else { LCPAdapter.finishOnMain(completionBox, .failure(.cancelled)); return }
-            switch sourceResult {
-            case .success(let sourceURL):
-                self.loadLCPContent(book: book, lcpSourceURL: sourceURL, completionBox: completionBox)
-            case .failure(let err):
-                LCPAdapter.finishOnMain(completionBox, .failure(err))
-            }
+        for book: TPPBook
+    ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
+        switch await prepareLCPSource(for: book) {
+        case .success(let sourceURL):
+            return await loadLCPContent(book: book, lcpSourceURL: sourceURL)
+        case .failure(let err):
+            return .failure(err)
         }
     }
 
@@ -92,124 +91,97 @@ final class LCPAdapter: AudiobookVendorAdapter {
     // Three-tier source resolution: local .lcpa, else cached .lcpl sibling,
     // else re-download .lcpl from the book's fulfill URL.
 
-    private func prepareLCPSource(
-        for book: TPPBook,
-        completion: @escaping (Result<URL, AudiobookLoadError>) -> Void
-    ) {
+    private func prepareLCPSource(for book: TPPBook) async -> Result<URL, AudiobookLoadError> {
         if let localURL = downloadCenter.fileUrl(for: book.identifier),
            fileManager.fileExists(atPath: localURL.path) {
-            completion(.success(localURL))
-            return
+            return .success(localURL)
         }
         if let license = licenseURL(forBookIdentifier: book.identifier) {
-            completion(.success(license))
-            return
+            return .success(license)
         }
         Log.info(#file, "LCP audiobook with no local files - re-downloading license")
-        redownloadLCPLicense(for: book, completion: completion)
+        return await redownloadLCPLicense(for: book)
     }
 
     private func loadLCPContent(
         book: TPPBook,
-        lcpSourceURL: URL,
-        completionBox: AudiobookAdapterCompletionBox
-    ) {
+        lcpSourceURL: URL
+    ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
         guard let lcpAudiobooks = lcpAudiobooksFactory(lcpSourceURL) else {
             Log.error(#file, "Failed to create LCPAudiobooks instance for \(lcpSourceURL.path)")
-            LCPAdapter.finishOnMain(completionBox, .failure(.lcpInstantiationFailed))
-            return
+            return .failure(.lcpInstantiationFailed)
         }
         if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
-            LCPAdapter.finishOnMain(completionBox, .success((json: cached, decryptor: lcpAudiobooks)))
-            return
+            return .success((json: cached, decryptor: lcpAudiobooks))
         }
-        lcpAudiobooks.contentDictionary { dict, error in
-            if let error = error {
-                Log.error(#file, "LCP content dictionary error: \(error.localizedDescription)")
-                LCPAdapter.finishOnMain(completionBox, .failure(.lcpDecryptionFailed(underlying: error)))
-                return
+
+        // `contentDictionary` is an `@objc` completion-handler API whose
+        // `NSDictionary` payload is not `Sendable`, so the continuation carries
+        // it in `ManifestJSONBox`. This is the only crossing left on the path;
+        // the resumption lands back on this adapter's actor.
+        let outcome: Result<ManifestJSONBox, AudiobookLoadError> = await withCheckedContinuation { continuation in
+            lcpAudiobooks.contentDictionary { dict, error in
+                if let error = error {
+                    Log.error(#file, "LCP content dictionary error: \(error.localizedDescription)")
+                    continuation.resume(returning: .failure(.lcpDecryptionFailed(underlying: error)))
+                    return
+                }
+                guard let json = dict as? [String: Any] else {
+                    continuation.resume(returning: .failure(.lcpDecryptionFailed(underlying: nil)))
+                    return
+                }
+                continuation.resume(returning: .success(ManifestJSONBox(json)))
             }
-            guard let json = dict as? [String: Any] else {
-                LCPAdapter.finishOnMain(completionBox, .failure(.lcpDecryptionFailed(underlying: nil)))
-                return
-            }
-            LCPAdapter.finishOnMain(completionBox, .success((json: json, decryptor: lcpAudiobooks)))
+        }
+
+        switch outcome {
+        case .success(let box):
+            return .success((json: box.value, decryptor: lcpAudiobooks))
+        case .failure(let err):
+            return .failure(err)
         }
     }
 
-    private func redownloadLCPLicense(
-        for book: TPPBook,
-        completion: @escaping (Result<URL, AudiobookLoadError>) -> Void
-    ) {
+    private func redownloadLCPLicense(for book: TPPBook) async -> Result<URL, AudiobookLoadError> {
         guard let fulfillURL = book.defaultAcquisition?.hrefURL else {
-            completion(.failure(.missingFulfillURL))
-            return
+            return .failure(.missingFulfillURL)
         }
         guard let contentURL = downloadCenter.fileUrl(for: book.identifier) else {
-            completion(.failure(.missingContentDirectory))
-            return
+            return .failure(.missingContentDirectory)
         }
         let licenseFileURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         Log.info(#file, "Fetching LCP license from: \(fulfillURL.host ?? "unknown")")
 
-        _ = networkExecutor.GET(fulfillURL) { [fileManager] data, response, error in
-            if let error = error {
-                completion(.failure(.licenseDownloadFailed(underlying: error)))
-                return
-            }
-            guard let data = data, !data.isEmpty else {
-                completion(.failure(.licenseDownloadFailed(underlying: nil)))
-                return
-            }
-            if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
-                completion(.failure(.licenseDownloadFailed(underlying: nil)))
-                return
-            }
-            do {
-                let directory = licenseFileURL.deletingLastPathComponent()
-                if !fileManager.fileExists(atPath: directory.path) {
-                    try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-                }
-                try data.write(to: licenseFileURL, options: .atomic)
-            } catch {
-                completion(.failure(.licenseSaveFailed(underlying: error)))
-                return
-            }
-            completion(.success(licenseFileURL))
+        let data: Data
+        let response: URLResponse?
+        do {
+            (data, response) = try await networkExecutor.fetchLicense(from: fulfillURL)
+        } catch {
+            return .failure(.licenseDownloadFailed(underlying: error))
         }
+
+        guard !data.isEmpty else {
+            return .failure(.licenseDownloadFailed(underlying: nil))
+        }
+        if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
+            return .failure(.licenseDownloadFailed(underlying: nil))
+        }
+        do {
+            let directory = licenseFileURL.deletingLastPathComponent()
+            if !fileManager.fileExists(atPath: directory.path) {
+                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            }
+            try data.write(to: licenseFileURL, options: .atomic)
+        } catch {
+            return .failure(.licenseSaveFailed(underlying: error))
+        }
+        return .success(licenseFileURL)
     }
 
     private func licenseURL(forBookIdentifier identifier: String) -> URL? {
         guard let contentURL = downloadCenter.fileUrl(for: identifier) else { return nil }
         let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         return fileManager.fileExists(atPath: license.path) ? license : nil
-    }
-
-    /// Completes on the main thread, as the `AudiobookVendorAdapter` contract
-    /// requires.
-    private static func finishOnMain(
-        _ completionBox: AudiobookAdapterCompletionBox,
-        _ result: AudiobookAdapterCompletionBox.Outcome
-    ) {
-        if Thread.isMainThread { completionBox.fire(result) }
-        else {
-            // The payload is not Sendable; box it for the single main hop.
-            let outcomeBox = LCPOutcomeBox(result)
-            DispatchQueue.main.async { completionBox.fire(outcomeBox.value) }
-        }
-    }
-}
-
-/// `Sendable` carrier for an `AudiobookAdapterCompletionBox.Outcome` crossing
-/// the `finishOnMain` `DispatchQueue.main.async` hop.
-///
-/// - Sendable invariant: `value` is set once at init and only read on the main
-///   thread thereafter. The `@unchecked` waiver covers the non-Sendable
-///   manifest dictionary and `DRMDecryptor?` payload.
-private struct LCPOutcomeBox: @unchecked Sendable {
-    let value: AudiobookAdapterCompletionBox.Outcome
-    init(_ value: AudiobookAdapterCompletionBox.Outcome) {
-        self.value = value
     }
 }
 

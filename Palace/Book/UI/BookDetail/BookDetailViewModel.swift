@@ -1013,29 +1013,30 @@ final class BookDetailViewModel: ObservableObject {
             }
         } else {
             samplePreviewManager.close()
-            EpubSampleFactory.createSample(book: book) { sampleURL, error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        Log.debug("Sample generation error for \(book.title): \(error.localizedDescription)", "")
-                    } else if let sampleWebURL = sampleURL as? EpubSampleWebURL {
-                        self.presentWebView(sampleWebURL.url)
-                    } else if let sampleURL = sampleURL?.url {
-                        // Check if this is an EPUB sample
-                        let isEpubSample = book.sample?.type == .contentTypeEpubZip
-
-                        if isEpubSample {
-                            // Use Readium EPUB reader for EPUB samples
-                            self.readerService.openSample(book, url: sampleURL)
-                        } else {
-                            // Use WebKit for HTML/web samples
-                            let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
-                            if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
-                                top.present(web, animated: true)
-                            }
-                        }
-                    }
+            // `createSample` is awaited, so everything below already runs on
+            // this `@MainActor` type and the `DispatchQueue.main.async` that
+            // wrapped it is gone (PP-5301).
+            Task { @MainActor in
+                defer {
                     self.isProcessingSample = false
                     completion?()
+                }
+                do {
+                    let sampleURL = try await EpubSampleFactory.createSample(book: book)
+                    if let sampleWebURL = sampleURL as? EpubSampleWebURL {
+                        self.presentWebView(sampleWebURL.url)
+                    } else if book.sample?.type == .contentTypeEpubZip {
+                        // Readium EPUB reader for EPUB samples
+                        self.readerService.openSample(book, url: sampleURL.url)
+                    } else {
+                        // WebKit for HTML/web samples
+                        let web = BundledHTMLViewController(fileURL: sampleURL.url, title: book.title)
+                        if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+                            top.present(web, animated: true)
+                        }
+                    }
+                } catch {
+                    Log.debug("Sample generation error for \(book.title): \(error.localizedDescription)", "")
                 }
             }
         }

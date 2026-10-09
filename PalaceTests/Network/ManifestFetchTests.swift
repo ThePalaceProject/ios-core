@@ -169,18 +169,18 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
         )
 
         let expectation = expectation(description: "Manifest fetch completes")
-        var resultJSON: [String: Any]?
+        let resultJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON = json
+            resultJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
 
-        XCTAssertNotNil(resultJSON, "Should return parsed manifest JSON")
-        XCTAssertNotNil(resultJSON?["metadata"], "Manifest should contain metadata")
-        XCTAssertNotNil(resultJSON?["readingOrder"], "Manifest should contain readingOrder")
+        XCTAssertNotNil(resultJSON.value, "Should return parsed manifest JSON")
+        XCTAssertNotNil(resultJSON.value?["metadata"], "Manifest should contain metadata")
+        XCTAssertNotNil(resultJSON.value?["readingOrder"], "Manifest should contain readingOrder")
     }
 
     func testSuccess_sendsCorrectBearerTokenHeader() {
@@ -253,15 +253,15 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
         )
 
         let expectation = expectation(description: "Fetch completes")
-        var resultJSON: [String: Any]?
+        let resultJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON = json
+            resultJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON, "Should return nil for 401 response")
+        XCTAssertNil(resultJSON.value, "Should return nil for 401 response")
     }
 
     func testHTTP500_returnsNil() {
@@ -277,15 +277,15 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
         )
 
         let expectation = expectation(description: "Fetch completes")
-        var resultJSON: [String: Any]?
+        let resultJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON = json
+            resultJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON, "Should return nil for 500 server error")
+        XCTAssertNil(resultJSON.value, "Should return nil for 500 server error")
     }
 
     func testEmptyResponseBody_returnsNil() {
@@ -301,15 +301,15 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
         )
 
         let expectation = expectation(description: "Fetch completes")
-        var resultJSON: [String: Any]?
+        let resultJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON = json
+            resultJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON, "Should return nil for empty response body")
+        XCTAssertNil(resultJSON.value, "Should return nil for empty response body")
     }
 
     func testHTMLResponse_returnsNil() {
@@ -327,15 +327,15 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
         )
 
         let expectation = expectation(description: "Fetch completes")
-        var resultJSON: [String: Any]?
+        let resultJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON = json
+            resultJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON, "Should return nil for HTML (non-JSON) response")
+        XCTAssertNil(resultJSON.value, "Should return nil for HTML (non-JSON) response")
     }
 
     func testInvalidJSON_returnsNil() {
@@ -353,15 +353,15 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
         )
 
         let expectation = expectation(description: "Fetch completes")
-        var resultJSON: [String: Any]?
+        let resultJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON = json
+            resultJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON, "Should return nil for malformed JSON")
+        XCTAssertNil(resultJSON.value, "Should return nil for malformed JSON")
     }
 
     func testJSONArray_returnsNil() {
@@ -379,15 +379,15 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
         )
 
         let expectation = expectation(description: "Fetch completes")
-        var resultJSON: [String: Any]?
+        let resultJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON = json
+            resultJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON, "Should return nil for JSON array (not a dictionary)")
+        XCTAssertNil(resultJSON.value, "Should return nil for JSON array (not a dictionary)")
     }
 }
 
@@ -575,20 +575,20 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
         let stubbedSession = URLSession(configuration: config)
 
         let expectation = expectation(description: "Manifest fetched via bearer token")
-        var resultJSON: [String: Any]?
+        let resultJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(token!, for: book, session: stubbedSession) { json in
-            resultJSON = json
+            resultJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
 
         // Verify manifest was returned
-        XCTAssertNotNil(resultJSON, "Should receive the actual manifest, not the bearer token JSON")
-        let metadata = resultJSON?["metadata"] as? [String: Any]
+        XCTAssertNotNil(resultJSON.value, "Should receive the actual manifest, not the bearer token JSON")
+        let metadata = resultJSON.value?["metadata"] as? [String: Any]
         XCTAssertEqual(metadata?["title"] as? String, "California Audiobook")
-        XCTAssertNotNil(resultJSON?["readingOrder"])
+        XCTAssertNotNil(resultJSON.value?["readingOrder"])
 
         // Verify the request was made to the manifest URL (not the fulfill URL)
         requestLogLock.lock()
@@ -640,15 +640,15 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
         let stubbedSession = URLSession(configuration: config)
 
         let expectation = expectation(description: "Fetch completes")
-        var resultJSON: [String: Any]?
+        let resultJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON = json
+            resultJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON, "Should return nil when manifest location returns 403")
+        XCTAssertNil(resultJSON.value, "Should return nil when manifest location returns 403")
     }
 
     /// Verifies that the fulfill URL (which might return bearer token JSON) is correctly
@@ -1136,22 +1136,22 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
 
         let book = TPPBookMocker.mockBook(distributorType: .BearerToken)
         let expectation = expectation(description: "Fetch completes")
-        var receivedJSON: [String: Any]?
+        let receivedJSON = ManifestResultHolder()
 
         BookService.fetchManifestWithBearerToken(
             token, for: book, session: stubbedSession
         ) { json in
-            receivedJSON = json
+            receivedJSON.value = json
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
 
-        XCTAssertNotNil(receivedJSON,
+        XCTAssertNotNil(receivedJSON.value,
             "Even if the response is an LCP license (valid JSON), it will be returned. " +
             "The fix prevents LCP books from reaching this code path at all."
         )
-        XCTAssertNotNil(receivedJSON?["encryption"],
+        XCTAssertNotNil(receivedJSON.value?["encryption"],
             "Returned JSON should be the LCP license (with encryption key)")
     }
 }
@@ -1336,5 +1336,20 @@ final class NetworkExecutorResponseRegressionTests: XCTestCase {
         let dataIsEmpty = receivedData == nil || receivedData?.isEmpty == true
         XCTAssertTrue(dataIsEmpty,
             "Empty response must not produce phantom data")
+    }
+}
+
+/// Lock-backed holder for a parsed manifest captured out of a completion.
+///
+/// `BookService.fetchManifestWithBearerToken`'s completion is `@Sendable`
+/// (PP-5301), so a plain captured `var` holding a non-`Sendable`
+/// `[String: Any]?` cannot cross into it. The lock states the single-writer
+/// handoff these tests already rely on rather than asserting it.
+private final class ManifestResultHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String: Any]?
+    var value: [String: Any]? {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); defer { lock.unlock() }; storage = newValue }
     }
 }

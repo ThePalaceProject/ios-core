@@ -790,60 +790,47 @@ private final class AccountBoolFlag: @unchecked Sendable {
         guard !isLoadingLogo else { return }
         isLoadingLogo = true
 
-        self.fetchImage(from: url, completion: { [weak self] in
-            self?.isLoadingLogo = false
-            guard let image = $0, let self else { return }
+        // `Account` is not isolated, so the guard and the flag above run in
+        // whatever isolation the caller had — in practice a SwiftUI view, on
+        // the main actor. What this change moves is everything after the fetch:
+        // `logo`, the `logoDelegate` callback and `imageCache` used to reach
+        // the main queue through a `DispatchQueue.main.async` inside the
+        // network completion, carrying the non-`Sendable` values in a box
+        // (PP-5301). `fetchImage` is `@MainActor`, so the language places them
+        // now, and the cache-hit path resets the flag on the main actor too,
+        // which the hop-based version did not.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let image = await self.fetchImage(from: url)
+            self.isLoadingLogo = false
+            guard let image else { return }
             self.logo = image
             self.logoDelegate?.logoDidUpdate(in: self, to: image)
-        })
+        }
     }
 
     private var isLoadingLogo = false
 
-    private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> Void) {
+    @MainActor
+    private func fetchImage(from url: URL) async -> UIImage? {
         if let cachedImage = imageCache.get(for: self.uuid) {
-            completion(cachedImage)
-            return
+            return cachedImage
         }
-        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
-            // The GET completion is a plain (non-Sendable) escaping closure, so
-            // `result`, `self`, and `completion` are captured safely here. They
-            // are carried across the main-queue hop in a documented box — each
-            // is only touched on that single main-queue block, never
-            // concurrently — to satisfy the `@Sendable` `DispatchQueue.main.async`.
-            let payload = LogoFetchPayload(account: self, result: result, completion: completion)
-            DispatchQueue.main.async {
-                switch payload.result {
-                case .success(let serverData, _):
-                    guard let image = UIImage(data: serverData) else {
-                        payload.completion(nil)
-                        return
-                    }
-                    payload.account.imageCache.set(image, for: payload.account.uuid)
-                    payload.completion(image)
-                case .failure(let error, _):
-                    payload.account.errorReporter.report(
-                        code: .authDocLoadFail,
-                        summary: "Logo image failed to load",
-                        metadata: ["loadError": error.localizedDescription, "url": url.absoluteString]
-                    )
-                    payload.completion(nil)
-                }
-            }
+        switch await AppContainer.production().networkExecutor.fetchResult(
+            from: url, useTokenIfAvailable: false) {
+        case .success(let serverData, _):
+            guard let image = UIImage(data: serverData) else { return nil }
+            imageCache.set(image, for: self.uuid)
+            return image
+        case .failure(let error, _):
+            errorReporter.report(
+                code: .authDocLoadFail,
+                summary: "Logo image failed to load",
+                metadata: ["loadError": error.localizedDescription, "url": url.absoluteString]
+            )
+            return nil
         }
     }
-}
-
-/// Documented carrier for `Account.fetchImage`'s network completion, which
-/// hops to the main queue to touch `imageCache` and invoke `completion`.
-/// `result` (`NYPLResult<Data>`), the `completion` closure, and the
-/// `Account` are all non-Sendable; they are only ever read on that single
-/// main-queue hop, never concurrently, so they are safe to carry in an
-/// `@unchecked Sendable` box.
-private struct LogoFetchPayload: @unchecked Sendable {
-    let account: Account
-    let result: NYPLResult<Data>
-    let completion: (UIImage?) -> Void
 }
 
 extension AccountDetails {

@@ -38,4 +38,9 @@
 #   and URLSessionNetworkClient's executor default argument had no caller left.
 # 238 -> 237: CatalogSearchView's row-refresh publisher reads its container's
 #   registry.
-237
+# 237 -> 236: the PP-5301 seams gave AudiobookLoader's init four lazily-resolved
+#   production fallbacks, taking that file 12 -> 13 and the total 237 -> 238.
+#   Hoisting the duplicate container reads in `finalizeBuild` and
+#   `makeProductionAdapters` then took the file 13 -> 11, so the total lands at
+#   236. Both numbers are the same commit; net -1 against the prior baseline.
+236

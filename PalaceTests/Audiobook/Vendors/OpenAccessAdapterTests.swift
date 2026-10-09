@@ -42,16 +42,10 @@ final class OpenAccessAdapterTests: XCTestCase {
         var stubbedError: Error?
         private(set) var requestedURLs: [URL] = []
 
-        func fetchData(
-            from url: URL,
-            completion: @escaping (Data?, URLResponse?, Error?) -> Void
-        ) {
+        func fetchData(from url: URL) async throws -> (Data, URLResponse?) {
             requestedURLs.append(url)
-            // Hop off the call stack to mirror real URLSession ordering.
-            let box = SendableBox(value: completion)
-            DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                box.value(stubbedData, stubbedResponse, stubbedError)
-            }
+            if let stubbedError { throw stubbedError }
+            return (stubbedData ?? Data(), stubbedResponse)
         }
     }
 
@@ -88,7 +82,7 @@ final class OpenAccessAdapterTests: XCTestCase {
 
     // MARK: - resolveManifest success
 
-    func testResolveManifest_successPath_completesWithJSON() {
+    func testResolveManifest_successPath_completesWithJSON() async {
         let network = StubNetwork()
         let json: [String: Any] = ["@type": "Audiobook", "title": "Test"]
         network.stubbedData = try! JSONSerialization.data(withJSONObject: json, options: [])
@@ -100,13 +94,9 @@ final class OpenAccessAdapterTests: XCTestCase {
         )
 
         let adapter = OpenAccessAdapter(network: network)
-        let exp = expectation(description: "resolveManifest success")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
 
         XCTAssertEqual(observed?.json["title"] as? String, "Test",
                        "Parsed JSON must propagate through to caller verbatim")
@@ -119,19 +109,15 @@ final class OpenAccessAdapterTests: XCTestCase {
 
     // MARK: - resolveManifest failure paths
 
-    func testResolveManifest_networkError_failsWithManifestFetchFailed() {
+    func testResolveManifest_networkError_failsWithManifestFetchFailed() async {
         let network = StubNetwork()
         network.stubbedError = NSError(domain: "test.network", code: -1, userInfo: nil)
         let adapter = OpenAccessAdapter(network: network)
         let book = makeBook()
 
-        let exp = expectation(description: "resolveManifest network error")
         var observed: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .failure(let err) = result { observed = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
 
         guard case .manifestFetchFailed = observed else {
             XCTFail("Network error must map to .manifestFetchFailed, got \(String(describing: observed))")
@@ -139,20 +125,16 @@ final class OpenAccessAdapterTests: XCTestCase {
         }
     }
 
-    func testResolveManifest_emptyData_failsWithManifestFetchFailed() {
+    func testResolveManifest_emptyData_failsWithManifestFetchFailed() async {
         let network = StubNetwork()
         network.stubbedData = Data()
         let book = makeBook()
         network.stubbedResponse = makeResponse(url: book.defaultAcquisition!.hrefURL, status: 200)
         let adapter = OpenAccessAdapter(network: network)
 
-        let exp = expectation(description: "resolveManifest empty data")
         var observed: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .failure(let err) = result { observed = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
 
         guard case .manifestFetchFailed = observed else {
             XCTFail("Empty data must map to .manifestFetchFailed, got \(String(describing: observed))")
@@ -160,7 +142,7 @@ final class OpenAccessAdapterTests: XCTestCase {
         }
     }
 
-    func testResolveManifest_htmlResponse_failsWithManifestFetchFailed() {
+    func testResolveManifest_htmlResponse_failsWithManifestFetchFailed() async {
         // A login-redirect page is HTML with a 200 status code and a body.
         // The HTML check must short-circuit BEFORE JSON parsing (which
         // would map to .manifestParseFailed). This pins the failure-mode
@@ -176,13 +158,9 @@ final class OpenAccessAdapterTests: XCTestCase {
         )
         let adapter = OpenAccessAdapter(network: network)
 
-        let exp = expectation(description: "resolveManifest html response")
         var observed: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .failure(let err) = result { observed = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
 
         guard case .manifestFetchFailed = observed else {
             XCTFail("HTML response must map to .manifestFetchFailed (not parseFailed), got \(String(describing: observed))")
@@ -190,7 +168,7 @@ final class OpenAccessAdapterTests: XCTestCase {
         }
     }
 
-    func testResolveManifest_invalidJSON_failsWithManifestParseFailed() {
+    func testResolveManifest_invalidJSON_failsWithManifestParseFailed() async {
         // Non-HTML, non-empty, non-dict bytes — the actual "we got data
         // but it's not a JSON dict" branch. Drives the
         // `.manifestParseFailed` mapping that distinguishes parse from
@@ -205,13 +183,9 @@ final class OpenAccessAdapterTests: XCTestCase {
         )
         let adapter = OpenAccessAdapter(network: network)
 
-        let exp = expectation(description: "resolveManifest invalid JSON")
         var observed: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .failure(let err) = result { observed = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
 
         guard case .manifestParseFailed = observed else {
             XCTFail("Non-dict JSON must map to .manifestParseFailed, got \(String(describing: observed))")
@@ -234,14 +208,12 @@ final class OpenAccessAdapterTests: XCTestCase {
 
         func fetchManifest(
             with token: MyBooksSimplifiedBearerToken,
-            for book: TPPBook,
-            completion: @escaping ([String: Any]?) -> Void
-        ) {
+            for book: TPPBook
+        ) async -> [String: Any]? {
             callCount += 1
             receivedToken = token
             receivedBook = book
-            let box = SendableBox(value: (manifest: stubbedManifest, completion: completion))
-            DispatchQueue.main.async { box.value.completion(box.value.manifest) }
+            return stubbedManifest
         }
     }
 
@@ -263,7 +235,7 @@ final class OpenAccessAdapterTests: XCTestCase {
     /// manifest at the token's `location` — NOT returned verbatim as if the
     /// wrapper were the manifest (which fails decode → "error opening this
     /// book"). Catches a dropped bearer-detection branch.
-    func testResolveManifest_bearerWrapperWithFetcher_followsSecondLegToRealManifest() {
+    func testResolveManifest_bearerWrapperWithFetcher_followsSecondLegToRealManifest() async {
         let network = StubNetwork()
         let book = makeBook()
         network.stubbedData = bearerWrapperData()
@@ -276,13 +248,9 @@ final class OpenAccessAdapterTests: XCTestCase {
         bearerFetcher.stubbedManifest = ["@type": "Audiobook", "title": "Real Manifest", "readingOrder": []]
         let adapter = OpenAccessAdapter(network: network, bearerTokenManifestFetcher: bearerFetcher)
 
-        let exp = expectation(description: "bearer second leg")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: bearerPathTimeout)  // STARVE-001-OK: stubs answer at once; the wait covers only the main-actor hops
 
         XCTAssertEqual(bearerFetcher.callCount, 1,
                        "A bearer-token wrapper body must trigger exactly one second-leg fetch")
@@ -298,7 +266,7 @@ final class OpenAccessAdapterTests: XCTestCase {
 
     /// A failed second leg (nil manifest) must surface as `.manifestFetchFailed`,
     /// not a spurious success. Pins the bearer failure-mapping branch.
-    func testResolveManifest_bearerSecondLegReturnsNil_failsWithManifestFetchFailed() {
+    func testResolveManifest_bearerSecondLegReturnsNil_failsWithManifestFetchFailed() async {
         let network = StubNetwork()
         let book = makeBook()
         network.stubbedData = bearerWrapperData()
@@ -311,13 +279,9 @@ final class OpenAccessAdapterTests: XCTestCase {
         bearerFetcher.stubbedManifest = nil
         let adapter = OpenAccessAdapter(network: network, bearerTokenManifestFetcher: bearerFetcher)
 
-        let exp = expectation(description: "bearer second leg nil")
         var observed: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .failure(let err) = result { observed = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: bearerPathTimeout)  // STARVE-001-OK: stubs answer at once; the wait covers only the main-actor hops
 
         guard case .manifestFetchFailed = observed else {
             XCTFail("Nil second-leg manifest must map to .manifestFetchFailed, got \(String(describing: observed))")
@@ -329,7 +293,7 @@ final class OpenAccessAdapterTests: XCTestCase {
     /// construction used across the suite), bearer detection is skipped and
     /// the body is returned verbatim — the exact pre-fix fallback behavior,
     /// so existing open-access tests/usages are unaffected.
-    func testResolveManifest_bearerWrapperButNoFetcher_returnsBodyVerbatim() {
+    func testResolveManifest_bearerWrapperButNoFetcher_returnsBodyVerbatim() async {
         let network = StubNetwork()
         let book = makeBook()
         network.stubbedData = bearerWrapperData()
@@ -340,13 +304,9 @@ final class OpenAccessAdapterTests: XCTestCase {
         )
         let adapter = OpenAccessAdapter(network: network)  // no bearer fetcher
 
-        let exp = expectation(description: "no fetcher verbatim")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: bearerPathTimeout)  // STARVE-001-OK: stubs answer at once; the wait covers only the main-actor hops
 
         XCTAssertEqual(observed?.json["access_token"] as? String, "tok-abc",
                        "Without a fetcher, the body is returned verbatim (back-compat)")
@@ -355,7 +315,7 @@ final class OpenAccessAdapterTests: XCTestCase {
     /// A plain (non-wrapper) manifest with a fetcher present must still be
     /// returned directly — the bearer branch must not swallow normal
     /// open-access manifests, regardless of body shape.
-    func testResolveManifest_plainManifestWithFetcher_returnsDirectlyWithoutSecondLeg() {
+    func testResolveManifest_plainManifestWithFetcher_returnsDirectlyWithoutSecondLeg() async {
         let network = StubNetwork()
         let book = makeBook()
         network.stubbedData = try! JSONSerialization.data(
@@ -370,13 +330,9 @@ final class OpenAccessAdapterTests: XCTestCase {
         let bearerFetcher = StubBearerFetcher()
         let adapter = OpenAccessAdapter(network: network, bearerTokenManifestFetcher: bearerFetcher)
 
-        let exp = expectation(description: "plain manifest")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: bearerPathTimeout)  // STARVE-001-OK: stubs answer at once; the wait covers only the main-actor hops
 
         XCTAssertEqual(bearerFetcher.callCount, 0,
                        "A plain manifest must NOT trigger the bearer second-leg")

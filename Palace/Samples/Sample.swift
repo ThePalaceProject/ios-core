@@ -28,15 +28,22 @@ enum SampleType: String {
 protocol Sample {
     var url: URL { get }
     var type: SampleType { get }
-    func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void)
+
+    /// Fetch the sample bytes.
+    ///
+    /// `async` (PP-5301): both consumers are `@MainActor`
+    /// (`AudiobookSamplePlayer`, and `EpubSampleFactory` on behalf of
+    /// `BookCellModel`), so the completion they used to pass inherited
+    /// main-actor isolation while the network layer delivered off it. Each had
+    /// hopped some arms and not others. Awaiting resumes on the caller's actor,
+    /// so there are no arms to get wrong.
+    func fetchSample() async -> NYPLResult<Data>
 }
 
 extension Sample {
     var needsDownload: Bool { type.needsDownload }
 
-    func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void) {
-        _ = AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
-            completion(result)
-        }
+    func fetchSample() async -> NYPLResult<Data> {
+        await AppContainer.production().networkExecutor.fetchResult(from: url, useTokenIfAvailable: false)
     }
 }
