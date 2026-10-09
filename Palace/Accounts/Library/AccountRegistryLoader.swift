@@ -25,8 +25,8 @@ import PalaceUtilities
 /// for the `group.notify` completion box in `loadAccountSetsAndAuthDoc`). `@unchecked
 /// Sendable` invariant: the wrapped closure is only appended to / read from
 /// `loadingCompletionHandlers[hash]` under the serial `.barrier` of the concurrent
-/// `loadingHandlersQueue`, and invoked later on the caller's queue — never concurrently
-/// with its own storage mutation. Thread-affinity is the caller's contract (unchanged).
+/// `loadingHandlersQueue`, and invoked later on the main queue — never concurrently
+/// with its own storage mutation.
 private struct LoadCompletionBox: @unchecked Sendable {
     let handler: (Bool) -> Void
 }
@@ -418,7 +418,9 @@ final class AccountRegistryLoader: @unchecked Sendable {
         return false
     }
 
-    /// Calls & clears all handlers for the given hash.
+    /// Calls & clears all handlers for the given hash, on the main queue. Callers
+    /// (`TPPAccountList`, the developer settings) pass closures formed on the main
+    /// actor, and the crawl Tasks reach here from the cooperative pool.
     private func callAndClearLoadingHandlers(for hash: String, _ success: Bool) {
         var handlers: [(Bool) -> Void] = []
         loadingHandlersQueue.sync {
@@ -427,7 +429,12 @@ final class AccountRegistryLoader: @unchecked Sendable {
         loadingHandlersQueue.async(flags: .barrier) {
             self.loadingCompletionHandlers[hash] = nil
         }
-        handlers.forEach { $0(success) }
+        let box = LoadCompletionBox { success in handlers.forEach { $0(success) } }
+        if Thread.isMainThread {
+            box.handler(success)
+        } else {
+            DispatchQueue.main.async { box.handler(success) }
+        }
     }
 
     // MARK: - Load orchestration
@@ -818,6 +825,9 @@ final class AccountRegistryLoader: @unchecked Sendable {
     ///   - didApplyBucketWrite: fired with whether INV-2 accepted the bucket write.
     ///     Separate from `completion` (PP-5191), whose `Bool` means "the feed parsed":
     ///     a refused write still parsed and still completes `true`.
+    ///   - completion: always runs asynchronously on the main queue, on every path.
+    ///     Callers post `.TPPCatalogDidLoad` from it, and that notification's
+    ///     `@MainActor` observers (`TPPAccountList.catalogDidLoad`) trap off main.
     func loadAccountSetsAndAuthDoc(
         fromCatalogData data: Data,
         key hash: String,
@@ -877,7 +887,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 // registry IS loaded — with the resident data, which INV-2 just
                 // established is strictly better than what arrived.
                 Log.warn(#file, "INV-2 refused the bucket write for hash \(hash) — keeping the resident registry and skipping the state/auth-doc/notification side effects")
-                completionBox.handler(true)
+                DispatchQueue.main.async { completionBox.handler(true) }
                 return
             }
 
@@ -931,7 +941,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
 
         } catch {
             TPPErrorLogger.logError(error, summary: "Error parsing catalog feed")
-            completion(false)
+            DispatchQueue.main.async { completionBox.handler(false) }
         }
     }
 
