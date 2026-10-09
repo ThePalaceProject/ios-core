@@ -40,7 +40,12 @@ extension MyBooksDownloadCenter: LCPAdapterDownloadCenter {}
 
 extension TPPNetworkExecutor: LCPAdapterNetworkExecutor {
     func fetchLicense(from reqURL: URL) async throws -> (Data, URLResponse?) {
-        try await GET(request: URLRequest(url: reqURL),
+        // `request(for:)` for the reason recorded on
+        // `ProductionAudiobookManifestFetcher.fetchData`: the request-taking
+        // overload dispatches what it is handed, so a bare `URLRequest(url:)`
+        // reaches the CM with no bearer token and the license re-download fails
+        // terminally.
+        try await GET(request: request(for: reqURL),
                       cachePolicy: .useProtocolCachePolicy,
                       useTokenIfAvailable: true)
     }

@@ -27,7 +27,14 @@ final class ProductionAudiobookManifestFetcher: AudiobookManifestNetworkFetching
     }
 
     func fetchData(from url: URL) async throws -> (Data, URLResponse?) {
-        try await executor.GET(request: URLRequest(url: url),
+        // `request(for:)`, not a bare `URLRequest(url:)`. It is what stamps the
+        // `Authorization: Bearer` header, the custom User-Agent, the SAML
+        // cookies, `Accept-Language` and the HTTP/3 opt-out; the request-taking
+        // overload dispatches what it is handed. `useTokenIfAvailable` only
+        // controls the proactive token refresh and does not add the header, and
+        // `TPPNetworkResponder` gates its 401 repair on having sent one — so a
+        // bare request earns a terminal 401 on every audiobook manifest fetch.
+        try await executor.GET(request: executor.request(for: url),
                                cachePolicy: .useProtocolCachePolicy,
                                useTokenIfAvailable: true)
     }

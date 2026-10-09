@@ -334,7 +334,7 @@ person reading code:
 | Where | Found | Outcome |
 |---|---|---|
 | `AudiobookLoader.refreshTokenIfNeeded` | 3.3.0 field crash (PP-5299) | fixed on 3.3.x with a hop, then made unrepresentable here |
-| `AudiobookSessionManager.awaitRemotePosition` | 3.3.0 field crash | fixed separately |
+| `AudiobookPositionResolver.awaitRemotePosition` | 3.3.0 field crash | fixed separately |
 | `EpubSampleFactory.createSample` → `BookCellModel` | reading, PP-5301 | fixed here; reachable by tapping a sample with no network |
 
 ### The reviewer rule
@@ -420,13 +420,15 @@ reason, not by inspection of the happy path:
   nonisolated, so its closures are, and none reaches main-actor-only work. The
   separate `accountId` defect on this path (PP-4986) is recorded at
   `TPPNetworkExecutor.performDataTask`.
-- `Account.loadAuthenticationDocument` and `Account.loadLogo` — `Account` is
-  nonisolated, so the closures these build are too. Their *callers* pass
-  main-actor-isolated closures, and those callers hop; the hops are present at
-  every call site today. This is remedy 3, and it is the largest remaining
-  completion surface in the app: nine call sites, including the sign-in
-  single-flight guard in `AuthDocumentLoader`. Converting it is tracked work,
-  not a claim about today's safety.
+- `Account.loadAuthenticationDocument` — `Account` is nonisolated, so the
+  closure it builds is too. Its *callers* pass main-actor-isolated closures and
+  those callers hop; the hops are present at all nine call sites today. This is
+  remedy 3, and it is the largest remaining completion surface in the app —
+  nine sites, plus the injected closure seam in `AccountRegistryLoader` and the
+  sign-in single-flight guard in `AuthDocumentLoader`. Converting it is tracked
+  work, not a claim about today's safety.
+  (`Account.loadLogo` was in this list until PP-5301 converted it; it takes no
+  closure now and its fetch is awaited.)
 
 ---
 

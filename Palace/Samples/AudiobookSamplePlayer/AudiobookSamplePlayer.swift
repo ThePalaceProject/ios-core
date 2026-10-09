@@ -159,10 +159,21 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
 
         // Awaited, so both arms resume on this `@MainActor` type and neither
         // needs the `DispatchQueue.main.async` they used to carry (PP-5301).
-        Task { @MainActor in
-            switch await sample.fetchSample() {
+        //
+        // `[weak self]` with a re-check after the suspension, matching what the
+        // completion handler did. Holding `self` across the fetch would keep a
+        // dismissed sample player alive to reach `setupPlayer` and start
+        // playing audio for a sheet the patron already closed. Only the sample
+        // itself is held across the await, as the closure did.
+        Task { @MainActor [weak self] in
+            guard let sample = self?.sample else { return }
+
+            let result = await sample.fetchSample()
+
+            guard let self else { return }
+            switch result {
             case let .failure(error, _):
-                Log.error(#file, "Sample download failed for \(self.sample.url): \(error.localizedDescription)")
+                Log.error(#file, "Sample download failed for \(sample.url): \(error.localizedDescription)")
                 TPPErrorLogger.logError(error, summary: "Failed to download sample")
                 self.state = .paused
             case let .success(data, _):

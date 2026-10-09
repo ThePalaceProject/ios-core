@@ -89,9 +89,15 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
                        + "throwing overload does and why this entry point exists")
     }
 
-    /// The success path, and the property that makes awaiting a fix rather than
-    /// a style choice: the caller resumes on its own actor.
-    func testFetchResult_onSuccess_returnsBodyAndResumesOnTheCallersActor() async {
+    /// The success path: the body reaches the caller intact.
+    ///
+    /// Resuming on the caller's actor is not asserted here — this case is
+    /// `@MainActor`, so the compiler already guarantees it and an assertion
+    /// would restate the language rather than test the code. The sibling that
+    /// can fail on that property is
+    /// `testExecute_whenURLSessionCompletesOffMain…`, which records where the
+    /// stub answered as a premise control.
+    func testFetchResult_onSuccess_returnsTheBody() async {
         HTTPStubURLProtocol.register { @Sendable [apiURL] request in
             guard request.url == apiURL else { return nil }
             return .init(statusCode: 200, headers: nil, body: Data("payload".utf8))
@@ -99,7 +105,6 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
 
         let result = await executor.fetchResult(from: apiURL, useTokenIfAvailable: false)
 
-        MainActor.assertIsolated("this test case is @MainActor; an awaited result must resume here")
         guard case .success(let data, _) = result else {
             return XCTFail("expected success, got \(result)")
         }
@@ -122,7 +127,6 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
 
         let result = await executor.refreshToken(accountId: nil)
 
-        MainActor.assertIsolated("the refresh must resume on the caller's actor, not the refresh Task's")
         guard case .success = result else {
             return XCTFail("a 200 from the token endpoint must surface as .success, got \(result)")
         }
@@ -145,6 +149,55 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
         guard case .failure = result else {
             return XCTFail("a refused refresh must surface as .failure, got \(result)")
         }
+    }
+
+    // MARK: - The production conformers must send an authenticated request
+    //
+    // These drive `ProductionAudiobookManifestFetcher` and the executor's
+    // `fetchLicense` rather than the protocols they satisfy. The adapter suites
+    // mock those protocols, so nothing there can see how the real conformer
+    // builds its request — which is how converting these two call sites to a
+    // bare `URLRequest(url:)` passed a 9,755-test suite while dropping the
+    // bearer token from every audiobook manifest fetch and LCP license
+    // re-download. `TPPNetworkResponder` gates its 401 repair on having sent
+    // an auth header, so that failure is terminal rather than retried.
+
+    func testProductionManifestFetcher_sendsTheBearerToken() async throws {
+        let seen = HeaderRecorder()
+        HTTPStubURLProtocol.register { @Sendable [apiURL] request in
+            guard request.url == apiURL else { return nil }
+            seen.record(request.value(forHTTPHeaderField: "Authorization"))
+            return .init(statusCode: 200, headers: nil, body: Data("{}".utf8))
+        }
+
+        let fetcher = ProductionAudiobookManifestFetcher(executor: executor)
+        _ = try await fetcher.fetchData(from: apiURL)
+
+        XCTAssertEqual(seen.value, "Bearer fresh",
+                       "the manifest fetch must carry the account's bearer token — a bare "
+                       + "URLRequest(url:) reaches the CM unauthenticated and the 401 is terminal")
+    }
+
+    func testExecutorFetchLicense_sendsTheBearerToken() async throws {
+        let seen = HeaderRecorder()
+        HTTPStubURLProtocol.register { @Sendable [apiURL] request in
+            guard request.url == apiURL else { return nil }
+            seen.record(request.value(forHTTPHeaderField: "Authorization"))
+            return .init(statusCode: 200, headers: nil, body: Data("{}".utf8))
+        }
+
+        _ = try await executor.fetchLicense(from: apiURL)
+
+        XCTAssertEqual(seen.value, "Bearer fresh",
+                       "the LCP license re-download must carry the account's bearer token")
+    }
+
+    /// Carries a header value off URLSession's queue.
+    private final class HeaderRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage: String?
+        func record(_ value: String?) { lock.lock(); storage = value; lock.unlock() }
+        var value: String? { lock.lock(); defer { lock.unlock() }; return storage }
     }
 
     /// Thread-safe counter: the stub runs on URLSession's queue, so a plain

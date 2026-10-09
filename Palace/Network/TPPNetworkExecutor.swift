@@ -609,8 +609,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         // is `execute(_:enableTokenRefresh:accountId:)` and Settings sign-in
         // awaits it with `accountId: libraryAccountID`
         // (`TPPSignInBusinessLogic.swift:521`). `Account.getProfileDocument`
-        // passes `accountId: self.uuid` through this file's completion form
-        // (`Account+profileDocument.swift:88`).
+        // passes `accountId: self.uuid` through the same awaited `execute`
+        // (`Account+profileDocument.swift:101`); it used this file's completion
+        // form until PP-5301 converted it.
         //
         // Still not covered: `NotificationService.deleteToken(for:)`. It
         // dispatches through `addBearerAndExecute`, which takes no account and

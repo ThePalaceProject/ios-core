@@ -834,7 +834,7 @@ private final class LicensorBox: @unchecked Sendable {
 
 /// Resumes a non-throwing continuation exactly once.
 ///
-/// Two producers race for it: `getProfileDocument`'s completion handler and the
+/// Two producers race for it: the awaited licensor producer and the
 /// refresh deadline. A completion handler invoked twice, or a deadline that
 /// fires after the fetch landed, would resume a `CheckedContinuation` twice — a
 /// hard runtime trap, not a recoverable error. Sibling of `OneShotContinuation`

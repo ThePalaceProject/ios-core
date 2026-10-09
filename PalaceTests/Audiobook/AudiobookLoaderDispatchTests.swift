@@ -299,7 +299,18 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     func testLoad_cancelDuringDispatch_surfacesCancelled() async {
         let openAccess = SpyAdapter(label: "open", handles: true,
                                     stubbedResult: .success((json: manifestStub, decryptor: nil)))
-        let loader = makeLoader([openAccess])
+        let refreshes = RefreshCallCounter()
+        let expiredAccount = Self.refreshableExpiredAccount()
+        let loader = AudiobookLoader(
+            adapters: [openAccess],
+            currentUserAccount: { expiredAccount },
+            refreshToken: { _ in
+                refreshes.increment()
+                return .success(Data(), nil)
+            },
+            currentAccountId: { nil },
+            isTokenValid: { true }
+        )
 
         var seenError: AudiobookLoadError?
         loader.cancel()
@@ -319,6 +330,20 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
                        "a loader cancelled before load must not consult the adapter chain at all")
         XCTAssertEqual(openAccess.resolveCallCount, 0,
                        "and must not fetch a manifest it is going to throw away")
+        // The guard sits ABOVE `refreshTokenIfNeeded`, so the adapter counts
+        // alone leave its nearer half unpinned. The account here has an expired
+        // token, so without the guard the refresh seam is reached.
+        XCTAssertEqual(refreshes.value, 0,
+                       "a superseded open must not spend a token exchange, which also means not "
+                       + "contending for the PP-4542 single-flight slot")
+    }
+
+    /// Counts refresh-seam invocations across the `@Sendable` boundary.
+    private final class RefreshCallCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        func increment() { lock.lock(); count += 1; lock.unlock() }
+        var value: Int { lock.lock(); defer { lock.unlock() }; return count }
     }
 
     // MARK: - PP-5299 — the refresh outcome must reach the main actor
