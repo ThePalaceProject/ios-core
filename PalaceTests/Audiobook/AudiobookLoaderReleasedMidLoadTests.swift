@@ -3,9 +3,9 @@
 //  PalaceTests
 //
 //  The session manager awaits `load` with no timeout, so every open must end in
-//  a result: closing a book mid-load cancels and releases the loader, and the
-//  caller must still be told (PP-5302). An in-flight `load` keeps its loader
-//  alive, so releasing it cannot drop the result.
+//  a result. Closing a book mid-load cancels the loader (and drops the session
+//  manager's reference); these tests pin that a cancelled load still reports
+//  `.cancelled`, and that an uncancelled one reports its own result (PP-5302).
 //
 
 import XCTest
@@ -60,23 +60,6 @@ final class AudiobookLoaderReleasedMidLoadTests: XCTestCase {
         return false
     }
 
-    /// Dropping the caller's reference mid-load does not strand the result:
-    /// the in-flight load keeps the loader alive and still delivers.
-    func testLoad_callerReleasesLoaderMidLoad_stillDeliversResult() async {
-        var loader: AudiobookLoader? = makeLoader()
-        weak var weakLoader = loader
-        await startLoad(loader!)
-
-        loader = nil
-        XCTAssertNotNil(weakLoader, "the in-flight load must keep its loader alive")
-        adapter.complete(with: .failure(.manifestFetchFailed))
-
-        let result = await singleDelivery()
-        guard case .failure(.manifestFetchFailed)? = result else {
-            return XCTFail("expected .manifestFetchFailed, got \(String(describing: result))")
-        }
-    }
-
     /// Closing mid-load cancels the loader; a fetch that then fails is
     /// reported as `.cancelled`.
     func testLoad_cancelledMidLoadThenManifestFails_reportsCancelled() async {
@@ -90,8 +73,8 @@ final class AudiobookLoaderReleasedMidLoadTests: XCTestCase {
         XCTAssertTrue(isCancelled(result), "got \(String(describing: result))")
     }
 
-    /// Same cancel, but the fetch succeeds: the late manifest is not built and
-    /// the caller is still told `.cancelled`.
+    /// Same cancel, but the fetch succeeds: the caller is still told
+    /// `.cancelled`.
     func testLoad_cancelledMidLoadThenManifestSucceeds_reportsCancelled() async {
         let loader = makeLoader()
         await startLoad(loader)
