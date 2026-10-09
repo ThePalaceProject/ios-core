@@ -200,10 +200,14 @@ final class AdobeActivationWriteLintTests: XCTestCase {
             }
         }
 
-        // A lint that finds no call sites reports a pass. There are four:
-        // three decision sites plus the service wrapper's own parameter.
-        XCTAssertGreaterThanOrEqual(callSites, 4,
-                                    "expected the recordedGeneration call sites, found \(callSites)")
+        // A census, not a formality. There are 7 `recordedGeneration:` lines in
+        // Palace/: the protocol parameter, the service's parameter and forward,
+        // the gate, and the three decision sites. Asserting >= 4 meant three
+        // could vanish — including a whole conjunct at a decision site — with
+        // this lint still green.
+        XCTAssertGreaterThanOrEqual(callSites, 7,
+                                    "expected 7 recordedGeneration sites, found \(callSites); "
+                                    + "a removed call site must fail this, not shrink it")
         XCTAssertTrue(
             violators.isEmpty,
             "a skip-activation decision must use the account's recorded generation; "
@@ -222,6 +226,40 @@ final class AdobeActivationWriteLintTests: XCTestCase {
         XCTAssertFalse(Self.passesAConstantGeneration("                recordedGeneration: Int?,"))
         XCTAssertFalse(Self.passesAConstantGeneration(
             "                       recordedGeneration: recordedGeneration)"))
+    }
+
+    /// Deleting a conjunct is invisible to every other guard here: remove
+    /// `!drmAuthorizer.canUseRecordedActivation(...)` from a decision site and
+    /// no `isUserAuthorized(` appears, no `recordedGeneration:` line survives,
+    /// and no test fails — because at `current == preMarker` the predicate and
+    /// the connector's bare verdict agree at every site.
+    ///
+    /// So the sites are named. A rename moves this test; a deletion fails it.
+    func testEveryKnownDecisionSiteStillAsksThePredicate() throws {
+        let expected = [
+            "TPPSignInBusinessLogic.swift",
+            "TPPSignInBusinessLogic+DRM.swift",
+            "BookDetailViewModel.swift"
+        ]
+        let files = try productionSwiftFiles()
+        XCTAssertGreaterThan(files.count, 100,
+                             "expected to walk the production sources, found \(files.count)")
+
+        var asking: Set<String> = []
+        for url in files {
+            guard expected.contains(url.lastPathComponent) else { continue }
+            guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            if src.contains("canUseRecordedActivation(") {
+                asking.insert(url.lastPathComponent)
+            }
+        }
+
+        for site in expected {
+            XCTAssertTrue(asking.contains(site),
+                          "\(site) decides whether to skip Adobe activation and must ask "
+                          + "canUseRecordedActivation; dropping the call restores PP-5026 "
+                          + "with every other guard still green")
+        }
     }
 
     /// Proves the lint can fail, by calling the predicate the corpus scan uses.

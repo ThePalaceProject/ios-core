@@ -194,6 +194,50 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
                        "a device activated under the current connector is already activated")
     }
 
+    // MARK: - The predicate's own guards
+
+    /// Measured survivor before this existed: flipping
+    /// `guard let userID, let deviceID else { return false }` to `return true`
+    /// left every test green. Both tested call sites unwrap before calling, so
+    /// the else branch never executed under test — and a device with no
+    /// identifiers would have been reported usable, handing an already-known
+    /// answer to the non-thread-safe RMSDK.
+    func testNilIdentifiersAreNotUsable_AndDoNotEnterTheConnector() {
+        XCTAssertFalse(drm.canUseRecordedActivation(
+            userID: nil, deviceID: "device",
+            recordedGeneration: AdobeConnectorGeneration.current))
+        XCTAssertFalse(drm.canUseRecordedActivation(
+            userID: "user", deviceID: nil,
+            recordedGeneration: AdobeConnectorGeneration.current))
+        XCTAssertFalse(drm.canUseRecordedActivation(
+            userID: nil, deviceID: nil, recordedGeneration: nil))
+
+        XCTAssertEqual(drm.isUserAuthorizedCallCount, 0,
+                       "missing identifiers are decisive without asking the connector")
+    }
+
+    /// F3: the settling property, driven on ONE account instead of composed
+    /// across two tests with a seeded intermediate. A write landing on the wrong
+    /// field, or after the next gate read, keeps the composed pair green.
+    func testOnAWiproBuild_ActivatingTwiceSettlesAfterTheFirst() async throws {
+        drm.isUserAuthorizedReturnValue = true
+        drm.authorizeShouldSucceed = true
+        let account = GenerationAccount(licensor: Self.validLicensor,
+                                        userID: "old-user",
+                                        deviceID: "old-device",
+                                        generation: 1)
+
+        try await activate(account, connectorGeneration: 2)
+        await waitFor("the migrated generation to be recorded") {
+            account.adobeActivationConnectorGeneration == 2
+        }
+        try await activate(account, connectorGeneration: 2)
+
+        XCTAssertEqual(drm.authorizeCallCount, 1,
+                       "the second operation must skip: a migration that re-activates "
+                       + "every time spends an activation slot on each one")
+    }
+
     // MARK: - The connector swap, driven through the gate
 
     /// The case PP-5251 exists for, end to end rather than as pure logic.
