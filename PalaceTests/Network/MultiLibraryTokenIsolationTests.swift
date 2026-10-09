@@ -138,7 +138,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         return AccountDetails.Authentication(auth: docAuth)
     }
 
-    private static func tokenResponseJSON(accessToken: String,
+    private nonisolated static func tokenResponseJSON(accessToken: String,
                                           expiresIn: Int = 3600) -> Data {
         return """
         {"access_token":"\(accessToken)","token_type":"Bearer","expires_in":\(expiresIn)}
@@ -187,21 +187,21 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
     func test_GET_ForLibraryB_SendsBBearerOverWire() async throws {
         libraryProvider.switchToB()
 
-        var capturedAuth: String?
-        var capturedHost: String?
-        HTTPStubURLProtocol.register { [apiURL_B] request in
+        let capturedAuth = LockIsolated<String?>(nil)
+        let capturedHost = LockIsolated<String?>(nil)
+        HTTPStubURLProtocol.register { @Sendable [apiURL_B] request in
             guard request.url == apiURL_B else { return nil }
-            capturedAuth = request.value(forHTTPHeaderField: "Authorization")
-            capturedHost = request.url?.host
+            capturedAuth.value = request.value(forHTTPHeaderField: "Authorization")
+            capturedHost.value = request.url?.host
             return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
         }
 
         let done = expectation(description: "GET completes")
-        executor.GET(apiURL_B) { _ in done.fulfill() }
+        executor.GET(apiURL_B) { @Sendable _ in done.fulfill() }
         await fulfillment(of: [done], timeout: 5.0)
 
-        XCTAssertEqual(capturedHost, "api.libraryB.example.com")
-        XCTAssertEqual(capturedAuth, "Bearer bearerB",
+        XCTAssertEqual(capturedHost.value, "api.libraryB.example.com")
+        XCTAssertEqual(capturedAuth.value, "Bearer bearerB",
                        "Wire-level: B's API must see B's bearer — kills any mutation that bypasses the injected accountsManager")
     }
 
@@ -217,7 +217,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         libraryProvider.switchToA()
         await executor.resetRefreshAttemptCount()
 
-        HTTPStubURLProtocol.register { [tokenURL_A] request in
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_A] request in
             guard request.url == tokenURL_A else { return nil }
             return .init(statusCode: 200,
                          headers: nil,
@@ -227,9 +227,11 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         // Snapshot B before refresh: must not change.
         let bBefore = libraryProvider.accountB.authToken
 
+        // `@Sendable`: the executor calls this from its refresh Task. Formed
+        // here without it, the closure is main-actor isolated and traps.
         let done = expectation(description: "refresh A done")
         executor.refreshTokenAndResume(task: nil,
-                                       accountId: libraryProvider.uuidA) { _ in
+                                       accountId: libraryProvider.uuidA) { @Sendable _ in
             done.fulfill()
         }
         await fulfillment(of: [done], timeout: 5.0)
@@ -252,17 +254,17 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
     func test_RefreshForA_AfterSwitchToB_StillHitsAsTokenURL() async throws {
         await executor.resetRefreshAttemptCount()
 
-        var seenA = 0
-        var seenB = 0
-        HTTPStubURLProtocol.register { [tokenURL_A, tokenURL_B] request in
+        let seenA = LockIsolated(0)
+        let seenB = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_A, tokenURL_B] request in
             if request.url == tokenURL_A {
-                seenA += 1
+                seenA.withValue { $0 += 1 }
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "freshA"))
             }
             if request.url == tokenURL_B {
-                seenB += 1
+                seenB.withValue { $0 += 1 }
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "freshB-WRONG"))
@@ -277,14 +279,14 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         libraryProvider.switchToB()
 
         let done = expectation(description: "refresh A done")
-        executor.refreshTokenAndResume(task: nil, accountId: aId) { _ in
+        executor.refreshTokenAndResume(task: nil, accountId: aId) { @Sendable _ in
             done.fulfill()
         }
         await fulfillment(of: [done], timeout: 5.0)
 
-        XCTAssertEqual(seenA, 1,
+        XCTAssertEqual(seenA.value, 1,
                        "Refresh for A must hit A's tokenURL — kills mutation that resolves tokenURL via currentUserAccount instead of accountId")
-        XCTAssertEqual(seenB, 0,
+        XCTAssertEqual(seenB.value, 0,
                        "Refresh for A must NOT hit B's tokenURL even after switching currency — kills cross-library tokenURL leak (kills `accountId ?? currentAccountId` mutation that drops the accountId arg)")
         XCTAssertEqual(libraryProvider.accountB.authToken, "bearerB",
                        "B's bearer untouched by A's refresh even with B as current")
@@ -329,7 +331,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         // clones — recurrence class `parallel-clone-starvation`, which has
         // reddened this board repeatedly (STARVE-001).
         let sawRetry = expectation(description: "retried request reached the stub")
-        HTTPStubURLProtocol.register { [tokenURL_A, apiURL_A] request in
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_A, apiURL_A] request in
             if request.url == tokenURL_A {
                 return .init(statusCode: 200,
                              headers: nil,
@@ -349,7 +351,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         libraryProvider.switchToA()
         let sent = expectation(description: "original request completes")
         let originalTask = executor.GET(request: URLRequest(url: apiURL_A),
-                                        useTokenIfAvailable: true) { _, _, _ in
+                                        useTokenIfAvailable: true) { @Sendable _, _, _ in
             sent.fulfill()
         }
         await fulfillment(of: [sent], timeout: 5.0)   // STARVE-001-OK: HTTPStubURLProtocol always answers; no real network is reachable
@@ -363,7 +365,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
             dispatched, accountIdAtRefreshStart: libraryProvider.uuidB)
 
         let done = expectation(description: "refresh completes")
-        executor.refreshTokenAndResume(task: nil, accountId: libraryProvider.uuidA) { _ in
+        executor.refreshTokenAndResume(task: nil, accountId: libraryProvider.uuidA) { @Sendable _ in
             done.fulfill()
         }
         await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: HTTPStubURLProtocol always answers; no real network is reachable
@@ -376,6 +378,53 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
                        "PP-4986: the retry must carry the library the request was DISPATCHED for. 'Bearer bearerB' is the leak — the rebuild resolved the account current at 401 instead of the task's own provenance.")
         XCTAssertEqual(libraryProvider.accountB.authToken, "bearerB",
                        "B's stored bearer must be untouched by A's refresh-and-retry")
+    }
+
+    /// PP-4986: a retry for a library that signed out after dispatch carries no
+    /// bearer. Keeping the original header would resend B's token; A's is the leak.
+    func test_QueuedRetry_DispatchAccountSignedOut_SendsNoAuthorization() async throws {
+        await executor.resetRefreshAttemptCount()
+
+        let observed = LockedHeaders()
+        let sawRetry = expectation(description: "retried request reached the stub")
+        HTTPStubURLProtocol.register { [tokenURL_A, apiURL_B] request in
+            if request.url == tokenURL_A {
+                return .init(statusCode: 200,
+                             headers: nil,
+                             body: Self.tokenResponseJSON(accessToken: "freshA"))
+            }
+            if request.url == apiURL_B {
+                observed.append(
+                    request.value(forHTTPHeaderField: "Authorization") ?? "<none>")
+                if observed.count == 2 { sawRetry.fulfill() }   // the retry, not the original
+                return .init(statusCode: 200, headers: nil, body: Data())
+            }
+            return nil
+        }
+
+        libraryProvider.switchToB()
+        let sent = expectation(description: "original request completes")
+        let originalTask = executor.GET(request: executor.request(for: apiURL_B, accountId: libraryProvider.uuidB),
+                                        useTokenIfAvailable: true) { _, _, _ in
+            sent.fulfill()
+        }
+        await fulfillment(of: [sent], timeout: 5.0)   // STARVE-001-OK: the stub answers at once
+        let dispatched = try XCTUnwrap(originalTask, "the executor must return the dispatched task")
+
+        // B signs out before the retry is rebuilt.
+        libraryProvider.accountB._credentials = nil
+        await executor.appendTokenRetryForTesting(
+            dispatched, accountIdAtRefreshStart: libraryProvider.uuidA)
+
+        let done = expectation(description: "refresh completes")
+        executor.refreshTokenAndResume(task: nil, accountId: libraryProvider.uuidA) { _ in
+            done.fulfill()
+        }
+        await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: the stub answers at once
+        await fulfillment(of: [sawRetry], timeout: 5.0)   // STARVE-001-OK: fulfilled by the stub on the retry itself
+
+        XCTAssertEqual(observed.all, ["Bearer bearerB", "<none>"],
+                       "the original carries B's bearer; the retry must carry neither B's old bearer nor A's fresh one")
     }
 
     // MARK: - PP-4986 gap 2: a request BUILT for another library
@@ -391,7 +440,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
     /// fix for a vacuous test. The stamp is what the overload actually decides,
     /// and it is what the retry rebuild reads.
     func test_executeRequest_forANonCurrentLibrary_stampsThatLibraryOnTheTask() async throws {
-        HTTPStubURLProtocol.register { [apiURL_A] request in
+        HTTPStubURLProtocol.register { @Sendable [apiURL_A] request in
             guard request.url == apiURL_A else { return nil }
             return .init(statusCode: 200, headers: nil, body: Data())
         }
@@ -403,7 +452,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         let task = executor.executeRequest(executor.request(for: apiURL_A,
                                                             accountId: libraryProvider.uuidA),
                                            enableTokenRefresh: false,
-                                           accountId: libraryProvider.uuidA) { _ in
+                                           accountId: libraryProvider.uuidA) { @Sendable _ in
             done.fulfill()
         }
         await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: HTTPStubURLProtocol always answers; no real network is reachable
@@ -417,7 +466,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
     /// caller changes behaviour silently. Without this, a fix that always used
     /// some other account would pass the test above.
     func test_executeRequest_withNoAccountNamed_stampsTheCurrentLibrary() async throws {
-        HTTPStubURLProtocol.register { [apiURL_B] request in
+        HTTPStubURLProtocol.register { @Sendable [apiURL_B] request in
             guard request.url == apiURL_B else { return nil }
             return .init(statusCode: 200, headers: nil, body: Data())
         }
@@ -426,7 +475,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
         let done = expectation(description: "request completes")
         let task = executor.executeRequest(executor.request(for: apiURL_B),
-                                           enableTokenRefresh: false) { _ in
+                                           enableTokenRefresh: false) { @Sendable _ in
             done.fulfill()
         }
         await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: HTTPStubURLProtocol always answers; no real network is reachable
@@ -471,14 +520,14 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         XCTAssertEqual(libraryProvider.accountA.authState, .loggedIn)
         XCTAssertEqual(libraryProvider.accountB.authState, .loggedIn)
 
-        HTTPStubURLProtocol.register { [tokenURL_A] request in
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_A] request in
             guard request.url == tokenURL_A else { return nil }
             return .init(statusCode: 401, headers: nil, body: Data("denied".utf8))
         }
 
         let done = expectation(description: "refresh fails")
         executor.refreshTokenAndResume(task: nil,
-                                       accountId: libraryProvider.uuidA) { _ in
+                                       accountId: libraryProvider.uuidA) { @Sendable _ in
             done.fulfill()
         }
         await fulfillment(of: [done], timeout: 5.0)
@@ -516,7 +565,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
           "detail": "Your library card has expired. Please renew it at any branch."
         }
         """
-        HTTPStubURLProtocol.register { [tokenURL_A] request in
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_A] request in
             guard request.url == tokenURL_A else { return nil }
             return .init(
                 statusCode: 401,
@@ -526,15 +575,16 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         }
 
         let done = expectation(description: "refresh failure")
-        var observedError: NSError?
+        let observed = LockIsolated<NSError?>(nil)
         executor.refreshTokenAndResume(task: nil,
-                                       accountId: libraryProvider.uuidA) { result in
+                                       accountId: libraryProvider.uuidA) { @Sendable result in
             if case .failure(let err, _) = result {
-                observedError = err as NSError
+                observed.value = err as NSError
             }
             done.fulfill()
         }
         await fulfillment(of: [done], timeout: 5.0)
+        let observedError = observed.value
 
         XCTAssertNotNil(observedError, "401 must surface as a failure")
         XCTAssertNotNil(observedError?.problemDocument,
@@ -558,7 +608,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         libraryProvider.switchToA()
         await executor.resetRefreshAttemptCount()
 
-        HTTPStubURLProtocol.register { [tokenURL_A] request in
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_A] request in
             guard request.url == tokenURL_A else { return nil }
             // Plain text body — not a problem document.
             return .init(statusCode: 401,
@@ -567,15 +617,16 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         }
 
         let done = expectation(description: "refresh failure")
-        var observedError: NSError?
+        let observed = LockIsolated<NSError?>(nil)
         executor.refreshTokenAndResume(task: nil,
-                                       accountId: libraryProvider.uuidA) { result in
+                                       accountId: libraryProvider.uuidA) { @Sendable result in
             if case .failure(let err, _) = result {
-                observedError = err as NSError
+                observed.value = err as NSError
             }
             done.fulfill()
         }
         await fulfillment(of: [done], timeout: 5.0)
+        let observedError = observed.value
 
         XCTAssertNotNil(observedError)
         XCTAssertNil(observedError?.problemDocument,
@@ -631,15 +682,15 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
         let postBody = Data(#"{"book_id":"B-42","idempotency_key":"k-B-42"}"#.utf8)
 
-        var capturedAuth: String?
-        var capturedBody: Data?
-        var capturedHost: String?
-        HTTPStubURLProtocol.register { [apiURL_B] request in
+        let capturedAuth = LockIsolated<String?>(nil)
+        let capturedBody = LockIsolated<Data?>(nil)
+        let capturedHost = LockIsolated<String?>(nil)
+        HTTPStubURLProtocol.register { @Sendable [apiURL_B] request in
             guard request.url == apiURL_B else { return nil }
-            capturedAuth = request.value(forHTTPHeaderField: "Authorization")
-            capturedHost = request.url?.host
+            capturedAuth.value = request.value(forHTTPHeaderField: "Authorization")
+            capturedHost.value = request.url?.host
             if let direct = request.httpBody {
-                capturedBody = direct
+                capturedBody.value = direct
             } else if let stream = request.httpBodyStream {
                 stream.open()
                 defer { stream.close() }
@@ -650,7 +701,7 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
                     if n <= 0 { break }
                     collected.append(buffer, count: n)
                 }
-                capturedBody = collected
+                capturedBody.value = collected
             }
             return .init(statusCode: 201, headers: nil, body: Data("created".utf8))
         }
@@ -661,13 +712,13 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let done = expectation(description: "POST completes")
-        executor.POST(req, useTokenIfAvailable: true) { _, _, _ in done.fulfill() }
+        executor.POST(req, useTokenIfAvailable: true) { @Sendable _, _, _ in done.fulfill() }
         await fulfillment(of: [done], timeout: 5.0)
 
-        XCTAssertEqual(capturedHost, "api.libraryB.example.com")
-        XCTAssertEqual(capturedAuth, "Bearer bearerB",
+        XCTAssertEqual(capturedHost.value, "api.libraryB.example.com")
+        XCTAssertEqual(capturedAuth.value, "Bearer bearerB",
                        "POST must carry B's bearer — kills cross-library leak on writes")
-        XCTAssertEqual(capturedBody, postBody,
+        XCTAssertEqual(capturedBody.value, postBody,
                        "POST body bytes must round-trip exactly — kills mutation that re-encodes / drops the body on the active-tasks path")
     }
 

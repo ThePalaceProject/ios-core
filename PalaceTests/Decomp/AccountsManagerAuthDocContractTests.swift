@@ -103,12 +103,12 @@ final class AccountsManagerAuthDocContractTests: PalaceWiringTestCase {
         AccountStateStore.shared.reset(for: uuid)
     }
 
-    // NOTE: The per-UUID single-flight dedup (two concurrent same-UUID fetches →
-    // one `.detailsLoading`) is deliberately NOT re-pinned here. It is already
-    // covered by `AccountsManagerStateMachineWiringTests`
-    // `testSingleFlight_twoConcurrentAwaiters_oneNetworkRequest`, and pinning it
-    // requires two-thread interleaving whose determinism hinges on the timing of
-    // the (network-free) completion — a racy shape this deterministic pack avoids.
+    // NOTE: The per-UUID single-flight dedup (two overlapping same-UUID fetches →
+    // one `.detailsLoading`) is not re-pinned here. It is covered by
+    // `AccountsManagerStateMachineWiringTests`
+    // `testSingleFlight_secondCallerDuringInflightFetch_doesNotFetchAgain` (which
+    // holds the first fetch open to force the overlap) and
+    // `testSingleFlight_callerAfterPriorFetchCompleted_fetchesAgain`.
 
     // MARK: - Helpers
 
