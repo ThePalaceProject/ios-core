@@ -124,16 +124,16 @@ final class LCPTrackFileWriterTests: XCTestCase {
             manifest: Manifest(metadata: Metadata(title: "Track")),
             container: SingleResourceContainer(resource: resource, at: AnyURL(path: "track.mp3")!)
         )
-        let finished = expectation(description: "decrypt completes")
-        let result = LockedError()
+        let destination = self.destination
 
-        LCPAudiobooks.decryptWithPublication(publication, url: URL(string: "track.mp3")!, to: destination) { error in
-            result.set(error)
-            finished.fulfill()
+        // Joins the completion directly, which fires exactly once, instead of polling a deadline.
+        let error: Error? = await withCheckedContinuation { continuation in
+            LCPAudiobooks.decryptWithPublication(publication, url: URL(string: "track.mp3")!, to: destination) { error in
+                continuation.resume(returning: error)
+            }
         }
-        await fulfillment(of: [finished], timeout: 10)
 
-        XCTAssertNil(result.value)
+        XCTAssertNil(error)
         XCTAssertFalse(resource.requestedRanges.contains { $0 == nil }, "A nil range reads the whole track into memory")
         XCTAssertEqual(resource.requestedRanges.count, 2)
         XCTAssertEqual(try Data(contentsOf: destination), input)
@@ -217,14 +217,6 @@ private enum FakeTrackError: Error, Equatable {
     case decryptFailed
     case lengthUnavailable
     case tooManyReads
-}
-
-private final class LockedError: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: Error?
-
-    func set(_ error: Error?) { lock.withLock { stored = error } }
-    var value: Error? { lock.withLock { stored } }
 }
 
 /// In-memory `Resource` that records every requested range and can fail from a given offset.
