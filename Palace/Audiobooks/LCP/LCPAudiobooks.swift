@@ -406,7 +406,7 @@ extension LCPAudiobooks {
             return
         }
         if let publication = getPublication() {
-            decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
+            Self.decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
             return
         }
         // No cached publication means this decryptor's session has ended (either never
@@ -415,7 +415,7 @@ extension LCPAudiobooks {
         completion(Self.releasedError())
     }
 
-    private func decryptWithPublication(_ publication: Publication, url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
+    static func decryptWithPublication(_ publication: Publication, url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
         if let resource = publication.getResource(at: url.path) {
             // The completion originates from the toolkit's `@objc public
             // protocol DRMDecryptor` (off-limits submodule), so its parameter
@@ -519,10 +519,10 @@ enum LCPTrackFileWriter {
                 throw error
             }
 
-            if fileManager.fileExists(atPath: destination.path) {
-                _ = try fileManager.replaceItemAt(destination, withItemAt: partial)
-            } else {
-                try fileManager.moveItem(at: partial, to: destination)
+            // rename(2) replaces an existing destination atomically, so a concurrent
+            // decrypt of the same track cannot fail on "file exists".
+            guard rename(partial.path, destination.path) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
         } catch {
             try? fileManager.removeItem(at: partial)

@@ -101,6 +101,44 @@ final class LCPTrackFileWriterTests: XCTestCase {
         XCTAssertEqual(try directoryContents(), ["track.mp3"])
     }
 
+    // MARK: - Production defaults
+
+    /// The default chunk size bounds each read at 1 MiB, the limit the PP-5347 fix depends on.
+    func testWrite_DefaultChunkSize_BoundsEachReadAtOneMebibyte() async throws {
+        let oneMiB = 1_048_576
+        let input = bytes(oneMiB * 2 + 5)
+        let resource = FakeTrackResource(data: input)
+
+        try await LCPTrackFileWriter.write(resource, to: destination)
+
+        XCTAssertEqual(resource.requestedRanges.map { $0?.count }, [oneMiB, oneMiB, oneMiB])
+        XCTAssertEqual(try Data(contentsOf: destination), input)
+    }
+
+    /// The decrypt path the toolkit calls writes the track through bounded reads, not one whole read.
+    func testDecryptWithPublication_WritesTrackThroughBoundedReads() async throws {
+        let oneMiB = 1_048_576
+        let input = bytes(oneMiB + 7)
+        let resource = FakeTrackResource(data: input)
+        let publication = Publication(
+            manifest: Manifest(metadata: Metadata(title: "Track")),
+            container: SingleResourceContainer(resource: resource, at: AnyURL(path: "track.mp3")!)
+        )
+        let finished = expectation(description: "decrypt completes")
+        let result = LockedError()
+
+        LCPAudiobooks.decryptWithPublication(publication, url: URL(string: "track.mp3")!, to: destination) { error in
+            result.set(error)
+            finished.fulfill()
+        }
+        await fulfillment(of: [finished], timeout: 10)
+
+        XCTAssertNil(result.value)
+        XCTAssertFalse(resource.requestedRanges.contains { $0 == nil }, "A nil range reads the whole track into memory")
+        XCTAssertEqual(resource.requestedRanges.count, 2)
+        XCTAssertEqual(try Data(contentsOf: destination), input)
+    }
+
     // MARK: - Errors
 
     /// A read error mid-track is rethrown unchanged and leaves neither a destination nor a partial file.
@@ -179,6 +217,14 @@ private enum FakeTrackError: Error, Equatable {
     case decryptFailed
     case lengthUnavailable
     case tooManyReads
+}
+
+private final class LockedError: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Error?
+
+    func set(_ error: Error?) { lock.withLock { stored = error } }
+    var value: Error? { lock.withLock { stored } }
 }
 
 /// In-memory `Resource` that records every requested range and can fail from a given offset.
