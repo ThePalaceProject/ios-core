@@ -59,11 +59,12 @@ final class MockBackendURLProtocolDeliveryTests: XCTestCase {
 
     // MARK: - Direct client, recording thread and order
 
-    /// Response, data and finish arrive in that order, all on the startLoading thread.
-    func testImmediateRoute_CallsClientOnStartLoadingThread_InOrder() {
+    /// Response and data arrive inside startLoading and finish on a later run loop
+    /// pass, all on the startLoading thread; the responder relies on that pass.
+    func testImmediateRoute_CallsClientOnStartLoadingThread_FinishAfterReturn() {
         let run = startLoadingOnDedicatedThread(path: "immediate")
 
-        XCTAssertEqual(run.events.map(\.name), ["response", "data", "finish"])
+        XCTAssertEqual(run.events.map(\.name), ["response", "data", "startLoadingReturned", "finish"])
         XCTAssertTrue(run.events.allSatisfy { $0.thread === run.loadingThread },
                       "Every client call must happen on the thread that called startLoading")
     }
@@ -72,7 +73,7 @@ final class MockBackendURLProtocolDeliveryTests: XCTestCase {
     func testDelayedRoute_CallsClientOnStartLoadingThread_InOrder() {
         let run = startLoadingOnDedicatedThread(path: "delayed")
 
-        XCTAssertEqual(run.events.map(\.name), ["response", "data", "finish"])
+        XCTAssertEqual(run.events.map(\.name), ["startLoadingReturned", "response", "data", "finish"])
         XCTAssertTrue(run.events.allSatisfy { $0.thread === run.loadingThread },
                       "Every client call must happen on the thread that called startLoading")
     }
@@ -81,8 +82,8 @@ final class MockBackendURLProtocolDeliveryTests: XCTestCase {
     func testMissingFixture_FailsOnStartLoadingThread() {
         let run = startLoadingOnDedicatedThread(path: "missing")
 
-        XCTAssertEqual(run.events.map(\.name), ["fail"])
-        XCTAssertTrue(run.events.first?.thread === run.loadingThread)
+        XCTAssertEqual(run.events.map(\.name), ["fail", "startLoadingReturned"])
+        XCTAssertTrue(run.events.allSatisfy { $0.thread === run.loadingThread })
     }
 
     // MARK: - Helpers
@@ -128,13 +129,18 @@ final class MockBackendURLProtocolDeliveryTests: XCTestCase {
 
     private func startLoadingOnDedicatedThread(path: String) -> LoadingRun {
         let finished = expectation(description: "client reached a terminal call")
+        let returned = expectation(description: "startLoading returned")
         let client = SpyClient(onTerminal: { finished.fulfill() })
         let request = URLRequest(url: URL(string: "\(Self.base)/\(path)")!)
         let loader = MockBackendURLProtocol(request: request, cachedResponse: nil, client: client)
 
-        let thread = RunLoopThread { loader.startLoading() }
+        let thread = RunLoopThread {
+            loader.startLoading()
+            client.mark("startLoadingReturned")
+            returned.fulfill()
+        }
         thread.start()
-        wait(for: [finished], timeout: 5)
+        wait(for: [finished, returned], timeout: 5)
         // Let any late, unexpected client call land before reading the log.
         Thread.sleep(forTimeInterval: 0.1)
         thread.cancel()
@@ -189,6 +195,11 @@ private final class SpyClient: NSObject, URLProtocolClient, @unchecked Sendable 
     var events: [Event] {
         lock.lock(); defer { lock.unlock() }
         return recorded
+    }
+
+    /// Records a test-side marker in the same sequence as client callbacks.
+    func mark(_ name: String) {
+        record(name)
     }
 
     private func record(_ name: String) {
