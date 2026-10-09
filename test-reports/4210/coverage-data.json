@@ -1,7 +1,6 @@
 {
   "status": "incomplete",
   "incomplete_reasons": [
-    "not every planned test class ran: shard 0 did not run: PalaceTests/AudiobookBackgroundAudioTests, PalaceTests/AuthErrorCategoryTests, PalaceTests/BookDetailInfoValueLinkTests, PalaceTests/CarPlayPlaybackOutcomeTests, PalaceTests/CarPlayTemplateCompletionLintTests, PalaceTests/ConcurrentBookStateTests, PalaceTests/ConcurrentTokenRefreshTests, PalaceTests/DownloadCoordinatorTests, PalaceTests/NSNotificationTPPTests, PalaceTests/NotificationEventTypeContractTests, PalaceTests/OfflineQueueServiceTests, PalaceTests/ReaderBookmarkSyncGateTests, PalaceTests/SignInWebSheetViewModelTests, PalaceTests/SingletonResetRegistryTests, Palace;16 planned class(es) ran in no shard: PalaceTests/AudiobookBackgroundAudioTests, PalaceTests/AuthErrorCategoryTests, PalaceTests/BookDetailInfoValueLinkTests, PalaceTests/CarPlayPlaybackOutcomeTests, PalaceTests/CarPlayTemplateCompletionLintTests, PalaceTests/ConcurrentBookStateTests, PalaceTests/ConcurrentTokenRefreshTests, PalaceTests/DownloadCoordinatorTests, PalaceTests/NSNotificationTPPTests, PalaceTests/NotificationEventTypeContractTests, PalaceTests/OfflineQueueServiceTests, PalaceTests/ReaderBookmarkSyncGateTests, PalaceTests/SignInWebSheetViewModelTests, PalaceTests/SingletonResetRegi",
     "the app-suite coverage could not be read (xccov produced no report)",
     "package PalaceAuth has no source in the app-suite coverage",
     "package PalaceBookModel has no source in the app-suite coverage",
