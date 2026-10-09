@@ -30,11 +30,13 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
              licensor: [String: Any]? = ["vendor": "palace-vendor",
                                          "clientToken": "token-user|token-password"],
              userID: String? = nil,
-             deviceID: String? = nil) {
+             deviceID: String? = nil,
+             generation: Int? = nil) {
             self.readsUntilAvailable = appearsAfterReads
             self._licensor = licensor
             self._userID = userID
             self._deviceID = deviceID
+            self._generation = generation
         }
 
         var userID: String? { lock.withLock { _userID } }
@@ -50,8 +52,11 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
         }
 
         var reads: Int { lock.withLock { licensorReadCount } }
-        func setUserID(_ id: String) { lock.withLock { _userID = id } }
-        func setDeviceID(_ id: String) { lock.withLock { _deviceID = id } }
+        private var _generation: Int?
+        var adobeActivationConnectorGeneration: Int? { lock.withLock { _generation } }
+        func setAdobeActivation(userID: String, deviceID: String, generation: Int) {
+            lock.withLock { _userID = userID; _deviceID = deviceID; _generation = generation }
+        }
         // PP-3649: activation re-mints the licensor before use, so the double
         // must accept the write.
         func setLicensor(_ licensor: [String: Any]) { lock.withLock { _licensor = licensor } }
@@ -197,7 +202,12 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
     func test_ensureDeviceActivated_whenAlreadyAuthorized_neverReadsLicensor() async throws {
         let account = LateLicensorAccount(appearsAfterReads: Int.max,
                                           userID: "user-1",
-                                          deviceID: "device-1")
+                                          deviceID: "device-1",
+                                          // PP-5251: "already authorized" now also
+                                          // requires the recorded connector to match,
+                                          // so an unstamped record re-activates and this
+                                          // test stops measuring the skip path.
+                                          generation: AdobeConnectorGeneration.current)
 
         try await service.ensureDeviceActivated(
             authorizer: { [drm] in drm },

@@ -21,8 +21,19 @@ protocol AdobeActivationAccount: AnyObject, Sendable {
     var userID: String? { get }
     var deviceID: String? { get }
     var licensor: [String: Any]? { get }
-    func setUserID(_ id: String)
-    func setDeviceID(_ id: String)
+    /// Which connector generation performed the activation these identifiers
+    /// describe, or nil when the device was activated before the marker existed.
+    var adobeActivationConnectorGeneration: Int? { get }
+    /// Records an activation as ONE unit.
+    ///
+    /// Replaces the former `setUserID` / `setDeviceID` pair. The generation is a
+    /// required argument on purpose: an activation whose connector is unrecorded
+    /// reads as "needs migration" forever, so the gate in
+    /// `ensureDeviceActivated` would re-activate on every Adobe operation. A
+    /// required parameter makes that state unreachable rather than merely
+    /// tested. The three fields are also one keychain transaction, so a crash
+    /// cannot leave identifiers without a generation.
+    func setAdobeActivation(userID: String, deviceID: String, generation: Int)
     /// Persists a licensor refreshed at activation time (PP-3649). The
     /// keychain copy is written at sign-in and never updated otherwise, which
     /// is how a 60-minute token reaches Adobe hours stale.

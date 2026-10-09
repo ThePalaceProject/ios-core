@@ -98,6 +98,64 @@ final class AdobeConnectorGenerationTests: XCTestCase {
                        + "along with the rest")
     }
 
+    /// The two setters this replaced each posted `notifyAccountDidChange()`, so
+    /// an activation notified twice. The atomic write must still notify, or
+    /// observers stop learning that an activation landed.
+    ///
+    /// Asserts ONLY the notification. An earlier version also checked the three
+    /// stored fields, so it failed both when the notification was dropped and
+    /// when the generation write was — a test that fails for two unrelated
+    /// reasons identifies neither.
+    func testRecordingAnActivationNotifiesObservers() {
+        let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
+        let expectation = expectation(
+            forNotification: .TPPUserAccountDidChange, object: nil, handler: nil
+        )
+
+        account.setAdobeActivation(userID: "user", deviceID: "device",
+                                   generation: AdobeConnectorGeneration.current)
+
+        wait(for: [expectation], timeout: 2.0)
+    }
+
+    /// The storage half: all three fields of the activation record persist.
+    ///
+    /// `AdobeActivationGenerationGateTests` cannot cover this — those tests
+    /// drive a double that implements `setAdobeActivation` itself, so they pin
+    /// that the call site PASSES a generation, not that this type keeps one.
+    /// Stripping the generation write left them green.
+    func testRecordingAnActivationStoresAllThreeFields() {
+        let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
+
+        account.setAdobeActivation(userID: "user", deviceID: "device",
+                                   generation: AdobeConnectorGeneration.current)
+
+        XCTAssertEqual(account.userID, "user")
+        XCTAssertEqual(account.deviceID, "device")
+        XCTAssertEqual(account.adobeActivationConnectorGeneration,
+                       AdobeConnectorGeneration.current)
+    }
+
+    /// And they survive the keychain, not just the write-through cache. A second
+    /// instance on the same library reads through `refreshCredentialsFromKeychain`,
+    /// which is the only read that proves persistence.
+    func testTheActivationRecordSurvivesTheKeychain() {
+        let libraryUUID = "test-uuid-\(UUID().uuidString)"
+        let writer: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: libraryUUID)
+        let reader: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: libraryUUID)
+
+        XCTAssertNil(reader.adobeActivationConnectorGeneration)
+        writer.setAdobeActivation(userID: "user", deviceID: "device",
+                                  generation: AdobeConnectorGeneration.current)
+
+        _ = reader.refreshCredentialsFromKeychain()
+
+        XCTAssertEqual(reader.userID, "user")
+        XCTAssertEqual(reader.deviceID, "device")
+        XCTAssertEqual(reader.adobeActivationConnectorGeneration,
+                       AdobeConnectorGeneration.current)
+    }
+
 #if FEATURE_DRM_CONNECTOR
     /// The keystone. `current` is hand-assigned, so without this a connector
     /// swap that nobody paired with a constant bump would leave every migration

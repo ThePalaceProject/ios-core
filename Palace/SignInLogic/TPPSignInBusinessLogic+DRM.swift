@@ -179,8 +179,11 @@ extension TPPSignInBusinessLogic {
                     var success = success
 
                     if success, let userID = userID, let deviceID = deviceID {
-                        self.userAccount.setUserID(userID)
-                        self.userAccount.setDeviceID(deviceID)
+                        self.userAccount.setAdobeActivation(
+                            userID: userID,
+                            deviceID: deviceID,
+                            generation: AdobeConnectorGeneration.current
+                        )
                     } else {
                         success = false
                         TPPErrorLogger.logLocalAuthFailed(error: box.error as NSError?,

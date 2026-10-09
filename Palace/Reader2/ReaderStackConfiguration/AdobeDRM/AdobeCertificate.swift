@@ -627,8 +627,16 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                                timeout: TimeInterval = AdobeActivationCoordinator.defaultTimeout,
                                licensorGracePeriod: TimeInterval = 0,
                                refreshLicensor: (() async -> [String: Any]?)? = nil) async throws {
+        // `isUserAuthorized` is the signal that LIES across a connector change:
+        // the Wipro binaries report an Adobe-era activation as authorized and
+        // then fail every operation with `E_ACT_NOT_READY` (PP-5026). So
+        // "already activated" has to mean "activated under THIS connector".
+        //
+        // A nil generation is an install that activated before the marker
+        // existed, which is not the same as current — it must re-activate.
         if let userID = userAccount.userID,
            let deviceID = userAccount.deviceID,
+           userAccount.adobeActivationConnectorGeneration == AdobeConnectorGeneration.current,
            authorizer()?.isUserAuthorized(userID, withDevice: deviceID) == true {
             Log.info(#file, "Adobe device already activated — skipping activation")
             return
@@ -764,8 +772,14 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                     if success, let userID = userID, let deviceID = deviceID {
                         Log.info(#file, "On-demand Adobe activation succeeded")
                         TPPMainThreadRun.asyncIfNeeded {
-                            userAccount.setUserID(userID)
-                            userAccount.setDeviceID(deviceID)
+                            // One write: the generation belongs to this
+                            // activation, and a record without it re-activates
+                            // on every later Adobe operation.
+                            userAccount.setAdobeActivation(
+                                userID: userID,
+                                deviceID: deviceID,
+                                generation: AdobeConnectorGeneration.current
+                            )
                         }
                         once.finish(throwing: nil)
                     } else {

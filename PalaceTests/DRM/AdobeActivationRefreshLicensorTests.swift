@@ -25,10 +25,12 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
         private var _licensor: [String: Any]?
         private var _setLicensorCalls: [[String: Any]] = []
 
-        init(licensor: [String: Any]?, userID: String? = nil, deviceID: String? = nil) {
+        init(licensor: [String: Any]?, userID: String? = nil, deviceID: String? = nil,
+             generation: Int? = nil) {
             self._licensor = licensor
             self._userID = userID
             self._deviceID = deviceID
+            self._generation = generation
         }
 
         var userID: String? { lock.withLock { _userID } }
@@ -37,8 +39,11 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
 
         var setLicensorCalls: [[String: Any]] { lock.withLock { _setLicensorCalls } }
 
-        func setUserID(_ id: String) { lock.withLock { _userID = id } }
-        func setDeviceID(_ id: String) { lock.withLock { _deviceID = id } }
+        private var _generation: Int?
+        var adobeActivationConnectorGeneration: Int? { lock.withLock { _generation } }
+        func setAdobeActivation(userID: String, deviceID: String, generation: Int) {
+            lock.withLock { _userID = userID; _deviceID = deviceID; _generation = generation }
+        }
         func setLicensor(_ licensor: [String: Any]) {
             lock.withLock {
                 _licensor = licensor
@@ -286,8 +291,12 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
     /// The already-activated fast path precedes everything, so a borrow on an
     /// activated device must not spend a profile-document round trip.
     func test_ensureDeviceActivated_whenAlreadyAuthorized_neverRefreshes() async throws {
+        // PP-5251: "already authorized" now also requires the recorded connector
+        // to match, so an unstamped record re-activates and this test stops
+        // measuring the skip path it is named for.
         let account = RecordingAccount(licensor: staleLicensor(),
-                                       userID: "user-1", deviceID: "device-1")
+                                       userID: "user-1", deviceID: "device-1",
+                                       generation: AdobeConnectorGeneration.current)
         drm.isUserAuthorizedReturnValue = true
         let refreshed = LockedFlag()
         let fresh = freshLicensor()
