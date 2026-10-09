@@ -53,8 +53,9 @@ final class TPPPresentationUtilsTests: XCTestCase {
         return sheet
     }
 
-    private func safelyPresent(_ vc: UIViewController, root: UIViewController?) {
-        TPPPresentationUtils.safelyPresent(vc, animated: false, completion: nil,
+    private func safelyPresent(_ vc: UIViewController, root: UIViewController?,
+                               completion: (() -> Void)? = nil) {
+        TPPPresentationUtils.safelyPresent(vc, animated: false, completion: completion,
                                            rootProvider: { root },
                                            scheduleAlertRetry: { [unowned self] in queuedRetries.append($0) })
     }
@@ -104,13 +105,16 @@ final class TPPPresentationUtilsTests: XCTestCase {
         let alert = makeAlert()
         present(alert, on: root)
         let sheet = makeSheet()
+        let completed = expectation(description: "caller's completion ran")
 
-        safelyPresent(sheet, root: root)
+        safelyPresent(sheet, root: root, completion: { completed.fulfill() })
         dismissPresented(on: root)
         runQueuedRetry()
 
         XCTAssertTrue(root.presentedViewController === sheet)
         XCTAssertTrue(queuedRetries.isEmpty)
+        // The caller's completion must survive the retry (AccountDetailViewModel passes one).
+        wait(for: [completed], timeout: 10)  // STARVE-001-OK: UIKit's own non-animated present completion on the main run loop; no background work
     }
 
     /// An alert routed through `safelyPresent` (announcements, sign-in
