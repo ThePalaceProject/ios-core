@@ -10,6 +10,27 @@ import Foundation
 
 #if DEBUG
 extension AccountsManager {
+    /// Skips the synchronous `preloadAccountsFromDiskCacheSync()` in `init()` while
+    /// XCTest hosts the process. Defaults to `true`: with a registry cache on the
+    /// simulator's disk, the test-host launch decoded ~1142 accounts before the
+    /// first test (4.9s on CI). A test that reads accounts hydrated by `init()` sets
+    /// it to `false` and restores the saved value in tearDown. Outside XCTest it is
+    /// not read; see `shouldPreloadDiskCacheAtInit(environment:)`.
+    private static let _deferDiskCachePreloadForTesting = AccountsManagerBoolFlag(true)
+    /// Lock-backed test-only flag.
+    static var deferDiskCachePreloadForTesting: Bool {
+        get { _deferDiskCachePreloadForTesting.value }
+        set { _deferDiskCachePreloadForTesting.value = newValue }
+    }
+
+    /// Whether `init()` runs the disk-cache preload. Always `true` outside XCTest:
+    /// DEBUG also covers simulator, developer and TestFlight builds, whose launches
+    /// must hydrate the cached registry whatever the test flag says.
+    static func shouldPreloadDiskCacheAtInit(environment: [String: String]) -> Bool {
+        guard environment["XCTestConfigurationFilePath"] != nil else { return true }
+        return !deferDiskCachePreloadForTesting
+    }
+
     /// Drain + cancel background work on ALL live instances. Called at each test
     /// boundary BEFORE AccountStateStore._resetAllForTesting so any flushed late
     /// write is then wiped. Snapshot under lock (inside the holder); drain

@@ -132,9 +132,9 @@ final class AccountsManagerCollaboratorInitRaceTests: PalaceWiringTestCase {
         // flip in PalaceWiringTestCase.setUpWithError, which a future edit could remove
         // without touching this file — and the test would then pass by measuring the
         // background spawn instead of the fix.
-        XCTAssertTrue(AccountsManager.deferDiskCachePreloadForTesting,
-                      "vacuous without the preload deferred: the preload would force "
-                      + "construction and the assertion below would prove nothing")
+        XCTAssertFalse(AccountsManager.shouldPreloadDiskCacheAtInit(environment: ProcessInfo.processInfo.environment),
+                       "vacuous without the preload deferred: the preload would force "
+                       + "construction and the assertion below would prove nothing")
         XCTAssertTrue(AccountsManager.deferInitialLoadCatalogsForTesting,
                       "vacuous without the background load deferred: "
                       + "spawnInitialBackgroundLoad() is init's other first-toucher")
