@@ -400,9 +400,11 @@ final class AudiobookLoader {
         Log.debug(#file, "  ✅ Audiobook created successfully by factory")
 
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
+        // One container read: `production()` takes its unfair lock per call.
+        let container = AppContainer.production()
         var timeTracker: AudiobookTimeTracker?
         if
-            let libraryId = AppContainer.production().accountsManager.currentAccount?.uuid,
+            let libraryId = container.accountsManager.currentAccount?.uuid,
             let url = book.timeTrackingURL {
             timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: url)
         }
@@ -411,7 +413,7 @@ final class AudiobookLoader {
             tracks: audiobook.tableOfContents.allTracks,
             decryptor: decryptor
         )
-        networkService.downloadOnlyOnWiFi = AppContainer.production().settings.downloadOnlyOnWiFi
+        networkService.downloadOnlyOnWiFi = container.settings.downloadOnlyOnWiFi
 
         let manager = DefaultAudiobookManager(
             metadata: metadata,
@@ -544,8 +546,9 @@ final class AudiobookLoader {
     /// `LocalFileAdapter` so the OverDrive re-fulfill path gets a fresh
     /// fulfillment instead of the possibly stale on-disk manifest.
     private static func makeProductionAdapters(excludeLocalFile: Bool = false) -> [AudiobookVendorAdapter] {
-        let downloadCenter = AppContainer.production().downloadCenter
-        let networkExecutor = AppContainer.production().networkExecutor
+        let container = AppContainer.production()
+        let downloadCenter = container.downloadCenter
+        let networkExecutor = container.networkExecutor
         let manifestNetwork = ProductionAudiobookManifestFetcher(executor: networkExecutor)
 
         var chain: [AudiobookVendorAdapter] = []
