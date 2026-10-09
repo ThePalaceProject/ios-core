@@ -59,15 +59,21 @@ final class AudiobookCloseMidLoadJourneyTests: JourneyTestCase {
 
         step("Opening the book again runs the load to the end") {
             listenButton().tap()
-            // Test artefact, not the product behaviour under test: AVPlayer cannot
-            // fetch the fixture audio (the mock backend serves URLSession only), so
-            // a bound player fails to start and reports this. The alert follows a
-            // completed load, which is what this step needs to see.
+            // The scenario holds this open briefly too, so the loading player is
+            // reliably on screen and proves the tap started an open.
+            let loading = app.descendants(matching: .any)[playerLoadingLabel]
+            waitFor(loading, "the second open never showed the loading player")
+            waitUntil(NSPredicate(format: "exists == false"), on: loading, "the reopened audiobook never finished loading")
+            // Test artefact, not the behaviour under test: AVPlayer cannot fetch
+            // the fixture audio, so the bound player fails. Whether that ends in
+            // this alert or a silent dismissal depends on whether AVPlayer reported
+            // playing first, which varies with machine load.
             let unavailable = app.alerts["Audiobook Unavailable"]
-            waitFor(unavailable, "the reopened audiobook never finished loading")
-            XCTAssertFalse(app.descendants(matching: .any)[playerLoadingLabel].exists, "the player's loading state is still on screen")
-            unavailable.buttons["OK"].tap()
+            if unavailable.waitForExistence(timeout: 5) {
+                unavailable.buttons["OK"].tap()
+            }
             waitUntil(NSPredicate(format: "enabled == true"), on: listenButton(), "the Listen button stayed busy after the reopen")
+            XCTAssertEqual(listenButton().activityIndicators.count, 0, "the Listen button still shows a spinner")
         }
     }
 

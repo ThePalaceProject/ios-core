@@ -295,7 +295,7 @@ final class MockBackendAudiobookScenarioTests: XCTestCase {
     }
 
     /// The download's fulfil request is served at once, the first open after the
-    /// manifest lands is held, and every later open is served at once.
+    /// manifest lands is held past the close, and later opens only briefly.
     func testFulfil_IsHeldOnlyForTheFirstOpenAfterTheDownload() throws {
         let download = try XCTUnwrap(route(for: AudiobookFixtures.fulfillURL, flags: ["borrowed"]))
         let manifest = try XCTUnwrap(route(for: AudiobookFixtures.manifestURL, flags: ["borrowed"]))
@@ -306,7 +306,7 @@ final class MockBackendAudiobookScenarioTests: XCTestCase {
         XCTAssertEqual(manifest.setsFlag, "downloaded")
         XCTAssertGreaterThanOrEqual(firstOpen.delayMs ?? 0, 5000, "the hold must outlast the step that closes the player")
         XCTAssertEqual(firstOpen.setsFlag, "open-held")
-        XCTAssertNil(reopen.delayMs)
+        XCTAssertLessThan(reopen.delayMs ?? 0, firstOpen.delayMs ?? 0, "a reopen is held only long enough to be seen")
         for served in [download, firstOpen, reopen] {
             XCTAssertEqual(served.fixtureName, "still_water_bearer_token.json")
         }

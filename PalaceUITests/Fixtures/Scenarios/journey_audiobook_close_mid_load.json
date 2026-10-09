@@ -1,7 +1,7 @@
 {
   "id": "journey_audiobook_close_mid_load",
   "displayName": "Journey: close an audiobook while it loads",
-  "description": "The fixture library with one bearer-token audiobook. The first open after the download holds the fulfil request so the patron can close the player mid-load; later requests are served at once.",
+  "description": "The fixture library with one bearer-token audiobook. The first open after the download holds the fulfil request so the patron can close the player mid-load; later opens are held for three seconds so the loading player is visible.",
   "launch": {
     "libraryRegistryURL": "https://palace-fixtures.test/libraries",
     "libraryID": "urn:uuid:7f1d8a52-3b0e-4c86-9a5e-1f2a3b4c5d6e"
@@ -13,7 +13,7 @@
     { "pathPattern": "^https://palace-fixtures\\.test/library/loans/?$", "requiresFlag": "borrowed", "fixtureName": "loans_audiobook_borrowed.xml", "statusCode": 200, "contentType": "application/atom+xml;profile=opds-catalog;kind=acquisition" },
     { "pathPattern": "^https://palace-fixtures\\.test/library/loans/?$", "fixtureName": "loans_empty.xml", "statusCode": 200, "contentType": "application/atom+xml;profile=opds-catalog;kind=acquisition" },
     { "pathPattern": "^https://palace-fixtures\\.test/library/works/still-water/borrow$", "setsFlag": "borrowed", "fixtureName": "borrow_entry_audiobook.xml", "statusCode": 201, "contentType": "application/atom+xml;type=entry;profile=opds-catalog" },
-    { "pathPattern": "^https://palace-fixtures\\.test/library/works/still-water/fulfill$", "requiresFlag": "open-held", "fixtureName": "still_water_bearer_token.json", "statusCode": 200, "contentType": "application/vnd.librarysimplified.bearer-token+json" },
+    { "pathPattern": "^https://palace-fixtures\\.test/library/works/still-water/fulfill$", "requiresFlag": "open-held", "delayMs": 3000, "fixtureName": "still_water_bearer_token.json", "statusCode": 200, "contentType": "application/vnd.librarysimplified.bearer-token+json" },
     { "pathPattern": "^https://palace-fixtures\\.test/library/works/still-water/fulfill$", "requiresFlag": "downloaded", "setsFlag": "open-held", "delayMs": 15000, "fixtureName": "still_water_bearer_token.json", "statusCode": 200, "contentType": "application/vnd.librarysimplified.bearer-token+json" },
     { "pathPattern": "^https://palace-fixtures\\.test/library/works/still-water/fulfill$", "fixtureName": "still_water_bearer_token.json", "statusCode": 200, "contentType": "application/vnd.librarysimplified.bearer-token+json" },
     { "pathPattern": "^https://palace-fixtures\\.test/library/works/still-water/manifest$", "setsFlag": "downloaded", "fixtureName": "still_water_manifest.json", "statusCode": 200, "contentType": "application/audiobook+json" },
