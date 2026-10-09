@@ -157,22 +157,30 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         state = .loading
         Log.debug(#file, "Downloading sample from: \(sample.url.absoluteString)")
 
-        _ = sample.fetchSample { [weak self]  result in
-            guard let self = self else { return }
+        // Awaited, so both arms resume on this `@MainActor` type and neither
+        // needs the `DispatchQueue.main.async` they used to carry (PP-5301).
+        //
+        // `[weak self]` with a re-check after the suspension, matching what the
+        // completion handler did. Holding `self` across the fetch would keep a
+        // dismissed sample player alive to reach `setupPlayer` and start
+        // playing audio for a sheet the patron already closed. Only the sample
+        // itself is held across the await, as the closure did.
+        Task { @MainActor [weak self] in
+            guard let sample = self?.sample else { return }
 
+            let result = await sample.fetchSample()
+
+            guard let self else { return }
             switch result {
             case let .failure(error, _):
-                Log.error(#file, "Sample download failed for \(self.sample.url): \(error.localizedDescription)")
+                Log.error(#file, "Sample download failed for \(sample.url): \(error.localizedDescription)")
                 TPPErrorLogger.logError(error, summary: "Failed to download sample")
-                DispatchQueue.main.async { self.state = .paused }
-                return
+                self.state = .paused
             case let .success(data, _):
-                DispatchQueue.main.async {
-                    do {
-                        try self.setupPlayer(data: data)
-                    } catch {
-                        Log.error(#file, "Sample player setup failed: \(error.localizedDescription)")
-                    }
+                do {
+                    try self.setupPlayer(data: data)
+                } catch {
+                    Log.error(#file, "Sample player setup failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -181,8 +189,9 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
 
 // `@preconcurrency`: `AVAudioPlayerDelegate` requirements are nonisolated, but
 // AVFoundation delivers this callback on the run loop where the player was
-// created — here always the main run loop (`setupPlayer(data:)` runs inside a
-// `DispatchQueue.main.async`). Satisfying the nonisolated requirement with a
+// created — here always the main run loop (`setupPlayer(data:)` runs inside the
+// `Task { @MainActor }` in `downloadFile()`; it was a `DispatchQueue.main.async`
+// until PP-5301). Satisfying the nonisolated requirement with a
 // main-actor-isolated method is therefore safe; `@preconcurrency` silences the
 // isolation-mismatch warning without changing the (main-thread) call behavior.
 extension AudiobookSamplePlayer: @preconcurrency AVAudioPlayerDelegate {

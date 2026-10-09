@@ -5,7 +5,7 @@
 //  (`adapters.first(where: { $0.canHandle(book) })`). These tests inject a
 //  chain via `AudiobookLoader(adapters:)` and assert the order LCP > LocalFile
 //  > BearerToken > OpenAccess, with `.manifestFetchFailed` when none claims.
-//  `load(book:completion:)` is frozen; AudiobookSessionManager depends on it.
+//  `load` is awaited by AudiobookSessionManager, which is its only caller.
 //  Every loader here gets its own account through `makeLoader`, so the
 //  pre-chain token gate never reads the shared container (PP-5295).
 //  See also AudiobookLoaderOPDSShapeMatrixTests and AudiobookLoaderPredicateTests.
@@ -15,6 +15,7 @@ import XCTest
 @preconcurrency import PalaceAudiobookToolkit
 @testable import Palace
 import PalaceBookModel
+import PalaceCatalog
 
 @MainActor
 final class AudiobookLoaderDispatchTests: XCTestCase {
@@ -47,11 +48,10 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         }
 
         func resolveManifest(
-            for book: TPPBook,
-            completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-        ) {
+            for book: TPPBook
+        ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
             resolveCallCount += 1
-            completion(stubbedResult)
+            return stubbedResult
         }
     }
 
@@ -81,33 +81,25 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         AudiobookLoader(adapters: adapters, currentUserAccount: { account })
     }
 
-    /// Drive `load()` and capture the result. The dispatch is async — we
-    /// fulfill the expectation when the loader's outer completion fires.
-    /// `manifestStub` is intentionally not a real audiobook manifest, so a
-    /// success result from the adapter chain will subsequently fail in
-    /// `build()` (manifest decoding); we tolerate that and only assert
-    /// adapter invocation counts.
+    /// Drive `load()` and return its result. `manifestStub` is intentionally
+    /// not a real audiobook manifest, so a success result from the adapter
+    /// chain will subsequently fail in `build()` (manifest decoding); we
+    /// tolerate that and only assert adapter invocation counts.
+    ///
+    /// No deadline to choose: `load` is awaited, so there is nothing to starve
+    /// under parallel simulator clones (STARVE-001).
     private func runLoad(
         loader: AudiobookLoader,
-        book: TPPBook,
-        timeout: TimeInterval = 5.0
-    ) -> Result<LoadedAudiobook, AudiobookLoadError>? {
-        let exp = expectation(description: "load completes")
-        exp.assertForOverFulfill = false
-        var captured: Result<LoadedAudiobook, AudiobookLoadError>?
-        loader.load(book) { result in
-            captured = result
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: timeout)
-        return captured
+        book: TPPBook
+    ) async -> Result<LoadedAudiobook, AudiobookLoadError> {
+        await loader.load(book)
     }
 
     // MARK: - Token gate reads the injected account (PP-5295)
 
     /// An expired token with no token URL to refresh against fails the load
     /// with `.missingCredentialsForTokenRefresh` before any adapter is asked.
-    func testLoad_injectedAccountExpiredWithoutTokenURL_failsBeforeAnyAdapter() {
+    func testLoad_injectedAccountExpiredWithoutTokenURL_failsBeforeAnyAdapter() async {
         let expired = TPPUserAccountMock()
         expired.setAuthToken("stale", barcode: "b", pin: "p",
                              expirationDate: Date(timeIntervalSinceNow: -3600))
@@ -115,7 +107,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
                                     stubbedResult: .success((json: manifestStub, decryptor: nil)))
         let loader = makeLoader([openAccess], account: expired)
 
-        let result = runLoad(loader: loader, book: makeBook())
+        let result = await runLoad(loader: loader, book: makeBook())
 
         guard case .failure(.missingCredentialsForTokenRefresh) = result else {
             XCTFail("expected .missingCredentialsForTokenRefresh, got \(String(describing: result))")
@@ -132,7 +124,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// adapter in the chain. The chain order is LCP > Local > Bearer >
     /// OpenAccess; LCP's `canHandle` returning true must short-circuit
     /// every downstream `canHandle`.
-    func testLoad_lcpBook_dispatchesToLCPAdapter() {
+    func testLoad_lcpBook_dispatchesToLCPAdapter() async {
         let lcp = SpyAdapter(label: "lcp", handles: true,
                              stubbedResult: .success((json: manifestStub, decryptor: nil)))
         let localFile = SpyAdapter(label: "local", handles: true,
@@ -143,7 +135,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
                                     stubbedResult: .success((json: manifestStub, decryptor: nil)))
         let loader = makeLoader([lcp, localFile, bearerToken, openAccess])
 
-        _ = runLoad(loader: loader, book: makeBook())
+        _ = await runLoad(loader: loader, book: makeBook())
 
         XCTAssertEqual(lcp.resolveCallCount, 1, "LCP adapter must be invoked when it claims the book")
         XCTAssertEqual(localFile.resolveCallCount, 0, "LocalFile must NOT run once LCP wins")
@@ -158,7 +150,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// still put a non-claiming LCP spy first to assert chain order; when
     /// LCP is off, the chain starts at LocalFile). LocalFile claims, and
     /// its `resolveManifest` is the one invoked.
-    func testLoad_localFileBook_dispatchesToLocalFileAdapter() {
+    func testLoad_localFileBook_dispatchesToLocalFileAdapter() async {
         let localFile = SpyAdapter(label: "local", handles: true,
                                    stubbedResult: .success((json: manifestStub, decryptor: nil)))
         let bearerToken = SpyAdapter(label: "bearer", handles: true,
@@ -174,7 +166,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         let loader = makeLoader([localFile, bearerToken, openAccess])
 #endif
 
-        _ = runLoad(loader: loader, book: makeBook())
+        _ = await runLoad(loader: loader, book: makeBook())
 
         XCTAssertEqual(localFile.resolveCallCount, 1,
                        "LocalFile adapter must be invoked when it claims the book")
@@ -185,7 +177,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// BearerToken fixture: LCP + LocalFile both decline; BearerToken
     /// claims. Pins the chain's middle-position adapter doesn't get skipped
     /// by a regression that flips `.first(where:)` to a naïve `for in`.
-    func testLoad_bearerTokenBook_dispatchesToBearerTokenAdapter() {
+    func testLoad_bearerTokenBook_dispatchesToBearerTokenAdapter() async {
         let localFile = SpyAdapter(label: "local", handles: false,
                                    stubbedResult: .failure(.manifestParseFailed))
         let bearerToken = SpyAdapter(label: "bearer", handles: true,
@@ -201,7 +193,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         let loader = makeLoader([localFile, bearerToken, openAccess])
 #endif
 
-        _ = runLoad(loader: loader, book: makeBook())
+        _ = await runLoad(loader: loader, book: makeBook())
 
         XCTAssertEqual(bearerToken.resolveCallCount, 1,
                        "BearerToken adapter must be invoked when it claims the book")
@@ -214,7 +206,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// OpenAccess fixture: every earlier adapter declines; the fallback
     /// OpenAccess claims. Pins that the chain's terminal adapter is reachable
     /// after all earlier declines.
-    func testLoad_openAccessBook_dispatchesToOpenAccessAdapter() {
+    func testLoad_openAccessBook_dispatchesToOpenAccessAdapter() async {
         let localFile = SpyAdapter(label: "local", handles: false,
                                    stubbedResult: .failure(.manifestParseFailed))
         let bearerToken = SpyAdapter(label: "bearer", handles: false,
@@ -230,7 +222,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
         let loader = makeLoader([localFile, bearerToken, openAccess])
 #endif
 
-        _ = runLoad(loader: loader, book: makeBook())
+        _ = await runLoad(loader: loader, book: makeBook())
 
         XCTAssertEqual(openAccess.resolveCallCount, 1,
                        "OpenAccess (fallback) must be invoked when no earlier adapter claims")
@@ -247,7 +239,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// refactor — if a future change accidentally moves LCP behind another
     /// adapter (e.g. because adapter construction order changed), Marketplace
     /// audiobooks that ALSO happen to have a local cache would be misrouted.
-    func testLoad_lcpPriorityOverOthers() {
+    func testLoad_lcpPriorityOverOthers() async {
         let lcp = SpyAdapter(label: "lcp", handles: true,
                              stubbedResult: .success((json: manifestStub, decryptor: nil)))
         let localFile = SpyAdapter(label: "local", handles: true,
@@ -258,7 +250,7 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
                                     stubbedResult: .success((json: manifestStub, decryptor: nil)))
         let loader = makeLoader([lcp, localFile, bearerToken, openAccess])
 
-        _ = runLoad(loader: loader, book: makeBook())
+        _ = await runLoad(loader: loader, book: makeBook())
 
         XCTAssertEqual(lcp.resolveCallCount, 1,
                        "LCP wins when multiple adapters would claim — priority order is load-bearing")
@@ -276,16 +268,16 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// preserved verbatim. Without this assertion, a regression that
     /// changed the fallback to `.manifestParseFailed` (or worse, succeeded
     /// silently) would not be caught.
-    func testLoad_noAdapterMatches_failsWithManifestFetchFailed() {
+    func testLoad_noAdapterMatches_failsWithManifestFetchFailed() async {
         let localFile = SpyAdapter(label: "local", handles: false,
                                    stubbedResult: .failure(.manifestParseFailed))
         let openAccess = SpyAdapter(label: "open", handles: false,
                                     stubbedResult: .failure(.manifestFetchFailed))
         let loader = makeLoader([localFile, openAccess])
 
-        let result = runLoad(loader: loader, book: makeBook())
+        let result = await runLoad(loader: loader, book: makeBook())
 
-        guard case .failure(let err) = result ?? .failure(.cancelled) else {
+        guard case .failure(let err) = result else {
             XCTFail("expected failure when no adapter claims, got \(String(describing: result))")
             return
         }
@@ -304,103 +296,311 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// the adapter would have returned. This pins the cancel() seam — a
     /// regression that forgot to check `isCancelled` in the final
     /// completion hop would leak adapter results to a discarded loader.
-    func testLoad_cancelDuringDispatch_surfacesCancelled() {
+    func testLoad_cancelDuringDispatch_surfacesCancelled() async {
         let openAccess = SpyAdapter(label: "open", handles: true,
                                     stubbedResult: .success((json: manifestStub, decryptor: nil)))
-        let loader = makeLoader([openAccess])
+        let refreshes = RefreshCallCounter()
+        let expiredAccount = Self.refreshableExpiredAccount()
+        let loader = AudiobookLoader(
+            adapters: [openAccess],
+            currentUserAccount: { expiredAccount },
+            refreshToken: { _ in
+                refreshes.increment()
+                return .success(Data(), nil)
+            },
+            currentAccountId: { nil },
+            isTokenValid: { true }
+        )
 
-        let exp = expectation(description: "load completes")
-        exp.assertForOverFulfill = false
         var seenError: AudiobookLoadError?
         loader.cancel()
-        loader.load(makeBook()) { result in
-            if case .failure(let err) = result { seenError = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 5.0)
+        if case .failure(let err) = await loader.load(makeBook()) { seenError = err }
 
         guard case .cancelled = seenError else {
             XCTFail("expected .cancelled when loader is cancelled before dispatch, got \(String(describing: seenError))")
             return
         }
+        // The returned error alone cannot see the early return added for this:
+        // without it `load` still walks the whole pipeline and the final
+        // `settle` overrides the adapter's success to `.cancelled`, so the
+        // assertion above passes either way. What distinguishes them is the
+        // work NOT done — a superseded open must not spend a token refresh and
+        // a manifest fetch whose result it will discard.
+        XCTAssertEqual(openAccess.canHandleCallCount, 0,
+                       "a loader cancelled before load must not consult the adapter chain at all")
+        XCTAssertEqual(openAccess.resolveCallCount, 0,
+                       "and must not fetch a manifest it is going to throw away")
+        // The guard sits ABOVE `refreshTokenIfNeeded`, so the adapter counts
+        // alone leave its nearer half unpinned. The account here has an expired
+        // token, so without the guard the refresh seam is reached.
+        XCTAssertEqual(refreshes.value, 0,
+                       "a superseded open must not spend a token exchange, which also means not "
+                       + "contending for the PP-4542 single-flight slot")
     }
 
-    // MARK: - PP-5299 — token-refresh delivery must reach the main actor
+    /// Counts refresh-seam invocations. A reference type so the closure can
+    /// record into it; no lock and no `Sendable` waiver, because `refreshToken`
+    /// is not `@Sendable` and this class is `@MainActor`, so every access is on
+    /// the main actor (checklist §7c, question 1). That it compiles is the
+    /// evidence — a real boundary here would not.
+    private final class RefreshCallCounter {
+        private(set) var value = 0
+        func increment() { value += 1 }
+    }
+
+    // MARK: - PP-5299 — the refresh outcome must reach the main actor
     //
-    // Only the carrier is covered here, deliberately. Tests that pinned
-    // awaitTokenReady's two branches were removed: they could only choose a branch
-    // by writing credentials into the process-wide shared account. A test must
-    // not do that, and these broke the suite twice — once by leaving an expired token
-    // behind (restarting the whole run) and once by making
-    // AccountsManagerStateMachineWiringTests' single-flight guard emit two
-    // .detailsLoading transitions instead of one.
-    //
-    // Not covered as a result, both deferred to the injection seam on
-    // AudiobookLoader (PP-5301): swapping fire(true)/fire(false), and the fact
-    // that the executor delivers off-main in the first place.
+    // These drive `load` itself rather than a carrier. While `refreshTokenIfNeeded`
+    // resolved its own dependencies from the shared container, its two
+    // executor-callback exits could not be reached from a test at all, so the
+    // main-actor hop they needed was pinned only on the carrier that performed
+    // it. The refresh is injected now, and `load` is awaited, so each exit is
+    // reachable and the hop is a property of the language rather than of a
+    // carrier someone has to remember to use.
 
-    /// The carrier the FIELD crash walked. `refreshTokenIfNeeded`'s two direct
-    /// executor-callback exits deliver through `RefreshOutcomeDelivery`, and those
-    /// are the exits the Crashlytics stack and log show ("Token refresh successful
-    /// - proceeding to open audiobook" then the trap). Constructing it off-main is
-    /// exactly the executor's situation.
+    /// The success exit the field crash walked: a refresh that suspends must
+    /// still leave the chain running on the main actor.
     ///
-    /// Joins the hop rather than waiting on a deadline, so there is no timeout to
-    /// starve under parallel simulator clones (STARVE-001). Empty the hop's
-    /// CLOSURE — `Task { @MainActor in }` — and `didDeliver` stays false; drop
-    /// `@MainActor` from that Task and the thread assertion fails. Both verified
-    /// by running them. Emptying the whole method body instead does not compile,
-    /// so it scores as errored rather than killed.
-    func testRefreshOutcomeDelivery_firedOffMain_deliversOnTheMainActorWithTheOutcome() async {
-        let record = DeliveryRecord()
-        let sut = RefreshOutcomeDelivery({ result in
-            XCTAssertTrue(Thread.isMainThread,
-                          "the carrier exists to hop; delivering off-main reproduces PP-5299")
-            guard case .failure(.missingCredentialsForTokenRefresh) = result else {
-                return XCTFail("the outcome must survive the hop unchanged, got \(result)")
-            }
-            record.didDeliver = true
-        }, outcome: .failure(.missingCredentialsForTokenRefresh))
+    /// Note what the seam does and does not reproduce. `refreshToken` is not
+    /// `@Sendable` and this class is `@MainActor`, so by §7c question 1 the
+    /// closure below inherits main-actor isolation and answers on the main
+    /// actor — it cannot stand in for off-main delivery, and an earlier version
+    /// of this comment claimed it did. What it does reproduce is the
+    /// suspension: the detached hop crosses executors before answering, so the
+    /// resumption is real rather than synchronous. Off-main delivery now lives
+    /// inside `refreshToken(accountId:)`'s continuation bridge, which is the
+    /// point of the conversion, and is covered in
+    /// `RequestExecutingAsyncBridgeTests`.
+    ///
+    /// `resolveCallCount` is the assertion that goes red on a behaviour change:
+    /// swapping this exit's outcome, or dropping the proceed, leaves it at 0.
+    /// The isolation itself is asserted inside the probe, where the reason it
+    /// is weaker is recorded.
+    func testLoad_whenTheRefreshSuspendsAcrossExecutors_runsTheAdapterChainOnTheMainActor() async {
+        let expiredAccount = Self.refreshableExpiredAccount()
+        let probe = MainActorProbeAdapter()
+        let loader = AudiobookLoader(
+            adapters: [probe],
+            currentUserAccount: { expiredAccount },
+            refreshToken: { _ in
+                // Suspend across executors before answering, the way the
+                // executor does — `refreshTokenAndResume` fires its completion
+                // from inside its own `Task`. Nothing is read from the detached
+                // work and nothing asserts it ran off-main: this closure is a
+                // stored property on a `@MainActor` type, so that would restate
+                // the type's definition rather than test the code. The suspension
+                // is here to make the resumption real; the assertions are below.
+                await Task.detached { }.value
+                return .success(Data(), nil)
+            },
+            currentAccountId: { "lib-1" },
+            isTokenValid: { true }
+        )
 
-        let hop = await Task.detached {
-            XCTAssertFalse(Thread.isMainThread, "precondition: firing from off-main")
-            return sut.deliverOnMain()
-        }.value
-        await hop.value
+        _ = await loader.load(makeBook())
 
-        XCTAssertTrue(record.didDeliver, "the carrier never delivered the outcome")
+        XCTAssertEqual(probe.resolveCallCount, 1,
+                       "a successful refresh must proceed to the adapter chain, reached on the main "
+                       + "actor, which the probe asserts on entry")
     }
 
-    /// The poll's carrier. `awaitTokenReady` fires this from inside an
-    /// unstructured `Task`, and its completion continues into the caller's
-    /// `@MainActor` work, so `fire` must hop. Dropping `@MainActor` from it leaves
-    /// `await` as a warning only and compiles silently, which is exactly why this
-    /// needs a test rather than the compiler.
-    ///
-    /// Needs no shared account and no deadline: `fire` is awaited, so the
-    /// completion has already run when the detached task returns.
-    func testTokenReadyCompletionBox_firedOffMain_deliversOnTheMainActorWithTheValue() async {
-        let record = DeliveryRecord()
-        let sut = TokenReadyCompletionBox({ becameValid in
-            XCTAssertTrue(Thread.isMainThread,
-                          "awaitTokenReady's carrier must hop; delivering off-main reproduces PP-5299")
-            XCTAssertTrue(becameValid, "the value must survive the hop unchanged")
-            record.didDeliver = true
-        })
+    /// The failure exit. A refresh that fails must surface
+    /// `.tokenRefreshFailed` and never reach an adapter — swapping this exit's
+    /// outcome for `.success` would let a load proceed on a dead token.
+    func testLoad_whenRefreshFails_failsWithTokenRefreshFailedAndAsksNoAdapter() async {
+        let expiredAccount = Self.refreshableExpiredAccount()
+        let probe = MainActorProbeAdapter()
+        let refreshError = NSError(domain: "test.refresh", code: 401,
+                                   userInfo: [NSLocalizedDescriptionKey: "refresh rejected"])
+        let loader = AudiobookLoader(
+            adapters: [probe],
+            currentUserAccount: { expiredAccount },
+            refreshToken: { _ in .failure(refreshError, nil) },
+            currentAccountId: { nil },
+            isTokenValid: { false }
+        )
 
-        await Task.detached {
-            XCTAssertFalse(Thread.isMainThread, "precondition: firing from off-main")
-            await sut.fire(true)
-        }.value
+        let result = await loader.load(makeBook())
 
-        XCTAssertTrue(record.didDeliver, "the poll carrier never delivered")
+        guard case .failure(.tokenRefreshFailed(let underlying)) = result else {
+            return XCTFail("expected .tokenRefreshFailed, got \(result)")
+        }
+        XCTAssertEqual((underlying as NSError?)?.code, 401,
+                       "the refresh error must be carried, not replaced")
+        XCTAssertEqual(probe.resolveCallCount, 0,
+                       "a failed refresh must not reach the adapter chain")
     }
-}
 
-/// Records that a carrier's completion actually ran, so the tests above can
-/// assert delivery without an `XCTestExpectation` and therefore without a
-/// deadline. A reference type so the completion can set it and the test can read
-/// it afterwards; both happen on the main actor.
-private final class DeliveryRecord: @unchecked Sendable {
-    var didDeliver = false
+    /// PP-4542: another refresh already owns the single-flight slot, so the
+    /// refresh fails immediately with that signal. The loader waits for the
+    /// in-flight one and proceeds once the token is valid.
+    func testLoad_whenRefreshIsAlreadyInProgressAndTokenBecomesValid_proceeds() async {
+        let expiredAccount = Self.refreshableExpiredAccount()
+        let probe = MainActorProbeAdapter()
+        let loader = AudiobookLoader(
+            adapters: [probe],
+            currentUserAccount: { expiredAccount },
+            refreshToken: { _ in .failure(Self.refreshInProgressError, nil) },
+            currentAccountId: { nil },
+            isTokenValid: { true },
+            tokenReadyPolicy: .init(timeout: 1.0, pollInterval: 0.01)
+        )
+
+        _ = await loader.load(makeBook())
+
+        XCTAssertEqual(probe.resolveCallCount, 1,
+                       "an in-flight refresh that lands must let the load proceed")
+    }
+
+    /// The same path when the in-flight refresh never produces a valid token:
+    /// the wait is bounded and the original error is surfaced, so a stuck
+    /// refresh cannot hang the open.
+    func testLoad_whenRefreshIsAlreadyInProgressAndTokenNeverBecomesValid_failsBounded() async {
+        let expiredAccount = Self.refreshableExpiredAccount()
+        let probe = MainActorProbeAdapter()
+        let loader = AudiobookLoader(
+            adapters: [probe],
+            currentUserAccount: { expiredAccount },
+            refreshToken: { _ in .failure(Self.refreshInProgressError, nil) },
+            currentAccountId: { nil },
+            isTokenValid: { false },
+            tokenReadyPolicy: .init(timeout: 0.2, pollInterval: 0.01)
+        )
+
+        let result = await loader.load(makeBook())
+
+        guard case .failure(.tokenRefreshFailed) = result else {
+            return XCTFail("a timed-out in-flight wait must surface .tokenRefreshFailed, got \(result)")
+        }
+        XCTAssertEqual(probe.resolveCallCount, 0,
+                       "the load must not proceed on a token that never became valid")
+    }
+
+    /// The wait has to actually wait. PP-4542's whole purpose is to give the
+    /// in-flight refresh time to land, and a token that only becomes valid on a
+    /// later poll must still let the load proceed.
+    ///
+    /// This is the case the outcome assertions cannot see. Mutating the
+    /// deadline comparison so the loop gives up on its first iteration still
+    /// produces `.tokenRefreshFailed` for a token that never becomes valid, so
+    /// the sibling test above stays green while the wait has stopped waiting.
+    /// Here the token turns valid on the third poll, so a loop that exits early
+    /// fails the load and this goes red.
+    func testLoad_whenTheInFlightRefreshLandsOnALaterPoll_stillProceeds() async {
+        let expiredAccount = Self.refreshableExpiredAccount()
+        let probe = MainActorProbeAdapter()
+        let polls = PollCounter()
+        let loader = AudiobookLoader(
+            adapters: [probe],
+            currentUserAccount: { expiredAccount },
+            refreshToken: { _ in .failure(Self.refreshInProgressError, nil) },
+            currentAccountId: { nil },
+            isTokenValid: { polls.recordAndIsValid(onPoll: 3) },
+            tokenReadyPolicy: .init(timeout: 2.0, pollInterval: 0.01)
+        )
+
+        _ = await loader.load(makeBook())
+
+        XCTAssertGreaterThanOrEqual(polls.count, 3,
+                                    "the wait must keep polling until the token lands, not give up on "
+                                    + "its first look")
+        XCTAssertEqual(probe.resolveCallCount, 1,
+                       "a refresh that lands on a later poll must still let the load proceed (PP-4542)")
+    }
+
+    /// Counts polls and reports the token valid from `onPoll` onwards, so a
+    /// test can distinguish a wait that polls from one that gives up.
+    private final class PollCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var polls = 0
+        var count: Int { lock.lock(); defer { lock.unlock() }; return polls }
+        func recordAndIsValid(onPoll threshold: Int) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            polls += 1
+            return polls >= threshold
+        }
+    }
+
+    /// The library the refresh authenticates as is the one the loader was
+    /// asked about (PP-4986): a refresh stamped with the selected library
+    /// re-authenticates the wrong account when a non-current library is open.
+    func testLoad_passesTheCurrentAccountIdToTheRefresh() async {
+        let expiredAccount = Self.refreshableExpiredAccount()
+        let seen = AccountIdRecorder()
+        let loader = AudiobookLoader(
+            adapters: [MainActorProbeAdapter()],
+            currentUserAccount: { expiredAccount },
+            refreshToken: { accountId in
+                seen.value = accountId
+                return .success(Data(), nil)
+            },
+            currentAccountId: { "library-under-test" },
+            isTokenValid: { true }
+        )
+
+        _ = await loader.load(makeBook())
+
+        XCTAssertEqual(seen.value, "library-under-test",
+                       "the refresh must name the library the loader resolved, not nil")
+    }
+
+    /// An account with an expired token AND a token URL to refresh against, so
+    /// `refreshTokenIfNeeded` passes its credentials guard and reaches the
+    /// injected refresh. The sibling fixture without a token URL fails at that
+    /// guard instead, which is what
+    /// `testLoad_injectedAccountExpiredWithoutTokenURL_failsBeforeAnyAdapter`
+    /// pins.
+    private static func refreshableExpiredAccount() -> TPPUserAccountMock {
+        let account = TPPUserAccountMock()
+        account.setAuthToken("stale", barcode: "b", pin: "p",
+                             expirationDate: Date(timeIntervalSinceNow: -3600))
+        let json = """
+        {
+          "type": "http://thepalaceproject.org/authtype/basic-token",
+          "links": [
+            {"rel": "authenticate", "href": "https://library.test/token"}
+          ]
+        }
+        """
+        let docAuth = try! JSONDecoder().decode(
+            OPDS2AuthenticationDocument.Authentication.self, from: Data(json.utf8))
+        account._authDefinition = AccountDetails.Authentication(auth: docAuth)
+        return account
+    }
+
+    /// The signal `isRefreshInProgressError` matches on. Built here rather than
+    /// reaching into production so the test states the shape it depends on.
+    private static let refreshInProgressError = NSError(
+        domain: "test.refresh", code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
+
+    /// Adapter that records whether the chain was reached, and asserts it is
+    /// entered on the main actor.
+    ///
+    /// The assertion is `MainActor.assertIsolated` rather than a thread read:
+    /// `AudiobookVendorAdapter` is `@MainActor`, so this is the runtime
+    /// statement of a guarantee the compiler already makes, and it goes red if
+    /// that annotation is removed. Before this change the same property
+    /// depended on a hop inside a carrier and nothing pinned it here.
+    private final class MainActorProbeAdapter: AudiobookVendorAdapter {
+        private(set) var resolveCallCount = 0
+
+        func canHandle(_ book: TPPBook) -> Bool { true }
+
+        func resolveManifest(
+            for book: TPPBook
+        ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
+            MainActor.assertIsolated("the adapter chain must be entered on the main actor (PP-5299)")
+            resolveCallCount += 1
+            // Fail the manifest so the test stops before `build`, which reads
+            // the shared container.
+            return .failure(.manifestParseFailed)
+        }
+    }
+
+    /// Carries the account id out of the injected refresh closure. Same
+    /// reasoning as `RefreshCallCounter`: no waiver needed.
+    private final class AccountIdRecorder {
+        var value: String?
+    }
 }

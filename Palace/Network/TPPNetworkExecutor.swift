@@ -206,6 +206,18 @@ private final class CompletionResultBox: @unchecked Sendable {
     init(_ result: Result<TokenResponse, Error>) { self.result = result }
 }
 
+/// Carries a `refreshToken(accountId:)` outcome across its checked
+/// continuation. `NYPLResult<Data>` holds an `Error` existential and a
+/// `URLResponse?`, so it is not `Sendable`.
+///
+/// - Sendable invariant: `value` is set once at init and read once by the
+///   awaiting caller. `CancellableContinuationBox` resumes exactly once, so
+///   there is no concurrent access.
+struct RefreshOutcomeBox: @unchecked Sendable {
+    let value: NYPLResult<Data>
+    init(_ value: NYPLResult<Data>) { self.value = value }
+}
+
 /// `@unchecked Sendable`: lets the executor satisfy the now-`Sendable`
 /// `NetworkClient` boundary (`URLSessionNetworkClient` holds one) and be captured
 /// across concurrency domains as it already is in production. The conformance is
@@ -584,25 +596,30 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         // switch — which is the whole defect (PP-4986).
         //
         // Scope, stated precisely because an earlier draft of this comment
-        // asserted an invariant that does not hold: `executeRequest` resolves
-        // `currentAccountId` and discards whatever account the CALLER built the
-        // request for. So requests built for a NON-current library are stamped
-        // with the current one. `TPPSignInBusinessLogic.makeRequest` does exactly
-        // that for Settings sign-in/sign-out on an arbitrary library
-        // (`TPPSignInBusinessLogic.swift:1049`, and `:1103` branches explicitly on
-        // `libraryAccountID != currentAccountId`), as does
-        // `NotificationService.deleteToken(for:)` — see the note below —.
+        // asserted an invariant that does not hold: an entry point given no
+        // `accountId` resolves the currently selected library and discards
+        // whatever account the caller built the request for, so a request built
+        // for a non-current library is stamped with the selected one.
+        // `TPPSignInBusinessLogic.makeRequest` builds for an arbitrary library
+        // on Settings sign-in and sign-out (`TPPSignInBusinessLogic.swift:433`;
+        // `:1100` branches on whether that library is the selected one), as does
+        // `NotificationService.deleteToken(for:)` — see the note below.
         //
-        // Those paths ARE now covered: `TPPRequestExecuting.executeRequest` gained
-        // an `accountId:` overload in this change, and the Settings sign-in /
-        // sign-out and profile-document callers pass their library.
+        // Those sign-in paths now name their library: the protocol requirement
+        // is `execute(_:enableTokenRefresh:accountId:)` and Settings sign-in
+        // awaits it with `accountId: libraryAccountID`
+        // (`TPPSignInBusinessLogic.swift:521`). `Account.getProfileDocument`
+        // passes `accountId: self.uuid` through the same awaited `execute`
+        // (`Account+profileDocument.swift:101`); it used this file's completion
+        // form until PP-5301 converted it.
         //
-        // Still NOT covered: `NotificationService.deleteToken(for:)`. It dispatches
-        // through `addBearerAndExecute`, which has no account parameter and calls
-        // the two-argument form — so the overload cannot serve it. It is invoked
-        // for arbitrary accounts and is wrong at DISPATCH, not merely on retry,
-        // which makes it a wider pre-existing defect than this change addresses.
-        // Closing it needs `accountId` on `addBearerAndExecute`.
+        // Still not covered: `NotificationService.deleteToken(for:)`. It
+        // dispatches through `addBearerAndExecute`, which takes no account and
+        // calls the two-argument form, so naming the account at the caller
+        // cannot reach it. It runs for arbitrary accounts and is wrong at
+        // dispatch rather than only on retry, which makes it a wider
+        // pre-existing defect than this comment's change addressed. Closing it
+        // needs `accountId` on `addBearerAndExecute`.
         TaskProvenance.setAccount(accountId, on: task)
         responder.addCompletion(completion, taskID: task.taskIdentifier)
         transport.activeTasksStore.add(task)
@@ -1192,119 +1209,6 @@ final class CancellableContinuationBox<T>: @unchecked Sendable {
         lock.unlock()
         inFlight?.cancel()
         finish(.failure(CancellationError()))
-    }
-}
-
-// MARK: - Async/Await API
-
-extension TPPNetworkExecutor {
-
-    /// Async version of GET that bridges to the completion-handler API.
-    /// Timeout is handled by the URLSession configuration, not by a manual timer.
-    ///
-    /// `CancellableContinuationBox` makes the bridge cancellation-aware AND
-    /// resume-exactly-once (superseding the old `ContinuationGuard` here). Note
-    /// this overload's underlying call returns no `URLSessionDataTask`, so the
-    /// HTTP request is not torn down — but the awaiting Task is still unblocked,
-    /// which is what makes it drainable. A stray late completion is swallowed by
-    /// the box.
-    func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
-        let box = CancellableContinuationBox<(Data, URLResponse?)>()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                box.install(continuation)
-                GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
-                    switch result {
-                    case let .success(data, response):
-                        box.finish(.success((data, response)))
-                    case let .failure(error, _):
-                        box.finish(.failure(error))
-                    }
-                }
-            }
-        } onCancel: {
-            box.cancel()
-        }
-    }
-
-    /// Async version of GET with full request control.
-    func GET(request: URLRequest, cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        let box = CancellableContinuationBox<(Data, URLResponse?)>()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                box.install(continuation)
-                let task = GET(request: request, cachePolicy: cachePolicy, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                    if let error = error {
-                        box.finish(.failure(error))
-                    } else {
-                        box.finish(.success((data ?? Data(), response)))
-                    }
-                }
-                box.setTask(task)
-            }
-        } onCancel: {
-            box.cancel()
-        }
-    }
-
-    /// Async version of PUT.
-    func PUT(_ reqURL: URL, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        let box = CancellableContinuationBox<(Data, URLResponse?)>()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                box.install(continuation)
-                let task = PUT(reqURL, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                    if let error = error {
-                        box.finish(.failure(error))
-                    } else {
-                        box.finish(.success((data ?? Data(), response)))
-                    }
-                }
-                box.setTask(task)
-            }
-        } onCancel: {
-            box.cancel()
-        }
-    }
-
-    /// Async version of POST.
-    func POST(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        let box = CancellableContinuationBox<(Data, URLResponse?)>()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                box.install(continuation)
-                let task = POST(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                    if let error = error {
-                        box.finish(.failure(error))
-                    } else {
-                        box.finish(.success((data ?? Data(), response)))
-                    }
-                }
-                box.setTask(task)
-            }
-        } onCancel: {
-            box.cancel()
-        }
-    }
-
-    /// Async version of DELETE.
-    func DELETE(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
-        let box = CancellableContinuationBox<(Data, URLResponse?)>()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                box.install(continuation)
-                let task = DELETE(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
-                    if let error = error {
-                        box.finish(.failure(error))
-                    } else {
-                        box.finish(.success((data ?? Data(), response)))
-                    }
-                }
-                box.setTask(task)
-            }
-        } onCancel: {
-            box.cancel()
-        }
     }
 }
 

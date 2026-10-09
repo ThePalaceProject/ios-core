@@ -784,79 +784,73 @@ public final class AudiobookSessionManager: ObservableObject {
         let loader = makeLoader(forceRefulfill)
         currentLoader = loader
 
-        return await withCheckedContinuation { [weak self] (continuation: CheckedContinuation<Result<Void, AudiobookSessionError>, Never>) in
-            loader.load(book) { [weak self] result in
-                Task { @MainActor in
-                    guard let self = self else {
-                        continuation.resume(returning: .failure(.unknown("Session manager deallocated")))
-                        return
-                    }
-                    // If a newer openAudiobook has started, drop this completion.
-                    guard self.loadGeneration == generation else {
-                        Log.info(#file, "Superseded audiobook load completion — ignoring")
-                        continuation.resume(returning: .failure(.alreadyLoading))
-                        return
-                    }
-                    self.currentLoader = nil
+        // `load` is awaited rather than wrapped in a continuation plus a
+        // `Task { @MainActor in }` (PP-5301). It resumes on this actor, so the
+        // generation check and every branch below already run here.
+        let result = await loader.load(book)
 
-                    switch result {
-                    case .success(let loaded):
-                        Log.info(#file, "Audiobook loaded successfully: '\(book.title)'")
-                        self.bind(loaded: loaded, for: book, startPlaying: startPlaying)
-                        continuation.resume(returning: .success(()))
+        // If a newer openAudiobook has started, drop this outcome.
+        guard loadGeneration == generation else {
+            Log.info(#file, "Superseded audiobook load completion — ignoring")
+            return .failure(.alreadyLoading)
+        }
+        currentLoader = nil
 
-                    case .failure(let loadError):
-                        Log.error(#file, "Failed to load audiobook: \(loadError)")
-                        let sessionError = Self.mapLoadError(loadError)
-                        self.state = .error(bookId: book.identifier, message: sessionError.localizedDescription)
-                        // Publish the terminal `.error` so the session presenter
-                        // (mini-player + full-player overlay) tears down. Without
-                        // this the presenter never sees the failure and the chrome
-                        // lingers in its last-published `.loading` look.
-                        self.playbackStatePublisher.send(self.state)
-                        self.errorPublisher.send(sessionError)
-                        // Surface the retry-with-dialog UX (PP-3707) for user-visible
-                        // load failures. Skip for cancellation so a superseded open
-                        // doesn't flash an error on screen.
-                        if case .cancelled = loadError {
-                            // no-op
-                        } else if AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
-                            loadError: loadError,
-                            userAccount: self.accountsManager.currentUserAccount,
-                            currentBook: self.currentBook
-                        ) {
-                            // HelpSpot 17727: SAML credentials went stale upstream
-                            // (network layer marked them so on a 401). Showing the
-                            // generic "Try Again" alert is useless — Try Again will
-                            // hit the same 401. Trigger SAML re-auth and re-attempt
-                            // the open after credentials refresh.
-                            Log.info(#file, "SAML credentials stale on audiobook open failure — triggering re-auth before showing error (HelpSpot 17727)")
-                            let userAccount = self.accountsManager.currentUserAccount
-                            let reauthenticator = TPPReauthenticator()
-                            reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true) { [weak self] in
-                                Task { @MainActor in
-                                    guard let self else { return }
-                                    // Same-book guard — a newer open may have superseded this one.
-                                    guard self.currentBook?.identifier == book.identifier else { return }
-                                    guard self.accountsManager.currentUserAccount.hasCredentials() else {
-                                        Log.info(#file, "SAML re-auth cancelled or failed — falling back to standard try-again error")
-                                        BookService.showAudiobookTryAgainError(book: book, onFinish: nil)
-                                        return
-                                    }
-                                    Log.info(#file, "SAML re-auth succeeded — re-attempting audiobook open")
-                                    _ = await self.openAudiobook(book, startPlaying: startPlaying)
-                                }
-                            }
-                        } else {
-                            // PP-5242: carry the load error's cause into the open-failure report.
-                            let failureMetadata = Self.openFailureMetadata(
-                                loadError: loadError, contentSource: Self.contentSourceForOpen(book: book))
-                            BookService.showAudiobookTryAgainError(book: book, failureMetadata: failureMetadata, onFinish: nil)
+        switch result {
+        case .success(let loaded):
+            Log.info(#file, "Audiobook loaded successfully: '\(book.title)'")
+            bind(loaded: loaded, for: book, startPlaying: startPlaying)
+            return .success(())
+
+        case .failure(let loadError):
+            Log.error(#file, "Failed to load audiobook: \(loadError)")
+            let sessionError = Self.mapLoadError(loadError)
+            state = .error(bookId: book.identifier, message: sessionError.localizedDescription)
+            // Publish the terminal `.error` so the session presenter
+            // (mini-player + full-player overlay) tears down. Without
+            // this the presenter never sees the failure and the chrome
+            // lingers in its last-published `.loading` look.
+            playbackStatePublisher.send(state)
+            errorPublisher.send(sessionError)
+            // Surface the retry-with-dialog UX (PP-3707) for user-visible
+            // load failures. Skip for cancellation so a superseded open
+            // doesn't flash an error on screen.
+            if case .cancelled = loadError {
+                // no-op
+            } else if AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForLoadFailure(
+                loadError: loadError,
+                userAccount: accountsManager.currentUserAccount,
+                currentBook: currentBook
+            ) {
+                // HelpSpot 17727: SAML credentials went stale upstream
+                // (network layer marked them so on a 401). Showing the
+                // generic "Try Again" alert is useless — Try Again will
+                // hit the same 401. Trigger SAML re-auth and re-attempt
+                // the open after credentials refresh.
+                Log.info(#file, "SAML credentials stale on audiobook open failure — triggering re-auth before showing error (HelpSpot 17727)")
+                let userAccount = accountsManager.currentUserAccount
+                let reauthenticator = TPPReauthenticator()
+                reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true) { [weak self] in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        // Same-book guard — a newer open may have superseded this one.
+                        guard self.currentBook?.identifier == book.identifier else { return }
+                        guard self.accountsManager.currentUserAccount.hasCredentials() else {
+                            Log.info(#file, "SAML re-auth cancelled or failed — falling back to standard try-again error")
+                            BookService.showAudiobookTryAgainError(book: book, onFinish: nil)
+                            return
                         }
-                        continuation.resume(returning: .failure(sessionError))
+                        Log.info(#file, "SAML re-auth succeeded — re-attempting audiobook open")
+                        _ = await self.openAudiobook(book, startPlaying: startPlaying)
                     }
                 }
+            } else {
+                // PP-5242: carry the load error's cause into the open-failure report.
+                let failureMetadata = Self.openFailureMetadata(
+                    loadError: loadError, contentSource: Self.contentSourceForOpen(book: book))
+                BookService.showAudiobookTryAgainError(book: book, failureMetadata: failureMetadata, onFinish: nil)
             }
+            return .failure(sessionError)
         }
     }
 
