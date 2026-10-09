@@ -43,8 +43,9 @@ extension TPPNetworkExecutor: LCPAdapterNetworkExecutor {
         // `request(for:)` for the reason recorded on
         // `ProductionAudiobookManifestFetcher.fetchData`: the request-taking
         // overload dispatches what it is handed, so a bare `URLRequest(url:)`
-        // reaches the CM with no bearer token and the license re-download fails
-        // terminally.
+        // reaches the CM with no bearer token. That comment also records what
+        // it actually costs, which is a 401 round trip and a spurious refresh
+        // rather than a terminal failure on the default auth types.
         try await GET(request: request(for: reqURL),
                       cachePolicy: .useProtocolCachePolicy,
                       useTokenIfAvailable: true)

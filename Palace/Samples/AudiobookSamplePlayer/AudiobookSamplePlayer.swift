@@ -189,8 +189,9 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
 
 // `@preconcurrency`: `AVAudioPlayerDelegate` requirements are nonisolated, but
 // AVFoundation delivers this callback on the run loop where the player was
-// created — here always the main run loop (`setupPlayer(data:)` runs inside a
-// `DispatchQueue.main.async`). Satisfying the nonisolated requirement with a
+// created — here always the main run loop (`setupPlayer(data:)` runs inside the
+// `Task { @MainActor }` in `downloadFile()`; it was a `DispatchQueue.main.async`
+// until PP-5301). Satisfying the nonisolated requirement with a
 // main-actor-isolated method is therefore safe; `@preconcurrency` silences the
 // isolation-mismatch warning without changing the (main-thread) call behavior.
 extension AudiobookSamplePlayer: @preconcurrency AVAudioPlayerDelegate {

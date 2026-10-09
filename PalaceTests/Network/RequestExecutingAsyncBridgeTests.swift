@@ -159,8 +159,11 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
     // builds its request — which is how converting these two call sites to a
     // bare `URLRequest(url:)` passed a 9,755-test suite while dropping the
     // bearer token from every audiobook manifest fetch and LCP license
-    // re-download. `TPPNetworkResponder` gates its 401 repair on having sent
-    // an auth header, so that failure is terminal rather than retried.
+    // re-download. The repair path would have rescued most of those — the
+    // retry is rebuilt through `request(for:)` — at the cost of a wasted trip,
+    // a spurious token exchange and `markCredentialsStale()`; it is terminal
+    // only for basic and browser reauth. The header is the thing to assert
+    // either way.
 
     func testProductionManifestFetcher_sendsTheBearerToken() async throws {
         let seen = HeaderRecorder()

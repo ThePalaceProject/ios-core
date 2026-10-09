@@ -364,23 +364,21 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     /// swapping this exit's outcome, or dropping the proceed, leaves it at 0.
     /// The isolation itself is asserted inside the probe, where the reason it
     /// is weaker is recorded.
-    func testLoad_whenRefreshAnswersOffTheMainActor_runsTheAdapterChainOnIt() async {
+    func testLoad_whenTheRefreshSuspendsAcrossExecutors_runsTheAdapterChainOnTheMainActor() async {
         let expiredAccount = Self.refreshableExpiredAccount()
         let probe = MainActorProbeAdapter()
         let loader = AudiobookLoader(
             adapters: [probe],
             currentUserAccount: { expiredAccount },
             refreshToken: { _ in
-                // Does its work off the main actor, the way the executor does:
-                // `refreshTokenAndResume` fires from inside its own `Task`.
-                //
-                // Deliberately not asserted here. This closure is a stored
-                // property on a `@MainActor` type, so it is main-actor isolated
-                // whatever it delegates to, and an assertion that
-                // `Task.detached` ran off-main would only restate that type's
-                // definition. What the test turns on is below: the chain is
-                // reached, and the probe asserts the actor it is reached on.
-                _ = await Task.detached { Self.isOnMainThread() }.value
+                // Suspend across executors before answering, the way the
+                // executor does — `refreshTokenAndResume` fires its completion
+                // from inside its own `Task`. Nothing is read from the detached
+                // work and nothing asserts it ran off-main: this closure is a
+                // stored property on a `@MainActor` type, so that would restate
+                // the type's definition rather than test the code. The suspension
+                // is here to make the resumption real; the assertions are below.
+                await Task.detached { }.value
                 return .success(Data(), nil)
             },
             currentAccountId: { "lib-1" },
@@ -563,12 +561,6 @@ final class AudiobookLoaderDispatchTests: XCTestCase {
     private static let refreshInProgressError = NSError(
         domain: "test.refresh", code: 1,
         userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
-
-    /// `Thread.isMainThread` is unavailable from an `async` context, so the
-    /// off-main premise is read through this synchronous hop.
-    private nonisolated static func isOnMainThread() -> Bool {
-        Thread.isMainThread
-    }
 
     /// Adapter that records whether the chain was reached, and asserts it is
     /// entered on the main actor.

@@ -30,10 +30,20 @@ final class ProductionAudiobookManifestFetcher: AudiobookManifestNetworkFetching
         // `request(for:)`, not a bare `URLRequest(url:)`. It is what stamps the
         // `Authorization: Bearer` header, the custom User-Agent, the SAML
         // cookies, `Accept-Language` and the HTTP/3 opt-out; the request-taking
-        // overload dispatches what it is handed. `useTokenIfAvailable` only
-        // controls the proactive token refresh and does not add the header, and
-        // `TPPNetworkResponder` gates its 401 repair on having sent one — so a
-        // bare request earns a terminal 401 on every audiobook manifest fetch.
+        // overload dispatches what it is handed, and `useTokenIfAvailable` only
+        // controls the proactive refresh rather than adding the header.
+        //
+        // What a bare request costs, stated precisely because an earlier
+        // version of this comment said "terminal 401" and that is wrong for the
+        // common case: the 401 repair is gated on `snapshot.hasCredentials`
+        // (`TPPNetworkResponder.swift:615`), not on having sent a header, and
+        // the retry is rebuilt through `request(for:)`
+        // (`TPPNetworkExecutor.swift:1001`). So for token and OAuth libraries
+        // the fetch still succeeds — after a wasted round trip, a spurious
+        // token exchange, the per-URL retry budget (`maxRetryAttempts = 1`) and
+        // `markCredentialsStale()`, which can surface as an unprompted
+        // re-login. It is terminal only where the repair declines: basic auth,
+        // and browser reauth (`TPPNetworkResponder.swift:659`).
         try await executor.GET(request: executor.request(for: url),
                                cachePolicy: .useProtocolCachePolicy,
                                useTokenIfAvailable: true)
