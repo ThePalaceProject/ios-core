@@ -603,6 +603,11 @@ private final class AccountBoolFlag: @unchecked Sendable {
     /// a spy. The existential is not ObjC-representable, so @objcMembers skips it.
     var errorReporter: any ErrorReporting = TPPErrorReporter()
 
+    /// Fetch seam for the authentication document. Production goes through the
+    /// shared network executor; tests inject a stub to drive the success and
+    /// failure completions of `loadAuthenticationDocument`.
+    var authDocumentGetter: any AuthDocumentGetting = NetworkExecutorAuthDocumentGetter()
+
     var loansUrl: URL? {
         return details?.loansUrl
     }
@@ -719,6 +724,14 @@ private final class AccountBoolFlag: @unchecked Sendable {
 
             self.authenticationDocument = authenticationDocument
 
+            // Sign-in reads details only through `loadState`, so a load that
+            // succeeds outside the state machine (a retry after `.detailsFailed`)
+            // must record them there too, before the caller's completion runs.
+            if let details = self.details,
+               let next = Self.loadStateAfterSuccessfulAuthDocLoad(from: self.loadState, details: details) {
+                self._setState(next)
+            }
+
             // Completion should be called before announcements,
             // otherwise the code that presents alerts interferes with catalog presentation.
             completion(true)
@@ -736,6 +749,20 @@ private final class AccountBoolFlag: @unchecked Sendable {
         }
     }
 
+    /// The state a successful `loadAuthenticationDocument` leaves, or nil to
+    /// leave the current state alone. `.detailsLoading` belongs to the state
+    /// machine's own fetch, which writes its terminal on completion, and
+    /// `.detailsEvicted` must survive so awaiters fail fast and redrive (see
+    /// `AuthDocumentLoader.fetchCompletionMayWriteTerminal`).
+    static func loadStateAfterSuccessfulAuthDocLoad(from current: LoadState, details: AccountDetails) -> LoadState? {
+        switch current {
+        case .detailsLoading, .detailsEvicted:
+            return nil
+        case .notLoaded, .basicInfoLoaded, .detailsLoaded, .detailsFailed:
+            return .detailsLoaded(details)
+        }
+    }
+
     private func fetchAuthenticationDocument(_ urlString: String, completion: @escaping (OPDS2AuthenticationDocument?) -> Void) {
         var document: OPDS2AuthenticationDocument?
 
@@ -750,7 +777,7 @@ private final class AccountBoolFlag: @unchecked Sendable {
             return
         }
 
-        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
+        authDocumentGetter.get(url) { result in
             switch result {
             case .success(let serverData, _):
                 do {
@@ -897,5 +924,17 @@ extension Account {
             Log.error(#file, "Invalid init parameter for PatronPINKeyboard: \(stringValue ?? "nil")")
             return nil
         }
+    }
+}
+
+/// Fetches an account's authentication document.
+protocol AuthDocumentGetting: Sendable {
+    func get(_ url: URL, completion: @escaping (NYPLResult<Data>) -> Void)
+}
+
+/// Production fetch: an unauthenticated GET through the shared network executor.
+struct NetworkExecutorAuthDocumentGetter: AuthDocumentGetting {
+    func get(_ url: URL, completion: @escaping (NYPLResult<Data>) -> Void) {
+        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false, completion: completion)
     }
 }
