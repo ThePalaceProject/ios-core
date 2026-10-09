@@ -10,16 +10,19 @@ import UIKit
 final class TPPPresentationUtilsTests: XCTestCase {
 
     private var window: UIWindow?
+    /// Retries queued behind a visible alert; tests run them by hand instead
+    /// of waiting out the production poll interval.
+    private var queuedRetries: [@MainActor () -> Void] = []
 
-    override func tearDown() {
+    override func tearDown() async throws {
+        queuedRetries.removeAll()
         if let window {
             window.rootViewController?.dismiss(animated: false)
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
             window.isHidden = true
             window.rootViewController = nil
             self.window = nil
         }
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Helpers
@@ -50,64 +53,64 @@ final class TPPPresentationUtilsTests: XCTestCase {
         return sheet
     }
 
+    private func safelyPresent(_ vc: UIViewController, root: UIViewController?) {
+        TPPPresentationUtils.safelyPresent(vc, animated: false, completion: nil,
+                                           rootProvider: { root },
+                                           scheduleAlertRetry: { [unowned self] in queuedRetries.append($0) })
+    }
+
+    private func runQueuedRetry() {
+        guard !queuedRetries.isEmpty else {
+            XCTFail("no retry was queued")
+            return
+        }
+        queuedRetries.removeFirst()()
+    }
+
     private func present(_ vc: UIViewController, on presenter: UIViewController) {
         let shown = expectation(description: "\(type(of: vc)) shown")
         presenter.present(vc, animated: false) { shown.fulfill() }
-        wait(for: [shown], timeout: 2)
+        wait(for: [shown], timeout: 10)  // STARVE-001-OK: UIKit's own non-animated present completion on the main run loop; no background work
     }
 
     private func dismissPresented(on presenter: UIViewController) {
         let gone = expectation(description: "dismissed")
         presenter.dismiss(animated: false) { gone.fulfill() }
-        wait(for: [gone], timeout: 2)
-    }
-
-    private func pump(_ seconds: TimeInterval) {
-        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+        wait(for: [gone], timeout: 10)  // STARVE-001-OK: UIKit's own non-animated dismiss completion on the main run loop; no background work
     }
 
     // MARK: - Visible alert
 
     /// The sign-in sheet raised by a refused token refresh must not be
-    /// presented from an alert that is already on screen.
+    /// presented from an alert that is still on screen; it stays queued.
     func testSafelyPresent_WhenAlertIsVisible_DoesNotPresentFromTheAlert() {
         let root = makeRoot()
         let alert = makeAlert()
         present(alert, on: root)
-        let sheet = makeSheet()
-        let presented = expectation(description: "sheet presented")
 
-        TPPPresentationUtils.safelyPresent(sheet, animated: false,
-                                           completion: { presented.fulfill() },
-                                           rootProvider: { root })
-        pump(0.6)
+        safelyPresent(makeSheet(), root: root)
+        runQueuedRetry()
 
         XCTAssertNil(alert.presentedViewController,
                      "presenting from a UIAlertController is the fe741015 crash")
         XCTAssertTrue(root.presentedViewController === alert)
-
-        // Drain the queued retry inside this test so it cannot fire in a later one.
-        dismissPresented(on: root)
-        wait(for: [presented], timeout: 3)
+        XCTAssertEqual(queuedRetries.count, 1, "the presentation must stay queued while the alert is up")
     }
 
-    /// Deferred, not dropped: once the alert is dismissed the sheet is
+    /// Deferred, not dropped: once the alert is dismissed the queued sheet is
     /// presented from the controller that was showing the alert.
     func testSafelyPresent_WhenAlertIsVisible_PresentsAfterAlertIsDismissed() {
         let root = makeRoot()
         let alert = makeAlert()
         present(alert, on: root)
         let sheet = makeSheet()
-        let presented = expectation(description: "sheet presented")
 
-        TPPPresentationUtils.safelyPresent(sheet, animated: false,
-                                           completion: { presented.fulfill() },
-                                           rootProvider: { root })
-        pump(0.3)
+        safelyPresent(sheet, root: root)
         dismissPresented(on: root)
+        runQueuedRetry()
 
-        wait(for: [presented], timeout: 3)
         XCTAssertTrue(root.presentedViewController === sheet)
+        XCTAssertTrue(queuedRetries.isEmpty)
     }
 
     /// An alert routed through `safelyPresent` (announcements, sign-in
@@ -117,16 +120,12 @@ final class TPPPresentationUtilsTests: XCTestCase {
         let first = makeAlert("First")
         present(first, on: root)
         let second = makeAlert("Second")
-        let presented = expectation(description: "second alert presented")
 
-        TPPPresentationUtils.safelyPresent(second, animated: false,
-                                           completion: { presented.fulfill() },
-                                           rootProvider: { root })
-        pump(0.3)
+        safelyPresent(second, root: root)
         XCTAssertNil(first.presentedViewController)
         dismissPresented(on: root)
+        runQueuedRetry()
 
-        wait(for: [presented], timeout: 3)
         XCTAssertTrue(root.presentedViewController === second)
     }
 
@@ -139,36 +138,29 @@ final class TPPPresentationUtilsTests: XCTestCase {
         let alert = makeAlert()
         present(alert, on: modal)
         let sheet = makeSheet()
-        let presented = expectation(description: "sheet presented")
 
-        TPPPresentationUtils.safelyPresent(sheet, animated: false,
-                                           completion: { presented.fulfill() },
-                                           rootProvider: { root })
-        pump(0.3)
+        safelyPresent(sheet, root: root)
         XCTAssertNil(alert.presentedViewController)
         dismissPresented(on: modal)
+        runQueuedRetry()
 
-        wait(for: [presented], timeout: 3)
         XCTAssertTrue(modal.presentedViewController === sheet)
     }
 
     // MARK: - No alert
 
     /// Without an alert the sheet is presented right away from the top-most
-    /// presented controller.
+    /// presented controller, with nothing queued.
     func testSafelyPresent_WithModalAndNoAlert_PresentsFromTopmostModal() {
         let root = makeRoot()
         let modal = UIViewController()
         present(modal, on: root)
         let sheet = makeSheet()
-        let presented = expectation(description: "sheet presented")
 
-        TPPPresentationUtils.safelyPresent(sheet, animated: false,
-                                           completion: { presented.fulfill() },
-                                           rootProvider: { root })
+        safelyPresent(sheet, root: root)
 
-        wait(for: [presented], timeout: 2)
         XCTAssertTrue(modal.presentedViewController === sheet)
+        XCTAssertTrue(queuedRetries.isEmpty)
     }
 
     /// A presentation still animating in is waited out through its
@@ -182,21 +174,24 @@ final class TPPPresentationUtilsTests: XCTestCase {
 
         TPPPresentationUtils.safelyPresent(alert, animated: false,
                                            completion: { presented.fulfill() },
-                                           rootProvider: { root })
+                                           rootProvider: { root },
+                                           scheduleAlertRetry: { [unowned self] in queuedRetries.append($0) })
 
-        wait(for: [presented], timeout: 3)
+        wait(for: [presented], timeout: 10)  // STARVE-001-OK: waits on UIKit's own transition-coordinator completion for an animation started in this test; no background work
         XCTAssertTrue(modal.presentedViewController === alert)
     }
 
-    /// No root controller: nothing is presented and the completion is not run.
+    /// No root controller: nothing is presented, nothing is queued, and the
+    /// completion is not run.
     func testSafelyPresent_WithNoRoot_DoesNotRunCompletion() {
-        let notCalled = expectation(description: "completion not called")
-        notCalled.isInverted = true
+        var completionRan = false
 
         TPPPresentationUtils.safelyPresent(makeSheet(), animated: false,
-                                           completion: { notCalled.fulfill() },
-                                           rootProvider: { nil })
+                                           completion: { completionRan = true },
+                                           rootProvider: { nil },
+                                           scheduleAlertRetry: { [unowned self] in queuedRetries.append($0) })
 
-        wait(for: [notCalled], timeout: 0.3)
+        XCTAssertFalse(completionRan)
+        XCTAssertTrue(queuedRetries.isEmpty)
     }
 }

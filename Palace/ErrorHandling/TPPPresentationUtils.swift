@@ -14,19 +14,40 @@ private final class MainActorPresentation: @unchecked Sendable {
     let viewController: UIViewController
     let completion: (() -> Void)?
     let rootProvider: @MainActor () -> UIViewController?
+    let scheduleAlertRetry: TPPPresentationUtils.AlertRetryScheduler
     init(_ viewController: UIViewController,
          _ completion: (() -> Void)?,
-         _ rootProvider: @escaping @MainActor () -> UIViewController?) {
+         _ rootProvider: @escaping @MainActor () -> UIViewController?,
+         _ scheduleAlertRetry: @escaping TPPPresentationUtils.AlertRetryScheduler) {
         self.viewController = viewController
         self.completion = completion
         self.rootProvider = rootProvider
+        self.scheduleAlertRetry = scheduleAlertRetry
     }
+}
+
+/// Carries a main-actor retry across the `asyncAfter` boundary; created and
+/// run only on the main queue.
+private final class MainActorRetry: @unchecked Sendable {
+    let run: @MainActor () -> Void
+    init(_ run: @escaping @MainActor () -> Void) { self.run = run }
 }
 
 class TPPPresentationUtils: NSObject {
     /// How often a presentation queued behind a visible alert re-checks
     /// whether the alert has been dismissed.
     static let alertDismissalPollInterval: TimeInterval = 0.25
+
+    /// Schedules the next check for a presentation queued behind a visible alert.
+    typealias AlertRetryScheduler = @MainActor (_ retry: @escaping @MainActor () -> Void) -> Void
+
+    @MainActor
+    private class func scheduleAfterPollInterval(_ retry: @escaping @MainActor () -> Void) {
+        let box = MainActorRetry(retry)
+        DispatchQueue.main.asyncAfter(deadline: .now() + alertDismissalPollInterval) {
+            MainActor.assumeIsolated { box.run() }
+        }
+    }
 
     /// Presents the given view controller on top of the topmost currently
     /// displayed view controller in the current window.
@@ -50,15 +71,18 @@ class TPPPresentationUtils: NSObject {
                                    animated: Bool = true,
                                    completion: (() -> Void)? = nil) {
         safelyPresent(vc, animated: animated, completion: completion,
-                      rootProvider: { appWindowRootViewController() })
+                      rootProvider: { appWindowRootViewController() },
+                      scheduleAlertRetry: { scheduleAfterPollInterval($0) })
     }
 
     /// Same as `safelyPresent(_:animated:completion:)`, with the root view
-    /// controller supplied by `rootProvider` so tests can use their own window.
+    /// controller and the retry timing supplied by the caller so tests can use
+    /// their own window and run the retry themselves.
     class func safelyPresent(_ vc: UIViewController,
                              animated: Bool,
                              completion: (() -> Void)?,
-                             rootProvider: @escaping @MainActor () -> UIViewController?) {
+                             rootProvider: @escaping @MainActor () -> UIViewController?,
+                             scheduleAlertRetry: @escaping AlertRetryScheduler) {
         // Box the non-`Sendable` UIKit payload ONCE, here in the nonisolated
         // function region, before any `@Sendable` boundary. Every downstream use
         // (the off-main hop, the coordinator completion, the nested main.async)
@@ -66,13 +90,14 @@ class TPPPresentationUtils: NSObject {
         // `@unchecked Sendable` carrier rather than re-capturing `vc`/`completion`
         // directly — which is what produced the "sending 'completion' risks data
         // races" diagnostic when the box was rebuilt inside `assumeIsolated`.
-        let payload = MainActorPresentation(vc, completion, rootProvider)
+        let payload = MainActorPresentation(vc, completion, rootProvider, scheduleAlertRetry)
 
         // Ensure this block is always executed on the main thread
         if !Thread.isMainThread {
             DispatchQueue.main.async {
                 safelyPresent(payload.viewController, animated: animated, completion: payload.completion,
-                              rootProvider: payload.rootProvider)
+                              rootProvider: payload.rootProvider,
+                              scheduleAlertRetry: payload.scheduleAlertRetry)
             }
             return
         }
@@ -100,9 +125,10 @@ class TPPPresentationUtils: NSObject {
             // refresh at launch, over a visible alert). Wait for the alert to
             // be dismissed, then walk the hierarchy again.
             if base is UIAlertController {
-                DispatchQueue.main.asyncAfter(deadline: .now() + alertDismissalPollInterval) {
+                payload.scheduleAlertRetry {
                     safelyPresent(payload.viewController, animated: animated, completion: payload.completion,
-                                  rootProvider: payload.rootProvider)
+                                  rootProvider: payload.rootProvider,
+                                  scheduleAlertRetry: payload.scheduleAlertRetry)
                 }
                 return
             }
@@ -134,7 +160,8 @@ class TPPPresentationUtils: NSObject {
                 coordinator.animate(alongsideTransition: nil) { _ in
                     DispatchQueue.main.async {
                         safelyPresent(payload.viewController, animated: animated, completion: payload.completion,
-                                      rootProvider: payload.rootProvider)
+                                      rootProvider: payload.rootProvider,
+                                      scheduleAlertRetry: payload.scheduleAlertRetry)
                     }
                 }
                 return
