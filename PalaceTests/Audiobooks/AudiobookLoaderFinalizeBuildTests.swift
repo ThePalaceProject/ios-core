@@ -413,13 +413,7 @@ final class AudiobookLoaderFinalizeBuildTests: XCTestCase {
             withJSONObject: zeroTrackOverdriveManifestJSON(id: bookId), options: []
         )
 
-        let done = expectation(description: "finalizeBuild completes")
-        var received: Result<LoadedAudiobook, AudiobookLoadError>?
-        loader.finalizeBuild(book: book, jsonData: jsonData, decryptor: nil) { result in
-            received = result
-            done.fulfill()
-        }
-        wait(for: [done], timeout: 2.0)
+        let received = loader.finalizeBuild(book: book, jsonData: jsonData, decryptor: nil)
 
         switch received {
         case .failure(.factoryFailed):
@@ -428,8 +422,6 @@ final class AudiobookLoaderFinalizeBuildTests: XCTestCase {
             XCTFail("A zero-track audiobook must NOT succeed — that builds a trackless player that later traps on [0] subscripts (F-004)")
         case .failure(let other):
             XCTFail("Expected .factoryFailed, got \(String(describing: other))")
-        case nil:
-            XCTFail("finalizeBuild never called its completion")
         }
     }
 }

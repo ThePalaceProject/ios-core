@@ -18,15 +18,18 @@ import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
 
-/// Callback surface for the second-leg bearer-token manifest fetch. Wraps
-/// `BookService.fetchManifestWithBearerToken` so adapter tests can stub
-/// the recursion without spinning up URLSession or AppContainer.
+/// Second-leg bearer-token manifest fetch. Wraps
+/// `BookService.fetchManifestWithBearerToken` so adapter tests can stub the
+/// recursion without spinning up URLSession or AppContainer.
+///
+/// `@MainActor` and `async` for the reason recorded on `AudiobookVendorAdapter`
+/// (PP-5301).
+@MainActor
 protocol BearerTokenManifestFetching {
     func fetchManifest(
         with token: MyBooksSimplifiedBearerToken,
-        for book: TPPBook,
-        completion: @escaping ([String: Any]?) -> Void
-    )
+        for book: TPPBook
+    ) async -> [String: Any]?
 }
 
 /// Bearer-token audiobook adapter. Two-step fulfill flow: the CM fulfill
@@ -35,9 +38,6 @@ protocol BearerTokenManifestFetching {
 /// `location` URL. This adapter detects the wrapper, mutates the
 /// `TPPBook` to record the bearer token + fulfill URL (so the playback
 /// pipeline can re-auth on expiration), then fetches the real manifest.
-///
-/// Not `@MainActor` at the class level because the protocol is not; main-thread
-/// hops happen inside callbacks.
 final class BearerTokenAdapter: AudiobookVendorAdapter {
 
     private let network: AudiobookManifestNetworkFetching
@@ -59,71 +59,54 @@ final class BearerTokenAdapter: AudiobookVendorAdapter {
     }
 
     func resolveManifest(
-        for book: TPPBook,
-        completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-    ) {
+        for book: TPPBook
+    ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
         guard let url = book.defaultAcquisition?.hrefURL else {
             Log.error(#file, "  ❌ No default acquisition URL for fetching bearer-token wrapper")
-            completion(.failure(.manifestFetchFailed))
-            return
+            return .failure(.manifestFetchFailed)
         }
 
         Log.debug(#file, "  📡 Fetching bearer-token wrapper from URL: \(url.absoluteString)")
 
-        let completionBox = AudiobookAdapterCompletionBox(completion)
-        // The fetcher existential is not `Sendable`; it is only invoked from
-        // the main-actor hop below.
-        let fetcherBox = BearerManifestFetcherBox(manifestFetcher)
-        network.fetchData(from: url) { [fetcherBox] data, response, error in
-            Task { @MainActor in
-                if let error = error {
-                    Log.error(#file, "  ❌ Network error fetching bearer-token wrapper: \(error.localizedDescription)")
-                    completionBox.fire(.failure(.manifestFetchFailed))
-                    return
-                }
-                guard let data = data, !data.isEmpty else {
-                    Log.error(#file, "  ❌ No data received from bearer-token fetch")
-                    completionBox.fire(.failure(.manifestFetchFailed))
-                    return
-                }
-                if let httpResponse = response as? HTTPURLResponse,
-                   AudiobookLoader.looksLikeHTMLResponse(httpResponse) {
-                    Log.error(#file, "  ⚠️ Server returned HTML instead of bearer-token JSON (HTTP \(httpResponse.statusCode))")
-                    completionBox.fire(.failure(.manifestFetchFailed))
-                    return
-                }
-
-                guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
-                    Log.error(#file, "  ❌ Failed to parse bearer-token data as JSON dictionary")
-                    completionBox.fire(.failure(.manifestParseFailed))
-                    return
-                }
-
-                guard let bearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: json) else {
-                    Log.error(#file, "  ❌ Response did not contain a recognizable bearer-token wrapper")
-                    completionBox.fire(.failure(.manifestFetchFailed))
-                    return
-                }
-
-                Log.info(#file, "  🔑 Received bearer token from fulfill URL - fetching actual manifest from location")
-                bearerToken.fulfillURL = url
-                book.bearerToken = bearerToken.accessToken
-                book.bearerTokenFulfillURL = url
-
-                fetcherBox.fetcher.fetchManifest(with: bearerToken, for: book) { manifestJSON in
-                    // `[String: Any]` is not Sendable; box it before the hop.
-                    guard let manifestJSON = manifestJSON else {
-                        Log.error(#file, "  ❌ Bearer-token second-leg manifest fetch returned nil")
-                        Task { @MainActor in completionBox.fire(.failure(.manifestFetchFailed)) }
-                        return
-                    }
-                    let jsonBox = ManifestJSONBox(manifestJSON)
-                    Task { @MainActor in
-                        Log.debug(#file, "  ✅ Successfully fetched manifest via bearer token")
-                        completionBox.fire(.success((json: jsonBox.value, decryptor: nil)))
-                    }
-                }
-            }
+        let data: Data
+        let response: URLResponse?
+        do {
+            (data, response) = try await network.fetchData(from: url)
+        } catch {
+            Log.error(#file, "  ❌ Network error fetching bearer-token wrapper: \(error.localizedDescription)")
+            return .failure(.manifestFetchFailed)
         }
+
+        guard !data.isEmpty else {
+            Log.error(#file, "  ❌ No data received from bearer-token fetch")
+            return .failure(.manifestFetchFailed)
+        }
+        if let httpResponse = response as? HTTPURLResponse,
+           AudiobookLoader.looksLikeHTMLResponse(httpResponse) {
+            Log.error(#file, "  ⚠️ Server returned HTML instead of bearer-token JSON (HTTP \(httpResponse.statusCode))")
+            return .failure(.manifestFetchFailed)
+        }
+
+        guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+            Log.error(#file, "  ❌ Failed to parse bearer-token data as JSON dictionary")
+            return .failure(.manifestParseFailed)
+        }
+
+        guard let bearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: json) else {
+            Log.error(#file, "  ❌ Response did not contain a recognizable bearer-token wrapper")
+            return .failure(.manifestFetchFailed)
+        }
+
+        Log.info(#file, "  🔑 Received bearer token from fulfill URL - fetching actual manifest from location")
+        bearerToken.fulfillURL = url
+        book.bearerToken = bearerToken.accessToken
+        book.bearerTokenFulfillURL = url
+
+        guard let manifestJSON = await manifestFetcher.fetchManifest(with: bearerToken, for: book) else {
+            Log.error(#file, "  ❌ Bearer-token second-leg manifest fetch returned nil")
+            return .failure(.manifestFetchFailed)
+        }
+        Log.debug(#file, "  ✅ Successfully fetched manifest via bearer token")
+        return .success((json: manifestJSON, decryptor: nil))
     }
 }
