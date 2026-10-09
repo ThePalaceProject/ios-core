@@ -74,14 +74,32 @@ private final class MockBackendConfigStore: @unchecked Sendable {
     }
 }
 
-/// Carries the `@unchecked Sendable` `MockBackendURLProtocol` instance across the
-/// `@Sendable` `DispatchQueue.main.async` boundary in `deliverResponse` as a single
-/// owned handoff — the region-analysis-friendly form of "send `self` to main."
-/// The URL Loading System owns the protocol instance for the request lifetime and
-/// the finish callback fires once, so the strong reference is safe.
-private final class MockProtocolBox: @unchecked Sendable {
-    let value: MockBackendURLProtocol
-    init(_ value: MockBackendURLProtocol) { self.value = value }
+/// The thread that called `startLoading` and the run loop modes it was running.
+///
+/// The URL loading system expects every client callback on that thread, which
+/// runs its run loop (Apple's CustomHTTPProtocol sample, "Threading Notes":
+/// https://developer.apple.com/library/archive/samplecode/CustomHTTPProtocol/Listings/Read_Me_About_CustomHTTPProtocol_txt.html).
+/// `@unchecked Sendable`: `CFRunLoop` is thread-safe for `CFRunLoopPerformBlock`
+/// and `CFRunLoopWakeUp`, and both stored properties are immutable.
+private struct MockClientThread: @unchecked Sendable {
+    private let runLoop: CFRunLoop
+    private let modes: CFArray
+
+    /// Captures the calling thread. Call from `startLoading`.
+    static func current() -> MockClientThread {
+        let runLoop = CFRunLoopGetCurrent()!
+        var modes: [CFString] = [CFRunLoopMode.defaultMode.rawValue]
+        if let mode = CFRunLoopCopyCurrentMode(runLoop), mode != .defaultMode {
+            modes.append(mode.rawValue)
+        }
+        return MockClientThread(runLoop: runLoop, modes: modes as CFArray)
+    }
+
+    /// Runs `block` on the client thread's next run loop pass.
+    func perform(_ block: @escaping () -> Void) {
+        CFRunLoopPerformBlock(runLoop, modes, block)
+        CFRunLoopWakeUp(runLoop)
+    }
 }
 
 // Swift 6 `complete` — `@unchecked Sendable` invariant: this `URLProtocol` subclass
@@ -89,8 +107,8 @@ private final class MockProtocolBox: @unchecked Sendable {
 // lock-backed `static let config` (`MockBackendConfigStore`, itself
 // `@unchecked Sendable`), and `client`/`request` are per-instance state owned and
 // serialized by the URL Loading System. `self` is captured only into the deferred
-// response-delivery closures below, which the loading system drives on the
-// protocol's own thread. Documented invariant, not a bare waiver.
+// response-delivery closures below, which run on the thread that called
+// `startLoading`. Documented invariant, not a bare waiver.
 final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
 
     // MARK: - Static Configuration
@@ -169,6 +187,7 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         let requestNum = Self.config.nextRequestCount()
+        let clientThread = MockClientThread.current()
 
         guard let scenario = Self.activeScenario,
               let url = request.url else {
@@ -184,7 +203,8 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         let flags = Self.config.flags
         guard let route = scenario.routes.first(where: { $0.matches(request, flags: flags) }) else {
             Log.warn(#file, "MockBackend [\(requestNum)] No route matched, returning 404")
-            deliverResponse(statusCode: 404,
+            deliverResponse(on: clientThread,
+                           statusCode: 404,
                            contentType: "application/problem+json",
                            data: makeProblemDocument(title: "Not Found",
                                                      detail: "MockBackend: no route matched \(url.path)",
@@ -210,13 +230,17 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
 
         if delay > 0 {
             DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.deliverResponse(statusCode: route.statusCode,
-                                      contentType: route.contentType,
-                                      data: fixtureData,
-                                      additionalHeaders: route.headers)
+                clientThread.perform {
+                    self?.deliverResponse(on: clientThread,
+                                          statusCode: route.statusCode,
+                                          contentType: route.contentType,
+                                          data: fixtureData,
+                                          additionalHeaders: route.headers)
+                }
             }
         } else {
-            deliverResponse(statusCode: route.statusCode,
+            deliverResponse(on: clientThread,
+                           statusCode: route.statusCode,
                            contentType: route.contentType,
                            data: fixtureData,
                            additionalHeaders: route.headers)
@@ -303,7 +327,9 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
 
     // MARK: - Response Delivery
 
-    private func deliverResponse(statusCode: Int,
+    /// Call only on `clientThread`.
+    private func deliverResponse(on clientThread: MockClientThread,
+                                  statusCode: Int,
                                   contentType: String,
                                   data: Data,
                                   additionalHeaders: [String: String]? = nil) {
@@ -323,22 +349,16 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
             return
         }
 
-        // Deliver response and data synchronously, then finish on next runloop
-        // tick. This ensures the URLSession delegate processes didReceive(data:)
-        // before didCompleteWithError: fires — otherwise TPPNetworkResponder's
-        // progressData may be empty when it tries to parse the problem document.
+        // Deliver response and data now, then finish on the client thread's next
+        // run loop pass. The extra pass lets the URLSession delegate process
+        // didReceive(data:) before didCompleteWithError: fires; otherwise
+        // TPPNetworkResponder's progressData may be empty when it parses a
+        // problem document. Finishing on main instead stalled requests into
+        // -1001 timeouts whenever the main thread was busy.
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
-        // `complete`: box `self` (an `@unchecked Sendable` `URLProtocol` subclass)
-        // into a carrier before the `@Sendable` `main.async` closure so the
-        // region checker sees a single owned handoff rather than "sending 'self'
-        // risks data races." The URL Loading System owns this protocol instance
-        // for the request's lifetime, and the finish callback runs exactly once,
-        // so the strong reference in the box is safe. Dispatch timing unchanged.
-        let selfBox = MockProtocolBox(self)
-        DispatchQueue.main.async {
-            let this = selfBox.value
-            this.client?.urlProtocolDidFinishLoading(this)
+        clientThread.perform {
+            self.client?.urlProtocolDidFinishLoading(self)
         }
     }
 
