@@ -102,11 +102,13 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
         await MainActor.run {}
     }
 
-    private func activate(_ account: GenerationAccount) async throws {
+    private func activate(_ account: GenerationAccount,
+                          connectorGeneration: Int = AdobeConnectorGeneration.current) async throws {
         try await service.ensureDeviceActivated(
             authorizer: { [drm] in drm },
             userAccount: account,
-            isDRMAvailable: true
+            isDRMAvailable: true,
+            connectorGeneration: connectorGeneration
         )
     }
 
@@ -190,6 +192,76 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
 
         XCTAssertEqual(drm.authorizeCallCount, 0,
                        "a device activated under the current connector is already activated")
+    }
+
+    // MARK: - The connector swap, driven through the gate
+
+    /// The case PP-5251 exists for, end to end rather than as pure logic.
+    ///
+    /// Every other gate test is written relative to `AdobeConnectorGeneration
+    /// .current`, so all of them pass by construction once that constant moves
+    /// to 2 — nothing would have failed at the moment the migration was supposed
+    /// to start working. Injecting the generation is what makes the Wipro
+    /// behaviour assertable before the connector is swapped.
+    func testOnAWiproBuild_AnUnmarkedActivationReActivates() async throws {
+        drm.isUserAuthorizedReturnValue = true
+        drm.authorizeShouldSucceed = true
+        let account = GenerationAccount(licensor: Self.validLicensor,
+                                        userID: "old-user",
+                                        deviceID: "old-device",
+                                        generation: nil)
+
+        try await activate(account, connectorGeneration: 2)
+
+        XCTAssertEqual(drm.authorizeCallCount, 1,
+                       "an activation predating the marker must be redone once the "
+                       + "connector generation moves past preMarker")
+    }
+
+    /// The Adobe-era-on-Wipro cell proper: recorded 1, running 2.
+    func testOnAWiproBuild_AnAdobeEraActivationReActivates() async throws {
+        drm.isUserAuthorizedReturnValue = true
+        drm.authorizeShouldSucceed = true
+        let account = GenerationAccount(licensor: Self.validLicensor,
+                                        userID: "old-user",
+                                        deviceID: "old-device",
+                                        generation: 1)
+
+        try await activate(account, connectorGeneration: 2)
+
+        XCTAssertEqual(drm.authorizeCallCount, 1)
+    }
+
+    /// And it settles: once re-activated under 2, a later operation skips. Without
+    /// this the migration could re-activate on every Adobe operation forever,
+    /// spending a slot each time.
+    func testOnAWiproBuild_AnAlreadyMigratedDeviceSkips() async throws {
+        drm.isUserAuthorizedReturnValue = true
+        let account = GenerationAccount(licensor: Self.validLicensor,
+                                        userID: "user",
+                                        deviceID: "device",
+                                        generation: 2)
+
+        try await activate(account, connectorGeneration: 2)
+
+        XCTAssertEqual(drm.authorizeCallCount, 0)
+    }
+
+    /// The write must stamp the generation the run was gated on, or the gate
+    /// never settles: re-activating under 2 while recording 1 re-fires forever.
+    func testOnAWiproBuild_ActivationStampsTheRunningGeneration() async throws {
+        drm.isUserAuthorizedReturnValue = false
+        drm.authorizeShouldSucceed = true
+        let account = GenerationAccount(licensor: Self.validLicensor)
+
+        try await activate(account, connectorGeneration: 2)
+
+        await waitFor("the activation to be recorded") {
+            account.adobeActivationConnectorGeneration != nil
+        }
+        XCTAssertEqual(account.adobeActivationConnectorGeneration, 2,
+                       "stamping the constant instead of the running generation "
+                       + "would leave the device permanently unmigrated")
     }
 
     // MARK: - The write

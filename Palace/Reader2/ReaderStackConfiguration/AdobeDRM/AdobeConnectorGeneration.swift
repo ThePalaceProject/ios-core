@@ -36,6 +36,11 @@ enum AdobeConnectorGeneration {
     /// An unmapped build resolves to `nil` on purpose: inferring a generation for
     /// an unknown drop is how a new vendor package would inherit "already
     /// migrated".
+    ///
+    /// That is a CI-time protection, not a runtime one. This lookup and
+    /// `AdobeConnectorBuild.current` have no production call sites; what catches
+    /// an unmapped drop is `testCurrentGenerationDescribesTheLinkedConnector`
+    /// failing when the linked build stops mapping to `current`.
     private static let generationsByBuild: [String: Int] = [
         "118378": 1,
         "187526": 1,

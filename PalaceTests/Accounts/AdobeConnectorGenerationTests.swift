@@ -14,22 +14,6 @@ import XCTest
 /// "an activation exists".
 final class AdobeConnectorGenerationTests: XCTestCase {
 
-    /// Pins the accessor pair only. `write()` is write-through, so this read is
-    /// answered from the in-memory cache and would pass even if the value could
-    /// not be stored. `testRefreshFromKeychainPicksUpAnotherInstancesGeneration`
-    /// is what proves an `NSNumber` survives the keychain.
-    func testGenerationIsReadableAfterWriting() {
-        let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
-        XCTAssertNil(account.adobeActivationConnectorGeneration,
-                     "a fresh library has no recorded activation generation")
-
-        account.setAdobeActivation(userID: "user", deviceID: "device",
-                                   generation: AdobeConnectorGeneration.current)
-
-        XCTAssertEqual(account.adobeActivationConnectorGeneration,
-                       AdobeConnectorGeneration.current)
-    }
-
     /// The defect class this exists to prevent. A marker that survives sign-out
     /// reports "activated under this connector" for a device that is no longer
     /// activated at all, so the migration would skip a patron who needs it.
@@ -112,8 +96,12 @@ final class AdobeConnectorGenerationTests: XCTestCase {
     /// reasons identifies neither.
     func testRecordingAnActivationNotifiesObservers() {
         let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
+        // Bound to this account: `notifyAccountDidChange()` posts with
+        // `object: self`, and XCTest reads `object: nil` as "any sender". Other
+        // tests in this process post the same notification, so an unbound
+        // expectation is satisfied by whoever happens to post first.
         let expectation = expectation(
-            forNotification: .TPPUserAccountDidChange, object: nil, handler: nil
+            forNotification: .TPPUserAccountDidChange, object: account, handler: nil
         )
 
         account.setAdobeActivation(userID: "user", deviceID: "device",

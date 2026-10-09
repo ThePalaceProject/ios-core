@@ -626,6 +626,12 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                                isDRMAvailable: Bool,
                                timeout: TimeInterval = AdobeActivationCoordinator.defaultTimeout,
                                licensorGracePeriod: TimeInterval = 0,
+                               // Injected for the same reason as `timeout`: the
+                               // shipped constant is 1, so without a seam the
+                               // Wipro case — the one this whole change exists
+                               // for — can only be tested as pure logic, never
+                               // driven through the gate and the write.
+                               connectorGeneration: Int = AdobeConnectorGeneration.current,
                                refreshLicensor: (() async -> [String: Any]?)? = nil) async throws {
         // `isUserAuthorized` is the signal that LIES across a connector change:
         // the Wipro binaries report an Adobe-era activation as authorized and
@@ -639,7 +645,8 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         if let userID = userAccount.userID,
            let deviceID = userAccount.deviceID,
            !AdobeConnectorGeneration.needsReactivation(
-               recorded: userAccount.adobeActivationConnectorGeneration),
+               recorded: userAccount.adobeActivationConnectorGeneration,
+               current: connectorGeneration),
            authorizer()?.isUserAuthorized(userID, withDevice: deviceID) == true {
             Log.info(#file, "Adobe device already activated — skipping activation")
             return
@@ -783,7 +790,10 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                             userAccount.setAdobeActivation(
                                 userID: userID,
                                 deviceID: deviceID,
-                                generation: AdobeConnectorGeneration.current
+                                // The injected value, not the constant: a run
+                                // gated on one generation must not stamp another,
+                                // or the gate never settles.
+                                generation: connectorGeneration
                             )
                         }
                         once.finish(throwing: nil)
