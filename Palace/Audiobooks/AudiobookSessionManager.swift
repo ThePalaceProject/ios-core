@@ -320,7 +320,8 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding,
         readinessTimeout: TimeInterval,
         notificationCenter: NotificationCenter,
-        overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void
+        overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void,
+        makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader
     ) {
         self.bookRegistry = bookRegistry
         self.positionResolver = AudiobookPositionResolver(bookRegistry: bookRegistry)
@@ -338,6 +339,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.readinessTimeout = readinessTimeout
         self.mediaServicesResetRecovery = MediaServicesResetRecovery(notificationCenter: notificationCenter)
         self.overdriveRefulfillStarter = overdriveRefulfillStarter
+        self.makeLoader = makeLoader
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
         // Note: Remote commands are handled by the toolkit's MediaControlPublisher.
@@ -378,7 +380,8 @@ public final class AudiobookSessionManager: ObservableObject {
         notificationCenter: NotificationCenter = .default,
         overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void = { book in
             AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
-        }
+        },
+        makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
     ) {
         self.init(
             bookRegistry: appContainer.bookRegistry,
@@ -395,7 +398,8 @@ public final class AudiobookSessionManager: ObservableObject {
             playbackCommandFactory: playbackCommandFactory,
             readinessTimeout: readinessTimeout,
             notificationCenter: notificationCenter,
-            overdriveRefulfillStarter: overdriveRefulfillStarter
+            overdriveRefulfillStarter: overdriveRefulfillStarter,
+            makeLoader: makeLoader
         )
     }
 
@@ -524,27 +528,6 @@ public final class AudiobookSessionManager: ObservableObject {
         )
     }
 
-    /// Maps session errors to phone-alert (title, message) pairs. Returns nil
-    /// for errors that have other dedicated presentation paths — keep this
-    /// switch aligned with those paths so no case is alerted twice.
-    static func phoneAlertContent(for error: AudiobookSessionError) -> (title: String, message: String)? {
-        switch error {
-        case .wifiRequired:
-            return (Strings.Settings.wifiRequired, Strings.Settings.downloadRestrictedToWiFi)
-        case .notAuthenticated:
-            return (Strings.Error.signInErrorTitle, error.localizedDescription)
-        case .notDownloaded:
-            return (Strings.Generic.error, error.localizedDescription)
-        case .networkUnavailable:
-            return (Strings.Error.networkUnavailableErrorTitle, error.localizedDescription)
-        case .manifestLoadFailed, .playerCreationFailed, .alreadyLoading, .unknown:
-            // Loader failures → BookService.showAudiobookTryAgainError.
-            // Cold-load .unknown("Playback failed") → cold-load alert branch.
-            // .alreadyLoading is a programmer-facing signal, not user-facing.
-            return nil
-        }
-    }
-
     // MARK: - Public API
 
     /// Opens and starts playing an audiobook.
@@ -665,9 +648,9 @@ public final class AudiobookSessionManager: ObservableObject {
     private var boundContentSource: (bookId: String, source: AudiobookContentSource)?
     private var playbackFailureDeduplicator = PlaybackFailureRecordDeduplicator()
 
-    /// Loader factory used by the recovery paths. `private(set)` so only this
-    /// type can rewire it.
-    private(set) var makeLoader: (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
+    /// Builds the loader for each open; the argument is `forceRefulfill`.
+    /// Injected at init so tests can hold a load in flight.
+    private(set) var makeLoader: @MainActor (Bool) -> AudiobookLoader
 
     /// - parameter forceRefulfill: recovery re-open — when true the loader
     ///   bypasses `LocalFileAdapter` so the book re-fulfills FRESH signed URLs
@@ -1154,9 +1137,12 @@ public final class AudiobookSessionManager: ObservableObject {
     public func stopPlayback(dismissPhoneUI: Bool = true, persistFinalPosition: Bool = true) async {
         Log.info(#file, "Stopping playback (dismissPhoneUI: \(dismissPhoneUI), persistFinalPosition: \(persistFinalPosition))")
 
-        // Cancel any in-flight loader so its completion is ignored.
+        // Cancel any in-flight loader and supersede its open, so a completion
+        // that lands after this stop only returns to its own caller. Without
+        // the bump it would publish an error over this stop or a newer open.
         currentLoader?.cancel()
         currentLoader = nil
+        loadGeneration &+= 1
 
         let bookId = currentBook?.identifier
 

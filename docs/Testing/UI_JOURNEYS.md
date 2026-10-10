@@ -7,6 +7,7 @@ library account, no network and no private tooling.
 |---|---|---|
 | Sign in and borrow | `SignInAndBorrowJourneyTests` | Settings shows the account signed in; after one borrow the book becomes readable and My Books holds exactly that one book |
 | Resume reading | `ResumeReadingJourneyTests` | After reading to the last chapter and relaunching, reopening the book shows that chapter, not the first |
+| Close an audiobook while it loads | `AudiobookCloseMidLoadJourneyTests` | With the open held mid-load, closing the player leaves the Listen button usable, with no spinner, alert or error text, and a second open also leaves it usable with no error (PP-5302) |
 
 ## Run them
 
@@ -67,6 +68,8 @@ They exercise the app's own wiring against fixtures. They say nothing about:
 - licensed DRM (Adobe, LCP) fulfilment;
 - the background download session (under the mock backend, downloads use a
   foreground session so the URL protocol can serve them);
+- audio playback: AVFoundation fetches tracks outside `URLSession`, so the
+  mock backend cannot serve them;
 - background audio, device lock and real VoiceOver use.
 
 Those stay in the manual rows of

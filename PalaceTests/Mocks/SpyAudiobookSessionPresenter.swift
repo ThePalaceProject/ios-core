@@ -155,6 +155,8 @@ final class SpyShimSession: AudiobookSessionManaging {
     var isPlaying: Bool = false
     var coverImage: UIImage?
     var hasActiveManager: Bool = false
+    /// False keeps the full player on its loading overlay.
+    var isLoaded: Bool = true
 
     let playbackStatePublisher = PassthroughSubject<AudiobookSessionState, Never>()
     let chapterUpdatePublisher = PassthroughSubject<(chapters: [Chapter], current: Chapter?), Never>()
@@ -175,9 +177,12 @@ final class SpyShimSession: AudiobookSessionManaging {
     private(set) var lastStopPlaybackDismissPhoneUI: Bool?
     private(set) var lastStopPlaybackPersistFinalPosition: Bool?
 
+    /// What `openAudiobook` returns.
+    var openAudiobookResult: Result<Void, AudiobookSessionError> = .failure(.unknown("spy shim"))
+
     @discardableResult
     func openAudiobook(_ book: TPPBook, startPlaying: Bool) async -> Result<Void, AudiobookSessionError> {
-        .failure(.unknown("spy shim"))
+        openAudiobookResult
     }
     func play() {}
     func pause() {}
