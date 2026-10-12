@@ -1,16 +1,14 @@
 //
-//  BookAvailabilityFormatterTests.swift
+//  StringDateComparisonTests.swift
 //  PalaceTests
 //
-//  Tests for the date comparison logic used by BookAvailabilityFormatter
-//  when deciding whether to sync audiobook positions.
-//
-//  The core decision logic in chooseLocalLocation relies on
-//  String.isDate(_:moreRecentThan:with:) which is thoroughly tested here.
-//  The TrackPosition-based tests are omitted because constructing Track
-//  objects requires Manifest/Audiobook infrastructure unsuitable for unit tests.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  Covers `String.isDate(_:moreRecentThan:with:)` in PalaceUtilities, which
+//  computes `date1 + with > date2`. The `with:` argument is therefore a
+//  tolerance applied to the FIRST date, so a positive value lets a slightly
+//  older `date1` still report as more recent — not a grace period protecting
+//  `date2`. `BookDetailViewModel.chooseLocalLocation` passes the remote
+//  position first, so the tolerance favours the server; that caller is covered
+//  in BookDetailPositionSyncChoiceTests.
 //
 
 import XCTest
@@ -18,8 +16,7 @@ import XCTest
 import PalaceUtilities
 
 @MainActor
-final class BookAvailabilityFormatterTests: XCTestCase {
-
+final class StringDateComparisonTests: XCTestCase {
     // MARK: - String.isDate(_:moreRecentThan:with:) — Core Sync Decision Logic
 
     func test_isDate_moreRecentThan_sameDate_notMoreRecent() {
@@ -141,59 +138,5 @@ final class BookAvailabilityFormatterTests: XCTestCase {
         // Reversed: year-end is not more recent than year-start
         XCTAssertFalse(String.isDate(endOfYear, moreRecentThan: startOfYear, with: 0),
                        "End of 2025 must not be more recent than start of 2026")
-    }
-
-    // MARK: - Sync Decision Matrix
-    // These tests document the expected behavior of the sync decision
-    // based on different combinations of local/remote positions.
-
-    func test_syncDecision_localNilRemoteNil_noSync() {
-        // When both are nil, no operation should happen
-        let remoteIsNewer = (true == false) // localPosition == nil && remotePosition != nil
-        XCTAssertFalse(remoteIsNewer)
-        // Verify the logic: nil && nil produces false
-        let localPosition: String? = nil
-        let remotePosition: String? = nil
-        XCTAssertFalse(localPosition == nil && remotePosition != nil,
-                       "Both nil must not trigger sync")
-    }
-
-    func test_syncDecision_localNilRemoteExists_remoteIsNewer() {
-        // When local is nil and remote exists, remote is considered newer
-        let localPosition: String? = nil
-        let remotePosition: String? = "2026-03-30T12:00:00Z"
-        let remoteIsNewer = localPosition == nil && remotePosition != nil
-        XCTAssertTrue(remoteIsNewer)
-        // Sanity: with local filled in, the condition flips
-        let localFilled: String? = "2026-03-30T11:00:00Z"
-        XCTAssertFalse(localFilled == nil && remotePosition != nil,
-                       "Non-nil local must not satisfy the nil-local condition")
-    }
-
-    func test_syncDecision_localExistsRemoteNil_localIsUsed() {
-        // When local exists and remote is nil, local should be used
-        let localPosition: String? = "2026-03-30T12:00:00Z"
-        let remotePosition: String? = nil
-        let remoteIsNewer = localPosition == nil && remotePosition != nil
-        XCTAssertFalse(remoteIsNewer)
-        // Confirm neither individual sub-condition is true
-        XCTAssertFalse(localPosition == nil, "Local must not be nil in this scenario")
-        XCTAssertFalse(remotePosition != nil, "Remote must be nil in this scenario")
-    }
-
-    func test_syncDecision_bothExist_remoteNewer_promptsSync() {
-        let local = "2026-03-30T10:00:00Z"
-        let remote = "2026-03-30T12:00:00Z"
-        let delay: TimeInterval = 0
-        let remoteIsNewer = String.isDate(remote, moreRecentThan: local, with: delay)
-        XCTAssertTrue(remoteIsNewer, "Remote position is newer, should prompt for sync")
-    }
-
-    func test_syncDecision_bothExist_localNewer_usesLocal() {
-        let local = "2026-03-30T14:00:00Z"
-        let remote = "2026-03-30T12:00:00Z"
-        let delay: TimeInterval = 0
-        let remoteIsNewer = String.isDate(remote, moreRecentThan: local, with: delay)
-        XCTAssertFalse(remoteIsNewer, "Local position is newer, should use local")
     }
 }
