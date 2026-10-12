@@ -370,15 +370,12 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// Returns false if DRM is not available.
     /// Renamed from `isUserAuthorized`: the old name invited callers to treat
     /// the connector's own verdict as sufficient, which it is not across a
-    /// connector change. Taking the recorded generation makes the bare question
-    /// unaskable through this service.
-    func canUseRecordedActivation(userID: String?,
-                                  deviceID: String?,
-                                  recordedGeneration: Int?) -> Bool {
+    /// connector change. Taking the whole activation record makes the bare
+    /// question unaskable through this service, and makes pairing stale
+    /// identifiers with a fresh generation unrepresentable.
+    func canUseRecordedActivation(_ account: AdobeActivationAccount) -> Bool {
         guard let adept = adeptInstance else { return false }
-        return adept.canUseRecordedActivation(userID: userID,
-                                              deviceID: deviceID,
-                                              recordedGeneration: recordedGeneration)
+        return adept.canUseRecordedActivation(account)
     }
 
     /// Safely set the delegate for DRM callbacks.

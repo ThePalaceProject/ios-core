@@ -58,7 +58,7 @@ final class AdobeActivationWriteLintTests: XCTestCase {
     /// guard could see it. `shouldSkipAdobeActivation` has behavioural tests;
     /// this covers the call sites that do not.
     static func passesAConstantGeneration(_ line: String) -> Bool {
-        guard line.contains("recordedGeneration:") else { return false }
+        guard isRecordedGenerationArgument(line) else { return false }
         // A declaration is not a call. The first version of this predicate
         // flagged both parameter declarations and the service wrapper's
         // forward — the lint found shapes I had not considered, which is the
@@ -66,6 +66,17 @@ final class AdobeActivationWriteLintTests: XCTestCase {
         if line.contains("recordedGeneration: Int?") { return false }
         if line.contains("recordedGeneration: recordedGeneration") { return false }
         return !line.contains("adobeActivationConnectorGeneration")
+    }
+
+    /// A line that passes `recordedGeneration:` as an argument, excluding prose.
+    ///
+    /// The doc comment on the account overload quotes the exact mis-paired call
+    /// this lint exists to catch, so a predicate that reads comments reports a
+    /// violation that is not code.
+    static func isRecordedGenerationArgument(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.hasPrefix("//") else { return false }
+        return trimmed.contains("recordedGeneration:")
     }
 
     private func productionSwiftFiles() throws -> [URL] {
@@ -192,7 +203,7 @@ final class AdobeActivationWriteLintTests: XCTestCase {
             guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }
             for line in src.split(separator: "\n", omittingEmptySubsequences: false) {
                 let text = String(line)
-                guard text.contains("recordedGeneration:") else { continue }
+                guard Self.isRecordedGenerationArgument(text) else { continue }
                 callSites += 1
                 if Self.passesAConstantGeneration(text) {
                     violators.append("\(url.lastPathComponent): \(text.trimmingCharacters(in: .whitespaces))")
@@ -200,14 +211,17 @@ final class AdobeActivationWriteLintTests: XCTestCase {
             }
         }
 
-        // A census, not a formality. There are 7 `recordedGeneration:` lines in
-        // Palace/: the protocol parameter, the service's parameter and forward,
-        // the gate, and the three decision sites. Asserting >= 4 meant three
-        // could vanish — including a whole conjunct at a decision site — with
-        // this lint still green.
-        XCTAssertGreaterThanOrEqual(callSites, 7,
-                                    "expected 7 recordedGeneration sites, found \(callSites); "
-                                    + "a removed call site must fail this, not shrink it")
+        // An exact census, not a floor. Three lines in Palace/ pair identifiers
+        // with a generation by hand: the predicate's own parameter list, the
+        // account overload's forward, and the gate in `ensureDeviceActivated`
+        // (which keeps the explicit form so the identifiers are tested before
+        // `authorizer()` is resolved). Every other site takes the account, where
+        // mis-pairing is unrepresentable. A floor let sites vanish — including a
+        // whole conjunct at a decision site — with this lint still green; a new
+        // hand-paired site must fail here and be justified.
+        XCTAssertEqual(callSites, 3,
+                       "expected 3 hand-paired recordedGeneration sites, found \(callSites); "
+                       + "prefer the account overload, and update this census only with a reason")
         XCTAssertTrue(
             violators.isEmpty,
             "a skip-activation decision must use the account's recorded generation; "
@@ -226,6 +240,20 @@ final class AdobeActivationWriteLintTests: XCTestCase {
         XCTAssertFalse(Self.passesAConstantGeneration("                recordedGeneration: Int?,"))
         XCTAssertFalse(Self.passesAConstantGeneration(
             "                       recordedGeneration: recordedGeneration)"))
+    }
+
+    /// Prose is not a call site. The account overload's doc comment contains
+    /// `recordedGeneration: AdobeConnectorGeneration.current` as the example of
+    /// what not to write, which an earlier predicate flagged as a violation.
+    func testConstantGenerationPredicateIgnoresProse() {
+        let docLine = "    /// `recordedGeneration: AdobeConnectorGeneration.current` next to a stale"
+        XCTAssertTrue(docLine.contains("recordedGeneration:"),
+                      "the fixture must contain the token, or this proves nothing")
+        XCTAssertFalse(Self.passesAConstantGeneration(docLine))
+        XCTAssertFalse(Self.isRecordedGenerationArgument(docLine))
+        // ...but the same text as real code is a violation.
+        XCTAssertTrue(Self.passesAConstantGeneration(
+            "        recordedGeneration: AdobeConnectorGeneration.current,"))
     }
 
     /// Deleting a conjunct is invisible to every other guard here: remove

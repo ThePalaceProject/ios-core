@@ -291,6 +291,51 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
                                     + "identifiers do not settle the question")
     }
 
+    // MARK: - The account overload
+
+    /// The three decision sites — `shouldSkipAdobeActivation`,
+    /// `logInIfUserAuthorized` and `didSelectRead` — call the overload that
+    /// takes the whole account, so the overload is now the only place
+    /// identifiers and generation are paired. Substituting
+    /// `AdobeConnectorGeneration.current` for the account's recorded value
+    /// there would restore PP-5026 at all three at once, and no corpus lint can
+    /// see inside a method body.
+    func testTheAccountOverloadReadsTheAccountsRecordedGeneration() {
+        drm.isUserAuthorizedReturnValue = true
+        let adobeEra = GenerationAccount(licensor: Self.validLicensor,
+                                         userID: "user",
+                                         deviceID: "device",
+                                         generation: 1)
+
+        XCTAssertFalse(drm.canUseRecordedActivation(adobeEra, current: 2),
+                       "an Adobe-era activation is not usable by a Wipro connector, "
+                       + "however loudly the connector itself says authorized")
+    }
+
+    /// The other side of the same substitution: a device already migrated must
+    /// stay on the fast path, or every Adobe operation spends an activation slot.
+    func testTheAccountOverloadSkipsAnAlreadyMigratedAccount() {
+        drm.isUserAuthorizedReturnValue = true
+        let migrated = GenerationAccount(licensor: Self.validLicensor,
+                                         userID: "user",
+                                         deviceID: "device",
+                                         generation: 2)
+
+        XCTAssertTrue(drm.canUseRecordedActivation(migrated, current: 2))
+    }
+
+    /// The overload must not invent identifiers either: an account with a
+    /// matching generation but no identifiers has nothing to reuse.
+    func testTheAccountOverloadRejectsAnAccountWithoutIdentifiers() {
+        drm.isUserAuthorizedReturnValue = true
+        let empty = GenerationAccount(licensor: Self.validLicensor,
+                                      generation: AdobeConnectorGeneration.current)
+
+        XCTAssertFalse(drm.canUseRecordedActivation(empty))
+        XCTAssertEqual(drm.isUserAuthorizedCallCount, 0,
+                       "a decision already known must not enter the non-thread-safe RMSDK")
+    }
+
     // MARK: - The connector swap, driven through the gate
 
     /// The case PP-5251 exists for, end to end rather than as pure logic.

@@ -233,10 +233,7 @@ extension TPPSignInBusinessLogic {
 
     @objc func logInIfUserAuthorized() {
         if let drmAuthorizer = drmAuthorizer,
-           !drmAuthorizer.canUseRecordedActivation(
-             userID: userAccount.userID,
-             deviceID: userAccount.deviceID,
-             recordedGeneration: userAccount.adobeActivationConnectorGeneration) {
+           !drmAuthorizer.canUseRecordedActivation(userAccount) {
 
             if userAccount.hasBarcodeAndPIN() && !isValidatingCredentials {
                 // `UITextField.text` is `@MainActor`-isolated; this `@objc`

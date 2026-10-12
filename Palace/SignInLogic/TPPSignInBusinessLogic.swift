@@ -1222,10 +1222,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // Verify the device is actually still authorized with Adobe
         #if FEATURE_DRM_CONNECTOR
         guard let drmAuthorizer = drmAuthorizer,
-              drmAuthorizer.canUseRecordedActivation(
-                userID: userID,
-                deviceID: deviceID,
-                recordedGeneration: userAccount.adobeActivationConnectorGeneration) else {
+              drmAuthorizer.canUseRecordedActivation(userAccount) else {
             Log.info(#file, "Device not usable by this connector - cannot skip activation")
             return false
         }

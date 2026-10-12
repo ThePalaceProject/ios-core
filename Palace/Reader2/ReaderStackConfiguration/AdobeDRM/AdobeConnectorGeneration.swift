@@ -105,5 +105,25 @@ extension TPPDRMAuthorizing {
         }
         return isUserAuthorized(userID, withDevice: deviceID)
     }
+
+    /// The same question asked of a whole activation record.
+    ///
+    /// The identifiers and the generation that produced them are one fact, held
+    /// by one account. Letting a caller pair them by hand is the single mistake
+    /// the predicate above cannot catch — passing
+    /// `recordedGeneration: AdobeConnectorGeneration.current` next to a stale
+    /// userID restores PP-5026 while keeping the call and the name. Reading all
+    /// three off the account makes that unrepresentable rather than linted.
+    ///
+    /// `ensureDeviceActivated` still uses the explicit form: it must test the
+    /// identifiers before `authorizer()` is evaluated, because resolving the
+    /// authorizer initialises the RMSDK.
+    func canUseRecordedActivation(_ account: AdobeActivationAccount,
+                                  current: Int = AdobeConnectorGeneration.current) -> Bool {
+        canUseRecordedActivation(userID: account.userID,
+                                 deviceID: account.deviceID,
+                                 recordedGeneration: account.adobeActivationConnectorGeneration,
+                                 current: current)
+    }
 }
 #endif
