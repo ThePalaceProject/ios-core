@@ -36,15 +36,10 @@ final class BearerTokenAdapterTests: XCTestCase {
         var stubbedError: Error?
         private(set) var requestedURLs: [URL] = []
 
-        func fetchData(
-            from url: URL,
-            completion: @escaping (Data?, URLResponse?, Error?) -> Void
-        ) {
+        func fetchData(from url: URL) async throws -> (Data, URLResponse?) {
             requestedURLs.append(url)
-            let box = SendableBox(value: completion)
-            DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                box.value(stubbedData, stubbedResponse, stubbedError)
-            }
+            if let stubbedError { throw stubbedError }
+            return (stubbedData ?? Data(), stubbedResponse)
         }
     }
 
@@ -56,16 +51,12 @@ final class BearerTokenAdapterTests: XCTestCase {
 
         func fetchManifest(
             with token: MyBooksSimplifiedBearerToken,
-            for book: TPPBook,
-            completion: @escaping ([String: Any]?) -> Void
-        ) {
+            for book: TPPBook
+        ) async -> [String: Any]? {
             callCount += 1
             receivedTokens.append(token)
             receivedBookIdentifiers.append(book.identifier)
-            let box = SendableBox(value: (json: stubbedJSON, completion: completion))
-            DispatchQueue.main.async {
-                box.value.completion(box.value.json)
-            }
+            return stubbedJSON
         }
     }
 
@@ -124,7 +115,7 @@ final class BearerTokenAdapterTests: XCTestCase {
     /// Removing the `if let bearerToken = ...` branch would skip the
     /// recursion; this test catches that by asserting
     /// `manifestFetcher.callCount > 0`.
-    func testResolveManifest_detectsBearerTokenInResponse_recursesToLocationURL() {
+    func testResolveManifest_detectsBearerTokenInResponse_recursesToLocationURL() async {
         let network = StubNetwork()
         let book = makeBook()
         let fulfillURL = book.defaultAcquisition!.hrefURL
@@ -136,11 +127,7 @@ final class BearerTokenAdapterTests: XCTestCase {
         fetcher.stubbedJSON = ["@type": "Audiobook", "title": "Real Manifest"]
 
         let adapter = BearerTokenAdapter(network: network, manifestFetcher: fetcher)
-        let exp = expectation(description: "two-leg fulfill completes")
-        adapter.resolveManifest(for: book) { _ in
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
+        _ = await adapter.resolveManifest(for: book)
 
         XCTAssertEqual(fetcher.callCount, 1,
                        "Bearer-token detection MUST trigger exactly one second-leg fetch")
@@ -157,7 +144,7 @@ final class BearerTokenAdapterTests: XCTestCase {
     /// were short-circuited (e.g. completing with the wrapper JSON
     /// directly), this test fails because the "Real Manifest" title
     /// would not appear in the propagated success payload.
-    func testResolveManifest_bearerTokenFetchSuccess_completesWithRealManifest() {
+    func testResolveManifest_bearerTokenFetchSuccess_completesWithRealManifest() async {
         let network = StubNetwork()
         let book = makeBook()
         network.stubbedData = bearerTokenWrapperData()
@@ -171,17 +158,10 @@ final class BearerTokenAdapterTests: XCTestCase {
         ]
 
         let adapter = BearerTokenAdapter(network: network, manifestFetcher: fetcher)
-        let exp = expectation(description: "two-leg fulfill returns real manifest")
         var observed: [String: Any]?
-        adapter.resolveManifest(for: book) { result in
-            if case .success(let value) = result { observed = value.json }
-            exp.fulfill()
-        }
-        // CI-safe timeout: deps are stubbed so the completion fires in ms on
-        // the happy path — a generous ceiling only matters when the runner is
-        // CPU-starved (e.g. by leaked background work), and never slows the
-        // green path. 2.0s was too tight under CI load and flaked.
-        wait(for: [exp], timeout: 10.0)
+        // No timeout to pick: the adapter is awaited, so there is no deadline
+        // to starve under parallel simulator clones (STARVE-001).
+        if case .success(let value) = await adapter.resolveManifest(for: book) { observed = value.json }
 
         XCTAssertEqual(observed?["title"] as? String, "Real Manifest",
                        "Adapter completes with the second-leg JSON, NOT the bearer-token wrapper")
@@ -194,7 +174,7 @@ final class BearerTokenAdapterTests: XCTestCase {
     /// `.manifestFetchFailed` rather than completing with an empty
     /// success or hanging. Changing the `guard let manifestJSON` to
     /// `if let` (with no else) would either hang or complete with nil.
-    func testResolveManifest_bearerTokenFetchFails_failsWithManifestFetchFailed() {
+    func testResolveManifest_bearerTokenFetchFails_failsWithManifestFetchFailed() async {
         let network = StubNetwork()
         let book = makeBook()
         network.stubbedData = bearerTokenWrapperData()
@@ -204,13 +184,8 @@ final class BearerTokenAdapterTests: XCTestCase {
         fetcher.stubbedJSON = nil  // Second leg failure.
 
         let adapter = BearerTokenAdapter(network: network, manifestFetcher: fetcher)
-        let exp = expectation(description: "second-leg failure surfaces")
         var observed: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
-            if case .failure(let err) = result { observed = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
+        if case .failure(let err) = await adapter.resolveManifest(for: book) { observed = err }
 
         guard case .manifestFetchFailed = observed else {
             XCTFail("Second-leg nil must map to .manifestFetchFailed, got \(String(describing: observed))")
@@ -229,7 +204,7 @@ final class BearerTokenAdapterTests: XCTestCase {
     /// Keychain via TPPKeychainVariable; verifying the value back through
     /// the book accessor requires Keychain access at runtime. Skip on
     /// hosts where Keychain is unavailable.
-    func testResolveManifest_setsBookBearerTokenSideEffect() throws {
+    func testResolveManifest_setsBookBearerTokenSideEffect() async throws {
         try KeychainAvailability.skipIfUnavailable()
 
         let network = StubNetwork()
@@ -242,11 +217,7 @@ final class BearerTokenAdapterTests: XCTestCase {
         fetcher.stubbedJSON = ["@type": "Audiobook"]
 
         let adapter = BearerTokenAdapter(network: network, manifestFetcher: fetcher)
-        let exp = expectation(description: "side-effect flush")
-        adapter.resolveManifest(for: book) { _ in
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
+        _ = await adapter.resolveManifest(for: book)
 
         // The token passed to the fetcher MUST carry the fulfillURL the
         // adapter assigned — covers `bearerToken.fulfillURL = url`.

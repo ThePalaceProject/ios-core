@@ -37,7 +37,9 @@ extension Account {
 
     /// - Parameter performRequest: injected request seam so tests can observe
     ///   whether the request was issued. Production passes nil and gets the
-    ///   real executor.
+    ///   real executor. `@Sendable` because this method is nonisolated, so the
+    ///   seam is invoked from whatever executor the caller is on; a test that
+    ///   records through it needs its own synchronization.
     /// - Parameter userAccount: injected account seam so tests can stage
     ///   credentials. Production passes nil and gets the shared account for
     ///   this library's UUID.
@@ -49,18 +51,30 @@ extension Account {
     ///   (PP-3649) instead of a 401 and a stale stored licensor. The executor
     ///   only refreshes token/OAuth credentials with a `tokenURL`, so this is a
     ///   no-op for basic auth and for a healthy session.
+    ///
+    /// `async` (PP-5301). This used to take a completion and hop it to the main
+    /// queue itself, because the network layer delivers off the main actor
+    /// while the closure a `@MainActor` caller passed inherited main-actor
+    /// isolation — the PP-5299 crash class. Awaiting resumes on the caller's
+    /// own actor, so no hop is needed and none can be forgotten.
+    ///
+    /// Deliberately NOT `@MainActor`. All three callers are nonisolated
+    /// (`AdobeDRMService.freshLicensorFromProfileDocument`,
+    /// `NotificationService.performTokenRegistration` and `.deleteToken`), so
+    /// annotating it would put the keychain-backed credential gate and the
+    /// document decode on the main actor for no caller's benefit — and would
+    /// force `UserProfileDocument` to be `Sendable` just to hand the result
+    /// back. Resuming on the caller's actor is a property of `async` alone.
     func getProfileDocument(
-        performRequest: ((URLRequest, Bool, @escaping (NYPLResult<Data>) -> Void) -> Void)? = nil,
+        performRequest: (@Sendable (URLRequest, Bool) async -> NYPLResult<Data>)? = nil,
         userAccount injectedUserAccount: TPPUserAccount? = nil,
-        enableTokenRefresh: Bool = false,
-        completion: @escaping (_ profileDocument: UserProfileDocument?) -> Void
-    ) {
+        enableTokenRefresh: Bool = false
+    ) async -> UserProfileDocument? {
         guard let profileHref = self.details?.userProfileUrl,
               let profileUrl = URL(string: profileHref)
         else {
             // Can be a normal situation, no active user account
-            completion(nil)
-            return
+            return nil
         }
 
         // The user-profile endpoint is authenticated; without credentials it
@@ -74,8 +88,7 @@ extension Account {
             hasCredentials: userAccount.hasCredentials(),
             tokenHasExpired: userAccount.authTokenHasExpired,
             tokenRefreshWillRepair: userAccount.isTokenRefreshRequired()) {
-            completion(nil)
-            return
+            return nil
         }
 
         var request = URLRequest(url: profileUrl)
@@ -84,43 +97,22 @@ extension Account {
         // libraries (LibrariesSectionViewModel). Naming the account keeps a 401
         // retry authenticating as this library rather than the selected one.
         // `enableTokenRefresh` is passed through the seam so tests can observe it.
-        let send = performRequest ?? { req, refresh, done in
-            _ = AppContainer.production().networkExecutor.executeRequest(
-                req, enableTokenRefresh: refresh, accountId: self.uuid, completion: done)
+        let send = performRequest ?? { req, refresh in
+            await AppContainer.production().networkExecutor.execute(
+                req, enableTokenRefresh: refresh, accountId: self.uuid)
         }
-        send(request.applyCustomUserAgent(), enableTokenRefresh) { result in
-            // Non-Sendable values cross the main-queue hop in a box; see
-            // `ProfileDocumentCompletionBox`.
-            switch result {
-            case .success(let data, _):
-                do {
-                    let profileDocument = try UserProfileDocument.fromData(data)
-                    let box = ProfileDocumentCompletionBox(completion: completion, document: profileDocument)
-                    DispatchQueue.main.async {
-                        box.completion(box.document)
-                    }
-                    return
-                } catch {
-                    self.errorReporter.report(error, summary: "Error parsing user profile document")
-                }
-            case .failure(let error, _):
-                self.errorReporter.report(error, summary: "Error retrieveing user profile document")
+
+        switch await send(request.applyCustomUserAgent(), enableTokenRefresh) {
+        case .success(let data, _):
+            do {
+                return try UserProfileDocument.fromData(data)
+            } catch {
+                self.errorReporter.report(error, summary: "Error parsing user profile document")
             }
-            let box = ProfileDocumentCompletionBox(completion: completion, document: nil)
-            DispatchQueue.main.async {
-                box.completion(box.document)
-            }
+        case .failure(let error, _):
+            self.errorReporter.report(error, summary: "Error retrieveing user profile document")
         }
+        return nil
     }
 
-}
-
-/// Documented carrier for `getProfileDocument`'s network completion, which
-/// hops to the main queue to invoke `completion` with the parsed document.
-/// The `completion` closure and `UserProfileDocument` are non-Sendable;
-/// they are only ever read on that single main-queue hop, never
-/// concurrently, so they are safe to carry in an `@unchecked Sendable` box.
-private struct ProfileDocumentCompletionBox: @unchecked Sendable {
-    let completion: (UserProfileDocument?) -> Void
-    let document: UserProfileDocument?
 }

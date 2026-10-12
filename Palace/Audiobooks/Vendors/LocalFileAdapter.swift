@@ -27,19 +27,17 @@ protocol AudiobookFileReading: AnyObject {
 /// Bearer-token refresh seam — wraps `MyBooksSimplifiedBearerToken.refreshToken`
 /// so adapter tests can drive both refresh-success and refresh-failure
 /// branches without hitting URLSession.
+///
+/// `@MainActor` and `async` for the reason recorded on `AudiobookVendorAdapter`
+/// (PP-5301).
+@MainActor
 protocol BearerTokenRefreshing {
-    func refreshToken(
-        from fulfillURL: URL,
-        completion: @escaping @Sendable (MyBooksSimplifiedBearerToken?) -> Void
-    )
+    func refreshToken(from fulfillURL: URL) async -> MyBooksSimplifiedBearerToken?
 }
 
 /// Local-file audiobook adapter. Reads a downloaded manifest from disk
 /// via the download center and parses it as JSON. Optionally refreshes
 /// the bearer token before returning so playback uses a fresh token.
-///
-/// Not `@MainActor` at the class level because the protocol is not; completion
-/// hops to main via `Task { @MainActor in }`.
 final class LocalFileAdapter: AudiobookVendorAdapter {
 
     private let downloadCenter: MyBooksDownloadCenterProviding
@@ -67,14 +65,12 @@ final class LocalFileAdapter: AudiobookVendorAdapter {
     }
 
     func resolveManifest(
-        for book: TPPBook,
-        completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-    ) {
+        for book: TPPBook
+    ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
         guard let url = downloadCenter.fileUrl(for: book.identifier),
               fileReader.fileExists(atPath: url.path) else {
             Log.error(#file, "  ❌ LocalFileAdapter invoked without a local file")
-            completion(.failure(.manifestParseFailed))
-            return
+            return .failure(.manifestParseFailed)
         }
 
         Log.debug(#file, "  Local file exists at: \(url.path)")
@@ -84,37 +80,27 @@ final class LocalFileAdapter: AudiobookVendorAdapter {
             data = try fileReader.data(at: url)
         } catch {
             Log.error(#file, "  ❌ Failed to read local file data: \(error.localizedDescription)")
-            completion(.failure(.manifestParseFailed))
-            return
+            return .failure(.manifestParseFailed)
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
             Log.error(#file, "  ❌ Failed to parse local file as JSON")
-            completion(.failure(.manifestParseFailed))
-            return
+            return .failure(.manifestParseFailed)
         }
 
         Log.debug(#file, "  ✅ Successfully parsed local manifest JSON")
 
-        if let fulfillURL = book.bearerTokenFulfillURL {
-            Log.debug(#file, "  🔑 Bearer token book - refreshing token before playback")
-            // Box the completion and the non-Sendable manifest for the
-            // refresh-callback-to-main hop.
-            let completionBox = AudiobookAdapterCompletionBox(completion)
-            let jsonBox = ManifestJSONBox(json)
-            tokenRefresher.refreshToken(from: fulfillURL) { newToken in
-                Task { @MainActor in
-                    if let newToken = newToken {
-                        Log.info(#file, "  ✅ Bearer token refreshed before playback")
-                        book.bearerToken = newToken.accessToken
-                    } else {
-                        Log.warn(#file, "  ⚠️ Bearer token refresh failed - proceeding with existing token")
-                    }
-                    completionBox.fire(.success((json: jsonBox.value, decryptor: nil)))
-                }
-            }
-        } else {
-            completion(.success((json: json, decryptor: nil)))
+        guard let fulfillURL = book.bearerTokenFulfillURL else {
+            return .success((json: json, decryptor: nil))
         }
+
+        Log.debug(#file, "  🔑 Bearer token book - refreshing token before playback")
+        if let newToken = await tokenRefresher.refreshToken(from: fulfillURL) {
+            Log.info(#file, "  ✅ Bearer token refreshed before playback")
+            book.bearerToken = newToken.accessToken
+        } else {
+            Log.warn(#file, "  ⚠️ Bearer token refresh failed - proceeding with existing token")
+        }
+        return .success((json: json, decryptor: nil))
     }
 }

@@ -22,7 +22,7 @@ final class AudiobookVendorAdapterTests: XCTestCase {
     // MARK: - Spy conformance
 
     /// Minimal spy that lets a test pre-program `canHandle` and the
-    /// `resolveManifest` completion value, then records how often each
+    /// `resolveManifest` return value, then records how often each
     /// method was invoked. Subclassable so production code that holds an
     /// array of `AudiobookVendorAdapter` accepts heterogeneous spies.
     private final class SpyAdapter: AudiobookVendorAdapter {
@@ -48,11 +48,10 @@ final class AudiobookVendorAdapterTests: XCTestCase {
         }
 
         func resolveManifest(
-            for book: TPPBook,
-            completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-        ) {
+            for book: TPPBook
+        ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
             resolveCallCount += 1
-            completion(stubbedResult)
+            return stubbedResult
         }
     }
 
@@ -69,8 +68,8 @@ final class AudiobookVendorAdapterTests: XCTestCase {
     // MARK: - Tests
 
     func testProtocol_canHandleMustBeSync() {
-        // The protocol is callback-shaped on resolveManifest, but
-        // canHandle MUST be synchronous so the loader can build the chain
+        // `resolveManifest` is async, but canHandle must stay synchronous
+        // so the loader can build the chain
         // and pick a winner without ceremony. We pin that by reading the
         // return value on the same line as the call — if canHandle were
         // ever changed to async this would fail to compile.
@@ -87,7 +86,7 @@ final class AudiobookVendorAdapterTests: XCTestCase {
         XCTAssertEqual(adapter.canHandleCallCount, 1, "canHandle invoked exactly once per ask")
     }
 
-    func testProtocol_resolveManifestSignature_propagatesSuccess() {
+    func testProtocol_resolveManifestSignature_propagatesSuccess() async {
         // Drive the success branch of the Result type through the protocol
         // surface. Asserts both the json payload and the decryptor (nil)
         // flow through unchanged — if the tuple shape ever drifts (e.g.
@@ -100,26 +99,21 @@ final class AudiobookVendorAdapterTests: XCTestCase {
         )
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
 
-        let expectation = expectation(description: "resolveManifest completes")
         var observedJSON: [String: Any]?
         var observedDecryptor: DRMDecryptor??
-        adapter.resolveManifest(for: book) { result in
-            if case .success(let (json, decryptor)) = result {
-                observedJSON = json
-                observedDecryptor = decryptor
-            }
-            expectation.fulfill()
+        if case .success(let (json, decryptor)) = await adapter.resolveManifest(for: book) {
+            observedJSON = json
+            observedDecryptor = decryptor
         }
-        wait(for: [expectation], timeout: 1.0)
 
         XCTAssertEqual(observedJSON?["title"] as? String, "Test Book")
         XCTAssertEqual(observedJSON?["@type"] as? String, "Audiobook")
-        XCTAssertNotNil(observedDecryptor, "completion was invoked (outer optional is non-nil)")
+        XCTAssertNotNil(observedDecryptor, "the success branch was taken (outer optional is non-nil)")
         XCTAssertNil(observedDecryptor ?? nil, "decryptor (inner optional) is nil for non-DRM adapters")
         XCTAssertEqual(adapter.resolveCallCount, 1, "resolveManifest invoked exactly once")
     }
 
-    func testProtocol_resolveManifestSignature_propagatesFailure() {
+    func testProtocol_resolveManifestSignature_propagatesFailure() async {
         // Drive the failure branch. Asserts the AudiobookLoadError flows
         // through unchanged — pins that the protocol does not silently
         // map errors or swallow them.
@@ -130,15 +124,10 @@ final class AudiobookVendorAdapterTests: XCTestCase {
         )
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
 
-        let expectation = expectation(description: "resolveManifest completes with failure")
         var observedError: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
-            if case .failure(let err) = result {
-                observedError = err
-            }
-            expectation.fulfill()
+        if case .failure(let err) = await adapter.resolveManifest(for: book) {
+            observedError = err
         }
-        wait(for: [expectation], timeout: 1.0)
 
         guard case .manifestFetchFailed = observedError else {
             XCTFail("Expected manifestFetchFailed, got \(String(describing: observedError))")
