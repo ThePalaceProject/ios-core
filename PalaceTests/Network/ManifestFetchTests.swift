@@ -389,6 +389,83 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
         waitForExpectations(timeout: 5)
         XCTAssertNil(resultJSON.value, "Should return nil for JSON array (not a dictionary)")
     }
+
+    // MARK: - Request shape
+
+    /// The second leg is a plain GET that carries the app User-Agent and skips the
+    /// local cache, so an expired manifest is never served from disk.
+    func testRequest_isUncachedGETWithAppUserAgent() {
+        let captured = CapturedRequestHolder()
+        HTTPStubURLProtocol.register { request in
+            guard request.url == self.manifestURL else { return nil }
+            captured.value = request
+            let json = try! JSONSerialization.data(withJSONObject: ["metadata": [:]])
+            return .init(statusCode: 200, headers: nil, body: json)
+        }
+        let token = MyBooksSimplifiedBearerToken(
+            accessToken: "tok",
+            expiration: Date(timeIntervalSinceNow: 3600),
+            location: manifestURL
+        )
+        var expectedUARequest = URLRequest(url: manifestURL)
+        expectedUARequest.applyCustomUserAgent()
+
+        let expectation = expectation(description: "Request sent")
+        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { _ in
+            expectation.fulfill()
+        }
+        waitForExpectations(timeout: 5)
+
+        XCTAssertEqual(captured.value?.httpMethod, "GET")
+        XCTAssertEqual(captured.value?.value(forHTTPHeaderField: "User-Agent"),
+                       expectedUARequest.value(forHTTPHeaderField: "User-Agent"))
+        XCTAssertEqual(captured.value?.cachePolicy, .reloadIgnoringLocalCacheData)
+    }
+
+    /// A transport failure (no HTTP response at all) completes with nil rather
+    /// than hanging the loader.
+    func testTransportError_returnsNil() {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FailingURLProtocol.self]
+        let failingSession = URLSession(configuration: config)
+        defer { failingSession.finishTasksAndInvalidate() }
+        let token = MyBooksSimplifiedBearerToken(
+            accessToken: "tok",
+            expiration: Date(timeIntervalSinceNow: 3600),
+            location: manifestURL
+        )
+
+        let expectation = expectation(description: "Fetch completes")
+        let resultJSON = ManifestResultHolder()
+        resultJSON.value = ["sentinel": true]
+        BookService.fetchManifestWithBearerToken(token, for: book, session: failingSession) { json in
+            resultJSON.value = json
+            expectation.fulfill()
+        }
+        waitForExpectations(timeout: 5)
+
+        XCTAssertNil(resultJSON.value, "A transport error must complete with nil")
+    }
+}
+
+/// Fails every request with `NSURLErrorNotConnectedToInternet` before any response.
+private final class FailingURLProtocol: URLProtocol {
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+    override func stopLoading() {}
+}
+
+/// Lock-backed holder for the request a stub handler saw on the URL-loading queue.
+private final class CapturedRequestHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: URLRequest?
+    var value: URLRequest? {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); defer { lock.unlock() }; storage = newValue }
+    }
 }
 
 // MARK: - Data Task vs Download Task Verification
