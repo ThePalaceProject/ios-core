@@ -23,7 +23,11 @@
 set -uo pipefail
 
 REPO_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-HOOKS_DIR="$REPO_DIR/.git/hooks"
+# Ask git for the hooks directory rather than assuming $REPO_DIR/.git/hooks.
+# In a linked worktree `.git` is a FILE pointing at .git/worktrees/<name>, so
+# the assumed path does not exist and this script aborted there — which is
+# most of where this repo is worked.
+HOOKS_DIR="$(git rev-parse --git-path hooks 2>/dev/null || echo "$REPO_DIR/.git/hooks")"
 # Two source-of-truth directories:
 #   scripts/hooks/  — gitignored host-specific symlinks (harness-managed)
 #   scripts/       — tracked hook scripts (this repo owns, e.g. pre-push-test-gate.sh)
@@ -56,8 +60,11 @@ if [[ ! -d "$HOOKS_DIR" ]]; then
   exit 1
 fi
 if [[ ! -d "$SCRIPT_HOOKS_DIR" ]]; then
-  echo "ERROR: $SCRIPT_HOOKS_DIR not found — wrong cwd?" >&2
-  exit 1
+  # Not fatal. scripts/hooks/ is gitignored host-specific state, so a fresh
+  # clone or `git worktree add` carries none of it, and install_link already
+  # falls back to the tracked scripts/ directory. Aborting here denied a
+  # contributor without that state the parts needing nothing from it.
+  echo "NOTE: $SCRIPT_HOOKS_DIR absent — using tracked scripts/ only." >&2
 fi
 
 # ---------------------------------------------------------------------------
@@ -146,6 +153,30 @@ else
   echo "Opt-in: pre-push test gate is OFF. Enable with --with-pre-push-tests."
 fi
 
+# ---------------------------------------------------------------------------
+# pbxproj merge driver.
+#
+# .gitattributes names `merge=pbxproj`, but a driver only runs where its
+# command is registered, and .git/config is shared by neither a clone nor a
+# `git worktree add`. Without this step the attribute is inert and the file
+# conflicts as before, which is the safe direction.
+# ---------------------------------------------------------------------------
+echo ""
+echo "pbxproj merge driver:"
+DRIVER="$SCRIPTS_DIR/pbxproj_merge_driver.py"
+if [[ ! -f "$DRIVER" ]]; then
+  echo "  SKIP — $DRIVER missing"
+elif [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "  DRY  git config merge.pbxproj.driver"
+else
+  git -C "$REPO_DIR" config merge.pbxproj.name \
+    "Palace project file: union membership entries, refuse anything else"
+  git -C "$REPO_DIR" config merge.pbxproj.driver \
+    "python3 scripts/pbxproj_merge_driver.py --base %O --ours %A --theirs %B"
+  echo "  SET  merge.pbxproj.driver → scripts/pbxproj_merge_driver.py"
+fi
+
 echo ""
 echo "Done. To verify:"
 echo "  ls -la $HOOKS_DIR/commit-msg $HOOKS_DIR/pre-push 2>/dev/null"
+echo "  git config --get merge.pbxproj.driver"
