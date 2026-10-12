@@ -864,7 +864,7 @@ final class BookDetailViewModel: ObservableObject {
                         self.openBook(book, completion: completion, onLoadingShellPresented: onLoadingShellPresented)
                         return
                     } else if AdobeCertificate.isDRMAvailable &&
-                                !AdobeDRMService.shared.isUserAuthorized(user.userID, deviceID: user.deviceID) {
+                                !AdobeDRMService.shared.canUseRecordedActivation(user) {
                         // On-demand DRM activation instead of showing sign-in modal
                         Task {
                             do {

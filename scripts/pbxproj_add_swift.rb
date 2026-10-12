@@ -1,7 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# pbxproj_add_swift.rb — add Swift source files to Palace.xcodeproj cleanly.
+# pbxproj_add_swift.rb — add source files to Palace.xcodeproj cleanly.
+#
+# Handles Swift, Objective-C and Objective-C++ sources plus their headers.
 #
 # Removes the 6-hand-edit tax (PBXBuildFile×N targets, PBXFileReference,
 # PBXGroup membership, PBXSourcesBuildPhase×N targets) by delegating to the
@@ -20,7 +22,8 @@
 #   --project   Palace.xcodeproj
 #
 # Test files (path matches PalaceTests/) auto-route to PalaceTests target,
-# overriding --targets unless --force-targets is set.
+# overriding --targets unless --force-targets is set. Headers get a file
+# reference and group membership but no Sources phase entry.
 #
 # Idempotent: existing files are skipped (matched by full path under repo root).
 # Use --force-add to bypass the dedup check (rare collision case).
@@ -77,6 +80,20 @@ def parse_args(argv)
   opts
 end
 
+# Sources-phase languages. Headers get a file reference and group membership
+# but no build phase, which is how AdobeDRMContainer.h is already carried.
+COMPILED_EXTENSIONS = ['.swift', '.m', '.mm', '.c', '.cpp', '.cc'].freeze
+# Types xcodeproj does not infer from the extension.
+EXPLICIT_FILE_TYPES = {
+  '.mm' => 'sourcecode.cpp.objcpp',
+  '.m' => 'sourcecode.c.objc',
+  '.cpp' => 'sourcecode.cpp.cpp',
+  '.cc' => 'sourcecode.cpp.cpp',
+  '.c' => 'sourcecode.c.c',
+  '.hpp' => 'sourcecode.cpp.h'
+}.freeze
+HEADER_EXTENSIONS = ['.h', '.hpp'].freeze
+
 def normalize_file(arg)
   p = Pathname.new(arg)
   p = p.absolute? ? p : REPO_ROOT.join(p)
@@ -84,8 +101,9 @@ def normalize_file(arg)
     warn "ERROR: file does not exist: #{p}"
     exit 1
   end
-  unless p.extname == '.swift'
-    warn "ERROR: only .swift supported, got #{p.extname}"
+  unless COMPILED_EXTENSIONS.include?(p.extname) || HEADER_EXTENSIONS.include?(p.extname)
+    supported = (COMPILED_EXTENSIONS + HEADER_EXTENSIONS).join(', ')
+    warn "ERROR: unsupported extension #{p.extname}; supported: #{supported}"
     exit 1
   end
   p.relative_path_from(REPO_ROOT)
@@ -97,6 +115,7 @@ def test_file?(rel_path)
 end
 
 def resolve_targets(rel_path, requested, force_targets)
+  return [] if HEADER_EXTENSIONS.include?(rel_path.extname)
   return [TEST_TARGET] if !force_targets && test_file?(rel_path)
   requested
 end
@@ -159,6 +178,12 @@ def add_one(project, file_index, rel_path, targets, group_path, dry_run, verbose
   # new_file expects path relative to the group's source tree. Use the file's
   # leaf name with SOURCE_ROOT-relative full path to match existing convention.
   file_ref = group.new_file(REPO_ROOT.join(rel_path).to_s)
+  # xcodeproj infers no type for .mm, so the reference lands without
+  # `lastKnownFileType` and a target compiling it has nothing declared (the
+  # existing AdobeDRMContainer.mm carries sourcecode.cpp.objcpp). Set it
+  # explicitly for the types it does not infer.
+  explicit_type = EXPLICIT_FILE_TYPES[rel_path.extname]
+  file_ref.last_known_file_type = explicit_type if explicit_type
 
   build_phase_count = 0
   targets.each do |target_name|

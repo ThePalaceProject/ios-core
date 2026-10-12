@@ -80,6 +80,61 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
         XCTAssertFalse(businessLogic.shouldSkipAdobeActivation())
     }
 
+    // MARK: - The connector generation (PP-5251)
+
+    /// SRS: DRM-004 — a device activated under a different connector cannot be
+    /// skipped, however authorized the connector reports it.
+    ///
+    /// This site decides whether to reach `ensureDeviceActivated` at all, so the
+    /// gate inside that function cannot protect it. Routing the call through
+    /// `canUseRecordedActivation` is not enough on its own: substituting
+    /// `recordedGeneration: .current` here keeps the name, keeps the lint green,
+    /// and restores PP-5026 silently. Only this assertion catches that.
+    func testShouldSkipAdobeActivation_falseWhenActivatedUnderAnotherConnector() {
+        let userAccountMock = businessLogic.userAccount as! TPPUserAccountMock
+        userAccountMock.setAuthState(.credentialsStale)
+        userAccountMock.setAdobeActivation(
+            userID: "adobe-user",
+            deviceID: "adobe-device",
+            generation: AdobeConnectorGeneration.current + 1
+        )
+        drmAuthorizer.isUserAuthorizedReturnValue = true
+
+        XCTAssertFalse(businessLogic.shouldSkipAdobeActivation(),
+                       "a mismatched connector generation must refuse the skip even "
+                       + "though isUserAuthorized reports the device authorized")
+    }
+
+    /// The other half, so the test above is not satisfied by always refusing.
+    func testShouldSkipAdobeActivation_trueWhenActivatedUnderThisConnector() {
+        let userAccountMock = businessLogic.userAccount as! TPPUserAccountMock
+        userAccountMock.setAuthState(.credentialsStale)
+        userAccountMock.setAdobeActivation(
+            userID: "adobe-user",
+            deviceID: "adobe-device",
+            generation: AdobeConnectorGeneration.current
+        )
+        drmAuthorizer.isUserAuthorizedReturnValue = true
+
+        XCTAssertTrue(businessLogic.shouldSkipAdobeActivation(),
+                      "a matching generation with an authorized device may skip")
+    }
+
+    /// And the connector's own verdict still governs: a matching generation does
+    /// not override it.
+    func testShouldSkipAdobeActivation_falseWhenConnectorSaysUnauthorized() {
+        let userAccountMock = businessLogic.userAccount as! TPPUserAccountMock
+        userAccountMock.setAuthState(.credentialsStale)
+        userAccountMock.setAdobeActivation(
+            userID: "adobe-user",
+            deviceID: "adobe-device",
+            generation: AdobeConnectorGeneration.current
+        )
+        drmAuthorizer.isUserAuthorizedReturnValue = false
+
+        XCTAssertFalse(businessLogic.shouldSkipAdobeActivation())
+    }
+
     // MARK: - Credential Capture Tests
 
     /// Tests that logIn captures barcode and PIN from uiDelegate
